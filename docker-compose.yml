@@ -1,15 +1,14 @@
 services:
   storytime:
-    # Published by the GitHub Actions workflow on every push to main.
-    # `docker compose pull && docker compose up -d` updates to the newest build.
-    image: ghcr.io/tfproxy/storytime:latest
-    # To build from this source folder instead: docker compose up -d --build
-    build: .
+    # Builds straight from GitHub when the stack is started; there is no registry or prebuilt image.
+    # To build from this folder instead, replace the line below with `build: .`
+    build: https://github.com/tfProxy/StoryTime.git#main
     container_name: storytime
     ports:
       - "${STORYTIME_PORT:-3737}:3737"
     volumes:
-      - ./data:/data
+      # Where the database lives. On Unraid use something like /mnt/user/appdata/storytime
+      - ${STORYTIME_DATA:-./data}:/data
     environment:
       # Turns on the /admin page (moderation). Leave unset to switch it off.
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}

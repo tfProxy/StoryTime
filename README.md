@@ -31,36 +31,32 @@ Each person opens **Settings** in the app to choose an AI provider and paste the
 
 ## Running on Unraid (or any Docker host)
 
-The app is one container with one data folder. A GitHub Actions workflow
-(`.github/workflows/docker.yml`) tests the code and publishes the image to GitHub's container
-registry on every push to `main`:
+The app is one container with one data folder. There is no registry or prebuilt image: Docker
+downloads the source from GitHub and builds it when you start the stack (the first build takes a few
+minutes). Use the Compose Manager plugin on Unraid, or any machine with Docker Compose:
 
 ```
-ghcr.io/tfproxy/storytime:latest
+# docker-compose.yml (the one in this repo works as is)
+services:
+  storytime:
+    build: https://github.com/tfProxy/StoryTime.git#main
+    ports: ["3737:3737"]
+    volumes: ["/mnt/user/appdata/storytime:/data"]
+    environment:
+      ADMIN_PASSWORD: change-me     # optional, turns on /admin
+    restart: unless-stopped
 ```
 
-**One-time setup on GitHub:** after the first workflow run finishes, open the repository's
-**Packages** (right-hand sidebar) > **storytime** > **Package settings**. If the repository is
-public, set the package visibility to **Public** so servers can pull it without logging in. If you
-keep it private, log in once on the server with a personal access token that has the
-`read:packages` scope: `docker login ghcr.io -u tfProxy`.
+Then `docker compose up -d --build`. The site is on port 3737. Settings can come from environment
+variables or a `.env` file next to the compose file: `STORYTIME_PORT` (published port),
+`STORYTIME_DATA` (data folder, default `./data`) and `ADMIN_PASSWORD`.
 
-Then install it either way:
+**Updating:** Compose doesn't notice new commits by itself. To get the latest code run
+`docker compose build --pull --no-cache && docker compose up -d`. Database upgrades happen
+automatically on start. The repository must be public (or put an access token in the URL).
 
-- **Unraid template:** go to **Docker > Add Container** and paste
-  `https://raw.githubusercontent.com/tfProxy/StoryTime/main/unraid/storytime.xml` into the
-  **Template** box (or copy `unraid/storytime.xml` to
-  `/boot/config/plugins/dockerMan/templates-user/` and pick `storytime`). Check the port (3737) and
-  data path (`/mnt/user/appdata/storytime`), optionally set an admin password, and Apply.
-- **Compose** (Compose Manager plugin, or any Docker host): `docker compose pull && docker compose up -d`.
-  The site is on port 3737; set `STORYTIME_PORT` (for example in a `.env` file) to publish a different one.
-
-**Updating:** when a new build has been published, use the Unraid **Check for Updates** / **Update**
-action on the container (or `docker compose pull && docker compose up -d`). Database upgrades happen
-automatically on start.
-
-**Building from source instead** (no registry): `docker compose up -d --build`, or
-`docker build -t storytime:latest .` and set the template's Repository to `storytime:latest`.
+**Without Compose:** `docker build -t storytime https://github.com/tfProxy/StoryTime.git` and then
+`docker run -d -p 3737:3737 -v /mnt/user/appdata/storytime:/data storytime`.
 
 Notes:
 
