@@ -14,6 +14,54 @@ import {
   type Settings,
 } from "@/lib/settings";
 
+const CUSTOM = "__custom__";
+
+// A real <select> once models are known (datalists don't open on iOS/Android), with a way to type any name.
+function ModelField({
+  value,
+  models,
+  blankLabel,
+  onChange,
+}: {
+  value: string;
+  models: string[];
+  blankLabel?: string;
+  onChange: (v: string) => void;
+}) {
+  const [custom, setCustom] = useState(false);
+  if (models.length === 0 || custom) {
+    return (
+      <span className="row">
+        <input value={value} onChange={(e) => onChange(e.target.value)} />
+        {models.length > 0 && (
+          <button type="button" className="secondary" onClick={() => setCustom(false)}>
+            List
+          </button>
+        )}
+      </span>
+    );
+  }
+  const known = value === "" || models.includes(value);
+  return (
+    <select
+      value={known ? value : CUSTOM}
+      onChange={(e) => {
+        if (e.target.value === CUSTOM) setCustom(true);
+        else onChange(e.target.value);
+      }}
+    >
+      {blankLabel ? <option value="">{blankLabel}</option> : !known || value === "" ? <option value="">Choose a model…</option> : null}
+      {models.map((m) => (
+        <option key={m} value={m}>
+          {m}
+        </option>
+      ))}
+      {!known && <option value={CUSTOM}>{value} (typed)</option>}
+      <option value={CUSTOM}>Type a name…</option>
+    </select>
+  );
+}
+
 export default function SettingsForm() {
   const settings = useSettings();
   const info = providerInfo(settings.activeProvider);
@@ -47,7 +95,7 @@ export default function SettingsForm() {
       setModels(ids);
       setStatus({
         kind: "ok",
-        text: `Connected. ${ids.length} model${ids.length === 1 ? "" : "s"} available${ids.length ? " (pick one from the suggestions in the Model field)" : ""}.`,
+        text: `Connected. ${ids.length} model${ids.length === 1 ? "" : "s"} available${ids.length ? " (pick one in the Model field below)" : ""}.`,
       });
     } catch (e) {
       setModels([]);
@@ -164,22 +212,18 @@ export default function SettingsForm() {
 
         <label>
           Model
-          <input list="model-suggestions" value={p.model} onChange={(e) => updateProvider({ model: e.target.value })} />
+          <ModelField value={p.model} models={models} onChange={(v) => updateProvider({ model: v })} />
         </label>
 
         <label>
           Cheaper model <small>(for summaries and small jobs; leave blank to use the main model)</small>
-          <input
-            list="model-suggestions"
+          <ModelField
             value={p.summaryModel}
-            onChange={(e) => updateProvider({ summaryModel: e.target.value })}
+            models={models}
+            blankLabel="Same as the main model"
+            onChange={(v) => updateProvider({ summaryModel: v })}
           />
         </label>
-        <datalist id="model-suggestions">
-          {models.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
 
         <label>
           Temperature <small>(leave blank for the provider&apos;s default)</small>
