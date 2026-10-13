@@ -7,7 +7,7 @@ services:
     build: .
     container_name: storytime
     ports:
-      - "3000:3000"
+      - "${STORYTIME_PORT:-3737}:3737"
     volumes:
       - ./data:/data
     environment:

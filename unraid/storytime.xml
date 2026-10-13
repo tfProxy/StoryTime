@@ -22,7 +22,7 @@
   <Project>https://github.com/tfProxy/StoryTime</Project>
   <Overview>StoryTime: write branching, choose-your-own-adventure stories together, with optional AI help. Everyone brings their own AI key (kept in their browser), so the server needs no AI credentials. Stories are stored in a single SQLite file in the appdata folder.</Overview>
   <Category>Other:</Category>
-  <WebUI>http://[IP]:[PORT:3000]/</WebUI>
+  <WebUI>http://[IP]:[PORT:3737]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/tfProxy/StoryTime/main/unraid/storytime.xml</TemplateURL>
   <Icon/>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
@@ -32,7 +32,7 @@
   <DonateText/>
   <DonateLink/>
   <Requires/>
-  <Config Name="Web UI port" Target="3000" Default="3000" Mode="tcp" Description="Port the site is served on." Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+  <Config Name="Web UI port" Target="3737" Default="3737" Mode="tcp" Description="Port the site is served on." Type="Port" Display="always" Required="true" Mask="false">3737</Config>
   <Config Name="Data" Target="/data" Default="/mnt/user/appdata/storytime" Mode="rw" Description="Where the database lives. Include this folder in your appdata backups." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/storytime</Config>
   <Config Name="Admin password" Target="ADMIN_PASSWORD" Default="" Mode="" Description="Turns on the /admin moderation page. Leave blank to switch it off." Type="Variable" Display="always" Required="false" Mask="true"/>
 </Container>

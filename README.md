@@ -23,7 +23,7 @@ Anthropic, or a local model through Ollama), and their keys never leave their br
 
 ```
 npm install
-npm run dev        # http://localhost:3000
+npm run dev        # http://localhost:3737
 ```
 
 Data lives in `data/storytime.db` (SQLite). Override with `STORYTIME_DB=/path/to/file.db`.
@@ -50,9 +50,10 @@ Then install it either way:
 - **Unraid template:** go to **Docker > Add Container** and paste
   `https://raw.githubusercontent.com/tfProxy/StoryTime/main/unraid/storytime.xml` into the
   **Template** box (or copy `unraid/storytime.xml` to
-  `/boot/config/plugins/dockerMan/templates-user/` and pick `storytime`). Check the port (3000) and
+  `/boot/config/plugins/dockerMan/templates-user/` and pick `storytime`). Check the port (3737) and
   data path (`/mnt/user/appdata/storytime`), optionally set an admin password, and Apply.
 - **Compose** (Compose Manager plugin, or any Docker host): `docker compose pull && docker compose up -d`.
+  The site is on port 3737; set `STORYTIME_PORT` (for example in a `.env` file) to publish a different one.
 
 **Updating:** when a new build has been published, use the Unraid **Check for Updates** / **Update**
 action on the container (or `docker compose pull && docker compose up -d`). Database upgrades happen
