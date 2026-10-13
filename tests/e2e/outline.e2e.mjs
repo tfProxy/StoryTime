@@ -30,11 +30,8 @@ ok(!(await page.getByRole("link", { name: "Level 4" }).isVisible()), "deep branc
 await page.locator("summary", { hasText: "Level 3" }).click();
 ok(await page.getByRole("link", { name: "Level 4" }).isVisible(), "expanding reveals deeper chapters");
 ok(await page.getByText("branch ends here").isVisible(), "dead ends are marked");
-const write = page.getByRole("link", { name: "write it" });
-ok(await write.isVisible(), "unwritten choices offer a link to write them");
-await write.click();
-await page.waitForURL(/write\?choice=/);
-ok(true, "the link opens the editor for that choice");
+ok((await page.getByText("not written yet").count()) === 0, "unwritten choices are not listed in the outline");
+ok((await page.getByRole("link", { name: "write it" }).count()) === 0, "no write links in the outline");
 
 // downloads
 await page.goto(`${BASE}/s/${s.story_id}`);

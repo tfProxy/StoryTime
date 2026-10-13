@@ -18,6 +18,8 @@ function count(node: TreeNode, t: Totals) {
 }
 
 function Node({ node, via }: { node: TreeNode; via: string | null }) {
+  // Only written chapters are listed; unwritten choices are left to the story page.
+  const written = node.choices.filter((c) => c.child);
   const summary = (
     <>
       {via && <span className="meta">{via} → </span>}
@@ -27,24 +29,16 @@ function Node({ node, via }: { node: TreeNode; via: string | null }) {
       {node.choices.length === 0 && <span className="tag"> · branch ends here</span>}
     </>
   );
-  if (node.choices.length === 0) return <li>{summary}</li>;
+  if (written.length === 0) return <li>{summary}</li>;
   return (
     <li>
       {/* Deep branches start collapsed so a big story stays scannable. */}
       <details open={node.depth < 3}>
         <summary>{summary}</summary>
         <ul className="outline">
-          {node.choices.map((c) =>
-            c.child ? (
-              <Node key={c.id} node={c.child} via={c.label} />
-            ) : (
-              <li key={c.id} className="outline-open">
-                <span className="meta">{c.label} → </span>
-                <span className="tag">not written yet</span>{" "}
-                <Link href={`/c/${node.id}/write?choice=${c.id}`}>write it</Link>
-              </li>
-            ),
-          )}
+          {written.map((c) => (
+            <Node key={c.id} node={c.child!} via={c.label} />
+          ))}
         </ul>
       </details>
     </li>
