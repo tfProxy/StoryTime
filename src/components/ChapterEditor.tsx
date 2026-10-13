@@ -63,6 +63,7 @@ type Props = {
 };
 
 const MAX_UNDO = 20;
+const MAX_VERSIONS = 20;
 
 const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
 
@@ -201,6 +202,24 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
 
   const patch = (p: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...p } : d));
 
+  /** A new generated draft gets its own version; any existing text is kept as the one before it. */
+  function startVersion(d: Draft): Pick<Draft, "versions" | "versionIndex"> {
+    if (!d.body.trim()) return {};
+    const kept = [...(d.versions ?? [{ title: d.title, body: d.body }])];
+    kept[d.versionIndex ?? kept.length - 1] = { title: d.title, body: d.body };
+    const versions = [...kept, { title: "", body: "" }].slice(-MAX_VERSIONS);
+    return { versions, versionIndex: versions.length - 1 };
+  }
+
+  function showVersion(j: number) {
+    setDraft((d) => {
+      if (!d?.versions?.[j]) return d;
+      const versions = [...d.versions];
+      versions[d.versionIndex ?? versions.length - 1] = { title: d.title, body: d.body };
+      return { ...d, versions, versionIndex: j, title: versions[j].title, body: versions[j].body };
+    });
+  }
+
   function pushUndo(d: Draft): Draft["undo"] {
     if (!d.title && !d.body) return d.undo;
     return [...d.undo, { title: d.title, body: d.body }].slice(-MAX_UNDO);
@@ -221,7 +240,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
           ? generatePrompt(ready, draft.prompt, length, settings.contextTokens)
           : refinePrompt(ready, { title: draft.title, body: draft.body }, instruction, settings.contextTokens);
       // Keep the text we're replacing so the rewrite can be undone.
-      setDraft((d) => (d ? { ...d, undo: pushUndo(d) } : d));
+      setDraft((d) => (d ? { ...d, undo: pushUndo(d), ...(kind === "generate" ? startVersion(d) : {}) } : d));
       for await (const piece of streamChat(settings, {
         system: SYSTEM_CHAPTER,
         messages: [{ role: "user", content: message }],
@@ -434,6 +453,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     }
   }
 
+  const versionCount = draft.versions?.length ?? 0;
+  const versionIndex = draft.versionIndex ?? versionCount - 1;
   const working = busy === "generate" || busy === "refine";
   const words = countWords(draft.body);
   const targetWords = LENGTH_WORDS[length];
@@ -662,6 +683,20 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         Chapter title
         <input value={draft.title} maxLength={LIMITS.title} onChange={(e) => patch({ title: e.target.value })} />
       </label>
+
+      {versionCount > 1 && (
+        <div className="row" aria-label="Draft versions">
+          <button type="button" className="secondary" onClick={() => showVersion(versionIndex - 1)} disabled={busy !== null || versionIndex === 0} aria-label="Previous draft">
+            &lt;
+          </button>
+          <span className="meta">
+            Draft {versionIndex + 1} of {versionCount}
+          </span>
+          <button type="button" className="secondary" onClick={() => showVersion(versionIndex + 1)} disabled={busy !== null || versionIndex === versionCount - 1} aria-label="Next draft">
+            &gt;
+          </button>
+        </div>
+      )}
 
       {working || reading ? (
         <div aria-live="polite">

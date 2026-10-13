@@ -21,6 +21,10 @@ export type Draft = {
   prompt: string;
   /** Earlier versions of title/body, newest last, so AI rewrites can be undone. */
   undo: DraftVersion[];
+  /** Every draft the AI has generated here, oldest first, so you can step between them. The one being viewed lives in title/body; its entry here is only refreshed when you leave it. */
+  versions?: DraftVersion[];
+  /** Which of `versions` is currently showing. */
+  versionIndex?: number;
   // Only used when editing a posted chapter:
   /** The chapter revision this draft started from. */
   baseRevision?: number;
