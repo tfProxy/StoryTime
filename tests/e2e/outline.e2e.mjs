@@ -19,9 +19,14 @@ const browser = await launch();
 const page = await (await browser.newContext()).newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 
-await page.goto(`${BASE}/s/${s.story_id}`);
-ok(await page.getByRole("link", { name: "Outline" }).isVisible(), "story page links to the outline");
-await page.getByRole("link", { name: "Outline" }).click();
+await page.goto(BASE);
+const menu = () => page.locator(".story-card", { hasText: "Outline story" }).locator("summary");
+await page.locator(".story-card", { hasText: "Outline story" }).locator("a.story-link").click();
+await page.waitForURL(new RegExp(`/c/${s.chapter_id}$`));
+ok(await page.getByRole("heading", { name: "Level 0" }).isVisible(), "clicking a story opens its first chapter");
+await page.goto(BASE);
+await menu().click();
+await page.getByRole("link", { name: "Outline", exact: true }).click();
 await page.waitForURL(/outline$/);
 ok(await page.getByText(/5 chapters · 1 choice still to write/).isVisible(), "totals shown");
 ok(await page.getByRole("link", { name: "Level 2" }).isVisible(), "shallow chapters are expanded");
@@ -34,7 +39,8 @@ ok((await page.getByText("not written yet").count()) === 0, "unwritten choices a
 ok((await page.getByRole("link", { name: "write it" }).count()) === 0, "no write links in the outline");
 
 // downloads
-await page.goto(`${BASE}/s/${s.story_id}`);
+await page.goto(BASE);
+await menu().click();
 const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: /readable \(Markdown\)/ }).click()]);
 ok(download.suggestedFilename() === "outline-story.md", "the Markdown link downloads a file named after the story: " + download.suggestedFilename());
 const text = fs.readFileSync(await download.path(), "utf8");

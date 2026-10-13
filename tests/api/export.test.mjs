@@ -64,4 +64,7 @@ ok(!html.includes("not written yet") && html.includes("branch ends here"), "outl
 ok(!html.includes("Gone chapter"), "outline leaves out removed chapters");
 ok(/3 chapters/.test(html) && /2 choices still to write/.test(html), "outline totals: " + (/(\d+ chapters[^<]*)/.exec(html)?.[1] ?? "?"));
 ok((await get(`/s/nope/outline`)).status === 404, "outline of an unknown story 404");
-ok((await get(`/s/${story}`)).text.includes("export?format=twee"), "story page links to the downloads");
+const home = (await get(`/`)).text;
+ok(home.includes(`/api/stories/${story}/export?format=twee`) && home.includes(`/s/${story}/outline`), "the story list menu links to the outline and downloads");
+const viaStory = await fetch(B + `/s/${story}`, { redirect: "manual" });
+ok(viaStory.status >= 300 && viaStory.status < 400 && viaStory.headers.get("location").includes("/c/"), "a story's own address goes to its first chapter");
