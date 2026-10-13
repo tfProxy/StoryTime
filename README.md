@@ -31,32 +31,41 @@ Each person opens **Settings** in the app to choose an AI provider and paste the
 
 ## Running on Unraid (or any Docker host)
 
-The app is one container with one data folder. There's no public image, so build it once on the
-server:
+The app is one container with one data folder. A GitHub Actions workflow
+(`.github/workflows/docker.yml`) tests the code and publishes the image to GitHub's container
+registry on every push to `main`:
 
 ```
-# on the Unraid terminal
-cd /mnt/user/appdata
-git clone <your repo or copy of this folder> storytime-src
-cd storytime-src
-docker build -t storytime:latest .
+ghcr.io/tfproxy/storytime:latest
 ```
 
-Then either:
+**One-time setup on GitHub:** after the first workflow run finishes, open the repository's
+**Packages** (right-hand sidebar) > **storytime** > **Package settings**. If the repository is
+public, set the package visibility to **Public** so servers can pull it without logging in. If you
+keep it private, log in once on the server with a personal access token that has the
+`read:packages` scope: `docker login ghcr.io -u tfProxy`.
 
-- **Add Container (template):** copy `unraid/storytime.xml` to
-  `/boot/config/plugins/dockerMan/templates-user/`, open **Docker > Add Container**, choose
-  `storytime` from the template list, check the port (3000) and data path
-  (`/mnt/user/appdata/storytime`), optionally set an admin password, and Apply.
-- **Compose** (Compose Manager plugin, or any Docker host): `docker compose up -d --build`.
+Then install it either way:
+
+- **Unraid template:** go to **Docker > Add Container** and paste
+  `https://raw.githubusercontent.com/tfProxy/StoryTime/main/unraid/storytime.xml` into the
+  **Template** box (or copy `unraid/storytime.xml` to
+  `/boot/config/plugins/dockerMan/templates-user/` and pick `storytime`). Check the port (3000) and
+  data path (`/mnt/user/appdata/storytime`), optionally set an admin password, and Apply.
+- **Compose** (Compose Manager plugin, or any Docker host): `docker compose pull && docker compose up -d`.
+
+**Updating:** when a new build has been published, use the Unraid **Check for Updates** / **Update**
+action on the container (or `docker compose pull && docker compose up -d`). Database upgrades happen
+automatically on start.
+
+**Building from source instead** (no registry): `docker compose up -d --build`, or
+`docker build -t storytime:latest .` and set the template's Repository to `storytime:latest`.
 
 Notes:
 
 - Put the data folder in your appdata backups, or use the built-in consistent copy, which is safe
   while the app runs: `docker exec storytime node scripts/admin.mjs backup /data/backups/storytime-$(date +%F).db`.
 - The container reports health at `/api/health`.
-- To update: pull or copy the new source, rebuild the image, and recreate the container. Database
-  upgrades happen automatically on start.
 - Before exposing it beyond your home network, put it behind a reverse proxy with HTTPS, or reach
   it over a VPN such as Tailscale. The site itself has no logins, so anyone who can reach it can
   read and post. The admin page has its own password.

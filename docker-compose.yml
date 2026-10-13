@@ -1,6 +1,11 @@
 services:
   storytime:
+    # Published by the GitHub Actions workflow on every push to main.
+    # `docker compose pull && docker compose up -d` updates to the newest build.
+    image: ghcr.io/tfproxy/storytime:latest
+    # To build from this source folder instead: docker compose up -d --build
     build: .
+    container_name: storytime
     ports:
       - "3000:3000"
     volumes:
