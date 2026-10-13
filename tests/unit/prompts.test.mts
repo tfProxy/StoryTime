@@ -1,4 +1,4 @@
-import { buildStorySoFar, parseChapterOutput, parseChoices, generatePrompt, estimateTokens } from "../../src/lib/ai/prompts.ts";
+import { buildStorySoFar, parseChapterOutput, parseChoices, generatePrompt, estimateTokens, explainCodex, buildCodexBlock } from "../../src/lib/ai/prompts.ts";
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const ch = (n: number, extra: any = {}) => ({ title: `Ch${n}`, body: `body${n} `.repeat(200), summary: null, path_summary: null, ...extra });
 const path = [1,2,3,4,5,6].map((n) => ch(n));
@@ -21,3 +21,16 @@ ok(JSON.stringify(parseChoices('Sure! ["Open the door", "Run", "Hide."]')) === '
 ok(JSON.stringify(parseChoices('1. Open it\n2. "Run away"\n- Hide')) === '["Open it","Run away","Hide"]', "choices lines");
 const g = generatePrompt({ storyTitle: "T", premise: "P", path: [ch(1)], choiceLabel: "Go" }, "dragons", "short", 8000);
 ok(g.includes("Premise: P") && g.includes('The reader chose: "Go"') && g.includes("dragons") && g.includes("about 300 words"), "generate prompt contents");
+
+// ---- codex picking and manual overrides ----
+const cx = (id: string, name: string, extra: Record<string, unknown> = {}) => ({ id, name, type: "character", aliases: [] as string[], content: `${name} info`, always_include: false, ...extra });
+const entries = [cx("a", "Mira"), cx("b", "Zed"), cx("c", "Rule", { always_include: true })];
+let rows = explainCodex(entries, "Mira walked.", 1000);
+ok(rows.map((r) => r.state).join() === "included,off,included" && rows[0].auto === "mentioned" && rows[2].auto === "always", "explainCodex: mentioned and always entries are included");
+rows = explainCodex(entries, "Mira walked.", 1000, { include: ["b"], exclude: ["a", "c"] });
+ok(rows.map((r) => r.state).join() === "excluded,included,excluded" && rows[1].pinned, "overrides add and remove entries");
+rows = explainCodex(entries, "Mira walked.", 5);
+ok(rows.some((r) => r.state === "too-long"), "entries over the budget are flagged");
+const block = buildCodexBlock(entries, "Mira walked.", 1000, { include: ["b"], exclude: ["a"] });
+ok(block.includes("Zed [character]") && block.includes("Rule [character]") && !block.includes("Mira [character]"), "the prompt block follows the overrides");
+ok(buildCodexBlock(entries, "Mira walked.", 1000) === buildCodexBlock(entries, "Mira walked.", 1000, { include: [], exclude: [] }), "no overrides changes nothing");

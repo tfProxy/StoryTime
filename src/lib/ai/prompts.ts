@@ -11,6 +11,8 @@ export type ContextChapter = {
 };
 
 export type ContextCodexEntry = {
+  /** Present for entries loaded from the server; used to pin or exclude them by hand. */
+  id?: string;
   name: string;
   type: string;
   aliases: string[];
@@ -27,7 +29,11 @@ export type StoryContext = {
   choiceLabel: string | null;
   /** Codex entries in effect at the point being continued. */
   codex?: ContextCodexEntry[];
+  /** Hand-picked changes to which codex entries go into the prompt (by entry id). */
+  codexOverrides?: CodexOverrides;
 };
+
+export type CodexOverrides = { include: string[]; exclude: string[] };
 
 export type Length = "short" | "medium" | "long";
 export const LENGTH_WORDS: Record<Length, number> = { short: 300, medium: 600, long: 1000 };
@@ -131,32 +137,81 @@ export function mentions(entry: ContextCodexEntry, text: string): boolean {
     .some((n) => new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(n)}($|[^\\p{L}\\p{N}])`, "iu").test(text));
 }
 
+export type CodexStatus = {
+  entry: ContextCodexEntry;
+  /** Why the entry would be picked without any manual changes. */
+  auto: "always" | "mentioned" | null;
+  /** included = in the prompt; too-long = wanted but over the budget; excluded = switched off by hand. */
+  state: "included" | "too-long" | "excluded" | "off";
+  /** Switched on by hand although nothing in the text triggers it. */
+  pinned: boolean;
+};
+
+export const codexKey = (e: ContextCodexEntry) => e.id ?? e.name;
+
+function codexLine(e: ContextCodexEntry): string {
+  const alias = e.aliases.length ? ` (also: ${e.aliases.join(", ")})` : "";
+  return `- ${e.name} [${e.type}]${alias}: ${e.content.replace(/\s+/g, " ").trim()}`;
+}
+
+/** What the prompt builder will do with every codex entry, and why. */
+export function explainCodex(
+  entries: ContextCodexEntry[],
+  triggerText: string,
+  budgetTokens: number,
+  overrides?: CodexOverrides,
+): CodexStatus[] {
+  const include = new Set(overrides?.include ?? []);
+  const exclude = new Set(overrides?.exclude ?? []);
+  const rows: CodexStatus[] = entries.map((entry) => {
+    const auto = entry.always_include ? "always" : mentions(entry, triggerText) ? "mentioned" : null;
+    const key = codexKey(entry);
+    const pinned = auto === null && include.has(key);
+    const state = exclude.has(key) ? "excluded" : auto || pinned ? "included" : "off";
+    return { entry, auto, pinned, state };
+  });
+  // "Always include" entries get the budget first, then the rest in codex order.
+  const order = [...rows.filter((r) => r.entry.always_include), ...rows.filter((r) => !r.entry.always_include)];
+  let used = 0;
+  for (const r of order) {
+    if (r.state !== "included") continue;
+    const cost = estimateTokens(codexLine(r.entry));
+    if (used + cost > budgetTokens) r.state = "too-long"; // skip what doesn't fit, but keep trying smaller ones
+    else used += cost;
+  }
+  return rows;
+}
+
 /**
  * Picks codex entries for the prompt within a token budget: "always include" entries first,
- * then entries mentioned in the recent text, in codex order.
+ * then entries mentioned in the recent text (or added by hand), in codex order.
  */
-export function buildCodexBlock(entries: ContextCodexEntry[], triggerText: string, budgetTokens: number): string {
-  const chosen = [...entries.filter((e) => e.always_include), ...entries.filter((e) => !e.always_include && mentions(e, triggerText))];
-  const lines: string[] = [];
-  let used = 0;
-  for (const e of chosen) {
-    const alias = e.aliases.length ? ` (also: ${e.aliases.join(", ")})` : "";
-    const line = `- ${e.name} [${e.type}]${alias}: ${e.content.replace(/\s+/g, " ").trim()}`;
-    const cost = estimateTokens(line);
-    if (used + cost > budgetTokens) continue; // skip what doesn't fit, but keep trying smaller ones
-    lines.push(line);
-    used += cost;
-  }
+export function buildCodexBlock(
+  entries: ContextCodexEntry[],
+  triggerText: string,
+  budgetTokens: number,
+  overrides?: CodexOverrides,
+): string {
+  const rows = explainCodex(entries, triggerText, budgetTokens, overrides).filter((r) => r.state === "included");
+  const chosen = [...rows.filter((r) => r.entry.always_include), ...rows.filter((r) => !r.entry.always_include)];
+  const lines = chosen.map((r) => codexLine(r.entry));
   return lines.length ? `Codex (established facts; stay consistent with these):\n${lines.join("\n")}` : "";
 }
+
+/** The text that decides which entries are relevant: the premise, recent chapters and what is being written. */
+export function codexTrigger(ctx: StoryContext, extraTrigger = ""): string {
+  return [ctx.premise, ...ctx.path.slice(-3).map((c) => c.body), ctx.choiceLabel ?? "", extraTrigger].join("\n");
+}
+
+/** The share of the context budget given to the codex. */
+export const codexBudget = (budgetTokens: number) => Math.floor(budgetTokens * 0.25);
 
 function storyHeader(ctx: StoryContext, budgetTokens: number, extraTrigger = ""): string {
   const parts = [`Story: ${ctx.storyTitle || "(untitled)"}`];
   if (ctx.premise.trim()) parts.push(`Premise: ${ctx.premise.trim()}`);
   if (ctx.codex?.length) {
     // Entries are triggered by the premise, the last few chapters, and whatever is being written now.
-    const trigger = [ctx.premise, ...ctx.path.slice(-3).map((c) => c.body), ctx.choiceLabel ?? "", extraTrigger].join("\n");
-    const block = buildCodexBlock(ctx.codex, trigger, Math.floor(budgetTokens * 0.25));
+    const block = buildCodexBlock(ctx.codex, codexTrigger(ctx, extraTrigger), codexBudget(budgetTokens), ctx.codexOverrides);
     if (block) parts.push(block);
     budgetTokens = Math.floor(budgetTokens * 0.75);
   }
@@ -168,7 +223,7 @@ function storyHeader(ctx: StoryContext, budgetTokens: number, extraTrigger = "")
 
 /** Reserve room for the system prompt, instructions and the reply. */
 const RESERVED_TOKENS = 1500;
-const budgetFor = (contextTokens: number) => Math.max(500, contextTokens - RESERVED_TOKENS);
+export const budgetFor =(contextTokens: number) => Math.max(500, contextTokens - RESERVED_TOKENS);
 
 export function generatePrompt(ctx: StoryContext, direction: string, length: Length, contextTokens: number): string {
   const target = ctx.path.length === 0 ? "the opening chapter of this story" : "the next chapter";

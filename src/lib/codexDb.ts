@@ -114,6 +114,7 @@ export function createCodexOp(input: z.infer<typeof NewCodexOpSchema>): { id: st
 export function getContextCodex(chapterId: string | null) {
   if (!chapterId) return [];
   return getCodexState(chapterId).map((e) => ({
+    id: e.entry_id,
     name: e.name,
     type: e.type,
     aliases: e.aliases,
