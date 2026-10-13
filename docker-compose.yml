@@ -5,4 +5,7 @@ services:
       - "3000:3000"
     volumes:
       - ./data:/data
+    environment:
+      # Turns on the /admin page (moderation). Leave unset to switch it off.
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     restart: unless-stopped

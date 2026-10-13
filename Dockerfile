@@ -14,6 +14,8 @@ ENV NODE_ENV=production \
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
+# Command-line moderation tool: docker exec -it <container> node scripts/admin.mjs help
+COPY --from=build /app/scripts ./scripts
 VOLUME /data
 EXPOSE 3000
 CMD ["node", "server.js"]

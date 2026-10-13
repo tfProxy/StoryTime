@@ -1,6 +1,6 @@
 # StoryTime
 
-Branching stories, written together with a little AI help. See the plan in the project history; phases 1-4 plus chapter editing are done: reader, posting and editing with revision history, browser-only AI settings (OpenAI-compatible incl. Ollama, and Anthropic), a local drafting editor, and the per-branch codex. AI codex helpers (scan for entries, draft and update entries) are in too. Rolling story summaries and one-click "Continue with AI" are in too. The admin tools and Unraid polish are next.
+Branching stories, written together with a little AI help. See the plan in the project history; phases 1-4 plus chapter editing are done: reader, posting and editing with revision history, browser-only AI settings (OpenAI-compatible incl. Ollama, and Anthropic), a local drafting editor, and the per-branch codex. AI codex helpers (scan for entries, draft and update entries) are in too. Rolling story summaries and one-click "Continue with AI" are in too. The admin tools are in too; Unraid polish is next.
 
 ## Run locally
 
@@ -42,3 +42,12 @@ database; the browser tests also run a fake AI server on port 3222. Set `E2E_CHA
 (or `bundled`, after `npx playwright-core install chromium`) to use a different browser.
 Pass `--build` (`node tests/run.mjs --build api`) to force a rebuild first.
 - Each chapter can carry a `summary` (of itself) and a `path_summary` (the story through it). The browser generates them with the cheaper model when a chapter is posted or edited, and fills in any that are missing (for example below an edited chapter) before generating, but only when older chapters would not fit in the context budget. They are a cache: anyone can fill a missing one, and nobody can overwrite an existing one except the chapter's author by editing it.
+
+## Moderation
+
+Nothing public links to the admin tools. To use them:
+
+- **Web:** set `ADMIN_PASSWORD` (for Docker, in the environment or a `.env` file next to `docker-compose.yml`) and open `/admin`. There you can scan recent activity, filter it, remove or restore chapters, choices, stories and codex changes, revert a chapter to an earlier revision, and permanently delete things that were removed first. Without a password set, `/admin` is switched off. Logins use a signed, expiring cookie, and repeated wrong guesses are temporarily blocked. If the site is reachable from the internet, serve it over HTTPS.
+- **Command line** (on the machine hosting the database, no password needed): `node scripts/admin.mjs help`. In Docker: `docker exec -it <container> node scripts/admin.mjs recent 20`.
+
+Removing a chapter hides it and everything below it, and the choice that led to it becomes an unwritten slot again (someone else can write a replacement). Restoring undoes that, unless the slot has been refilled in the meantime.

@@ -18,6 +18,7 @@ const args = process.argv.slice(2);
 const wantBuild = args.includes("--build");
 const suites = args.filter((a) => !a.startsWith("--"));
 const PORT = Number(process.env.PORT ?? 3111);
+const ADMIN_PASSWORD = "test-admin-password";
 
 if (suites.length === 0) {
   console.error("Usage: node tests/run.mjs [--build] <unit|api|e2e>...");
@@ -67,7 +68,7 @@ async function withServer(fn) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "storytime-test-"));
   const server = spawn(nodeBin, [nextBin, "start", "-p", String(PORT)], {
     cwd: root,
-    env: { ...process.env, STORYTIME_DB: path.join(dir, "test.db") },
+    env: { ...process.env, STORYTIME_DB: path.join(dir, "test.db"), ADMIN_PASSWORD: ADMIN_PASSWORD },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let log = "";
@@ -84,7 +85,7 @@ async function withServer(fn) {
       if (i > 60) throw new Error(`Server didn't start:\n${log}`);
       await new Promise((r) => setTimeout(r, 500));
     }
-    return await fn(base);
+    return await fn(base, path.join(dir, "test.db"));
   } finally {
     server.kill();
     await new Promise((r) => setTimeout(r, 500));
@@ -98,12 +99,14 @@ if (suites.includes("unit")) {
 }
 const needsServer = suites.some((s) => s === "api" || s === "e2e");
 if (needsServer) {
-  await withServer(async (base) => {
+  await withServer(async (base, dbFile) => {
+    // Tests get the admin password and the database path (for the command-line tool tests).
+    const env = { BASE_URL: base, ADMIN_PASSWORD, TEST_DB: dbFile };
     if (suites.includes("api")) {
-      for (const f of filesFor("api", /\.test\.mjs$/)) results.push(runFile(f, { BASE_URL: base }));
+      for (const f of filesFor("api", /\.test\.mjs$/)) results.push(runFile(f, env));
     }
     if (suites.includes("e2e")) {
-      for (const f of filesFor("e2e", /\.e2e\.mjs$/)) results.push(runFile(f, { BASE_URL: base }));
+      for (const f of filesFor("e2e", /\.e2e\.mjs$/)) results.push(runFile(f, env));
     }
   });
 }

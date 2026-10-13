@@ -293,3 +293,9 @@ h2 {
 details.ai-panel > summary {
   cursor: pointer;
 }
+
+button.danger {
+  background: transparent;
+  color: #c0392b;
+  border-color: #c0392b;
+}
