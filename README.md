@@ -26,3 +26,18 @@ The database is stored in `./data` (mounted at `/data` in the container).
 - A choice is "unwritten" until a chapter is posted for it; the first poster wins.
 - Codex ops (`codex_ops` table) are append-only and anchored to a chapter; they apply to that chapter and its descendants.
 - The codex is an append-only log per story: each op (create / replace / retire) is anchored at a chapter and applies to that chapter and its descendants. The codex at a chapter is the fold of the ops on the path from the root to it (deeper anchors win, then later posts). A change to the codex never touches chapter text, and other branches never see it.
+
+## Tests
+
+```
+npm test            # unit + API tests (starts a throwaway server and database)
+npm run test:unit   # pure-logic tests only
+npm run test:api    # HTTP API tests
+npm run test:e2e    # browser tests with Playwright (uses Microsoft Edge by default)
+npm run test:all    # everything
+```
+
+The API and browser suites build the app if needed and run it on port 3111 with a temporary
+database; the browser tests also run a fake AI server on port 3222. Set `E2E_CHANNEL=chrome`
+(or `bundled`, after `npx playwright-core install chromium`) to use a different browser.
+Pass `--build` (`node tests/run.mjs --build api`) to force a rebuild first.

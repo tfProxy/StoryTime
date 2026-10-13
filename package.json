@@ -6,7 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node tests/run.mjs unit api",
+    "test:unit": "node tests/run.mjs unit",
+    "test:api": "node tests/run.mjs api",
+    "test:e2e": "node tests/run.mjs e2e",
+    "test:all": "node tests/run.mjs unit api e2e"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
@@ -22,6 +27,8 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
+    "playwright-core": "^1.64.0",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }
