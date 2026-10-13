@@ -11,9 +11,11 @@ import type { Settings } from "../settings";
 export type Summaries = { summary: string; path_summary: string };
 
 const SYSTEM_SUMMARY = `You maintain a running summary of a branching story so that later writers can keep it consistent without re-reading everything.
-Reply with JSON only: {"summary":"...","story_so_far":"..."}
-- "summary": 2-4 sentences covering only the events, names and outcomes of the chapter you are given.
-- "story_so_far": the updated running summary of the whole story up to and including this chapter. Start from the previous summary (if there is one) and fold this chapter in. Keep it under about 350 words. Keep names, relationships, key events, unresolved threads and the current situation; compress older details first. Plain prose, past tense, no commentary.`;
+Reply in exactly this format, with no other text:
+SUMMARY:
+2-4 sentences covering only the events, names and outcomes of the chapter you are given.
+STORY SO FAR:
+The updated running summary of the whole story up to and including this chapter. Start from the previous summary (if there is one) and fold this chapter in. Keep it under about 300 words. Keep names, relationships, key events, unresolved threads and the current situation; compress older details first. Plain prose, past tense, no commentary.`;
 
 const clip = (s: string) => s.trim().slice(0, LIMITS.summary);
 
@@ -43,15 +45,36 @@ export async function summarizeChapter(
     "Reply with the JSON.",
   ].join("\n\n");
 
-  const reply = await completeChat(settings, {
-    system: SYSTEM_SUMMARY,
-    messages: [{ role: "user", content: prompt }],
-    useSummaryModel: true,
-    signal: opts.signal,
-  });
-  const json = extractJson(reply) as Record<string, unknown>;
-  const summary = typeof json.summary === "string" ? clip(json.summary) : "";
-  const path_summary = typeof json.story_so_far === "string" ? clip(json.story_so_far) : "";
+  // Small or "thinking" models sometimes ramble or break the format, so give it one more go.
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const reply = await completeChat(settings, {
+      system: SYSTEM_SUMMARY,
+      messages: [{ role: "user", content: prompt }],
+      useSummaryModel: true,
+      maxTokens: 1500,
+      signal: opts.signal,
+    });
+    try {
+      return parseSummaryReply(reply);
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError;
+}
+
+/** Reads the labelled format asked for above; also accepts JSON, which earlier versions used. */
+export function parseSummaryReply(reply: string): Summaries {
+  const labelled = /SUMMARY:\s*([\s\S]*?)\s*STORY SO FAR:\s*([\s\S]*)$/i.exec(reply.replace(/\*\*/g, ""));
+  let summary = labelled ? clip(labelled[1]) : "";
+  let path_summary = labelled ? clip(labelled[2]) : "";
+  if (!summary || !path_summary) {
+    if (!reply.includes("{")) throw new Error("The AI didn't return anything I could read. Try again.");
+    const json = extractJson(reply) as Record<string, unknown>;
+    summary = typeof json.summary === "string" ? clip(json.summary) : "";
+    path_summary = typeof json.story_so_far === "string" ? clip(json.story_so_far) : "";
+  }
   if (!summary || !path_summary) throw new Error("The AI's summary was incomplete. Try again.");
   return { summary, path_summary };
 }

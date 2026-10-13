@@ -1,5 +1,5 @@
 import http from "node:http";
-import { ensurePathSummaries, neededSummaryIndex, summarizeChapter } from "../../src/lib/ai/summaries.ts";
+import { ensurePathSummaries, neededSummaryIndex, parseSummaryReply, summarizeChapter } from "../../src/lib/ai/summaries.ts";
 import { buildStorySoFar, summaryCoverageIndex } from "../../src/lib/ai/prompts.ts";
 import { DEFAULT_SETTINGS } from "../../src/lib/settings.ts";
 
@@ -57,6 +57,15 @@ reply = () => JSON.stringify({ summary: "s".repeat(9000), story_so_far: "t".repe
 s = await summarizeChapter(settings, { story, previous: null, chapter: { title: "x", body: "y" } });
 ok(s.summary.length === 5000 && s.path_summary.length === 5000, "over-long summaries are clipped to the server limit");
 reply = old;
+// labelled format, tolerant of markdown, and retry on a bad first reply
+const lab = parseSummaryReply(["**SUMMARY:**", "Mira ran.", "", "**STORY SO FAR:**", "Mira fled the city."].join("\n"));
+ok(lab.summary === "Mira ran." && lab.path_summary === "Mira fled the city.", "parses the labelled format");
+const keep = reply; let n = 0;
+reply = () => (++n === 1 ? "Sorry, I can't." : ["SUMMARY:", "A.", "STORY SO FAR:", "B."].join("\n"));
+s = await summarizeChapter(settings, { story, previous: null, chapter: { title: "x", body: "y" } });
+ok(n === 2 && s.summary === "A." && s.path_summary === "B.", "a bad first reply is retried once");
+reply = keep;
+
 const huge = "A".repeat(5000) + "MIDDLE" + "Z".repeat(200000);
 await summarizeChapter({ ...settings, contextTokens: 2000 }, { story, previous: null, chapter: { title: "big", body: huge } });
 ok(prompts.at(-1)!.user.length < 20000 && prompts.at(-1)!.user.includes("[…]") && !prompts.at(-1)!.user.includes("MIDDLE"), "huge chapters are trimmed (start and end kept)");
