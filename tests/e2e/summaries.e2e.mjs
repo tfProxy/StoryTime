@@ -110,7 +110,7 @@ await page2.waitForFunction(() => document.querySelector("textarea[maxlength='50
 ok(sumCalls().length === again, "another browser reuses the saved summaries (no new calls)");
 await page2.context().close();
 
-// ---- D: a failed summary lets you retry or post without one ----
+// ---- D: a failed summary doesn't block posting, and can be generated afterwards ----
 summaryMode = "bad";
 await page.goto(`${BASE}/c/${second}/write`);
 await page.getByLabel(/Choice text/).fill("Wait");
@@ -118,16 +118,17 @@ await page.getByLabel("Chapter title").fill("Third");
 await page.getByLabel("Chapter text").fill("Nothing happened.");
 await page.getByRole("button", { name: /Review and post/ }).click();
 await page.getByRole("button", { name: "Post chapter" }).click();
-await page.getByText(/Couldn't summarize the chapter/).waitFor();
-ok(await page.getByRole("button", { name: "Post without summary" }).isVisible(), "failure offers 'Post without summary'");
-ok(await page.getByRole("button", { name: "Try again" }).isVisible(), "…and 'Try again'");
-ok(page.url().includes("/write"), "nothing was posted yet");
-await page.getByRole("button", { name: "Post without summary" }).click();
-await page.waitForURL(/\/c\/(?!.*write)/);
-const third = idFromUrl(page.url());
+await page.waitForURL(/\/c\/[^/]+\/summary\?failed=/);
+ok(await page.getByText(/couldn't summarize it/).isVisible(), "the chapter is posted and the summary page explains the failure");
+const third = page.url().match(/\/c\/([^/]+)\/summary/)[1];
 c = (await chapter(third)).chapter;
-ok(c.summary === null && c.path_summary === null, "posted without summaries");
+ok(c.title === "Third" && c.summary === null && c.path_summary === null, "posted without summaries");
 summaryMode = "ok";
+await page.getByRole("button", { name: "Generate summary" }).click();
+await page.getByText("Summary saved.").waitFor();
+c = (await chapter(third)).chapter;
+ok(c.summary === "SUM(Third)" && c.path_summary === "SOFAR(Third)", "Generate summary fills them in later");
+ok((await page.getByLabel(/This chapter/).inputValue()) === "SUM(Third)", "and they're shown on the page");
 
 // ---- E: editing regenerates the chapter's summary and clears those below ----
 await page.goto(`${BASE}/c/${second}/edit`);

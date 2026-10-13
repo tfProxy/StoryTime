@@ -92,7 +92,6 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   // Story summaries generated during this session, by chapter id (also saved to the server).
   const [madeSummaries, setMadeSummaries] = useState<Record<string, Summaries>>({});
   const [status, setStatus] = useState<string | null>(null);
-  const [summaryFailed, setSummaryFailed] = useState(false);
   const [autoDone, setAutoDone] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const loadedRef = useRef(false);
@@ -315,26 +314,26 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     });
   }
 
-  async function post(skipSummary = false) {
+  async function post() {
     if (!draft) return;
     setBusy("post");
     setError(null);
-    setSummaryFailed(false);
 
+    // A failed summary never blocks posting; it can be generated later from the chapter's Summary page.
     let summaries: Summaries | null = null;
-    if (!skipSummary) {
-      const ctl = new AbortController();
-      abortRef.current = ctl;
-      try {
-        summaries = await makeSummaries(ctl.signal);
-      } catch (e) {
-        setError(`Couldn't summarize the chapter: ${e instanceof Error ? e.message : String(e)}`);
-        setSummaryFailed(true);
+    let summaryError: string | null = null;
+    const ctl = new AbortController();
+    abortRef.current = ctl;
+    try {
+      summaries = await makeSummaries(ctl.signal);
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
         setBusy(null);
         return;
-      } finally {
-        setStatus(null);
       }
+      summaryError = e instanceof Error ? e.message : String(e);
+    } finally {
+      setStatus(null);
     }
     const summaryFields = summaries ? { summary: summaries.summary, path_summary: summaries.path_summary } : {};
 
@@ -382,7 +381,9 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       loadedRef.current = false; // stop autosave from re-creating the draft
       if (target.kind !== "edit") saveEditKey(data.chapter_id, editKey);
       await deleteDraft(draftKey).catch(() => {});
-      router.push(target.kind === "edit" ? `/c/${target.chapterId}` : `/c/${data.chapter_id}?posted=1`);
+      const id = target.kind === "edit" ? target.chapterId : data.chapter_id;
+      if (summaryError) router.push(`/c/${id}/summary?failed=${encodeURIComponent(summaryError)}`);
+      else router.push(target.kind === "edit" ? `/c/${id}` : `/c/${id}?posted=1`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(null);
@@ -453,24 +454,13 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         </div>
         {status && <p className="meta">{status}</p>}
         {error && <p className="error">{error}</p>}
-        {summaryFailed && (
-          <p className="meta">
-            A summary helps the AI remember this chapter when continuing the story. Without one, the story still works.
-            You can generate, view and edit it later from the chapter&apos;s Summary page.
-          </p>
-        )}
         <div className="row">
           <button type="button" className="secondary" onClick={() => setPreviewing(false)} disabled={busy === "post"}>
             Back to editing
           </button>
-          <button type="button" onClick={() => post()} disabled={busy === "post" || problems.length > 0}>
-            {busy === "post" ? "Saving…" : summaryFailed ? "Try again" : target.kind === "edit" ? "Save changes" : "Post chapter"}
+          <button type="button" onClick={post} disabled={busy === "post" || problems.length > 0}>
+            {busy === "post" ? "Saving…" : target.kind === "edit" ? "Save changes" : "Post chapter"}
           </button>
-          {summaryFailed && (
-            <button type="button" className="secondary" onClick={() => post(true)} disabled={busy === "post"}>
-              {target.kind === "edit" ? "Save without summary" : "Post without summary"}
-            </button>
-          )}
         </div>
         {problems.length > 0 && <p className="error">{problems.join(" ")}</p>}
       </div>

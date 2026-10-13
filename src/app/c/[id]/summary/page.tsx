@@ -5,8 +5,15 @@ import { getPath, getStory } from "@/lib/stories";
 
 export const dynamic = "force-dynamic";
 
-export default async function SummaryPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SummaryPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ failed?: string }>;
+}) {
   const { id } = await params;
+  const { failed } = await searchParams;
   const path = getPath(id);
   if (path.length === 0) notFound();
   const chapter = path[path.length - 1];
@@ -19,6 +26,12 @@ export default async function SummaryPage({ params }: { params: Promise<{ id: st
         <Link href={`/c/${id}`}>← Back to “{chapter.title}”</Link>
       </p>
       <h1>Summary</h1>
+      {failed && (
+        <p className="notice">
+          Your chapter was saved, but the AI couldn&apos;t summarize it: {failed.slice(0, 300)}. Check your AI settings and
+          use Generate summary below to try again.
+        </p>
+      )}
       <p className="meta">
         The AI reads these instead of the full text when it continues the story from this chapter. They are made in
         your browser with your AI settings.
