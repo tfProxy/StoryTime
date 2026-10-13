@@ -464,7 +464,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             </div>
           ))}
           {finalChoices.length === 0 && (target.kind !== "edit" || keptExisting === 0) && (
-            <p className="meta">None. This branch ends here, and others can&apos;t continue it.</p>
+            <p className="meta">None. The story ends here, for now. Others can add choices and continue it later.</p>
           )}
         </div>
         {status && <p className="meta">{status}</p>}
