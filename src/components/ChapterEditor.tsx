@@ -12,6 +12,7 @@ import { ensurePathSummaries, neededSummaryIndex, summarizeChapter, type Summari
 import {
   choicesPrompt,
   generatePrompt,
+  LENGTH_WORDS,
   parseChapterOutput,
   parseChoices,
   refinePrompt,
@@ -59,6 +60,8 @@ type Props = {
 };
 
 const MAX_UNDO = 20;
+
+const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
 
 // Mounts once and runs `run`; used to kick off generation after the draft has loaded.
 function AutoStart({ run }: { run: () => void }) {
@@ -403,8 +406,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   }
 
   const working = busy === "generate" || busy === "refine";
-  // Rough target: ~6 characters per word of the chosen length (refining keeps about the same length).
-  const targetChars = { short: 300, medium: 600, long: 1000 }[length] * 6;
+  const words = countWords(draft.body);
+  const targetWords = LENGTH_WORDS[length];
 
   if (previewing) {
     return (
@@ -591,14 +594,14 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       {working ? (
         <div aria-live="polite">
           <p className="meta">
-            Writing… {draft.body.length.toLocaleString()} characters
-            {busy === "generate" && <> (aiming for about {targetChars.toLocaleString()})</>}
+            Writing… {words.toLocaleString()} word{words === 1 ? "" : "s"}
+            {busy === "generate" && <> (aiming for about {targetWords.toLocaleString()})</>}
           </p>
           <Prose text={draft.body} />
         </div>
       ) : (
         <label>
-          Chapter text <small>({draft.body.length.toLocaleString()} characters)</small>
+          Chapter text <small>({words.toLocaleString()} word{words === 1 ? "" : "s"})</small>
           <textarea value={draft.body} maxLength={LIMITS.body} onChange={(e) => patch({ body: e.target.value })} />
         </label>
       )}
