@@ -210,6 +210,13 @@ export default function SettingsForm() {
           </span>
         </label>
 
+        <div className="row">
+          <button type="button" onClick={testConnection} disabled={testing}>
+            {testing ? "Testing…" : "Test connection"}
+          </button>
+        </div>
+        {status && <p className={status.kind === "error" ? "error" : "ok"}>{status.text}</p>}
+
         <label>
           Model
           <ModelField value={p.model} models={models} onChange={(v) => updateProvider({ model: v })} />
@@ -249,9 +256,6 @@ export default function SettingsForm() {
         </label>
 
         <div className="row">
-          <button type="button" onClick={testConnection} disabled={testing}>
-            {testing ? "Testing…" : "Test connection"}
-          </button>
           <button type="button" className="secondary" onClick={tryIt} disabled={trying}>
             {trying ? "Generating…" : "Try a sample reply"}
           </button>
@@ -261,8 +265,6 @@ export default function SettingsForm() {
             </button>
           )}
         </div>
-
-        {status && <p className={status.kind === "error" ? "error" : "ok"}>{status.text}</p>}
         {reply && (
           <blockquote className="sample">
             {reply}
