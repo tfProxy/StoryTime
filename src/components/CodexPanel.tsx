@@ -23,6 +23,8 @@ type Props = {
   story: StoryInfo;
   /** Open the AI helper section initially (used right after posting a chapter). */
   openAiHelper?: boolean;
+  /** Shown inside the writing page's drawer: no chapter timeline or AI scan, just the entries. */
+  embedded?: boolean;
   /** The chapter whose codex is being viewed; changes made here are anchored at it. */
   chapterId: string;
   path: PathItem[];
@@ -34,7 +36,7 @@ type Fields = { name: string; type: EntryType; aliases: string[]; content: strin
 
 const when = (t: number) => new Date(t).toISOString().replace("T", " ").slice(0, 16) + " UTC";
 
-export default function CodexPanel({ story, openAiHelper, chapterId, path, ops }: Props) {
+export default function CodexPanel({ story, openAiHelper, embedded, chapterId, path, ops }: Props) {
   const router = useRouter();
   const settings = useSettings();
   const titleOf = (id: string) => path.find((p) => p.id === id)?.title ?? "an earlier chapter";
@@ -83,6 +85,7 @@ export default function CodexPanel({ story, openAiHelper, chapterId, path, ops }
 
   return (
     <div style={{ display: "grid", gap: "1.25rem" }}>
+      {!embedded && (
       <nav className="timeline" aria-label="Chapters on this path">
         {path.map((p, i) => (
           <span key={p.id}>
@@ -91,15 +94,18 @@ export default function CodexPanel({ story, openAiHelper, chapterId, path, ops }
           </span>
         ))}
       </nav>
+      )}
       <p className="notice">
         This is the codex as of <strong>{titleOf(chapterId)}</strong>. Anything you add or change here takes effect from
-        this chapter onward on this branch, and other branches never see it. To record a change that happened earlier,
-        pick that chapter above first.
+        this chapter onward on this branch, and other branches never see it.
+        {embedded
+          ? " Use “Takes effect from” on an entry to record a change that happened earlier."
+          : " To record a change that happened earlier, pick that chapter above first."}
       </p>
 
       {error && <p className="error">{error}</p>}
 
-      <CodexAiScan story={story} chapterId={chapterId} path={path} ops={ops} defaultOpen={openAiHelper} />
+      {!embedded && <CodexAiScan story={story} chapterId={chapterId} path={path} ops={ops} defaultOpen={openAiHelper} />}
 
       {editing === null && (
         <div>

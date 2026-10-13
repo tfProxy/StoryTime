@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { useEditKey } from "@/lib/keys";
 import { LIMITS } from "@/lib/limits";
 import type { StoryContext } from "@/lib/ai/prompts";
+import type { PathChapter } from "@/lib/ai/codexAi";
+import type { CodexOp } from "@/lib/codex";
 import ChapterEditor from "./ChapterEditor";
 
 type Props = {
@@ -18,6 +20,8 @@ type Props = {
   incomingLabel: string | null;
   context: StoryContext;
   draftLabel: string;
+  /** The codex as of the previous chapter; absent for a story's first chapter. */
+  codexPanel?: { chapterId: string; path: PathChapter[]; ops: CodexOp[] };
   /** Present only for a story's first chapter. */
   story: { id: string; title: string; premise: string } | null;
 };
@@ -54,6 +58,7 @@ export default function ChapterEditEntry({ story, ...p }: Props) {
         draftKey={`edit:${p.chapterId}`}
         resumeHref={`/c/${p.chapterId}/edit`}
         draftLabel={p.draftLabel}
+        codexPanel={p.codexPanel}
       />
     </>
   );

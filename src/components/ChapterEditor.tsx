@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LIMITS } from "@/lib/limits";
@@ -16,11 +17,16 @@ import {
   refinePrompt,
   SYSTEM_CHAPTER,
   SYSTEM_CHOICES,
+  type CodexOverrides,
   type Length,
   type StoryContext,
 } from "@/lib/ai/prompts";
+import type { PathChapter } from "@/lib/ai/codexAi";
+import type { CodexOp } from "@/lib/codex";
 import { deleteDraft, emptyDraft, getDraft, putDraft, type Draft } from "@/lib/drafts";
 import Prose from "./Prose";
+import CodexPanel from "./CodexPanel";
+import CodexPreview from "./CodexPreview";
 
 export type Target =
   | { kind: "story" }
@@ -48,6 +54,8 @@ type Props = {
   draftLabel: string;
   /** Start generating as soon as the (empty) draft loads. */
   autoGenerate?: boolean;
+  /** The codex as of the chapter being continued; absent when there is no earlier chapter to anchor it to. */
+  codexPanel?: { chapterId: string; path: PathChapter[]; ops: CodexOp[] };
 };
 
 const MAX_UNDO = 20;
@@ -77,7 +85,7 @@ function isBlank(d: Draft, target: Target): boolean {
   return !(d.storyTitle || d.premise || d.newChoiceLabel || d.title || d.body || d.prompt || d.choices.some((c) => c.trim()));
 }
 
-export default function ChapterEditor({ target, context, draftKey, resumeHref, draftLabel, autoGenerate }: Props) {
+export default function ChapterEditor({ target, context, draftKey, resumeHref, draftLabel, autoGenerate, codexPanel }: Props) {
   const router = useRouter();
   const settings = useSettings();
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -93,6 +101,9 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const [madeSummaries, setMadeSummaries] = useState<Record<string, Summaries>>({});
   const [status, setStatus] = useState<string | null>(null);
   const [autoDone, setAutoDone] = useState(false);
+  const [codexOpen, setCodexOpen] = useState(false);
+  // Manual additions to / removals from the codex entries sent with each prompt.
+  const [codexOverrides, setCodexOverrides] = useState<CodexOverrides>({ include: [], exclude: [] });
   const abortRef = useRef<AbortController | null>(null);
   const loadedRef = useRef(false);
 
@@ -149,6 +160,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     storyTitle: storyInfo.title,
     premise: storyInfo.premise,
     path: withSummaries(context.path, madeSummaries),
+    codexOverrides,
   };
 
   /**
@@ -553,6 +565,13 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             AI settings
           </Link>
         </div>
+        <CodexPreview
+          ctx={ctx}
+          direction={draft.prompt}
+          contextTokens={settings.contextTokens}
+          overrides={codexOverrides}
+          onChange={setCodexOverrides}
+        />
         {status && <p className="meta">{status}</p>}
         {autoGenerate && !autoDone && !draft.body && (
           <AutoStart
@@ -706,6 +725,34 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       <p className="meta">
         Your draft is saved in this browser only, until you {target.kind === "edit" ? "save" : "post"}.
       </p>
+
+      {codexPanel && (
+        <>
+          <button type="button" className="codex-toggle" onClick={() => setCodexOpen(!codexOpen)} aria-expanded={codexOpen}>
+            {codexOpen ? "Close codex" : "Codex"}
+          </button>
+          {/* Rendered outside the form: the codex panel has forms of its own. */}
+          {codexOpen &&
+            createPortal(
+              <aside className="codex-drawer" aria-label="Codex">
+                <div className="codex-drawer-head">
+                  <h2>Codex</h2>
+                  <button type="button" className="secondary" onClick={() => setCodexOpen(false)}>
+                    Close
+                  </button>
+                </div>
+                <CodexPanel
+                  embedded
+                  story={{ title: context.storyTitle, premise: context.premise }}
+                  chapterId={codexPanel.chapterId}
+                  path={codexPanel.path}
+                  ops={codexPanel.ops}
+                />
+              </aside>,
+              document.body,
+            )}
+        </>
+      )}
     </form>
   );
 }

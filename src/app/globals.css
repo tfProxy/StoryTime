@@ -319,3 +319,77 @@ button.danger {
 .outline summary {
   cursor: pointer;
 }
+
+.codex-preview {
+  margin-top: 0.75rem;
+}
+
+.codex-preview > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.codex-picks {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.codex-pick {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0.6rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.codex-pick button {
+  padding: 0.25rem 0.7rem;
+  white-space: nowrap;
+}
+
+.codex-other {
+  font-size: 0.9rem;
+  margin: 0.75rem 0 0;
+}
+
+/* Codex drawer on the writing pages: a button that is always reachable, and a panel that slides over the page. */
+.codex-toggle {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 30;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  border-radius: 999px;
+}
+
+.codex-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  width: min(28rem, 100vw);
+  overflow-y: auto;
+  padding: 1rem;
+  background: var(--bg);
+  border-left: 1px solid var(--line);
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.2);
+}
+
+.codex-drawer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.codex-drawer-head h2 {
+  margin: 0;
+}

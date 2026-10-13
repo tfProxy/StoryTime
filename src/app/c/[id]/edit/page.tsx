@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ChapterEditEntry from "@/components/ChapterEditEntry";
-import { getContextCodex } from "@/lib/codexDb";
+import { getCodexOps, getContextCodex } from "@/lib/codexDb";
 import { countDescendants, getChoices, getIncomingChoice, getPath, getStory } from "@/lib/stories";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +45,18 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
           codex: getContextCodex(path.length > 1 ? path[path.length - 2].id : null),
         }}
         draftLabel={`${story.title}: editing “${chapter.title}”`}
+        // Codex changes made while editing apply from the previous chapter, like the codex the AI sees here.
+        codexPanel={
+          path.length > 1
+            ? {
+                chapterId: path[path.length - 2].id,
+                path: path
+                  .slice(0, -1)
+                  .map((c) => ({ id: c.id, title: c.title, depth: c.depth, body: c.body, summary: c.summary, path_summary: c.path_summary })),
+                ops: getCodexOps(path[path.length - 2].id),
+              }
+            : undefined
+        }
         story={path.length === 1 ? { id: story.id, title: story.title, premise: story.premise } : null}
       />
     </>
