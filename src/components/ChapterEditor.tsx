@@ -390,6 +390,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   }
 
   const working = busy === "generate" || busy === "refine";
+  // Rough target: ~6 characters per word of the chosen length (refining keeps about the same length).
+  const targetChars = { short: 300, medium: 600, long: 1000 }[length] * 6;
 
   if (previewing) {
     return (
@@ -577,10 +579,20 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         <input value={draft.title} maxLength={LIMITS.title} onChange={(e) => patch({ title: e.target.value })} />
       </label>
 
-      <label>
-        Chapter text
-        <textarea value={draft.body} maxLength={LIMITS.body} onChange={(e) => patch({ body: e.target.value })} />
-      </label>
+      {working ? (
+        <div aria-live="polite">
+          <p className="meta">
+            Writing… {draft.body.length.toLocaleString()} characters
+            {busy === "generate" && <> (aiming for about {targetChars.toLocaleString()})</>}
+          </p>
+          <Prose text={draft.body} />
+        </div>
+      ) : (
+        <label>
+          Chapter text <small>({draft.body.length.toLocaleString()} characters)</small>
+          <textarea value={draft.body} maxLength={LIMITS.body} onChange={(e) => patch({ body: e.target.value })} />
+        </label>
+      )}
 
       {draft.body.trim() && (
         <div className="row">
