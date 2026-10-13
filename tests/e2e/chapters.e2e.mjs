@@ -80,9 +80,9 @@ await page.waitForURL("**/new");
 await page.getByRole("button", { name: "Review and post…" }).click();
 ok(await page.getByText("This is exactly what will be posted").isVisible(), "preview shown");
 await page.getByRole("button", { name: "Post chapter" }).click();
-await page.waitForURL(/\/c\//);
+await page.waitForURL(/\/c\/[^/]+\?posted=1/);
 ok(await page.getByRole("heading", { name: "The Door" }).isVisible(), "posted chapter displayed");
-ok((await page.locator("div.card.choice-unwritten").count()) === 2, "two unwritten choices shown");
+ok((await page.locator(".card.choice-unwritten").count()) === 2, "two unwritten choices shown");
 const chapterUrl = page.url().split("?")[0];
 
 // draft is gone, and name was remembered as default
@@ -145,7 +145,7 @@ await ctx2.close();
 
 // continue a branch: context should include earlier chapter + choice
 await page.goto(chapterUrl);
-await page.locator("div.card.choice-unwritten", { hasText: "Push the door" }).getByRole("link", { name: /Push the door/ }).click();
+await page.locator("a.card.choice-unwritten", { hasText: "Push the door" }).click();
 await page.waitForURL(/write\?choice=/);
 await page.getByRole("button", { name: "Generate chapter" }).click();
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("She entered."));
