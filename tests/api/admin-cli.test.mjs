@@ -1,7 +1,10 @@
 // The command-line moderation tool, run against the same database the server is using.
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import Database from "better-sqlite3";
 
 const B = process.env.BASE_URL ?? "http://localhost:3111";
 const DB = process.env.TEST_DB;
@@ -57,6 +60,20 @@ await api("PATCH", `/api/chapters/${s2.json.chapter_id}`, { edit_key: key, base_
 r = cli("revert", s2.json.chapter_id, "1");
 ok(r.code === 0 && /revision 3/.test(r.out), "revert: " + r.out.trim());
 ok((await api("GET", `/api/chapters/${s2.json.chapter_id}`)).json.chapter.body === "original text", "the original text is back");
+
+// backup: a consistent copy that opens as a database with the same content
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), "storytime-backup-"));
+const dest = path.join(dir, "nested", "copy.db");
+r = cli("backup", dest);
+ok(r.code === 0 && /Backed up to/.test(r.out) && fs.existsSync(dest), "backup writes a copy (creating folders): " + r.out.trim().slice(0, 60));
+const copy = new Database(dest, { readonly: true });
+ok(copy.prepare("SELECT COUNT(*) AS n FROM chapters").get().n > 0 && copy.prepare("SELECT title FROM stories WHERE title = ?").get("CLI revert")?.title === "CLI revert", "the copy contains the live data");
+copy.close();
+r = cli("backup", dest);
+ok(r.code === 1 && /already exists/.test(r.err), "backup refuses to overwrite an existing file");
+r = cli("backup");
+ok(r.code === 1 && /Give a file/.test(r.err), "backup needs a file name");
+fs.rmSync(dir, { recursive: true, force: true });
 
 r = cli("remove", "chapter", "no-such-id");
 ok(r.code === 1 && /No chapter with id/.test(r.err), "unknown id is a clean error");

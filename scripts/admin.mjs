@@ -8,6 +8,7 @@
 //   node scripts/admin.mjs restore <chapter|story|choice|codex_op> <id>
 //   node scripts/admin.mjs delete  <chapter|story> <id> --yes     (permanent; must be removed first)
 //   node scripts/admin.mjs revert  <chapterId> <revision>
+//   node scripts/admin.mjs backup  <file>                          (a consistent copy, safe while the app runs)
 //
 // In Docker:  docker exec -it storytime node scripts/admin.mjs recent 20
 // The database is $STORYTIME_DB, or ./data/storytime.db.
@@ -82,6 +83,15 @@ try {
     case "revert": {
       const r = revertChapter(db, a, Number(b));
       console.log(`Reverted. The chapter is now at revision ${r.revision}.`);
+      break;
+    }
+    case "backup": {
+      if (!a) throw new AdminError("Give a file to write the backup to, e.g. backup /data/backups/storytime.db");
+      const dest = path.resolve(a);
+      if (fs.existsSync(dest)) throw new AdminError(`${dest} already exists; choose a new file name.`);
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      await db.backup(dest);
+      console.log(`Backed up to ${dest} (${Math.round(fs.statSync(dest).size / 1024)} KB).`);
       break;
     }
     default:
