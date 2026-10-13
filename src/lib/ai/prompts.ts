@@ -31,6 +31,8 @@ export type StoryContext = {
   codex?: ContextCodexEntry[];
   /** Hand-picked changes to which codex entries go into the prompt (by entry id). */
   codexOverrides?: CodexOverrides;
+  /** Choices already offered on the chapter being continued (so new ideas don't repeat them). */
+  siblingChoices?: string[];
 };
 
 export type CodexOverrides = { include: string[]; exclude: string[] };
@@ -261,6 +263,40 @@ export function choicesPrompt(
       (existing.length ? ` Do not repeat these existing options: ${existing.map((e) => `"${e}"`).join(", ")}.` : "") +
       `\nReply with only a JSON array of 3 strings.`,
   ].join("\n\n");
+}
+
+export const SYSTEM_IDEAS = `You help write branching stories. You reply with a JSON array and nothing else.`;
+
+export type Idea = { choice: string; direction: string };
+
+/** Asks for new directions the story could take from the end of the last chapter. */
+export function ideasPrompt(ctx: StoryContext, contextTokens: number): string {
+  const existing = ctx.siblingChoices ?? [];
+  return [
+    storyHeader(ctx, Math.floor(budgetFor(contextTokens) * 0.7)),
+    `Suggest 4 distinct directions the story could take from the end of the last chapter, each a new choice the reader could pick there.` +
+      (existing.length ? ` These choices already exist, so do not repeat or closely echo them: ${existing.map((e) => `"${e}"`).join(", ")}.` : "") +
+      `\nFor each give "choice" (button text, under 12 words) and "direction" (one or two sentences on what happens in the chapter that follows it).` +
+      `\nReply with only a JSON array of 4 objects like [{"choice":"...","direction":"..."}].`,
+  ].join("\n\n");
+}
+
+export function parseIdeas(text: string): Idea[] {
+  const arr = text.match(/\[[\s\S]*\]/);
+  if (!arr) return [];
+  try {
+    const parsed = JSON.parse(arr[0]);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((x) => ({
+        choice: typeof x?.choice === "string" ? x.choice.trim() : "",
+        direction: typeof x?.direction === "string" ? x.direction.trim() : "",
+      }))
+      .filter((x) => x.choice)
+      .slice(0, 6);
+  } catch {
+    return [];
+  }
 }
 
 /** Splits "# Title\n\nbody" output. While streaming, the title may not be complete yet. */

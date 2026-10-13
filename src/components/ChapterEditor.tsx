@@ -11,6 +11,10 @@ import { completeChat, streamChat } from "@/lib/ai/client";
 import { ensurePathSummaries, neededSummaryIndex, summarizeChapter, type Summaries } from "@/lib/ai/summaries";
 import {
   choicesPrompt,
+  ideasPrompt,
+  parseIdeas,
+  SYSTEM_IDEAS,
+  type Idea,
   generatePrompt,
   LENGTH_WORDS,
   parseChapterOutput,
@@ -97,7 +101,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const [length, setLength] = useState<Length>("medium");
   const [instruction, setInstruction] = useState("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [busy, setBusy] = useState<null | "generate" | "refine" | "choices" | "post">(null);
+  const [busy, setBusy] = useState<null | "generate" | "refine" | "choices" | "ideas" | "post">(null);
+  const [ideas, setIdeas] = useState<Idea[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   // Story summaries generated during this session, by chapter id (also saved to the server).
@@ -228,6 +233,27 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       if (!(e instanceof DOMException && e.name === "AbortError")) {
         setError(e instanceof Error ? e.message : String(e));
       }
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Ideas for a new branch from the chapter being continued; picking one fills in the form. */
+  async function suggestIdeas() {
+    setError(null);
+    setBusy("ideas");
+    try {
+      const text = await completeChat(settings, {
+        system: SYSTEM_IDEAS,
+        messages: [{ role: "user", content: ideasPrompt(ctx, settings.contextTokens) }],
+        useSummaryModel: true,
+        maxTokens: 800,
+      });
+      const found = parseIdeas(text);
+      if (found.length === 0) throw new Error("The AI didn't suggest anything I could read. Try again.");
+      setIdeas(found);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }
@@ -527,6 +553,37 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             />
           </label>
         </>
+      )}
+
+      {target.kind === "new" && (
+        <section className="ai-panel">
+          <h2>Need an idea?</h2>
+          <div className="row">
+            <button type="button" className="secondary" onClick={suggestIdeas} disabled={busy !== null}>
+              {busy === "ideas" ? "Thinking…" : ideas.length ? "Suggest more" : "Suggest ideas"}
+            </button>
+            <span className="meta">Based on the story so far. Pick one to fill in the choice text and what should happen.</span>
+          </div>
+          {ideas.length > 0 && (
+            <ul className="codex-picks">
+              {ideas.map((idea) => (
+                <li key={idea.choice} className="codex-pick">
+                  <span>
+                    <strong>{idea.choice}</strong>
+                    {idea.direction && <span className="meta"> — {idea.direction}</span>}
+                  </span>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => patch({ newChoiceLabel: idea.choice.slice(0, LIMITS.label), prompt: idea.direction })}
+                  >
+                    Use this
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       )}
 
       {target.kind === "new" && (

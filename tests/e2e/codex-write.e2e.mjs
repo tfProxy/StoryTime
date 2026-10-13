@@ -10,9 +10,13 @@ const mock = http.createServer((req, res) => {
   if (req.method === "OPTIONS") { res.statusCode = 204; return res.end(); }
   let data = ""; req.on("data", (c) => (data += c));
   req.on("end", () => {
-    prompts.push(JSON.parse(data || "{}").messages?.at(-1)?.content ?? "");
+    const last = JSON.parse(data || "{}").messages?.at(-1)?.content ?? "";
+    prompts.push(last);
+    const reply = last.includes("Suggest 4 distinct directions")
+      ? JSON.stringify([{ choice: "Follow the ferryman", direction: "Mira trails Zed to the river." }, { choice: "Hide", direction: "She hides." }])
+      : "# T\n\nHello there.";
     res.setHeader("content-type", "text/event-stream");
-    res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "# T\n\nHello there." } }] })}\n\n`);
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: reply } }] })}\n\n`);
     res.end("data: [DONE]\n\n");
   });
 });
@@ -84,6 +88,15 @@ ok(true, "a new entry can be added from the drawer");
 await page.getByRole("button", { name: "Close", exact: true }).click();
 ok(/of 5 entries/.test(await summary.innerText()), "the preview picks up the new entry");
 ok((await page.getByLabel("Chapter text").inputValue()).includes("Hello there"), "the draft was kept");
+
+// ideas for a new branch
+await page.goto(`${BASE}/c/${root}/write`);
+await page.getByRole("button", { name: "Suggest ideas" }).click();
+await page.getByText("Follow the ferryman").waitFor();
+ok(/"Go on"/.test(prompts.at(-1)), "the ideas prompt knows the choices that already exist");
+await page.locator("li.codex-pick", { hasText: "Follow the ferryman" }).getByRole("button", { name: "Use this" }).click();
+ok((await page.getByLabel(/Choice text/).inputValue()) === "Follow the ferryman", "picking an idea fills the choice text");
+ok((await page.getByLabel(/What should happen/).inputValue()) === "Mira trails Zed to the river.", "…and what should happen");
 
 await browser.close(); mock.close();
 process.exit(failed ? 1 : 0);

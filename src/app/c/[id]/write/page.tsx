@@ -59,6 +59,7 @@ export default async function WritePage({
           path: path.map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary })),
           choiceLabel,
           codex: getContextCodex(parent.id),
+          siblingChoices: getChoices(parent.id).map((c) => c.label),
         }}
         draftKey={draftKey}
         resumeHref={resumeHref}

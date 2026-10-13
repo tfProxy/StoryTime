@@ -1,4 +1,4 @@
-import { buildStorySoFar, parseChapterOutput, parseChoices, generatePrompt, estimateTokens, explainCodex, buildCodexBlock } from "../../src/lib/ai/prompts.ts";
+import { buildStorySoFar, parseChapterOutput, parseChoices, generatePrompt, estimateTokens, explainCodex, buildCodexBlock, ideasPrompt, parseIdeas } from "../../src/lib/ai/prompts.ts";
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const ch = (n: number, extra: any = {}) => ({ title: `Ch${n}`, body: `body${n} `.repeat(200), summary: null, path_summary: null, ...extra });
 const path = [1,2,3,4,5,6].map((n) => ch(n));
@@ -34,3 +34,10 @@ ok(rows.some((r) => r.state === "too-long"), "entries over the budget are flagge
 const block = buildCodexBlock(entries, "Mira walked.", 1000, { include: ["b"], exclude: ["a"] });
 ok(block.includes("Zed [character]") && block.includes("Rule [character]") && !block.includes("Mira [character]"), "the prompt block follows the overrides");
 ok(buildCodexBlock(entries, "Mira walked.", 1000) === buildCodexBlock(entries, "Mira walked.", 1000, { include: [], exclude: [] }), "no overrides changes nothing");
+
+// ---- ideas for a new branch ----
+const ideas = parseIdeas('Sure! [{"choice":" Follow the stranger ","direction":"Mira trails him."},{"choice":"","direction":"x"},{"direction":"no choice"},{"choice":"Wait"}]');
+ok(ideas.length === 2 && ideas[0].choice === "Follow the stranger" && ideas[0].direction === "Mira trails him." && ideas[1].direction === "", "parseIdeas keeps usable ideas and trims them");
+ok(parseIdeas("nothing").length === 0 && parseIdeas("[oops").length === 0, "parseIdeas copes with junk");
+const ip = ideasPrompt({ storyTitle: "T", premise: "P", path: [ch(1)], choiceLabel: null, siblingChoices: ["Open it", "Run"] }, 8000);
+ok(ip.includes('"Open it", "Run"') && ip.includes("Suggest 4 distinct directions") && ip.includes("Premise: P"), "ideasPrompt lists existing choices and the story");
