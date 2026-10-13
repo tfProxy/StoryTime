@@ -1,0 +1,295 @@
+:root {
+  --bg: #fbfaf7;
+  --fg: #22201c;
+  --muted: #6b665d;
+  --line: #ded9cf;
+  --card: #ffffff;
+  --accent: #2f5d9e;
+  --accent-fg: #ffffff;
+  --warn: #9a5b00;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17161a;
+    --fg: #e9e6df;
+    --muted: #9d98ad;
+    --line: #34323b;
+    --card: #1f1e24;
+    --accent: #7ba7e8;
+    --accent-fg: #101218;
+    --warn: #e0a850;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+a {
+  color: var(--accent);
+}
+
+.site-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 1.15rem;
+  text-decoration: none;
+  color: var(--fg);
+}
+
+main {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+}
+
+h1 {
+  margin: 0 0 0.25rem;
+  line-height: 1.2;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+}
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 1rem;
+}
+
+.crumbs a {
+  color: var(--muted);
+}
+
+.prose p {
+  margin: 0 0 1rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.1rem;
+  line-height: 1.7;
+}
+
+.card {
+  display: block;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  text-decoration: none;
+  color: var(--fg);
+}
+
+a.card:hover {
+  border-color: var(--accent);
+}
+
+.card .meta {
+  margin: 0.15rem 0 0;
+}
+
+.choices {
+  margin-top: 2rem;
+}
+
+.choices h2 {
+  font-size: 1rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.choice-unwritten {
+  border-style: dashed;
+}
+
+.tag {
+  color: var(--warn);
+  font-size: 0.85rem;
+}
+
+form {
+  display: grid;
+  gap: 1rem;
+}
+
+label {
+  display: grid;
+  gap: 0.25rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+label small {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+input,
+textarea {
+  font: inherit;
+  padding: 0.5rem 0.6rem;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  width: 100%;
+}
+
+textarea {
+  min-height: 16rem;
+  resize: vertical;
+  font-family: Georgia, "Times New Roman", serif;
+  line-height: 1.6;
+}
+
+button,
+.button {
+  font: inherit;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+
+button.secondary,
+.button.secondary {
+  background: transparent;
+  color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.error {
+  color: #c0392b;
+}
+
+.notice {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  background: var(--card);
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+select {
+  font: inherit;
+  padding: 0.5rem 0.6rem;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  width: 100%;
+}
+
+.ok {
+  color: #2e8b57;
+}
+
+.sample {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--accent);
+  background: var(--card);
+  white-space: pre-wrap;
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+h2 {
+  font-size: 1.1rem;
+}
+
+.ai-panel {
+  display: grid;
+  gap: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  background: var(--card);
+}
+
+.ai-panel h2 {
+  margin: 0;
+}
+
+.chip {
+  background: transparent;
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.timeline {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.linkish {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  font-size: inherit;
+}
+
+.history {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.version {
+  margin: 0.25rem 0 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--line);
+  font-size: 0.95rem;
+}
+
+.ai-assist {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+}
+
+details.ai-panel > summary {
+  cursor: pointer;
+}

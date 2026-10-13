@@ -1,0 +1,47 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import CodexPanel from "@/components/CodexPanel";
+import { getCodexOps } from "@/lib/codexDb";
+import { getPath, getStory } from "@/lib/stories";
+
+export const dynamic = "force-dynamic";
+
+export default async function CodexPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ review?: string }>;
+}) {
+  const { id } = await params;
+  const { review } = await searchParams;
+  const path = getPath(id);
+  if (path.length === 0) notFound();
+  const chapter = path[path.length - 1];
+  const story = getStory(chapter.story_id);
+  if (!story) notFound();
+
+  return (
+    <>
+      <p className="crumbs">
+        <Link href={`/c/${id}`}>← Back to “{chapter.title}”</Link>
+      </p>
+      <h1>Codex</h1>
+      <p className="meta">Characters, places and facts the AI keeps in mind. Each branch has its own.</p>
+      <CodexPanel
+        openAiHelper={Boolean(review)}
+        story={{ title: story.title, premise: story.premise }}
+        chapterId={id}
+        path={path.map((c) => ({
+          id: c.id,
+          title: c.title,
+          depth: c.depth,
+          body: c.body,
+          summary: c.summary,
+          path_summary: c.path_summary,
+        }))}
+        ops={getCodexOps(id)}
+      />
+    </>
+  );
+}
