@@ -9,10 +9,13 @@ export default function Home() {
     <>
       <h1>Stories</h1>
       <p className="meta">Pick a story to read, or start your own.</p>
+      <p>
+        <Link className="button" href="/new">
+          New story
+        </Link>
+      </p>
       {stories.length === 0 && (
-        <p>
-          Nothing here yet. <Link href="/new">Write the first story.</Link>
-        </p>
+        <p>Nothing here yet. Start the first story with the button above.</p>
       )}
       {stories.map((s) => (
         <Link key={s.id} href={`/s/${s.id}`} className="card">

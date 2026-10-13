@@ -16,7 +16,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             StoryTime
           </Link>
           <nav>
-            <Link href="/new">New story</Link> · <Link href="/drafts">Drafts</Link> · <Link href="/settings">Settings</Link>
+            <Link href="/drafts">Drafts</Link> · <Link href="/settings">Settings</Link>
           </nav>
         </header>
         <main>{children}</main>
