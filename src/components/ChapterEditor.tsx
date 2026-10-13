@@ -455,8 +455,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         {error && <p className="error">{error}</p>}
         {summaryFailed && (
           <p className="meta">
-            A summary helps the AI remember this chapter when continuing the story. Without one, the story still works
-            and anyone can generate it later.
+            A summary helps the AI remember this chapter when continuing the story. Without one, the story still works.
+            You can generate, view and edit it later from the chapter&apos;s Summary page.
           </p>
         )}
         <div className="row">

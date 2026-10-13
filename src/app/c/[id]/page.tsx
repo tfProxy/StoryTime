@@ -76,6 +76,9 @@ export default async function ChapterPage({
           <Link className="button secondary" href={`/c/${chapter.id}/codex`}>
             Codex
           </Link>
+          <Link className="button secondary" href={`/c/${chapter.id}/summary`}>
+            {chapter.summary && chapter.path_summary ? "Summary" : "Summary (missing)"}
+          </Link>
           <EditLink chapterId={chapter.id} />
         </p>
       </section>

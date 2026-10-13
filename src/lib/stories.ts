@@ -486,3 +486,25 @@ export function fillSummaries(
     return { summary_set: (s?.changes ?? 0) > 0, path_summary_set: (p?.changes ?? 0) > 0 };
   })();
 }
+
+// The chapter's author can replace its summaries by hand (to correct or regenerate them). This
+// doesn't create a revision: summaries are a cache for the AI, not part of the chapter text.
+export const ReplaceSummarySchema = z.object({
+  edit_key: editKey,
+  revision: z.number().int().min(1),
+  summary: required(LIMITS.summary),
+  path_summary: required(LIMITS.summary),
+});
+
+export function replaceSummaries(chapterId: string, input: z.infer<typeof ReplaceSummarySchema>): { ok: true } {
+  return db().transaction(() => {
+    const row = requireKey(chapterId, input.edit_key);
+    if (row.revision !== input.revision) {
+      throw new PostError("That chapter was edited since you opened this page. Reload it first.", 409);
+    }
+    db()
+      .prepare(`UPDATE chapters SET summary = ?, path_summary = ? WHERE id = ?`)
+      .run(input.summary, input.path_summary, chapterId);
+    return { ok: true as const };
+  })();
+}

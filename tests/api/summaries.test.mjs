@@ -57,3 +57,14 @@ ok(r.json.path_summary_set === true, "cleared summaries can be rebuilt");
 r = await call("PATCH", `/api/chapters/${root}`, { edit_key: KEY, base_revision: 2, title: "Root v3", body: "root v3" });
 g = await call("GET", `/api/chapters/${root}`);
 ok(g.json.chapter.summary === null && g.json.chapter.path_summary === null, "an edit with no summaries clears the chapter's own");
+
+// The author can replace summaries by hand; nobody else can.
+r = await call("PUT", `/api/chapters/${two}/summary`, { edit_key: "wrong-key-0123456789abc", revision: 1, summary: "x", path_summary: "y" });
+ok(r.status === 403, "replacing a summary needs the chapter's edit key");
+r = await call("PUT", `/api/chapters/${root}/summary`, { edit_key: KEY, revision: 1, summary: "stale", path_summary: "stale" });
+ok(r.status === 409, "replacing against an old revision conflicts");
+r = await call("PUT", `/api/chapters/${root}/summary`, { edit_key: KEY, revision: 3, summary: "hand sum", path_summary: "hand path" });
+ok(r.status === 200, "the author can replace the summaries");
+g = await call("GET", `/api/chapters/${root}`);
+ok(g.json.chapter.summary === "hand sum" && g.json.chapter.path_summary === "hand path" && g.json.chapter.revision === 3, "…and it doesn't create a new revision");
+ok((await call("PUT", `/api/chapters/${root}/summary`, { edit_key: KEY, revision: 3, summary: "", path_summary: "y" })).status === 400, "empty summaries are rejected");
