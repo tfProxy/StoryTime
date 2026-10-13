@@ -1,6 +1,6 @@
 # StoryTime
 
-Branching stories, written together with a little AI help. See the plan in the project history; phases 1-4 plus chapter editing are done: reader, posting and editing with revision history, browser-only AI settings (OpenAI-compatible incl. Ollama, and Anthropic), a local drafting editor, and the per-branch codex. AI codex helpers (scan for entries, draft and update entries) are in too. Summaries at post time, the admin tools and Unraid polish are next.
+Branching stories, written together with a little AI help. See the plan in the project history; phases 1-4 plus chapter editing are done: reader, posting and editing with revision history, browser-only AI settings (OpenAI-compatible incl. Ollama, and Anthropic), a local drafting editor, and the per-branch codex. AI codex helpers (scan for entries, draft and update entries) are in too. Rolling story summaries and one-click "Continue with AI" are in too. The admin tools and Unraid polish are next.
 
 ## Run locally
 
@@ -41,3 +41,4 @@ The API and browser suites build the app if needed and run it on port 3111 with 
 database; the browser tests also run a fake AI server on port 3222. Set `E2E_CHANNEL=chrome`
 (or `bundled`, after `npx playwright-core install chromium`) to use a different browser.
 Pass `--build` (`node tests/run.mjs --build api`) to force a rebuild first.
+- Each chapter can carry a `summary` (of itself) and a `path_summary` (the story through it). The browser generates them with the cheaper model when a chapter is posted or edited, and fills in any that are missing (for example below an edited chapter) before generating, but only when older chapters would not fit in the context budget. They are a cache: anyone can fill a missing one, and nobody can overwrite an existing one except the chapter's author by editing it.

@@ -7,6 +7,7 @@ import { LIMITS } from "@/lib/limits";
 import { saveSettings, useSettings } from "@/lib/settings";
 import { newEditKey, saveEditKey } from "@/lib/keys";
 import { completeChat, streamChat } from "@/lib/ai/client";
+import { ensurePathSummaries, neededSummaryIndex, summarizeChapter, type Summaries } from "@/lib/ai/summaries";
 import {
   choicesPrompt,
   generatePrompt,
@@ -45,9 +46,20 @@ type Props = {
   draftKey: string;
   resumeHref: string;
   draftLabel: string;
+  /** Start generating as soon as the (empty) draft loads. */
+  autoGenerate?: boolean;
 };
 
 const MAX_UNDO = 20;
+
+// Mounts once and runs `run`; used to kick off generation after the draft has loaded.
+function AutoStart({ run }: { run: () => void }) {
+  useEffect(() => {
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
+}
 
 // Don't litter the drafts list with untouched forms.
 function isBlank(d: Draft, target: Target): boolean {
@@ -65,7 +77,7 @@ function isBlank(d: Draft, target: Target): boolean {
   return !(d.storyTitle || d.premise || d.newChoiceLabel || d.title || d.body || d.prompt || d.choices.some((c) => c.trim()));
 }
 
-export default function ChapterEditor({ target, context, draftKey, resumeHref, draftLabel }: Props) {
+export default function ChapterEditor({ target, context, draftKey, resumeHref, draftLabel, autoGenerate }: Props) {
   const router = useRouter();
   const settings = useSettings();
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -77,6 +89,11 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const [busy, setBusy] = useState<null | "generate" | "refine" | "choices" | "post">(null);
   const [error, setError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  // Story summaries generated during this session, by chapter id (also saved to the server).
+  const [madeSummaries, setMadeSummaries] = useState<Record<string, Summaries>>({});
+  const [status, setStatus] = useState<string | null>(null);
+  const [summaryFailed, setSummaryFailed] = useState(false);
+  const [autoDone, setAutoDone] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const loadedRef = useRef(false);
 
@@ -122,8 +139,44 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   if (!draft) return <p className="meta">Loading draft…</p>;
 
   // For a brand-new story the title and premise are still being typed in this form.
-  const ctx: StoryContext =
-    target.kind === "story" ? { ...context, storyTitle: draft.storyTitle, premise: draft.premise } : context;
+  const withSummaries = (path: StoryContext["path"], made: Record<string, Summaries>) =>
+    path.map((c) => (c.id && made[c.id] ? { ...c, summary: made[c.id].summary, path_summary: made[c.id].path_summary } : c));
+  const storyInfo =
+    target.kind === "story"
+      ? { title: draft.storyTitle, premise: draft.premise }
+      : { title: context.storyTitle, premise: context.premise };
+  const ctx: StoryContext = {
+    ...context,
+    storyTitle: storyInfo.title,
+    premise: storyInfo.premise,
+    path: withSummaries(context.path, madeSummaries),
+  };
+
+  /**
+   * Makes sure the story so far can be condensed before a prompt is built: if older chapters
+   * will be left out, their rolling summary has to exist. Failure is not fatal (the prompt
+   * falls back to short excerpts), so this reports a note and carries on.
+   */
+  async function prepareContext(signal: AbortSignal): Promise<StoryContext> {
+    const upTo = neededSummaryIndex(ctx.path, settings.contextTokens);
+    if (upTo < 0) return ctx;
+    try {
+      const made = await ensurePathSummaries(settings, ctx.path, upTo, {
+        story: storyInfo,
+        signal,
+        onProgress: (done, total) => setStatus(`Summarizing the story so far (${Math.min(done + 1, total)} of ${total})…`),
+      });
+      const all = { ...madeSummaries, ...made };
+      setMadeSummaries(all);
+      return { ...ctx, path: withSummaries(context.path, all) };
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") throw e;
+      setError(`Couldn't summarize the earlier chapters (${e instanceof Error ? e.message : String(e)}). Using short excerpts instead.`);
+      return ctx;
+    } finally {
+      setStatus(null);
+    }
+  }
 
   const patch = (p: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...p } : d));
 
@@ -135,17 +188,18 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   async function runAi(kind: "generate" | "refine") {
     if (!draft) return;
     setError(null);
-    const message =
-      kind === "generate"
-        ? generatePrompt(ctx, draft.prompt, length, settings.contextTokens)
-        : refinePrompt(ctx, { title: draft.title, body: draft.body }, instruction, settings.contextTokens);
     const ctl = new AbortController();
     abortRef.current = ctl;
     setBusy(kind);
-    // Keep the text we're replacing so the rewrite can be undone.
-    setDraft((d) => (d ? { ...d, undo: pushUndo(d) } : d));
     let text = "";
     try {
+      const ready = await prepareContext(ctl.signal);
+      const message =
+        kind === "generate"
+          ? generatePrompt(ready, draft.prompt, length, settings.contextTokens)
+          : refinePrompt(ready, { title: draft.title, body: draft.body }, instruction, settings.contextTokens);
+      // Keep the text we're replacing so the rewrite can be undone.
+      setDraft((d) => (d ? { ...d, undo: pushUndo(d) } : d));
       for await (const piece of streamChat(settings, {
         system: SYSTEM_CHAPTER,
         messages: [{ role: "user", content: message }],
@@ -236,14 +290,57 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const keptExisting = existingChoices.filter((c) => !c.removed).length;
   const maxNew = Math.max(0, LIMITS.choices - (target.kind === "edit" ? keptExisting : 0));
 
-  async function post() {
+  /** Summary of this chapter and of the story through it, using the cheaper model. */
+  async function makeSummaries(signal: AbortSignal): Promise<Summaries> {
+    if (!draft) throw new Error("Nothing to summarize");
+    let path = ctx.path;
+    const parent = path.length - 1;
+    // The new chapter's rolling summary builds on its parent's, which may need to exist first.
+    if (parent >= 0 && !path[parent].path_summary) {
+      const made = await ensurePathSummaries(settings, path, parent, {
+        story: storyInfo,
+        signal,
+        onProgress: (done, total) => setStatus(`Summarizing the story so far (${Math.min(done + 1, total)} of ${total})…`),
+      });
+      const all = { ...madeSummaries, ...made };
+      setMadeSummaries(all);
+      path = withSummaries(path, all);
+    }
+    setStatus("Summarizing this chapter…");
+    return summarizeChapter(settings, {
+      story: storyInfo,
+      previous: parent >= 0 ? path[parent].path_summary : null,
+      chapter: { title: draft.title, body: draft.body },
+      signal,
+    });
+  }
+
+  async function post(skipSummary = false) {
     if (!draft) return;
     setBusy("post");
     setError(null);
+    setSummaryFailed(false);
+
+    let summaries: Summaries | null = null;
+    if (!skipSummary) {
+      const ctl = new AbortController();
+      abortRef.current = ctl;
+      try {
+        summaries = await makeSummaries(ctl.signal);
+      } catch (e) {
+        setError(`Couldn't summarize the chapter: ${e instanceof Error ? e.message : String(e)}`);
+        setSummaryFailed(true);
+        setBusy(null);
+        return;
+      } finally {
+        setStatus(null);
+      }
+    }
+    const summaryFields = summaries ? { summary: summaries.summary, path_summary: summaries.path_summary } : {};
 
     // New chapters get a fresh edit key; it is stored in this browser after a successful post.
     const editKey = target.kind === "edit" ? target.editKey : newEditKey();
-    const chapter = { title: draft.title, body: draft.body, author_name: author, choices: finalChoices, edit_key: editKey };
+    const chapter = { title: draft.title, body: draft.body, author_name: author, choices: finalChoices, edit_key: editKey, ...summaryFields };
     let url: string;
     let method = "POST";
     let payload: unknown;
@@ -255,6 +352,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         base_revision: draft.baseRevision ?? target.baseRevision,
         title: draft.title,
         body: draft.body,
+        ...summaryFields,
         edited_by: author,
         edit_note: draft.editNote ?? "",
         incoming_label: target.incomingLabel !== null ? draft.incomingLabel : undefined,
@@ -351,14 +449,26 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             <p className="meta">None. This branch ends here, and others can&apos;t continue it.</p>
           )}
         </div>
+        {status && <p className="meta">{status}</p>}
         {error && <p className="error">{error}</p>}
+        {summaryFailed && (
+          <p className="meta">
+            A summary helps the AI remember this chapter when continuing the story. Without one, the story still works
+            and anyone can generate it later.
+          </p>
+        )}
         <div className="row">
           <button type="button" className="secondary" onClick={() => setPreviewing(false)} disabled={busy === "post"}>
             Back to editing
           </button>
-          <button type="button" onClick={post} disabled={busy === "post" || problems.length > 0}>
-            {busy === "post" ? "Saving…" : target.kind === "edit" ? "Save changes" : "Post chapter"}
+          <button type="button" onClick={() => post()} disabled={busy === "post" || problems.length > 0}>
+            {busy === "post" ? "Saving…" : summaryFailed ? "Try again" : target.kind === "edit" ? "Save changes" : "Post chapter"}
           </button>
+          {summaryFailed && (
+            <button type="button" className="secondary" onClick={() => post(true)} disabled={busy === "post"}>
+              {target.kind === "edit" ? "Save without summary" : "Post without summary"}
+            </button>
+          )}
         </div>
         {problems.length > 0 && <p className="error">{problems.join(" ")}</p>}
       </div>
@@ -451,6 +561,15 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             AI settings
           </Link>
         </div>
+        {status && <p className="meta">{status}</p>}
+        {autoGenerate && !autoDone && !draft.body && (
+          <AutoStart
+            run={() => {
+              setAutoDone(true);
+              void runAi("generate");
+            }}
+          />
+        )}
       </section>
 
       <label>

@@ -39,7 +39,7 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
           premise: story.premise,
           path: path
             .slice(0, -1)
-            .map((c) => ({ title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary })),
+            .map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary })),
           choiceLabel: incoming?.label ?? null,
           // Codex as it stood before this chapter, so its own consequences aren't fed back in.
           codex: getContextCodex(path.length > 1 ? path[path.length - 2].id : null),

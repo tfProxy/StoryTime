@@ -11,10 +11,10 @@ export default async function WritePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ choice?: string }>;
+  searchParams: Promise<{ choice?: string; ai?: string }>;
 }) {
   const { id } = await params;
-  const { choice } = await searchParams;
+  const { choice, ai } = await searchParams;
   const path = getPath(id);
   if (path.length === 0) notFound();
   const parent = path[path.length - 1];
@@ -56,13 +56,14 @@ export default async function WritePage({
         context={{
           storyTitle: story.title,
           premise: story.premise,
-          path: path.map((c) => ({ title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary })),
+          path: path.map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary })),
           choiceLabel,
           codex: getContextCodex(parent.id),
         }}
         draftKey={draftKey}
         resumeHref={resumeHref}
         draftLabel={draftLabel}
+        autoGenerate={Boolean(ai)}
       />
     </>
   );

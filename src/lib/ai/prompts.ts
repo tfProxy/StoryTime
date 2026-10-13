@@ -1,6 +1,9 @@
 // Prompt construction for chapter drafting. Pure functions, no network.
 
 export type ContextChapter = {
+  /** Present for chapters loaded from the server; needed to save generated summaries. */
+  id?: string;
+  revision?: number;
   title: string;
   body: string;
   summary: string | null;
@@ -44,31 +47,53 @@ export const SYSTEM_CHAPTER = `${SYSTEM_BASE}\n\n${OUTPUT_FORMAT}`;
 export const SYSTEM_CHOICES = `You help write branching stories. You reply with a JSON array of strings and nothing else.`;
 
 /**
- * Builds the "story so far" text within a token budget. The most recent chapters are
- * included verbatim; earlier ones are condensed (their summary, or an excerpt).
+ * Finds how many of the most recent chapters fit verbatim in the budget. Chapters before
+ * `firstVerbatim` have to be condensed. The chapter being continued is always included.
  */
-export function buildStorySoFar(path: ContextChapter[], budgetTokens: number): string {
-  if (path.length === 0) return "";
-  const verbatim: string[] = [];
+function verbatimWindow(path: ContextChapter[], budgetTokens: number) {
+  const verbatimBudget = Math.floor(budgetTokens * 0.7);
   let used = 0;
   let firstVerbatim = path.length;
-  const verbatimBudget = Math.floor(budgetTokens * 0.7);
-
+  let hugeLast = false;
   for (let i = path.length - 1; i >= 0; i--) {
-    const text = `### ${path[i].title}\n${path[i].body}`;
-    const cost = estimateTokens(text);
+    const cost = estimateTokens(`### ${path[i].title}\n${path[i].body}`);
     if (i === path.length - 1 && cost > verbatimBudget) {
-      // Always include the chapter being continued, trimmed from the front if it is huge.
-      verbatim.unshift(`### ${path[i].title}\n…${path[i].body.slice(-verbatimBudget * 4)}`);
+      hugeLast = true; // included anyway, trimmed from the front
       used = verbatimBudget;
       firstVerbatim = i;
       break;
     }
     if (used + cost > verbatimBudget) break;
-    verbatim.unshift(text);
     used += cost;
     firstVerbatim = i;
   }
+  return { firstVerbatim, used, verbatimBudget, hugeLast };
+}
+
+/**
+ * Index of the chapter whose rolling `path_summary` a prompt will want, or -1 if the whole
+ * path fits verbatim. Deliberately assumes the tightest budget any prompt uses (choice
+ * suggestions with a codex), so summaries made for it also serve the roomier prompts.
+ */
+export function summaryCoverageIndex(path: ContextChapter[], contextTokens: number): number {
+  if (path.length === 0) return -1;
+  const budget = Math.floor(Math.max(500, contextTokens - 1500) * 0.5 * 0.75);
+  return verbatimWindow(path, budget).firstVerbatim - 1;
+}
+
+/**
+ * Builds the "story so far" text within a token budget. The most recent chapters are
+ * included verbatim; earlier ones are condensed (a stored summary, or an excerpt).
+ */
+export function buildStorySoFar(path: ContextChapter[], budgetTokens: number): string {
+  if (path.length === 0) return "";
+  const { firstVerbatim, used, verbatimBudget, hugeLast } = verbatimWindow(path, budgetTokens);
+  const verbatim = path.slice(firstVerbatim).map((c, i, arr) => {
+    const isLast = i === arr.length - 1;
+    return hugeLast && isLast
+      ? `### ${c.title}\n…${c.body.slice(-verbatimBudget * 4)}`
+      : `### ${c.title}\n${c.body}`;
+  });
 
   const earlier = path.slice(0, firstVerbatim);
   let condensed = "";

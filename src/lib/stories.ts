@@ -452,3 +452,37 @@ export function editStory(storyId: string, input: z.infer<typeof EditStorySchema
     return { ok: true as const };
   })();
 }
+
+// Summaries are a cache derived from chapter text. Anyone may fill one that is missing (for
+// example after an edit cleared it), but nobody can overwrite an existing one except the
+// chapter's author through an edit.
+export const SetSummarySchema = z.object({
+  /** The chapter revision the summaries were generated from. */
+  revision: z.number().int().min(1),
+  summary: text(LIMITS.summary).optional(),
+  path_summary: text(LIMITS.summary).optional(),
+});
+
+export function fillSummaries(
+  chapterId: string,
+  input: z.infer<typeof SetSummarySchema>,
+): { summary_set: boolean; path_summary_set: boolean } {
+  return db().transaction(() => {
+    const row = db()
+      .prepare(`SELECT revision, removed_at FROM chapters WHERE id = ?`)
+      .get(chapterId) as { revision: number; removed_at: number | null } | undefined;
+    if (!row || row.removed_at !== null) throw new PostError("That chapter does not exist", 404);
+    if (row.revision !== input.revision) {
+      throw new PostError("That chapter was edited since the summary was made", 409);
+    }
+    const s = input.summary
+      ? db().prepare(`UPDATE chapters SET summary = ? WHERE id = ? AND summary IS NULL`).run(input.summary, chapterId)
+      : null;
+    const p = input.path_summary
+      ? db()
+          .prepare(`UPDATE chapters SET path_summary = ? WHERE id = ? AND path_summary IS NULL`)
+          .run(input.path_summary, chapterId)
+      : null;
+    return { summary_set: (s?.changes ?? 0) > 0, path_summary_set: (p?.changes ?? 0) > 0 };
+  })();
+}

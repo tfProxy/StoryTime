@@ -11,8 +11,10 @@ const mock = http.createServer((req, res) => {
   req.on("end", () => {
     const body = JSON.parse(data || "{}"); reqs.push(body);
     const prompt = body.messages?.at(-1)?.content ?? "";
+    const system = body.messages?.[0]?.content ?? "";
     let text;
-    if (prompt.includes("JSON array")) text = '["Open the door", "Run away", "Hide"]';
+    if (system.includes("running summary")) text = JSON.stringify({ summary: "A short summary.", story_so_far: "The story so far." });
+    else if (prompt.includes("JSON array")) text = '["Open the door", "Run away", "Hide"]';
     else if (prompt.includes("Revise it")) text = "# The Door Revised\n\nIt creaked, tensely.\n\nShe entered, trembling.";
     else text = "# The Door\n\nIt creaked.\n\nShe entered.";
     res.setHeader("content-type", "text/event-stream");
@@ -80,7 +82,7 @@ ok(await page.getByText("This is exactly what will be posted").isVisible(), "pre
 await page.getByRole("button", { name: "Post chapter" }).click();
 await page.waitForURL(/\/c\//);
 ok(await page.getByRole("heading", { name: "The Door" }).isVisible(), "posted chapter displayed");
-ok((await page.locator("a.card.choice-unwritten").count()) === 2, "two unwritten choices shown");
+ok((await page.locator("div.card.choice-unwritten").count()) === 2, "two unwritten choices shown");
 const chapterUrl = page.url().split("?")[0];
 
 // draft is gone, and name was remembered as default
@@ -143,7 +145,7 @@ await ctx2.close();
 
 // continue a branch: context should include earlier chapter + choice
 await page.goto(chapterUrl);
-await page.locator("a.card.choice-unwritten", { hasText: "Push the door" }).click();
+await page.locator("div.card.choice-unwritten", { hasText: "Push the door" }).getByRole("link", { name: /Push the door/ }).click();
 await page.waitForURL(/write\?choice=/);
 await page.getByRole("button", { name: "Generate chapter" }).click();
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("She entered."));

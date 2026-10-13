@@ -64,14 +64,22 @@ export default async function ChapterPage({
               {c.label}
             </Link>
           ) : (
-            <Link key={c.id} href={`/c/${chapter.id}/write?choice=${c.id}`} className="card choice-unwritten">
-              {c.label} <span className="tag">· not written yet. Write it?</span>
-            </Link>
+            <div key={c.id} className="card choice-unwritten row" style={{ justifyContent: "space-between" }}>
+              <Link href={`/c/${chapter.id}/write?choice=${c.id}`}>
+                {c.label} <span className="tag">· not written yet. Write it?</span>
+              </Link>
+              <Link className="button secondary" href={`/c/${chapter.id}/write?choice=${c.id}&ai=1`}>
+                Continue with AI
+              </Link>
+            </div>
           ),
         )}
         <p className="row">
           <Link className="button secondary" href={`/c/${chapter.id}/write`}>
             Add a new choice and continue it
+          </Link>
+          <Link className="button secondary" href={`/c/${chapter.id}/write?ai=1`}>
+            Continue with AI
           </Link>
           <Link className="button secondary" href={`/c/${chapter.id}/codex`}>
             Codex
