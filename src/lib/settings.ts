@@ -23,6 +23,8 @@ export type Settings = {
   temperature: number | null;
   /** Rough budget for the prompt context, so small local models aren't overflowed. */
   contextTokens: number;
+  /** Ask the model not to use extended thinking / reasoning. */
+  disableThinking: boolean;
 };
 
 function defaultProvider(id: ProviderId): ProviderSettings {
@@ -39,6 +41,7 @@ export const DEFAULT_SETTINGS: Settings = {
   >,
   temperature: null,
   contextTokens: 8000,
+  disableThinking: false,
 };
 
 // Each field falls back to its default when missing or invalid, so partial or older
@@ -68,6 +71,7 @@ const settingsSchema = z.object({
     .catch(DEFAULT_SETTINGS.providers),
   temperature: z.number().min(0).max(2).nullable().catch(null),
   contextTokens: z.number().int().min(1000).max(2_000_000).catch(DEFAULT_SETTINGS.contextTokens),
+  disableThinking: z.boolean().catch(false),
 });
 
 export function parseSettings(raw: unknown): Settings {

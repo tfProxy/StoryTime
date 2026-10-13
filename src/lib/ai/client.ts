@@ -23,6 +23,7 @@ type Resolved = {
   apiKey: string;
   model: string;
   temperature: number | null;
+  disableThinking: boolean;
 };
 
 function resolve(settings: Settings, useSummaryModel = false): Resolved {
@@ -39,6 +40,7 @@ function resolve(settings: Settings, useSummaryModel = false): Resolved {
     apiKey: p.apiKey.trim(),
     model,
     temperature: settings.temperature,
+    disableThinking: settings.disableThinking,
   };
 }
 
@@ -125,6 +127,7 @@ export async function* streamChat(settings: Settings, req: ChatRequest): AsyncGe
       messages: req.messages,
     };
     if (req.system) body.system = req.system;
+    if (r.disableThinking) body.thinking = { type: "disabled" };
     if (r.temperature !== null) body.temperature = r.temperature;
     const res = await send(
       `${r.baseUrl}/messages`,
@@ -149,6 +152,7 @@ export async function* streamChat(settings: Settings, req: ChatRequest): AsyncGe
   const messages = req.system ? [{ role: "system", content: req.system }, ...req.messages] : req.messages;
   const body: Record<string, unknown> = { model: r.model, stream: true, messages };
   if (r.temperature !== null) body.temperature = r.temperature;
+  if (r.disableThinking) body.reasoning_effort = "none";
   if (req.maxTokens !== undefined) body.max_tokens = req.maxTokens;
   const res = await send(
     `${r.baseUrl}/chat/completions`,

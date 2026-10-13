@@ -255,6 +255,22 @@ export default function SettingsForm() {
           />
         </label>
 
+        <label className="row" style={{ alignItems: "flex-start" }}>
+          <input
+            type="checkbox"
+            style={{ width: "auto" }}
+            checked={settings.disableThinking}
+            onChange={(e) => update({ disableThinking: e.target.checked })}
+          />
+          <span>
+            Disable thinking{" "}
+            <small>
+              (asks the model to skip extended thinking, for faster and cheaper replies. Sent as thinking: disabled to
+              Anthropic and reasoning_effort: none to other providers; turn it off if your model rejects that.)
+            </small>
+          </span>
+        </label>
+
         <div className="row">
           <button type="button" className="secondary" onClick={tryIt} disabled={trying}>
             {trying ? "Generating…" : "Try a sample reply"}

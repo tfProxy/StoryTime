@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LIMITS } from "@/lib/limits";
 import { saveSettings, useSettings } from "@/lib/settings";
@@ -110,6 +109,9 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const [status, setStatus] = useState<string | null>(null);
   const [autoDone, setAutoDone] = useState(false);
   const [codexOpen, setCodexOpen] = useState(false);
+  const [showPrompt, setShowPrompt] = useState(false);
+  // After the AI writes, keep showing the read-only text until the user chooses to edit it.
+  const [reading, setReading] = useState(false);
   // Manual additions to / removals from the codex entries sent with each prompt.
   const [codexOverrides, setCodexOverrides] = useState<CodexOverrides>({ include: [], exclude: [] });
   const abortRef = useRef<AbortController | null>(null);
@@ -210,6 +212,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     const ctl = new AbortController();
     abortRef.current = ctl;
     setBusy(kind);
+    setReading(true);
     let text = "";
     try {
       const ready = await prepareContext(ctl.signal);
@@ -621,10 +624,22 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
               Stop
             </button>
           )}
-          <Link href="/settings" className="meta">
-            AI settings
-          </Link>
+          <button type="button" className="secondary" onClick={() => setShowPrompt(!showPrompt)} aria-expanded={showPrompt}>
+            {showPrompt ? "Hide prompt" : "Preview prompt"}
+          </button>
         </div>
+        {showPrompt && (
+          <div>
+            <p className="meta">
+              This is what &quot;Generate&quot; will send. If earlier chapters need summarizing first, that happens
+              before sending, so the story-so-far part may differ slightly.
+            </p>
+            <h3>System</h3>
+            <pre className="sample">{SYSTEM_CHAPTER}</pre>
+            <h3>Message</h3>
+            <pre className="sample">{generatePrompt(ctx, draft.prompt, length, settings.contextTokens)}</pre>
+          </div>
+        )}
         <CodexPreview
           ctx={ctx}
           direction={draft.prompt}
@@ -648,13 +663,19 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         <input value={draft.title} maxLength={LIMITS.title} onChange={(e) => patch({ title: e.target.value })} />
       </label>
 
-      {working ? (
+      {working || reading ? (
         <div aria-live="polite">
           <p className="meta">
-            Writing… {words.toLocaleString()} word{words === 1 ? "" : "s"}
+            {working ? "Writing… " : ""}
+            {words.toLocaleString()} word{words === 1 ? "" : "s"}
             {busy === "generate" && <> (aiming for about {targetWords.toLocaleString()})</>}
           </p>
           <Prose text={draft.body} />
+          {!working && (
+            <button type="button" className="secondary" onClick={() => setReading(false)}>
+              Edit text
+            </button>
+          )}
         </div>
       ) : (
         <label>
