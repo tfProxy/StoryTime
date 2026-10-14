@@ -307,6 +307,34 @@ button.danger {
   border-left: 1px solid var(--line);
 }
 
+/* The outline uses the whole window; deep branches scroll sideways instead of wrapping. */
+main:has(.outline-page) {
+  max-width: none;
+}
+
+.outline-page {
+  overflow-x: auto;
+}
+
+.outline-page .outline {
+  padding-left: 0.9rem;
+  margin-left: 0.2rem;
+}
+
+.outline-page li {
+  white-space: nowrap;
+}
+
+.outline-export {
+  margin-left: 0.4rem;
+  opacity: 0.7;
+}
+
+.outline-export:hover,
+.outline-export:focus-visible {
+  opacity: 1;
+}
+
 .outline-root {
   padding-left: 0;
   border-left: none;

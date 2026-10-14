@@ -85,5 +85,15 @@ const titles = Object.values(embedded.pages).map((p) => p.t).sort().join();
 ok(embedded.title === "The Export: Tale!" && embedded.pages[embedded.start].t === "Start" && titles === "Deep,Left,Start", "the embedded story has only the finished chapters: " + titles);
 ok(!x.text.includes("Pending") && !x.text.includes("Wait here"), "unfinished branches are left out of the html too");
 ok(!x.text.includes(":: not a passage</script>") && (x.text.match(/<\/script>/g) ?? []).length === 2, "story text can't close the script element");
+// ---- one route as Markdown ----
+x = await get(`/api/stories/${story}/export?format=md&to=${deep}`);
+ok(x.status === 200 && /filename="the-export-tale-deep\.md"/.test(x.headers.get("content-disposition")), "path download is named after the story and chapter");
+ok(x.text.startsWith("# The Export: Tale!") && x.text.indexOf("## 1. Start") < x.text.indexOf("*Deeper*") && x.text.indexOf("*Deeper*") < x.text.indexOf("## 3. Deep"), "the route reads in order with the choice taken between chapters");
+ok(x.text.includes("*Go left*") && !x.text.includes("Go [[right]]") && !x.text.includes("Pending") && x.text.trimEnd().endsWith("*The end.*"), "other branches are left out");
+x = await get(`/api/stories/${story}/export?format=md&to=${left}`);
+ok(x.text.includes("## 2. Left") && !x.text.includes("Deep text") && x.text.trimEnd().endsWith("*…to be continued.*"), "a chapter that continues is marked as to be continued");
+ok((await get(`/api/stories/${story}/export?format=md&to=${gone}`)).status === 404, "a removed chapter can't be exported");
+ok((await get(`/api/stories/${story}/export?format=md&to=nope`)).status === 404, "an unknown chapter is a 404");
+ok((await get(`/api/stories/${story}/export?format=twee&to=${deep}`)).status === 400, "to only applies to Markdown");
 // the same story in Markdown still shows everything
 ok((await get(`/api/stories/${story}/export?format=md`)).text.includes("Pending"), "markdown keeps unfinished branches");

@@ -80,6 +80,9 @@ export default async function ChapterPage({
             {chapter.summary && chapter.path_summary ? "Summary" : "Summary (missing)"}
           </Link>
           <EditLink chapterId={chapter.id} />
+          <a className="button secondary" href={`/api/stories/${story.id}/export?format=md&to=${chapter.id}`}>
+            Export this path
+          </a>
         </p>
       </section>
     </>

@@ -148,6 +148,37 @@ export function toMarkdown(data: StoryExport): string {
 }
 
 /**
+ * One route through the story as continuous reading: the chapters from the first one down to
+ * `chapterId`, with the choice taken shown between them. Null if the chapter isn't in the story.
+ */
+export function toPathMarkdown(data: StoryExport, chapterId: string): string | null {
+  const byId = new Map(data.chapters.map((c) => [c.id, c]));
+  const choiceById = new Map(data.choices.map((c) => [c.id, c]));
+  const route: ChapterRow[] = [];
+  for (let c = byId.get(chapterId); c; ) {
+    route.unshift(c);
+    const via = c.parent_choice_id ? choiceById.get(c.parent_choice_id) : undefined;
+    c = via ? byId.get(via.parent_chapter_id) : undefined;
+  }
+  if (route.length === 0 || route[0].id !== data.chapters[0].id) return null;
+
+  const out: string[] = [`# ${data.story.title}`];
+  if (data.story.author_name) out.push(`*by ${data.story.author_name}*`);
+  if (data.story.premise.trim()) out.push(data.story.premise.trim().split("\n").map((l) => `> ${l}`).join("\n"));
+  route.forEach((c, i) => {
+    const via = c.parent_choice_id ? choiceById.get(c.parent_choice_id) : undefined;
+    if (via) out.push(`*${via.label}*`);
+    out.push(`## ${i + 1}. ${c.title}`);
+    if (c.author_name) out.push(`*by ${c.author_name}*`);
+    out.push(c.body.trim());
+  });
+  const last = route[route.length - 1];
+  if (data.choices.some((c) => c.parent_chapter_id === last.id)) out.push("*…to be continued.*");
+  else out.push("*The end.*");
+  return `${out.join("\n\n")}\n`;
+}
+
+/**
  * The playable part of a story, for exports that can't show "not written yet": a chapter is kept
  * if it ends the story (no choices) or has a choice that leads to a kept chapter. Choices nobody
  * has written yet, and chapters that can only lead to them, are left out. The first chapter always

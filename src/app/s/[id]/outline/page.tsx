@@ -17,7 +17,7 @@ function count(node: TreeNode, t: Totals) {
   }
 }
 
-function Node({ node, via }: { node: TreeNode; via: string | null }) {
+function Node({ node, via, storyId }: { node: TreeNode; via: string | null; storyId: string }) {
   // Only written chapters are listed; unwritten choices are left to the story page.
   const written = node.choices.filter((c) => c.child);
   const summary = (
@@ -27,17 +27,25 @@ function Node({ node, via }: { node: TreeNode; via: string | null }) {
       {node.author_name && <span className="meta"> · {node.author_name}</span>}
       {node.edited && <span className="meta"> · edited</span>}
       {node.choices.length === 0 && <span className="tag"> · branch ends here</span>}
+      {" "}
+      <a
+        className="meta outline-export"
+        href={`/api/stories/${storyId}/export?format=md&to=${node.id}`}
+        title="Download the route from the first chapter to this one as Markdown"
+      >
+        export path
+      </a>
     </>
   );
   if (written.length === 0) return <li>{summary}</li>;
   return (
     <li>
-      {/* Deep branches start collapsed so a big story stays scannable. */}
-      <details open={node.depth < 3}>
+      {/* Everything starts open; a branch can still be folded away. */}
+      <details open>
         <summary>{summary}</summary>
         <ul className="outline">
           {written.map((c) => (
-            <Node key={c.id} node={c.child!} via={c.label} />
+            <Node key={c.id} node={c.child!} via={c.label} storyId={storyId} />
           ))}
         </ul>
       </details>
@@ -55,7 +63,7 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
   count(tree, totals);
 
   return (
-    <>
+    <div className="outline-page">
       <p className="crumbs">
         <Link href={`/s/${story.id}`}>← {story.title}</Link>
       </p>
@@ -66,8 +74,8 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
         {totals.deepest}
       </p>
       <ul className="outline outline-root">
-        <Node node={tree} via={null} />
+        <Node node={tree} via={null} storyId={story.id} />
       </ul>
-    </>
+    </div>
   );
 }
