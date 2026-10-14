@@ -155,6 +155,27 @@ c = (await chapter(second)).chapter;
 ok(sumCalls().length === beforeEdit + 1 && c.summary === "She opened the door and a window." && c.path_summary === "SOFAR(Second)" && c.revision === 3, "an edited summary is saved and the story-so-far regenerated");
 ok(sumCalls().at(-1).user.includes("SOFAR(First)"), "…building on the parent's story-so-far");
 
+// an edit draft saved before summaries were carried into it picks up the chapter's summary
+await page.goto(`${BASE}/c/${second}/edit`);
+await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.length > 0);
+await page.evaluate(async (key) => {
+  const db = await new Promise((res, rej) => { const r = indexedDB.open("storytime", 1); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  await new Promise((res, rej) => {
+    const tx = db.transaction("drafts", "readwrite");
+    tx.objectStore("drafts").put({ key, href: "/", label: "old", updatedAt: Date.now(), storyTitle: "", premise: "", newChoiceLabel: "", title: "Second", body: "An old draft body.", choices: [""], prompt: "", undo: [], baseRevision: 3 });
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+  });
+  db.close();
+}, `edit:${second}`);
+await page.goto(`${BASE}/c/${second}/edit`);
+await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value === "An old draft body.");
+ok((await page.getByLabel(/^Summary/).inputValue()) === "She opened the door and a window.", "an older edit draft starts with the chapter's summary");
+await page.evaluate(async (key) => {
+  const db = await new Promise((res) => { const r = indexedDB.open("storytime", 1); r.onsuccess = () => res(r.result); });
+  await new Promise((res) => { const tx = db.transaction("drafts", "readwrite"); tx.objectStore("drafts").delete(key); tx.oncomplete = res; });
+  db.close();
+}, `edit:${second}`);
+
 // ---- F: the author's own summary is posted as written ----
 await page.goto(`${BASE}/c/${second}/write`);
 await page.getByLabel(/Choice text/).fill("Listen");

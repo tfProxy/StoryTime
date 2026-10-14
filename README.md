@@ -115,7 +115,9 @@ slot has been refilled in the meantime.
   existing summary unless the author changes it), and
   fills in any that are missing (for example below an edited chapter) before generating, but only
   when older chapters would not fit in the context budget. They are a cache: anyone can fill a missing one,
-  and nobody can overwrite an existing one except the chapter's author by editing it.
+  and nobody can overwrite an existing one except the chapter's author by editing it. A story's
+  outline links to a "Redo summaries" page that regenerates them all from the browser: chapters
+  that browser posted are rewritten, the rest are only filled in where missing.
 
 ## Tests
 

@@ -69,6 +69,9 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
       </p>
       <h1>Outline</h1>
       <p className="meta">
+        <Link href={`/s/${story.id}/summaries`}>Redo the AI summaries</Link>
+      </p>
+      <p className="meta">
         {totals.chapters} chapter{totals.chapters === 1 ? "" : "s"} · {totals.unwritten} choice
         {totals.unwritten === 1 ? "" : "s"} still to write · {totals.ends} branch{totals.ends === 1 ? "" : "es"} end · longest path{" "}
         {totals.deepest}

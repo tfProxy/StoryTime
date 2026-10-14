@@ -153,8 +153,11 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         choiceEdits: {},
       };
     };
+    // An edit draft saved before summaries were carried into it has no summary field: start it from the chapter's.
+    const upgraded = (d: Draft): Draft =>
+      target.kind === "edit" && d.summary === undefined && target.initialSummary ? { ...d, summary: target.initialSummary } : d;
     getDraft(draftKey)
-      .then((d) => !cancelled && setDraft(d ?? fresh()))
+      .then((d) => !cancelled && setDraft(d ? upgraded(d) : fresh()))
       .catch(() => !cancelled && setDraft(fresh()))
       .finally(() => {
         loadedRef.current = true;
