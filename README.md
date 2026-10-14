@@ -21,7 +21,8 @@ Anthropic, or a local model through Ollama), and their keys never leave their br
   HTML file that plays the story offline (it remembers what the reader has seen, and can forget it),
   Twine (Twee) or full JSON. The HTML and Twine files include only finished branches. Any
   chapter (from its page or the outline) can also export just the route from the first chapter to
-  it as one continuous Markdown read.
+  it as one continuous Markdown read, and the codex page downloads that branch's codex as a
+  Markdown "story bible".
 - **Moderation**: a password-protected admin page and a command-line tool.
 
 ## Run locally

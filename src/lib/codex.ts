@@ -75,6 +75,35 @@ export function entryHistory(ops: CodexOp[], entryId: string): CodexOp[] {
   return orderOps(ops).filter((o) => o.entry_id === entryId);
 }
 
+const TYPE_HEADINGS: Record<EntryType, string> = {
+  character: "Characters",
+  place: "Places",
+  item: "Items",
+  faction: "Factions",
+  lore: "Lore",
+  note: "Notes",
+};
+
+/** A readable "story bible": the codex on one branch as of one chapter, grouped by type. */
+export function toCodexMarkdown(storyTitle: string, chapterTitle: string, entries: CodexEntry[]): string {
+  const out = [`# ${storyTitle}: codex`, `*As of the chapter “${chapterTitle}”, on this branch of the story.*`];
+  if (entries.length === 0) out.push("*There are no entries yet.*");
+  for (const type of ENTRY_TYPES) {
+    const group = entries.filter((e) => e.type === type);
+    if (group.length === 0) continue;
+    out.push(`## ${TYPE_HEADINGS[type]}`);
+    for (const e of group) {
+      out.push(`### ${e.name}`);
+      const notes: string[] = [];
+      if (e.aliases.length) notes.push(`Also known as: ${e.aliases.join(", ")}`);
+      if (e.always_include) notes.push("Always included in AI prompts");
+      if (notes.length) out.push(`*${notes.join(" · ")}*`);
+      out.push(e.content.trim() || "*(no description)*");
+    }
+  }
+  return `${out.join("\n\n")}\n`;
+}
+
 // ---- Changes held in a draft until its chapter is posted ----
 
 /** Stands in for the chapter being written, which has no id until it is posted. */

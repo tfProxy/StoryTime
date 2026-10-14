@@ -27,7 +27,10 @@ export default async function CodexPage({
         <Link href={`/c/${id}`}>← Back to “{chapter.title}”</Link>
       </p>
       <h1>Codex</h1>
-      <p className="meta">Characters, places and facts the AI keeps in mind. Each branch has its own.</p>
+      <p className="meta">
+        Characters, places and facts the AI keeps in mind. Each branch has its own.{" "}
+        <a href={`/api/chapters/${id}/codex?format=md`}>Download as Markdown</a>
+      </p>
       <CodexPanel
         openAiHelper={Boolean(review)}
         story={{ title: story.title, premise: story.premise }}

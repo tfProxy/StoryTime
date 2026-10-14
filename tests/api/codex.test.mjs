@@ -72,6 +72,18 @@ r = await call("PATCH", `/api/chapters/${bc.json.chapter_id}`, { edit_key: key, 
   codex_changes: [{ op: "create", name: "Lamp", type: "item", content: "Brass." }] });
 ok(r.status === 200 && (await state(bc.json.chapter_id)).entries.some((x) => x.name === "Lamp") && !(await state(b)).entries.some((x) => x.name === "Lamp"), "an edit can carry codex changes, anchored at the edited chapter");
 
+// Markdown download of the codex at a chapter
+const md = await fetch(`${B}/api/chapters/${a3}/codex?format=md`);
+const mdText = await md.text();
+ok(md.status === 200 && /text\/markdown/.test(md.headers.get("content-type")) && /filename="s-codex-a3\.md"/.test(md.headers.get("content-disposition")), "codex markdown download");
+ok(mdText.startsWith("# S: codex") && mdText.includes("## Characters") && mdText.includes("### Zed\n\nA ferryman.") && mdText.includes("### Mira") && mdText.includes("A horse with wings."), "entries are grouped by type with their text");
+ok(!mdText.includes("A human thief") && !mdText.includes("Now a horse."), "only the current version of an entry shows");
+await op(root, { op: "create", name: "Ferry", type: "place", aliases: ["the crossing"], always_include: true, content: "A river crossing." });
+const rootMd = await (await fetch(`${B}/api/chapters/${root}/codex?format=md`)).text();
+ok(rootMd.includes("## Places\n\n### Ferry\n\n*Also known as: the crossing · Always included in AI prompts*\n\nA river crossing.") && rootMd.indexOf("## Characters") < rootMd.indexOf("## Places"), "aliases and the always-include flag are noted, types in order");
+ok(!(await (await fetch(`${B}/api/chapters/${b}/codex?format=md`)).text()).includes("Zed"), "another branch's codex doesn't include it");
+ok((await fetch(`${B}/api/chapters/${a3}/codex?format=pdf`)).status === 400 && (await fetch(`${B}/api/chapters/nope/codex?format=md`)).status === 404, "bad format 400, unknown chapter 404");
+
 // pages
 for (const u of [`/c/${root}/codex`, `/c/${a2}/codex`, `/c/${b}/codex`]) { const x = await fetch(B + u); ok(x.status === 200, `${u} -> ${x.status}`); }
 ok((await fetch(`${B}/c/nope/codex`)).status === 404, "codex page 404");
