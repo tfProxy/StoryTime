@@ -131,18 +131,29 @@ c = (await chapter(third)).chapter;
 ok(c.summary === "SUM(Third)" && c.path_summary === "SOFAR(Third)", "Generate summary fills them in later");
 ok((await page.getByLabel(/This chapter/).inputValue()) === "SUM(Third)", "and they're shown on the page");
 
-// ---- E: editing regenerates the chapter's summary and clears those below ----
+// ---- E: editing keeps the chapter's summary unless the author changes it; those below are cleared ----
 await page.goto(`${BASE}/c/${second}/edit`);
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.length > 0);
+ok((await page.getByLabel(/^Summary/).inputValue()) === "SUM(Second)", "the edit form starts with the chapter's summary");
 await page.getByLabel("Chapter text").fill("She opened the door, then the window.");
-const beforeEdit = sumCalls().length;
+ok(await page.getByText(/current summary, and it will be kept/).isVisible(), "it says the summary will be kept");
+let beforeEdit = sumCalls().length;
 await page.getByRole("button", { name: "Save changes" }).click();
 await page.waitForURL(`${BASE}/c/${second}`);
-ok(sumCalls().length === beforeEdit + 1, "saving an edit makes a fresh summary");
+ok(sumCalls().length === beforeEdit, "a small edit doesn't make a new summary");
 c = (await chapter(second)).chapter;
-ok(c.summary === "SUM(Second)" && c.revision === 2, "the edited chapter has its new summary");
+ok(c.summary === "SUM(Second)" && c.path_summary === "SOFAR(Second)" && c.revision === 2, "the summaries are kept");
 ok((await chapter(third)).chapter.path_summary === null, "chapters below it were cleared");
-ok(sumCalls().at(-1).user.includes("SOFAR(First)"), "the edit's summary builds on the parent's story-so-far");
+// a changed summary is kept as written, with the story-so-far redone around it
+await page.goto(`${BASE}/c/${second}/edit`);
+await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.length > 0);
+await page.getByLabel(/^Summary/).fill("She opened the door and a window.");
+beforeEdit = sumCalls().length;
+await page.getByRole("button", { name: "Save changes" }).click();
+await page.waitForURL(`${BASE}/c/${second}`);
+c = (await chapter(second)).chapter;
+ok(sumCalls().length === beforeEdit + 1 && c.summary === "She opened the door and a window." && c.path_summary === "SOFAR(Second)" && c.revision === 3, "an edited summary is saved and the story-so-far regenerated");
+ok(sumCalls().at(-1).user.includes("SOFAR(First)"), "…building on the parent's story-so-far");
 
 // ---- F: the author's own summary is posted as written ----
 await page.goto(`${BASE}/c/${second}/write`);

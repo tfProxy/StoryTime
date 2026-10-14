@@ -31,6 +31,8 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
         descendantCount={countDescendants(id)}
         initialTitle={chapter.title}
         initialBody={chapter.body}
+        initialSummary={chapter.summary}
+        initialPathSummary={chapter.path_summary}
         existingChoices={getChoices(id).map((c) => ({ id: c.id, label: c.label, hasChild: c.child_chapter_id !== null }))}
         incomingLabel={incoming?.label ?? null}
         // The AI sees the story up to, but not including, the chapter being edited.

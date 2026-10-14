@@ -107,7 +107,8 @@ slot has been refilled in the meantime.
   from the chapter text) and a `path_summary` (a rolling summary of the story through it). Prompts
   send the most recent chapters verbatim, the ones before as their own summaries, and the rolling
   summary only for whatever is older still, so most of the context is one step from the original
-  text. The browser generates them with the cheaper model when a chapter is posted or edited, and
+  text. The browser generates them with the cheaper model when a chapter is posted (an edit keeps the
+  existing summary unless the author changes it), and
   fills in any that are missing (for example below an edited chapter) before generating, but only
   when older chapters would not fit in the context budget. They are a cache: anyone can fill a missing one,
   and nobody can overwrite an existing one except the chapter's author by editing it.

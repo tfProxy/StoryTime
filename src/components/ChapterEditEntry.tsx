@@ -16,6 +16,8 @@ type Props = {
   descendantCount: number;
   initialTitle: string;
   initialBody: string;
+  initialSummary: string | null;
+  initialPathSummary: string | null;
   existingChoices: { id: string; label: string; hasChild: boolean }[];
   incomingLabel: string | null;
   context: StoryContext;
@@ -51,6 +53,8 @@ export default function ChapterEditEntry({ story, ...p }: Props) {
           descendantCount: p.descendantCount,
           initialTitle: p.initialTitle,
           initialBody: p.initialBody,
+          initialSummary: p.initialSummary,
+          initialPathSummary: p.initialPathSummary,
           existingChoices: p.existingChoices,
           incomingLabel: p.incomingLabel,
         }}

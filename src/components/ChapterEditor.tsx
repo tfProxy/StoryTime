@@ -45,6 +45,9 @@ export type Target =
       descendantCount: number;
       initialTitle: string;
       initialBody: string;
+      /** The chapter's current summaries; kept on save unless the author changes the summary. */
+      initialSummary: string | null;
+      initialPathSummary: string | null;
       existingChoices: { id: string; label: string; hasChild: boolean }[];
       /** Text of the choice leading here, or null for a story's first chapter. */
       incomingLabel: string | null;
@@ -84,6 +87,7 @@ function isBlank(d: Draft, target: Target): boolean {
       d.body === target.initialBody &&
       !d.prompt &&
       !d.editNote &&
+      (d.summary ?? "") === (target.initialSummary ?? "") &&
       !d.choices.some((c) => c.trim()) &&
       !d.codexChanges?.length &&
       Object.keys(d.choiceEdits ?? {}).length === 0 &&
@@ -142,6 +146,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         ...d,
         title: target.initialTitle,
         body: target.initialBody,
+        summary: target.initialSummary ?? "",
         choices: [],
         baseRevision: target.baseRevision,
         incomingLabel: target.incomingLabel ?? undefined,
@@ -442,6 +447,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   // A generated summary is out of date once the chapter changes (unless the author has rewritten it).
   const ownSummary = (draft.summary ?? "").trim();
   const summaryStale = !!draft.aiSummary && ownSummary === draft.aiSummary.summary && draft.aiSummary.body !== draft.body;
+  // When editing, the chapter's existing summary is kept as it is unless the author changes it.
+  const keptSummary = target.kind === "edit" && !!ownSummary && ownSummary === (target.initialSummary ?? "").trim() && !summaryStale;
 
   async function post() {
     if (!draft) return;
@@ -455,6 +462,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     const own = summaryStale ? "" : ownSummary;
     if (ai && ai.body === draft.body && ai.summary === own) {
       summaries = { summary: ai.summary, path_summary: ai.path_summary };
+    } else if (keptSummary && target.kind === "edit" && target.initialPathSummary) {
+      summaries = { summary: own, path_summary: target.initialPathSummary };
     } else {
       const ctl = new AbortController();
       abortRef.current = ctl;
@@ -786,6 +795,12 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         {errorFor("summary")}
         {summaryStale && (
           <p className="notice">The chapter has changed since this summary was made. Summarize it again, or it will be redone when you post.</p>
+        )}
+        {keptSummary && target.kind === "edit" && draft.body !== target.initialBody && (
+          <p className="meta">
+            This is the chapter&apos;s current summary, and it will be kept as it is. If your changes affect what happens,
+            update it or summarize the chapter again.
+          </p>
         )}
 
         {target.kind === "edit" && existingChoices.length > 0 && (
