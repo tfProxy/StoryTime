@@ -1,4 +1,4 @@
-import { foldCodex, retiredEntries, entryHistory, changedFields, type CodexOp } from "../../src/lib/codex.ts";
+﻿import { foldCodex, retiredEntries, entryHistory, changedFields, addChange, draftOps, DRAFT_ANCHOR, type CodexChange, type CodexOp } from "../../src/lib/codex.ts";
 import { buildCodexBlock, mentions, generatePrompt, refinePrompt, choicesPrompt } from "../../src/lib/ai/prompts.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
@@ -46,7 +46,7 @@ ok(mentions(e("Mira", "x"), "Then Mira, quietly, left."), "mentions: name");
 ok(!mentions(e("Mira", "x"), "Miranda arrived."), "mentions: whole word only");
 ok(mentions(e("Mira", "x", { aliases: ["the thief"] }), "Nobody saw The Thief go."), "mentions: alias, case-insensitive");
 ok(mentions(e("O'Brien (Cap.)", "x"), "said O'Brien (Cap.) hello") && !mentions(e("a+b", "x"), "ab"), "mentions: regex-special names safe");
-ok(mentions(e("Åsa", "x"), "Så sa Åsa."), "mentions: unicode");
+ok(mentions(e("Ã…sa", "x"), "SÃ¥ sa Ã…sa."), "mentions: unicode");
 let block = buildCodexBlock([e("Mira", "thief"), e("Bram", "smith"), e("King", "rules", { always_include: true })], "Mira walked.", 1000);
 ok(block.includes("Mira") && block.includes("King") && !block.includes("Bram"), "block: triggered + always, not unrelated");
 ok(block.indexOf("King") < block.indexOf("Mira"), "block: always-included first");
@@ -62,3 +62,18 @@ ok(generatePrompt(ctx, "Bram appears", "short", 8000).includes("Bram [character]
 ok(refinePrompt(ctx, { title: "t", body: "Bram hammers" }, "more", 8000).includes("Bram"), "draft body triggers entries when revising");
 ok(choicesPrompt(ctx, { title: "t", body: "x" }, [], 8000).includes("Mira"), "choices prompt carries codex");
 ok(!generatePrompt({ ...ctx, codex: [] }, "", "short", 8000).includes("Codex"), "no codex block when empty");
+
+// changes held in a draft
+const chg = (over: Partial<CodexChange>): CodexChange => ({ op: "replace", entry_id: "mira", name: "Mira", type: "character", aliases: [], content: "x", always_include: false, ...over });
+let held = addChange([], chg({ op: "create", entry_id: "draft-1", name: "Zed" }));
+held = addChange(held, chg({ op: "replace", entry_id: "draft-1", name: "Zed", content: "edited" }));
+ok(held.length === 1 && held[0].op === "create" && held[0].content === "edited", "editing an entry made in the draft keeps it a create");
+held = addChange(held, chg({ content: "a horse" }));
+held = addChange(held, chg({ content: "a winged horse" }));
+ok(held.length === 2 && held.filter((c) => c.entry_id === "mira").length === 1 && held[1].content === "a winged horse", "one change per entry, latest wins");
+held = addChange(held, chg({ op: "retire", entry_id: "draft-1" }));
+ok(held.length === 1 && held[0].entry_id === "mira", "retiring an entry made in the draft drops it");
+const onPath = [op({ anchor_depth: 2, anchor_chapter_id: "c2", op: "replace", content: "deep", posted_at: 99999 })];
+const folded = foldCodex([...onPath, ...draftOps(held, 3)]);
+ok(folded[0].content === "a winged horse" && folded[0].op.anchor_chapter_id === DRAFT_ANCHOR, "draft changes override the path's codex");
+ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length === 1, "a retire held in the draft hides the entry");

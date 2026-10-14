@@ -13,7 +13,9 @@ Anthropic, or a local model through Ollama), and their keys never leave their br
   generate a summary and choices, then post. "Continue with AI" jumps straight to a draft.
 - **Codex**: per-branch notes on characters, places and facts (a character who turns into a horse
   stays human on other branches). The AI can scan chapters for entries, draft entries, and bring an
-  entry up to date with the story.
+  entry up to date with the story. While writing, you can read, edit and add entries without leaving
+  the page; those changes stay in the draft and are saved with the chapter when it is posted (or
+  straight away, if you date them to an earlier chapter).
 - **Edit your chapters later** from the browser that posted them; every earlier version is kept.
 - **Outline and export**: a tree view of every branch, and downloads as readable Markdown, Twine
   (Twee) or full JSON.

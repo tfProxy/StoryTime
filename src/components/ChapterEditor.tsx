@@ -26,7 +26,7 @@ import {
   type StoryContext,
 } from "@/lib/ai/prompts";
 import type { PathChapter } from "@/lib/ai/codexAi";
-import type { CodexOp } from "@/lib/codex";
+import { draftOps, foldCodex, isDraftEntry, type CodexOp } from "@/lib/codex";
 import { deleteDraft, emptyDraft, getDraft, putDraft, type Draft } from "@/lib/drafts";
 import Prose from "./Prose";
 import CodexPanel from "./CodexPanel";
@@ -85,11 +85,22 @@ function isBlank(d: Draft, target: Target): boolean {
       !d.prompt &&
       !d.editNote &&
       !d.choices.some((c) => c.trim()) &&
+      !d.codexChanges?.length &&
       Object.keys(d.choiceEdits ?? {}).length === 0 &&
       (d.incomingLabel ?? target.incomingLabel) === target.incomingLabel
     );
   }
-  return !(d.storyTitle || d.premise || d.newChoiceLabel || d.title || d.body || d.prompt || d.summary || d.choices.some((c) => c.trim()));
+  return !(
+    d.storyTitle ||
+    d.premise ||
+    d.newChoiceLabel ||
+    d.title ||
+    d.body ||
+    d.prompt ||
+    d.summary ||
+    d.codexChanges?.length ||
+    d.choices.some((c) => c.trim())
+  );
 }
 
 export default function ChapterEditor({ target, context, draftKey, resumeHref, draftLabel, autoGenerate, codexPanel }: Props) {
@@ -111,6 +122,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const [status, setStatus] = useState<string | null>(null);
   const [autoDone, setAutoDone] = useState(false);
   const [codexOpen, setCodexOpen] = useState(false);
+  // What the codex drawer opens on: an entry id, "new", or the list. `n` remounts it on each open.
+  const [codexStart, setCodexStart] = useState<{ editing: string | null; n: number }>({ editing: null, n: 0 });
   const [showPrompt, setShowPrompt] = useState(false);
   // After the AI writes, keep showing the read-only text until the user chooses to edit it.
   const [reading, setReading] = useState(false);
@@ -167,8 +180,22 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     target.kind === "story"
       ? { title: draft.storyTitle, premise: draft.premise }
       : { title: context.storyTitle, premise: context.premise };
+  // Codex changes held in this draft apply to the chapter being written.
+  const codexChanges = draft.codexChanges ?? [];
+  const codex =
+    codexPanel && codexChanges.length > 0
+      ? foldCodex([...codexPanel.ops, ...draftOps(codexChanges, (codexPanel.path.at(-1)?.depth ?? -1) + 1)]).map((e) => ({
+          id: e.entry_id,
+          name: e.name,
+          type: e.type,
+          aliases: e.aliases,
+          content: e.content,
+          always_include: e.always_include,
+        }))
+      : context.codex;
   const ctx: StoryContext = {
     ...context,
+    codex,
     storyTitle: storyInfo.title,
     premise: storyInfo.premise,
     path: withSummaries(context.path, madeSummaries),
@@ -450,6 +477,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     // New chapters get a fresh edit key; it is stored in this browser after a successful post.
     const editKey = target.kind === "edit" ? target.editKey : newEditKey();
     const chapter = { title: draft.title, body: draft.body, author_name: author, choices: finalChoices, edit_key: editKey, ...summaryFields };
+    // Saved with the chapter and anchored at it. Entries created in the draft get their real id from the server.
+    const codex_changes = codexChanges.map((c) => (isDraftEntry(c.entry_id) ? { ...c, entry_id: undefined } : c));
     let url: string;
     let method = "POST";
     let payload: unknown;
@@ -468,16 +497,17 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         rename_choices: existingChoices.filter((c) => !c.removed && c.label.trim() !== c.original).map((c) => ({ id: c.id, label: c.label.trim() })),
         remove_choices: existingChoices.filter((c) => c.removed).map((c) => c.id),
         add_choices: finalChoices,
+        codex_changes,
       };
     } else if (target.kind === "story") {
       url = "/api/stories";
       payload = { title: draft.storyTitle, premise: draft.premise, author_name: author, chapter };
     } else if (target.kind === "fill") {
       url = "/api/chapters";
-      payload = { ...chapter, choice_id: target.choiceId };
+      payload = { ...chapter, choice_id: target.choiceId, codex_changes };
     } else {
       url = "/api/chapters";
-      payload = { ...chapter, parent_chapter_id: target.parentChapterId, new_choice_label: draft.newChoiceLabel };
+      payload = { ...chapter, parent_chapter_id: target.parentChapterId, new_choice_label: draft.newChoiceLabel, codex_changes };
     }
 
     try {
@@ -509,6 +539,10 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const statusFor = (...kinds: (typeof busy)[]) => status && kinds.includes(busy) && <p className="meta">{status}</p>;
   const errorFor = (...kinds: (typeof busy)[]) => error && kinds.includes(lastAction) && <p className="error">{error}</p>;
   const posting = busy === "post";
+  const openCodex = (editing: string | null) => {
+    setCodexStart((s) => ({ editing, n: s.n + 1 }));
+    setCodexOpen(true);
+  };
   // For a new branch, ideas fill in the choice text until the author has some; after that they follow it.
   const ideaSetsChoice = target.kind === "new" && !draft.newChoiceLabel.trim();
 
@@ -620,6 +654,9 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
           contextTokens={settings.contextTokens}
           overrides={codexOverrides}
           onChange={setCodexOverrides}
+          onEdit={codexPanel ? (id) => openCodex(id) : undefined}
+          onNew={codexPanel ? () => openCodex("new") : undefined}
+          held={codexChanges.map((c) => c.entry_id)}
         />
       </section>
 
@@ -856,6 +893,12 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             it&apos;s worth checking it first in step 3.
           </p>
         )}
+        {codexChanges.length > 0 && (
+          <p className="meta">
+            {codexChanges.length} codex change{codexChanges.length === 1 ? "" : "s"} will be saved with this chapter
+            ({codexChanges.map((c) => c.name).join(", ")}).
+          </p>
+        )}
         {statusFor("post")}
         {errorFor("post")}
         <div>
@@ -874,7 +917,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
 
       {codexPanel && (
         <>
-          <button type="button" className="codex-toggle" onClick={() => setCodexOpen(!codexOpen)} aria-expanded={codexOpen}>
+          <button type="button" className="codex-toggle" onClick={() => (codexOpen ? setCodexOpen(false) : openCodex(null))} aria-expanded={codexOpen}>
             {codexOpen ? "Close codex" : "Codex"}
           </button>
           {/* Rendered outside the form: the codex panel has forms of its own. */}
@@ -888,7 +931,10 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
                   </button>
                 </div>
                 <CodexPanel
+                  key={codexStart.n}
                   embedded
+                  startEditing={codexStart.editing}
+                  draft={{ changes: codexChanges, onChange: (next) => patch({ codexChanges: next }) }}
                   story={{ title: context.storyTitle, premise: context.premise }}
                   chapterId={codexPanel.chapterId}
                   path={codexPanel.path}

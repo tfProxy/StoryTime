@@ -75,6 +75,40 @@ export function entryHistory(ops: CodexOp[], entryId: string): CodexOp[] {
   return orderOps(ops).filter((o) => o.entry_id === entryId);
 }
 
+// ---- Changes held in a draft until its chapter is posted ----
+
+/** Stands in for the chapter being written, which has no id until it is posted. */
+export const DRAFT_ANCHOR = "draft";
+
+/** A codex change waiting in a draft. New entries get a local id (`draft-…`) until posted. */
+export type CodexChange = Pick<CodexOp, "op" | "entry_id" | "name" | "type" | "aliases" | "content" | "always_include">;
+
+export const isDraftEntry = (entryId: string) => entryId.startsWith("draft-");
+
+/**
+ * Adds a change to a draft's list, keeping at most one per entry: a later change to the same entry
+ * replaces the earlier one, an entry created in the draft stays a "create", and retiring an entry
+ * that only exists in the draft drops it.
+ */
+export function addChange(changes: CodexChange[], next: CodexChange): CodexChange[] {
+  const prev = changes.find((c) => c.entry_id === next.entry_id);
+  const rest = changes.filter((c) => c.entry_id !== next.entry_id);
+  if (prev?.op === "create") return next.op === "retire" ? rest : [...rest, { ...next, op: "create" }];
+  return [...rest, next];
+}
+
+/** The draft's changes as ops at `depth` (one below the last chapter of the path), so they win. */
+export function draftOps(changes: CodexChange[], depth: number): CodexOp[] {
+  return changes.map((c) => ({
+    ...c,
+    id: `draft-op-${c.entry_id}`,
+    anchor_chapter_id: DRAFT_ANCHOR,
+    anchor_depth: depth,
+    author_name: "",
+    posted_at: 0, // not posted; the depth alone puts these last
+  }));
+}
+
 /** Which fields differ between two versions, for a one-line "changed: ..." summary. */
 export function changedFields(prev: CodexOp | undefined, next: CodexOp): string[] {
   if (!prev || prev.op === "retire") return next.op === "retire" ? [] : ["created"];

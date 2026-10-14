@@ -75,7 +75,7 @@ ok(!p.includes("Mira [character]"), "…and not the one that was left out");
 await row("Mira").getByRole("button", { name: "Put back" }).click();
 ok(/mentioned/.test(await row("Mira").innerText()), "a left-out entry can be put back");
 
-// the drawer: add an entry without leaving the page
+// the drawer: add an entry without leaving the page (held in the draft)
 await page.getByRole("button", { name: "Codex", exact: true }).click();
 const drawer = page.locator("aside.codex-drawer");
 await drawer.waitFor();
@@ -89,6 +89,49 @@ ok(true, "a new entry can be added from the drawer");
 await page.getByRole("button", { name: "Close", exact: true }).click();
 ok(/of 5 entries/.test(await summary.innerText()), "the preview picks up the new entry");
 ok((await page.getByLabel("Chapter text").inputValue()).includes("Hello there"), "the draft was kept");
+
+// read and edit an entry straight from the preview
+await row("Zed").getByRole("button", { name: "Zed" }).click();
+await row("Zed").getByText("A grumpy ferryman.").waitFor();
+ok(true, "clicking a name shows the entry's description");
+await row("Zed").getByRole("button", { name: "Edit" }).click();
+await drawer.getByRole("heading", { name: "Edit “Zed”" }).waitFor();
+ok(true, "Edit opens that entry's form in the drawer");
+await drawer.getByLabel(/Description/).fill("A cheerful ferryman now.");
+await drawer.getByRole("button", { name: "Save changes" }).click();
+await drawer.getByText("A cheerful ferryman now.").waitFor();
+await page.getByRole("button", { name: "Close", exact: true }).click();
+await row("Zed").getByText("A cheerful ferryman now.").waitFor();
+ok(true, "the preview shows the edited entry");
+await page.getByRole("button", { name: "Generate a new draft" }).click();
+await page.getByRole("button", { name: "Edit text" }).waitFor();
+ok(prompts.at(-1).includes("A cheerful ferryman now."), "the next prompt uses the edited entry");
+await page.getByRole("button", { name: "+ New entry" }).click();
+await drawer.getByRole("heading", { name: "New entry" }).waitFor();
+ok(true, "+ New entry in the preview opens a blank form");
+await page.getByRole("button", { name: "Close", exact: true }).click();
+
+// changes are held in the draft until the chapter is posted
+const codexAt = async (id) => (await (await fetch(`${BASE}/api/chapters/${id}/codex`)).json()).entries;
+let atRoot = await codexAt(root);
+ok(!atRoot.some((e) => e.name === "Newbie") && atRoot.find((e) => e.name === "Zed").content === "A grumpy ferryman.", "nothing is saved before posting");
+ok(/changed in this draft/.test(await row("Zed").innerText()), "the preview marks entries changed in the draft");
+ok(await page.getByText(/2 codex changes will be saved with this chapter/).isVisible(), "step 4 lists the held changes");
+// …unless an earlier chapter is picked
+await row("Qux").getByRole("button", { name: "Edit" }).click();
+await drawer.getByLabel(/Description/).fill("A hermit since the start.");
+await drawer.getByLabel(/Takes effect from/).selectOption({ label: "Root (saved now)" });
+await drawer.getByRole("button", { name: "Save changes" }).click();
+await drawer.getByText("A hermit since the start.").waitFor();
+ok((await codexAt(root)).find((e) => e.name === "Qux").content === "A hermit since the start.", "picking an earlier chapter saves straight away");
+await page.getByRole("button", { name: "Close", exact: true }).click();
+await page.getByRole("button", { name: "Post chapter" }).click();
+await page.waitForURL(/\/c\/[^/]+(\/summary)?\?/);
+const posted = /\/c\/([^/?]+)/.exec(page.url())[1];
+const atNew = await codexAt(posted);
+ok(atNew.find((e) => e.name === "Zed").content === "A cheerful ferryman now." && atNew.some((e) => e.name === "Newbie"), "posting saves the held changes at the new chapter");
+atRoot = await codexAt(root);
+ok(atRoot.find((e) => e.name === "Zed").content === "A grumpy ferryman." && !atRoot.some((e) => e.name === "Newbie"), "…and the chapter before it is unchanged");
 
 // ideas for a new branch
 await page.goto(`${BASE}/c/${root}/write`);

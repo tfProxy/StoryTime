@@ -4,11 +4,16 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  addChange,
   changedFields,
+  DRAFT_ANCHOR,
+  draftOps,
   ENTRY_TYPES,
   entryHistory,
   foldCodex,
+  isDraftEntry,
   retiredEntries,
+  type CodexChange,
   type CodexEntry,
   type CodexOp,
   type EntryType,
@@ -25,42 +30,78 @@ type Props = {
   openAiHelper?: boolean;
   /** Shown inside the writing page's drawer: no chapter timeline or AI scan, just the entries. */
   embedded?: boolean;
+  /** Open with this entry's form showing ("new" for a new entry). */
+  startEditing?: string | null;
   /** The chapter whose codex is being viewed; changes made here are anchored at it. */
   chapterId: string;
   path: PathItem[];
   /** Every op on the path from the story root to this chapter. */
   ops: CodexOp[];
+  /**
+   * Changes held in the draft of the next chapter. When given, changes are kept there by default
+   * (and posted with the chapter); only changes anchored at an earlier chapter are saved straight away.
+   */
+  draft?: { changes: CodexChange[]; onChange: (next: CodexChange[]) => void };
 };
 
 type Fields = { name: string; type: EntryType; aliases: string[]; content: string; always_include: boolean };
+type Change = { op: CodexOp["op"]; entry_id?: string; anchor?: string } & Partial<Fields>;
 
 const when = (t: number) => new Date(t).toISOString().replace("T", " ").slice(0, 16) + " UTC";
+const localId = () => `draft-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 
-export default function CodexPanel({ story, openAiHelper, embedded, chapterId, path, ops }: Props) {
+export default function CodexPanel({ story, openAiHelper, embedded, startEditing, chapterId, path, ops, draft }: Props) {
   const router = useRouter();
   const settings = useSettings();
-  const titleOf = (id: string) => path.find((p) => p.id === id)?.title ?? "an earlier chapter";
+  const titleOf = (id: string) =>
+    id === DRAFT_ANCHOR ? "this chapter (not posted yet)" : (path.find((p) => p.id === id)?.title ?? "an earlier chapter");
 
-  const entries = foldCodex(ops);
-  const retired = retiredEntries(ops);
+  const allOps = draft ? [...ops, ...draftOps(draft.changes, (path.at(-1)?.depth ?? -1) + 1)] : ops;
+  const entries = foldCodex(allOps);
+  const retired = retiredEntries(allOps);
+  const pending = new Map((draft?.changes ?? []).map((c) => [c.entry_id, c]));
+  const discard = (entryId: string) => draft?.onChange(draft.changes.filter((c) => c.entry_id !== entryId));
 
   // null = closed, "new" = creating, otherwise the entry being edited
-  const [editing, setEditing] = useState<null | "new" | CodexEntry>(null);
+  const [editing, setEditing] = useState<null | "new" | CodexEntry>(() =>
+    startEditing === "new" ? "new" : (entries.find((e) => e.entry_id === startEditing) ?? null),
+  );
   const [historyOf, setHistoryOf] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function post(body: Record<string, unknown>): Promise<boolean> {
+  async function post({ anchor, ...change }: Change): Promise<boolean> {
+    const at = anchor ?? (draft ? DRAFT_ANCHOR : chapterId);
+    if (draft && at === DRAFT_ANCHOR) {
+      const entryId = change.op === "create" ? localId() : change.entry_id!;
+      const was = [...entries, ...retired].find((e) => e.entry_id === entryId);
+      draft.onChange(
+        addChange(draft.changes, {
+          op: change.op,
+          entry_id: entryId,
+          name: change.name ?? was?.name ?? "",
+          type: change.type ?? was?.type ?? "note",
+          aliases: change.aliases ?? was?.aliases ?? [],
+          content: change.content ?? was?.content ?? "",
+          always_include: change.always_include ?? was?.always_include ?? false,
+        }),
+      );
+      return true;
+    }
+    // An entry that only exists in the draft becomes a real one when it is saved to an earlier chapter.
+    const body = change.entry_id && isDraftEntry(change.entry_id) ? { ...change, op: "create", entry_id: undefined } : change;
     setBusy(true);
     setError(null);
     try {
       const res = await fetch("/api/codex", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ anchor_chapter_id: chapterId, author_name: settings.authorName, ...body }),
+        body: JSON.stringify({ anchor_chapter_id: at, author_name: settings.authorName, ...body }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+      // The saved version now holds what the form showed, so a held change to the same entry would only override it.
+      if (change.entry_id) discard(change.entry_id);
       router.refresh();
       return true;
     } catch (e) {
@@ -95,13 +136,22 @@ export default function CodexPanel({ story, openAiHelper, embedded, chapterId, p
         ))}
       </nav>
       )}
-      <p className="notice">
-        This is the codex as of <strong>{titleOf(chapterId)}</strong>. Anything you add or change here takes effect from
-        this chapter onward on this branch, and other branches never see it.
-        {embedded
-          ? " Use “Takes effect from” on an entry to record a change that happened earlier."
-          : " To record a change that happened earlier, pick that chapter above first."}
-      </p>
+      {draft ? (
+        <p className="notice">
+          Changes you make here belong to the chapter you&apos;re writing: the AI uses them straight away, and they are
+          saved with the chapter when you post it, for it and the chapters after it. To record something that happened
+          earlier, pick that chapter under &ldquo;Takes effect from&rdquo;; that is saved immediately and reaches every
+          branch below it.
+        </p>
+      ) : (
+        <p className="notice">
+          This is the codex as of <strong>{titleOf(chapterId)}</strong>. Anything you add or change here takes effect from
+          this chapter onward on this branch, and other branches never see it.
+          {embedded
+            ? " Use “Takes effect from” on an entry to record a change that happened earlier."
+            : " To record a change that happened earlier, pick that chapter above first."}
+        </p>
+      )}
 
       {error && <p className="error">{error}</p>}
 
@@ -123,12 +173,13 @@ export default function CodexPanel({ story, openAiHelper, embedded, chapterId, p
           chapterId={chapterId}
           path={path}
           entries={entries}
+          inDraft={!!draft}
           onCancel={() => setEditing(null)}
           onSave={async (f, anchorId) => {
             const ok = await post(
               editing === "new"
-                ? { op: "create", anchor_chapter_id: anchorId, ...f }
-                : { op: "replace", entry_id: editing.entry_id, anchor_chapter_id: anchorId, ...f },
+                ? { op: "create", anchor: anchorId, ...f }
+                : { op: "replace", entry_id: editing.entry_id, anchor: anchorId, ...f },
             );
             if (ok) setEditing(null);
           }}
@@ -147,14 +198,18 @@ export default function CodexPanel({ story, openAiHelper, embedded, chapterId, p
             <h2 style={{ textTransform: "capitalize" }}>{type}s</h2>
             {group.map((e) => {
               const here = e.op.anchor_chapter_id === chapterId;
-              const hist = entryHistory(ops, e.entry_id);
+              const held = pending.get(e.entry_id);
+              const hist = entryHistory(allOps, e.entry_id);
               return (
                 <article key={e.entry_id} className="card">
                   <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div>
                       <strong>{e.name}</strong>{" "}
                       {e.always_include && <span className="tag">· always included</span>}{" "}
-                      {here && <span className="tag">· changed in this chapter</span>}
+                      {here && !draft && <span className="tag">· changed in this chapter</span>}
+                      {held && (
+                        <span className="tag">· {held.op === "create" ? "new" : "changed"} in this chapter, saved when you post</span>
+                      )}
                       {e.aliases.length > 0 && <div className="meta">Also: {e.aliases.join(", ")}</div>}
                     </div>
                     <div className="row">
@@ -173,6 +228,11 @@ export default function CodexPanel({ story, openAiHelper, embedded, chapterId, p
                       >
                         Retire
                       </button>
+                      {held && (
+                        <button type="button" className="secondary" disabled={busy} onClick={() => discard(e.entry_id)}>
+                          {held.op === "create" ? "Delete" : "Undo change"}
+                        </button>
+                      )}
                     </div>
                   </div>
                   <p style={{ whiteSpace: "pre-wrap", margin: "0.5rem 0" }}>{e.content || <em>(no description)</em>}</p>
@@ -192,7 +252,8 @@ export default function CodexPanel({ story, openAiHelper, embedded, chapterId, p
                           <li key={v.id}>
                             <div className="meta" style={{ margin: 0 }}>
                               <strong>{v.op === "retire" ? "Retired" : prev ? "Changed" : "Created"}</strong> in “
-                              {titleOf(v.anchor_chapter_id)}”{v.author_name && ` by ${v.author_name}`} · {when(v.posted_at)}
+                              {titleOf(v.anchor_chapter_id)}”{v.author_name && ` by ${v.author_name}`} ·{" "}
+                              {v.anchor_chapter_id === DRAFT_ANCHOR ? "saved when you post" : when(v.posted_at)}
                               {prev && v.op !== "retire" && ` · ${changedFields(prev, v).join(", ") || "no changes"}`}
                               {isCurrent && " · current"}
                             </div>
@@ -235,9 +296,15 @@ export default function CodexPanel({ story, openAiHelper, embedded, chapterId, p
               <span>
                 <strong>{e.name}</strong> <span className="meta">[{e.type}]</span>
               </span>
-              <button type="button" className="secondary" disabled={busy} onClick={() => restore(e, e.entry_id)}>
-                Bring back
-              </button>
+              {pending.get(e.entry_id)?.op === "retire" ? (
+                <button type="button" className="secondary" disabled={busy} onClick={() => discard(e.entry_id)}>
+                  Undo retire
+                </button>
+              ) : (
+                <button type="button" className="secondary" disabled={busy} onClick={() => restore(e, e.entry_id)}>
+                  Bring back
+                </button>
+              )}
             </div>
           ))}
         </section>
@@ -253,9 +320,11 @@ function EntryForm({
   chapterId,
   path,
   entries,
+  inDraft,
   onSave,
   onCancel,
 }: {
+  inDraft: boolean;
   initial: CodexEntry | null;
   busy: boolean;
   story: StoryInfo;
@@ -271,7 +340,7 @@ function EntryForm({
   const [aliases, setAliases] = useState((initial?.aliases ?? []).join(", "));
   const [content, setContent] = useState(initial?.content ?? "");
   const [always, setAlways] = useState(initial?.always_include ?? false);
-  const [anchorId, setAnchorId] = useState(chapterId);
+  const [anchorId, setAnchorId] = useState(inDraft ? DRAFT_ANCHOR : chapterId);
 
   // AI help
   const [direction, setDirection] = useState("");
@@ -426,12 +495,18 @@ function EntryForm({
         Always include in AI prompts <small>(otherwise only when the name or an alias appears nearby)</small>
       </label>
       <label>
-        Takes effect from <small>(this chapter and everything after it on this branch)</small>
+        Takes effect from{" "}
+        <small>
+          {inDraft
+            ? "(the chapter you're writing, or an earlier one if it changed before; an earlier chapter is saved now and reaches every branch below it)"
+            : "(this chapter and everything after it on this branch)"}
+        </small>
         <select value={anchorId} onChange={(e) => setAnchorId(e.target.value)}>
+          {inDraft && <option value={DRAFT_ANCHOR}>This chapter (saved when you post it)</option>}
           {path.map((c) => (
             <option key={c.id} value={c.id}>
               {c.title}
-              {c.id === chapterId ? " (this chapter)" : ""}
+              {inDraft ? " (saved now)" : c.id === chapterId ? " (this chapter)" : ""}
             </option>
           ))}
         </select>

@@ -48,6 +48,30 @@ ok((await op("missing", { op: "create", name: "X" })).status === 404, "unknown c
 ok((await state("missing")).error === "Not found" || true, "state of unknown chapter");
 const all = (await state(a2)).ops; ok(all.length === 3 || all.length === 2, "A2 path ops: " + all.length);
 
+// codex changes posted with a chapter are anchored at it, all or nothing
+const a2choice = await call("POST", "/api/chapters", { parent_chapter_id: a2, new_choice_label: "On", title: "A3", body: "x",
+  author_name: "Bo", codex_changes: [
+    { op: "create", name: "Zed", type: "character", content: "A ferryman." },
+    { op: "replace", entry_id: mira, name: "Mira", type: "character", content: "A horse with wings." },
+  ] });
+ok(a2choice.status === 201, "a chapter can be posted with codex changes");
+const a3 = a2choice.json.chapter_id;
+s = await state(a3);
+ok(s.entries.length === 2 && s.entries.find((e) => e.name === "Zed") && s.entries.find((e) => e.entry_id === mira).content === "A horse with wings.", "the changes apply at the new chapter");
+ok(s.ops.filter((o) => o.anchor_chapter_id === a3).every((o) => o.author_name === "Bo") && s.ops.filter((o) => o.anchor_chapter_id === a3).length === 2, "…anchored at it, by its author");
+ok((await state(a2)).entries.find((e) => e.entry_id === mira).content === "Now a horse.", "the parent is unaffected");
+const before = (await call("GET", `/api/chapters/${a2}`)).json.choices.length;
+r = await call("POST", "/api/chapters", { parent_chapter_id: a2, new_choice_label: "Bad", title: "A4", body: "x", codex_changes: [{ op: "retire", entry_id: "nope" }] });
+ok(r.status === 409 && (await call("GET", `/api/chapters/${a2}`)).json.choices.length === before, "a bad codex change rejects the whole post: " + r.json?.error);
+ok((await call("POST", "/api/chapters", { parent_chapter_id: a2, new_choice_label: "Bad", title: "A4", body: "x", codex_changes: [{ op: "create", name: "" }] })).status === 400, "codex changes are validated");
+
+// …and with an edit
+const key = "k".repeat(32);
+const bc = await call("POST", "/api/chapters", { parent_chapter_id: b, new_choice_label: "Go", title: "B2", body: "b", edit_key: key });
+r = await call("PATCH", `/api/chapters/${bc.json.chapter_id}`, { edit_key: key, base_revision: 1, title: "B2", body: "b!", edited_by: "Cy",
+  codex_changes: [{ op: "create", name: "Lamp", type: "item", content: "Brass." }] });
+ok(r.status === 200 && (await state(bc.json.chapter_id)).entries.some((x) => x.name === "Lamp") && !(await state(b)).entries.some((x) => x.name === "Lamp"), "an edit can carry codex changes, anchored at the edited chapter");
+
 // pages
 for (const u of [`/c/${root}/codex`, `/c/${a2}/codex`, `/c/${b}/codex`]) { const x = await fetch(B + u); ok(x.status === 200, `${u} -> ${x.status}`); }
 ok((await fetch(`${B}/c/nope/codex`)).status === 404, "codex page 404");

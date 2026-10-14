@@ -8,21 +8,44 @@ const text = (max: number) => z.string().trim().max(max);
 
 export const CODEX_LIMITS = { name: 100, content: 8000, alias: 60, aliases: 10 };
 
-export const NewCodexOpSchema = z
-  .object({
-    anchor_chapter_id: z.string().min(1),
-    op: z.enum(["create", "replace", "retire"]),
-    /** Required for replace and retire; ignored for create (the server assigns one). */
-    entry_id: z.string().min(1).optional(),
-    name: text(CODEX_LIMITS.name).default(""),
-    type: z.enum(ENTRY_TYPES).default("note"),
-    aliases: z.array(text(CODEX_LIMITS.alias).min(1)).max(CODEX_LIMITS.aliases).default([]),
-    content: text(CODEX_LIMITS.content).default(""),
-    always_include: z.boolean().default(false),
-    author_name: text(LIMITS.author).default(""),
-  })
-  .refine((v) => v.op === "create" || v.entry_id !== undefined, { message: "entry_id is required for replace and retire" })
-  .refine((v) => v.op === "retire" || v.name.length > 0, { message: "name is required" });
+const changeFields = {
+  op: z.enum(["create", "replace", "retire"]),
+  /** Required for replace and retire; ignored for create (the server assigns one). */
+  entry_id: z.string().min(1).optional(),
+  name: text(CODEX_LIMITS.name).default(""),
+  type: z.enum(ENTRY_TYPES).default("note"),
+  aliases: z.array(text(CODEX_LIMITS.alias).min(1)).max(CODEX_LIMITS.aliases).default([]),
+  content: text(CODEX_LIMITS.content).default(""),
+  always_include: z.boolean().default(false),
+};
+
+const checkChange = <T extends z.ZodType<{ op: string; entry_id?: string; name: string }>>(schema: T) =>
+  schema
+    .refine((v) => v.op === "create" || v.entry_id !== undefined, { message: "entry_id is required for replace and retire" })
+    .refine((v) => v.op === "retire" || v.name.length > 0, { message: "name is required" });
+
+export const NewCodexOpSchema = checkChange(
+  z.object({ anchor_chapter_id: z.string().min(1), ...changeFields, author_name: text(LIMITS.author).default("") }),
+);
+
+/** Codex changes sent along with a chapter; they are anchored at that chapter when it is saved. */
+export const CodexChangesSchema = z.object({
+  codex_changes: z.array(checkChange(z.object(changeFields))).max(50).default([]),
+});
+
+/** Runs `save` (which posts or edits a chapter) and anchors the codex changes at that chapter, all or nothing. */
+export function saveWithCodexChanges<R>(
+  changes: z.infer<typeof CodexChangesSchema>["codex_changes"],
+  author: string,
+  save: () => R,
+  anchorOf: (r: R) => string,
+): R {
+  return db().transaction(() => {
+    const result = save();
+    for (const c of changes) createCodexOp({ ...c, anchor_chapter_id: anchorOf(result), author_name: author });
+    return result;
+  })();
+}
 
 type Row = {
   id: string;

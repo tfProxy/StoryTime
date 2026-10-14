@@ -354,6 +354,29 @@ button.danger {
   white-space: nowrap;
 }
 
+.codex-entry {
+  flex-wrap: wrap;
+}
+
+.codex-entry-name {
+  flex: 1 1 12rem;
+}
+
+.codex-pick .linkish {
+  padding: 0;
+  white-space: normal;
+  text-align: left;
+}
+
+.codex-entry-detail {
+  flex-basis: 100%;
+}
+
+.codex-entry-detail p {
+  white-space: pre-wrap;
+  margin: 0.25rem 0;
+}
+
 .codex-other {
   font-size: 0.9rem;
   margin: 0.75rem 0 0;

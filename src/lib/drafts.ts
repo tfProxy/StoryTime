@@ -2,6 +2,8 @@
 
 // Drafts live only in this browser (IndexedDB). Nothing reaches the server until Post.
 
+import type { CodexChange } from "./codex";
+
 export type DraftVersion = { title: string; body: string };
 
 export type Draft = {
@@ -29,6 +31,8 @@ export type Draft = {
   summary?: string;
   /** The last generated summaries and the chapter text they describe, so posting can reuse them. */
   aiSummary?: { summary: string; path_summary: string; body: string };
+  /** Codex changes made while writing; they are anchored at this chapter when it is posted. */
+  codexChanges?: CodexChange[];
   // Only used when editing a posted chapter:
   /** The chapter revision this draft started from. */
   baseRevision?: number;

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   budgetFor,
   codexBudget,
@@ -18,6 +19,11 @@ type Props = {
   contextTokens: number;
   overrides: CodexOverrides;
   onChange: (next: CodexOverrides) => void;
+  /** Opens an entry for editing (by entry id); without it entries can only be read here. */
+  onEdit?: (entryId: string) => void;
+  onNew?: () => void;
+  /** Ids of entries added or changed in the draft (not saved until it is posted). */
+  held?: string[];
 };
 
 function why(r: CodexStatus): string {
@@ -28,9 +34,21 @@ function why(r: CodexStatus): string {
 }
 
 // Shows which codex entries will be sent with the next prompt and lets the author add or drop them.
-export default function CodexPreview({ ctx, direction, contextTokens, overrides, onChange }: Props) {
+export default function CodexPreview({ ctx, direction, contextTokens, overrides, onChange, onEdit, onNew, held }: Props) {
+  // The entry whose description is shown.
+  const [open, setOpen] = useState<string | null>(null);
   const entries = ctx.codex ?? [];
-  if (entries.length === 0) return null;
+  if (entries.length === 0) {
+    return onNew ? (
+      <p className="meta">
+        No codex entries yet.{" "}
+        <button type="button" className="linkish" onClick={onNew}>
+          Add one
+        </button>{" "}
+        so the AI remembers characters, places and facts.
+      </p>
+    ) : null;
+  }
 
   const rows = explainCodex(entries, codexTrigger(ctx, direction), codexBudget(budgetFor(contextTokens)), overrides);
   const used = rows.filter((r) => r.state === "included");
@@ -50,17 +68,40 @@ export default function CodexPreview({ ctx, direction, contextTokens, overrides,
   };
   const putBack = (key: string) => onChange({ include: overrides.include, exclude: without(overrides.exclude, key) });
 
-  const row = (r: CodexStatus, action: { label: string; run: () => void }) => (
-    <li key={codexKey(r.entry)} className="codex-pick">
-      <span>
-        <strong>{r.entry.name}</strong> <span className="meta">[{r.entry.type}]</span>{" "}
-        <span className="tag">· {r.state === "off" ? "not mentioned" : why(r)}</span>
-      </span>
-      <button type="button" className="secondary" onClick={action.run}>
-        {action.label}
-      </button>
-    </li>
-  );
+  const row = (r: CodexStatus, action: { label: string; run: () => void }) => {
+    const key = codexKey(r.entry);
+    const shown = open === key;
+    const id = r.entry.id;
+    return (
+      <li key={key} className="codex-pick codex-entry">
+        <span className="codex-entry-name">
+          <button type="button" className="linkish" aria-expanded={shown} onClick={() => setOpen(shown ? null : key)}>
+            <strong>{r.entry.name}</strong>
+          </button>{" "}
+          <span className="meta">[{r.entry.type}]</span>{" "}
+          <span className="tag">· {r.state === "off" ? "not mentioned" : why(r)}</span>
+          {id && held?.includes(id) && <span className="tag"> · changed in this draft</span>}
+        </span>
+        <span className="row">
+          {onEdit && id && (
+            <button type="button" className="secondary" onClick={() => onEdit(id)}>
+              Edit
+            </button>
+          )}
+          <button type="button" className="secondary" onClick={action.run}>
+            {action.label}
+          </button>
+        </span>
+        {shown && (
+          <div className="codex-entry-detail">
+            {r.entry.aliases.length > 0 && <div className="meta">Also: {r.entry.aliases.join(", ")}</div>}
+            {r.entry.always_include && <div className="meta">Always included in prompts.</div>}
+            <p>{r.entry.content || <em>(no description)</em>}</p>
+          </div>
+        )}
+      </li>
+    );
+  };
 
   return (
     <details className="codex-preview">
@@ -70,7 +111,7 @@ export default function CodexPreview({ ctx, direction, contextTokens, overrides,
       </summary>
       <p className="meta">
         Entries are picked when they are &ldquo;always included&rdquo; or their name appears in the premise, the last few
-        chapters, the choice or what you type above. This list updates as you type.
+        chapters, the choice or what you type above. This list updates as you type. Click a name to read its entry.
       </p>
       {used.length + wanted.length + excluded.length > 0 && (
         <ul className="codex-picks">
@@ -85,6 +126,11 @@ export default function CodexPreview({ ctx, direction, contextTokens, overrides,
           <h3 className="codex-other">Other entries</h3>
           <ul className="codex-picks">{others.map((r) => row(r, { label: "Add", run: () => add(codexKey(r.entry)) }))}</ul>
         </>
+      )}
+      {onNew && (
+        <button type="button" className="secondary" onClick={onNew}>
+          + New entry
+        </button>
       )}
     </details>
   );
