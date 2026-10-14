@@ -17,8 +17,9 @@ Anthropic, or a local model through Ollama), and their keys never leave their br
   the page; those changes stay in the draft and are saved with the chapter when it is posted (or
   straight away, if you date them to an earlier chapter).
 - **Edit your chapters later** from the browser that posted them; every earlier version is kept.
-- **Outline and export**: a tree view of every branch, and downloads as readable Markdown, Twine
-  (Twee) or full JSON.
+- **Outline and export**: a tree view of every branch, and downloads as readable Markdown, a single
+  HTML file that plays the story offline (it remembers what the reader has seen, and can forget it),
+  Twine (Twee) or full JSON. The HTML and Twine files include only finished branches.
 - **Moderation**: a password-protected admin page and a command-line tool.
 
 ## Run locally

@@ -148,11 +148,12 @@ export function toMarkdown(data: StoryExport): string {
 }
 
 /**
- * Twee 3 source, importable into Twine 2 (Library > Import). Only finished branches are included:
- * a chapter is kept if it ends the story (no choices) or has a choice that leads to a kept chapter.
- * Choices nobody has written yet, and chapters that can only lead to them, are left out.
+ * The playable part of a story, for exports that can't show "not written yet": a chapter is kept
+ * if it ends the story (no choices) or has a choice that leads to a kept chapter. Choices nobody
+ * has written yet, and chapters that can only lead to them, are left out. The first chapter always
+ * stays so there is somewhere to start, even if nothing is finished yet.
  */
-export function toTwee(data: StoryExport): string {
+export function finishedBranches(data: StoryExport) {
   const childBy = new Map<string, ChapterRow>();
   for (const c of data.chapters) if (c.parent_choice_id) childBy.set(c.parent_choice_id, c);
   const choicesBy = new Map<string, ChoiceRow[]>();
@@ -167,13 +168,19 @@ export function toTwee(data: StoryExport): string {
     finished.set(c.id, result);
     return result;
   };
-  // The first chapter always stays so the file has a start passage, even if nothing is finished yet.
   const chapters = data.chapters.filter((c, i) => i === 0 || isFinished(c));
   const kept = new Set(chapters.map((c) => c.id));
+  /** The chapter a choice leads to, if it is part of the playable story. */
   const leadsToKept = (ch: ChoiceRow) => {
     const child = childBy.get(ch.id);
     return !!child && kept.has(child.id) && isFinished(child);
   };
+  return { chapters, childBy, choicesBy, leadsToKept };
+}
+
+/** Twee 3 source, importable into Twine 2 (Library > Import). Only finished branches are included. */
+export function toTwee(data: StoryExport): string {
+  const { chapters, childBy, choicesBy, leadsToKept } = finishedBranches(data);
 
   const names = new Map<string, string>();
   const used = new Set<string>();

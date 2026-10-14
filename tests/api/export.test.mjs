@@ -77,5 +77,13 @@ x = await get(`/api/stories/${story}/export?format=twee`);
 ok(pending && mixed && !x.text.includes("Pending") && !x.text.includes("Wait here") && !x.text.includes("Later"), "a branch that only leads to unwritten choices is left out");
 ok(!x.text.includes(":: Side") && !x.text.includes("Side road") && x.text.includes("[[Deeper->Deep]]") && x.text.includes(":: Left\n"), "an unfinished side branch is dropped but the finished one stays");
 ok((x.text.match(/^:: /gm) ?? []).length === 5, "still only the finished chapters");
+// ---- offline HTML ----
+x = await get(`/api/stories/${story}/export?format=html`);
+ok(x.status === 200 && /text\/html/.test(x.headers.get("content-type")) && /filename="the-export-tale\.html"/.test(x.headers.get("content-disposition")), "html download");
+const embedded = JSON.parse(/<script id="story-data" type="application\/json">([\s\S]*?)<\/script>/.exec(x.text)[1]);
+const titles = Object.values(embedded.pages).map((p) => p.t).sort().join();
+ok(embedded.title === "The Export: Tale!" && embedded.pages[embedded.start].t === "Start" && titles === "Deep,Left,Start", "the embedded story has only the finished chapters: " + titles);
+ok(!x.text.includes("Pending") && !x.text.includes("Wait here"), "unfinished branches are left out of the html too");
+ok(!x.text.includes(":: not a passage</script>") && (x.text.match(/<\/script>/g) ?? []).length === 2, "story text can't close the script element");
 // the same story in Markdown still shows everything
 ok((await get(`/api/stories/${story}/export?format=md`)).text.includes("Pending"), "markdown keeps unfinished branches");

@@ -30,6 +30,7 @@ export default function Home() {
             <div className="story-menu-items">
               <Link href={`/s/${s.id}/outline`}>Outline</Link>
               <a href={download(s.id, "md")}>Download readable (Markdown)</a>
+              <a href={download(s.id, "html")}>Download to play offline (HTML)</a>
               <a href={download(s.id, "twee")}>Download Twine (Twee)</a>
               <a href={download(s.id, "json")}>Download everything (JSON)</a>
             </div>
