@@ -47,6 +47,7 @@ await page.getByLabel("Story title").fill("The Haunted Inn");
 await page.getByLabel(/^Premise/).fill("A cursed inn on a hill.");
 await page.getByLabel(/What should happen/).fill("a stranger arrives");
 await page.getByRole("button", { name: "Generate chapter" }).click();
+await page.getByRole("button", { name: "Edit text" }).click();
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("She entered."));
 ok((await page.getByLabel("Chapter title").inputValue()) === "The Door", "title extracted from stream");
 const body1 = await page.getByLabel("Chapter text").inputValue();
@@ -56,6 +57,7 @@ ok(sent[0].role === "system" && sent[1].content.includes("Premise: A cursed inn"
 
 await page.getByPlaceholder(/Ask the AI to change it/).fill("make it tenser");
 await page.getByRole("button", { name: "Revise" }).click();
+await page.getByRole("button", { name: "Edit text" }).click();
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("trembling"));
 ok((await page.getByLabel("Chapter title").inputValue()) === "The Door Revised", "revise updated title");
 await page.getByRole("button", { name: "Undo" }).click();
@@ -77,8 +79,6 @@ await page.getByText("The Door").first().waitFor({ timeout: 5000 }).catch(() => 
 await page.getByRole("link", { name: /The Door/ }).click();
 await page.waitForURL("**/new");
 
-await page.getByRole("button", { name: "Review and post…" }).click();
-ok(await page.getByText("This is exactly what will be posted").isVisible(), "preview shown");
 await page.getByRole("button", { name: "Post chapter" }).click();
 await page.waitForURL(/\/c\/[^/]+\?posted=1/);
 ok(await page.getByRole("heading", { name: "The Door" }).isVisible(), "posted chapter displayed");
@@ -109,8 +109,6 @@ await page.waitForTimeout(800);
 await page.reload(); // draft should survive
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("slammed"));
 ok((await page.getByLabel("Existing choice").nth(0).inputValue()) === "Push the door", "edit draft (incl. choice rename) survives reload");
-await page.getByRole("button", { name: /Review changes/ }).click();
-ok(await page.getByText("The current version is kept in its history").isVisible(), "edit preview shown");
 await page.getByRole("button", { name: "Save changes" }).click();
 await page.waitForURL(chapterUrl);
 ok(await page.getByText(/slammed/).first().isVisible(), "edited text shown");
@@ -148,6 +146,7 @@ await page.goto(chapterUrl);
 await page.locator("a.card.choice-unwritten", { hasText: "Push the door" }).click();
 await page.waitForURL(/write\?choice=/);
 await page.getByRole("button", { name: "Generate chapter" }).click();
+await page.getByRole("button", { name: "Edit text" }).click();
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("She entered."));
 const c2 = reqs.at(-1).messages[1].content;
 ok(c2.includes("The reader chose: \"Push the door\"") && c2.includes("It creaked, then slammed.") && c2.includes("Premise: A cursed inn"), "continuation prompt carries story so far + choice");

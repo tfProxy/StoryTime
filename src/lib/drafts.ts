@@ -25,6 +25,10 @@ export type Draft = {
   versions?: DraftVersion[];
   /** Which of `versions` is currently showing. */
   versionIndex?: number;
+  /** The chapter's summary, written by the author or generated. Made at post time if left empty. */
+  summary?: string;
+  /** The last generated summaries and the chapter text they describe, so posting can reuse them. */
+  aiSummary?: { summary: string; path_summary: string; body: string };
   // Only used when editing a posted chapter:
   /** The chapter revision this draft started from. */
   baseRevision?: number;

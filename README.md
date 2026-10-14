@@ -8,9 +8,9 @@ Anthropic, or a local model through Ollama), and their keys never leave their br
 
 - **Read and write** branching stories. Any chapter can have any number of choices; a choice stays
   "unwritten" until someone writes the chapter for it (first poster wins).
-- **AI drafting** in the browser: describe what should happen and the AI drafts the chapter,
-  using the story so far and the codex. Revise with instructions, undo, suggest choices, then
-  review and post. "Continue with AI" jumps straight to a draft.
+- **AI drafting** in the browser, in four steps: brainstorm ideas and pick the codex entries, have
+  the AI write the chapter from the story so far (revise, undo, step between drafts), write or
+  generate a summary and choices, then post. "Continue with AI" jumps straight to a draft.
 - **Codex**: per-branch notes on characters, places and facts (a character who turns into a horse
   stays human on other branches). The AI can scan chapters for entries, draft entries, and bring an
   entry up to date with the story.
@@ -101,10 +101,13 @@ slot has been refilled in the meantime.
   a chapter and applies to that chapter and its descendants. The codex at a chapter is the fold of
   the changes on the path from the root to it (deeper anchors win, then later posts). Codex changes
   never touch chapter text, and other branches never see them.
-- Each chapter can carry a `summary` (of itself) and a `path_summary` (the story through it). The
-  browser generates them with the cheaper model when a chapter is posted or edited, and fills in
-  any that are missing (for example below an edited chapter) before generating, but only when older
-  chapters would not fit in the context budget. They are a cache: anyone can fill a missing one,
+- Each chapter can carry a `summary` (a paragraph about itself, written by the author or generated
+  from the chapter text) and a `path_summary` (a rolling summary of the story through it). Prompts
+  send the most recent chapters verbatim, the ones before as their own summaries, and the rolling
+  summary only for whatever is older still, so most of the context is one step from the original
+  text. The browser generates them with the cheaper model when a chapter is posted or edited, and
+  fills in any that are missing (for example below an edited chapter) before generating, but only
+  when older chapters would not fit in the context budget. They are a cache: anyone can fill a missing one,
   and nobody can overwrite an existing one except the chapter's author by editing it.
 
 ## Tests

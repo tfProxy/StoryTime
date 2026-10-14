@@ -1,5 +1,5 @@
 import http from "node:http";
-import { ensurePathSummaries, neededSummaryIndex, parseSummaryReply, summarizeChapter } from "../../src/lib/ai/summaries.ts";
+import { ensurePathSummaries, neededSummaryIndex, parseSummaryReply, summarizeChapter, summaryWords } from "../../src/lib/ai/summaries.ts";
 import { buildStorySoFar, summaryCoverageIndex } from "../../src/lib/ai/prompts.ts";
 import { DEFAULT_SETTINGS } from "../../src/lib/settings.ts";
 
@@ -65,6 +65,12 @@ reply = () => (++n === 1 ? "Sorry, I can't." : ["SUMMARY:", "A.", "STORY SO FAR:
 s = await summarizeChapter(settings, { story, previous: null, chapter: { title: "x", body: "y" } });
 ok(n === 2 && s.summary === "A." && s.path_summary === "B.", "a bad first reply is retried once");
 reply = keep;
+
+// the author's own summary is kept; only the story-so-far comes from the model
+s = await summarizeChapter(settings, { story, previous: null, chapter: { title: "C1", body: "Mira ran." }, summary: "  Mine.  " });
+ok(s.summary === "Mine." && s.path_summary === "SOFAR(C1)" && prompts.at(-1)!.user.includes("Use it unchanged as the SUMMARY:\nMine."), "an author's summary is used as written");
+ok(prompts.at(-2)!.user.includes("Make the SUMMARY about 40 words"), "a generated summary is asked for at a set length");
+ok(summaryWords("w ".repeat(100)) === 40 && summaryWords("w ".repeat(600)) === 80 && summaryWords("w ".repeat(5000)) === 150, "summary length scales with the chapter, within limits");
 
 const huge = "A".repeat(5000) + "MIDDLE" + "Z".repeat(200000);
 await summarizeChapter({ ...settings, contextTokens: 2000 }, { story, previous: null, chapter: { title: "big", body: huge } });

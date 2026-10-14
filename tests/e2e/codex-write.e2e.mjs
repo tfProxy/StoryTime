@@ -67,6 +67,7 @@ ok(/added by you/.test(await row("Qux").innerText()), "an entry can be added by 
 await row("Mira").getByRole("button", { name: "Leave out" }).click();
 ok(/left out by you/.test(await row("Mira").innerText()), "an entry can be left out");
 await page.getByRole("button", { name: "Generate chapter" }).click();
+await page.getByRole("button", { name: "Edit text" }).click();
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("Hello there"));
 const p = prompts.at(-1);
 ok(p.includes("Zed [character]") && p.includes("Qux [character]") && p.includes("The Rule [lore]"), "the prompt carries the chosen entries");

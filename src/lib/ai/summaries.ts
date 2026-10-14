@@ -13,11 +13,17 @@ export type Summaries = { summary: string; path_summary: string };
 const SYSTEM_SUMMARY = `You maintain a running summary of a branching story so that later writers can keep it consistent without re-reading everything.
 Reply in exactly this format, with no other text:
 SUMMARY:
-2-4 sentences covering only the events, names and outcomes of the chapter you are given.
+A short paragraph covering only the chapter you are given: what happens, who is involved, what changes, and any thread left open. Use the length you are asked for. Write it from the chapter itself.
 STORY SO FAR:
 The updated running summary of the whole story up to and including this chapter. Start from the previous summary (if there is one) and fold this chapter in. Keep it under about 300 words. Keep names, relationships, key events, unresolved threads and the current situation; compress older details first. Plain prose, past tense, no commentary.`;
 
 const clip = (s: string) => s.trim().slice(0, LIMITS.summary);
+
+/** About an eighth of the chapter, so each summary keeps the detail later chapters may need. */
+export function summaryWords(body: string): number {
+  const words = body.trim().split(/\s+/).filter(Boolean).length;
+  return Math.min(150, Math.max(40, Math.round(words / 8 / 10) * 10));
+}
 
 /** One step: fold a chapter into the running summary. `previous` is null for a story's first chapter. */
 export async function summarizeChapter(
@@ -26,9 +32,12 @@ export async function summarizeChapter(
     story: { title: string; premise: string };
     previous: string | null;
     chapter: { title: string; body: string };
+    /** The author's own summary of the chapter; used as-is instead of a generated one. */
+    summary?: string;
     signal?: AbortSignal;
   },
 ): Promise<Summaries> {
+  const own = opts.summary?.trim() ? clip(opts.summary) : null;
   const budget = Math.max(1000, settings.contextTokens - 1500);
   // A chapter can be longer than the model's window; keep the start and the end.
   const maxChars = budget * 3;
@@ -42,7 +51,9 @@ export async function summarizeChapter(
       ? `Summary of the story before this chapter:\n${opts.previous}`
       : "This is the first chapter, so there is no earlier summary.",
     `Chapter: "${opts.chapter.title}"\n${body}`,
-    "Reply with the JSON.",
+    own
+      ? `The author has already summarized this chapter. Use it unchanged as the SUMMARY:\n${own}`
+      : `Make the SUMMARY about ${summaryWords(opts.chapter.body)} words.`,
   ].join("\n\n");
 
   // Small or "thinking" models sometimes ramble or break the format, so give it one more go.
@@ -56,7 +67,8 @@ export async function summarizeChapter(
       signal: opts.signal,
     });
     try {
-      return parseSummaryReply(reply);
+      const parsed = parseSummaryReply(reply);
+      return own ? { ...parsed, summary: own } : parsed;
     } catch (e) {
       lastError = e;
     }

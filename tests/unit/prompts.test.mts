@@ -41,3 +41,22 @@ ok(ideas.length === 2 && ideas[0].choice === "Follow the stranger" && ideas[0].d
 ok(parseIdeas("nothing").length === 0 && parseIdeas("[oops").length === 0, "parseIdeas copes with junk");
 const ip = ideasPrompt({ storyTitle: "T", premise: "P", path: [ch(1)], choiceLabel: null, siblingChoices: ["Open it", "Run"] }, 8000);
 ok(ip.includes('"Open it", "Run"') && ip.includes("Suggest 4 distinct directions") && ip.includes("Premise: P"), "ideasPrompt lists existing choices and the story");
+const after = ideasPrompt({ storyTitle: "T", premise: "P", path: [ch(1)], choiceLabel: "Climb the tower", siblingChoices: ["Open it"] }, 8000);
+ok(after.includes('The reader chose: "Climb the tower"') && after.includes("following from the reader's choice") && !after.includes('"Open it"'), "ideasPrompt follows the choice text when there is one");
+const opening = ideasPrompt({ storyTitle: "T", premise: "P", path: [], choiceLabel: null }, 8000);
+ok(opening.includes("ways this story could open"), "ideasPrompt suggests openings for a new story");
+
+// ---- tiers: verbatim, then per-chapter summaries, then the rolling summary ----
+const tiered = Array.from({ length: 30 }, (_, i) => ch(i + 1, { summary: `SUMMARY-${i + 1} ${"word ".repeat(40)}`, path_summary: `ROLLING-${i + 1}` }));
+s = buildStorySoFar(tiered, 1000);
+const listedNums = [...s.matchAll(/- Ch(\d+): SUMMARY-/g)].map((m) => Number(m[1]));
+const rollingAt = Number(/Earlier in the story:\nROLLING-(\d+)/.exec(s)?.[1]);
+ok(s.includes("### Ch30") && listedNums.length > 3 && rollingAt > 0, `long story uses all three tiers (rolling through ${rollingAt}, listed ${listedNums[0]}–${listedNums.at(-1)})`);
+ok(listedNums[0] === rollingAt + 1 && listedNums.every((n, i) => n === listedNums[0] + i) && !s.includes("SUMMARY-30"), "no gaps or overlaps between the tiers");
+ok(estimateTokens(s) <= 1100, "stays near budget: " + estimateTokens(s));
+s = buildStorySoFar(tiered.slice(0, 6), 1000);
+ok(!s.includes("ROLLING-") && s.includes("Earlier in the story, chapter by chapter:\n- Ch1: SUMMARY-1"), "per-chapter summaries alone when they all fit");
+// a missing rolling summary at the boundary: the next one inside the listed range is used instead
+const gap = tiered.map((c, i) => (i === rollingAt - 1 ? { ...c, path_summary: null } : c));
+s = buildStorySoFar(gap, 1000);
+ok(s.includes(`Earlier in the story:\nROLLING-${rollingAt + 1}`) && !s.includes(`- Ch${rollingAt + 1}:`) && s.includes(`- Ch${rollingAt + 2}:`), "falls forward to the nearest rolling summary without leaving a gap");

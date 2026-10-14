@@ -88,6 +88,7 @@ ok((await page.getByText("Now a horse").count()) === 0, "root unaffected by the 
 // prompts carry the branch's codex
 await page.goto(`${BASE}/c/${A}/write?choice=${gallop.id}`);
 await page.getByRole("button", { name: "Generate chapter" }).click();
+await page.getByRole("button", { name: "Edit text" }).click();
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("Hello there"));
 const p = prompts.at(-1);
 ok(p.includes("Mira [character] (also: the thief, Mir): Now a horse. Cannot speak."), "continuation on A gets the horse entry");
@@ -96,6 +97,7 @@ await page.goto(`${BASE}/c/${B}`);
 await page.getByRole("link", { name: "Add a new choice and continue it" }).click();
 await page.getByLabel(/Choice text/).fill("Wander");
 await page.getByRole("button", { name: "Generate chapter" }).click();
+await page.getByRole("button", { name: "Edit text" }).click();
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("Hello there"));
 ok(prompts.at(-1).includes("A human thief with a scar."), "continuation on B gets the human entry");
 

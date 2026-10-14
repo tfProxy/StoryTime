@@ -89,7 +89,7 @@ function isBlank(d: Draft, target: Target): boolean {
       (d.incomingLabel ?? target.incomingLabel) === target.incomingLabel
     );
   }
-  return !(d.storyTitle || d.premise || d.newChoiceLabel || d.title || d.body || d.prompt || d.choices.some((c) => c.trim()));
+  return !(d.storyTitle || d.premise || d.newChoiceLabel || d.title || d.body || d.prompt || d.summary || d.choices.some((c) => c.trim()));
 }
 
 export default function ChapterEditor({ target, context, draftKey, resumeHref, draftLabel, autoGenerate, codexPanel }: Props) {
@@ -101,10 +101,11 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const [length, setLength] = useState<Length>("medium");
   const [instruction, setInstruction] = useState("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [busy, setBusy] = useState<null | "generate" | "refine" | "choices" | "ideas" | "post">(null);
+  const [busy, setBusy] = useState<null | "generate" | "refine" | "choices" | "ideas" | "summary" | "post">(null);
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [previewing, setPreviewing] = useState(false);
+  // The last action started, so its error shows in the section it came from.
+  const [lastAction, setLastAction] = useState<typeof busy>(null);
   // Story summaries generated during this session, by chapter id (also saved to the server).
   const [madeSummaries, setMadeSummaries] = useState<Record<string, Summaries>>({});
   const [status, setStatus] = useState<string | null>(null);
@@ -171,6 +172,13 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     storyTitle: storyInfo.title,
     premise: storyInfo.premise,
     path: withSummaries(context.path, madeSummaries),
+    // The choice text being typed here (a new branch, or a renamed one) is what the reader will have picked.
+    choiceLabel:
+      target.kind === "new"
+        ? draft.newChoiceLabel.trim() || null
+        : target.kind === "edit" && target.incomingLabel !== null
+          ? (draft.incomingLabel ?? "").trim() || target.incomingLabel
+          : context.choiceLabel,
     codexOverrides,
   };
 
@@ -198,6 +206,11 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     } finally {
       setStatus(null);
     }
+  }
+
+  function startBusy(kind: NonNullable<typeof busy>) {
+    setBusy(kind);
+    setLastAction(kind);
   }
 
   const patch = (p: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...p } : d));
@@ -230,7 +243,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     setError(null);
     const ctl = new AbortController();
     abortRef.current = ctl;
-    setBusy(kind);
+    startBusy(kind);
     setReading(true);
     let text = "";
     try {
@@ -263,7 +276,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   /** Ideas for a new branch from the chapter being continued; picking one fills in the form. */
   async function suggestIdeas() {
     setError(null);
-    setBusy("ideas");
+    startBusy("ideas");
     try {
       const text = await completeChat(settings, {
         system: SYSTEM_IDEAS,
@@ -284,7 +297,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   async function suggestChoices() {
     if (!draft) return;
     setError(null);
-    setBusy("choices");
+    startBusy("choices");
     try {
       const text = await completeChat(settings, {
         system: SYSTEM_CHOICES,
@@ -352,8 +365,11 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const keptExisting = existingChoices.filter((c) => !c.removed).length;
   const maxNew = Math.max(0, LIMITS.choices - (target.kind === "edit" ? keptExisting : 0));
 
-  /** Summary of this chapter and of the story through it, using the cheaper model. */
-  async function makeSummaries(signal: AbortSignal): Promise<Summaries> {
+  /**
+   * Summary of this chapter and of the story through it, using the cheaper model. `own` is the
+   * author's summary: kept as-is, with only the story-so-far generated around it.
+   */
+  async function makeSummaries(signal: AbortSignal, own?: string): Promise<Summaries> {
     if (!draft) throw new Error("Nothing to summarize");
     let path = ctx.path;
     const parent = path.length - 1;
@@ -373,32 +389,63 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       story: storyInfo,
       previous: parent >= 0 ? path[parent].path_summary : null,
       chapter: { title: draft.title, body: draft.body },
+      summary: own,
       signal,
     });
   }
 
+  async function summarize() {
+    if (!draft) return;
+    setError(null);
+    startBusy("summary");
+    const ctl = new AbortController();
+    abortRef.current = ctl;
+    const body = draft.body;
+    try {
+      const s = await makeSummaries(ctl.signal);
+      patch({ summary: s.summary, aiSummary: { ...s, body } });
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === "AbortError")) setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStatus(null);
+      setBusy(null);
+    }
+  }
+
+  // A generated summary is out of date once the chapter changes (unless the author has rewritten it).
+  const ownSummary = (draft.summary ?? "").trim();
+  const summaryStale = !!draft.aiSummary && ownSummary === draft.aiSummary.summary && draft.aiSummary.body !== draft.body;
+
   async function post() {
     if (!draft) return;
-    setBusy("post");
+    startBusy("post");
     setError(null);
 
     // A failed summary never blocks posting; it can be generated later from the chapter's Summary page.
-    let summaries: Summaries | null = null;
+    let summaries: Partial<Summaries> | null = null;
     let summaryError: string | null = null;
-    const ctl = new AbortController();
-    abortRef.current = ctl;
-    try {
-      summaries = await makeSummaries(ctl.signal);
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") {
-        setBusy(null);
-        return;
+    const ai = draft.aiSummary;
+    const own = summaryStale ? "" : ownSummary;
+    if (ai && ai.body === draft.body && ai.summary === own) {
+      summaries = { summary: ai.summary, path_summary: ai.path_summary };
+    } else {
+      const ctl = new AbortController();
+      abortRef.current = ctl;
+      try {
+        summaries = await makeSummaries(ctl.signal, own || undefined);
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") {
+          setBusy(null);
+          return;
+        }
+        // The author's own summary is still posted; the story-so-far can be made later.
+        if (own) summaries = { summary: own };
+        else summaryError = e instanceof Error ? e.message : String(e);
+      } finally {
+        setStatus(null);
       }
-      summaryError = e instanceof Error ? e.message : String(e);
-    } finally {
-      setStatus(null);
     }
-    const summaryFields = summaries ? { summary: summaries.summary, path_summary: summaries.path_summary } : {};
+    const summaryFields = summaries ?? {};
 
     // New chapters get a fresh edit key; it is stored in this browser after a successful post.
     const editKey = target.kind === "edit" ? target.editKey : newEditKey();
@@ -459,78 +506,11 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const words = countWords(draft.body);
   const targetWords = LENGTH_WORDS[length];
 
-  if (previewing) {
-    return (
-      <div style={{ display: "grid", gap: "1rem" }}>
-        <p className="notice">
-          {target.kind === "edit"
-            ? "This is how the chapter will look after your changes. The current version is kept in its history."
-            : "This is exactly what will be posted. You can edit it later from this browser, and every earlier version is kept."}
-        </p>
-        {target.kind === "edit" && (draft.editNote ?? "").trim() && (
-          <p className="meta">
-            Edit note: <em>{draft.editNote}</em>
-          </p>
-        )}
-        {target.kind === "edit" && target.incomingLabel !== null && (draft.incomingLabel ?? "").trim() !== target.incomingLabel && (
-          <p className="meta">
-            The choice leading here changes to: <strong>{draft.incomingLabel}</strong>
-          </p>
-        )}
-        {target.kind === "story" && (
-          <p className="meta">
-            New story: <strong>{draft.storyTitle}</strong>
-            {draft.premise && <> — {draft.premise}</>}
-          </p>
-        )}
-        {target.kind === "new" && (
-          <p className="meta">
-            New choice on the previous chapter: <strong>{draft.newChoiceLabel}</strong>
-          </p>
-        )}
-        {target.kind === "fill" && (
-          <p className="meta">
-            Fills the choice: <strong>{target.label}</strong>
-          </p>
-        )}
-        <div>
-          <h1>{draft.title}</h1>
-          <p className="meta">by {author || "Anonymous"}</p>
-          <Prose text={draft.body} />
-        </div>
-        <div>
-          <h2>Choices</h2>
-          {target.kind === "edit" &&
-            existingChoices
-              .filter((c) => !c.removed)
-              .map((c) => (
-                <div key={c.id} className={c.hasChild ? "card" : "card choice-unwritten"}>
-                  {c.label.trim()} {!c.hasChild && <span className="tag">· not written yet</span>}
-                </div>
-              ))}
-          {finalChoices.map((c) => (
-            <div key={c} className="card choice-unwritten">
-              {c} <span className="tag">· not written yet{target.kind === "edit" ? " · new" : ""}</span>
-            </div>
-          ))}
-          {finalChoices.length === 0 && (target.kind !== "edit" || keptExisting === 0) && (
-            <p className="meta">None. The story ends here, for now. Others can add choices and continue it later.</p>
-          )}
-        </div>
-        {status && <p className="meta">{status}</p>}
-        {error && <p className="error">{error}</p>}
-        <div className="row">
-          <button type="button" className="secondary" onClick={() => setPreviewing(false)} disabled={busy === "post"}>
-            Back to editing
-          </button>
-          <button type="button" onClick={post} disabled={busy === "post" || problems.length > 0}>
-            {busy === "post" ? "Saving…" : target.kind === "edit" ? "Save changes" : "Post chapter"}
-          </button>
-        </div>
-        {problems.length > 0 && <p className="error">{problems.join(" ")}</p>}
-      </div>
-    );
-  }
+  const statusFor = (...kinds: (typeof busy)[]) => status && kinds.includes(busy) && <p className="meta">{status}</p>;
+  const errorFor = (...kinds: (typeof busy)[]) => error && kinds.includes(lastAction) && <p className="error">{error}</p>;
+  const posting = busy === "post";
+  // For a new branch, ideas fill in the choice text until the author has some; after that they follow it.
+  const ideaSetsChoice = target.kind === "new" && !draft.newChoiceLabel.trim();
 
   return (
     <form onSubmit={(e) => e.preventDefault()}>
@@ -580,39 +560,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       )}
 
       {target.kind === "new" && (
-        <section className="ai-panel">
-          <h2>Need an idea?</h2>
-          <div className="row">
-            <button type="button" className="secondary" onClick={suggestIdeas} disabled={busy !== null}>
-              {busy === "ideas" ? "Thinking…" : ideas.length ? "Suggest more" : "Suggest ideas"}
-            </button>
-            <span className="meta">Based on the story so far. Pick one to fill in the choice text and what should happen.</span>
-          </div>
-          {ideas.length > 0 && (
-            <ul className="codex-picks">
-              {ideas.map((idea) => (
-                <li key={idea.choice} className="codex-pick">
-                  <span>
-                    <strong>{idea.choice}</strong>
-                    {idea.direction && <span className="meta"> — {idea.direction}</span>}
-                  </span>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => patch({ newChoiceLabel: idea.choice.slice(0, LIMITS.label), prompt: idea.direction })}
-                  >
-                    Use this
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {target.kind === "new" && (
         <label>
-          Choice text <small>(the button readers click on the previous chapter)</small>
+          Choice text <small>(the button readers click on the previous chapter; leave blank to get ideas for it)</small>
           <input
             value={draft.newChoiceLabel}
             maxLength={LIMITS.label}
@@ -622,7 +571,41 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       )}
 
       <section className="ai-panel">
-        <h2>Draft with AI</h2>
+        <h2>1. Brainstorm</h2>
+        <div className="row">
+          <button type="button" className="secondary" onClick={suggestIdeas} disabled={busy !== null}>
+            {busy === "ideas" ? "Thinking…" : ideas.length ? "Suggest more" : "Suggest ideas"}
+          </button>
+          <span className="meta">
+            {ideaSetsChoice
+              ? "Based on the story so far. Pick one to fill in the choice text and what should happen."
+              : ctx.choiceLabel
+                ? "Ways this chapter could follow from the choice. Pick one to fill in what should happen."
+                : "Based on the story so far. Pick one to fill in what should happen."}
+          </span>
+        </div>
+        {errorFor("ideas")}
+        {ideas.length > 0 && (
+          <ul className="codex-picks">
+            {ideas.map((idea) => (
+              <li key={idea.choice} className="codex-pick">
+                <span>
+                  <strong>{idea.choice}</strong>
+                  {idea.direction && <span className="meta"> — {idea.direction}</span>}
+                </span>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() =>
+                    patch(ideaSetsChoice ? { newChoiceLabel: idea.choice.slice(0, LIMITS.label), prompt: idea.direction } : { prompt: idea.direction })
+                  }
+                >
+                  Use this
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <label>
           What should happen? <small>(optional; leave blank to let the AI decide)</small>
           <textarea
@@ -631,6 +614,17 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             onChange={(e) => patch({ prompt: e.target.value })}
           />
         </label>
+        <CodexPreview
+          ctx={ctx}
+          direction={draft.prompt}
+          contextTokens={settings.contextTokens}
+          overrides={codexOverrides}
+          onChange={setCodexOverrides}
+        />
+      </section>
+
+      <section className="ai-panel">
+        <h2>2. Write</h2>
         <div className="row">
           <select value={length} onChange={(e) => setLength(e.target.value as Length)} style={{ width: "auto" }}>
             <option value="short">Short (~300 words)</option>
@@ -645,30 +639,24 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
               Stop
             </button>
           )}
-          <button type="button" className="secondary" onClick={() => setShowPrompt(!showPrompt)} aria-expanded={showPrompt}>
-            {showPrompt ? "Hide prompt" : "Preview prompt"}
-          </button>
         </div>
-        {showPrompt && (
-          <div>
-            <p className="meta">
-              This is what &quot;Generate&quot; will send. If earlier chapters need summarizing first, that happens
-              before sending, so the story-so-far part may differ slightly.
-            </p>
-            <h3>System</h3>
-            <pre className="sample">{SYSTEM_CHAPTER}</pre>
-            <h3>Message</h3>
-            <pre className="sample">{generatePrompt(ctx, draft.prompt, length, settings.contextTokens)}</pre>
-          </div>
-        )}
-        <CodexPreview
-          ctx={ctx}
-          direction={draft.prompt}
-          contextTokens={settings.contextTokens}
-          overrides={codexOverrides}
-          onChange={setCodexOverrides}
-        />
-        {status && <p className="meta">{status}</p>}
+        <details onToggle={(e) => setShowPrompt(e.currentTarget.open)}>
+          <summary className="meta">Preview the prompt</summary>
+          {showPrompt && (
+            <div>
+              <p className="meta">
+                This is what &quot;Generate&quot; will send. If earlier chapters need summarizing first, that happens
+                before sending, so the story-so-far part may differ slightly.
+              </p>
+              <h3>System</h3>
+              <pre className="sample">{SYSTEM_CHAPTER}</pre>
+              <h3>Message</h3>
+              <pre className="sample">{generatePrompt(ctx, draft.prompt, length, settings.contextTokens)}</pre>
+            </div>
+          )}
+        </details>
+        {statusFor("generate", "refine")}
+        {errorFor("generate", "refine")}
         {autoGenerate && !autoDone && !draft.body && (
           <AutoStart
             run={() => {
@@ -677,170 +665,212 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             }}
           />
         )}
+
+        <label>
+          Chapter title
+          <input value={draft.title} maxLength={LIMITS.title} onChange={(e) => patch({ title: e.target.value })} />
+        </label>
+
+        {versionCount > 1 && (
+          <div className="row" aria-label="Draft versions">
+            <button type="button" className="secondary" onClick={() => showVersion(versionIndex - 1)} disabled={busy !== null || versionIndex === 0} aria-label="Previous draft">
+              &lt;
+            </button>
+            <span className="meta">
+              Draft {versionIndex + 1} of {versionCount}
+            </span>
+            <button type="button" className="secondary" onClick={() => showVersion(versionIndex + 1)} disabled={busy !== null || versionIndex === versionCount - 1} aria-label="Next draft">
+              &gt;
+            </button>
+          </div>
+        )}
+
+        {working || reading ? (
+          <div aria-live="polite">
+            <p className="meta">
+              {working ? "Writing… " : ""}
+              {words.toLocaleString()} word{words === 1 ? "" : "s"}
+              {busy === "generate" && <> (aiming for about {targetWords.toLocaleString()})</>}
+            </p>
+            <Prose text={draft.body} />
+            {!working && (
+              <button type="button" className="secondary" onClick={() => setReading(false)}>
+                Edit text
+              </button>
+            )}
+          </div>
+        ) : (
+          <label>
+            Chapter text <small>({words.toLocaleString()} word{words === 1 ? "" : "s"})</small>
+            <textarea value={draft.body} maxLength={LIMITS.body} onChange={(e) => patch({ body: e.target.value })} />
+          </label>
+        )}
+
+        {draft.body.trim() && (
+          <div className="row">
+            <input
+              placeholder="Ask the AI to change it: “make it tenser”, “shorter”, “add dialogue”…"
+              value={instruction}
+              onChange={(e) => setInstruction(e.target.value)}
+            />
+            <button type="button" onClick={() => runAi("refine")} disabled={busy !== null || !instruction.trim()}>
+              {busy === "refine" ? "Revising…" : "Revise"}
+            </button>
+            <button type="button" className="secondary" onClick={undo} disabled={busy !== null || draft.undo.length === 0}>
+              Undo
+            </button>
+          </div>
+        )}
       </section>
 
-      <label>
-        Chapter title
-        <input value={draft.title} maxLength={LIMITS.title} onChange={(e) => patch({ title: e.target.value })} />
-      </label>
-
-      {versionCount > 1 && (
-        <div className="row" aria-label="Draft versions">
-          <button type="button" className="secondary" onClick={() => showVersion(versionIndex - 1)} disabled={busy !== null || versionIndex === 0} aria-label="Previous draft">
-            &lt;
+      <section className="ai-panel">
+        <h2>3. Summary and choices</h2>
+        <label>
+          Summary{" "}
+          <small>(what happens in this chapter; later chapters use it to stay consistent. Write your own or generate one.)</small>
+          <textarea
+            style={{ minHeight: "6rem", fontFamily: "inherit" }}
+            value={draft.summary ?? ""}
+            maxLength={LIMITS.summary}
+            onChange={(e) => patch({ summary: e.target.value })}
+          />
+        </label>
+        <div className="row">
+          <button type="button" className="secondary" onClick={summarize} disabled={busy !== null || !draft.body.trim()}>
+            {busy === "summary" ? "Summarizing…" : ownSummary ? "Summarize again" : "Summarize chapter"}
           </button>
-          <span className="meta">
-            Draft {versionIndex + 1} of {versionCount}
-          </span>
-          <button type="button" className="secondary" onClick={() => showVersion(versionIndex + 1)} disabled={busy !== null || versionIndex === versionCount - 1} aria-label="Next draft">
-            &gt;
-          </button>
-        </div>
-      )}
-
-      {working || reading ? (
-        <div aria-live="polite">
-          <p className="meta">
-            {working ? "Writing… " : ""}
-            {words.toLocaleString()} word{words === 1 ? "" : "s"}
-            {busy === "generate" && <> (aiming for about {targetWords.toLocaleString()})</>}
-          </p>
-          <Prose text={draft.body} />
-          {!working && (
-            <button type="button" className="secondary" onClick={() => setReading(false)}>
-              Edit text
+          {busy === "summary" && (
+            <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
+              Stop
             </button>
           )}
         </div>
-      ) : (
-        <label>
-          Chapter text <small>({words.toLocaleString()} word{words === 1 ? "" : "s"})</small>
-          <textarea value={draft.body} maxLength={LIMITS.body} onChange={(e) => patch({ body: e.target.value })} />
-        </label>
-      )}
+        {statusFor("summary")}
+        {errorFor("summary")}
+        {summaryStale && (
+          <p className="notice">The chapter has changed since this summary was made. Summarize it again, or it will be redone when you post.</p>
+        )}
 
-      {draft.body.trim() && (
-        <div className="row">
-          <input
-            placeholder="Ask the AI to change it: “make it tenser”, “shorter”, “add dialogue”…"
-            value={instruction}
-            onChange={(e) => setInstruction(e.target.value)}
-          />
-          <button type="button" onClick={() => runAi("refine")} disabled={busy !== null || !instruction.trim()}>
-            {busy === "refine" ? "Revising…" : "Revise"}
-          </button>
-          <button type="button" className="secondary" onClick={undo} disabled={busy !== null || draft.undo.length === 0}>
-            Undo
-          </button>
-        </div>
-      )}
+        {target.kind === "edit" && existingChoices.length > 0 && (
+          <fieldset style={{ border: "none", padding: 0, margin: 0, display: "grid", gap: "0.5rem" }}>
+            <legend style={{ fontWeight: 600, fontSize: "0.9rem" }}>
+              Current choices{" "}
+              <small style={{ fontWeight: 400 }}>(you can rename any; only ones nobody has written yet can be removed)</small>
+            </legend>
+            {existingChoices.map((c) => (
+              <div className="row" key={c.id}>
+                <input
+                  value={c.label}
+                  disabled={c.removed}
+                  maxLength={LIMITS.label}
+                  aria-label="Existing choice"
+                  style={c.removed ? { textDecoration: "line-through" } : undefined}
+                  onChange={(e) => setChoiceEdit(c.id, { label: e.target.value })}
+                />
+                {c.hasChild ? (
+                  <span className="meta" style={{ whiteSpace: "nowrap" }}>
+                    has a chapter
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => setChoiceEdit(c.id, { removed: !c.removed })}
+                  >
+                    {c.removed ? "Keep" : "Remove"}
+                  </button>
+                )}
+              </div>
+            ))}
+          </fieldset>
+        )}
 
-      {target.kind === "edit" && existingChoices.length > 0 && (
         <fieldset style={{ border: "none", padding: 0, margin: 0, display: "grid", gap: "0.5rem" }}>
           <legend style={{ fontWeight: 600, fontSize: "0.9rem" }}>
-            Current choices{" "}
-            <small style={{ fontWeight: 400 }}>(you can rename any; only ones nobody has written yet can be removed)</small>
+            {target.kind === "edit" ? "Add choices" : "Choices"}{" "}
+            <small style={{ fontWeight: 400 }}>
+              {target.kind === "edit" ? "(new ones start out unwritten)" : "(leave empty to end the branch; others can add choices and continue it later)"}
+            </small>
           </legend>
-          {existingChoices.map((c) => (
-            <div className="row" key={c.id}>
+          {draft.choices.map((c, i) => (
+            <div className="row" key={i}>
               <input
-                value={c.label}
-                disabled={c.removed}
+                value={c}
+                placeholder={`Choice ${i + 1}`}
                 maxLength={LIMITS.label}
-                aria-label="Existing choice"
-                style={c.removed ? { textDecoration: "line-through" } : undefined}
-                onChange={(e) => setChoiceEdit(c.id, { label: e.target.value })}
+                onChange={(e) => patch({ choices: draft.choices.map((v, j) => (j === i ? e.target.value : v)) })}
               />
-              {c.hasChild ? (
-                <span className="meta" style={{ whiteSpace: "nowrap" }}>
-                  has a chapter
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => setChoiceEdit(c.id, { removed: !c.removed })}
-                >
-                  {c.removed ? "Keep" : "Remove"}
-                </button>
-              )}
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => patch({ choices: draft.choices.filter((_, j) => j !== i) })}
+                aria-label={`Remove choice ${i + 1}`}
+              >
+                ✕
+              </button>
             </div>
           ))}
-        </fieldset>
-      )}
-
-      <fieldset style={{ border: "none", padding: 0, margin: 0, display: "grid", gap: "0.5rem" }}>
-        <legend style={{ fontWeight: 600, fontSize: "0.9rem" }}>
-          {target.kind === "edit" ? "Add choices" : "Choices"}{" "}
-          <small style={{ fontWeight: 400 }}>
-            {target.kind === "edit" ? "(new ones start out unwritten)" : "(leave empty to end the branch; others can write the paths later)"}
-          </small>
-        </legend>
-        {draft.choices.map((c, i) => (
-          <div className="row" key={i}>
-            <input
-              value={c}
-              placeholder={`Choice ${i + 1}`}
-              maxLength={LIMITS.label}
-              onChange={(e) => patch({ choices: draft.choices.map((v, j) => (j === i ? e.target.value : v)) })}
-            />
+          <div className="row">
+            {draft.choices.length < maxNew && (
+              <button type="button" className="secondary" onClick={() => patch({ choices: [...draft.choices, ""] })}>
+                + Add choice
+              </button>
+            )}
             <button
               type="button"
               className="secondary"
-              onClick={() => patch({ choices: draft.choices.filter((_, j) => j !== i) })}
-              aria-label={`Remove choice ${i + 1}`}
+              onClick={suggestChoices}
+              disabled={busy !== null || !draft.body.trim()}
             >
-              ✕
+              {busy === "choices" ? "Thinking…" : "Suggest choices"}
             </button>
           </div>
-        ))}
-        <div className="row">
-          {draft.choices.length < maxNew && (
-            <button type="button" className="secondary" onClick={() => patch({ choices: [...draft.choices, ""] })}>
-              + Add choice
-            </button>
+          {suggestions.length > 0 && (
+            <div className="row" style={{ flexWrap: "wrap" }}>
+              {suggestions.map((s) => (
+                <button key={s} type="button" className="chip" onClick={() => addChoice(s)}>
+                  + {s}
+                </button>
+              ))}
+            </div>
           )}
-          <button
-            type="button"
-            className="secondary"
-            onClick={suggestChoices}
-            disabled={busy !== null || !draft.body.trim()}
-          >
-            {busy === "choices" ? "Thinking…" : "Suggest choices"}
-          </button>
-        </div>
-        {suggestions.length > 0 && (
-          <div className="row" style={{ flexWrap: "wrap" }}>
-            {suggestions.map((s) => (
-              <button key={s} type="button" className="chip" onClick={() => addChoice(s)}>
-                + {s}
-              </button>
-            ))}
-          </div>
+          {errorFor("choices")}
+        </fieldset>
+      </section>
+
+      <section className="ai-panel">
+        <h2>4. {target.kind === "edit" ? "Save" : "Post"}</h2>
+        {target.kind === "edit" && (
+          <label>
+            What did you change? <small>(optional note shown in the chapter&apos;s history)</small>
+            <input
+              value={draft.editNote ?? ""}
+              maxLength={LIMITS.label}
+              onChange={(e) => patch({ editNote: e.target.value })}
+            />
+          </label>
         )}
-      </fieldset>
-
-      {target.kind === "edit" && (
-        <label>
-          What did you change? <small>(optional note shown in the chapter&apos;s history)</small>
-          <input
-            value={draft.editNote ?? ""}
-            maxLength={LIMITS.label}
-            onChange={(e) => patch({ editNote: e.target.value })}
-          />
-        </label>
-      )}
-
-      {error && <p className="error">{error}</p>}
-      <div>
-        <button type="button" onClick={() => setPreviewing(true)} disabled={busy !== null || problems.length > 0}>
-          {target.kind === "edit" ? "Review changes…" : "Review and post…"}
-        </button>
-        {problems.length > 0 && <span className="meta"> {problems[0]}</span>}
-      </div>
-      <p className="meta">
-        Your draft is saved in this browser only, until you {target.kind === "edit" ? "save" : "post"}.
-      </p>
+        {!ownSummary && draft.body.trim() && (
+          <p className="meta">
+            There&apos;s no summary yet. One will be generated when you {target.kind === "edit" ? "save" : "post"}, but
+            it&apos;s worth checking it first in step 3.
+          </p>
+        )}
+        {statusFor("post")}
+        {errorFor("post")}
+        <div>
+          <button type="button" onClick={post} disabled={busy !== null || problems.length > 0}>
+            {posting ? "Saving…" : target.kind === "edit" ? "Save changes" : "Post chapter"}
+          </button>
+          {problems.length > 0 && <span className="meta"> {problems[0]}</span>}
+        </div>
+        <p className="meta">
+          {target.kind === "edit"
+            ? "The current version is kept in the chapter's history."
+            : "You can edit it later from this browser, and every earlier version is kept."}{" "}
+          Until then, your draft is saved in this browser only.
+        </p>
+      </section>
 
       {codexPanel && (
         <>

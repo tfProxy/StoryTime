@@ -78,24 +78,53 @@ function verbatimWindow(path: ContextChapter[], budgetTokens: number) {
   return { firstVerbatim, used, verbatimBudget, hugeLast };
 }
 
+const chapterLine = (c: ContextChapter) => `- ${c.title}: ${c.summary ?? excerpt(c.body, 300)}`;
+
+/** Room kept for the rolling summary when the per-chapter summaries don't all fit. */
+const ROLLING_RESERVE = 500;
+
 /**
- * Index of the chapter whose rolling `path_summary` a prompt will want, or -1 if the whole
- * path fits verbatim. Deliberately assumes the tightest budget any prompt uses (choice
- * suggestions with a codex), so summaries made for it also serve the roomier prompts.
+ * Splits the story so far into three tiers. Chapters from `firstVerbatim` go in whole; those
+ * from `firstListed` up to it go in as their own one-paragraph summaries (each made from the
+ * chapter itself, so they don't drift); anything older is covered by a rolling summary.
+ */
+function storyTiers(path: ContextChapter[], budgetTokens: number) {
+  const w = verbatimWindow(path, budgetTokens);
+  const lines = path.slice(0, w.firstVerbatim).map(chapterLine);
+  const room = budgetTokens - w.used;
+  const cost = (l: string) => estimateTokens(l) + 1;
+  let firstListed = w.firstVerbatim;
+  if (lines.reduce((n, l) => n + cost(l), 0) <= room) {
+    firstListed = 0;
+  } else {
+    let used = Math.min(ROLLING_RESERVE, Math.floor(room / 2));
+    for (let i = w.firstVerbatim - 1; i >= 0; i--) {
+      if (used + cost(lines[i]) > room) break;
+      used += cost(lines[i]);
+      firstListed = i;
+    }
+  }
+  return { ...w, lines, firstListed };
+}
+
+/**
+ * Index of the chapter whose rolling `path_summary` a prompt will want, or -1 if no chapter
+ * needs one. Deliberately assumes the tightest budget any prompt uses (choice suggestions
+ * with a codex), so summaries made for it also serve the roomier prompts.
  */
 export function summaryCoverageIndex(path: ContextChapter[], contextTokens: number): number {
   if (path.length === 0) return -1;
   const budget = Math.floor(Math.max(500, contextTokens - 1500) * 0.5 * 0.75);
-  return verbatimWindow(path, budget).firstVerbatim - 1;
+  return storyTiers(path, budget).firstListed - 1;
 }
 
 /**
- * Builds the "story so far" text within a token budget. The most recent chapters are
- * included verbatim; earlier ones are condensed (a stored summary, or an excerpt).
+ * Builds the "story so far" text within a token budget: the most recent chapters verbatim,
+ * the ones before them as per-chapter summaries, and a rolling summary for the oldest.
  */
 export function buildStorySoFar(path: ContextChapter[], budgetTokens: number): string {
   if (path.length === 0) return "";
-  const { firstVerbatim, used, verbatimBudget, hugeLast } = verbatimWindow(path, budgetTokens);
+  const { firstVerbatim, verbatimBudget, hugeLast, lines, firstListed } = storyTiers(path, budgetTokens);
   const verbatim = path.slice(firstVerbatim).map((c, i, arr) => {
     const isLast = i === arr.length - 1;
     return hugeLast && isLast
@@ -103,23 +132,25 @@ export function buildStorySoFar(path: ContextChapter[], budgetTokens: number): s
       : `### ${c.title}\n${c.body}`;
   });
 
-  const earlier = path.slice(0, firstVerbatim);
-  let condensed = "";
-  if (earlier.length > 0) {
-    const last = earlier[earlier.length - 1];
-    if (last.path_summary) {
-      // A stored rolling summary already covers everything before the verbatim window.
-      condensed = last.path_summary;
+  let rolling = "";
+  let listFrom = firstListed;
+  if (firstListed > 0) {
+    // The nearest stored rolling summary that leaves no gap before the listed chapters.
+    const j = path.findIndex((c, i) => i >= firstListed - 1 && i < firstVerbatim && c.path_summary);
+    if (j >= 0) {
+      rolling = path[j].path_summary!;
+      listFrom = j + 1;
     } else {
-      const lines = earlier.map((c) => `- ${c.title}: ${c.summary ?? excerpt(c.body, 300)}`);
-      // Drop the oldest-after-the-opening lines until it fits the remaining budget.
-      const room = budgetTokens - used;
-      while (lines.length > 2 && estimateTokens(lines.join("\n")) > room) lines.splice(1, 1);
-      condensed = lines.join("\n");
+      rolling = lines[0]; // at least keep how the story began
     }
   }
+  const listed = lines.slice(listFrom);
 
-  return [condensed && `Earlier in the story:\n${condensed}`, `Most recent chapters:\n${verbatim.join("\n\n")}`]
+  return [
+    rolling && `Earlier in the story:\n${rolling}`,
+    listed.length > 0 && `${rolling ? "Then, chapter by chapter" : "Earlier in the story, chapter by chapter"}:\n${listed.join("\n")}`,
+    `Most recent chapters:\n${verbatim.join("\n\n")}`,
+  ]
     .filter(Boolean)
     .join("\n\n");
 }
@@ -269,16 +300,29 @@ export const SYSTEM_IDEAS = `You help write branching stories. You reply with a 
 
 export type Idea = { choice: string; direction: string };
 
-/** Asks for new directions the story could take from the end of the last chapter. */
+/**
+ * Asks for directions the chapter being written could take. With no choice text yet, each idea
+ * is a new choice the reader could pick; once there is one, the ideas all follow from it.
+ */
 export function ideasPrompt(ctx: StoryContext, contextTokens: number): string {
   const existing = ctx.siblingChoices ?? [];
-  return [
-    storyHeader(ctx, Math.floor(budgetFor(contextTokens) * 0.7)),
-    `Suggest 4 distinct directions the story could take from the end of the last chapter, each a new choice the reader could pick there.` +
+  const reply = `\nReply with only a JSON array of 4 objects like [{"choice":"...","direction":"..."}].`;
+  let ask: string;
+  if (ctx.path.length === 0) {
+    ask =
+      `Suggest 4 distinct ways this story could open.` +
+      `\nFor each give "choice" (a short name for the idea, under 12 words) and "direction" (one or two sentences on what happens in the opening chapter).`;
+  } else if (ctx.choiceLabel) {
+    ask =
+      `Suggest 4 distinct ways the next chapter could play out, each following from the reader's choice.` +
+      `\nFor each give "choice" (a short name for the idea, under 12 words) and "direction" (one or two sentences on what happens in the chapter).`;
+  } else {
+    ask =
+      `Suggest 4 distinct directions the story could take from the end of the last chapter, each a new choice the reader could pick there.` +
       (existing.length ? ` These choices already exist, so do not repeat or closely echo them: ${existing.map((e) => `"${e}"`).join(", ")}.` : "") +
-      `\nFor each give "choice" (button text, under 12 words) and "direction" (one or two sentences on what happens in the chapter that follows it).` +
-      `\nReply with only a JSON array of 4 objects like [{"choice":"...","direction":"..."}].`,
-  ].join("\n\n");
+      `\nFor each give "choice" (button text, under 12 words) and "direction" (one or two sentences on what happens in the chapter that follows it).`;
+  }
+  return [storyHeader(ctx, Math.floor(budgetFor(contextTokens) * 0.7)), ask + reply].join("\n\n");
 }
 
 export function parseIdeas(text: string): Idea[] {

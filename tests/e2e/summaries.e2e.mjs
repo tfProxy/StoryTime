@@ -53,7 +53,6 @@ await page.getByLabel("Story title").fill("Summary story");
 await page.getByLabel("Chapter title").fill("First");
 await page.getByLabel("Chapter text").fill("Mira found a key.");
 await page.getByPlaceholder("Choice 1").fill("Next");
-await page.getByRole("button", { name: /Review and post/ }).click();
 await page.getByRole("button", { name: "Post chapter" }).click();
 await page.waitForURL(/\/c\//);
 const root = idFromUrl(page.url());
@@ -67,7 +66,6 @@ const choice = (await chapter(root)).choices[0];
 await page.goto(`${BASE}/c/${root}/write?choice=${choice.id}`);
 await page.getByLabel("Chapter title").fill("Second");
 await page.getByLabel("Chapter text").fill("She opened the door.");
-await page.getByRole("button", { name: /Review and post/ }).click();
 await page.getByRole("button", { name: "Post chapter" }).click();
 await page.waitForURL(/\/c\/(?!.*write)/);
 const second = idFromUrl(page.url());
@@ -88,13 +86,16 @@ for (let i = 2; i <= 5; i++) {
 const lastId = lengthIds.at(-1);
 const before = sumCalls().length;
 await page.goto(`${BASE}/c/${lastId}/write?ai=1`);
-await page.getByLabel("Chapter text").waitFor();
+await page.getByRole("button", { name: "Edit text" }).click();
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("Generated text here."), null, { timeout: 20000 });
 ok(true, "?ai=1 starts generating without a click");
 const made = sumCalls().length - before;
 ok(made === 4, `summarized the 4 older chapters before generating (${made} calls)`);
 const gen = calls.at(-1);
-ok(!gen.isSummary && gen.user.includes("Earlier in the story:\nSOFAR(L4)") && !gen.user.includes("- L1:"), "the prompt uses the rolling summary instead of excerpts");
+ok(
+  !gen.isSummary && gen.user.includes("chapter by chapter:\n- L1: SUM(L1)\n- L2: SUM(L2)\n- L3: SUM(L3)\n- L4: SUM(L4)") && !gen.user.includes("- L1: The quick"),
+  "the prompt uses the new per-chapter summaries instead of excerpts: " + JSON.stringify(gen.user.slice(0, 300)),
+);
 const repaired = (await chapter(lastId)).path;
 ok(repaired.slice(0, 4).every((p, i) => p.path_summary === `SOFAR(L${i + 1})`) && repaired[4].path_summary === null, "the repaired summaries were saved to the server");
 
@@ -106,6 +107,7 @@ await page2.context().addInitScript(() => {
     providers: { ollama: { baseUrl: "http://localhost:3222/v1", apiKey: "", model: "main", summaryModel: "cheap" } } }));
 });
 await page2.goto(`${BASE}/c/${lastId}/write?ai=1`);
+await page2.getByRole("button", { name: "Edit text" }).click();
 await page2.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("Generated text here."), null, { timeout: 20000 });
 ok(sumCalls().length === again, "another browser reuses the saved summaries (no new calls)");
 await page2.context().close();
@@ -116,7 +118,6 @@ await page.goto(`${BASE}/c/${second}/write`);
 await page.getByLabel(/Choice text/).fill("Wait");
 await page.getByLabel("Chapter title").fill("Third");
 await page.getByLabel("Chapter text").fill("Nothing happened.");
-await page.getByRole("button", { name: /Review and post/ }).click();
 await page.getByRole("button", { name: "Post chapter" }).click();
 await page.waitForURL(/\/c\/[^/]+\/summary\?failed=/);
 ok(await page.getByText(/couldn't summarize it/).isVisible(), "the chapter is posted and the summary page explains the failure");
@@ -134,7 +135,6 @@ ok((await page.getByLabel(/This chapter/).inputValue()) === "SUM(Third)", "and t
 await page.goto(`${BASE}/c/${second}/edit`);
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.length > 0);
 await page.getByLabel("Chapter text").fill("She opened the door, then the window.");
-await page.getByRole("button", { name: /Review changes/ }).click();
 const beforeEdit = sumCalls().length;
 await page.getByRole("button", { name: "Save changes" }).click();
 await page.waitForURL(`${BASE}/c/${second}`);
@@ -143,6 +143,39 @@ c = (await chapter(second)).chapter;
 ok(c.summary === "SUM(Second)" && c.revision === 2, "the edited chapter has its new summary");
 ok((await chapter(third)).chapter.path_summary === null, "chapters below it were cleared");
 ok(sumCalls().at(-1).user.includes("SOFAR(First)"), "the edit's summary builds on the parent's story-so-far");
+
+// ---- F: the author's own summary is posted as written ----
+await page.goto(`${BASE}/c/${second}/write`);
+await page.getByLabel(/Choice text/).fill("Listen");
+await page.getByLabel("Chapter title").fill("Fourth");
+await page.getByLabel("Chapter text").fill("A bell rang somewhere below.");
+await page.getByLabel(/^Summary/).fill("MY OWN SUMMARY");
+ok(!(await page.getByText(/There's no summary yet/).isVisible()), "no nudge once there is a summary");
+await page.getByRole("button", { name: "Post chapter" }).click();
+await page.waitForURL(/\/c\/[^/]+\?posted=1/);
+c = (await chapter(idFromUrl(page.url()))).chapter;
+ok(c.summary === "MY OWN SUMMARY" && c.path_summary === "SOFAR(Fourth)", "the author's summary is kept; the story-so-far is generated around it");
+ok(sumCalls().at(-1).user.includes("The author has already summarized this chapter") && sumCalls().at(-1).user.includes("MY OWN SUMMARY"), "the model is given the author's summary");
+
+// ---- G: a summary made in step 3 is reused when posting ----
+await page.goto(`${BASE}/c/${second}/write`);
+await page.getByLabel(/Choice text/).fill("Run");
+await page.getByLabel("Chapter title").fill("Fifth");
+await page.getByLabel("Chapter text").fill("She ran for the stairs.");
+ok(await page.getByText(/There's no summary yet/).isVisible(), "posting without a summary is flagged");
+await page.getByRole("button", { name: "Summarize chapter" }).click();
+await page.waitForFunction(() => [...document.querySelectorAll("textarea")].some((t) => t.value === "SUM(Fifth)"));
+ok(true, "Summarize chapter fills in the summary");
+await page.getByLabel("Chapter text").fill("She ran for the stairs, then stopped.");
+ok(await page.getByText(/changed since this summary was made/).isVisible(), "an outdated summary is flagged");
+await page.getByRole("button", { name: "Summarize again" }).click();
+await page.getByText(/changed since this summary was made/).waitFor({ state: "hidden" });
+const beforePost = sumCalls().length;
+await page.getByRole("button", { name: "Post chapter" }).click();
+await page.waitForURL(/\/c\/[^/]+\?posted=1/);
+ok(sumCalls().length === beforePost, "posting reuses the summary made in step 3");
+c = (await chapter(idFromUrl(page.url()))).chapter;
+ok(c.summary === "SUM(Fifth)" && c.path_summary === "SOFAR(Fifth)", "…and stores it");
 
 await browser.close(); mock.close();
 process.exit(failed ? 1 : 0);
