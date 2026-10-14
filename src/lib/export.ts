@@ -147,22 +147,43 @@ export function toMarkdown(data: StoryExport): string {
   return `${out.join("\n\n")}\n`;
 }
 
-/** Twee 3 source, importable into Twine 2 (Library > Import). */
+/**
+ * Twee 3 source, importable into Twine 2 (Library > Import). Only finished branches are included:
+ * a chapter is kept if it ends the story (no choices) or has a choice that leads to a kept chapter.
+ * Choices nobody has written yet, and chapters that can only lead to them, are left out.
+ */
 export function toTwee(data: StoryExport): string {
+  const childBy = new Map<string, ChapterRow>();
+  for (const c of data.chapters) if (c.parent_choice_id) childBy.set(c.parent_choice_id, c);
+  const choicesBy = new Map<string, ChoiceRow[]>();
+  for (const c of data.choices) choicesBy.set(c.parent_chapter_id, [...(choicesBy.get(c.parent_chapter_id) ?? []), c]);
+
+  const finished = new Map<string, boolean>();
+  const isFinished = (c: ChapterRow): boolean => {
+    const known = finished.get(c.id);
+    if (known !== undefined) return known;
+    const list = choicesBy.get(c.id) ?? [];
+    const result = list.length === 0 || list.some((ch) => { const child = childBy.get(ch.id); return !!child && isFinished(child); });
+    finished.set(c.id, result);
+    return result;
+  };
+  // The first chapter always stays so the file has a start passage, even if nothing is finished yet.
+  const chapters = data.chapters.filter((c, i) => i === 0 || isFinished(c));
+  const kept = new Set(chapters.map((c) => c.id));
+  const leadsToKept = (ch: ChoiceRow) => {
+    const child = childBy.get(ch.id);
+    return !!child && kept.has(child.id) && isFinished(child);
+  };
+
   const names = new Map<string, string>();
   const used = new Set<string>();
-  for (const c of data.chapters) {
+  for (const c of chapters) {
     const base = c.title.replace(/[[\]|<>]/g, " ").replace(/\s+/g, " ").trim() || "Untitled";
     let name = base;
     for (let n = 2; used.has(name.toLowerCase()); n++) name = `${base} (${n})`;
     used.add(name.toLowerCase());
     names.set(c.id, name);
   }
-  const childBy = new Map<string, ChapterRow>();
-  for (const c of data.chapters) if (c.parent_choice_id) childBy.set(c.parent_choice_id, c);
-  const choicesBy = new Map<string, ChoiceRow[]>();
-  for (const c of data.choices) choicesBy.set(c.parent_chapter_id, [...(choicesBy.get(c.parent_chapter_id) ?? []), c]);
-
   // Twee uses "::" at the start of a line to begin a passage, and "[[" for links.
   const safe = (s: string) => s.replace(/^::/gm, ": :").replace(/\[\[/g, "[ [").replace(/\]\]/g, "] ]");
   const hex = crypto.createHash("sha1").update(data.story.id).digest("hex").toUpperCase();
@@ -170,14 +191,14 @@ export function toTwee(data: StoryExport): string {
 
   const out: string[] = [
     `:: StoryTitle\n${data.story.title}`,
-    `:: StoryData\n${JSON.stringify({ ifid, format: "Harlowe", "format-version": "3.3.8", start: names.get(data.chapters[0].id) }, null, 2)}`,
+    `:: StoryData\n${JSON.stringify({ ifid, format: "Harlowe", "format-version": "3.3.8", start: names.get(chapters[0].id) }, null, 2)}`,
   ];
-  for (const c of data.chapters) {
+  for (const c of chapters) {
     const lines = [safe(c.body.trim()), ""];
     for (const ch of choicesBy.get(c.id) ?? []) {
-      const child = childBy.get(ch.id);
+      if (!leadsToKept(ch)) continue;
       const label = ch.label.replace(/[[\]|<>-]+/g, " ").replace(/\s+/g, " ").trim() || "Continue";
-      lines.push(child ? `[[${label}->${names.get(child.id)}]]` : `(not written yet) ${safe(ch.label)}`);
+      lines.push(`[[${label}->${names.get(childBy.get(ch.id)!.id)}]]`);
     }
     out.push(`:: ${names.get(c.id)}\n${lines.join("\n").trimEnd()}`);
   }

@@ -40,7 +40,7 @@ x = await get(`/api/stories/${story}/export?format=twee`);
 ok(x.status === 200 && /filename="the-export-tale\.twee"/.test(x.headers.get("content-disposition")), "twee download");
 ok(x.text.includes(":: StoryTitle\nThe Export: Tale!") && x.text.includes(":: StoryData") && /"ifid": "[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-A[0-9A-F]{3}-[0-9A-F]{12}"/.test(x.text) && x.text.includes('"start": "Start"'), "story header, IFID and start passage");
 ok(x.text.includes(":: Start\n") && x.text.includes("[[Go left->Left]]") && x.text.includes(":: Left\n") && x.text.includes("[[Deeper->Deep]]"), "passages and links");
-ok(!x.text.includes("[[right]]") && x.text.includes("(not written yet) Go [ [right] ]"), "link syntax in unwritten choices is neutralised");
+ok(!x.text.includes("right") && !x.text.includes("not written yet") && !x.text.includes("Gone"), "unwritten choices are left out");
 ok(!/^:: not a passage/m.test(x.text) && x.text.includes(": : not a passage"), "text can't start a bogus passage");
 ok((x.text.match(/^:: /gm) ?? []).length === 5, "exactly the right number of passages (title, data, 3 chapters)");
 
@@ -68,3 +68,14 @@ const home = (await get(`/`)).text;
 ok(home.includes(`/api/stories/${story}/export?format=twee`) && home.includes(`/s/${story}/outline`), "the story list menu links to the outline and downloads");
 const viaStory = await fetch(B + `/s/${story}`, { redirect: "manual" });
 ok(viaStory.status >= 300 && viaStory.status < 400 && viaStory.headers.get("location").includes("/c/"), "a story's own address goes to its first chapter");
+
+// ---- Twee leaves out unfinished branches ----
+// Start -> Pending (only an unwritten choice), and Left -> Deep stays finished.
+const pending = (await call("POST", "/api/chapters", { parent_chapter_id: root, new_choice_label: "Wait here", title: "Pending", body: "p", choices: ["Later"] })).json.chapter_id;
+const mixed = (await call("POST", "/api/chapters", { parent_chapter_id: left, new_choice_label: "Side road", title: "Side", body: "s", choices: ["Nowhere yet"] })).json.chapter_id;
+x = await get(`/api/stories/${story}/export?format=twee`);
+ok(pending && mixed && !x.text.includes("Pending") && !x.text.includes("Wait here") && !x.text.includes("Later"), "a branch that only leads to unwritten choices is left out");
+ok(!x.text.includes(":: Side") && !x.text.includes("Side road") && x.text.includes("[[Deeper->Deep]]") && x.text.includes(":: Left\n"), "an unfinished side branch is dropped but the finished one stays");
+ok((x.text.match(/^:: /gm) ?? []).length === 5, "still only the finished chapters");
+// the same story in Markdown still shows everything
+ok((await get(`/api/stories/${story}/export?format=md`)).text.includes("Pending"), "markdown keeps unfinished branches");
