@@ -89,9 +89,20 @@ a {
   border-top: 1px solid var(--line);
 }
 
-.menu-group a {
+.menu-group a,
+.menu-group .menu-item {
   padding: 0.55rem 0.8rem;
   text-decoration: none;
+}
+
+.menu-group .menu-item {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: var(--accent);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .brand {

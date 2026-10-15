@@ -12,11 +12,26 @@ type ChapterRow = {
   title: string;
   body: string;
   summary: string | null;
+  path_summary: string | null;
   author_name: string;
   posted_at: number;
   edited_at: number | null;
   edited_by: string;
+  edit_note: string | null;
   revision: number;
+};
+/** A superseded version of a chapter; the live version is the chapter row itself. */
+type RevisionRow = {
+  chapter_id: string;
+  revision: number;
+  title: string;
+  body: string;
+  summary: string | null;
+  path_summary: string | null;
+  author_name: string;
+  edited_by: string;
+  edit_note: string | null;
+  created_at: number;
 };
 type ChoiceRow = { id: string; parent_chapter_id: string; label: string; author_name: string; posted_at: number };
 
@@ -26,6 +41,8 @@ export type StoryExport = {
   chapters: ChapterRow[];
   choices: ChoiceRow[];
   codex: Record<string, unknown>[];
+  /** Earlier versions of the chapters above, oldest first. */
+  revisions: RevisionRow[];
 };
 
 /** Live chapters/choices of a story, keeping only those still reachable from the first chapter. */
@@ -34,7 +51,7 @@ export function loadStory(storyId: string): StoryExport | null {
   if (!story?.root_chapter_id) return null;
   const allChapters = db()
     .prepare(
-      `SELECT id, parent_choice_id, depth, title, body, summary, author_name, posted_at, edited_at, edited_by, revision
+      `SELECT id, parent_choice_id, depth, title, body, summary, path_summary, author_name, posted_at, edited_at, edited_by, edit_note, revision
          FROM chapters WHERE story_id = ? AND removed_at IS NULL ORDER BY depth, posted_at, rowid`,
     )
     .all(storyId) as ChapterRow[];
@@ -79,11 +96,22 @@ export function loadStory(storyId: string): StoryExport | null {
     .filter((o) => ids.has(o.anchor_chapter_id as string))
     .map((o) => ({ ...o, aliases: safeJson(o.aliases), always_include: o.always_include === 1 }));
 
+  const revisions = (
+    db()
+      .prepare(
+        `SELECT r.chapter_id, r.revision, r.title, r.body, r.summary, r.path_summary, r.author_name, r.edited_by, r.edit_note, r.created_at
+           FROM chapter_revisions r JOIN chapters c ON c.id = r.chapter_id
+          WHERE c.story_id = ? ORDER BY r.chapter_id, r.revision`,
+      )
+      .all(storyId) as RevisionRow[]
+  ).filter((r) => ids.has(r.chapter_id));
+
   return {
     story: { id: story.id, title: story.title, premise: story.premise, author_name: story.author_name, created_at: story.created_at },
     chapters,
     choices,
     codex,
+    revisions,
   };
 }
 
@@ -96,7 +124,7 @@ function safeJson(s: unknown): unknown {
 }
 
 export function toJson(data: StoryExport): string {
-  return JSON.stringify({ format: "storytime-export", version: 1, exported_at: new Date().toISOString(), ...data }, null, 2);
+  return JSON.stringify({ format: "storytime-export", version: 2, exported_at: new Date().toISOString(), ...data }, null, 2);
 }
 
 /** Depth-first reading copy: each chapter numbered by its position in the tree (1, 1.1, 1.2.1 ...). */

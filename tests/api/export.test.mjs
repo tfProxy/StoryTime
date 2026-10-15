@@ -47,7 +47,7 @@ ok((x.text.match(/^:: /gm) ?? []).length === 5, "exactly the right number of pas
 // ---- JSON ----
 x = await get(`/api/stories/${story}/export?format=json`);
 const data = JSON.parse(x.text);
-ok(data.format === "storytime-export" && data.version === 1 && data.story.title === "The Export: Tale!", "json header");
+ok(data.format === "storytime-export" && data.version === 2 && data.story.title === "The Export: Tale!", "json header");
 ok(data.chapters.length === 3 && data.chapters.map((c) => c.title).join() === "Start,Left,Deep", "json chapters in reading order, without removed ones");
 ok(data.choices.length === 4 && data.codex.length === 1 && data.codex[0].aliases[0] === "the thief" && data.codex[0].always_include === true, "json choices and codex");
 ok(!x.text.includes("edit_key") && !x.text.includes(KEY), "no edit keys or hashes in exports");

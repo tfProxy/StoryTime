@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { listStories } from "@/lib/stories";
+import ImportStoryMenuItem from "@/components/ImportStoryMenuItem";
+import { PageMenu } from "@/components/SiteMenu";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +39,9 @@ export default function Home() {
           </details>
         </div>
       ))}
+      <PageMenu>
+        <ImportStoryMenuItem />
+      </PageMenu>
     </>
   );
 }
