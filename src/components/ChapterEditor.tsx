@@ -252,7 +252,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
 
   const patch = (p: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...p } : d));
 
-  /** A new generated draft gets its own version; any existing text is kept as the one before it. */
+  /** A new generated or revised draft gets its own version; the text it started from is kept as the one before it. */
   function startVersion(d: Draft): Pick<Draft, "versions" | "versionIndex"> {
     if (!d.body.trim()) return {};
     const kept = [...(d.versions ?? [{ title: d.title, body: d.body }])];
@@ -289,8 +289,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         kind === "generate"
           ? generatePrompt(ready, draft.prompt, length, settings.contextTokens)
           : refinePrompt(ready, { title: draft.title, body: draft.body }, instruction, settings.contextTokens);
-      // Keep the text we're replacing so the rewrite can be undone.
-      setDraft((d) => (d ? { ...d, undo: pushUndo(d), ...(kind === "generate" ? startVersion(d) : {}) } : d));
+      // Keep the text we're replacing, as the previous draft and so the rewrite can be undone.
+      setDraft((d) => (d ? { ...d, undo: pushUndo(d), ...startVersion(d) } : d));
       for await (const piece of streamChat(settings, {
         system: SYSTEM_CHAPTER,
         messages: [{ role: "user", content: message }],
