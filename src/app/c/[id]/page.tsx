@@ -61,18 +61,24 @@ export default async function ChapterPage({
         <h2>{choices.length > 0 ? "What happens next?" : "The story ends here, for now."}</h2>
         {choices.map((c) =>
           c.child_chapter_id ? (
-            <Link key={c.id} href={`/c/${c.child_chapter_id}`} className="card">
+            <Link key={c.id} href={`/c/${c.child_chapter_id}`} className="card choice-written" title="Written">
+              <svg className="choice-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 5.5C6.5 4.5 9.5 4.5 12 6c2.5-1.5 5.5-1.5 8-.5v13c-2.5-1-5.5-1-8 .5-2.5-1.5-5.5-1.5-8-.5z M12 6v13" />
+              </svg>
               {c.label}
             </Link>
           ) : (
-            <Link key={c.id} href={`/c/${chapter.id}/write?choice=${c.id}`} className="card choice-unwritten">
-              {c.label} <span className="tag">· not written yet. Write it?</span>
+            <Link key={c.id} href={`/c/${chapter.id}/write?choice=${c.id}`} className="card choice-unwritten" title="Not written yet. Write it?">
+              <svg className="choice-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19z M14.5 6.5l3 3" />
+              </svg>
+              {c.label}
             </Link>
           ),
         )}
         <p className="row">
           <Link className="button secondary" href={`/c/${chapter.id}/write`}>
-            Add a new choice and continue it
+            + Something else
           </Link>
         </p>
       </section>

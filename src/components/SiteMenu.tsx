@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 // The hamburger menu in the header. Pages add their own entries through <PageMenu>, which are
@@ -19,8 +19,18 @@ export default function SiteMenu() {
     const away = (e: MouseEvent) => {
       if (ref.current?.open && !ref.current.contains(e.target as Node)) ref.current.open = false;
     };
+    // Picking an entry closes the menu. A native listener, because entries added through
+    // PageMenu are portals and their clicks don't bubble through this component in React.
+    const picked = (e: MouseEvent) => {
+      if (ref.current && (e.target as Element).closest("a, button")) ref.current.open = false;
+    };
+    const items = ref.current?.querySelector(".site-menu-items");
     document.addEventListener("click", away);
-    return () => document.removeEventListener("click", away);
+    items?.addEventListener("click", picked as EventListener);
+    return () => {
+      document.removeEventListener("click", away);
+      items?.removeEventListener("click", picked as EventListener);
+    };
   }, []);
 
   return (
@@ -40,19 +50,29 @@ export default function SiteMenu() {
   );
 }
 
-// Put entries (links) into the header menu. `codexHref` adds the Codex link in its own group.
-export function PageMenu({ codexHref, children }: { codexHref?: string; children?: ReactNode }) {
-  const [slots, setSlots] = useState<{ page: HTMLElement; codex: HTMLElement } | null>(null);
-  useEffect(() => {
-    const page = document.getElementById("page-menu-slot");
-    const codex = document.getElementById("page-menu-codex-slot");
-    if (page && codex) setSlots({ page, codex });
-  }, []);
-  if (!slots) return null;
+// Put entries into the header menu. `codexHref` (a link) or `onCodex` (a button) adds Codex in its own group.
+export function PageMenu({ codexHref, onCodex, children }: { codexHref?: string; onCodex?: () => void; children?: ReactNode }) {
+  // False while rendering on the server and hydrating; the header's slots only exist in the browser.
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+  const page = mounted ? document.getElementById("page-menu-slot") : null;
+  const codex = mounted ? document.getElementById("page-menu-codex-slot") : null;
+  if (!page || !codex) return null;
+  const slots = { page, codex };
   return (
     <>
       {children && createPortal(children, slots.page)}
       {codexHref && createPortal(<Link href={codexHref}>Codex</Link>, slots.codex)}
+      {onCodex &&
+        createPortal(
+          <button type="button" className="menu-item" onClick={onCodex}>
+            Codex
+          </button>,
+          slots.codex,
+        )}
     </>
   );
 }

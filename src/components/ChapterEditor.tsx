@@ -29,7 +29,9 @@ import type { PathChapter } from "@/lib/ai/codexAi";
 import { draftOps, foldCodex, isDraftEntry, type CodexOp } from "@/lib/codex";
 import { deleteDraft, emptyDraft, getDraft, putDraft, type Draft } from "@/lib/drafts";
 import Prose from "./Prose";
+import AutoTextarea from "./AutoTextarea";
 import CodexPanel from "./CodexPanel";
+import { PageMenu } from "./SiteMenu";
 import CodexPreview from "./CodexPreview";
 
 export type Target =
@@ -654,8 +656,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         )}
         <label>
           What should happen? <small>(optional; leave blank to let the AI decide)</small>
-          <textarea
-            style={{ minHeight: "4rem", fontFamily: "inherit" }}
+          <AutoTextarea
+            style={{ minHeight: "5.5rem", fontFamily: "inherit" }}
             value={draft.prompt}
             onChange={(e) => patch({ prompt: e.target.value })}
           />
@@ -715,32 +717,34 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
           />
         )}
 
+        <div className="row" aria-label="Draft versions">
+          {versionCount > 1 && (
+            <>
+              <button type="button" className="secondary" onClick={() => showVersion(versionIndex - 1)} disabled={busy !== null || versionIndex === 0} aria-label="Previous draft">
+                &lt;
+              </button>
+              <span className="meta">
+                Draft {versionIndex + 1} of {versionCount}
+              </span>
+              <button type="button" className="secondary" onClick={() => showVersion(versionIndex + 1)} disabled={busy !== null || versionIndex === versionCount - 1} aria-label="Next draft">
+                &gt;
+              </button>
+            </>
+          )}
+          <span className="meta" aria-live="polite">
+            {working ? "Writing… " : ""}
+            {words.toLocaleString()} word{words === 1 ? "" : "s"}
+            {busy === "generate" && <> (aiming for about {targetWords.toLocaleString()})</>}
+          </span>
+        </div>
+
         <label>
           Chapter title
           <input value={draft.title} maxLength={LIMITS.title} onChange={(e) => patch({ title: e.target.value })} />
         </label>
 
-        {versionCount > 1 && (
-          <div className="row" aria-label="Draft versions">
-            <button type="button" className="secondary" onClick={() => showVersion(versionIndex - 1)} disabled={busy !== null || versionIndex === 0} aria-label="Previous draft">
-              &lt;
-            </button>
-            <span className="meta">
-              Draft {versionIndex + 1} of {versionCount}
-            </span>
-            <button type="button" className="secondary" onClick={() => showVersion(versionIndex + 1)} disabled={busy !== null || versionIndex === versionCount - 1} aria-label="Next draft">
-              &gt;
-            </button>
-          </div>
-        )}
-
         {working || reading ? (
-          <div aria-live="polite">
-            <p className="meta">
-              {working ? "Writing… " : ""}
-              {words.toLocaleString()} word{words === 1 ? "" : "s"}
-              {busy === "generate" && <> (aiming for about {targetWords.toLocaleString()})</>}
-            </p>
+          <div>
             <Prose text={draft.body} />
             {!working && (
               <button type="button" className="secondary" onClick={() => setReading(false)}>
@@ -750,8 +754,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
           </div>
         ) : (
           <label>
-            Chapter text <small>({words.toLocaleString()} word{words === 1 ? "" : "s"})</small>
-            <textarea value={draft.body} maxLength={LIMITS.body} onChange={(e) => patch({ body: e.target.value })} />
+            Chapter text
+            <AutoTextarea value={draft.body} maxLength={LIMITS.body} onChange={(e) => patch({ body: e.target.value })} />
           </label>
         )}
 
@@ -773,11 +777,11 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       </section>
 
       <section className="ai-panel">
-        <h2>3. Summary and choices</h2>
+        <h2>3. Summary</h2>
         <label>
           Summary{" "}
           <small>(what happens in this chapter; later chapters use it to stay consistent. Write your own or generate one.)</small>
-          <textarea
+          <AutoTextarea
             style={{ minHeight: "6rem", fontFamily: "inherit" }}
             value={draft.summary ?? ""}
             maxLength={LIMITS.summary}
@@ -806,6 +810,10 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
           </p>
         )}
 
+      </section>
+
+      <section className="ai-panel">
+        <h2>4. Choices</h2>
         {target.kind === "edit" && existingChoices.length > 0 && (
           <fieldset style={{ border: "none", padding: 0, margin: 0, display: "grid", gap: "0.5rem" }}>
             <legend style={{ fontWeight: 600, fontSize: "0.9rem" }}>
@@ -894,7 +902,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       </section>
 
       <section className="ai-panel">
-        <h2>4. {target.kind === "edit" ? "Save" : "Post"}</h2>
+        <h2>5. {target.kind === "edit" ? "Save" : "Post"}</h2>
         {target.kind === "edit" && (
           <label>
             What did you change? <small>(optional note shown in the chapter&apos;s history)</small>
@@ -935,9 +943,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
 
       {codexPanel && (
         <>
-          <button type="button" className="codex-toggle" onClick={() => (codexOpen ? setCodexOpen(false) : openCodex(null))} aria-expanded={codexOpen}>
-            {codexOpen ? "Close codex" : "Codex"}
-          </button>
+          <PageMenu onCodex={() => openCodex(null)} />
           {/* Rendered outside the form: the codex panel has forms of its own. */}
           {codexOpen &&
             createPortal(

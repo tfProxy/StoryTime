@@ -178,8 +178,32 @@ a.card:hover {
   font-weight: 600;
 }
 
+.choice-icon {
+  width: 1.1em;
+  height: 1.1em;
+  margin-right: 0.5rem;
+  vertical-align: -0.2em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* A written branch looks solid; an unwritten one is an open slot. */
+.choice-written {
+  border-left: 4px solid var(--accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
 .choice-unwritten {
-  border-style: dashed;
+  border: 1.5px dashed var(--line);
+  background: transparent;
+  color: var(--muted);
+}
+
+.choice-unwritten .choice-icon {
+  opacity: 0.7;
 }
 
 .tag {
@@ -469,16 +493,7 @@ main:has(.outline-page) {
   margin: 0.75rem 0 0;
 }
 
-/* Codex drawer on the writing pages: a button that is always reachable, and a panel that slides over the page. */
-.codex-toggle {
-  position: fixed;
-  right: 1rem;
-  bottom: 1rem;
-  z-index: 30;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-  border-radius: 999px;
-}
-
+/* Codex drawer on the writing pages: a panel that slides over the page, opened from the header menu. */
 .codex-drawer {
   position: fixed;
   top: 0;

@@ -76,6 +76,7 @@ await row("Mira").getByRole("button", { name: "Put back" }).click();
 ok(/mentioned/.test(await row("Mira").innerText()), "a left-out entry can be put back");
 
 // the drawer: add an entry without leaving the page (held in the draft)
+await page.locator(".site-menu > summary").click();
 await page.getByRole("button", { name: "Codex", exact: true }).click();
 const drawer = page.locator("aside.codex-drawer");
 await drawer.waitFor();
