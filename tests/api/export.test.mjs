@@ -60,7 +60,7 @@ ok((await get(`/api/stories/nope/export`)).status === 404, "unknown story 404");
 x = await get(`/s/${story}/outline`);
 const html = x.text.replace(/<!-- -->/g, "");
 ok(x.status === 200 && html.includes("Start") && html.includes("Left") && html.includes("Deep"), "outline lists the chapters");
-ok(!html.includes("not written yet") && html.includes("branch ends here"), "outline hides unwritten choices and marks dead ends");
+ok(!html.includes("not written yet") && !html.includes("branch ends here"), "outline hides unwritten choices and doesn't tag dead ends");
 ok(!html.includes("Gone chapter"), "outline leaves out removed chapters");
 ok(/3 chapters/.test(html) && /2 choices still to write/.test(html), "outline totals: " + (/(\d+ chapters[^<]*)/.exec(html)?.[1] ?? "?"));
 ok((await get(`/s/nope/outline`)).status === 404, "outline of an unknown story 404");

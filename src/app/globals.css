@@ -46,6 +46,54 @@ a {
   border-bottom: 1px solid var(--line);
 }
 
+.site-menu {
+  position: relative;
+}
+
+.site-menu > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 1.2rem;
+  line-height: 1.4;
+  user-select: none;
+}
+
+.site-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.site-menu-items {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.3rem);
+  z-index: 50;
+  min-width: 14rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+
+.menu-group {
+  display: grid;
+}
+
+.menu-group:empty {
+  display: none;
+}
+
+.menu-group + .menu-group {
+  border-top: 1px solid var(--line);
+}
+
+.menu-group a {
+  padding: 0.55rem 0.8rem;
+  text-decoration: none;
+}
+
 .brand {
   font-weight: 700;
   font-size: 1.15rem;

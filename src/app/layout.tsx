@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import SiteMenu from "@/components/SiteMenu";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,9 +16,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <Link href="/" className="brand">
             StoryTime
           </Link>
-          <nav>
-            <Link href="/drafts">Drafts</Link> · <Link href="/settings">Settings</Link>
-          </nav>
+          <SiteMenu />
         </header>
         <main>{children}</main>
       </body>

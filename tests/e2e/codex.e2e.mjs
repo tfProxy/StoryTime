@@ -110,7 +110,8 @@ await page.getByRole("button", { name: "Bring back" }).click();
 await page.locator("article").getByText("Now a horse. Cannot speak.").first().waitFor();
 ok(true, "bring back restores it");
 await page.goto(`${BASE}/c/${A}`);
-ok(await page.getByRole("link", { name: "Codex" }).isVisible(), "codex link on the chapter page");
+await page.locator(".site-menu > summary").click();
+ok(await page.getByRole("link", { name: "Codex" }).isVisible(), "codex link in the chapter page menu");
 
 await browser.close(); mock.close();
 process.exit(failed ? 1 : 0);

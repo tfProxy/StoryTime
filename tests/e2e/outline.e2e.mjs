@@ -39,12 +39,13 @@ await page.locator("summary", { hasText: "Level 3" }).click();
 const [pathDl] = await Promise.all([page.waitForEvent("download"), page.locator("summary", { hasText: "Level 2" }).getByRole("link", { name: "export path" }).click()]);
 const pathText = fs.readFileSync(await pathDl.path(), "utf8");
 ok(/outline-story-level-2\.md$/.test(pathDl.suggestedFilename()) && pathText.includes("## 3. Level 2") && !pathText.includes("Level 3"), "export path downloads the route down to that chapter only");
-ok(await page.getByText("branch ends here").isVisible(), "dead ends are marked");
+ok((await page.getByText("branch ends here").count()) === 0, "dead ends are not tagged");
 ok((await page.getByText("not written yet").count()) === 0, "unwritten choices are not listed in the outline");
 ok((await page.getByRole("link", { name: "write it" }).count()) === 0, "no write links in the outline");
 
 // from a chapter page
 await page.goto(`${BASE}/c/${prev}`);
+await page.locator(".site-menu > summary").click();
 const [chDl] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Export this path" }).click()]);
 const chText = fs.readFileSync(await chDl.path(), "utf8");
 ok(chText.includes("## 1. Level 0") && chText.includes("## 5. Level 4") && chText.includes("*The end.*"), "a chapter page can export the route to it");

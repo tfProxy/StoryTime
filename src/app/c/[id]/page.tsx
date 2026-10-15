@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getChoices, getPath, getStory } from "@/lib/stories";
 import Prose from "@/components/Prose";
 import EditLink from "@/components/EditLink";
+import { PageMenu } from "@/components/SiteMenu";
 
 export const dynamic = "force-dynamic";
 
@@ -73,18 +74,14 @@ export default async function ChapterPage({
           <Link className="button secondary" href={`/c/${chapter.id}/write`}>
             Add a new choice and continue it
           </Link>
-          <Link className="button secondary" href={`/c/${chapter.id}/codex`}>
-            Codex
-          </Link>
-          <Link className="button secondary" href={`/c/${chapter.id}/summary`}>
-            {chapter.summary && chapter.path_summary ? "Summary" : "Summary (missing)"}
-          </Link>
-          <EditLink chapterId={chapter.id} />
-          <a className="button secondary" href={`/api/stories/${story.id}/export?format=md&to=${chapter.id}`}>
-            Export this path
-          </a>
         </p>
       </section>
+      <PageMenu codexHref={`/c/${chapter.id}/codex`}>
+        <Link href={`/c/${chapter.id}/summary`}>{chapter.summary && chapter.path_summary ? "Summary" : "Summary (missing)"}</Link>
+        <EditLink chapterId={chapter.id} />
+        <a href={`/api/stories/${story.id}/export?format=md&to=${chapter.id}`}>Export this path</a>
+        <Link href={`/s/${story.id}/outline#c-${chapter.id}`}>Open in outline</Link>
+      </PageMenu>
     </>
   );
 }

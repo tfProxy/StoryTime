@@ -8,7 +8,7 @@ export default function EditLink({ chapterId }: { chapterId: string }) {
   const key = useEditKey(chapterId);
   if (!key) return null;
   return (
-    <Link className="button secondary" href={`/c/${chapterId}/edit`}>
+    <Link href={`/c/${chapterId}/edit`}>
       Edit this chapter
     </Link>
   );

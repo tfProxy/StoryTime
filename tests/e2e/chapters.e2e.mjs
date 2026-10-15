@@ -93,6 +93,7 @@ ok((await page.getByLabel(/Your name/).inputValue()) === "Tester", "author name 
 
 // ---- editing a posted chapter ----
 await page.goto(chapterUrl);
+await page.locator(".site-menu > summary").click();
 ok(await page.getByRole("link", { name: "Edit this chapter" }).isVisible(), "edit link shown in posting browser");
 await page.getByRole("link", { name: "Edit this chapter" }).click();
 await page.waitForURL(/\/edit$/);
@@ -129,7 +130,7 @@ const page2 = await ctx2.newPage();
 await page2.goto(chapterUrl);
 await page2.getByRole("heading", { name: "The Door" }).waitFor();
 await page2.waitForTimeout(300);
-ok((await page2.getByRole("link", { name: "Edit this chapter" }).count()) === 0, "no edit link without the key");
+ok((await page2.getByRole("link", { name: "Edit this chapter", includeHidden: true }).count()) === 0, "no edit link without the key");
 await page2.goto(chapterUrl + "/edit");
 ok(await page2.getByText("doesn't have the edit key").isVisible(), "edit page explains missing key");
 await page2.goto(BASE + "/settings");
@@ -137,8 +138,8 @@ await page2.locator("input[type=file]").setInputFiles(file);
 await page2.getByText(/edit keys for \d+ chapter/).waitFor({ timeout: 5000 }).catch(() => {});
 ok(await page2.getByText(/edit keys for \d+ chapter/).isVisible(), "import reports edit keys");
 await page2.goto(chapterUrl);
-await page2.getByRole("link", { name: "Edit this chapter" }).waitFor({ timeout: 5000 }).catch(() => {});
-ok((await page2.getByRole("link", { name: "Edit this chapter" }).count()) === 1, "edit link appears after import");
+await page2.getByRole("link", { name: "Edit this chapter", includeHidden: true }).waitFor({ state: "attached", timeout: 5000 }).catch(() => {});
+ok((await page2.getByRole("link", { name: "Edit this chapter", includeHidden: true }).count()) === 1, "edit link appears after import");
 await ctx2.close();
 
 // continue a branch: context should include earlier chapter + choice

@@ -24,9 +24,7 @@ function Node({ node, via, storyId }: { node: TreeNode; via: string | null; stor
     <>
       {via && <span className="meta">{via} → </span>}
       <Link href={`/c/${node.id}`}>{node.title}</Link>
-      {node.author_name && <span className="meta"> · {node.author_name}</span>}
       {node.edited && <span className="meta"> · edited</span>}
-      {node.choices.length === 0 && <span className="tag"> · branch ends here</span>}
       {" "}
       <a
         className="meta outline-export"
@@ -37,9 +35,9 @@ function Node({ node, via, storyId }: { node: TreeNode; via: string | null; stor
       </a>
     </>
   );
-  if (written.length === 0) return <li>{summary}</li>;
+  if (written.length === 0) return <li id={`c-${node.id}`}>{summary}</li>;
   return (
-    <li>
+    <li id={`c-${node.id}`}>
       {/* Everything starts open; a branch can still be folded away. */}
       <details open>
         <summary>{summary}</summary>
