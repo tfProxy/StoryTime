@@ -35,6 +35,8 @@ export async function summarizeChapter(
     /** The author's own summary of the chapter; used as-is instead of a generated one. */
     summary?: string;
     signal?: AbortSignal;
+    /** Called as the reply streams in, with whatever of the two summaries has been written so far. */
+    onText?: (partial: Summaries) => void;
   },
 ): Promise<Summaries> {
   const own = opts.summary?.trim() ? clip(opts.summary) : null;
@@ -59,13 +61,17 @@ export async function summarizeChapter(
   // Small or "thinking" models sometimes ramble or break the format, so give it one more go.
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const reply = await completeChat(settings, {
-      system: SYSTEM_SUMMARY,
-      messages: [{ role: "user", content: prompt }],
-      useSummaryModel: true,
-      maxTokens: 1500,
-      signal: opts.signal,
-    });
+    const reply = await completeChat(
+      settings,
+      {
+        system: SYSTEM_SUMMARY,
+        messages: [{ role: "user", content: prompt }],
+        useSummaryModel: true,
+        maxTokens: 1500,
+        signal: opts.signal,
+      },
+      opts.onText && ((soFar) => opts.onText!(parsePartialSummaryReply(soFar, own))),
+    );
     try {
       const parsed = parseSummaryReply(reply);
       return own ? { ...parsed, summary: own } : parsed;
@@ -91,6 +97,17 @@ export function parseSummaryReply(reply: string): Summaries {
   return { summary, path_summary };
 }
 
+/** Reads a reply that is still arriving: whatever of each labelled part has been written so far. */
+export function parsePartialSummaryReply(reply: string, own?: string | null): Summaries {
+  const text = reply.replace(/\*\*/g, "");
+  const start = /SUMMARY:\s*/i.exec(text);
+  if (!start) return { summary: own ?? "", path_summary: "" };
+  const rest = text.slice(start.index + start[0].length);
+  const split = /STORY SO FAR:\s*/i.exec(rest);
+  const summary = (split ? rest.slice(0, split.index) : rest).trim();
+  return { summary: own ?? summary, path_summary: split ? rest.slice(split.index + split[0].length) : "" };
+}
+
 /** Stores a generated summary for a chapter (only fills it if it is still empty). */
 export async function saveSummaries(chapterId: string, revision: number, s: Summaries): Promise<void> {
   const res = await fetch(`/api/chapters/${chapterId}/summary`, {
@@ -108,6 +125,8 @@ export type SummaryOptions = {
   story: { title: string; premise: string };
   signal?: AbortSignal;
   onProgress?: (done: number, total: number) => void;
+  /** Streamed text for the chapter at `index` in the path, as in summarizeChapter. */
+  onText?: (partial: Summaries, index: number) => void;
 };
 
 /**
@@ -133,7 +152,13 @@ export async function ensurePathSummaries(
     if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
     opts.onProgress?.(i - start, total);
     const c = path[i];
-    const s = await summarizeChapter(settings, { story: opts.story, previous, chapter: c, signal: opts.signal });
+    const s = await summarizeChapter(settings, {
+      story: opts.story,
+      previous,
+      chapter: c,
+      signal: opts.signal,
+      onText: opts.onText && ((p) => opts.onText!(p, i)),
+    });
     // Saving is best-effort: the summary is still useful for this prompt if the server refuses.
     if (c.id && c.revision) await saveSummaries(c.id, c.revision, s).catch(() => {});
     if (c.id) made[c.id] = s;

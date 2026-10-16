@@ -1,9 +1,18 @@
 import http from "node:http";
-import { ensurePathSummaries, neededSummaryIndex, parseSummaryReply, summarizeChapter, summaryWords } from "../../src/lib/ai/summaries.ts";
+import { ensurePathSummaries, neededSummaryIndex, parsePartialSummaryReply, parseSummaryReply, summarizeChapter, summaryWords } from "../../src/lib/ai/summaries.ts";
 import { buildStorySoFar, summaryCoverageIndex } from "../../src/lib/ai/prompts.ts";
 import { DEFAULT_SETTINGS } from "../../src/lib/settings.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
+
+// ---- streaming parse ----
+{
+  const p = (t: string) => JSON.stringify(parsePartialSummaryReply(t));
+  ok(p("") === p("SUMMARY:") && p("") === JSON.stringify({ summary: "", path_summary: "" }), "nothing written yet");
+  ok(p("SUMMARY:\nShe ran") === JSON.stringify({ summary: "She ran", path_summary: "" }), "summary streams in first");
+  ok(p("SUMMARY:\nShe ran.\nSTORY SO FAR:\nLong") === JSON.stringify({ summary: "She ran.", path_summary: "Long" }), "then the story so far");
+  ok(parsePartialSummaryReply("SUMMARY:\nX\nSTORY SO FAR:\nY", "Own").summary === "Own", "the author's own summary is kept while streaming");
+}
 
 // ---- fake model ----
 const prompts: { system: string; user: string; model: string }[] = [];

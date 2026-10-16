@@ -61,9 +61,20 @@ export default function SummaryPanel({ chapterId, story, path }: Props) {
     setError(null);
     const progress = (done: number, total: number) =>
       setStatus(`Summarizing the story so far (${Math.min(done + 1, total)} of ${total})…`);
+    // Stream this chapter's summaries into the boxes as they are written; undo that if it fails.
+    const before = { summary, pathSummary };
+    const stream = (p: Summaries) => {
+      setSummary(p.summary);
+      setPathSummary(p.path_summary);
+    };
     try {
       if (!force) {
-        const made = await ensurePathSummaries(settings, path, index, { story, signal: ctl.signal, onProgress: progress });
+        const made = await ensurePathSummaries(settings, path, index, {
+          story,
+          signal: ctl.signal,
+          onProgress: progress,
+          onText: (p, i) => i === index && stream(p),
+        });
         const s = chapter.id ? made[chapter.id] : undefined;
         if (s) show(s);
         setStatus("Summary saved.");
@@ -78,13 +89,15 @@ export default function SummaryPanel({ chapterId, story, path }: Props) {
         previous = (parent.id && made[parent.id]?.path_summary) || parent.path_summary;
       }
       setStatus("Summarizing this chapter…");
-      const s = await summarizeChapter(settings, { story, previous, chapter, signal: ctl.signal });
+      const s = await summarizeChapter(settings, { story, previous, chapter, signal: ctl.signal, onText: stream });
       await put(s);
       show(s);
       setStatus("Regenerated and saved.");
       router.refresh();
     } catch (e) {
       setStatus(null);
+      setSummary(before.summary);
+      setPathSummary(before.pathSummary);
       if (!(e instanceof DOMException && e.name === "AbortError")) {
         setError(e instanceof Error ? e.message : String(e));
       }
