@@ -36,7 +36,7 @@ import CodexPreview from "./CodexPreview";
 
 export type Target =
   | { kind: "story" }
-  | { kind: "fill"; choiceId: string; label: string }
+  | { kind: "fill"; choiceId: string; label: string; parentChapterId: string }
   | { kind: "new"; parentChapterId: string }
   | {
       kind: "edit";
@@ -99,7 +99,7 @@ function isBlank(d: Draft, target: Target): boolean {
   return !(
     d.storyTitle ||
     d.premise ||
-    d.newChoiceLabel ||
+    (d.newChoiceLabel && !(target.kind === "fill" && d.newChoiceLabel === target.label)) ||
     d.title ||
     d.body ||
     d.prompt ||
@@ -143,6 +143,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     let cancelled = false;
     const fresh = (): Draft => {
       const d = emptyDraft(draftKey, resumeHref, draftLabel);
+      // Filling in an existing choice starts with its text in the choice box; changing it makes a new choice instead.
+      if (target.kind === "fill") return { ...d, newChoiceLabel: target.label };
       if (target.kind !== "edit") return d;
       return {
         ...d,
@@ -156,8 +158,10 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       };
     };
     // An edit draft saved before summaries were carried into it has no summary field: start it from the chapter's.
-    const upgraded = (d: Draft): Draft =>
-      target.kind === "edit" && d.summary === undefined && target.initialSummary ? { ...d, summary: target.initialSummary } : d;
+    const upgraded = (d: Draft): Draft => {
+      if (target.kind === "fill" && !d.newChoiceLabel) return { ...d, newChoiceLabel: target.label };
+      return target.kind === "edit" && d.summary === undefined && target.initialSummary ? { ...d, summary: target.initialSummary } : d;
+    };
     getDraft(draftKey)
       .then((d) => !cancelled && setDraft(d ? upgraded(d) : fresh()))
       .catch(() => !cancelled && setDraft(fresh()))
@@ -211,7 +215,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     path: withSummaries(context.path, madeSummaries),
     // The choice text being typed here (a new branch, or a renamed one) is what the reader will have picked.
     choiceLabel:
-      target.kind === "new"
+      target.kind === "new" || target.kind === "fill"
         ? draft.newChoiceLabel.trim() || null
         : target.kind === "edit" && target.incomingLabel !== null
           ? (draft.incomingLabel ?? "").trim() || target.incomingLabel
@@ -377,7 +381,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const finalChoices = draft.choices.map((c) => c.trim()).filter(Boolean);
   const problems: string[] = [];
   if (target.kind === "story" && !draft.storyTitle.trim()) problems.push("Add a story title.");
-  if (target.kind === "new" && !draft.newChoiceLabel.trim()) problems.push("Add the choice text for the previous chapter.");
+  if ((target.kind === "new" || target.kind === "fill") && !draft.newChoiceLabel.trim()) problems.push("Add the choice text for the previous chapter.");
   if (!draft.title.trim()) problems.push("Add a chapter title.");
   if (!draft.body.trim()) problems.push("Write the chapter text.");
   if (target.kind === "edit" && target.incomingLabel !== null && !(draft.incomingLabel ?? "").trim()) {
@@ -516,10 +520,12 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     } else if (target.kind === "story") {
       url = "/api/stories";
       payload = { title: draft.storyTitle, premise: draft.premise, author_name: author, chapter };
-    } else if (target.kind === "fill") {
+    } else if (target.kind === "fill" && draft.newChoiceLabel.trim() === target.label.trim()) {
       url = "/api/chapters";
       payload = { ...chapter, choice_id: target.choiceId, codex_changes };
     } else {
+      // A new choice on the parent chapter. For "fill" this means the author changed the text, so the
+      // choice they started from is left as it was.
       url = "/api/chapters";
       payload = { ...chapter, parent_chapter_id: target.parentChapterId, new_choice_label: draft.newChoiceLabel, codex_changes };
     }
@@ -558,7 +564,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     setCodexOpen(true);
   };
   // For a new branch, ideas fill in the choice text until the author has some; after that they follow it.
-  const ideaSetsChoice = target.kind === "new" && !draft.newChoiceLabel.trim();
+  const ideaSetsChoice = (target.kind === "new" || target.kind === "fill") && !draft.newChoiceLabel.trim();
 
   return (
     <form onSubmit={(e) => e.preventDefault()}>
@@ -607,19 +613,18 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         </>
       )}
 
-      {target.kind === "new" && (
-        <label>
-          Choice text <small>(the button readers click on the previous chapter; leave blank to get ideas for it)</small>
-          <input
-            value={draft.newChoiceLabel}
-            maxLength={LIMITS.label}
-            onChange={(e) => patch({ newChoiceLabel: e.target.value })}
-          />
-        </label>
-      )}
-
       <section className="ai-panel">
         <h2>1. Brainstorm</h2>
+        {(target.kind === "new" || target.kind === "fill") && (
+          <label>
+            Choice text <small>(the button readers click on the previous chapter; change it to add a new choice there instead; clear it to get ideas for it)</small>
+            <input
+              value={draft.newChoiceLabel}
+              maxLength={LIMITS.label}
+              onChange={(e) => patch({ newChoiceLabel: e.target.value })}
+            />
+          </label>
+        )}
         <div className="row">
           <button type="button" className="secondary" onClick={suggestIdeas} disabled={busy !== null}>
             {busy === "ideas" ? "Thinking…" : ideas.length ? "Suggest more" : "Suggest ideas"}

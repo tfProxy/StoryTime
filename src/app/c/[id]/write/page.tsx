@@ -19,7 +19,7 @@ export default async function WritePage({
   if (path.length === 0) notFound();
   const parent = path[path.length - 1];
 
-  let target: { kind: "fill"; choiceId: string; label: string } | { kind: "new"; parentChapterId: string };
+  let target: { kind: "fill"; choiceId: string; label: string; parentChapterId: string } | { kind: "new"; parentChapterId: string };
   if (choice) {
     const slot = getChoices(id).find((c) => c.id === choice);
     if (!slot) notFound();
@@ -30,7 +30,7 @@ export default async function WritePage({
         </p>
       );
     }
-    target = { kind: "fill", choiceId: slot.id, label: slot.label };
+    target = { kind: "fill", choiceId: slot.id, label: slot.label, parentChapterId: parent.id };
   } else {
     target = { kind: "new", parentChapterId: parent.id };
   }
@@ -50,7 +50,7 @@ export default async function WritePage({
       <p className="crumbs">
         <Link href={`/c/${parent.id}`}>← Back to “{parent.title}”</Link>
       </p>
-      <h1>{target.kind === "fill" ? `Write: ${target.label}` : "Add a new choice"}</h1>
+      <h1>{target.kind === "fill" ? "Write the next chapter" : "Add a new choice"}</h1>
       <ChapterEditor
         target={target}
         context={{
