@@ -46,7 +46,8 @@ ok((await page.getByRole("link", { name: "write it" }).count()) === 0, "no write
 // from a chapter page
 await page.goto(`${BASE}/c/${prev}`);
 await page.locator(".site-menu > summary").click();
-const [chDl] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Export this path" }).click()]);
+await page.locator(".menu-sub > summary").click();
+const [chDl] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Markdown" }).click()]);
 const chText = fs.readFileSync(await chDl.path(), "utf8");
 ok(chText.includes("## 1. Level 0") && chText.includes("## 5. Level 4") && chText.includes("*The end.*"), "a chapter page can export the route to it");
 

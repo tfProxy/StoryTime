@@ -105,6 +105,29 @@ a {
   cursor: pointer;
 }
 
+.menu-group .menu-sub {
+  display: grid;
+}
+
+.menu-group .menu-sub > summary {
+  padding: 0.55rem 0.8rem;
+  cursor: pointer;
+  color: var(--accent);
+  user-select: none;
+}
+
+.menu-group .menu-sub[open] > summary::after {
+  content: " ▴";
+}
+
+.menu-group .menu-sub:not([open]) > summary::after {
+  content: " ▾";
+}
+
+.menu-group .menu-sub > a {
+  padding-left: 1.6rem;
+}
+
 .brand {
   font-weight: 700;
   font-size: 1.15rem;

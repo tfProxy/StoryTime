@@ -85,7 +85,12 @@ export default async function ChapterPage({
       <PageMenu codexHref={`/c/${chapter.id}/codex`}>
         <Link href={`/c/${chapter.id}/summary`}>{chapter.summary && chapter.path_summary ? "Summary" : "Summary (missing)"}</Link>
         <EditLink chapterId={chapter.id} />
-        <a href={`/api/stories/${story.id}/export?format=md&to=${chapter.id}`}>Export this path</a>
+        <Link href={`/c/${chapter.id}/path`}>Read this path</Link>
+        <details className="menu-sub">
+          <summary>Export</summary>
+          <a href={`/api/stories/${story.id}/export?format=md&to=${chapter.id}`}>Markdown</a>
+          <a href={`/api/stories/${story.id}/export?format=html&to=${chapter.id}`}>HTML</a>
+        </details>
         <Link href={`/s/${story.id}/outline#c-${chapter.id}`}>Open in outline</Link>
       </PageMenu>
     </>

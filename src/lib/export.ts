@@ -179,7 +179,7 @@ export function toMarkdown(data: StoryExport): string {
  * One route through the story as continuous reading: the chapters from the first one down to
  * `chapterId`, with the choice taken shown between them. Null if the chapter isn't in the story.
  */
-export function toPathMarkdown(data: StoryExport, chapterId: string): string | null {
+export function routeTo(data: StoryExport, chapterId: string) {
   const byId = new Map(data.chapters.map((c) => [c.id, c]));
   const choiceById = new Map(data.choices.map((c) => [c.id, c]));
   const route: ChapterRow[] = [];
@@ -189,20 +189,27 @@ export function toPathMarkdown(data: StoryExport, chapterId: string): string | n
     c = via ? byId.get(via.parent_chapter_id) : undefined;
   }
   if (route.length === 0 || route[0].id !== data.chapters[0].id) return null;
+  const viaOf = (c: ChapterRow) => (c.parent_choice_id ? choiceById.get(c.parent_choice_id) : undefined);
+  const toBeContinued = data.choices.some((c) => c.parent_chapter_id === route[route.length - 1].id);
+  return { route, viaOf, toBeContinued };
+}
+
+export function toPathMarkdown(data: StoryExport, chapterId: string): string | null {
+  const found = routeTo(data, chapterId);
+  if (!found) return null;
+  const { route, viaOf, toBeContinued } = found;
 
   const out: string[] = [`# ${data.story.title}`];
   if (data.story.author_name) out.push(`*by ${data.story.author_name}*`);
   if (data.story.premise.trim()) out.push(data.story.premise.trim().split("\n").map((l) => `> ${l}`).join("\n"));
   route.forEach((c, i) => {
-    const via = c.parent_choice_id ? choiceById.get(c.parent_choice_id) : undefined;
+    const via = viaOf(c);
     if (via) out.push(`*${via.label}*`);
     out.push(`## ${i + 1}. ${c.title}`);
     if (c.author_name) out.push(`*by ${c.author_name}*`);
     out.push(c.body.trim());
   });
-  const last = route[route.length - 1];
-  if (data.choices.some((c) => c.parent_chapter_id === last.id)) out.push("*…to be continued.*");
-  else out.push("*The end.*");
+  out.push(toBeContinued ? "*…to be continued.*" : "*The end.*");
   return `${out.join("\n\n")}\n`;
 }
 

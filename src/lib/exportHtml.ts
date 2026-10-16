@@ -1,4 +1,4 @@
-import { finishedBranches, type StoryExport } from "./export";
+import { finishedBranches, routeTo, type StoryExport } from "./export";
 
 // A single self-contained HTML file that plays the story in any browser: no server, no network, no
 // libraries. It remembers which chapters the reader has seen (in that browser's localStorage, keyed
@@ -127,6 +127,57 @@ const SCRIPT = String.raw`
   render();
 })();
 `;
+
+/** One route through the story as a static, continuous HTML page (no script). Null if the chapter isn't in the story. */
+export function toPathHtml(data: StoryExport, chapterId: string): string | null {
+  const found = routeTo(data, chapterId);
+  if (!found) return null;
+  const { route, viaOf, toBeContinued } = found;
+  const paras = (text: string) =>
+    text
+      .split(/\n\s*\n/)
+      .filter((p) => p.trim())
+      .map((p) => `<p>${escapeHtml(p.trim())}</p>`)
+      .join("\n");
+  const s = data.story;
+  const body = [
+    `<h1>${escapeHtml(s.title)}</h1>`,
+    s.author_name ? `<p class="meta">by ${escapeHtml(s.author_name)}</p>` : "",
+    s.premise.trim() ? `<blockquote>${escapeHtml(s.premise.trim())}</blockquote>` : "",
+    ...route.map((c, i) => {
+      const via = viaOf(c);
+      return `<section>
+${via ? `<p class="via">${escapeHtml(via.label)}</p>` : ""}
+<h2>${i + 1}. ${escapeHtml(c.title)}</h2>
+${c.author_name ? `<p class="meta">by ${escapeHtml(c.author_name)}</p>` : ""}
+<div class="prose">
+${paras(c.body)}
+</div>
+</section>`;
+    }),
+    `<p class="end">${toBeContinued ? "…to be continued." : "The end."}</p>`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(s.title)}</title>
+<style>${STYLE}
+section { margin-top: 2.5rem; }
+.via { color: var(--muted); font-style: italic; margin: 0 0 0.5rem; }
+</style>
+</head>
+<body>
+<main>
+${body}
+</main>
+</body>
+</html>
+`;
+}
 
 export function toHtml(data: StoryExport): string {
   const { chapters, childBy, choicesBy, leadsToKept } = finishedBranches(data);
