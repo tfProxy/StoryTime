@@ -22,21 +22,27 @@ export default function Home() {
         <div key={s.id} className="card story-card">
           <Link href={s.root_chapter_id ? `/c/${s.root_chapter_id}` : `/s/${s.id}`} className="story-link">
             <strong>{s.title}</strong>
+            {s.premise.trim() && <p className="meta story-premise">{s.premise.trim()}</p>}
             <p className="meta">
-              {s.author_name ? `by ${s.author_name} · ` : ""}
               {s.chapter_count} chapter{s.chapter_count === 1 ? "" : "s"}
             </p>
           </Link>
-          <details className="story-menu">
-            <summary aria-label={`Options for ${s.title}`}>☰</summary>
-            <div className="story-menu-items">
-              <Link href={`/s/${s.id}/outline`}>Outline</Link>
-              <a href={download(s.id, "md")}>Download readable (Markdown)</a>
-              <a href={download(s.id, "html")}>Download to play offline (HTML)</a>
-              <a href={download(s.id, "twee")}>Download Twine (Twee)</a>
-              <a href={download(s.id, "json")}>Download everything (JSON)</a>
-            </div>
-          </details>
+          <div className="story-actions">
+            <Link href={`/s/${s.id}/outline`} className="story-outline" aria-label={`Outline of ${s.title}`} title="Outline">
+              <svg viewBox="0 0 24 24" width="1.2rem" height="1.2rem" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="5" cy="12" r="2.2" /><circle cx="19" cy="5.5" r="2.2" /><circle cx="19" cy="18.5" r="2.2" /><path d="M7.2 12h3.3c2 0 2.5-6.5 6.3-6.5 M10.5 12c2 0 2.5 6.5 6.3 6.5" />
+              </svg>
+            </Link>
+            <details className="story-menu">
+              <summary aria-label={`Options for ${s.title}`}>☰</summary>
+              <div className="story-menu-items">
+                <a href={download(s.id, "md")}>Download readable (Markdown)</a>
+                <a href={download(s.id, "html")}>Download to play offline (HTML)</a>
+                <a href={download(s.id, "twee")}>Download Twine (Twee)</a>
+                <a href={download(s.id, "json")}>Download everything (JSON)</a>
+              </div>
+            </details>
+          </div>
         </div>
       ))}
       <PageMenu>

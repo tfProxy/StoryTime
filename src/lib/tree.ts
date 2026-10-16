@@ -7,6 +7,7 @@ export type TreeNode = {
   author_name: string;
   depth: number;
   edited: boolean;
+  summary: string | null;
   /** Choices on this chapter; `child` is null while the choice is still unwritten. */
   choices: { id: string; label: string; child: TreeNode | null }[];
 };
@@ -18,6 +19,7 @@ type ChapterRow = {
   depth: number;
   parent_choice_id: string | null;
   edited_at: number | null;
+  summary: string | null;
 };
 
 export type StoryChapter = {
@@ -62,7 +64,7 @@ export function getStoryTree(storyId: string): TreeNode | null {
 
   const chapters = db()
     .prepare(
-      `SELECT id, title, author_name, depth, parent_choice_id, edited_at
+      `SELECT id, title, author_name, depth, parent_choice_id, edited_at, summary
          FROM chapters WHERE story_id = ? AND removed_at IS NULL`,
     )
     .all(storyId) as ChapterRow[];
@@ -90,6 +92,7 @@ export function getStoryTree(storyId: string): TreeNode | null {
     author_name: c.author_name,
     depth: c.depth,
     edited: c.edited_at !== null,
+    summary: c.summary,
     choices: (choicesOf.get(c.id) ?? []).map((ch) => {
       const child = childOfChoice.get(ch.id);
       return { id: ch.id, label: ch.label, child: child ? build(child) : null };

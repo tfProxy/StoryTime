@@ -25,10 +25,21 @@ await page.locator(".story-card", { hasText: "Outline story" }).locator("a.story
 await page.waitForURL(new RegExp(`/c/${s.chapter_id}$`));
 ok(await page.getByRole("heading", { name: "Level 0" }).isVisible(), "clicking a story opens its first chapter");
 await page.goto(BASE);
-await menu().click();
-await page.getByRole("link", { name: "Outline", exact: true }).click();
+await page.locator(".story-card", { hasText: "Outline story" }).getByRole("link", { name: /Outline of/ }).click();
 await page.waitForURL(/outline$/);
 ok(await page.getByText(/5 chapters · 1 choice still to write/).isVisible(), "totals shown");
+
+// summaries: per chapter, and all at once
+ok((await page.locator(".outline-summary").count()) === 0, "summaries start hidden");
+await page.getByRole("button", { name: "summary", exact: true }).first().click();
+await page.locator(".outline-summary").first().waitFor();
+ok((await page.locator(".outline-summary").count()) === 1 && (await page.locator("li").first().locator("details").first().getAttribute("open")) !== null, "one chapter's summary opens without folding its branch");
+await page.getByRole("button", { name: "Show all summaries" }).click();
+await page.locator(".outline-summary").nth(4).waitFor();
+ok((await page.locator(".outline-summary").count()) === 5, "show all opens every chapter's summary");
+await page.getByRole("button", { name: "Hide all summaries" }).click();
+await page.locator(".outline-summary").first().waitFor({ state: "detached" });
+ok((await page.locator(".outline-summary").count()) === 0, "hide all closes them");
 ok(await page.getByRole("link", { name: "Level 2" }).isVisible(), "shallow chapters are expanded");
 ok(await page.getByRole("link", { name: "Level 4" }).isVisible(), "every branch starts expanded, however deep");
 const mainWidth = await page.locator("main").evaluate((m) => m.getBoundingClientRect().width);
@@ -36,9 +47,11 @@ ok(mainWidth > 900, "the outline uses the whole window: " + Math.round(mainWidth
 await page.locator("summary", { hasText: "Level 3" }).click();
 ok(!(await page.getByRole("link", { name: "Level 4" }).isVisible()), "a branch can still be folded away");
 await page.locator("summary", { hasText: "Level 3" }).click();
-const [pathDl] = await Promise.all([page.waitForEvent("download"), page.locator("summary", { hasText: "Level 2" }).getByRole("link", { name: "export path" }).click()]);
-const pathText = fs.readFileSync(await pathDl.path(), "utf8");
-ok(/outline-story-level-2\.md$/.test(pathDl.suggestedFilename()) && pathText.includes("## 3. Level 2") && !pathText.includes("Level 3"), "export path downloads the route down to that chapter only");
+await page.locator("summary", { hasText: "Level 2" }).getByRole("link", { name: "read to here" }).click();
+await page.waitForURL(/\/path$/);
+const readText = await page.locator("main").innerText();
+ok(readText.includes("3. Level 2") && readText.includes("level 2") && !readText.includes("Level 3"), "read to here shows the route down to that chapter on one page");
+await page.goBack();
 ok((await page.getByText("branch ends here").count()) === 0, "dead ends are not tagged");
 ok((await page.getByText("not written yet").count()) === 0, "unwritten choices are not listed in the outline");
 ok((await page.getByRole("link", { name: "write it" }).count()) === 0, "no write links in the outline");

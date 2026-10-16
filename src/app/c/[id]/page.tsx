@@ -82,8 +82,10 @@ export default async function ChapterPage({
           </Link>
         </p>
       </section>
-      <PageMenu codexHref={`/c/${chapter.id}/codex`}>
-        <Link href={`/c/${chapter.id}/summary`}>{chapter.summary && chapter.path_summary ? "Summary" : "Summary (missing)"}</Link>
+      <PageMenu
+        codexHref={`/c/${chapter.id}/codex`}
+        codexGroup={<Link href={`/c/${chapter.id}/summary`}>{chapter.summary && chapter.path_summary ? "Summary" : "Summary (missing)"}</Link>}
+      >
         <EditLink chapterId={chapter.id} />
         <Link href={`/c/${chapter.id}/path`}>Read this path</Link>
         <details className="menu-sub">

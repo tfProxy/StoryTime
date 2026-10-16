@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getStory } from "@/lib/stories";
 import { getStoryTree, type TreeNode } from "@/lib/tree";
+import { PageMenu } from "@/components/SiteMenu";
+import { NodeSummary, SummaryProvider, ToggleAllSummaries } from "@/components/OutlineSummaries";
 
 export const dynamic = "force-dynamic";
 
@@ -17,22 +19,18 @@ function count(node: TreeNode, t: Totals) {
   }
 }
 
-function Node({ node, via, storyId }: { node: TreeNode; via: string | null; storyId: string }) {
+function Node({ node, via }: { node: TreeNode; via: string | null }) {
   // Only written chapters are listed; unwritten choices are left to the story page.
   const written = node.choices.filter((c) => c.child);
   const summary = (
     <>
-      {via && <span className="meta">{via} → </span>}
       <Link href={`/c/${node.id}`}>{node.title}</Link>
-      {node.edited && <span className="meta"> · edited</span>}
       {" "}
-      <a
-        className="meta outline-export"
-        href={`/api/stories/${storyId}/export?format=md&to=${node.id}`}
-        title="Download the route from the first chapter to this one as Markdown"
-      >
-        export path
-      </a>
+      <NodeSummary summary={node.summary} via={via}>
+        <Link className="outline-action" href={`/c/${node.id}/path`} title="Read every chapter from the first one to this one on a single page">
+          read to here
+        </Link>
+      </NodeSummary>
     </>
   );
   if (written.length === 0) return <li id={`c-${node.id}`}>{summary}</li>;
@@ -43,7 +41,7 @@ function Node({ node, via, storyId }: { node: TreeNode; via: string | null; stor
         <summary>{summary}</summary>
         <ul className="outline">
           {written.map((c) => (
-            <Node key={c.id} node={c.child!} via={c.label} storyId={storyId} />
+            <Node key={c.id} node={c.child!} via={c.label} />
           ))}
         </ul>
       </details>
@@ -67,16 +65,21 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
       </p>
       <h1>Outline</h1>
       <p className="meta">
-        <Link href={`/s/${story.id}/summaries`}>Redo the AI summaries</Link>
-      </p>
-      <p className="meta">
         {totals.chapters} chapter{totals.chapters === 1 ? "" : "s"} · {totals.unwritten} choice
         {totals.unwritten === 1 ? "" : "s"} still to write · {totals.ends} branch{totals.ends === 1 ? "" : "es"} end · longest path{" "}
         {totals.deepest}
       </p>
-      <ul className="outline outline-root">
-        <Node node={tree} via={null} storyId={story.id} />
-      </ul>
+      <SummaryProvider>
+        <p>
+          <ToggleAllSummaries />
+        </p>
+        <ul className="outline outline-root">
+          <Node node={tree} via={null} />
+        </ul>
+      </SummaryProvider>
+      <PageMenu>
+        <Link href={`/s/${story.id}/summaries`}>Redo the AI summaries</Link>
+      </PageMenu>
     </div>
   );
 }

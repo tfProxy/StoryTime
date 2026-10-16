@@ -50,8 +50,19 @@ export default function SiteMenu() {
   );
 }
 
-// Put entries into the header menu. `codexHref` (a link) or `onCodex` (a button) adds Codex in its own group.
-export function PageMenu({ codexHref, onCodex, children }: { codexHref?: string; onCodex?: () => void; children?: ReactNode }) {
+// Put entries into the header menu. `codexHref` (a link) or `onCodex` (a button) adds Codex in its own group;
+// `codexGroup` adds more entries to that group, above Codex.
+export function PageMenu({
+  codexHref,
+  onCodex,
+  codexGroup,
+  children,
+}: {
+  codexHref?: string;
+  onCodex?: () => void;
+  codexGroup?: ReactNode;
+  children?: ReactNode;
+}) {
   // False while rendering on the server and hydrating; the header's slots only exist in the browser.
   const mounted = useSyncExternalStore(
     () => () => {},
@@ -65,6 +76,7 @@ export function PageMenu({ codexHref, onCodex, children }: { codexHref?: string;
   return (
     <>
       {children && createPortal(children, slots.page)}
+      {codexGroup && createPortal(codexGroup, slots.codex)}
       {codexHref && createPortal(<Link href={codexHref}>Codex</Link>, slots.codex)}
       {onCodex &&
         createPortal(

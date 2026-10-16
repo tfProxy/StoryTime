@@ -53,6 +53,7 @@ page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true
 page.on("dialog", (d) => d.accept());
 
 await page.goto(`${BASE}/s/${s.story_id}/outline`);
+await page.locator(".site-menu > summary").click();
 await page.getByRole("link", { name: "Redo the AI summaries" }).click();
 await page.waitForURL(/\/summaries$/);
 await page.getByText(/This browser posted 2 of them/).waitFor();

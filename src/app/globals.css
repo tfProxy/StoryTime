@@ -423,22 +423,84 @@ main:has(.outline-page) {
 }
 
 .outline-page .outline {
-  padding-left: 0.9rem;
+  --indent: 1.3rem;
+  padding-left: var(--indent);
   margin-left: 0.2rem;
+}
+
+/* The faint line down the left of a branch shows its indent. A strong line runs alongside the chapters
+   branching from a chapter, with an elbow into each one. It stops at the elbow of the last. */
+.outline-page .outline li {
+  position: relative;
+}
+
+.outline-page .outline li::before,
+.outline-page .outline li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--indent) - 1px);
+  border-left: 1px solid var(--muted);
+  pointer-events: none;
+}
+
+/* The elbow: down to the chapter's row, then across, stopping short of the expand/collapse marker. */
+.outline-page .outline li::before {
+  top: -0.35rem;
+  width: calc(var(--indent) - 0.45rem);
+  height: calc(0.35rem + 0.8em);
+  border-bottom: 1px solid var(--muted);
+  border-bottom-left-radius: 6px;
+}
+
+/* From the elbow down to the next sibling. */
+.outline-page .outline li:not(:last-child)::after {
+  top: 0.8em;
+  bottom: -0.35rem;
+}
+
+.outline-page .outline-root > li::before,
+.outline-page .outline-root > li::after {
+  display: none;
 }
 
 .outline-page li {
   white-space: nowrap;
 }
 
-.outline-export {
+.outline-actions {
   margin-left: 0.4rem;
-  opacity: 0.7;
 }
 
-.outline-export:hover,
-.outline-export:focus-visible {
-  opacity: 1;
+/* "summary" (a button) and "read to here" (a link) look the same. */
+.outline-action,
+button.outline-action {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.outline-action:hover,
+.outline-action:focus-visible {
+  text-decoration: none;
+}
+
+.outline-summary {
+  display: block;
+  max-width: 40rem;
+  margin: 0.25rem 0 0.25rem 0.2rem;
+  padding-left: 0.6rem;
+  border-left: 3px solid var(--line);
+  white-space: pre-line;
+  color: var(--muted);
+  cursor: auto;
+}
+
+.outline-via {
+  display: block;
 }
 
 .outline-root {
@@ -557,6 +619,31 @@ main:has(.outline-page) {
 
 .story-link p {
   margin: 0.25rem 0 0;
+}
+
+.story-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.story-outline {
+  display: flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: inherit;
+  line-height: 1.4;
+  text-decoration: none;
+}
+
+.story-outline svg {
+  height: 1.54rem;
+}
+
+.story-premise {
+  white-space: pre-line;
 }
 
 .story-menu {
