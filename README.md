@@ -91,8 +91,9 @@ replacement can be written.
 ## How it works
 
 - No accounts, logins or author names; one person is assumed.
-- The server stores only stories (chapters, choices, codex changes). AI keys, settings and drafts and
-  settings live in your browser; the settings page can export them to a file.
+- The server stores stories (chapters, choices, codex changes) and the settings, including AI keys, so
+  every browser sees the same ones. Drafts live in your browser; the settings page can export settings
+  to a file.
 - Any chapter can be edited. Every edit keeps the previous version in `chapter_revisions`, and the
   chapter shows an "edited" marker linking to its history.
 - The codex is an append-only log per story: each change (create / replace / retire) is anchored at

@@ -141,6 +141,13 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE chapter_revisions DROP COLUMN author_name;
   ALTER TABLE chapter_revisions DROP COLUMN edited_by;
   `,
+  // 5: app settings (AI provider, keys, ...) live on the server so every browser shares them.
+  `
+  CREATE TABLE settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+  `,
 ];
 
 function open(): Database.Database {

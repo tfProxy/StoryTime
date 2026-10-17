@@ -75,9 +75,9 @@ export default function SettingsForm() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   function update(patch: Partial<Settings>) {
-    if (!saveSettings({ ...settings, ...patch })) {
-      setStatus({ kind: "error", text: "Your browser wouldn't save the settings (storage may be blocked)." });
-    }
+    void saveSettings({ ...settings, ...patch }).then((saved) => {
+      if (!saved) setStatus({ kind: "error", text: "The server couldn't save the settings. Your changes will be lost on reload." });
+    });
   }
   function updateProvider(patch: Partial<ProviderSettings>) {
     update({
@@ -144,8 +144,8 @@ export default function SettingsForm() {
     try {
       const text = await file.text();
       const next = importSettingsJson(text);
-      saveSettings(next);
-      setStatus({ kind: "ok", text: "Settings imported." });
+      const saved = await saveSettings(next);
+      setStatus(saved ? { kind: "ok", text: "Settings imported." } : { kind: "error", text: "The server couldn't save the imported settings." });
     } catch (e) {
       setStatus({ kind: "error", text: e instanceof Error ? e.message : "Couldn't read that file" });
     }
@@ -154,9 +154,9 @@ export default function SettingsForm() {
   return (
     <div style={{ display: "grid", gap: "1.5rem" }}>
       <p className="notice">
-        These settings, including your API keys, are stored only in this browser and are never sent to the StoryTime
-        server. AI requests go directly from your browser to the provider you choose. Use Export to back them up,
-        because clearing your browser data will erase them.
+        These settings, including your API keys, are stored on the StoryTime server and shared by every browser that
+        uses it. AI requests still go directly from your browser to the provider you choose, so the key is sent to
+        your browser when a page loads. Only use StoryTime on a server and network you trust.
       </p>
 
       <form onSubmit={(e) => e.preventDefault()}>

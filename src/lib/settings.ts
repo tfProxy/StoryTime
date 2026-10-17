@@ -1,149 +1,83 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { z } from "zod";
-import { PROVIDERS, providerInfo, type ProviderId } from "./ai/providers";
+import { DEFAULT_SETTINGS, parseSettings, type Settings } from "./settingsSchema";
 
-// Everything here lives only in this browser's localStorage. Nothing is sent to the StoryTime server.
+export { activeProviderSettings, exportSettingsJson, importSettingsJson, DEFAULT_SETTINGS, parseSettings } from "./settingsSchema";
+export type { ProviderSettings, Settings } from "./settingsSchema";
 
-export type ProviderSettings = {
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-  /** Cheaper model for summaries and other small jobs. Falls back to `model` when empty. */
-  summaryModel: string;
-};
+// The settings live on the StoryTime server (GET/PUT /api/settings), so every browser and
+// session sees the same ones. This module keeps a copy in memory for the hooks to read.
 
-export type Settings = {
-  activeProvider: ProviderId;
-  providers: Record<ProviderId, ProviderSettings>;
-  /** null = use the provider's default. */
-  temperature: number | null;
-  /** Rough budget for the prompt context, so small local models aren't overflowed. */
-  contextTokens: number;
-  /** Ask the model not to use extended thinking / reasoning. */
-  disableThinking: boolean;
-};
-
-function defaultProvider(id: ProviderId): ProviderSettings {
-  const p = providerInfo(id);
-  return { baseUrl: p.defaultBaseUrl, apiKey: "", model: p.defaultModel, summaryModel: p.defaultSummaryModel };
-}
-
-export const DEFAULT_SETTINGS: Settings = {
-  activeProvider: "anthropic",
-  providers: Object.fromEntries(PROVIDERS.map((p) => [p.id, defaultProvider(p.id)])) as Record<
-    ProviderId,
-    ProviderSettings
-  >,
-  temperature: null,
-  contextTokens: 8000,
-  disableThinking: false,
-};
-
-// Each field falls back to its default when missing or invalid, so partial or older
-// files still import cleanly.
-const providerSchema = (id: ProviderId) => {
-  const d = defaultProvider(id);
-  return z
-    .object({
-      baseUrl: z.string().catch(d.baseUrl),
-      apiKey: z.string().catch(d.apiKey),
-      model: z.string().catch(d.model),
-      summaryModel: z.string().catch(d.summaryModel),
-    })
-    .catch(d);
-};
-
-const settingsSchema = z.object({
-  activeProvider: z.enum(["openai", "ollama", "anthropic", "custom"]).catch(DEFAULT_SETTINGS.activeProvider),
-  providers: z
-    .object({
-      openai: providerSchema("openai"),
-      ollama: providerSchema("ollama"),
-      anthropic: providerSchema("anthropic"),
-      custom: providerSchema("custom"),
-    })
-    .catch(DEFAULT_SETTINGS.providers),
-  temperature: z.number().min(0).max(2).nullable().catch(null),
-  contextTokens: z.number().int().min(1000).max(2_000_000).catch(DEFAULT_SETTINGS.contextTokens),
-  disableThinking: z.boolean().catch(false),
-});
-
-export function parseSettings(raw: unknown): Settings {
-  const parsed = settingsSchema.safeParse(raw && typeof raw === "object" ? raw : {});
-  return parsed.success ? parsed.data : DEFAULT_SETTINGS;
-}
-
-const KEY = "storytime.settings.v1";
+const LEGACY_KEY = "storytime.settings.v1";
 const listeners = new Set<() => void>();
 
-// useSyncExternalStore needs a referentially stable snapshot, so cache by the raw string.
-let cachedRaw: string | null | undefined;
-let cachedValue: Settings = DEFAULT_SETTINGS;
+let current: Settings = DEFAULT_SETTINGS;
+let loadStarted = false;
+let saving: Promise<unknown> = Promise.resolve();
 
-function readRaw(): string | null {
+function publish(next: Settings) {
+  current = next;
+  listeners.forEach((l) => l());
+}
+
+/** Settings this browser used to keep in localStorage, if any. */
+function legacySettings(): Settings | null {
   try {
-    return localStorage.getItem(KEY);
+    const raw = localStorage.getItem(LEGACY_KEY);
+    return raw ? parseSettings(JSON.parse(raw)) : null;
   } catch {
     return null;
   }
 }
 
-function getSnapshot(): Settings {
-  const raw = readRaw();
-  if (raw !== cachedRaw) {
-    cachedRaw = raw;
-    try {
-      cachedValue = raw ? parseSettings(JSON.parse(raw)) : DEFAULT_SETTINGS;
-    } catch {
-      cachedValue = DEFAULT_SETTINGS;
+async function load() {
+  try {
+    const res = await fetch("/api/settings", { cache: "no-store" });
+    if (!res.ok) return;
+    const body = (await res.json()) as { settings: Settings | null };
+    if (body.settings) {
+      publish(parseSettings(body.settings));
+      return;
     }
+    // Nothing on the server yet: adopt what this browser had, so upgrading loses nothing.
+    const old = legacySettings();
+    if (old) await saveSettings(old);
+  } catch {
+    // Offline or server down: keep the defaults.
   }
-  return cachedValue;
 }
 
 function subscribe(cb: () => void) {
   listeners.add(cb);
-  const onStorage = (e: StorageEvent) => {
-    if (e.key === KEY) cb();
-  };
-  window.addEventListener("storage", onStorage);
+  if (!loadStarted) {
+    loadStarted = true;
+    void load();
+  }
   return () => {
     listeners.delete(cb);
-    window.removeEventListener("storage", onStorage);
   };
 }
 
-/** Returns false if the browser refused to store the settings. */
-export function saveSettings(next: Settings): boolean {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(next));
-  } catch {
-    return false;
-  }
-  listeners.forEach((l) => l());
-  return true;
+/** Applies the change immediately, then stores it on the server. Returns false if the server refused. */
+export function saveSettings(next: Settings): Promise<boolean> {
+  publish(next);
+  const run = saving.then(async () => {
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(next),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  });
+  saving = run;
+  return run;
 }
 
 export function useSettings(): Settings {
-  return useSyncExternalStore(subscribe, getSnapshot, () => DEFAULT_SETTINGS);
-}
-
-export function activeProviderSettings(s: Settings): ProviderSettings {
-  return s.providers[s.activeProvider];
-}
-
-// ---- export / import ----
-
-export function exportSettingsJson(s: Settings): string {
-  return JSON.stringify({ storytime: 1, settings: s }, null, 2);
-}
-
-export function importSettingsJson(text: string): Settings {
-  const data = JSON.parse(text);
-  if (!data || typeof data !== "object" || !("settings" in data)) {
-    throw new Error("This doesn't look like a StoryTime settings file");
-  }
-  return parseSettings((data as { settings: unknown }).settings);
+  return useSyncExternalStore(subscribe, () => current, () => DEFAULT_SETTINGS);
 }

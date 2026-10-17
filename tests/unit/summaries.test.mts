@@ -1,7 +1,7 @@
 import http from "node:http";
 import { ensurePathSummaries, neededSummaryIndex, parsePartialSummaryReply, parseSummaryReply, summarizeChapter, summaryWords } from "../../src/lib/ai/summaries.ts";
 import { buildStorySoFar, summaryCoverageIndex } from "../../src/lib/ai/prompts.ts";
-import { DEFAULT_SETTINGS } from "../../src/lib/settings.ts";
+import { DEFAULT_SETTINGS } from "../../src/lib/settingsSchema.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 

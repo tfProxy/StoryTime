@@ -1,6 +1,6 @@
 import http from "node:http";
 import { analyzePath, applyProposals, draftEntry, extractJson, parseFields } from "../../src/lib/ai/codexAi.ts";
-import { DEFAULT_SETTINGS } from "../../src/lib/settings.ts";
+import { DEFAULT_SETTINGS } from "../../src/lib/settingsSchema.ts";
 import type { CodexOp } from "../../src/lib/codex.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };

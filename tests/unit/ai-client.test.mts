@@ -1,6 +1,6 @@
 import http from "node:http";
 import { streamChat, listModels, completeChat, AiError } from "../../src/lib/ai/client.ts";
-import { DEFAULT_SETTINGS, parseSettings, exportSettingsJson, importSettingsJson } from "../../src/lib/settings.ts";
+import { DEFAULT_SETTINGS, parseSettings, exportSettingsJson, importSettingsJson } from "../../src/lib/settingsSchema.ts";
 
 const seen: { url?: string; headers?: http.IncomingHttpHeaders; body?: any }[] = [];
 const server = http.createServer((req, res) => {
