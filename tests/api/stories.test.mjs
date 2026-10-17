@@ -6,14 +6,14 @@ const call = async (method, url, body) => {
   return { status: r.status, json: await r.json().catch(() => null) };
 };
 
-let r = await call("POST", "/api/stories", { title: "Test Tale", premise: "p", author_name: "Ann", chapter: { title: "Ch1", body: "Once upon.\n\nA time.", choices: ["Go left", "Go right"] } });
+let r = await call("POST", "/api/stories", { title: "Test Tale", premise: "p", chapter: { title: "Ch1", body: "Once upon.\n\nA time.", choices: ["Go left", "Go right"] } });
 ok(r.status === 201 && r.json.story_id && r.json.chapter_id, "create story");
 const { story_id: story, chapter_id: root } = r.json;
 let g = await call("GET", `/api/chapters/${root}`);
 ok(g.json.choices.length === 2 && g.json.choices.every((c) => c.child_chapter_id === null), "choices start unwritten");
 const [left, right] = g.json.choices;
 
-r = await call("POST", "/api/chapters", { title: "Left", body: "You went left", author_name: "Bob", choice_id: left.id, choices: ["Hop"] });
+r = await call("POST", "/api/chapters", { title: "Left", body: "You went left", choice_id: left.id, choices: ["Hop"] });
 ok(r.status === 201, "fill an unwritten choice");
 const leftCh = r.json.chapter_id;
 r = await call("POST", "/api/chapters", { title: "Left2", body: "x", choice_id: left.id });

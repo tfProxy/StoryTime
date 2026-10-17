@@ -7,13 +7,13 @@ const call = async (method, url, body) => {
 };
 const exportOf = async (id) => (await fetch(`${B}/api/stories/${id}/export?format=json`)).json();
 
-let r = await call("POST", "/api/stories", { title: "Round Trip", premise: "A premise.", author_name: "Eve", chapter: { title: "Start", body: "It began.", author_name: "Eve", summary: "sum-root", path_summary: "ps-root", choices: ["Left", "Right"] } });
+let r = await call("POST", "/api/stories", { title: "Round Trip", premise: "A premise.", chapter: { title: "Start", body: "It began.", summary: "sum-root", path_summary: "ps-root", choices: ["Left", "Right"] } });
 const story = r.json.story_id, root = r.json.chapter_id;
 const choices = (await call("GET", `/api/chapters/${root}`)).json.choices;
-const left = (await call("POST", "/api/chapters", { choice_id: choices[0].id, title: "Left", body: "left text", author_name: "Bo", summary: "sum-left", path_summary: "ps-left", choices: ["Deeper"] })).json.chapter_id;
-await call("POST", "/api/chapters", { choice_id: (await call("GET", `/api/chapters/${left}`)).json.choices[0].id, title: "Deep", body: "deep text", author_name: "Cy" });
-await call("POST", "/api/codex", { anchor_chapter_id: left, op: "create", name: "Mira", type: "character", content: "A thief.", aliases: ["the thief"], always_include: true, author_name: "Bo" });
-r = await call("PATCH", `/api/chapters/${root}`, { base_revision: 1, title: "Start v2", body: "It began again.", edited_by: "Eve2", edit_note: "polish", summary: "sum-root2", path_summary: "ps-root2" });
+const left = (await call("POST", "/api/chapters", { choice_id: choices[0].id, title: "Left", body: "left text", summary: "sum-left", path_summary: "ps-left", choices: ["Deeper"] })).json.chapter_id;
+await call("POST", "/api/chapters", { choice_id: (await call("GET", `/api/chapters/${left}`)).json.choices[0].id, title: "Deep", body: "deep text" });
+await call("POST", "/api/codex", { anchor_chapter_id: left, op: "create", name: "Mira", type: "character", content: "A thief.", aliases: ["the thief"], always_include: true });
+r = await call("PATCH", `/api/chapters/${root}`, { base_revision: 1, title: "Start v2", body: "It began again.", edit_note: "polish", summary: "sum-root2", path_summary: "ps-root2" });
 ok(r.status === 200, "setup: root chapter edited once");
 
 const data = await exportOf(story);

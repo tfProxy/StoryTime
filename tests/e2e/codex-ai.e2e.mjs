@@ -43,14 +43,14 @@ async function makeStory(title, rootTitle, rootBody, aTitle, aBody) {
   return { root: s.chapter_id, a: a.chapter_id };
 }
 const s1 = await makeStory("Single", "Start", "Mira stood in the market. Bram the smith waved.", "Horse", "Mira had turned into a horse.");
-await post("/api/codex", { anchor_chapter_id: s1.root, op: "create", name: "Gideon", type: "character", content: "A smith.", author_name: "Seed" });
+await post("/api/codex", { anchor_chapter_id: s1.root, op: "create", name: "Gideon", type: "character", content: "A smith." });
 const s2 = await makeStory("Pathy", "Start", "Mira the thief crept PATHSTORY.", "Later", "She was a horse now. PATHSTORY");
 
 const browser = await launch();
 const ctx = await browser.newContext();
 await ctx.addInitScript(() => {
   if (!localStorage.getItem("storytime.settings.v1")) {
-    localStorage.setItem("storytime.settings.v1", JSON.stringify({ authorName: "Ann", activeProvider: "ollama",
+    localStorage.setItem("storytime.settings.v1", JSON.stringify({ activeProvider: "ollama",
       providers: { ollama: { baseUrl: "http://localhost:3222/v1", apiKey: "", model: "main", summaryModel: "cheap" } } }));
   }
 });

@@ -8,7 +8,7 @@ let failed = false;
 const ok = (c, m) => { console.log(c ? "ok  " : "FAIL", m); if (!c) failed = true; };
 const post = async (url, body) => (await fetch(BASE + url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
 
-const s = await post("/api/stories", { title: "Import me", author_name: "Ann", chapter: { title: "Only chapter", body: "the body", summary: "a summary", choices: [] } });
+const s = await post("/api/stories", { title: "Import me", chapter: { title: "Only chapter", body: "the body", summary: "a summary", choices: [] } });
 const json = await (await fetch(`${BASE}/api/stories/${s.story_id}/export?format=json`)).text();
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "st-import-"));
 const good = path.join(dir, "story.json");

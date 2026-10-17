@@ -12,10 +12,10 @@ const post = async (url, body) => (await fetch(BASE + url, { method: "POST", hea
 const getJson = async (url) => (await fetch(BASE + url)).json();
 
 // Start -> [Left -> end, Right -> end, Unfinished (only an unwritten choice)]
-const s = await post("/api/stories", { title: "Offline <Tale>", premise: "A premise.", author_name: "Eve",
-  chapter: { title: "Start", body: "It began.\n\nSecond paragraph </script><b>not bold</b>", author_name: "Eve", choices: ["Go left", "Go right", "Wait"] } });
+const s = await post("/api/stories", { title: "Offline <Tale>", premise: "A premise.",
+  chapter: { title: "Start", body: "It began.\n\nSecond paragraph </script><b>not bold</b>", choices: ["Go left", "Go right", "Wait"] } });
 const choices = (await getJson(`/api/chapters/${s.chapter_id}`)).choices;
-const fill = (c, title, extra = {}) => post("/api/chapters", { choice_id: c.id, title, body: `${title} text`, author_name: "Bo", ...extra });
+const fill = (c, title, extra = {}) => post("/api/chapters", { choice_id: c.id, title, body: `${title} text`, ...extra });
 await fill(choices[0], "Left");
 await fill(choices[1], "Right");
 await fill(choices[2], "Unfinished", { choices: ["Later"] });

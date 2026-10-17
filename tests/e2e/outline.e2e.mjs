@@ -12,7 +12,7 @@ const s = await post("/api/stories", { title: "Outline story", chapter: { title:
 let prev = s.chapter_id;
 for (let i = 1; i <= 4; i++) {
   const choice = (await getJson(`/api/chapters/${prev}`)).choices[0];
-  prev = (await post("/api/chapters", { choice_id: choice.id, title: `Level ${i}`, body: `level ${i}`, author_name: "Ann", choices: i < 4 ? ["next"] : [] })).chapter_id;
+  prev = (await post("/api/chapters", { choice_id: choice.id, title: `Level ${i}`, body: `level ${i}`, choices: i < 4 ? ["next"] : [] })).chapter_id;
 }
 
 const browser = await launch();

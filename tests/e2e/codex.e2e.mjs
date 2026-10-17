@@ -33,7 +33,7 @@ const browser = await launch();
 const ctx = await browser.newContext();
 await ctx.addInitScript(() => {
   if (!localStorage.getItem("storytime.settings.v1")) {
-    localStorage.setItem("storytime.settings.v1", JSON.stringify({ authorName: "Ann", activeProvider: "ollama",
+    localStorage.setItem("storytime.settings.v1", JSON.stringify({ activeProvider: "ollama",
       providers: { ollama: { baseUrl: "http://localhost:3222/v1", apiKey: "", model: "m", summaryModel: "" } } }));
   }
 });
