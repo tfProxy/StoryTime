@@ -655,14 +655,6 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             ))}
           </ul>
         )}
-        <label>
-          What should happen? <small>(optional; leave blank to let the AI decide)</small>
-          <AutoTextarea
-            style={{ minHeight: "5.5rem", fontFamily: "inherit" }}
-            value={draft.prompt}
-            onChange={(e) => patch({ prompt: e.target.value })}
-          />
-        </label>
         <CodexPreview
           ctx={ctx}
           direction={draft.prompt}
@@ -677,6 +669,14 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
 
       <section className="ai-panel">
         <h2>2. Write</h2>
+        <label>
+          What should happen? <small>(optional; leave blank to let the AI decide)</small>
+          <AutoTextarea
+            style={{ minHeight: "5.5rem", fontFamily: "inherit" }}
+            value={draft.prompt}
+            onChange={(e) => patch({ prompt: e.target.value })}
+          />
+        </label>
         {(target.kind === "new" || target.kind === "fill") && (
           <label>
             Choice text <small>(the button readers click on the previous chapter; change it to add a new choice there instead)</small>
