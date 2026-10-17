@@ -496,9 +496,10 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         setStatus(null);
       }
     }
+    try {
     const summaryFields = summaries ?? {};
 
-    const chapter = { title: draft.title, body: draft.body, choices: finalChoices, ...summaryFields };
+    const chapter ={ title: draft.title, body: draft.body, choices: finalChoices, ...summaryFields };
     // Saved with the chapter and anchored at it. Entries created in the draft get their real id from the server.
     const codex_changes = codexChanges.map((c) => (isDraftEntry(c.entry_id) ? { ...c, entry_id: undefined } : c));
     let url: string;
@@ -532,7 +533,6 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       payload = { ...chapter, parent_chapter_id: target.parentChapterId, new_choice_label: draft.newChoiceLabel, codex_changes };
     }
 
-    try {
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
@@ -936,6 +936,11 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
           <button type="button" onClick={post} disabled={busy !== null || problems.length > 0}>
             {posting ? "Saving…" : target.kind === "edit" ? "Save changes" : "Post chapter"}
           </button>
+          {posting && (
+            <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
+              Cancel
+            </button>
+          )}
           {problems.length > 0 && <span className="meta"> {problems[0]}</span>}
         </div>
         <p className="meta">
