@@ -393,6 +393,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   if ((target.kind === "new" || target.kind === "fill") && !draft.newChoiceLabel.trim()) problems.push("Add the choice text for the previous chapter.");
   if (!draft.title.trim()) problems.push("Add a chapter title.");
   if (!draft.body.trim()) problems.push("Write the chapter text.");
+  if (!(draft.summary ?? "").trim()) problems.push("Add a summary in step 3 (write one, or use Summarize chapter).");
   if (target.kind === "edit" && target.incomingLabel !== null && !(draft.incomingLabel ?? "").trim()) {
     problems.push("The choice that leads here needs some text.");
   }
@@ -477,7 +478,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     let summaries: Partial<Summaries> | null = null;
     let summaryError: string | null = null;
     const ai = draft.aiSummary;
-    const own = summaryStale ? "" : ownSummary;
+    const own = ownSummary;
     if (ai && ai.body === draft.body && ai.summary === own) {
       summaries = { summary: ai.summary, path_summary: ai.path_summary };
     } else if (keptSummary && target.kind === "edit" && target.initialPathSummary) {
@@ -825,7 +826,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         {statusFor("summary")}
         {errorFor("summary")}
         {summaryStale && (
-          <p className="notice">The chapter has changed since this summary was made. Summarize it again, or it will be redone when you post.</p>
+          <p className="notice">The chapter has changed since this summary was made. Summarize it again or edit it, otherwise it will be posted as it is.</p>
         )}
         {keptSummary && target.kind === "edit" && draft.body !== target.initialBody && (
           <p className="meta">
@@ -936,12 +937,6 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
               onChange={(e) => patch({ editNote: e.target.value })}
             />
           </label>
-        )}
-        {!ownSummary && draft.body.trim() && (
-          <p className="meta">
-            There&apos;s no summary yet. One will be generated when you {target.kind === "edit" ? "save" : "post"}, but
-            it&apos;s worth checking it first in step 3.
-          </p>
         )}
         {codexChanges.length > 0 && (
           <p className="meta">

@@ -126,6 +126,7 @@ await drawer.getByRole("button", { name: "Save changes" }).click();
 await drawer.getByText("A hermit since the start.").waitFor();
 ok((await codexAt(root)).find((e) => e.name === "Qux").content === "A hermit since the start.", "picking an earlier chapter saves straight away");
 await page.getByRole("button", { name: "Close", exact: true }).click();
+await page.getByLabel(/^Summary/).fill("A hermit appears.");
 await page.getByRole("button", { name: "Post chapter" }).click();
 await page.waitForURL(/\/c\/[^/]+(\/summary)?\?/);
 const posted = /\/c\/([^/?]+)/.exec(page.url())[1];
