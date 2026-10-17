@@ -43,6 +43,8 @@ const ip = ideasPrompt({ storyTitle: "T", premise: "P", path: [ch(1)], choiceLab
 ok(ip.includes('"Open it", "Run"') && ip.includes("Suggest 4 distinct directions") && ip.includes("Premise: P"), "ideasPrompt lists existing choices and the story");
 const after = ideasPrompt({ storyTitle: "T", premise: "P", path: [ch(1)], choiceLabel: "Climb the tower", siblingChoices: ["Open it"] }, 8000);
 ok(after.includes('The reader chose: "Climb the tower"') && after.includes("following from the reader's choice") && !after.includes('"Open it"'), "ideasPrompt follows the choice text when there is one");
+const guided = ideasPrompt({ storyTitle: "T", premise: "P", path: [ch(1)], choiceLabel: null }, 8000, "cats attack him, he fights back");
+ok(guided.includes('"cats attack him, he fights back"') && guided.includes("not just what follows from it"), "ideasPrompt makes the guidance part of each idea");
 const opening = ideasPrompt({ storyTitle: "T", premise: "P", path: [], choiceLabel: null }, 8000);
 ok(opening.includes("ways this story could open"), "ideasPrompt suggests openings for a new story");
 

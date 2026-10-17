@@ -304,7 +304,7 @@ export type Idea = { choice: string; direction: string };
  * Asks for directions the chapter being written could take. With no choice text yet, each idea
  * is a new choice the reader could pick; once there is one, the ideas all follow from it.
  */
-export function ideasPrompt(ctx: StoryContext, contextTokens: number): string {
+export function ideasPrompt(ctx: StoryContext, contextTokens: number, guidance = ""): string {
   const existing = ctx.siblingChoices ?? [];
   const reply = `\nReply with only a JSON array of 4 objects like [{"choice":"...","direction":"..."}].`;
   let ask: string;
@@ -321,6 +321,12 @@ export function ideasPrompt(ctx: StoryContext, contextTokens: number): string {
       `Suggest 4 distinct directions the story could take from the end of the last chapter, each a new choice the reader could pick there.` +
       (existing.length ? ` These choices already exist, so do not repeat or closely echo them: ${existing.map((e) => `"${e}"`).join(", ")}.` : "") +
       `\nFor each give "choice" (button text, under 12 words) and "direction" (one or two sentences on what happens in the chapter that follows it).`;
+  }
+  const given = guidance.trim();
+  if (given) {
+    ask +=
+      `\nThe author has given this guidance: "${given}"` +
+      `\nEvery idea must include what the guidance describes as events in the chapter itself, not just what follows from it. Each "direction" should cover those events and then take them somewhere different from the other ideas.`;
   }
   return [storyHeader(ctx, Math.floor(budgetFor(contextTokens) * 0.7)), ask + reply].join("\n\n");
 }

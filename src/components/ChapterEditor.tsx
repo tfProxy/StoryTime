@@ -324,7 +324,13 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     try {
       const text = await completeChat(settings, {
         system: SYSTEM_IDEAS,
-        messages: [{ role: "user", content: ideasPrompt({ ...ctx, choiceLabel: guidanceText.trim() || null }, settings.contextTokens) }],
+        messages: [
+          {
+            role: "user",
+            // Untouched, the guidance only echoes the choice text; once edited it is the author's own direction for the ideas.
+            content: ideasPrompt(guidance === null ? ctx : { ...ctx, choiceLabel: null }, settings.contextTokens, guidance ?? ""),
+          },
+        ],
         useSummaryModel: true,
         maxTokens: 800,
       });
