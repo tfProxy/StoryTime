@@ -9,6 +9,7 @@ import { completeChat, streamChat } from "@/lib/ai/client";
 import { ensurePathSummaries, neededSummaryIndex, summarizeChapter, type Summaries } from "@/lib/ai/summaries";
 import {
   choicesPrompt,
+  choiceLabelPrompt,
   ideasPrompt,
   parseIdeas,
   SYSTEM_IDEAS,
@@ -16,9 +17,11 @@ import {
   generatePrompt,
   LENGTH_WORDS,
   parseChapterOutput,
+  parseChoiceLabel,
   parseChoices,
   refinePrompt,
   SYSTEM_CHAPTER,
+  SYSTEM_CHOICE_LABEL,
   SYSTEM_CHOICES,
   type CodexOverrides,
   type Length,
@@ -116,7 +119,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const [suggestions, setSuggestions] = useState<string[]>([]);
   // Guidance for "Suggest more"; null until edited, so it follows the choice text by default.
   const [guidance, setGuidance] = useState<string | null>(null);
-  const [busy, setBusy] = useState<null | "generate" | "refine" | "choices" | "ideas" | "summary" | "post">(null);
+  const [busy, setBusy] = useState<null | "generate" | "refine" | "choices" | "ideas" | "summary" | "label" | "post">(null);
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [error, setError] = useState<string | null>(null);
   // The last action started, so its error shows in the section it came from.
@@ -304,6 +307,11 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         setDraft((d) => (d ? { ...d, ...(title !== null ? { title } : {}), body } : d));
       }
       if (kind === "refine") setInstruction("");
+      // A new branch needs choice text; if the author hasn't written any, make it from the chapter.
+      if (kind === "generate" && (target.kind === "new" || target.kind === "fill") && !draft.newChoiceLabel.trim()) {
+        const chapter = parseChapterOutput(text);
+        if (chapter.body.trim()) await fillChoiceText({ title: chapter.title ?? "", body: chapter.body }, ready, ctl.signal);
+      }
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) {
         setError(e instanceof Error ? e.message : String(e));
@@ -312,6 +320,56 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       setBusy(null);
     }
   }
+
+  /** One sentence of choice text, written by the cheaper model: from the chapter, or from the previous chapter alone when there is no draft. */
+  async function askChoiceLabel(chapter: { title: string; body: string } | null, ready: StoryContext, signal?: AbortSignal) {
+    const reply = await completeChat(settings, {
+      system: SYSTEM_CHOICE_LABEL,
+      messages: [{ role: "user", content: choiceLabelPrompt({ ...ready, choiceLabel: null }, chapter, settings.contextTokens) }],
+      useSummaryModel: true,
+      maxTokens: 60,
+      signal,
+    });
+    return parseChoiceLabel(reply).slice(0, LIMITS.label);
+  }
+
+  /** Best effort: a failure just leaves the choice text for the author to write. */
+  async function fillChoiceText(chapter: { title: string; body: string }, ready: StoryContext, signal: AbortSignal) {
+    try {
+      const label = await askChoiceLabel(chapter, ready, signal);
+      if (label) setDraft((d) => (d && !d.newChoiceLabel.trim() ? { ...d, newChoiceLabel: label } : d));
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") throw e;
+    }
+  }
+
+  /** The button next to the choice text: replaces it with a fresh one made from the current chapter. */
+  async function regenerateChoiceText(field: "newChoiceLabel" | "incomingLabel") {
+    if (!draft) return;
+    setError(null);
+    startBusy("label");
+    try {
+      const label = await askChoiceLabel(draft.body.trim() ? { title: draft.title, body: draft.body } : null, ctx);
+      if (!label) throw new Error("The AI didn't give any choice text. Try again.");
+      patch({ [field]: label });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const choiceTextButton = (field: "newChoiceLabel" | "incomingLabel") => (
+    <button
+      type="button"
+      className="secondary"
+      onClick={() => regenerateChoiceText(field)}
+      disabled={busy !== null}
+      title={draft.body.trim() ? "Write one sentence of choice text from this chapter" : "Suggest a choice based on the previous chapter"}
+    >
+      {busy === "label" ? "Thinking…" : "Regenerate"}
+    </button>
+  );
 
   /** Ideas for a new branch from the chapter being continued; picking one fills in the form. */
   async function suggestIdeas() {
@@ -579,11 +637,15 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       {target.kind === "edit" && target.incomingLabel !== null && (
         <label>
           Choice text <small>(the button readers click on the previous chapter to reach this one)</small>
-          <input
-            value={draft.incomingLabel ?? ""}
-            maxLength={LIMITS.label}
-            onChange={(e) => patch({ incomingLabel: e.target.value })}
-          />
+          <span className="row">
+            <input
+              value={draft.incomingLabel ?? ""}
+              maxLength={LIMITS.label}
+              onChange={(e) => patch({ incomingLabel: e.target.value })}
+            />
+            {choiceTextButton("incomingLabel")}
+          </span>
+          {errorFor("label")}
         </label>
       )}
 
@@ -680,11 +742,15 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         {(target.kind === "new" || target.kind === "fill") && (
           <label>
             Choice text <small>(the button readers click on the previous chapter; change it to add a new choice there instead)</small>
-            <input
-              value={draft.newChoiceLabel}
-              maxLength={LIMITS.label}
-              onChange={(e) => patch({ newChoiceLabel: e.target.value })}
-            />
+            <span className="row">
+              <input
+                value={draft.newChoiceLabel}
+                maxLength={LIMITS.label}
+                onChange={(e) => patch({ newChoiceLabel: e.target.value })}
+              />
+              {choiceTextButton("newChoiceLabel")}
+            </span>
+            {errorFor("label")}
           </label>
         )}
         <div className="row">
@@ -941,8 +1007,17 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
               Cancel
             </button>
           )}
-          {problems.length > 0 && <span className="meta"> {problems[0]}</span>}
         </div>
+        {problems.length > 0 && (
+          <div className="problems" role="alert">
+            <strong>{target.kind === "edit" ? "Can't save yet:" : "Can't post yet:"}</strong>
+            <ul>
+              {problems.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          </div>
+        )}
         <p className="meta">
           {target.kind === "edit"
             ? "The current version is kept in the chapter's history."

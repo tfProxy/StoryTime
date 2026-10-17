@@ -303,6 +303,25 @@ button:disabled {
   color: #c0392b;
 }
 
+.problems {
+  border: 1px solid #c0392b;
+  border-left-width: 4px;
+  background: color-mix(in srgb, #c0392b 10%, var(--card));
+  color: var(--fg);
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.problems strong {
+  color: #c0392b;
+}
+
+.problems ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
+}
+
 .notice {
   border: 1px solid var(--line);
   border-left: 3px solid var(--warn);

@@ -331,6 +331,34 @@ export function ideasPrompt(ctx: StoryContext, contextTokens: number, guidance =
   return [storyHeader(ctx, Math.floor(budgetFor(contextTokens) * 0.7)), ask + reply].join("\n\n");
 }
 
+export const SYSTEM_CHOICE_LABEL = `You help write branching stories. You reply with the button text and nothing else.`;
+
+/**
+ * Asks for the text of the button a reader would click on the previous chapter. With a written
+ * chapter it describes how to reach that chapter; without one it proposes something worth choosing.
+ */
+export function choiceLabelPrompt(ctx: StoryContext, chapter: { title: string; body: string } | null, contextTokens: number): string {
+  const format = `in a single sentence of under 12 words, with no quotes or numbering.\nReply with only that one sentence.`;
+  return [
+    storyHeader(ctx, Math.floor(budgetFor(contextTokens) * 0.5), chapter?.body ?? ""),
+    ...(chapter
+      ? [
+          `Here is the chapter that was just written:\n# ${chapter.title || "Untitled"}\n\n${chapter.body}`,
+          `Write the text of the button a reader would click at the end of the previous chapter to get to this one: a short action or decision ${format}`,
+        ]
+      : [
+          `No chapter has been written after the last one yet. Suggest an interesting, surprising choice the reader could make at the end of the last chapter: a short action or decision that opens a new direction for the story, written as button text ${format}`,
+        ]),
+  ].join("\n\n");
+}
+
+/** Takes the first sentence of the reply, without quotes, bullets or a trailing full stop. */
+export function parseChoiceLabel(text: string): string {
+  const line = text.split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? "";
+  const first = line.replace(/^[-*\d.)\s]+/, "").replace(/^["'“‘]+/, "").split(/(?<=[.!?])["'”’]?\s+/)[0];
+  return first.replace(/["'”’]+$/, "").replace(/\.$/, "").trim();
+}
+
 export function parseIdeas(text: string): Idea[] {
   const arr = text.match(/\[[\s\S]*\]/);
   if (!arr) return [];

@@ -1,4 +1,4 @@
-import { buildStorySoFar, parseChapterOutput, parseChoices, generatePrompt, estimateTokens, explainCodex, buildCodexBlock, ideasPrompt, parseIdeas } from "../../src/lib/ai/prompts.ts";
+import { buildStorySoFar, parseChapterOutput, parseChoices, generatePrompt, estimateTokens, explainCodex, buildCodexBlock, ideasPrompt, parseIdeas, parseChoiceLabel } from "../../src/lib/ai/prompts.ts";
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const ch = (n: number, extra: any = {}) => ({ title: `Ch${n}`, body: `body${n} `.repeat(200), summary: null, path_summary: null, ...extra });
 const path = [1,2,3,4,5,6].map((n) => ch(n));
@@ -62,3 +62,6 @@ ok(!s.includes("ROLLING-") && s.includes("Earlier in the story, chapter by chapt
 const gap = tiered.map((c, i) => (i === rollingAt - 1 ? { ...c, path_summary: null } : c));
 s = buildStorySoFar(gap, 1000);
 ok(s.includes(`Earlier in the story:\nROLLING-${rollingAt + 1}`) && !s.includes(`- Ch${rollingAt + 1}:`) && s.includes(`- Ch${rollingAt + 2}:`), "falls forward to the nearest rolling summary without leaving a gap");
+ok(parseChoiceLabel('"Follow the stranger inside."\nExtra') === "Follow the stranger inside", "choice label: first line, quotes and full stop removed");
+ok(parseChoiceLabel("- Run away") === "Run away" && parseChoiceLabel("") === "", "choice label: bullets and empty replies");
+ok(parseChoiceLabel("Follow the stranger. Then run away.") === "Follow the stranger", "choice label: only the first sentence");
