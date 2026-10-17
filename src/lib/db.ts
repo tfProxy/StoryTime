@@ -6,13 +6,13 @@ import crypto from "node:crypto";
 // Schema notes:
 // - Every chapter edit first copies the previous version into chapter_revisions, so nothing is
 //   ever lost.
-// - `removed_at` is set by the command-line tool (scripts/admin.mjs).
 // - The author_name, edited_by and edit_key_hash columns date from when the app had several
 //   writers. Nothing reads or writes them any more (they keep their defaults).
 // - A choice's child is the chapter whose parent_choice_id points at it. A choice with no
-//   live child is an "unwritten" slot. The partial unique index allows only one live child per
-//   choice, and frees the slot again if the child is removed.
-const MIGRATIONS: string[] = [
+//   child is an "unwritten" slot. The unique index allows only one child per choice.
+// - Deleting (scripts/admin.mjs) removes rows for good. Earlier versions only flagged rows with
+//   `removed_at`; migration 3 deletes anything that was flagged and drops the column.
+export const MIGRATIONS: string[] = [
   `
   CREATE TABLE stories (
     id              TEXT PRIMARY KEY,
@@ -95,6 +95,40 @@ const MIGRATIONS: string[] = [
     created_at   INTEGER NOT NULL,
     UNIQUE (chapter_id, revision)
   );
+  `,
+  // 3: deleting is permanent, so drop the removed_at flag. Anything flagged (and everything
+  // below a flagged chapter, or inside a flagged story) was hidden from readers, so delete it.
+  `
+  PRAGMA defer_foreign_keys = ON;
+
+  CREATE TEMP TABLE doomed(id TEXT PRIMARY KEY);
+  WITH RECURSIVE d(id) AS (
+    SELECT id FROM chapters WHERE removed_at IS NOT NULL
+    UNION
+    SELECT id FROM chapters WHERE story_id IN (SELECT id FROM stories WHERE removed_at IS NOT NULL)
+    UNION
+    SELECT c.id FROM d
+      JOIN choices ch ON ch.parent_chapter_id = d.id
+      JOIN chapters c ON c.parent_choice_id = ch.id
+  )
+  INSERT INTO doomed SELECT id FROM d;
+
+  DELETE FROM codex_ops
+    WHERE removed_at IS NOT NULL OR anchor_chapter_id IN (SELECT id FROM doomed)
+       OR story_id IN (SELECT id FROM stories WHERE removed_at IS NOT NULL);
+  DELETE FROM chapter_revisions WHERE chapter_id IN (SELECT id FROM doomed);
+  DELETE FROM choices WHERE removed_at IS NOT NULL OR parent_chapter_id IN (SELECT id FROM doomed);
+  DELETE FROM chapters WHERE id IN (SELECT id FROM doomed);
+  DELETE FROM stories WHERE removed_at IS NOT NULL OR root_chapter_id IN (SELECT id FROM doomed);
+  DROP TABLE doomed;
+
+  DROP INDEX chapters_one_child_per_choice;
+  ALTER TABLE stories DROP COLUMN removed_at;
+  ALTER TABLE chapters DROP COLUMN removed_at;
+  ALTER TABLE choices DROP COLUMN removed_at;
+  ALTER TABLE codex_ops DROP COLUMN removed_at;
+  CREATE UNIQUE INDEX chapters_one_child_per_choice
+    ON chapters(parent_choice_id) WHERE parent_choice_id IS NOT NULL;
   `,
 ];
 

@@ -34,24 +34,30 @@ r = cli("stats");
 ok(/stories: \d+/.test(r.out) && /chapters: \d+/.test(r.out), "stats prints counts");
 r = cli("recent", "10", "--kind", "chapter", "--story", s.json.story_id);
 ok(r.out.includes("CLI child") && r.out.includes("CLI root") && r.out.includes(child), "recent lists chapters with ids and a preview: " + r.out.split("\n")[0]);
-ok(!r.out.includes("[REMOVED]"), "nothing is flagged yet");
-
-r = cli("remove", "chapter", child);
-ok(r.code === 0 && /Removed chapter/.test(r.out), "remove: " + r.out.trim());
-ok((await api("GET", `/api/chapters/${child}`)).status === 404, "…and readers no longer see it");
-r = cli("recent", "10", "--removed", "--story", s.json.story_id);
-ok(r.out.includes("CLI child") && r.out.includes("[REMOVED]") && !r.out.includes("CLI root"), "--removed lists only removed items");
-r = cli("restore", "chapter", child);
-ok(r.code === 0 && /Restored/.test(r.out) && (await api("GET", `/api/chapters/${child}`)).status === 200, "restore brings it back");
 
 r = cli("delete", "chapter", child);
 ok(r.code === 1 && /--yes/.test(r.err), "delete refuses without --yes");
-r = cli("delete", "chapter", child, "--yes");
-ok(r.code === 1 && /Remove it first/.test(r.err), "delete refuses an item that isn't removed");
-cli("remove", "chapter", child);
+ok((await api("GET", `/api/chapters/${child}`)).status === 200, "and leaves the chapter alone");
+r = cli("delete", "chapter", root, "--yes");
+ok(r.code === 1 && /delete the story instead/.test(r.err), "delete refuses a story's first chapter");
 r = cli("delete", "chapter", child, "--yes");
 ok(r.code === 0 && /Deleted 1 chapter/.test(r.out), "delete permanently: " + r.out.trim());
+ok((await api("GET", `/api/chapters/${child}`)).status === 404, "readers no longer see it");
 ok((await api("GET", `/api/chapters/${root}`)).json.choices[0].child_chapter_id === null, "the slot is open again");
+
+// deleting a choice takes the chapter written for it, with everything below
+const grand = (await api("POST", "/api/chapters", { choice_id: choice.id, title: "Again", body: "again", choices: ["On"] })).json.chapter_id;
+const onChoice = (await api("GET", `/api/chapters/${grand}`)).json.choices[0];
+const great = (await api("POST", "/api/chapters", { choice_id: onChoice.id, title: "Further", body: "further" })).json.chapter_id;
+r = cli("delete", "choice", choice.id, "--yes");
+ok(r.code === 0 && /Deleted 2 chapters/.test(r.out), "deleting a choice deletes its chapter and what is below: " + r.out.trim());
+ok((await api("GET", `/api/chapters/${grand}`)).status === 404 && (await api("GET", `/api/chapters/${great}`)).status === 404, "both chapters are gone");
+ok((await api("GET", `/api/chapters/${root}`)).json.choices.length === 0, "the choice is gone");
+
+// deleting a story takes all of its contents
+r = cli("delete", "story", s.json.story_id, "--yes");
+ok(r.code === 0 && /Deleted 1 chapter/.test(r.out), "delete a story: " + r.out.trim());
+ok((await api("GET", `/api/stories/${s.json.story_id}`)).status === 404, "the story is gone");
 
 // revert via CLI
 const s2 = await api("POST", "/api/stories", { title: "CLI revert", chapter: { title: "Orig", body: "original text" } });
@@ -74,9 +80,9 @@ r = cli("backup");
 ok(r.code === 1 && /Give a file/.test(r.err), "backup needs a file name");
 fs.rmSync(dir, { recursive: true, force: true });
 
-r = cli("remove", "chapter", "no-such-id");
+r = cli("delete", "chapter", "no-such-id", "--yes");
 ok(r.code === 1 && /No chapter with id/.test(r.err), "unknown id is a clean error");
-r = cli("remove", "widget", "x");
+r = cli("delete", "widget", "x", "--yes");
 ok(r.code === 1 && /Unknown kind/.test(r.err), "unknown kind is a clean error");
 r = cli("frobnicate");
 ok(r.code === 1 && /Unknown command/.test(r.err), "unknown command is a clean error");

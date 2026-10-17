@@ -1,5 +1,7 @@
 // Story exports (Markdown, Twee, JSON), the outline page, and the health endpoint.
-import Database from "better-sqlite3";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 const B = process.env.BASE_URL ?? "http://localhost:3111";
 const ok = (c, m) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const call = async (method, url, body) => {
@@ -10,7 +12,7 @@ const get = async (url) => { const r = await fetch(B + url); return { status: r.
 
 ok((await call("GET", "/api/health")).json?.ok === true, "health endpoint reports ok");
 
-// root -> [Left -> [Deep], Right (unwritten), Gone (will be removed)]
+// root -> [Left -> [Deep], Right (unwritten), Gone (will be deleted)]
 let r = await call("POST", "/api/stories", { title: "The Export: Tale!", premise: "A premise.\nSecond line.", chapter: { title: "Start", body: "It began.\n\n:: not a passage", choices: ["Go left", "Go [[right]]", "Gone"] } });
 const story = r.json.story_id, root = r.json.chapter_id;
 let choices = (await call("GET", `/api/chapters/${root}`)).json.choices;
@@ -20,10 +22,9 @@ const gone = await fill(choices[2], "Gone chapter");
 const deep = await fill((await call("GET", `/api/chapters/${left}`)).json.choices[0], "Deep");
 await call("POST", "/api/codex", { anchor_chapter_id: left, op: "create", name: "Mira", content: "A thief.", aliases: ["the thief"], always_include: true });
 
-// Mark one chapter removed the way the command-line tool does.
-const dbh = new Database(process.env.TEST_DB);
-dbh.prepare("UPDATE chapters SET removed_at = ? WHERE id = ?").run(Date.now(), gone);
-dbh.close();
+// Delete one chapter with the command-line tool.
+const script = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "scripts", "admin.mjs");
+spawnSync(process.execPath, [script, "delete", "chapter", gone, "--yes"], { env: { ...process.env, STORYTIME_DB: process.env.TEST_DB } });
 
 // ---- Markdown ----
 let x = await get(`/api/stories/${story}/export?format=md`);
@@ -31,8 +32,8 @@ ok(x.status === 200 && /text\/markdown/.test(x.headers.get("content-type")) && /
 ok(x.text.startsWith("# The Export: Tale!") && x.text.includes("> A premise.\n> Second line."), "title and premise");
 ok(x.text.includes("## 1. Start") && x.text.includes("## 1.1. Left") && x.text.includes("## 1.1.1. Deep"), "chapters are numbered by position in the tree");
 ok(x.text.includes("- **Go left** → chapter 1.1") && x.text.includes("- **Go [[right]]** → *(not written yet)*"), "choices point at their chapters, unwritten ones are marked");
-ok(!x.text.includes("Gone chapter"), "a removed chapter is left out");
-ok(x.text.includes("- **Gone** → *(not written yet)*"), "a removed chapter's choice shows as unwritten");
+ok(!x.text.includes("Gone chapter"), "a deleted chapter is left out");
+ok(x.text.includes("- **Gone** → *(not written yet)*"), "a deleted chapter's choice shows as unwritten");
 ok(x.text.includes("*The end of this branch.*"), "dead ends are marked");
 
 // ---- Twee ----
@@ -48,7 +49,7 @@ ok((x.text.match(/^:: /gm) ?? []).length === 5, "exactly the right number of pas
 x = await get(`/api/stories/${story}/export?format=json`);
 const data = JSON.parse(x.text);
 ok(data.format === "storytime-export" && data.version === 2 && data.story.title === "The Export: Tale!", "json header");
-ok(data.chapters.length === 3 && data.chapters.map((c) => c.title).join() === "Start,Left,Deep", "json chapters in reading order, without removed ones");
+ok(data.chapters.length === 3 && data.chapters.map((c) => c.title).join() === "Start,Left,Deep", "json chapters in reading order, without deleted ones");
 ok(data.choices.length === 4 && data.codex.length === 1 && data.codex[0].aliases[0] === "the thief" && data.codex[0].always_include === true, "json choices and codex");
 ok(!x.text.includes("edit_key") && !x.text.includes("author_name"), "no bookkeeping fields in exports");
 
@@ -61,7 +62,7 @@ x = await get(`/s/${story}/outline`);
 const html = x.text.replace(/<!-- -->/g, "");
 ok(x.status === 200 && html.includes("Start") && html.includes("Left") && html.includes("Deep"), "outline lists the chapters");
 ok(!html.includes("not written yet") && !html.includes("branch ends here"), "outline hides unwritten choices and doesn't tag dead ends");
-ok(!html.includes("Gone chapter"), "outline leaves out removed chapters");
+ok(!html.includes("Gone chapter"), "outline leaves out deleted chapters");
 ok(/3 chapters/.test(html) && /2 choices still to write/.test(html), "outline totals: " + (/(\d+ chapters[^<]*)/.exec(html)?.[1] ?? "?"));
 ok((await get(`/s/nope/outline`)).status === 404, "outline of an unknown story 404");
 const home = (await get(`/`)).text;
@@ -92,7 +93,7 @@ ok(x.text.startsWith("# The Export: Tale!") && x.text.indexOf("## 1. Start") < x
 ok(x.text.includes("*Go left*") && !x.text.includes("Go [[right]]") && !x.text.includes("Pending") && x.text.trimEnd().endsWith("*The end.*"), "other branches are left out");
 x = await get(`/api/stories/${story}/export?format=md&to=${left}`);
 ok(x.text.includes("## 2. Left") && !x.text.includes("Deep text") && x.text.trimEnd().endsWith("*…to be continued.*"), "a chapter that continues is marked as to be continued");
-ok((await get(`/api/stories/${story}/export?format=md&to=${gone}`)).status === 404, "a removed chapter can't be exported");
+ok((await get(`/api/stories/${story}/export?format=md&to=${gone}`)).status === 404, "a deleted chapter can't be exported");
 ok((await get(`/api/stories/${story}/export?format=md&to=nope`)).status === 404, "an unknown chapter is a 404");
 ok((await get(`/api/stories/${story}/export?format=twee&to=${deep}`)).status === 400, "to only applies to Markdown");
 // the same story in Markdown still shows everything

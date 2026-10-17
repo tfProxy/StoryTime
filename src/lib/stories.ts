@@ -30,7 +30,7 @@ export type Choice = {
   parent_chapter_id: string;
   label: string;
   posted_at: number;
-  /** Id of the live child chapter, or null if the slot is still unwritten. */
+  /** Id of the child chapter, or null if the slot is still unwritten. */
   child_chapter_id: string | null;
 };
 
@@ -113,8 +113,8 @@ export function listStories(): (Story & { chapter_count: number })[] {
   return db()
     .prepare(
       `SELECT s.id, s.title, s.premise, s.root_chapter_id, s.created_at,
-              (SELECT COUNT(*) FROM chapters c WHERE c.story_id = s.id AND c.removed_at IS NULL) AS chapter_count
-         FROM stories s WHERE s.removed_at IS NULL ORDER BY s.created_at DESC`,
+              (SELECT COUNT(*) FROM chapters c WHERE c.story_id = s.id) AS chapter_count
+         FROM stories s ORDER BY s.created_at DESC`,
     )
     .all() as (Story & { chapter_count: number })[];
 }
@@ -123,7 +123,7 @@ export function getStory(id: string): Story | undefined {
   return db()
     .prepare(
       `SELECT id, title, premise, root_chapter_id, created_at
-         FROM stories WHERE id = ? AND removed_at IS NULL`,
+         FROM stories WHERE id = ?`,
     )
     .get(id) as Story | undefined;
 }
@@ -133,7 +133,7 @@ const CHAPTER_COLS = `c.id, c.story_id, c.parent_choice_id, c.depth, c.title, c.
 
 export function getChapter(id: string): Chapter | undefined {
   return db()
-    .prepare(`SELECT ${CHAPTER_COLS} FROM chapters c WHERE c.id = ? AND c.removed_at IS NULL`)
+    .prepare(`SELECT ${CHAPTER_COLS} FROM chapters c WHERE c.id = ?`)
     .get(id) as Chapter | undefined;
 }
 
@@ -141,9 +141,9 @@ export function getChoices(chapterId: string): Choice[] {
   return db()
     .prepare(
       `SELECT ch.id, ch.parent_chapter_id, ch.label, ch.posted_at,
-              (SELECT c.id FROM chapters c WHERE c.parent_choice_id = ch.id AND c.removed_at IS NULL) AS child_chapter_id
+              (SELECT c.id FROM chapters c WHERE c.parent_choice_id = ch.id) AS child_chapter_id
          FROM choices ch
-        WHERE ch.parent_chapter_id = ? AND ch.removed_at IS NULL
+        WHERE ch.parent_chapter_id = ?
         ORDER BY ch.posted_at, ch.rowid`,
     )
     .all(chapterId) as Choice[];
@@ -163,19 +163,18 @@ export function getIncomingChoice(chapterId: string): { id: string; label: strin
 export function getPath(chapterId: string): Chapter[] {
   const ids = db()
     .prepare(
-      `WITH RECURSIVE path(id, parent_choice_id, removed_at) AS (
-         SELECT id, parent_choice_id, removed_at FROM chapters WHERE id = ?
+      `WITH RECURSIVE path(id, parent_choice_id) AS (
+         SELECT id, parent_choice_id FROM chapters WHERE id = ?
          UNION ALL
-         SELECT c.id, c.parent_choice_id, c.removed_at
+         SELECT c.id, c.parent_choice_id
            FROM path
            JOIN choices ch ON ch.id = path.parent_choice_id
            JOIN chapters c ON c.id = ch.parent_chapter_id
        )
-       SELECT id, removed_at FROM path`,
+       SELECT id FROM path`,
     )
-    .all(chapterId) as { id: string; removed_at: number | null }[];
-  // A removed ancestor hides the whole branch below it.
-  if (ids.length === 0 || ids.some((r) => r.removed_at !== null)) return [];
+    .all(chapterId) as { id: string }[];
+  if (ids.length === 0) return [];
   const chapters = db()
     .prepare(`SELECT ${CHAPTER_COLS} FROM chapters c WHERE c.id IN (${ids.map(() => "?").join(",")}) ORDER BY c.depth`)
     .all(...ids.map((r) => r.id)) as Chapter[];
@@ -187,10 +186,10 @@ export function countDescendants(chapterId: string): number {
     .prepare(
       `WITH RECURSIVE d(id) AS (
          SELECT c.id FROM choices ch JOIN chapters c ON c.parent_choice_id = ch.id
-          WHERE ch.parent_chapter_id = ? AND c.removed_at IS NULL
+          WHERE ch.parent_chapter_id = ?
          UNION ALL
          SELECT c.id FROM d JOIN choices ch ON ch.parent_chapter_id = d.id
-           JOIN chapters c ON c.parent_choice_id = ch.id WHERE c.removed_at IS NULL
+           JOIN chapters c ON c.parent_choice_id = ch.id
        )
        SELECT COUNT(*) AS n FROM d`,
     )
@@ -243,7 +242,7 @@ export function createChapter(input: z.infer<typeof NewChapterSchema>): { story_
 
     if (input.choice_id !== undefined) {
       const choice = db()
-        .prepare(`SELECT id, parent_chapter_id FROM choices WHERE id = ? AND removed_at IS NULL`)
+        .prepare(`SELECT id, parent_chapter_id FROM choices WHERE id = ?`)
         .get(input.choice_id) as { id: string; parent_chapter_id: string } | undefined;
       if (!choice) throw new PostError("That choice does not exist", 404);
       parentChapter = getChapter(choice.parent_chapter_id);
@@ -252,7 +251,7 @@ export function createChapter(input: z.infer<typeof NewChapterSchema>): { story_
       parentChapter = getChapter(input.parent_chapter_id!);
       if (!parentChapter) throw new PostError("That chapter does not exist", 404);
       const count = db()
-        .prepare(`SELECT COUNT(*) AS n FROM choices WHERE parent_chapter_id = ? AND removed_at IS NULL`)
+        .prepare(`SELECT COUNT(*) AS n FROM choices WHERE parent_chapter_id = ?`)
         .get(parentChapter.id) as { n: number };
       if (count.n >= LIMITS.choices) throw new PostError("That chapter already has the maximum number of choices", 409);
       choiceId = newId();
@@ -260,8 +259,7 @@ export function createChapter(input: z.infer<typeof NewChapterSchema>): { story_
         .prepare(`INSERT INTO choices (id, parent_chapter_id, label, posted_at) VALUES (?, ?, ?, ?)`)
         .run(choiceId, parentChapter.id, input.new_choice_label, t);
     }
-    // getChapter only checks the chapter itself; getPath also rejects a removed ancestor.
-    if (!parentChapter || getPath(parentChapter.id).length === 0) {
+    if (!parentChapter) {
       throw new PostError("That chapter does not exist", 404);
     }
 
@@ -293,17 +291,17 @@ export function createChapter(input: z.infer<typeof NewChapterSchema>): { story_
   })();
 }
 
-function liveChapter(chapterId: string) {
-  const row = db()
-    .prepare(`SELECT revision, removed_at FROM chapters WHERE id = ?`)
-    .get(chapterId) as { revision: number; removed_at: number | null } | undefined;
-  if (!row || row.removed_at !== null) throw new PostError("That chapter does not exist", 404);
+function chapterRevision(chapterId: string) {
+  const row = db().prepare(`SELECT revision FROM chapters WHERE id = ?`).get(chapterId) as
+    | { revision: number }
+    | undefined;
+  if (!row) throw new PostError("That chapter does not exist", 404);
   return row;
 }
 
 export function editChapter(chapterId: string, input: z.infer<typeof EditChapterSchema>): { revision: number } {
   return db().transaction(() => {
-    const row = liveChapter(chapterId);
+    const row = chapterRevision(chapterId);
     if (row.revision !== input.base_revision) {
       throw new PostError("This chapter was edited somewhere else since you started. Reload it and redo your changes.", 409);
     }
@@ -382,7 +380,7 @@ export function editChapter(chapterId: string, input: z.infer<typeof EditChapter
       const c = byId.get(id);
       if (!c) throw new PostError("A choice you removed isn't on this chapter", 400);
       if (c.child_chapter_id) throw new PostError(`"${c.label}" already has a chapter written for it and can't be removed`, 409);
-      db().prepare(`UPDATE choices SET removed_at = ? WHERE id = ?`).run(t, id);
+      db().prepare(`DELETE FROM choices WHERE id = ?`).run(id);
     }
     const remaining = live.length - input.remove_choices.length;
     if (remaining + input.add_choices.length > LIMITS.choices) {
@@ -436,10 +434,7 @@ export function fillSummaries(
   input: z.infer<typeof SetSummarySchema>,
 ): { summary_set: boolean; path_summary_set: boolean } {
   return db().transaction(() => {
-    const row = db()
-      .prepare(`SELECT revision, removed_at FROM chapters WHERE id = ?`)
-      .get(chapterId) as { revision: number; removed_at: number | null } | undefined;
-    if (!row || row.removed_at !== null) throw new PostError("That chapter does not exist", 404);
+    const row = chapterRevision(chapterId);
     if (row.revision !== input.revision) {
       throw new PostError("That chapter was edited since the summary was made", 409);
     }
@@ -464,7 +459,7 @@ export const ReplaceSummarySchema = z.object({
 
 export function replaceSummaries(chapterId: string, input: z.infer<typeof ReplaceSummarySchema>): { ok: true } {
   return db().transaction(() => {
-    const row = liveChapter(chapterId);
+    const row = chapterRevision(chapterId);
     if (row.revision !== input.revision) {
       throw new PostError("That chapter was edited since you opened this page. Reload it first.", 409);
     }

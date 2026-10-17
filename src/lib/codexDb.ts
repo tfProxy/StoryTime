@@ -79,7 +79,7 @@ export function getCodexOps(chapterId: string): CodexOp[] {
       `SELECT o.id, o.anchor_chapter_id, c.depth AS anchor_depth, o.entry_id, o.op, o.name, o.type, o.aliases,
               o.content, o.always_include, o.posted_at
          FROM codex_ops o JOIN chapters c ON c.id = o.anchor_chapter_id
-        WHERE o.removed_at IS NULL AND o.anchor_chapter_id IN (${path.map(() => "?").join(",")})
+        WHERE o.anchor_chapter_id IN (${path.map(() => "?").join(",")})
         ORDER BY c.depth, o.posted_at, o.rowid`,
     )
     .all(...path.map((c) => c.id)) as Row[];

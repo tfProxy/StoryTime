@@ -2,8 +2,7 @@ import crypto from "node:crypto";
 import { db } from "./db";
 import { getStory } from "./stories";
 
-// Whole-story exports. Only live content is included (removed chapters, choices and codex
-// changes are left out), and no internal bookkeeping appears.
+// Whole-story exports. No internal bookkeeping appears.
 
 type ChapterRow = {
   id: string;
@@ -48,18 +47,18 @@ export function loadStory(storyId: string): StoryExport | null {
   const allChapters = db()
     .prepare(
       `SELECT id, parent_choice_id, depth, title, body, summary, path_summary, posted_at, edited_at, edit_note, revision
-         FROM chapters WHERE story_id = ? AND removed_at IS NULL ORDER BY depth, posted_at, rowid`,
+         FROM chapters WHERE story_id = ? ORDER BY depth, posted_at, rowid`,
     )
     .all(storyId) as ChapterRow[];
   const allChoices = db()
     .prepare(
       `SELECT ch.id, ch.parent_chapter_id, ch.label, ch.posted_at
          FROM choices ch JOIN chapters c ON c.id = ch.parent_chapter_id
-        WHERE c.story_id = ? AND ch.removed_at IS NULL ORDER BY ch.posted_at, ch.rowid`,
+        WHERE c.story_id = ? ORDER BY ch.posted_at, ch.rowid`,
     )
     .all(storyId) as ChoiceRow[];
 
-  // Walk down from the root so chapters hidden by a removed ancestor are excluded.
+  // Walk down from the root so only chapters reachable from it are included.
   const byChoice = new Map<string, ChapterRow>();
   for (const c of allChapters) if (c.parent_choice_id) byChoice.set(c.parent_choice_id, c);
   const choicesByParent = new Map<string, ChoiceRow[]>();
@@ -85,7 +84,7 @@ export function loadStory(storyId: string): StoryExport | null {
     db()
       .prepare(
         `SELECT id, anchor_chapter_id, entry_id, op, name, type, aliases, content, always_include, posted_at
-           FROM codex_ops WHERE story_id = ? AND removed_at IS NULL ORDER BY posted_at, rowid`,
+           FROM codex_ops WHERE story_id = ? ORDER BY posted_at, rowid`,
       )
       .all(storyId) as Record<string, unknown>[]
   )

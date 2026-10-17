@@ -15,7 +15,6 @@ import crypto from "node:crypto";
  * @property {string | null} preview
  * @property {string} author
  * @property {number} at
- * @property {number | null} removed_at
  */
 
 export const KINDS = /** @type {const} */ (["chapter", "story", "codex_op", "choice"]);
@@ -38,7 +37,7 @@ function getRow(db, kind, id) {
   return row;
 }
 
-/** Ids of every chapter below (and not including) the given one, removed or not. */
+/** Ids of every chapter below (and not including) the given one. */
 function descendantIds(db, chapterId) {
   return db
     .prepare(
@@ -57,21 +56,16 @@ function descendantIds(db, chapterId) {
 export function stats(db) {
   const n = (sql) => db.prepare(sql).get().n;
   return {
-    stories: n(`SELECT COUNT(*) AS n FROM stories WHERE removed_at IS NULL`),
-    chapters: n(`SELECT COUNT(*) AS n FROM chapters WHERE removed_at IS NULL`),
-    codexOps: n(`SELECT COUNT(*) AS n FROM codex_ops WHERE removed_at IS NULL`),
-    removed:
-      n(`SELECT COUNT(*) AS n FROM stories WHERE removed_at IS NOT NULL`) +
-      n(`SELECT COUNT(*) AS n FROM chapters WHERE removed_at IS NOT NULL`) +
-      n(`SELECT COUNT(*) AS n FROM codex_ops WHERE removed_at IS NOT NULL`) +
-      n(`SELECT COUNT(*) AS n FROM choices WHERE removed_at IS NOT NULL`),
+    stories: n(`SELECT COUNT(*) AS n FROM stories`),
+    chapters: n(`SELECT COUNT(*) AS n FROM chapters`),
+    codexOps: n(`SELECT COUNT(*) AS n FROM codex_ops`),
   };
 }
 
 /**
- * Newest items across stories, chapters, choices and codex changes (removed ones included,
- * flagged), so a moderator can scan what was just posted.
- * @param {Db} db @param {{limit?: number, kind?: Kind, storyId?: string, removedOnly?: boolean}} [opts]
+ * Newest items across stories, chapters, choices and codex changes, so you can scan what was
+ * just posted.
+ * @param {Db} db @param {{limit?: number, kind?: Kind, storyId?: string}} [opts]
  * @returns {ActivityRow[]}
  */
 export function recentActivity(db, opts = {}) {
@@ -80,33 +74,32 @@ export function recentActivity(db, opts = {}) {
     {
       kind: "story",
       sql: `SELECT 'story' AS kind, s.id, s.id AS story_id, s.title AS story_title, s.title AS label,
-                   substr(s.premise, 1, 240) AS preview, s.author_name AS author, s.created_at AS at, s.removed_at
+                   substr(s.premise, 1, 240) AS preview, s.author_name AS author, s.created_at AS at
               FROM stories s`,
     },
     {
       kind: "chapter",
       sql: `SELECT 'chapter' AS kind, c.id, c.story_id, s.title AS story_title, c.title AS label,
-                   substr(c.body, 1, 240) AS preview, c.author_name AS author, COALESCE(c.edited_at, c.posted_at) AS at, c.removed_at
+                   substr(c.body, 1, 240) AS preview, c.author_name AS author, COALESCE(c.edited_at, c.posted_at) AS at
               FROM chapters c JOIN stories s ON s.id = c.story_id`,
     },
     {
       kind: "choice",
       sql: `SELECT 'choice' AS kind, ch.id, c.story_id, s.title AS story_title, ch.label AS label,
-                   'on chapter: ' || c.title AS preview, ch.author_name AS author, ch.posted_at AS at, ch.removed_at
+                   'on chapter: ' || c.title AS preview, ch.author_name AS author, ch.posted_at AS at
               FROM choices ch JOIN chapters c ON c.id = ch.parent_chapter_id JOIN stories s ON s.id = c.story_id`,
     },
     {
       kind: "codex_op",
       sql: `SELECT 'codex_op' AS kind, o.id, o.story_id, s.title AS story_title,
                    o.op || ': ' || CASE WHEN o.name = '' THEN '(entry)' ELSE o.name END AS label,
-                   substr(o.content, 1, 240) AS preview, o.author_name AS author, o.posted_at AS at, o.removed_at
+                   substr(o.content, 1, 240) AS preview, o.author_name AS author, o.posted_at AS at
               FROM codex_ops o JOIN stories s ON s.id = o.story_id`,
     },
   ].filter((p) => !opts.kind || p.kind === opts.kind);
 
   const where = [];
   const params = [];
-  if (opts.removedOnly) where.push("removed_at IS NOT NULL");
   if (opts.storyId) {
     where.push("story_id = ?");
     params.push(opts.storyId);
@@ -119,60 +112,17 @@ export function recentActivity(db, opts = {}) {
 }
 
 /**
- * Hides an item. Removing a chapter hides everything below it; the choice that led to it
- * becomes an unwritten slot again. Removing a choice also removes the chapter written for it.
+ * Permanently deletes an item. A chapter takes everything below it with it (choices, revisions,
+ * and codex changes anchored there) and its incoming choice becomes an unwritten slot again. A
+ * choice takes the chapter written for it (and everything below). A story takes all of its
+ * contents.
  * @param {Db} db @param {Kind} kind @param {string} id
  */
-export function remove(db, kind, id) {
-  const row = getRow(db, kind, id);
-  const now = Date.now();
-  return db.transaction(() => {
-    if (row.removed_at) return { changed: false, hidden: 0 };
-    db.prepare(`UPDATE ${table(kind)} SET removed_at = ? WHERE id = ?`).run(now, id);
-    let hidden = 0;
-    if (kind === "chapter") hidden = descendantIds(db, id).length;
-    if (kind === "choice") {
-      db.prepare(`UPDATE chapters SET removed_at = ? WHERE parent_choice_id = ? AND removed_at IS NULL`).run(now, id);
-    }
-    return { changed: true, hidden };
-  })();
-}
-
-/**
- * Brings back something removed. Restoring a chapter fails if someone has since written another
- * chapter for the same choice.
- * @param {Db} db @param {Kind} kind @param {string} id
- */
-export function restore(db, kind, id) {
-  const row = getRow(db, kind, id);
-  if (!row.removed_at) return { changed: false, note: null };
-  try {
-    db.prepare(`UPDATE ${table(kind)} SET removed_at = NULL WHERE id = ?`).run(id);
-  } catch (e) {
-    if (e && String(e.code).startsWith("SQLITE_CONSTRAINT")) {
-      throw new AdminError("Can't restore: someone has since written a different chapter for that choice.");
-    }
-    throw e;
+export function deleteItem(db, kind, id) {
+  getRow(db, kind, id);
+  if (kind === "chapter" && db.prepare(`SELECT 1 FROM stories WHERE root_chapter_id = ?`).get(id)) {
+    throw new AdminError("That is a story's first chapter; delete the story instead.");
   }
-  let note = null;
-  if (kind === "chapter" && row.parent_choice_id) {
-    const parent = db
-      .prepare(`SELECT c.removed_at FROM choices ch JOIN chapters c ON c.id = ch.parent_chapter_id WHERE ch.id = ?`)
-      .get(row.parent_choice_id);
-    if (parent?.removed_at) note = "Restored, but it stays hidden because the chapter before it is still removed.";
-  }
-  return { changed: true, note };
-}
-
-/**
- * Permanently deletes a removed chapter and everything below it (choices, revisions, and codex
- * changes anchored there), or a removed story and all of its contents.
- * @param {Db} db @param {"chapter" | "story"} kind @param {string} id
- */
-export function hardDelete(db, kind, id) {
-  if (kind !== "chapter" && kind !== "story") throw new AdminError("Only chapters and stories can be deleted permanently");
-  const row = getRow(db, kind, id);
-  if (!row.removed_at) throw new AdminError("Remove it first; only removed items can be deleted permanently.");
 
   return db.transaction(() => {
     // chapters <-> choices reference each other, so check the constraints only at commit.
@@ -180,18 +130,25 @@ export function hardDelete(db, kind, id) {
     let chapterIds;
     if (kind === "story") {
       chapterIds = db.prepare(`SELECT id FROM chapters WHERE story_id = ?`).all(id).map((r) => r.id);
-    } else {
+    } else if (kind === "chapter") {
       chapterIds = [id, ...descendantIds(db, id)];
+    } else if (kind === "choice") {
+      const child = db.prepare(`SELECT id FROM chapters WHERE parent_choice_id = ?`).get(id);
+      chapterIds = child ? [child.id, ...descendantIds(db, child.id)] : [];
+    } else {
+      chapterIds = [];
     }
     const marks = chapterIds.map(() => "?").join(",");
     let codex = 0;
     if (kind === "story") codex = db.prepare(`DELETE FROM codex_ops WHERE story_id = ?`).run(id).changes;
+    else if (kind === "codex_op") codex = db.prepare(`DELETE FROM codex_ops WHERE id = ?`).run(id).changes;
     else if (chapterIds.length) codex = db.prepare(`DELETE FROM codex_ops WHERE anchor_chapter_id IN (${marks})`).run(...chapterIds).changes;
     if (chapterIds.length) {
       db.prepare(`DELETE FROM chapter_revisions WHERE chapter_id IN (${marks})`).run(...chapterIds);
       db.prepare(`DELETE FROM choices WHERE parent_chapter_id IN (${marks})`).run(...chapterIds);
       db.prepare(`DELETE FROM chapters WHERE id IN (${marks})`).run(...chapterIds);
     }
+    if (kind === "choice") db.prepare(`DELETE FROM choices WHERE id = ?`).run(id);
     if (kind === "story") db.prepare(`DELETE FROM stories WHERE id = ?`).run(id);
     return { chapters: chapterIds.length, codexOps: codex };
   })();

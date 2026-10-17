@@ -81,13 +81,12 @@ Notes:
 
 There is no admin page. The command-line tool runs on the machine hosting the database:
 `node scripts/admin.mjs help`. In Docker: `docker exec -it storytime node scripts/admin.mjs recent 20`.
-It can scan recent activity, remove or restore chapters, choices, stories and codex changes, revert a
-chapter to an earlier revision, permanently delete things that were removed first, and make a
-backup.
+It can scan recent activity, delete chapters, choices, stories and codex changes, revert a chapter to
+an earlier revision, and make a backup.
 
-Removing a chapter hides it and everything below it, and the choice that led to it becomes an
-unwritten slot again, so someone else can write a replacement. Restoring undoes that, unless the
-slot has been refilled in the meantime.
+Deleting is permanent (take a backup first if you might want it back). Deleting a chapter also
+deletes everything below it, and the choice that led to it becomes an unwritten slot again, so a
+replacement can be written.
 
 ## How it works
 
