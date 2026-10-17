@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getChoices, getPath, getStory } from "@/lib/stories";
 import Prose from "@/components/Prose";
 import EditLink from "@/components/EditLink";
+import AddChoice from "@/components/AddChoice";
 import { PageMenu } from "@/components/SiteMenu";
 
 export const dynamic = "force-dynamic";
@@ -76,9 +77,10 @@ export default async function ChapterPage({
             </Link>
           ),
         )}
+        <AddChoice chapterId={chapter.id} />
         <p className="row">
           <Link className="button secondary" href={`/c/${chapter.id}/write`}>
-            + Something else
+            Draft a different idea
           </Link>
         </p>
       </section>

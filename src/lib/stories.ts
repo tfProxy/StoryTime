@@ -103,6 +103,11 @@ export const EditChapterSchema = z.object({
   add_choices: z.array(required(LIMITS.label)).max(LIMITS.choices).default([]),
 });
 
+export const AddChoiceSchema = z.object({
+  label: required(LIMITS.label),
+  author_name: text(LIMITS.author).default(""),
+});
+
 export const EditStorySchema = z.object({
   /** The edit key of the story's first chapter. */
   edit_key: editKey,
@@ -440,6 +445,20 @@ export function editChapter(chapterId: string, input: z.infer<typeof EditChapter
         .run(input.incoming_label, chapterId);
     }
     return { revision };
+  })();
+}
+
+/** Declares another (unwritten) choice on a chapter, as anyone may when adding a branch. */
+export function addChoice(chapterId: string, input: z.infer<typeof AddChoiceSchema>): { ok: true } {
+  return db().transaction(() => {
+    if (!getChapter(chapterId)) throw new PostError("That chapter does not exist", 404);
+    const live = getChoices(chapterId);
+    if (live.length >= LIMITS.choices) throw new PostError("That chapter already has as many choices as it can", 409);
+    if (live.some((c) => c.label.trim().toLowerCase() === input.label.trim().toLowerCase())) {
+      throw new PostError("That choice already exists", 409);
+    }
+    insertChoices(chapterId, [input.label], input.author_name, now());
+    return { ok: true as const };
   })();
 }
 

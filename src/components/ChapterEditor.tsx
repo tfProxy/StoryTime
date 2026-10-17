@@ -118,6 +118,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const [length, setLength] = useState<Length>("medium");
   const [instruction, setInstruction] = useState("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  // Guidance for "Suggest more"; null until edited, so it follows the choice text by default.
+  const [guidance, setGuidance] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | "generate" | "refine" | "choices" | "ideas" | "summary" | "post">(null);
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -222,6 +224,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
           : context.choiceLabel,
     codexOverrides,
   };
+  const guidanceText = guidance ?? ctx.choiceLabel ?? "";
 
   /**
    * Makes sure the story so far can be condensed before a prompt is built: if older chapters
@@ -321,7 +324,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     try {
       const text = await completeChat(settings, {
         system: SYSTEM_IDEAS,
-        messages: [{ role: "user", content: ideasPrompt(ctx, settings.contextTokens) }],
+        messages: [{ role: "user", content: ideasPrompt({ ...ctx, choiceLabel: guidanceText.trim() || null }, settings.contextTokens) }],
         useSummaryModel: true,
         maxTokens: 800,
       });
@@ -615,25 +618,25 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
 
       <section className="ai-panel">
         <h2>1. Brainstorm</h2>
-        {(target.kind === "new" || target.kind === "fill") && (
-          <label>
-            Choice text <small>(the button readers click on the previous chapter; change it to add a new choice there instead; clear it to get ideas for it)</small>
-            <input
-              value={draft.newChoiceLabel}
-              maxLength={LIMITS.label}
-              onChange={(e) => patch({ newChoiceLabel: e.target.value })}
-            />
-          </label>
-        )}
+        <label>
+          Guidance for ideas <small>(optional; starts as the choice text, but editing it doesn&apos;t change the choice)</small>
+          <AutoTextarea
+            style={{ minHeight: "3rem", fontFamily: "inherit" }}
+            value={guidanceText}
+            onChange={(e) => setGuidance(e.target.value)}
+          />
+        </label>
         <div className="row">
           <button type="button" className="secondary" onClick={suggestIdeas} disabled={busy !== null}>
             {busy === "ideas" ? "Thinking…" : ideas.length ? "Suggest more" : "Suggest ideas"}
           </button>
           <span className="meta">
-            {ideaSetsChoice
-              ? "Based on the story so far. Pick one to fill in the choice text and what should happen."
-              : ctx.choiceLabel
-                ? "Ways this chapter could follow from the choice. Pick one to fill in what should happen."
+            {guidanceText.trim()
+              ? ideaSetsChoice
+                ? "Ways this chapter could follow from the guidance. Pick one to fill in the choice text and what should happen."
+                : "Ways this chapter could follow from the guidance. Pick one to fill in what should happen."
+              : ideaSetsChoice
+                ? "Based on the story so far. Pick one to fill in the choice text and what should happen."
                 : "Based on the story so far. Pick one to fill in what should happen."}
           </span>
         </div>
@@ -681,6 +684,16 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
 
       <section className="ai-panel">
         <h2>2. Write</h2>
+        {(target.kind === "new" || target.kind === "fill") && (
+          <label>
+            Choice text <small>(the button readers click on the previous chapter; change it to add a new choice there instead)</small>
+            <input
+              value={draft.newChoiceLabel}
+              maxLength={LIMITS.label}
+              onChange={(e) => patch({ newChoiceLabel: e.target.value })}
+            />
+          </label>
+        )}
         <div className="row">
           <select value={length} onChange={(e) => setLength(e.target.value as Length)} style={{ width: "auto" }}>
             <option value="short">Short (~300 words)</option>

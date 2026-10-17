@@ -94,7 +94,7 @@ const p = prompts.at(-1);
 ok(p.includes("Mira [character] (also: the thief, Mir): Now a horse. Cannot speak."), "continuation on A gets the horse entry");
 ok(!p.includes("human thief with a scar"), "…and not the old version");
 await page.goto(`${BASE}/c/${B}`);
-await page.getByRole("link", { name: "+ Something else" }).click();
+await page.getByRole("link", { name: "Draft a different idea" }).click();
 await page.getByLabel(/Choice text/).fill("Wander");
 await page.getByRole("button", { name: "Generate chapter" }).click();
 await page.getByRole("button", { name: "Edit text" }).click();
