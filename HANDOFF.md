@@ -1,6 +1,6 @@
 # StoryTime handoff
 
-State as of commit `f33789e` on `main` (nothing pushed). All suites pass:
+State as of the cleanup commits after `f33789e` on `main` (nothing pushed). All suites pass:
 `node tests/run.mjs --build unit api e2e`. Read `AGENTS.md` first: this Next.js (16.4) differs
 from what you may know, so check `node_modules/next/dist/docs/` before touching framework code.
 
@@ -11,19 +11,13 @@ reach the site can read and edit everything. The old multi-user version is tagge
 (commit `59bf0a9`). Neither that tag nor the new commit has been pushed, and `package.json` is still
 `0.1.0` (a `0.2.0` bump was suggested but not approved).
 
+Cleanup done since: soft delete is gone (the CLI has one permanent `delete` command; migration 3
+deletes anything that was flagged `removed_at` and drops the column), the author columns are dropped
+(migration 4), and the test fixtures no longer send author fields. `tests/unit/migrations.test.mts`
+covers both migrations. The `last-multi-user` tag is the way back to the old schema.
+
 Caveats left on purpose, which a cleanup pass can revisit:
 
-- **Dead columns.** `author_name` (stories, chapters, choices, codex_ops, chapter_revisions),
-  `edited_by` and `edit_key_hash` are still in the schema (`src/lib/db.ts`) but nothing reads or
-  writes them; new rows keep the defaults. Dropping them needs a new migration (SQLite
-  `ALTER TABLE ... DROP COLUMN`, or a table rebuild) and changes to the places below.
-- **The CLI still knows about authors.** `scripts/adminCore.mjs` selects `author_name` for its
-  "recent" listing, copies `author_name`/`edited_by` into revisions on revert and sets
-  `edited_by = 'admin'`; `scripts/admin.mjs` prints "(by ...)". Update these together with the
-  columns. `tests/api/admin-cli.test.mjs` exercises it.
-- **Removal machinery.** `removed_at` and the remove/restore/hard-delete logic now exist only for the
-  CLI. Every read query still filters `removed_at IS NULL`, and `getPath` treats a removed ancestor as
-  hiding its branch. Decide whether to keep soft-delete, or replace it with a plain delete.
 - **"First poster wins" index.** `chapters_one_child_per_choice` is kept as a safety net; the 409
   message is "A chapter is already written for that choice". With one user it can only trigger from
   two tabs.
@@ -34,9 +28,6 @@ Caveats left on purpose, which a cleanup pass can revisit:
 - **AI prompt wording.** `SYSTEM_BASE` in `src/lib/ai/prompts.ts` still says the story is one "that
   many people write together". Left alone because changing it alters drafting behavior and the
   prompt tests.
-- **Test fixtures.** Several e2e files still put `authorName` in localStorage settings, and some API
-  requests still send `author_name` / `edit_key` (the schemas strip unknown keys, so they are
-  ignored). Remove them for tidiness.
 - **Lint.** `npm run lint` reports one error, in `src/components/OutlineSummaries.tsx` (setState
   inside an effect). It predates the change.
 - **Line endings.** Working copies on this machine are CRLF even though `.gitattributes` says LF, so
