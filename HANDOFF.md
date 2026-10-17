@@ -21,10 +21,12 @@ Caveats left on purpose, which a cleanup pass can revisit:
 - **"First poster wins" index.** `chapters_one_child_per_choice` is kept as a safety net; the 409
   message is "A chapter is already written for that choice". With one user it can only trigger from
   two tabs.
-- **Two summary write paths.** `fillSummaries` (POST, only fills empty values) and `replaceSummaries`
-  (PUT, overwrites) used to differ by who could call them. Now both are open, so they could be one.
-  Callers: `BulkSummaries.tsx` and `SummaryPanel.tsx` use PUT; `saveSummaries` in
-  `src/lib/ai/summaries.ts` (used when posting and by `ensurePathSummaries`) uses POST.
+- **Two summary write paths (kept separate on purpose).** `fillSummaries` (POST, only fills empty
+  values) is the automatic, unattended path; `replaceSummaries` (PUT, overwrites) is the deliberate
+  one. They differ by intent, not by who may call them, so merging would let a background save
+  overwrite a manual edit. Callers: `BulkSummaries.tsx` and `SummaryPanel.tsx` use PUT;
+  `saveSummaries` in `src/lib/ai/summaries.ts` (used when posting and by `ensurePathSummaries`) uses
+  POST. Revisit only if you decide how a background save should behave against a manual edit.
 - **AI prompt wording.** `SYSTEM_BASE` in `src/lib/ai/prompts.ts` still says the story is one "that
   many people write together". Left alone because changing it alters drafting behavior and the
   prompt tests.
