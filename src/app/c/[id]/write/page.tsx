@@ -26,7 +26,7 @@ export default async function WritePage({
     if (slot.child_chapter_id) {
       return (
         <p>
-          Someone already wrote that chapter. <Link href={`/c/${slot.child_chapter_id}`}>Read it</Link>.
+          That chapter is already written. <Link href={`/c/${slot.child_chapter_id}`}>Read it</Link>.
         </p>
       );
     }

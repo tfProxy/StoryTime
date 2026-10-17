@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { db, newId } from "./db";
 import { ENTRY_TYPES, foldCodex, type CodexEntry, type CodexOp } from "./codex";
-import { LIMITS } from "./limits";
 import { getPath, PostError } from "./stories";
 
 const text = (max: number) => z.string().trim().max(max);
@@ -25,7 +24,7 @@ const checkChange = <T extends z.ZodType<{ op: string; entry_id?: string; name: 
     .refine((v) => v.op === "retire" || v.name.length > 0, { message: "name is required" });
 
 export const NewCodexOpSchema = checkChange(
-  z.object({ anchor_chapter_id: z.string().min(1), ...changeFields, author_name: text(LIMITS.author).default("") }),
+  z.object({ anchor_chapter_id: z.string().min(1), ...changeFields }),
 );
 
 /** Codex changes sent along with a chapter; they are anchored at that chapter when it is saved. */
@@ -36,13 +35,12 @@ export const CodexChangesSchema = z.object({
 /** Runs `save` (which posts or edits a chapter) and anchors the codex changes at that chapter, all or nothing. */
 export function saveWithCodexChanges<R>(
   changes: z.infer<typeof CodexChangesSchema>["codex_changes"],
-  author: string,
   save: () => R,
   anchorOf: (r: R) => string,
 ): R {
   return db().transaction(() => {
     const result = save();
-    for (const c of changes) createCodexOp({ ...c, anchor_chapter_id: anchorOf(result), author_name: author });
+    for (const c of changes) createCodexOp({ ...c, anchor_chapter_id: anchorOf(result) });
     return result;
   })();
 }
@@ -58,7 +56,6 @@ type Row = {
   aliases: string;
   content: string;
   always_include: number;
-  author_name: string;
   posted_at: number;
 };
 
@@ -80,7 +77,7 @@ export function getCodexOps(chapterId: string): CodexOp[] {
   const rows = db()
     .prepare(
       `SELECT o.id, o.anchor_chapter_id, c.depth AS anchor_depth, o.entry_id, o.op, o.name, o.type, o.aliases,
-              o.content, o.always_include, o.author_name, o.posted_at
+              o.content, o.always_include, o.posted_at
          FROM codex_ops o JOIN chapters c ON c.id = o.anchor_chapter_id
         WHERE o.removed_at IS NULL AND o.anchor_chapter_id IN (${path.map(() => "?").join(",")})
         ORDER BY c.depth, o.posted_at, o.rowid`,
@@ -112,8 +109,8 @@ export function createCodexOp(input: z.infer<typeof NewCodexOpSchema>): { id: st
     const id = newId();
     db()
       .prepare(
-        `INSERT INTO codex_ops (id, story_id, anchor_chapter_id, entry_id, op, name, type, aliases, content, always_include, author_name, posted_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO codex_ops (id, story_id, anchor_chapter_id, entry_id, op, name, type, aliases, content, always_include, posted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -126,7 +123,6 @@ export function createCodexOp(input: z.infer<typeof NewCodexOpSchema>): { id: st
         JSON.stringify(input.aliases),
         input.content,
         input.always_include ? 1 : 0,
-        input.author_name,
         Date.now(),
       );
     return { id, entry_id: entryId };

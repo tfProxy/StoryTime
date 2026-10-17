@@ -25,15 +25,15 @@ ok(r.code === 0 && r.out.includes("recent") && r.out.includes("delete"), "help l
 r = cli("recent", "1");
 ok(r.code === 0, "recent runs against the live database");
 
-const s = await api("POST", "/api/stories", { title: "CLI story", author_name: "Cleo", chapter: { title: "CLI root", body: "hello there", choices: ["Go"] } });
+const s = await api("POST", "/api/stories", { title: "CLI story", chapter: { title: "CLI root", body: "hello there", choices: ["Go"] } });
 const root = s.json.chapter_id;
 const choice = (await api("GET", `/api/chapters/${root}`)).json.choices[0];
-const child = (await api("POST", "/api/chapters", { choice_id: choice.id, title: "CLI child", body: "child text", author_name: "Cleo" })).json.chapter_id;
+const child = (await api("POST", "/api/chapters", { choice_id: choice.id, title: "CLI child", body: "child text" })).json.chapter_id;
 
 r = cli("stats");
 ok(/stories: \d+/.test(r.out) && /chapters: \d+/.test(r.out), "stats prints counts");
 r = cli("recent", "10", "--kind", "chapter", "--story", s.json.story_id);
-ok(r.out.includes("CLI child") && r.out.includes("CLI root") && r.out.includes(child) && r.out.includes("(by "), "recent lists chapters with ids, a preview and authors: " + r.out.split("\n")[0]);
+ok(r.out.includes("CLI child") && r.out.includes("CLI root") && r.out.includes(child), "recent lists chapters with ids and a preview: " + r.out.split("\n")[0]);
 ok(!r.out.includes("[REMOVED]"), "nothing is flagged yet");
 
 r = cli("remove", "chapter", child);
@@ -54,9 +54,8 @@ ok(r.code === 0 && /Deleted 1 chapter/.test(r.out), "delete permanently: " + r.o
 ok((await api("GET", `/api/chapters/${root}`)).json.choices[0].child_chapter_id === null, "the slot is open again");
 
 // revert via CLI
-const key = "cli-edit-key-0123456789ab";
-const s2 = await api("POST", "/api/stories", { title: "CLI revert", chapter: { title: "Orig", body: "original text", edit_key: key } });
-await api("PATCH", `/api/chapters/${s2.json.chapter_id}`, { edit_key: key, base_revision: 1, title: "Changed", body: "changed text" });
+const s2 = await api("POST", "/api/stories", { title: "CLI revert", chapter: { title: "Orig", body: "original text" } });
+await api("PATCH", `/api/chapters/${s2.json.chapter_id}`, { base_revision: 1, title: "Changed", body: "changed text" });
 r = cli("revert", s2.json.chapter_id, "1");
 ok(r.code === 0 && /revision 3/.test(r.out), "revert: " + r.out.trim());
 ok((await api("GET", `/api/chapters/${s2.json.chapter_id}`)).json.chapter.body === "original text", "the original text is back");

@@ -8,7 +8,7 @@ const call = async (method, url, body) => {
 const KEY = "summary-test-key-0123456789";
 
 // A chapter posted with summaries keeps them.
-let r = await call("POST", "/api/stories", { title: "S", chapter: { title: "Root", body: "root", summary: "root sum", path_summary: "root path", edit_key: KEY, choices: ["Go"] } });
+let r = await call("POST", "/api/stories", { title: "S", chapter: { title: "Root", body: "root", summary: "root sum", path_summary: "root path", choices: ["Go"] } });
 const root = r.json.chapter_id;
 let g = await call("GET", `/api/chapters/${root}`);
 ok(g.json.chapter.summary === "root sum" && g.json.chapter.path_summary === "root path", "summaries posted with a chapter are stored and returned");
@@ -41,7 +41,7 @@ ok((await call("POST", `/api/chapters/${two}/summary`, { summary: "x" })).status
 ok((await call("POST", `/api/chapters/${two}/summary`, { revision: 1, summary: "x".repeat(5001) })).status === 400, "over-long summary rejected");
 
 // Editing a chapter replaces its own summaries and clears the ones below it.
-r = await call("PATCH", `/api/chapters/${root}`, { edit_key: KEY, base_revision: 1, title: "Root v2", body: "root v2", summary: "new root sum", path_summary: "new root path" });
+r = await call("PATCH", `/api/chapters/${root}`, { base_revision: 1, title: "Root v2", body: "root v2", summary: "new root sum", path_summary: "new root path" });
 ok(r.status === 200, "edit with fresh summaries");
 g = await call("GET", `/api/chapters/${root}`);
 ok(g.json.chapter.summary === "new root sum" && g.json.chapter.path_summary === "new root path", "the edited chapter takes the summaries sent with the edit");
@@ -54,17 +54,15 @@ r = await call("POST", `/api/chapters/${two}/summary`, { revision: 1, path_summa
 ok(r.json.path_summary_set === true, "cleared summaries can be rebuilt");
 
 // An edit without summaries leaves the chapter's summaries empty (to be rebuilt lazily).
-r = await call("PATCH", `/api/chapters/${root}`, { edit_key: KEY, base_revision: 2, title: "Root v3", body: "root v3" });
+r = await call("PATCH", `/api/chapters/${root}`, { base_revision: 2, title: "Root v3", body: "root v3" });
 g = await call("GET", `/api/chapters/${root}`);
 ok(g.json.chapter.summary === null && g.json.chapter.path_summary === null, "an edit with no summaries clears the chapter's own");
 
-// The author can replace summaries by hand; nobody else can.
-r = await call("PUT", `/api/chapters/${two}/summary`, { edit_key: "wrong-key-0123456789abc", revision: 1, summary: "x", path_summary: "y" });
-ok(r.status === 403, "replacing a summary needs the chapter's edit key");
-r = await call("PUT", `/api/chapters/${root}/summary`, { edit_key: KEY, revision: 1, summary: "stale", path_summary: "stale" });
+// Summaries can be replaced by hand.
+r = await call("PUT", `/api/chapters/${root}/summary`, { revision: 1, summary: "stale", path_summary: "stale" });
 ok(r.status === 409, "replacing against an old revision conflicts");
-r = await call("PUT", `/api/chapters/${root}/summary`, { edit_key: KEY, revision: 3, summary: "hand sum", path_summary: "hand path" });
-ok(r.status === 200, "the author can replace the summaries");
+r = await call("PUT", `/api/chapters/${root}/summary`, { revision: 3, summary: "hand sum", path_summary: "hand path" });
+ok(r.status === 200, "summaries can be replaced by hand");
 g = await call("GET", `/api/chapters/${root}`);
 ok(g.json.chapter.summary === "hand sum" && g.json.chapter.path_summary === "hand path" && g.json.chapter.revision === 3, "…and it doesn't create a new revision");
-ok((await call("PUT", `/api/chapters/${root}/summary`, { edit_key: KEY, revision: 3, summary: "", path_summary: "y" })).status === 400, "empty summaries are rejected");
+ok((await call("PUT", `/api/chapters/${root}/summary`, { revision: 3, summary: "", path_summary: "y" })).status === 400, "empty summaries are rejected");

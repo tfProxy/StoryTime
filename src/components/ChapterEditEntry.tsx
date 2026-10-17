@@ -1,9 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEditKey } from "@/lib/keys";
 import { LIMITS } from "@/lib/limits";
 import type { StoryContext } from "@/lib/ai/prompts";
 import type { PathChapter } from "@/lib/ai/codexAi";
@@ -29,26 +27,13 @@ type Props = {
 };
 
 export default function ChapterEditEntry({ story, ...p }: Props) {
-  const key = useEditKey(p.chapterId);
-
-  if (!key) {
-    return (
-      <p className="notice">
-        This browser doesn&apos;t have the edit key for this chapter. Edit keys are created in the browser that posts a
-        chapter. If you posted it from another browser or device, use the export and import on the{" "}
-        <Link href="/settings">Settings</Link> page to bring them over here.
-      </p>
-    );
-  }
-
   return (
     <>
-      {story && <StoryMeta story={story} editKey={key} />}
+      {story && <StoryMeta story={story} />}
       <ChapterEditor
         target={{
           kind: "edit",
           chapterId: p.chapterId,
-          editKey: key,
           baseRevision: p.baseRevision,
           descendantCount: p.descendantCount,
           initialTitle: p.initialTitle,
@@ -68,8 +53,8 @@ export default function ChapterEditEntry({ story, ...p }: Props) {
   );
 }
 
-// The story's title and blurb belong to its first chapter, so its edit key covers them too.
-function StoryMeta({ story, editKey }: { story: { id: string; title: string; premise: string }; editKey: string }) {
+// The story's title and blurb are edited alongside its first chapter.
+function StoryMeta({ story }: { story: { id: string; title: string; premise: string } }) {
   const router = useRouter();
   const [title, setTitle] = useState(story.title);
   const [premise, setPremise] = useState(story.premise);
@@ -84,7 +69,7 @@ function StoryMeta({ story, editKey }: { story: { id: string; title: string; pre
       const res = await fetch(`/api/stories/${story.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ edit_key: editKey, title, premise }),
+        body: JSON.stringify({ title, premise }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);

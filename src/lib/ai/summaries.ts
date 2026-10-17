@@ -1,7 +1,7 @@
 // Rolling story summaries. Each chapter stores a short `summary` of itself and a
 // `path_summary` of the whole story up to and including it, so later prompts can condense old
 // chapters without sending them. They are generated in the browser with the user's own
-// (cheaper) model and saved to the server for everyone to reuse.
+// (cheaper) model and saved to the server for reuse.
 import { completeChat } from "./client";
 import { extractJson } from "./codexAi";
 import { summaryCoverageIndex, type ContextChapter } from "./prompts";

@@ -11,13 +11,13 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
   return Response.json({ chapter: path[path.length - 1], path, choices: getChoices(id) });
 }
 
-// Edit a chapter. Requires the chapter's edit key, which only the posting browser holds.
+// Edit a chapter. The previous version is kept as a revision.
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   return handlePost(
     request,
     EditChapterSchema.and(CodexChangesSchema),
-    (input) => saveWithCodexChanges(input.codex_changes, input.edited_by, () => editChapter(id, input), () => id),
+    (input) => saveWithCodexChanges(input.codex_changes, () => editChapter(id, input), () => id),
     200,
   );
 }

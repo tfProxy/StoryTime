@@ -3,7 +3,7 @@ import { db } from "./db";
 import { getStory } from "./stories";
 
 // Whole-story exports. Only live content is included (removed chapters, choices and codex
-// changes are left out), and nothing secret (edit-key hashes) ever appears.
+// changes are left out), and no internal bookkeeping appears.
 
 type ChapterRow = {
   id: string;
@@ -13,10 +13,8 @@ type ChapterRow = {
   body: string;
   summary: string | null;
   path_summary: string | null;
-  author_name: string;
   posted_at: number;
   edited_at: number | null;
-  edited_by: string;
   edit_note: string | null;
   revision: number;
 };
@@ -28,15 +26,13 @@ type RevisionRow = {
   body: string;
   summary: string | null;
   path_summary: string | null;
-  author_name: string;
-  edited_by: string;
   edit_note: string | null;
   created_at: number;
 };
-type ChoiceRow = { id: string; parent_chapter_id: string; label: string; author_name: string; posted_at: number };
+type ChoiceRow = { id: string; parent_chapter_id: string; label: string; posted_at: number };
 
 export type StoryExport = {
-  story: { id: string; title: string; premise: string; author_name: string; created_at: number };
+  story: { id: string; title: string; premise: string; created_at: number };
   /** In reading order: depth-first from the first chapter. */
   chapters: ChapterRow[];
   choices: ChoiceRow[];
@@ -51,13 +47,13 @@ export function loadStory(storyId: string): StoryExport | null {
   if (!story?.root_chapter_id) return null;
   const allChapters = db()
     .prepare(
-      `SELECT id, parent_choice_id, depth, title, body, summary, path_summary, author_name, posted_at, edited_at, edited_by, edit_note, revision
+      `SELECT id, parent_choice_id, depth, title, body, summary, path_summary, posted_at, edited_at, edit_note, revision
          FROM chapters WHERE story_id = ? AND removed_at IS NULL ORDER BY depth, posted_at, rowid`,
     )
     .all(storyId) as ChapterRow[];
   const allChoices = db()
     .prepare(
-      `SELECT ch.id, ch.parent_chapter_id, ch.label, ch.author_name, ch.posted_at
+      `SELECT ch.id, ch.parent_chapter_id, ch.label, ch.posted_at
          FROM choices ch JOIN chapters c ON c.id = ch.parent_chapter_id
         WHERE c.story_id = ? AND ch.removed_at IS NULL ORDER BY ch.posted_at, ch.rowid`,
     )
@@ -88,7 +84,7 @@ export function loadStory(storyId: string): StoryExport | null {
   const codex = (
     db()
       .prepare(
-        `SELECT id, anchor_chapter_id, entry_id, op, name, type, aliases, content, always_include, author_name, posted_at
+        `SELECT id, anchor_chapter_id, entry_id, op, name, type, aliases, content, always_include, posted_at
            FROM codex_ops WHERE story_id = ? AND removed_at IS NULL ORDER BY posted_at, rowid`,
       )
       .all(storyId) as Record<string, unknown>[]
@@ -99,7 +95,7 @@ export function loadStory(storyId: string): StoryExport | null {
   const revisions = (
     db()
       .prepare(
-        `SELECT r.chapter_id, r.revision, r.title, r.body, r.summary, r.path_summary, r.author_name, r.edited_by, r.edit_note, r.created_at
+        `SELECT r.chapter_id, r.revision, r.title, r.body, r.summary, r.path_summary, r.edit_note, r.created_at
            FROM chapter_revisions r JOIN chapters c ON c.id = r.chapter_id
           WHERE c.story_id = ? ORDER BY r.chapter_id, r.revision`,
       )
@@ -107,7 +103,7 @@ export function loadStory(storyId: string): StoryExport | null {
   ).filter((r) => ids.has(r.chapter_id));
 
   return {
-    story: { id: story.id, title: story.title, premise: story.premise, author_name: story.author_name, created_at: story.created_at },
+    story: { id: story.id, title: story.title, premise: story.premise, created_at: story.created_at },
     chapters,
     choices,
     codex,
@@ -148,7 +144,6 @@ export function toMarkdown(data: StoryExport): string {
   assign(data.chapters[0], "1");
 
   const out: string[] = [`# ${data.story.title}`];
-  if (data.story.author_name) out.push(`*by ${data.story.author_name}*`);
   if (data.story.premise.trim()) {
     out.push(data.story.premise.trim().split("\n").map((l) => `> ${l}`).join("\n"));
   }
@@ -156,7 +151,6 @@ export function toMarkdown(data: StoryExport): string {
 
   for (const c of order) {
     out.push(`## ${number.get(c.id)}. ${c.title}`);
-    if (c.author_name) out.push(`*by ${c.author_name}*`);
     out.push(c.body.trim());
     const list = choicesBy.get(c.id) ?? [];
     if (list.length) {
@@ -200,13 +194,11 @@ export function toPathMarkdown(data: StoryExport, chapterId: string): string | n
   const { route, viaOf, toBeContinued } = found;
 
   const out: string[] = [`# ${data.story.title}`];
-  if (data.story.author_name) out.push(`*by ${data.story.author_name}*`);
   if (data.story.premise.trim()) out.push(data.story.premise.trim().split("\n").map((l) => `> ${l}`).join("\n"));
   route.forEach((c, i) => {
     const via = viaOf(c);
     if (via) out.push(`*${via.label}*`);
     out.push(`## ${i + 1}. ${c.title}`);
-    if (c.author_name) out.push(`*by ${c.author_name}*`);
     out.push(c.body.trim());
   });
   out.push(toBeContinued ? "*…to be continued.*" : "*The end.*");

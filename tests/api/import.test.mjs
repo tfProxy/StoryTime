@@ -7,14 +7,13 @@ const call = async (method, url, body) => {
 };
 const exportOf = async (id) => (await fetch(`${B}/api/stories/${id}/export?format=json`)).json();
 
-const KEY = "import-key-0123456789abcdef";
-let r = await call("POST", "/api/stories", { title: "Round Trip", premise: "A premise.", author_name: "Eve", chapter: { title: "Start", body: "It began.", author_name: "Eve", edit_key: KEY, summary: "sum-root", path_summary: "ps-root", choices: ["Left", "Right"] } });
+let r = await call("POST", "/api/stories", { title: "Round Trip", premise: "A premise.", author_name: "Eve", chapter: { title: "Start", body: "It began.", author_name: "Eve", summary: "sum-root", path_summary: "ps-root", choices: ["Left", "Right"] } });
 const story = r.json.story_id, root = r.json.chapter_id;
 const choices = (await call("GET", `/api/chapters/${root}`)).json.choices;
 const left = (await call("POST", "/api/chapters", { choice_id: choices[0].id, title: "Left", body: "left text", author_name: "Bo", summary: "sum-left", path_summary: "ps-left", choices: ["Deeper"] })).json.chapter_id;
 await call("POST", "/api/chapters", { choice_id: (await call("GET", `/api/chapters/${left}`)).json.choices[0].id, title: "Deep", body: "deep text", author_name: "Cy" });
 await call("POST", "/api/codex", { anchor_chapter_id: left, op: "create", name: "Mira", type: "character", content: "A thief.", aliases: ["the thief"], always_include: true, author_name: "Bo" });
-r = await call("PATCH", `/api/chapters/${root}`, { edit_key: KEY, base_revision: 1, title: "Start v2", body: "It began again.", edited_by: "Eve2", edit_note: "polish", summary: "sum-root2", path_summary: "ps-root2" });
+r = await call("PATCH", `/api/chapters/${root}`, { base_revision: 1, title: "Start v2", body: "It began again.", edited_by: "Eve2", edit_note: "polish", summary: "sum-root2", path_summary: "ps-root2" });
 ok(r.status === 200, "setup: root chapter edited once");
 
 const data = await exportOf(story);
@@ -35,15 +34,13 @@ const strip = (d) => {
     revisions: d.revisions.map((o) => ({ ...o, chapter_id: cid.get(o.chapter_id) })),
   });
 };
-ok(strip(copy) === strip(data), "re-exporting the copy gives the same content (text, summaries, authors, codex, revisions, timestamps)");
+ok(strip(copy) === strip(data), "re-exporting the copy gives the same content (text, summaries, codex, revisions, timestamps)");
 ok(!copy.chapters.some((c) => c.id === data.chapters[0].id), "the copy has its own ids");
 
 const page = await fetch(`${B}/c/${r.json.chapter_id}`);
 ok(page.status === 200 && (await page.text()).includes("Start v2"), "the imported story can be read");
 const listed = (await (await fetch(`${B}/api/stories`)).json()).filter((s) => s.title === "Round Trip");
 ok(listed.length === 2, "both copies are listed");
-r = await call("PATCH", `/api/chapters/${r.json.chapter_id}`, { edit_key: KEY, base_revision: 2, title: "x", body: "y" });
-ok(r.status === 403, "imported chapters can't be edited (edit keys are never exported)");
 
 // ---- version 1 files (no revisions) ----
 const v1 = { ...data, version: 1 }; delete v1.revisions;

@@ -5,7 +5,7 @@ const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if 
 let n = 0;
 const op = (over: Partial<CodexOp>): CodexOp => ({
   id: `o${n++}`, anchor_chapter_id: "c0", anchor_depth: 0, entry_id: "mira", op: "create", name: "Mira", type: "character",
-  aliases: [], content: "A human thief.", always_include: false, author_name: "", posted_at: 1000 + n, ...over,
+  aliases: [], content: "A human thief.", always_include: false, posted_at: 1000 + n, ...over,
 });
 
 // fold basics

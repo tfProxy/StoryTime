@@ -226,7 +226,6 @@ function toVirtualOp(p: Proposal, ch: PathChapter, n: number): CodexOp {
     aliases: p.aliases,
     content: p.content,
     always_include: p.always_include,
-    author_name: "",
     posted_at: Date.now() + n,
   };
 }

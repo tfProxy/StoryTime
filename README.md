@@ -1,13 +1,14 @@
 # StoryTime
 
-Branching, choose-your-own-adventure stories written together, with optional AI help. Friends read
-and write chapters in the browser; nobody signs in. Everyone brings their own AI (OpenAI,
-Anthropic, or a local model through Ollama), and their keys never leave their browser.
+Branching, choose-your-own-adventure stories, with optional AI help. It is a single-user app: there
+are no accounts, logins or author names, and anyone who can reach the site can read and edit
+everything. You bring your own AI (OpenAI, Anthropic, or a local model through Ollama), and your keys
+never leave your browser.
 
 ## What it does
 
 - **Read and write** branching stories. Any chapter can have any number of choices; a choice stays
-  "unwritten" until someone writes the chapter for it (first poster wins).
+  "unwritten" until a chapter is written for it.
 - **AI drafting** in the browser, in four steps: brainstorm ideas and pick the codex entries, have
   the AI write the chapter from the story so far (revise, undo, step between drafts), write or
   generate a summary and choices, then post. "Continue with AI" jumps straight to a draft.
@@ -16,14 +17,14 @@ Anthropic, or a local model through Ollama), and their keys never leave their br
   entry up to date with the story. While writing, you can read, edit and add entries without leaving
   the page; those changes stay in the draft and are saved with the chapter when it is posted (or
   straight away, if you date them to an earlier chapter).
-- **Edit your chapters later** from the browser that posted them; every earlier version is kept.
+- **Edit chapters later**; every earlier version is kept.
 - **Outline and export**: a tree view of every branch, and downloads as readable Markdown, a single
   HTML file that plays the story offline (it remembers what the reader has seen, and can forget it),
   Twine (Twee) or full JSON. The HTML and Twine files include only finished branches. Any
   chapter (from its page or the outline) can also export just the route from the first chapter to
   it as one continuous Markdown read, and the codex page downloads that branch's codex as a
   Markdown "story bible".
-- **Moderation**: a password-protected admin page and a command-line tool.
+- **Maintenance**: a command-line tool for backups, removing and restoring items, and reverting chapters.
 
 ## Run locally
 
@@ -49,13 +50,12 @@ services:
     ports: ["3737:3737"]
     volumes: ["/mnt/user/appdata/storytime:/data"]
     environment:
-      ADMIN_PASSWORD: change-me     # optional, turns on /admin
     restart: unless-stopped
 ```
 
 Then `docker compose up -d --build`. The site is on port 3737. Settings can come from environment
-variables or a `.env` file next to the compose file: `STORYTIME_PORT` (published port),
-`STORYTIME_DATA` (data folder, default `./data`) and `ADMIN_PASSWORD`.
+variables or a `.env` file next to the compose file: `STORYTIME_PORT` (published port) and
+`STORYTIME_DATA` (data folder, default `./data`).
 
 **Updating:** Compose doesn't notice new commits by itself. To get the latest code run
 `docker compose build --pull --no-cache && docker compose up -d`. Database upgrades happen
@@ -69,26 +69,21 @@ Notes:
 - Put the data folder in your appdata backups, or use the built-in consistent copy, which is safe
   while the app runs: `docker exec storytime node scripts/admin.mjs backup /data/backups/storytime-$(date +%F).db`.
 - The container reports health at `/api/health`.
-- Before exposing it beyond your home network, put it behind a reverse proxy with HTTPS, or reach
-  it over a VPN such as Tailscale. The site itself has no logins, so anyone who can reach it can
-  read and post. The admin page has its own password.
+- The site has no logins, so anyone who can reach it can read, post and edit. Keep it on your home
+  network, reach it over a VPN such as Tailscale, or put it behind a reverse proxy that adds its own
+  authentication before exposing it any further.
 - Local AI with Ollama: the browser talks to Ollama directly, so Ollama must allow the site's
   address (`OLLAMA_ORIGINS`), and the Ollama URL in each person's Settings must be reachable from
   their browser (use the PC's or server's LAN address, not `localhost`, unless Ollama runs on the
   same machine as the browser).
 
-## Moderation
+## Maintenance
 
-Nothing public links to the admin tools.
-
-- **Web:** set `ADMIN_PASSWORD` (in the container's environment, or a `.env` file next to
-  `docker-compose.yml`) and open `/admin`. You can scan recent activity, filter it, remove or
-  restore chapters, choices, stories and codex changes, revert a chapter to an earlier revision,
-  and permanently delete things that were removed first. Without a password set, `/admin` is
-  switched off. Logins use a signed, expiring cookie and repeated wrong guesses are temporarily
-  blocked.
-- **Command line** (on the machine hosting the database, no password needed):
-  `node scripts/admin.mjs help`. In Docker: `docker exec -it storytime node scripts/admin.mjs recent 20`.
+There is no admin page. The command-line tool runs on the machine hosting the database:
+`node scripts/admin.mjs help`. In Docker: `docker exec -it storytime node scripts/admin.mjs recent 20`.
+It can scan recent activity, remove or restore chapters, choices, stories and codex changes, revert a
+chapter to an earlier revision, permanently delete things that were removed first, and make a
+backup.
 
 Removing a chapter hides it and everything below it, and the choice that led to it becomes an
 unwritten slot again, so someone else can write a replacement. Restoring undoes that, unless the
@@ -96,28 +91,24 @@ slot has been refilled in the meantime.
 
 ## How it works
 
-- No accounts or logins. Author names are free-text attribution only.
-- The server stores only stories (chapters, choices, codex changes). AI keys, settings, drafts and
-  edit keys live in each person's browser; the settings page can export them to a file.
-- A chapter can be edited only by the browser that posted it: posting creates a random edit key
-  that the browser keeps (and includes in the settings export) while the server stores only a hash.
-  Every edit keeps the previous version in `chapter_revisions`, and the chapter shows an "edited"
-  marker linking to its history.
+- No accounts, logins or author names; one person is assumed.
+- The server stores only stories (chapters, choices, codex changes). AI keys, settings and drafts and
+  settings live in your browser; the settings page can export them to a file.
+- Any chapter can be edited. Every edit keeps the previous version in `chapter_revisions`, and the
+  chapter shows an "edited" marker linking to its history.
 - The codex is an append-only log per story: each change (create / replace / retire) is anchored at
   a chapter and applies to that chapter and its descendants. The codex at a chapter is the fold of
   the changes on the path from the root to it (deeper anchors win, then later posts). Codex changes
   never touch chapter text, and other branches never see them.
-- Each chapter can carry a `summary` (a paragraph about itself, written by the author or generated
+- Each chapter can carry a `summary` (a paragraph about itself, written by you or generated
   from the chapter text) and a `path_summary` (a rolling summary of the story through it). Prompts
   send the most recent chapters verbatim, the ones before as their own summaries, and the rolling
   summary only for whatever is older still, so most of the context is one step from the original
   text. The browser generates them with the cheaper model when a chapter is posted (an edit keeps the
-  existing summary unless the author changes it), and
+  existing summary unless you change it), and
   fills in any that are missing (for example below an edited chapter) before generating, but only
-  when older chapters would not fit in the context budget. They are a cache: anyone can fill a missing one,
-  and nobody can overwrite an existing one except the chapter's author by editing it. A story's
-  outline links to a "Redo summaries" page that regenerates them all from the browser: chapters
-  that browser posted are rewritten, the rest are only filled in where missing.
+  when older chapters would not fit in the context budget. They are a cache. A story's
+  outline links to a "Redo summaries" page that regenerates all of them from the browser.
 
 ## Tests
 
@@ -130,6 +121,6 @@ npm run test:all    # everything
 ```
 
 The API and browser suites build the app if needed and run it on port 3111 with a temporary
-database and an admin password; the browser tests also run a fake AI server on port 3222. Set
+database; the browser tests also run a fake AI server on port 3222. Set
 `E2E_CHANNEL=chrome` (or `bundled`, after `npx playwright-core install chromium`) to use a
 different browser. Pass `--build` (`node tests/run.mjs --build api`) to force a rebuild first.

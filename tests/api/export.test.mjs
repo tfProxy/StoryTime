@@ -1,4 +1,5 @@
 // Story exports (Markdown, Twee, JSON), the outline page, and the health endpoint.
+import Database from "better-sqlite3";
 const B = process.env.BASE_URL ?? "http://localhost:3111";
 const ok = (c, m) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const call = async (method, url, body) => {
@@ -10,25 +11,24 @@ const get = async (url) => { const r = await fetch(B + url); return { status: r.
 ok((await call("GET", "/api/health")).json?.ok === true, "health endpoint reports ok");
 
 // root -> [Left -> [Deep], Right (unwritten), Gone (will be removed)]
-const KEY = "export-key-0123456789abcdef";
-let r = await call("POST", "/api/stories", { title: "The Export: Tale!", premise: "A premise.\nSecond line.", author_name: "Eve", chapter: { title: "Start", body: "It began.\n\n:: not a passage", author_name: "Eve", edit_key: KEY, choices: ["Go left", "Go [[right]]", "Gone"] } });
+let r = await call("POST", "/api/stories", { title: "The Export: Tale!", premise: "A premise.\nSecond line.", chapter: { title: "Start", body: "It began.\n\n:: not a passage", choices: ["Go left", "Go [[right]]", "Gone"] } });
 const story = r.json.story_id, root = r.json.chapter_id;
 let choices = (await call("GET", `/api/chapters/${root}`)).json.choices;
-const fill = async (c, title, extra = {}) => (await call("POST", "/api/chapters", { choice_id: c.id, title, body: `${title} text`, author_name: "Bo", ...extra })).json.chapter_id;
+const fill = async (c, title, extra = {}) => (await call("POST", "/api/chapters", { choice_id: c.id, title, body: `${title} text`, ...extra })).json.chapter_id;
 const left = await fill(choices[0], "Left", { choices: ["Deeper"] });
 const gone = await fill(choices[2], "Gone chapter");
 const deep = await fill((await call("GET", `/api/chapters/${left}`)).json.choices[0], "Deep");
 await call("POST", "/api/codex", { anchor_chapter_id: left, op: "create", name: "Mira", content: "A thief.", aliases: ["the thief"], always_include: true });
 
-// Mark one chapter removed through the CLI-compatible admin API.
-const login = await fetch(B + "/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: process.env.ADMIN_PASSWORD }) });
-const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0];
-await fetch(B + "/api/admin/action", { method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie }, body: JSON.stringify({ action: "remove", kind: "chapter", id: gone }) });
+// Mark one chapter removed the way the command-line tool does.
+const dbh = new Database(process.env.TEST_DB);
+dbh.prepare("UPDATE chapters SET removed_at = ? WHERE id = ?").run(Date.now(), gone);
+dbh.close();
 
 // ---- Markdown ----
 let x = await get(`/api/stories/${story}/export?format=md`);
 ok(x.status === 200 && /text\/markdown/.test(x.headers.get("content-type")) && /attachment; filename="the-export-tale\.md"/.test(x.headers.get("content-disposition")), "markdown download has a safe filename");
-ok(x.text.startsWith("# The Export: Tale!") && x.text.includes("> A premise.\n> Second line.") && x.text.includes("*by Eve*"), "title, premise and author");
+ok(x.text.startsWith("# The Export: Tale!") && x.text.includes("> A premise.\n> Second line."), "title and premise");
 ok(x.text.includes("## 1. Start") && x.text.includes("## 1.1. Left") && x.text.includes("## 1.1.1. Deep"), "chapters are numbered by position in the tree");
 ok(x.text.includes("- **Go left** → chapter 1.1") && x.text.includes("- **Go [[right]]** → *(not written yet)*"), "choices point at their chapters, unwritten ones are marked");
 ok(!x.text.includes("Gone chapter"), "a removed chapter is left out");
@@ -50,7 +50,7 @@ const data = JSON.parse(x.text);
 ok(data.format === "storytime-export" && data.version === 2 && data.story.title === "The Export: Tale!", "json header");
 ok(data.chapters.length === 3 && data.chapters.map((c) => c.title).join() === "Start,Left,Deep", "json chapters in reading order, without removed ones");
 ok(data.choices.length === 4 && data.codex.length === 1 && data.codex[0].aliases[0] === "the thief" && data.codex[0].always_include === true, "json choices and codex");
-ok(!x.text.includes("edit_key") && !x.text.includes(KEY), "no edit keys or hashes in exports");
+ok(!x.text.includes("edit_key") && !x.text.includes("author_name"), "no bookkeeping fields in exports");
 
 // ---- errors ----
 ok((await get(`/api/stories/${story}/export?format=pdf`)).status === 400, "unknown format 400");

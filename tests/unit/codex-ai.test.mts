@@ -36,7 +36,7 @@ const ch = (id: string, depth: number, title: string, body: string) => ({ id, de
 const story = { title: "Tale", premise: "A thief." };
 
 // ---- single chapter scan, with an existing codex ----
-const existingOp: CodexOp = { id: "o1", anchor_chapter_id: "c1", anchor_depth: 0, entry_id: "E-MIRA", op: "create", name: "Mira", type: "character", aliases: ["the thief"], content: "A human thief.", always_include: false, author_name: "", posted_at: 1 };
+const existingOp: CodexOp = { id: "o1", anchor_chapter_id: "c1", anchor_depth: 0, entry_id: "E-MIRA", op: "create", name: "Mira", type: "character", aliases: ["the thief"], content: "A human thief.", always_include: false, posted_at: 1 };
 handler = () => JSON.stringify({ changes: [
   { action: "create", name: "Bram", type: "character", aliases: ["smith"], content: "A smith.", reason: "new" },
   { action: "replace", entry: "the thief", name: "Mira", type: "character", aliases: ["the thief"], content: "Now a horse.", reason: "transformed" },

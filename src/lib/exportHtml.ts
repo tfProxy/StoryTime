@@ -4,7 +4,7 @@ import { finishedBranches, routeTo, type StoryExport } from "./export";
 // libraries. It remembers which chapters the reader has seen (in that browser's localStorage, keyed
 // by story) and can forget them again. Only finished branches are included, like the Twine export.
 
-type Page = { t: string; a: string; b: string; c: [string, string][]; p: string | null };
+type Page = { t: string; b: string; c: [string, string][]; p: string | null };
 
 /** JSON that is safe to put inside a <script> element. */
 const scriptJson = (v: unknown) =>
@@ -72,7 +72,6 @@ const SCRIPT = String.raw`
   function showTitle() {
     document.title = data.title;
     var kids = [el("h1", {}, [data.title])];
-    if (data.author) kids.push(el("p", { class: "meta" }, ["by " + data.author]));
     if (data.premise) kids.push(el("blockquote", {}, [data.premise]));
     var resume = state.last && data.pages[state.last] && state.last !== data.start;
     kids.push(el("div", { class: "choices" }, [
@@ -100,7 +99,6 @@ const SCRIPT = String.raw`
     save();
     document.title = page.t + " \u2013 " + data.title;
     var kids = [el("h2", {}, [page.t])];
-    if (page.a) kids.push(el("p", { class: "meta" }, ["by " + page.a]));
     kids.push(el("div", { class: "prose" }, paragraphs(page.b)));
     if (page.c.length) {
       kids.push(el("div", { class: "choices" }, page.c.map(function (c) {
@@ -142,14 +140,12 @@ export function toPathHtml(data: StoryExport, chapterId: string): string | null 
   const s = data.story;
   const body = [
     `<h1>${escapeHtml(s.title)}</h1>`,
-    s.author_name ? `<p class="meta">by ${escapeHtml(s.author_name)}</p>` : "",
     s.premise.trim() ? `<blockquote>${escapeHtml(s.premise.trim())}</blockquote>` : "",
     ...route.map((c, i) => {
       const via = viaOf(c);
       return `<section>
 ${via ? `<p class="via">${escapeHtml(via.label)}</p>` : ""}
 <h2>${i + 1}. ${escapeHtml(c.title)}</h2>
-${c.author_name ? `<p class="meta">by ${escapeHtml(c.author_name)}</p>` : ""}
 <div class="prose">
 ${paras(c.body)}
 </div>
@@ -191,11 +187,11 @@ export function toHtml(data: StoryExport): string {
       list.push([ch.label, child.id]);
       parentOf.set(child.id, c.id);
     }
-    pages[c.id] = { t: c.title, a: c.author_name, b: c.body.trim(), c: list, p: null };
+    pages[c.id] = { t: c.title, b: c.body.trim(), c: list, p: null };
   }
   for (const [child, parent] of parentOf) pages[child].p = parent;
 
-  const payload = { id: data.story.id, title: data.story.title, author: data.story.author_name, premise: data.story.premise.trim(), start: chapters[0].id, pages };
+  const payload = { id: data.story.id, title: data.story.title, premise: data.story.premise.trim(), start: chapters[0].id, pages };
   return `<!doctype html>
 <html lang="en">
 <head>

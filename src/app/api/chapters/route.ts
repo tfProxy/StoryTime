@@ -4,6 +4,6 @@ import { createChapter, NewChapterSchema } from "@/lib/stories";
 
 export async function POST(request: Request) {
   return handlePost(request, NewChapterSchema.and(CodexChangesSchema), (input) =>
-    saveWithCodexChanges(input.codex_changes, input.author_name, () => createChapter(input), (r) => r.chapter_id),
+    saveWithCodexChanges(input.codex_changes, () => createChapter(input), (r) => r.chapter_id),
   );
 }

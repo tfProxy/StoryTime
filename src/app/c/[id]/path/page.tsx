@@ -28,7 +28,6 @@ export default async function PathPage({ params }: { params: Promise<{ id: strin
           <h2>
             {i + 1}. <Link href={`/c/${p.id}`}>{p.title}</Link>
           </h2>
-          <p className="meta">{p.author_name ? `by ${p.author_name}` : "Anonymous"}</p>
           <Prose text={p.body} />
         </section>
       ))}

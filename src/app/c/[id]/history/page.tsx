@@ -28,8 +28,8 @@ export default async function HistoryPage({ params }: { params: Promise<{ id: st
       </h2>
       <p className="meta">
         {chapter.edited_at
-          ? `Edited ${when(chapter.edited_at)}${chapter.edited_by ? ` by ${chapter.edited_by}` : ""}${chapter.edit_note ? `: ${chapter.edit_note}` : ""}`
-          : `Posted ${when(chapter.posted_at)}${chapter.author_name ? ` by ${chapter.author_name}` : ""}`}
+          ? `Edited ${when(chapter.edited_at)}${chapter.edit_note ? `: ${chapter.edit_note}` : ""}`
+          : `Posted ${when(chapter.posted_at)}`}
       </p>
 
       {revisions.map((r) => (
@@ -38,8 +38,8 @@ export default async function HistoryPage({ params }: { params: Promise<{ id: st
             <strong>Revision {r.revision}</strong> · {r.title}
             <span className="meta" style={{ display: "block", margin: 0 }}>
               {r.revision === 1
-                ? `Posted ${when(r.created_at)}${r.author_name ? ` by ${r.author_name}` : ""}`
-                : `Edited ${when(r.created_at)}${r.edited_by ? ` by ${r.edited_by}` : ""}${r.edit_note ? `: ${r.edit_note}` : ""}`}
+                ? `Posted ${when(r.created_at)}`
+                : `Edited ${when(r.created_at)}${r.edit_note ? `: ${r.edit_note}` : ""}`}
             </span>
           </summary>
           <div style={{ marginTop: "1rem" }}>

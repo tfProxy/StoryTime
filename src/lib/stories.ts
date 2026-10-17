@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { z } from "zod";
 import { db, newId } from "./db";
 import { LIMITS } from "./limits";
@@ -7,7 +6,6 @@ export type Story = {
   id: string;
   title: string;
   premise: string;
-  author_name: string;
   root_chapter_id: string | null;
   created_at: number;
 };
@@ -21,11 +19,9 @@ export type Chapter = {
   body: string;
   summary: string | null;
   path_summary: string | null;
-  author_name: string;
   posted_at: number;
   revision: number;
   edited_at: number | null;
-  edited_by: string;
   edit_note: string | null;
 };
 
@@ -33,7 +29,6 @@ export type Choice = {
   id: string;
   parent_chapter_id: string;
   label: string;
-  author_name: string;
   posted_at: number;
   /** Id of the live child chapter, or null if the slot is still unwritten. */
   child_chapter_id: string | null;
@@ -43,24 +38,18 @@ export type Revision = {
   revision: number;
   title: string;
   body: string;
-  author_name: string;
-  edited_by: string;
   edit_note: string | null;
   created_at: number;
 };
 
 const text = (max: number) => z.string().trim().max(max);
 const required = (max: number) => text(max).min(1);
-// A random secret generated in the browser when a chapter is posted. Only its hash is stored.
-const editKey = z.string().min(16).max(128);
 
 const chapterFields = {
   title: required(LIMITS.title),
   body: required(LIMITS.body),
   summary: text(LIMITS.summary).nullish(),
   path_summary: text(LIMITS.summary).nullish(),
-  author_name: text(LIMITS.author).default(""),
-  edit_key: editKey.optional(),
   // Labels of choices to declare on this chapter. They start out unwritten.
   choices: z.array(required(LIMITS.label)).max(LIMITS.choices).default([]),
 };
@@ -68,7 +57,6 @@ const chapterFields = {
 export const NewStorySchema = z.object({
   title: required(LIMITS.title),
   premise: text(LIMITS.premise).default(""),
-  author_name: text(LIMITS.author).default(""),
   chapter: z.object(chapterFields),
 });
 
@@ -87,14 +75,12 @@ export const NewChapterSchema = z
   );
 
 export const EditChapterSchema = z.object({
-  edit_key: editKey,
   /** The revision the editor started from; a mismatch means it was edited elsewhere meanwhile. */
   base_revision: z.number().int().min(1),
   title: required(LIMITS.title),
   body: required(LIMITS.body),
   summary: text(LIMITS.summary).nullish(),
   path_summary: text(LIMITS.summary).nullish(),
-  edited_by: text(LIMITS.author).default(""),
   edit_note: text(LIMITS.label).default(""),
   /** New text for the choice that leads into this chapter. */
   incoming_label: required(LIMITS.label).optional(),
@@ -105,12 +91,9 @@ export const EditChapterSchema = z.object({
 
 export const AddChoiceSchema = z.object({
   label: required(LIMITS.label),
-  author_name: text(LIMITS.author).default(""),
 });
 
 export const EditStorySchema = z.object({
-  /** The edit key of the story's first chapter. */
-  edit_key: editKey,
   title: required(LIMITS.title),
   premise: text(LIMITS.premise).default(""),
 });
@@ -126,21 +109,10 @@ export class PostError extends Error {
 
 const now = () => Date.now();
 
-function hashKey(key: string): string {
-  return crypto.createHash("sha256").update(key).digest("hex");
-}
-
-function keyMatches(stored: string | null, presented: string): boolean {
-  if (!stored) return false;
-  const a = Buffer.from(stored, "hex");
-  const b = Buffer.from(hashKey(presented), "hex");
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
-
 export function listStories(): (Story & { chapter_count: number })[] {
   return db()
     .prepare(
-      `SELECT s.id, s.title, s.premise, s.author_name, s.root_chapter_id, s.created_at,
+      `SELECT s.id, s.title, s.premise, s.root_chapter_id, s.created_at,
               (SELECT COUNT(*) FROM chapters c WHERE c.story_id = s.id AND c.removed_at IS NULL) AS chapter_count
          FROM stories s WHERE s.removed_at IS NULL ORDER BY s.created_at DESC`,
     )
@@ -150,15 +122,14 @@ export function listStories(): (Story & { chapter_count: number })[] {
 export function getStory(id: string): Story | undefined {
   return db()
     .prepare(
-      `SELECT id, title, premise, author_name, root_chapter_id, created_at
+      `SELECT id, title, premise, root_chapter_id, created_at
          FROM stories WHERE id = ? AND removed_at IS NULL`,
     )
     .get(id) as Story | undefined;
 }
 
-// Never includes edit_key_hash.
 const CHAPTER_COLS = `c.id, c.story_id, c.parent_choice_id, c.depth, c.title, c.body, c.summary, c.path_summary,
-  c.author_name, c.posted_at, c.revision, c.edited_at, c.edited_by, c.edit_note`;
+  c.posted_at, c.revision, c.edited_at, c.edit_note`;
 
 export function getChapter(id: string): Chapter | undefined {
   return db()
@@ -169,7 +140,7 @@ export function getChapter(id: string): Chapter | undefined {
 export function getChoices(chapterId: string): Choice[] {
   return db()
     .prepare(
-      `SELECT ch.id, ch.parent_chapter_id, ch.label, ch.author_name, ch.posted_at,
+      `SELECT ch.id, ch.parent_chapter_id, ch.label, ch.posted_at,
               (SELECT c.id FROM chapters c WHERE c.parent_choice_id = ch.id AND c.removed_at IS NULL) AS child_chapter_id
          FROM choices ch
         WHERE ch.parent_chapter_id = ? AND ch.removed_at IS NULL
@@ -231,17 +202,15 @@ export function countDescendants(chapterId: string): number {
 export function getRevisions(chapterId: string): Revision[] {
   return db()
     .prepare(
-      `SELECT revision, title, body, author_name, edited_by, edit_note, created_at
+      `SELECT revision, title, body, edit_note, created_at
          FROM chapter_revisions WHERE chapter_id = ? ORDER BY revision DESC`,
     )
     .all(chapterId) as Revision[];
 }
 
-function insertChoices(chapterId: string, labels: string[], author: string, t: number) {
-  const stmt = db().prepare(
-    `INSERT INTO choices (id, parent_chapter_id, label, author_name, posted_at) VALUES (?, ?, ?, ?, ?)`,
-  );
-  for (const label of labels) stmt.run(newId(), chapterId, label, author, t);
+function insertChoices(chapterId: string, labels: string[], t: number) {
+  const stmt = db().prepare(`INSERT INTO choices (id, parent_chapter_id, label, posted_at) VALUES (?, ?, ?, ?)`);
+  for (const label of labels) stmt.run(newId(), chapterId, label, t);
 }
 
 export function createStory(input: z.infer<typeof NewStorySchema>): { story_id: string; chapter_id: string } {
@@ -251,26 +220,16 @@ export function createStory(input: z.infer<typeof NewStorySchema>): { story_id: 
   const c = input.chapter;
   db().transaction(() => {
     db()
-      .prepare(`INSERT INTO stories (id, title, premise, author_name, created_at) VALUES (?, ?, ?, ?, ?)`)
-      .run(storyId, input.title, input.premise, input.author_name, t);
+      .prepare(`INSERT INTO stories (id, title, premise, created_at) VALUES (?, ?, ?, ?)`)
+      .run(storyId, input.title, input.premise, t);
     db()
       .prepare(
-        `INSERT INTO chapters (id, story_id, parent_choice_id, depth, title, body, summary, path_summary, author_name, posted_at, edit_key_hash)
-         VALUES (?, ?, NULL, 0, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO chapters (id, story_id, parent_choice_id, depth, title, body, summary, path_summary, posted_at)
+         VALUES (?, ?, NULL, 0, ?, ?, ?, ?, ?)`,
       )
-      .run(
-        chapterId,
-        storyId,
-        c.title,
-        c.body,
-        c.summary ?? null,
-        c.path_summary ?? null,
-        c.author_name,
-        t,
-        c.edit_key ? hashKey(c.edit_key) : null,
-      );
+      .run(chapterId, storyId, c.title, c.body, c.summary ?? null, c.path_summary ?? null, t);
     db().prepare(`UPDATE stories SET root_chapter_id = ? WHERE id = ?`).run(chapterId, storyId);
-    insertChoices(chapterId, c.choices, c.author_name, t);
+    insertChoices(chapterId, c.choices, t);
   })();
   return { story_id: storyId, chapter_id: chapterId };
 }
@@ -298,8 +257,8 @@ export function createChapter(input: z.infer<typeof NewChapterSchema>): { story_
       if (count.n >= LIMITS.choices) throw new PostError("That chapter already has the maximum number of choices", 409);
       choiceId = newId();
       db()
-        .prepare(`INSERT INTO choices (id, parent_chapter_id, label, author_name, posted_at) VALUES (?, ?, ?, ?, ?)`)
-        .run(choiceId, parentChapter.id, input.new_choice_label, input.author_name, t);
+        .prepare(`INSERT INTO choices (id, parent_chapter_id, label, posted_at) VALUES (?, ?, ?, ?)`)
+        .run(choiceId, parentChapter.id, input.new_choice_label, t);
     }
     // getChapter only checks the chapter itself; getPath also rejects a removed ancestor.
     if (!parentChapter || getPath(parentChapter.id).length === 0) {
@@ -309,8 +268,8 @@ export function createChapter(input: z.infer<typeof NewChapterSchema>): { story_
     try {
       db()
         .prepare(
-          `INSERT INTO chapters (id, story_id, parent_choice_id, depth, title, body, summary, path_summary, author_name, posted_at, edit_key_hash)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO chapters (id, story_id, parent_choice_id, depth, title, body, summary, path_summary, posted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           chapterId,
@@ -321,39 +280,36 @@ export function createChapter(input: z.infer<typeof NewChapterSchema>): { story_
           input.body,
           input.summary ?? null,
           input.path_summary ?? null,
-          input.author_name,
           t,
-          input.edit_key ? hashKey(input.edit_key) : null,
         );
     } catch (e) {
       if (e instanceof Error && "code" in e && String(e.code).startsWith("SQLITE_CONSTRAINT")) {
-        throw new PostError("Someone already wrote a chapter for that choice", 409);
+        throw new PostError("A chapter is already written for that choice", 409);
       }
       throw e;
     }
-    insertChoices(chapterId, input.choices, input.author_name, t);
+    insertChoices(chapterId, input.choices, t);
     return { story_id: parentChapter.story_id, chapter_id: chapterId };
   })();
 }
 
-function requireKey(chapterId: string, key: string) {
+function liveChapter(chapterId: string) {
   const row = db()
-    .prepare(`SELECT edit_key_hash, revision, removed_at FROM chapters WHERE id = ?`)
-    .get(chapterId) as { edit_key_hash: string | null; revision: number; removed_at: number | null } | undefined;
+    .prepare(`SELECT revision, removed_at FROM chapters WHERE id = ?`)
+    .get(chapterId) as { revision: number; removed_at: number | null } | undefined;
   if (!row || row.removed_at !== null) throw new PostError("That chapter does not exist", 404);
-  if (!keyMatches(row.edit_key_hash, key)) throw new PostError("This browser doesn't have the edit key for that chapter", 403);
   return row;
 }
 
 export function editChapter(chapterId: string, input: z.infer<typeof EditChapterSchema>): { revision: number } {
   return db().transaction(() => {
-    const row = requireKey(chapterId, input.edit_key);
+    const row = liveChapter(chapterId);
     if (row.revision !== input.base_revision) {
       throw new PostError("This chapter was edited somewhere else since you started. Reload it and redo your changes.", 409);
     }
     const current = db()
       .prepare(
-        `SELECT title, body, summary, path_summary, author_name, edited_by, edit_note, posted_at, edited_at
+        `SELECT title, body, summary, path_summary, edit_note, posted_at, edited_at
            FROM chapters WHERE id = ?`,
       )
       .get(chapterId) as {
@@ -361,8 +317,6 @@ export function editChapter(chapterId: string, input: z.infer<typeof EditChapter
       body: string;
       summary: string | null;
       path_summary: string | null;
-      author_name: string;
-      edited_by: string;
       edit_note: string | null;
       posted_at: number;
       edited_at: number | null;
@@ -372,8 +326,8 @@ export function editChapter(chapterId: string, input: z.infer<typeof EditChapter
     // Keep the version being replaced.
     db()
       .prepare(
-        `INSERT INTO chapter_revisions (id, chapter_id, revision, title, body, summary, path_summary, author_name, edited_by, edit_note, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO chapter_revisions (id, chapter_id, revision, title, body, summary, path_summary, edit_note, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         newId(),
@@ -383,8 +337,6 @@ export function editChapter(chapterId: string, input: z.infer<typeof EditChapter
         current.body,
         current.summary,
         current.path_summary,
-        current.author_name,
-        current.edited_by,
         current.edit_note,
         current.edited_at ?? current.posted_at,
       );
@@ -393,7 +345,7 @@ export function editChapter(chapterId: string, input: z.infer<typeof EditChapter
     db()
       .prepare(
         `UPDATE chapters SET title = ?, body = ?, summary = ?, path_summary = ?, revision = ?,
-                edited_at = ?, edited_by = ?, edit_note = ? WHERE id = ?`,
+                edited_at = ?, edit_note = ? WHERE id = ?`,
       )
       .run(
         input.title,
@@ -402,7 +354,6 @@ export function editChapter(chapterId: string, input: z.infer<typeof EditChapter
         input.path_summary ?? null,
         revision,
         t,
-        input.edited_by,
         input.edit_note || null,
         chapterId,
       );
@@ -437,7 +388,7 @@ export function editChapter(chapterId: string, input: z.infer<typeof EditChapter
     if (remaining + input.add_choices.length > LIMITS.choices) {
       throw new PostError("That would be more choices than a chapter can have", 409);
     }
-    insertChoices(chapterId, input.add_choices, input.edited_by, t);
+    insertChoices(chapterId, input.add_choices, t);
 
     if (input.incoming_label !== undefined) {
       db()
@@ -448,7 +399,7 @@ export function editChapter(chapterId: string, input: z.infer<typeof EditChapter
   })();
 }
 
-/** Declares another (unwritten) choice on a chapter, as anyone may when adding a branch. */
+/** Declares another (unwritten) choice on a chapter when adding a branch. */
 export function addChoice(chapterId: string, input: z.infer<typeof AddChoiceSchema>): { ok: true } {
   return db().transaction(() => {
     if (!getChapter(chapterId)) throw new PostError("That chapter does not exist", 404);
@@ -457,7 +408,7 @@ export function addChoice(chapterId: string, input: z.infer<typeof AddChoiceSche
     if (live.some((c) => c.label.trim().toLowerCase() === input.label.trim().toLowerCase())) {
       throw new PostError("That choice already exists", 409);
     }
-    insertChoices(chapterId, [input.label], input.author_name, now());
+    insertChoices(chapterId, [input.label], now());
     return { ok: true as const };
   })();
 }
@@ -466,15 +417,13 @@ export function editStory(storyId: string, input: z.infer<typeof EditStorySchema
   return db().transaction(() => {
     const story = getStory(storyId);
     if (!story?.root_chapter_id) throw new PostError("That story does not exist", 404);
-    requireKey(story.root_chapter_id, input.edit_key);
     db().prepare(`UPDATE stories SET title = ?, premise = ? WHERE id = ?`).run(input.title, input.premise, storyId);
     return { ok: true as const };
   })();
 }
 
-// Summaries are a cache derived from chapter text. Anyone may fill one that is missing (for
-// example after an edit cleared it), but nobody can overwrite an existing one except the
-// chapter's author through an edit.
+// Summaries are a cache derived from chapter text. fillSummaries only fills one that is missing
+// (for example after an edit cleared it); replaceSummaries overwrites on purpose.
 export const SetSummarySchema = z.object({
   /** The chapter revision the summaries were generated from. */
   revision: z.number().int().min(1),
@@ -506,10 +455,8 @@ export function fillSummaries(
   })();
 }
 
-// The chapter's author can replace its summaries by hand (to correct or regenerate them). This
-// doesn't create a revision: summaries are a cache for the AI, not part of the chapter text.
+// Replace a chapter's summaries by hand (to correct or regenerate them). This doesn't create a revision: summaries are a cache for the AI, not part of the chapter text.
 export const ReplaceSummarySchema = z.object({
-  edit_key: editKey,
   revision: z.number().int().min(1),
   summary: required(LIMITS.summary),
   path_summary: required(LIMITS.summary),
@@ -517,7 +464,7 @@ export const ReplaceSummarySchema = z.object({
 
 export function replaceSummaries(chapterId: string, input: z.infer<typeof ReplaceSummarySchema>): { ok: true } {
   return db().transaction(() => {
-    const row = requireKey(chapterId, input.edit_key);
+    const row = liveChapter(chapterId);
     if (row.revision !== input.revision) {
       throw new PostError("That chapter was edited since you opened this page. Reload it first.", 409);
     }

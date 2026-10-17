@@ -4,12 +4,14 @@ import path from "node:path";
 import crypto from "node:crypto";
 
 // Schema notes:
-// - A chapter can be edited only by a client holding its edit key (stored hashed). Every edit
-//   first copies the previous version into chapter_revisions, so nothing is ever lost.
-// - `removed_at` is set by the admin tools.
+// - Every chapter edit first copies the previous version into chapter_revisions, so nothing is
+//   ever lost.
+// - `removed_at` is set by the command-line tool (scripts/admin.mjs).
+// - The author_name, edited_by and edit_key_hash columns date from when the app had several
+//   writers. Nothing reads or writes them any more (they keep their defaults).
 // - A choice's child is the chapter whose parent_choice_id points at it. A choice with no
-//   live child is an "unwritten" slot that anyone can fill. The partial unique index makes
-//   the first poster win, and frees the slot again if the child is removed.
+//   live child is an "unwritten" slot. The partial unique index allows only one live child per
+//   choice, and frees the slot again if the child is removed.
 const MIGRATIONS: string[] = [
   `
   CREATE TABLE stories (

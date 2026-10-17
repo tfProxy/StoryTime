@@ -17,7 +17,6 @@ export type CodexOp = {
   aliases: string[];
   content: string;
   always_include: boolean;
-  author_name: string;
   posted_at: number;
 };
 
@@ -133,7 +132,6 @@ export function draftOps(changes: CodexChange[], depth: number): CodexOp[] {
     id: `draft-op-${c.entry_id}`,
     anchor_chapter_id: DRAFT_ANCHOR,
     anchor_depth: depth,
-    author_name: "",
     posted_at: 0, // not posted; the depth alone puts these last
   }));
 }

@@ -1,7 +1,9 @@
 # StoryTime handoff
 
 State as of commit `92f3be9` on `main` (nothing pushed). All suites pass:
-`node tests/run.mjs --build unit api e2e`. Read `AGENTS.md` first: this Next.js (16.4) differs
+`node tests/run.mjs --build unit api e2e`. The app is now single-user: no edit keys, author names or admin page (the command-line tool in
+`scripts/admin.mjs` remains). The old author/edit-key columns are still in the schema but unused.
+Read `AGENTS.md` first: this Next.js (16.4) differs
 from what you may know, so check `node_modules/next/dist/docs/` before touching framework code.
 
 ## How the app is laid out
@@ -40,9 +42,7 @@ in `src/lib/tree.ts`); old edit drafts now pick up the chapter's summary when re
    `codex_changes` and `createStory` the same transaction wrapper (`saveWithCodexChanges`).
 2. **Summary improvements discussed with the user.**
    - Group or arc summaries (for example every ~8 chapters) for very long stories.
-   - Correction to an earlier note: the chapter's Summary page already lets its author edit and
-     regenerate summaries (`SummaryPanel.tsx`, PUT with the edit key). What is still missing is a
-     way for anyone else to improve a summary; the server only fills empty ones for them.
+   - The chapter's Summary page lets you edit and regenerate summaries (`SummaryPanel.tsx`).
 3. **Export extras.** Import from the JSON export (restore or move a server); an "include
    unfinished branches" option for the HTML export; EPUB; the numbered "gamebook" variant.
 4. **Outline page.** All branches are open by default now; a large story might want "collapse
@@ -52,11 +52,7 @@ in `src/lib/tree.ts`); old edit drafts now pick up the chapter's summary when re
    - Codex changes held in a draft are not shown on the chapter's own `/codex` page until posted
      (expected, but could be mentioned there).
 6. **Housekeeping (done, with limits).**
-   - Existing chapters keep their older short summaries until someone runs "Redo summaries". It
-     only rewrites chapters whose edit key is in that browser; other people's chapters are
-     filled in only when empty, so a story with several authors needs each of them to run it. If
-     that proves annoying, the server would need a deliberate way to accept replacements (for
-     example an admin-only endpoint).
+   - Existing chapters keep their older short summaries until "Redo summaries" is run for the story.
    - Chapters below one someone else owns keep their old story-so-far, which was built from the
      old parent summaries. That is acceptable but not perfectly consistent.
 

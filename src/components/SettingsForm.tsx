@@ -3,10 +3,8 @@
 import { useRef, useState } from "react";
 import { PROVIDERS, providerInfo, type ProviderId } from "@/lib/ai/providers";
 import { AiError, listModels, streamChat } from "@/lib/ai/client";
-import { mergeEditKeys } from "@/lib/keys";
 import {
   exportSettingsJson,
-  importedEditKeys,
   importSettingsJson,
   saveSettings,
   useSettings,
@@ -147,11 +145,7 @@ export default function SettingsForm() {
       const text = await file.text();
       const next = importSettingsJson(text);
       saveSettings(next);
-      const keys = mergeEditKeys(importedEditKeys(text));
-      setStatus({
-        kind: "ok",
-        text: `Settings imported${keys > 0 ? `, plus edit keys for ${keys} chapter${keys === 1 ? "" : "s"}` : ""}.`,
-      });
+      setStatus({ kind: "ok", text: "Settings imported." });
     } catch (e) {
       setStatus({ kind: "error", text: e instanceof Error ? e.message : "Couldn't read that file" });
     }
@@ -166,11 +160,6 @@ export default function SettingsForm() {
       </p>
 
       <form onSubmit={(e) => e.preventDefault()}>
-        <label>
-          Your name <small>(default author name when posting)</small>
-          <input value={settings.authorName} maxLength={40} onChange={(e) => update({ authorName: e.target.value })} />
-        </label>
-
         <label>
           AI provider
           <select
@@ -310,8 +299,7 @@ export default function SettingsForm() {
           />
         </div>
         <p className="meta">
-          The exported file contains your API keys and the edit keys for the chapters you&apos;ve posted (they let a
-          browser edit those chapters). Keep it private.
+          The exported file contains your API keys. Keep it private.
         </p>
       </section>
     </div>

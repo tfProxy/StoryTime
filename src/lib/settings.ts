@@ -3,7 +3,6 @@
 import { useSyncExternalStore } from "react";
 import { z } from "zod";
 import { PROVIDERS, providerInfo, type ProviderId } from "./ai/providers";
-import { getAllEditKeys } from "./keys";
 
 // Everything here lives only in this browser's localStorage. Nothing is sent to the StoryTime server.
 
@@ -16,7 +15,6 @@ export type ProviderSettings = {
 };
 
 export type Settings = {
-  authorName: string;
   activeProvider: ProviderId;
   providers: Record<ProviderId, ProviderSettings>;
   /** null = use the provider's default. */
@@ -33,7 +31,6 @@ function defaultProvider(id: ProviderId): ProviderSettings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  authorName: "",
   activeProvider: "anthropic",
   providers: Object.fromEntries(PROVIDERS.map((p) => [p.id, defaultProvider(p.id)])) as Record<
     ProviderId,
@@ -59,7 +56,6 @@ const providerSchema = (id: ProviderId) => {
 };
 
 const settingsSchema = z.object({
-  authorName: z.string().max(40).catch(""),
   activeProvider: z.enum(["openai", "ollama", "anthropic", "custom"]).catch(DEFAULT_SETTINGS.activeProvider),
   providers: z
     .object({
@@ -141,12 +137,7 @@ export function activeProviderSettings(s: Settings): ProviderSettings {
 // ---- export / import ----
 
 export function exportSettingsJson(s: Settings): string {
-  return JSON.stringify({ storytime: 1, settings: s, editKeys: getAllEditKeys() }, null, 2);
-}
-
-/** The chapter edit keys stored in an exported file, if any. */
-export function importedEditKeys(text: string): unknown {
-  return (JSON.parse(text) as { editKeys?: unknown }).editKeys;
+  return JSON.stringify({ storytime: 1, settings: s }, null, 2);
 }
 
 export function importSettingsJson(text: string): Settings {

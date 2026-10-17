@@ -4,8 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { LIMITS } from "@/lib/limits";
-import { saveSettings, useSettings } from "@/lib/settings";
-import { newEditKey, saveEditKey } from "@/lib/keys";
+import { useSettings } from "@/lib/settings";
 import { completeChat, streamChat } from "@/lib/ai/client";
 import { ensurePathSummaries, neededSummaryIndex, summarizeChapter, type Summaries } from "@/lib/ai/summaries";
 import {
@@ -41,7 +40,6 @@ export type Target =
   | {
       kind: "edit";
       chapterId: string;
-      editKey: string;
       baseRevision: number;
       /** How many chapters continue from this one. */
       descendantCount: number;
@@ -113,8 +111,6 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const router = useRouter();
   const settings = useSettings();
   const [draft, setDraft] = useState<Draft | null>(null);
-  // The author name is the default from Settings; editing it here updates that default.
-  const author = settings.authorName;
   const [length, setLength] = useState<Length>("medium");
   const [instruction, setInstruction] = useState("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -502,9 +498,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     }
     const summaryFields = summaries ?? {};
 
-    // New chapters get a fresh edit key; it is stored in this browser after a successful post.
-    const editKey = target.kind === "edit" ? target.editKey : newEditKey();
-    const chapter = { title: draft.title, body: draft.body, author_name: author, choices: finalChoices, edit_key: editKey, ...summaryFields };
+    const chapter = { title: draft.title, body: draft.body, choices: finalChoices, ...summaryFields };
     // Saved with the chapter and anchored at it. Entries created in the draft get their real id from the server.
     const codex_changes = codexChanges.map((c) => (isDraftEntry(c.entry_id) ? { ...c, entry_id: undefined } : c));
     let url: string;
@@ -514,12 +508,10 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       url = `/api/chapters/${target.chapterId}`;
       method = "PATCH";
       payload = {
-        edit_key: target.editKey,
         base_revision: draft.baseRevision ?? target.baseRevision,
         title: draft.title,
         body: draft.body,
         ...summaryFields,
-        edited_by: author,
         edit_note: draft.editNote ?? "",
         incoming_label: target.incomingLabel !== null ? draft.incomingLabel : undefined,
         rename_choices: existingChoices.filter((c) => !c.removed && c.label.trim() !== c.original).map((c) => ({ id: c.id, label: c.label.trim() })),
@@ -529,7 +521,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       };
     } else if (target.kind === "story") {
       url = "/api/stories";
-      payload = { title: draft.storyTitle, premise: draft.premise, author_name: author, chapter };
+      payload = { title: draft.storyTitle, premise: draft.premise, chapter };
     } else if (target.kind === "fill" && draft.newChoiceLabel.trim() === target.label.trim()) {
       url = "/api/chapters";
       payload = { ...chapter, choice_id: target.choiceId, codex_changes };
@@ -549,7 +541,6 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
       loadedRef.current = false; // stop autosave from re-creating the draft
-      if (target.kind !== "edit") saveEditKey(data.chapter_id, editKey);
       await deleteDraft(draftKey).catch(() => {});
       const id = target.kind === "edit" ? target.chapterId : data.chapter_id;
       if (summaryError) router.push(`/c/${id}/summary?failed=${encodeURIComponent(summaryError)}`);
@@ -578,11 +569,6 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
 
   return (
     <form onSubmit={(e) => e.preventDefault()}>
-      <label>
-        Your name <small>(shown as the author; anyone can use any name)</small>
-        <input value={author} maxLength={LIMITS.author} onChange={(e) => saveSettings({ ...settings, authorName: e.target.value.slice(0, LIMITS.author) })} />
-      </label>
-
       {target.kind === "edit" && target.descendantCount > 0 && (
         <p className="notice">
           {target.descendantCount} chapter{target.descendantCount === 1 ? " continues" : "s continue"} from this one.

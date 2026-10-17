@@ -47,15 +47,11 @@ export default async function ChapterPage({
       </nav>
 
       <h1>{chapter.title}</h1>
-      <p className="meta">
-        {chapter.author_name ? `by ${chapter.author_name}` : "Anonymous"}
-        {chapter.edited_at && (
-          <>
-            {" · "}
-            <Link href={`/c/${chapter.id}/history`}>edited {new Date(chapter.edited_at).toISOString().slice(0, 10)}</Link>
-          </>
-        )}
-      </p>
+      {chapter.edited_at && (
+        <p className="meta">
+          <Link href={`/c/${chapter.id}/history`}>edited {new Date(chapter.edited_at).toISOString().slice(0, 10)}</Link>
+        </p>
+      )}
       <Prose text={chapter.body} />
 
       <section className="choices">

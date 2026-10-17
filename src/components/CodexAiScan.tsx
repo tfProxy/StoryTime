@@ -74,7 +74,7 @@ export default function CodexAiScan({ story, chapterId, path, ops, defaultOpen }
         const res = await fetch("/api/codex", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ author_name: settings.authorName, ...body }),
+          body: JSON.stringify(body),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);

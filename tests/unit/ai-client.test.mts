@@ -68,9 +68,9 @@ catch (e) { assert((e as any).name === "AbortError", "abort propagates"); }
 
 // settings parse / export / import
 assert(parseSettings(null).contextTokens === 8000, "parse null -> defaults");
-const messy = parseSettings({ authorName: 5, temperature: 9, providers: { openai: { apiKey: "sk-1", model: 3 } }, activeProvider: "nope" });
-assert(messy.authorName === "" && messy.temperature === null && messy.activeProvider === "anthropic" && messy.providers.openai.apiKey === "sk-1" && messy.providers.openai.model === "" && messy.providers.anthropic.model === "claude-sonnet-5-5", "tolerant parse");
-const rt = importSettingsJson(exportSettingsJson({ ...DEFAULT_SETTINGS, authorName: "Zed" }));
-assert(rt.authorName === "Zed", "export/import round-trip");
+const messy = parseSettings({ temperature: 9, providers: { openai: { apiKey: "sk-1", model: 3 } }, activeProvider: "nope" });
+assert(messy.temperature === null && messy.activeProvider === "anthropic" && messy.providers.openai.apiKey === "sk-1" && messy.providers.openai.model === "" && messy.providers.anthropic.model === "claude-sonnet-5-5", "tolerant parse");
+const rt = importSettingsJson(exportSettingsJson({ ...DEFAULT_SETTINGS, contextTokens: 1234 }));
+assert(rt.contextTokens === 1234, "export/import round-trip");
 try { importSettingsJson('{"x":1}'); assert(false, "bad file"); } catch (e) { assert(/settings file/.test((e as Error).message), "rejects foreign file"); }
 server.close();

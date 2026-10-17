@@ -7,7 +7,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   return handlePost(request, SetSummarySchema, (input) => fillSummaries(id, input), 200);
 }
 
-// Replace a chapter's summaries; needs the chapter's edit key.
+// Replace a chapter's summaries.
 export async function PUT(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   return handlePost(request, ReplaceSummarySchema, (input) => replaceSummaries(id, input), 200);

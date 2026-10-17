@@ -5,6 +5,5 @@ export const LIMITS = {
   body: 50000,
   summary: 5000,
   label: 200,
-  author: 40,
   choices: 12,
 };

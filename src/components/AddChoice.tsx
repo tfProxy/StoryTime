@@ -3,12 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LIMITS } from "@/lib/limits";
-import { useSettings } from "@/lib/settings";
 
 // Adds an unwritten choice to the chapter without starting to write it.
 export default function AddChoice({ chapterId }: { chapterId: string }) {
   const router = useRouter();
-  const settings = useSettings();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +20,7 @@ export default function AddChoice({ chapterId }: { chapterId: string }) {
       const res = await fetch(`/api/chapters/${chapterId}/choices`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label, author_name: settings.authorName }),
+        body: JSON.stringify({ label }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);

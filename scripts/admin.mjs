@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Command-line moderation tool. Runs on the machine that hosts the database, so no password is
+// Command-line maintenance tool. Runs on the machine that hosts the database, so no password is
 // needed (anyone who can run it can already read the database file).
 //
 //   node scripts/admin.mjs stats

@@ -4,7 +4,6 @@ import { getStory } from "./stories";
 export type TreeNode = {
   id: string;
   title: string;
-  author_name: string;
   depth: number;
   edited: boolean;
   summary: string | null;
@@ -15,7 +14,6 @@ export type TreeNode = {
 type ChapterRow = {
   id: string;
   title: string;
-  author_name: string;
   depth: number;
   parent_choice_id: string | null;
   edited_at: number | null;
@@ -64,7 +62,7 @@ export function getStoryTree(storyId: string): TreeNode | null {
 
   const chapters = db()
     .prepare(
-      `SELECT id, title, author_name, depth, parent_choice_id, edited_at, summary
+      `SELECT id, title, depth, parent_choice_id, edited_at, summary
          FROM chapters WHERE story_id = ? AND removed_at IS NULL`,
     )
     .all(storyId) as ChapterRow[];
@@ -89,7 +87,6 @@ export function getStoryTree(storyId: string): TreeNode | null {
   const build = (c: ChapterRow): TreeNode => ({
     id: c.id,
     title: c.title,
-    author_name: c.author_name,
     depth: c.depth,
     edited: c.edited_at !== null,
     summary: c.summary,

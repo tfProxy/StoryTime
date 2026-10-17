@@ -52,7 +52,6 @@ const localId = () => `draft-${Date.now().toString(36)}${Math.random().toString(
 
 export default function CodexPanel({ story, openAiHelper, embedded, startEditing, chapterId, path, ops, draft }: Props) {
   const router = useRouter();
-  const settings = useSettings();
   const titleOf = (id: string) =>
     id === DRAFT_ANCHOR ? "this chapter (not posted yet)" : (path.find((p) => p.id === id)?.title ?? "an earlier chapter");
 
@@ -96,7 +95,7 @@ export default function CodexPanel({ story, openAiHelper, embedded, startEditing
       const res = await fetch("/api/codex", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ anchor_chapter_id: at, author_name: settings.authorName, ...body }),
+        body: JSON.stringify({ anchor_chapter_id: at, ...body }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
@@ -237,8 +236,7 @@ export default function CodexPanel({ story, openAiHelper, embedded, startEditing
                   </div>
                   <p style={{ whiteSpace: "pre-wrap", margin: "0.5rem 0" }}>{e.content || <em>(no description)</em>}</p>
                   <div className="meta" style={{ margin: 0 }}>
-                    {hist.length > 1 || !here ? `Last changed in “${titleOf(e.op.anchor_chapter_id)}”` : "Created here"}
-                    {e.op.author_name && ` by ${e.op.author_name}`} ·{" "}
+                    {hist.length > 1 || !here ? `Last changed in “${titleOf(e.op.anchor_chapter_id)}”` : "Created here"} ·{" "}
                     <button type="button" className="linkish" onClick={() => setHistoryOf(historyOf === e.entry_id ? null : e.entry_id)}>
                       {historyOf === e.entry_id ? "Hide history" : `History (${hist.length})`}
                     </button>
@@ -252,7 +250,7 @@ export default function CodexPanel({ story, openAiHelper, embedded, startEditing
                           <li key={v.id}>
                             <div className="meta" style={{ margin: 0 }}>
                               <strong>{v.op === "retire" ? "Retired" : prev ? "Changed" : "Created"}</strong> in “
-                              {titleOf(v.anchor_chapter_id)}”{v.author_name && ` by ${v.author_name}`} ·{" "}
+                              {titleOf(v.anchor_chapter_id)}” ·{" "}
                               {v.anchor_chapter_id === DRAFT_ANCHOR ? "saved when you post" : when(v.posted_at)}
                               {prev && v.op !== "retire" && ` · ${changedFields(prev, v).join(", ") || "no changes"}`}
                               {isCurrent && " · current"}

@@ -33,7 +33,7 @@ page.on("dialog", (d) => d.accept());
 const url = "file:///" + file.replace(/\\/g, "/");
 
 await page.goto(url);
-ok(await page.getByRole("heading", { name: "Offline <Tale>" }).isVisible() && await page.getByText("by Eve").isVisible(), "title page shows the title and author as text");
+ok(await page.getByRole("heading", { name: "Offline <Tale>" }).isVisible(), "title page shows the title as text");
 ok(await page.getByText("A premise.").isVisible(), "…and the premise");
 ok(!(await page.getByText(/You have read/).isVisible()), "nothing is remembered on a first visit");
 

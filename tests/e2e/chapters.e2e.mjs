@@ -42,7 +42,6 @@ page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true
 page.on("console", (m) => { if (m.type() === "error") console.log("CONSOLE", m.text()); });
 
 await page.goto(BASE + "/new");
-await page.getByLabel(/Your name/).fill("Tester");
 await page.getByLabel("Story title").fill("The Haunted Inn");
 await page.getByLabel(/^Premise/).fill("A cursed inn on a hill.");
 await page.getByLabel(/What should happen/).fill("a stranger arrives");
@@ -78,7 +77,6 @@ await page.waitForTimeout(900);
 await page.reload();
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.length > 0);
 ok((await page.getByLabel("Story title").inputValue()) === "The Haunted Inn" && (await page.getByLabel("Chapter title").inputValue()) === "The Door", "draft restored after reload");
-ok((await page.getByLabel(/Your name/).inputValue()) === "Tester" || true, "name field present");
 await page.goto(BASE + "/drafts");
 await page.getByText("The Door").first().waitFor({ timeout: 5000 }).catch(() => {}); ok(await page.getByText("The Door").first().isVisible(), "draft listed on /drafts");
 await page.getByRole("link", { name: /The Door/ }).click();
@@ -96,12 +94,11 @@ const chapterUrl = page.url().split("?")[0];
 await page.goto(BASE + "/new");
 await page.waitForTimeout(600);
 ok((await page.getByLabel("Story title").inputValue()) === "", "draft cleared after posting");
-ok((await page.getByLabel(/Your name/).inputValue()) === "Tester", "author name remembered");
 
 // ---- editing a posted chapter ----
 await page.goto(chapterUrl);
 await page.locator(".site-menu > summary").click();
-ok(await page.getByRole("link", { name: "Edit this chapter" }).isVisible(), "edit link shown in posting browser");
+ok(await page.getByRole("link", { name: "Edit this chapter" }).isVisible(), "edit link shown");
 await page.getByRole("link", { name: "Edit this chapter" }).click();
 await page.waitForURL(/\/edit$/);
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.length > 0);
@@ -127,26 +124,16 @@ await page.waitForURL(/history/);
 await page.getByText("Revision 1").click();
 ok(await page.getByText("It creaked.").first().isVisible(), "history shows original text");
 
-// a different browser (no key) can't see the edit link; importing the export gives it the key
-await page.goto(BASE + "/settings");
-const dl = page.waitForEvent("download");
-await page.getByRole("button", { name: "Export to file" }).click();
-const file = await (await dl).path();
+// there are no edit keys: a different browser can edit the chapter too
 const ctx2 = await browser.newContext();
 const page2 = await ctx2.newPage();
 await page2.goto(chapterUrl);
 await page2.getByRole("heading", { name: "The Door" }).waitFor();
-await page2.waitForTimeout(300);
-ok((await page2.getByRole("link", { name: "Edit this chapter", includeHidden: true }).count()) === 0, "no edit link without the key");
+await page2.locator(".site-menu > summary").click();
+ok(await page2.getByRole("link", { name: "Edit this chapter" }).isVisible(), "edit link shown in any browser");
 await page2.goto(chapterUrl + "/edit");
-ok(await page2.getByText("doesn't have the edit key").isVisible(), "edit page explains missing key");
-await page2.goto(BASE + "/settings");
-await page2.locator("input[type=file]").setInputFiles(file);
-await page2.getByText(/edit keys for \d+ chapter/).waitFor({ timeout: 5000 }).catch(() => {});
-ok(await page2.getByText(/edit keys for \d+ chapter/).isVisible(), "import reports edit keys");
-await page2.goto(chapterUrl);
-await page2.getByRole("link", { name: "Edit this chapter", includeHidden: true }).waitFor({ state: "attached", timeout: 5000 }).catch(() => {});
-ok((await page2.getByRole("link", { name: "Edit this chapter", includeHidden: true }).count()) === 1, "edit link appears after import");
+await page2.getByLabel("Chapter title").waitFor({ timeout: 5000 });
+ok((await page2.getByLabel("Chapter title").inputValue()).length > 0, "any browser can open the edit page");
 await ctx2.close();
 
 // continue a branch: context should include earlier chapter + choice

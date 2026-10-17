@@ -6,8 +6,7 @@ import { LIMITS } from "./limits";
 import { PostError } from "./stories";
 
 // Brings back a story from the "everything" JSON export (see toJson in ./export). The story gets
-// fresh ids, so importing never overwrites anything, and importing twice makes two copies. Edit
-// keys are never exported, so imported chapters can't be edited by anyone.
+// fresh ids, so importing never overwrites anything, and importing twice makes two copies.
 
 const str = (max: number) => z.string().max(max);
 const nullableStr = (max: number) => z.string().max(max).nullish();
@@ -21,10 +20,8 @@ const Chapter = z.object({
   body: str(LIMITS.body).min(1),
   summary: nullableStr(LIMITS.summary),
   path_summary: nullableStr(LIMITS.summary),
-  author_name: str(LIMITS.author).default(""),
   posted_at: time,
   edited_at: time.nullish(),
-  edited_by: str(LIMITS.author).default(""),
   edit_note: nullableStr(LIMITS.label),
   revision: z.number().int().min(1).default(1),
 });
@@ -33,7 +30,6 @@ const Choice = z.object({
   id,
   parent_chapter_id: id,
   label: str(LIMITS.label).min(1),
-  author_name: str(LIMITS.author).default(""),
   posted_at: time,
 });
 
@@ -46,7 +42,6 @@ const CodexOp = z.object({
   aliases: z.array(str(CODEX_LIMITS.alias)).max(CODEX_LIMITS.aliases).default([]),
   content: str(CODEX_LIMITS.content).default(""),
   always_include: z.boolean().default(false),
-  author_name: str(LIMITS.author).default(""),
   posted_at: time,
 });
 
@@ -57,8 +52,6 @@ const Revision = z.object({
   body: str(LIMITS.body),
   summary: nullableStr(LIMITS.summary),
   path_summary: nullableStr(LIMITS.summary),
-  author_name: str(LIMITS.author).default(""),
-  edited_by: str(LIMITS.author).default(""),
   edit_note: nullableStr(LIMITS.label),
   created_at: time,
 });
@@ -69,8 +62,7 @@ export const ImportSchema = z.object({
   story: z.object({
     title: str(LIMITS.title).min(1),
     premise: str(LIMITS.premise).default(""),
-    author_name: str(LIMITS.author).default(""),
-    created_at: time,
+      created_at: time,
   }),
   chapters: z.array(Chapter).min(1).max(5000),
   choices: z.array(Choice).max(60000).default([]),
@@ -124,16 +116,16 @@ export function importStory(input: ImportInput): { story_id: string; chapter_id:
 
   return db().transaction(() => {
     db()
-      .prepare(`INSERT INTO stories (id, title, premise, author_name, created_at) VALUES (?, ?, ?, ?, ?)`)
-      .run(storyId, input.story.title, input.story.premise, input.story.author_name, input.story.created_at);
+      .prepare(`INSERT INTO stories (id, title, premise, created_at) VALUES (?, ?, ?, ?)`)
+      .run(storyId, input.story.title, input.story.premise, input.story.created_at);
 
     const insertChapter = db().prepare(
-      `INSERT INTO chapters (id, story_id, parent_choice_id, depth, title, body, summary, path_summary, author_name, posted_at,
-                             revision, edited_at, edited_by, edit_note)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO chapters (id, story_id, parent_choice_id, depth, title, body, summary, path_summary, posted_at,
+                             revision, edited_at, edit_note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const insertChoice = db().prepare(
-      `INSERT INTO choices (id, parent_chapter_id, label, author_name, posted_at) VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO choices (id, parent_chapter_id, label, posted_at) VALUES (?, ?, ?, ?)`,
     );
 
     // Parents before children (a chapter points at a choice, a choice at its chapter), so walk
@@ -144,11 +136,11 @@ export function importStory(input: ImportInput): { story_id: string; chapter_id:
       placed.add(c.id);
       insertChapter.run(
         chapterIds.get(c.id), storyId, c.parent_choice_id === null ? null : choiceIds.get(c.parent_choice_id), depth,
-        c.title, c.body, c.summary ?? null, c.path_summary ?? null, c.author_name, c.posted_at,
-        c.revision, c.edited_at ?? null, c.edited_by, c.edit_note ?? null,
+        c.title, c.body, c.summary ?? null, c.path_summary ?? null, c.posted_at,
+        c.revision, c.edited_at ?? null, c.edit_note ?? null,
       );
       for (const ch of choicesByParent.get(c.id) ?? []) {
-        insertChoice.run(choiceIds.get(ch.id), chapterIds.get(c.id), ch.label, ch.author_name, ch.posted_at);
+        insertChoice.run(choiceIds.get(ch.id), chapterIds.get(c.id), ch.label, ch.posted_at);
         const child = childOf.get(ch.id);
         if (child) visit(chaptersById.get(child)!, depth + 1);
       }
@@ -160,24 +152,24 @@ export function importStory(input: ImportInput): { story_id: string; chapter_id:
     db().prepare(`UPDATE stories SET root_chapter_id = ? WHERE id = ?`).run(rootId, storyId);
 
     const insertOp = db().prepare(
-      `INSERT INTO codex_ops (id, story_id, anchor_chapter_id, entry_id, op, name, type, aliases, content, always_include, author_name, posted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO codex_ops (id, story_id, anchor_chapter_id, entry_id, op, name, type, aliases, content, always_include, posted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const o of input.codex) {
       insertOp.run(
         newId(), storyId, chapterIds.get(o.anchor_chapter_id), o.entry_id, o.op, o.name, o.type,
-        JSON.stringify(o.aliases), o.content, o.always_include ? 1 : 0, o.author_name, o.posted_at,
+        JSON.stringify(o.aliases), o.content, o.always_include ? 1 : 0, o.posted_at,
       );
     }
 
     const insertRevision = db().prepare(
-      `INSERT INTO chapter_revisions (id, chapter_id, revision, title, body, summary, path_summary, author_name, edited_by, edit_note, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO chapter_revisions (id, chapter_id, revision, title, body, summary, path_summary, edit_note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const r of input.revisions) {
       insertRevision.run(
         newId(), chapterIds.get(r.chapter_id), r.revision, r.title, r.body, r.summary ?? null, r.path_summary ?? null,
-        r.author_name, r.edited_by, r.edit_note ?? null, r.created_at,
+        r.edit_note ?? null, r.created_at,
       );
     }
     return { story_id: storyId, chapter_id: rootId, chapters: input.chapters.length };

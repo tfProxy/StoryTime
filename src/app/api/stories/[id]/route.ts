@@ -8,7 +8,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
   return Response.json(story);
 }
 
-// Edit the story's title and premise. Requires the edit key of the story's first chapter.
+// Edit the story's title and premise.
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   return handlePost(request, EditStorySchema, (input) => editStory(id, input), 200);
