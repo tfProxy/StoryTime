@@ -46,6 +46,8 @@ ok(ids("SELECT id FROM codex_ops") === "o-keep", "removed codex changes and thos
 ok(ids("SELECT chapter_id AS id FROM chapter_revisions") === "", "revisions of deleted chapters are deleted");
 const cols = (t: string) => (d.pragma(`table_info(${t})`) as { name: string }[]).map((c) => c.name);
 ok(!["stories", "chapters", "choices", "codex_ops"].some((t) => cols(t).includes("removed_at")), "the removed_at columns are gone");
+const dead = ["author_name", "edited_by", "edit_key_hash"];
+ok(!["stories", "chapters", "choices", "codex_ops", "chapter_revisions"].some((t) => cols(t).some((c) => dead.includes(c))), "the author columns are gone");
 let dup = false;
 try {
   d.prepare(`INSERT INTO chapters (id, story_id, parent_choice_id, depth, title, body, posted_at) VALUES ('dup', 'keep', 'ka', 1, 't', 'b', 1)`).run();

@@ -7,7 +7,7 @@ import crypto from "node:crypto";
 // - Every chapter edit first copies the previous version into chapter_revisions, so nothing is
 //   ever lost.
 // - The author_name, edited_by and edit_key_hash columns date from when the app had several
-//   writers. Nothing reads or writes them any more (they keep their defaults).
+//   writers; migration 4 drops them.
 // - A choice's child is the chapter whose parent_choice_id points at it. A choice with no
 //   child is an "unwritten" slot. The unique index allows only one child per choice.
 // - Deleting (scripts/admin.mjs) removes rows for good. Earlier versions only flagged rows with
@@ -129,6 +129,17 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE codex_ops DROP COLUMN removed_at;
   CREATE UNIQUE INDEX chapters_one_child_per_choice
     ON chapters(parent_choice_id) WHERE parent_choice_id IS NOT NULL;
+  `,
+  // 4: the app has one user, so nothing records who wrote or edited anything.
+  `
+  ALTER TABLE stories DROP COLUMN author_name;
+  ALTER TABLE chapters DROP COLUMN author_name;
+  ALTER TABLE chapters DROP COLUMN edit_key_hash;
+  ALTER TABLE chapters DROP COLUMN edited_by;
+  ALTER TABLE choices DROP COLUMN author_name;
+  ALTER TABLE codex_ops DROP COLUMN author_name;
+  ALTER TABLE chapter_revisions DROP COLUMN author_name;
+  ALTER TABLE chapter_revisions DROP COLUMN edited_by;
   `,
 ];
 

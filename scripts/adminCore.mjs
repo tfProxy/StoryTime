@@ -13,7 +13,6 @@ import crypto from "node:crypto";
  * @property {string} story_title
  * @property {string} label
  * @property {string | null} preview
- * @property {string} author
  * @property {number} at
  */
 
@@ -74,26 +73,26 @@ export function recentActivity(db, opts = {}) {
     {
       kind: "story",
       sql: `SELECT 'story' AS kind, s.id, s.id AS story_id, s.title AS story_title, s.title AS label,
-                   substr(s.premise, 1, 240) AS preview, s.author_name AS author, s.created_at AS at
+                   substr(s.premise, 1, 240) AS preview, s.created_at AS at
               FROM stories s`,
     },
     {
       kind: "chapter",
       sql: `SELECT 'chapter' AS kind, c.id, c.story_id, s.title AS story_title, c.title AS label,
-                   substr(c.body, 1, 240) AS preview, c.author_name AS author, COALESCE(c.edited_at, c.posted_at) AS at
+                   substr(c.body, 1, 240) AS preview, COALESCE(c.edited_at, c.posted_at) AS at
               FROM chapters c JOIN stories s ON s.id = c.story_id`,
     },
     {
       kind: "choice",
       sql: `SELECT 'choice' AS kind, ch.id, c.story_id, s.title AS story_title, ch.label AS label,
-                   'on chapter: ' || c.title AS preview, ch.author_name AS author, ch.posted_at AS at
+                   'on chapter: ' || c.title AS preview, ch.posted_at AS at
               FROM choices ch JOIN chapters c ON c.id = ch.parent_chapter_id JOIN stories s ON s.id = c.story_id`,
     },
     {
       kind: "codex_op",
       sql: `SELECT 'codex_op' AS kind, o.id, o.story_id, s.title AS story_title,
                    o.op || ': ' || CASE WHEN o.name = '' THEN '(entry)' ELSE o.name END AS label,
-                   substr(o.content, 1, 240) AS preview, o.author_name AS author, o.posted_at AS at
+                   substr(o.content, 1, 240) AS preview, o.posted_at AS at
               FROM codex_ops o JOIN stories s ON s.id = o.story_id`,
     },
   ].filter((p) => !opts.kind || p.kind === opts.kind);
@@ -167,16 +166,16 @@ export function revertChapter(db, chapterId, revision) {
     if (!old) throw new AdminError(`Chapter has no revision ${revision}`);
     const now = Date.now();
     db.prepare(
-      `INSERT INTO chapter_revisions (id, chapter_id, revision, title, body, summary, path_summary, author_name, edited_by, edit_note, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO chapter_revisions (id, chapter_id, revision, title, body, summary, path_summary, edit_note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       crypto.randomBytes(8).toString("base64url"), chapterId, cur.revision, cur.title, cur.body, cur.summary,
-      cur.path_summary, cur.author_name, cur.edited_by, cur.edit_note, cur.edited_at ?? cur.posted_at,
+      cur.path_summary, cur.edit_note, cur.edited_at ?? cur.posted_at,
     );
     const next = cur.revision + 1;
     db.prepare(
       `UPDATE chapters SET title = ?, body = ?, summary = NULL, path_summary = NULL, revision = ?,
-              edited_at = ?, edited_by = 'admin', edit_note = ? WHERE id = ?`,
+              edited_at = ?, edit_note = ? WHERE id = ?`,
     ).run(old.title, old.body, next, now, `Reverted to revision ${revision}`, chapterId);
     const below = descendantIds(db, chapterId);
     if (below.length) {

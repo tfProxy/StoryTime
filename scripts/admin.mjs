@@ -55,7 +55,7 @@ try {
         storyId: flags.get("story"),
       });
       for (const r of rows) {
-        console.log(`${when(r.at)}  ${r.kind.padEnd(8)} ${r.id}  ${r.story_title} › ${r.label}${r.author ? `  (by ${r.author})` : ""}`);
+        console.log(`${when(r.at)}  ${r.kind.padEnd(8)} ${r.id}  ${r.story_title} › ${r.label}`);
         if (r.preview) console.log(`    ${r.preview.replace(/\s+/g, " ").slice(0, 110)}`);
       }
       if (rows.length === 0) console.log("(nothing)");
