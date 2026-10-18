@@ -123,7 +123,15 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   // Guidance for "Suggest more"; null until edited, so it follows the choice text by default.
   const [guidance, setGuidance] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | "generate" | "refine" | "choices" | "ideas" | "summary" | "label" | "post">(null);
-  const [ideas, setIdeas] = useState<Idea[]>([]);
+  // Each "Suggest" adds a page of ideas; earlier pages stay so the author can go back to them.
+  const [ideaPages, setIdeaPages] = useState<Idea[][]>([]);
+  const [ideaPage, setIdeaPage] = useState(0);
+  // The idea being turned into a choice on the previous chapter ("page:index"), with the text being edited.
+  const [promoting, setPromoting] = useState<{ key: string; text: string } | null>(null);
+  const [promoteBusy, setPromoteBusy] = useState(false);
+  const [promoteError, setPromoteError] = useState<string | null>(null);
+  // Ideas already added as choices, by the text they were added with.
+  const [promoted, setPromoted] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   // The last action started, so its error shows in the section it came from.
   const [lastAction, setLastAction] = useState<typeof busy>(null);
@@ -435,7 +443,12 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
           {
             role: "user",
             // Untouched, the guidance only echoes the choice text; once edited it is the author's own direction for the ideas.
-            content: ideasPrompt(guidance === null ? ctx : { ...ctx, choiceLabel: null }, settings.contextTokens, guidance ?? ""),
+            content: ideasPrompt(
+              guidance === null ? ctx : { ...ctx, choiceLabel: null },
+              settings.contextTokens,
+              guidance ?? "",
+              ideaPages.flat().map((i) => i.choice),
+            ),
           },
         ],
         useSummaryModel: true,
@@ -443,11 +456,38 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       });
       const found = parseIdeas(text);
       if (found.length === 0) throw new Error("The AI didn't suggest anything I could read. Try again.");
-      setIdeas(found);
+      setIdeaPages((pages) => [...pages, found]);
+      setIdeaPage(ideaPages.length);
+      setPromoting(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
+    }
+  }
+
+  /** Adds the idea, with the text the author settled on, as an unwritten choice on the chapter being continued. */
+  async function promoteIdea(key: string, parentChapterId: string) {
+    const label = promoting?.key === key ? promoting.text.trim() : "";
+    if (!label) return;
+    setPromoteBusy(true);
+    setPromoteError(null);
+    try {
+      const res = await fetch(`/api/chapters/${parentChapterId}/choices`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+      setPromoted((p) => ({ ...p, [key]: label }));
+      setPromoting(null);
+      // Reloads the choices that already exist, so the next ideas steer clear of this one.
+      router.refresh();
+    } catch (e) {
+      setPromoteError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPromoteBusy(false);
     }
   }
 
@@ -723,6 +763,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   };
   // For a new branch, ideas fill in the choice text until the author has some; after that they follow it.
   const ideaSetsChoice = (target.kind === "new" || target.kind === "fill") && !draft.newChoiceLabel.trim();
+  // Ideas can become choices on the chapter being continued (the one that led to this page).
+  const ideaParent = target.kind === "new" || target.kind === "fill" ? target.parentChapterId : null;
 
   return (
     <form onSubmit={(e) => e.preventDefault()}>
@@ -737,7 +779,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
           >
             <summary>
               Brainstorm
-              {ideas.length > 0 && <span className="meta">{ideas.length} ideas</span>}
+              {ideaPages.length > 0 && <span className="meta">{ideaPages.flat().length} ideas</span>}
             </summary>
             <label>
               Guidance <small>(optional; starts as the choice text, and editing it won&apos;t change the choice)</small>
@@ -749,32 +791,99 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             </label>
             <div className="row">
               <button type="button" className="secondary" onClick={suggestIdeas} disabled={busy !== null}>
-                {busy === "ideas" ? "Thinking…" : ideas.length ? "Suggest more" : "Suggest ideas"}
+                {busy === "ideas" ? "Thinking…" : ideaPages.length ? "Suggest more" : "Suggest ideas"}
               </button>
-              <span className="meta">
-                {ideaSetsChoice ? "Pick one to fill in the choice text and what should happen." : "Pick one to fill in what should happen."}
-              </span>
+              {ideaPages.length > 1 && (
+                <>
+                  <button type="button" className="secondary" onClick={() => setIdeaPage(ideaPage - 1)} disabled={ideaPage === 0} aria-label="Previous ideas">
+                    &lt;
+                  </button>
+                  <span className="meta">
+                    Page {ideaPage + 1} of {ideaPages.length}
+                  </span>
+                  <button type="button" className="secondary" onClick={() => setIdeaPage(ideaPage + 1)} disabled={ideaPage === ideaPages.length - 1} aria-label="Next ideas">
+                    &gt;
+                  </button>
+                </>
+              )}
             </div>
+            <p className="meta">
+              {ideaSetsChoice ? "Pick one to fill in the choice text and what should happen." : "Pick one to fill in what should happen."}
+              {ideaParent && " “Add as choice” puts it on the previous chapter for you to write later."}
+            </p>
             {errorFor("ideas")}
-            {ideas.length > 0 && (
+            {ideaPages[ideaPage] && (
               <ul className="codex-picks">
-                {ideas.map((idea) => (
-                  <li key={idea.choice} className="codex-pick">
-                    <span>
-                      <strong>{idea.choice}</strong>
-                      {idea.direction && <span className="meta"> — {idea.direction}</span>}
-                    </span>
-                    <button
-                      type="button"
-                      className="secondary"
-                      onClick={() =>
-                        patch(ideaSetsChoice ? { newChoiceLabel: idea.choice.slice(0, LIMITS.label), prompt: idea.direction } : { prompt: idea.direction })
-                      }
-                    >
-                      Use this
-                    </button>
-                  </li>
-                ))}
+                {ideaPages[ideaPage].map((idea, i) => {
+                  const key = `${ideaPage}:${i}`;
+                  const editing = promoting?.key === key;
+                  return (
+                    <li key={key} className="codex-pick" style={{ flexDirection: "column", alignItems: "stretch", gap: "0.4rem" }}>
+                      <span>
+                        <strong>{idea.choice}</strong>
+                        {idea.direction && <span className="meta"> — {idea.direction}</span>}
+                      </span>
+                      {!editing && (
+                        <span className="row" style={{ flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() =>
+                              patch(ideaSetsChoice ? { newChoiceLabel: idea.choice.slice(0, LIMITS.label), prompt: idea.direction } : { prompt: idea.direction })
+                            }
+                          >
+                            Use this
+                          </button>
+                          {ideaParent &&
+                            (promoted[key] ? (
+                              <span className="meta" title={promoted[key]}>
+                                Added as choice
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="secondary"
+                                onClick={() => {
+                                  setPromoteError(null);
+                                  setPromoting({ key, text: idea.choice.slice(0, LIMITS.label) });
+                                }}
+                              >
+                                Add as choice
+                              </button>
+                            ))}
+                        </span>
+                      )}
+                      {editing && ideaParent && (
+                        <div style={{ display: "grid", gap: "0.5rem" }}>
+                          <label>
+                            Choice text <small>(added to the previous chapter as it reads here)</small>
+                            <input
+                              value={promoting.text}
+                              maxLength={LIMITS.label}
+                              autoFocus
+                              onChange={(e) => setPromoting({ key, text: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                                  e.preventDefault();
+                                  void promoteIdea(key, ideaParent);
+                                }
+                              }}
+                            />
+                          </label>
+                          <div className="row">
+                            <button type="button" onClick={() => promoteIdea(key, ideaParent)} disabled={promoteBusy || !promoting.text.trim()}>
+                              {promoteBusy ? "Adding…" : "Add choice"}
+                            </button>
+                            <button type="button" className="secondary" onClick={() => setPromoting(null)} disabled={promoteBusy}>
+                              Cancel
+                            </button>
+                          </div>
+                          {promoteError && <p className="error">{promoteError}</p>}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </details>
