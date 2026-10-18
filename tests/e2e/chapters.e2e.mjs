@@ -82,7 +82,7 @@ await page.getByText("The Door").first().waitFor({ timeout: 5000 }).catch(() => 
 await page.getByRole("link", { name: /The Door/ }).click();
 await page.waitForURL("**/new");
 
-ok(await page.getByRole("button", { name: "Post chapter" }).isDisabled(), "posting needs a summary");
+ok(await page.getByRole("button", { name: "Post chapter" }).isEnabled(), "posting doesn't need a summary written first");
 await page.getByLabel(/^Summary/).fill("Someone enters the haunted inn.");
 await page.getByRole("button", { name: "Post chapter" }).click();
 await page.waitForURL(/\/c\/[^/]+\?posted=1/);

@@ -371,6 +371,140 @@ h2 {
   margin: 0;
 }
 
+/* The drafting page: the form in one column, with Brainstorm and the prompt preview beside it when there is room. */
+.editor-grid,
+.editor-main,
+.editor-side {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.editor-grid {
+  margin-top: 0.75rem;
+}
+
+.editor-side {
+  align-content: start;
+}
+
+@media (min-width: 64rem) {
+  main:has(.editor-grid) {
+    max-width: 72rem;
+  }
+
+  .editor-grid {
+    grid-template-columns: minmax(0, 1fr) 22rem;
+    align-items: start;
+  }
+
+  .editor-main {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .editor-side {
+    grid-column: 2;
+    grid-row: 1;
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 6rem);
+    overflow-y: auto;
+  }
+}
+
+/* A collapsible panel: the summary line is its heading, with a note beside it while folded. */
+.fold > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+.fold > summary .meta {
+  display: inline;
+  margin: 0 0 0 0.6rem;
+  font-weight: 400;
+  font-size: 0.9rem;
+}
+
+.fold[open] > summary {
+  margin-bottom: 0.75rem;
+}
+
+.save-state {
+  margin: 0 0 0 auto;
+  font-size: 0.8rem;
+}
+
+.inline-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+}
+
+/* Comparing two drafts: the newer text, with what it dropped and what it added marked. */
+.diff {
+  margin: 0 0 0.75rem;
+  white-space: pre-wrap;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+
+.diff-add,
+.diff-del {
+  text-decoration-thickness: 1px;
+  border-radius: 2px;
+}
+
+.diff-add {
+  text-decoration: none;
+  background: color-mix(in srgb, #2e8b57 22%, transparent);
+}
+
+.diff-del {
+  color: var(--muted);
+  background: color-mix(in srgb, #c0392b 18%, transparent);
+}
+
+/* Stays at the bottom of the window so posting is always in reach and the reasons it can't be are in view. */
+.action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 -1rem;
+  padding: 0.6rem 1rem;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.action-bar-info {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+
+.action-bar-info p {
+  margin: 0;
+}
+
+.action-bar-info strong {
+  color: #c0392b;
+}
+
+.action-bar button {
+  white-space: nowrap;
+}
+
+.action-bar .linkish {
+  text-align: left;
+}
+
 .chip {
   background: transparent;
   color: var(--accent);
@@ -537,6 +671,10 @@ button.outline-action {
 
 .codex-preview {
   margin-top: 0.75rem;
+}
+
+.ai-panel > .codex-preview {
+  margin-top: 0;
 }
 
 .codex-preview > summary {

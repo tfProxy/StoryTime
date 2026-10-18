@@ -20,6 +20,8 @@ export type Settings = {
   contextTokens: number;
   /** Ask the model not to use extended thinking / reasoning. */
   disableThinking: boolean;
+  /** After the AI writes a chapter, also suggest choices for its ending (one more call to the cheaper model). */
+  autoSuggestChoices: boolean;
 };
 
 function defaultProvider(id: ProviderId): ProviderSettings {
@@ -36,6 +38,7 @@ export const DEFAULT_SETTINGS: Settings = {
   temperature: null,
   contextTokens: 8000,
   disableThinking: false,
+  autoSuggestChoices: false,
 };
 
 // Each field falls back to its default when missing or invalid, so partial or older
@@ -65,6 +68,7 @@ const settingsSchema = z.object({
   temperature: z.number().min(0).max(2).nullable().catch(null),
   contextTokens: z.number().int().min(1000).max(2_000_000).catch(DEFAULT_SETTINGS.contextTokens),
   disableThinking: z.boolean().catch(false),
+  autoSuggestChoices: z.boolean().catch(false),
 });
 
 export function parseSettings(raw: unknown): Settings {

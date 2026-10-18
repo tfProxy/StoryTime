@@ -281,6 +281,23 @@ export function refinePrompt(
   ].join("\n\n");
 }
 
+export const SYSTEM_PASSAGE = `${SYSTEM_BASE}\n\nYou rewrite one marked passage of a chapter. Reply with only the rewritten passage: no title, no quotation marks, no commentary, and nothing from outside the marked passage.`;
+
+/** Revise just one passage of the chapter (`before` + `passage` + `after` is the whole body); the reply replaces `passage`. */
+export function passageRefinePrompt(
+  ctx: StoryContext,
+  current: { title: string; before: string; passage: string; after: string },
+  instruction: string,
+  contextTokens: number,
+): string {
+  const whole = `${current.before}${current.passage}${current.after}`;
+  return [
+    storyHeader(ctx, Math.floor(budgetFor(contextTokens) * 0.7), `${whole}\n${instruction}`),
+    `Here is the current draft of the chapter being written. The passage to revise is between [[START]] and [[END]]:\n# ${current.title || "Untitled"}\n\n${current.before}[[START]]${current.passage}[[END]]${current.after}`,
+    `Revise only the marked passage according to this instruction: ${instruction.trim()}\nReturn just the rewritten passage, which will replace the marked text. It must fit with the text before and after it.`,
+  ].join("\n\n");
+}
+
 export function choicesPrompt(
   ctx: StoryContext,
   current: { title: string; body: string },

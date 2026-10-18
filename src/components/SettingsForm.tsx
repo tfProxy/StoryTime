@@ -260,6 +260,22 @@ export default function SettingsForm() {
           </span>
         </label>
 
+        <label className="row" style={{ alignItems: "flex-start" }}>
+          <input
+            type="checkbox"
+            style={{ width: "auto" }}
+            checked={settings.autoSuggestChoices}
+            onChange={(e) => update({ autoSuggestChoices: e.target.checked })}
+          />
+          <span>
+            Suggest choices after writing{" "}
+            <small>
+              (when the AI finishes a chapter, it also offers a few choices for the ending, using the cheaper model. This
+              is one extra request each time.)
+            </small>
+          </span>
+        </label>
+
         <div className="row">
           <button type="button" className="secondary" onClick={tryIt} disabled={trying}>
             {trying ? "Generating…" : "Try a sample reply"}
