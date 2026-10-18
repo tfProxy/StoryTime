@@ -46,7 +46,9 @@ export const estimateTokens = (s: string) => Math.ceil(s.length / 4);
 const SYSTEM_BASE = `You are a skilled fiction co-author helping write one chapter of a branching, choose-your-own-adventure story that many people write together.
 - Match the established voice, point of view and tense. Keep names, facts and tone consistent with the story so far.
 - Write only the chapter's prose. Do NOT write the reader's choices, menus, or questions like "What do you do?" — choices are added separately.
-- End at a natural decision point or a satisfying stopping place.
+- Pick up exactly where the story left off. If the reader made a choice, the chapter opens by carrying it out. Do not recap earlier events. (For a story's first chapter, establish the protagonist, setting and point of view quickly.)
+- End on an open situation with real stakes, where several different actions would make sense. Do not resolve the tension, summarise, reflect or moralise at the end.
+- Show rather than tell: let actions, dialogue and detail carry emotion instead of explaining feelings, and vary sentence rhythm.
 - Plain paragraphs separated by blank lines. No markdown formatting, no commentary, no notes to the author.`;
 
 const OUTPUT_FORMAT = `Output format: the first line is "# " followed by the chapter title. Then a blank line, then the chapter text.`;
@@ -277,7 +279,7 @@ export function refinePrompt(
   return [
     storyHeader(ctx, Math.floor(budgetFor(contextTokens) * 0.7), `${current.body}\n${instruction}`),
     `Here is the current draft of the chapter being written:\n# ${current.title || "Untitled"}\n\n${current.body}`,
-    `Revise it according to this instruction: ${instruction.trim()}\nReturn the complete revised chapter.`,
+    `Revise it according to this instruction: ${instruction.trim()}\nChange only what the instruction asks for; keep every other sentence exactly as written. Return the complete revised chapter.`,
   ].join("\n\n");
 }
 
@@ -294,9 +296,12 @@ export function passageRefinePrompt(
   return [
     storyHeader(ctx, Math.floor(budgetFor(contextTokens) * 0.7), `${whole}\n${instruction}`),
     `Here is the current draft of the chapter being written. The passage to revise is between [[START]] and [[END]]:\n# ${current.title || "Untitled"}\n\n${current.before}[[START]]${current.passage}[[END]]${current.after}`,
-    `Revise only the marked passage according to this instruction: ${instruction.trim()}\nReturn just the rewritten passage, which will replace the marked text. It must fit with the text before and after it.`,
+    `Revise only the marked passage according to this instruction: ${instruction.trim()}\nChange only what the instruction asks for, and keep roughly the same length unless it says otherwise. Return just the rewritten passage, which will replace the marked text. It must fit with the text before and after it.`,
   ].join("\n\n");
 }
+
+/** What makes a set of choices worth offering; shared by the choice and idea prompts. */
+const CHOICE_QUALITY = `Good options lead to meaningfully different outcomes (not variations of one action), are things the protagonist could plausibly do right now, and don't make one option the obvious right answer. Mix kinds, for example one bold, one cautious and one unexpected. Word them consistently, as short imperative phrases like "Follow the stranger".`;
 
 export function choicesPrompt(
   ctx: StoryContext,
@@ -307,7 +312,7 @@ export function choicesPrompt(
   return [
     storyHeader(ctx, Math.floor(budgetFor(contextTokens) * 0.5), current.body),
     `Here is the chapter that was just written:\n# ${current.title || "Untitled"}\n\n${current.body}`,
-    `Suggest 3 distinct options the reader could pick at the end of this chapter. Each is a short action or decision, under 12 words, written as button text (no numbering).` +
+    `Suggest 3 distinct options the reader could pick at the end of this chapter. ${CHOICE_QUALITY} Each is a short action or decision, under 12 words, written as button text (no numbering).` +
       (existing.length ? ` Do not repeat these existing options: ${existing.map((e) => `"${e}"`).join(", ")}.` : "") +
       `\nReply with only a JSON array of 3 strings.`,
   ].join("\n\n");
@@ -323,7 +328,7 @@ export type Idea = { choice: string; direction: string };
  */
 export function ideasPrompt(ctx: StoryContext, contextTokens: number, guidance = "", earlier: string[] = []): string {
   const existing = ctx.siblingChoices ?? [];
-  const reply = `\nReply with only a JSON array of 4 objects like [{"choice":"...","direction":"..."}].`;
+  const reply = `\nMake the ideas differ in kind (tone, risk, or which character drives the chapter), not small variations of one plot. ${CHOICE_QUALITY}\nReply with only a JSON array of 4 objects like [{"choice":"...","direction":"..."}].`;
   let ask: string;
   if (ctx.path.length === 0) {
     ask =

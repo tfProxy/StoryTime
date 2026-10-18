@@ -123,4 +123,9 @@ ok(r.changedInChapterId === "c2", "update maps changed_in back to a chapter id")
 ok(prompts.at(-1)!.user.includes('Chapter 2: "Two"') && prompts.at(-1)!.user.includes("Mira became a horse."), "update prompt numbers the chapters");
 handler = () => '{"name":"Mira","type":"character","content":"x","changed_in":9}';
 ok((await draftEntry(settings, { story, path, codex: [], direction: "", existing: mira, mode: "update", since })).changedInChapterId === null, "update: out-of-range changed_in ignored");
+// ---- both entry-writing prompts carry the quality guide ----
+const sysDraft = prompts.at(-1)!.system;
+const sysScan = prompts.find((p) => p.user.includes("Chapter to read"))!.system;
+ok([sysDraft, sysScan].every((s) => s.includes("What makes a good entry") && s.includes("Aliases:") && s.includes("always_include: almost always false")), "draft and scan system prompts both include the codex guide");
+ok(sysScan.trimEnd().includes('Reply with JSON only, in this shape') && sysDraft.includes("Reply with JSON only:"), "guide doesn't displace the JSON reply instructions");
 server.close();

@@ -78,12 +78,28 @@ export function parseFields(raw: unknown): EntryFields | null {
 
 // ---------- scanning chapters ----------
 
+// What makes a good entry. Shared by both prompts below, because the model can't guess how the
+// app uses entries: an entry is shown to a writer only when its name or an alias appears in the
+// recent text (or it is "always include"), it competes for a small token budget, and it is read
+// later as a single line with no other context.
+const CODEX_GUIDE = `What makes a good entry:
+- Purpose: an entry is shown to a writer when its name or one of its aliases appears in the recent text, so that they stay consistent with it. Write what a writer needs to know, not a summary of the plot.
+- Content: facts that constrain future chapters. For a character: who they are, appearance, relationships, goals, secrets, and their current status (alive, injured, allied with whom, where). For a place or item: what it is, its rules or properties, and who holds or controls it. For a faction or lore: what it is and how it affects the story. Leave out atmosphere, flowery description and a retelling of events.
+- Standalone: the entry is read as a single line without the chapter beside it, so name people and places explicitly (not "she" or "the village"), and never refer to chapters. Be brief; long entries may be left out to save space.
+- Aliases: short names the story text actually uses for the thing (a nickname, title, surname, or spelling variant), so it is recognised when mentioned. Never generic words ("the man", "woman", "the") that would match unrelated text. Leave empty if there are none.
+- Types: character (a person or creature), place (a location), item (an object), faction (a group or organisation), lore (history, magic, rules of the world), note (anything else, rarely).
+- always_include: almost always false. True only for something every future chapter needs, such as the protagonist or a rule of the whole world.
+Example of the style (illustrative; do not copy its details): {"name":"Harbour Master Oda","type":"character","aliases":["Oda","the Harbour Master"],"content":"Harbour master of Saltgate. Stern and observant; secretly pays the smugglers' guild to ignore certain ships. Distrusts the hero since the missing cargo.","always_include":false}`;
+
 const SYSTEM_ANALYZE = `You maintain the codex (a reference list of characters, places, items, factions and lore) for a branching story, so that future writers keep the facts consistent.
 You are given the codex as it stands and one chapter. List the changes this chapter establishes:
-- "create": a new character, place, item, faction or piece of lore that appears and will matter going forward. Skip trivial one-off background details.
+- "create": a new character, place, item, faction or piece of lore that appears and is likely to recur or to constrain later chapters. Skip trivial one-off background details and anything already covered by an existing entry.
 - "replace": an existing entry whose facts changed or were significantly revealed. Give the COMPLETE updated entry, keeping details that are still true.
 - "retire": an entry that no longer applies and should stop being shown to writers. Prefer "replace" instead (for example a dead character is still worth remembering, so record that they died).
-Rules: use only what the chapter text says. Descriptions are concise (1-4 sentences), present tense, describing the current state. Do not repeat an entry that hasn't changed. At most 8 changes.
+Rules: use only what the chapter text says. Describe the current state, in present tense. Do not repeat an entry that hasn't changed. At most 8 changes, but fewer, more valuable changes are better than filling the list.
+
+${CODEX_GUIDE}
+
 Reply with JSON only, in this shape:
 {"changes":[{"action":"create|replace|retire","entry":"existing entry name (for replace/retire)","name":"","type":"character|place|item|faction|lore|note","aliases":[],"content":"","always_include":false,"reason":"one short sentence"}]}
 If nothing needs to change, reply {"changes":[]}.`;
@@ -265,8 +281,11 @@ export async function applyProposals(
 // ---------- drafting a single entry ----------
 
 const SYSTEM_ENTRY = `You write entries for the codex (a reference list) of a branching story, so that writers keep facts consistent.
-An entry has: a name, a type (character, place, item, faction, lore or note), a few alternative names (aliases) used to recognise it in the text, a concise description (1-5 sentences, present tense, the current state of the thing), and always_include (true only for something so central it should always be remembered).
+An entry has: a name, a type, aliases, a concise description (1-4 sentences, present tense, the current state of the thing), and always_include.
 Use only facts from the story and the author's instructions; invent details only where asked to create something new.
+
+${CODEX_GUIDE}
+
 Reply with JSON only: {"name":"","type":"","aliases":[],"content":"","always_include":false}`;
 
 export type DraftEntryOptions = {
