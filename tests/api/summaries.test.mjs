@@ -66,3 +66,12 @@ ok(r.status === 200, "summaries can be replaced by hand");
 g = await call("GET", `/api/chapters/${root}`);
 ok(g.json.chapter.summary === "hand sum" && g.json.chapter.path_summary === "hand path" && g.json.chapter.revision === 3, "…and it doesn't create a new revision");
 ok((await call("PUT", `/api/chapters/${root}/summary`, { revision: 3, summary: "", path_summary: "y" })).status === 400, "empty summaries are rejected");
+
+// An edit that keeps the chapter's own story-so-far (a new title or choices, or new text the author
+// decided not to re-summarize) leaves the summaries below it alone; one that changes it clears them.
+await call("POST", `/api/chapters/${two}/summary`, { revision: 1, path_summary: "two rebuilt" });
+r = await call("PATCH", `/api/chapters/${root}`, { base_revision: 3, title: "Root v4", body: "root v4 text", summary: "hand sum", path_summary: "hand path" });
+ok(r.status === 200, "edit that keeps the chapter's summaries");
+ok((await call("GET", `/api/chapters/${two}`)).json.chapter.path_summary === "two rebuilt", "…leaves the summaries below it alone");
+r = await call("PATCH", `/api/chapters/${root}`, { base_revision: 4, title: "Root v5", body: "root v5 text", summary: "hand sum", path_summary: "a new story so far" });
+ok((await call("GET", `/api/chapters/${two}`)).json.chapter.path_summary === null, "an edit that changes it clears them");

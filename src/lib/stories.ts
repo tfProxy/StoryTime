@@ -356,18 +356,21 @@ export function editChapter(chapterId: string, input: z.infer<typeof EditChapter
         chapterId,
       );
 
-    // Rolling summaries of everything below this chapter were built from the old text. They are
-    // only a cache, so clear them; clients regenerate them when they next need them.
-    db()
-      .prepare(
-        `WITH RECURSIVE d(id) AS (
-           SELECT c.id FROM choices ch JOIN chapters c ON c.parent_choice_id = ch.id WHERE ch.parent_chapter_id = ?
-           UNION ALL
-           SELECT c.id FROM d JOIN choices ch ON ch.parent_chapter_id = d.id JOIN chapters c ON c.parent_choice_id = ch.id
-         )
-         UPDATE chapters SET path_summary = NULL WHERE id IN (SELECT id FROM d)`,
-      )
-      .run(chapterId);
+    // Rolling summaries of everything below this chapter build on this chapter's own. They are only a
+    // cache, so when it changes clear them and let clients regenerate them when they next need them.
+    // An edit that keeps it (a new title or choices, or text the author chose not to re-summarize) leaves them be.
+    if ((input.path_summary ?? null) !== current.path_summary) {
+      db()
+        .prepare(
+          `WITH RECURSIVE d(id) AS (
+             SELECT c.id FROM choices ch JOIN chapters c ON c.parent_choice_id = ch.id WHERE ch.parent_chapter_id = ?
+             UNION ALL
+             SELECT c.id FROM d JOIN choices ch ON ch.parent_chapter_id = d.id JOIN chapters c ON c.parent_choice_id = ch.id
+           )
+           UPDATE chapters SET path_summary = NULL WHERE id IN (SELECT id FROM d)`,
+        )
+        .run(chapterId);
+    }
 
     // Choices on this chapter.
     const live = getChoices(chapterId);

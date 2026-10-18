@@ -131,19 +131,26 @@ c = (await chapter(third)).chapter;
 ok(c.title === "Third" && c.summary === "Nothing happened." && c.path_summary === null, "the author's summary is posted even when the story-so-far fails");
 summaryMode = "ok";
 
-// ---- E: editing keeps the chapter's summary unless the author changes it; those below are cleared ----
+// ---- E: editing keeps the chapter's summaries unless the author changes the summary or chooses to re-summarize changed text ----
+await post(`/api/chapters/${third}/summary`, { revision: 1, path_summary: "T3 PATH" }); // something below to be kept or cleared
 await page.goto(`${BASE}/c/${second}/edit`);
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.length > 0);
 ok((await page.getByLabel(/^Summary/).inputValue()) === "SUM(Second)", "the edit form starts with the chapter's summary");
 await page.getByLabel("Chapter text").fill("She opened the door, then the window.");
-ok(await page.getByText(/current summary, and it will be kept/).isVisible(), "it says the summary will be kept");
+ok(await page.getByText(/you'll be asked whether this summary still fits/).isVisible(), "it says it will ask about the summary");
 let beforeEdit = sumCalls().length;
 await page.getByRole("button", { name: "Save changes" }).click();
+await page.getByText(/You changed the chapter text/).waitFor();
+ok(sumCalls().length === beforeEdit && (await chapter(second)).chapter.revision === 1, "changed text asks first, before saving or summarizing anything");
+await page.getByRole("button", { name: "Cancel" }).click();
+ok(await page.getByRole("button", { name: "Save changes" }).isVisible(), "the question can be cancelled");
+await page.getByRole("button", { name: "Save changes" }).click();
+await page.getByRole("button", { name: "Keep the summary" }).click();
 await page.waitForURL(`${BASE}/c/${second}`);
-ok(sumCalls().length === beforeEdit, "a small edit doesn't make a new summary");
+ok(sumCalls().length === beforeEdit, "keeping the summary makes no new one");
 c = (await chapter(second)).chapter;
 ok(c.summary === "SUM(Second)" && c.path_summary === "SOFAR(Second)" && c.revision === 2, "the summaries are kept");
-ok((await chapter(third)).chapter.path_summary === null, "chapters below it were cleared");
+ok((await chapter(third)).chapter.path_summary === "T3 PATH", "…and the chapters below it are left alone");
 // a changed summary is kept as written, with the story-so-far redone around it
 await page.goto(`${BASE}/c/${second}/edit`);
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.length > 0);
@@ -155,6 +162,30 @@ c = (await chapter(second)).chapter;
 ok(sumCalls().length === beforeEdit + 1 && c.summary === "She opened the door and a window." && c.path_summary === "SOFAR(Second)" && c.revision === 3, "an edited summary is saved and the story-so-far regenerated");
 ok(sumCalls().at(-1).user.includes("SOFAR(First)"), "…building on the parent's story-so-far");
 
+// a new title alone doesn't touch the summaries or ask anything
+await page.goto(`${BASE}/c/${second}/edit`);
+await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.length > 0);
+await page.getByLabel("Chapter title").fill("Second, renamed");
+beforeEdit = sumCalls().length;
+await page.getByRole("button", { name: "Save changes" }).click();
+await page.waitForURL(`${BASE}/c/${second}`);
+c = (await chapter(second)).chapter;
+ok(sumCalls().length === beforeEdit && c.title === "Second, renamed" && c.summary === "She opened the door and a window." && c.path_summary === "SOFAR(Second)" && c.revision === 4, "a new title alone keeps the summaries and asks nothing");
+ok((await chapter(third)).chapter.path_summary === "T3 PATH", "…and leaves the chapters below alone");
+
+// changed text can instead be re-summarized: a new summary and story-so-far, and the chapters below are rebuilt later
+await page.goto(`${BASE}/c/${second}/edit`);
+await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.length > 0);
+await page.getByLabel("Chapter text").fill("She opened the door and the window.");
+await page.getByRole("button", { name: "Save changes" }).click();
+beforeEdit = sumCalls().length;
+await page.getByRole("button", { name: "Re-summarize" }).click();
+await page.waitForURL(`${BASE}/c/${second}`);
+c = (await chapter(second)).chapter;
+ok(sumCalls().length === beforeEdit + 1 && c.summary === "SUM(Second, renamed)" && c.path_summary === "SOFAR(Second, renamed)" && c.revision === 5, "re-summarizing writes a new summary and story-so-far");
+ok(!sumCalls().at(-1).user.includes("already summarized"), "…from the new text, not the old summary");
+ok((await chapter(third)).chapter.path_summary === null, "…and the chapters below it are cleared to be rebuilt");
+
 // an edit draft saved before summaries were carried into it picks up the chapter's summary
 await page.goto(`${BASE}/c/${second}/edit`);
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.length > 0);
@@ -162,14 +193,14 @@ await page.evaluate(async (key) => {
   const db = await new Promise((res, rej) => { const r = indexedDB.open("storytime", 1); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
   await new Promise((res, rej) => {
     const tx = db.transaction("drafts", "readwrite");
-    tx.objectStore("drafts").put({ key, href: "/", label: "old", updatedAt: Date.now(), storyTitle: "", premise: "", newChoiceLabel: "", title: "Second", body: "An old draft body.", choices: [""], prompt: "", undo: [], baseRevision: 3 });
+    tx.objectStore("drafts").put({ key, href: "/", label: "old", updatedAt: Date.now(), storyTitle: "", premise: "", newChoiceLabel: "", title: "Second", body: "An old draft body.", choices: [""], prompt: "", undo: [], baseRevision: 5 });
     tx.oncomplete = res; tx.onerror = () => rej(tx.error);
   });
   db.close();
 }, `edit:${second}`);
 await page.goto(`${BASE}/c/${second}/edit`);
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value === "An old draft body.");
-ok((await page.getByLabel(/^Summary/).inputValue()) === "She opened the door and a window.", "an older edit draft starts with the chapter's summary");
+ok((await page.getByLabel(/^Summary/).inputValue()) === "SUM(Second, renamed)", "an older edit draft starts with the chapter's summary");
 await page.evaluate(async (key) => {
   const db = await new Promise((res) => { const r = indexedDB.open("storytime", 1); r.onsuccess = () => res(r.result); });
   await new Promise((res) => { const tx = db.transaction("drafts", "readwrite"); tx.objectStore("drafts").delete(key); tx.oncomplete = res; });

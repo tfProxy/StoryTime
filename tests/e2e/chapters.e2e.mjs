@@ -115,6 +115,7 @@ await page.reload(); // draft should survive
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("slammed"));
 ok((await page.getByLabel("Existing choice").nth(0).inputValue()) === "Push the door", "edit draft (incl. choice rename) survives reload");
 await page.getByRole("button", { name: "Save changes" }).click();
+await page.getByRole("button", { name: "Keep the summary" }).click(); // changed text asks about the summary
 await page.waitForURL(chapterUrl);
 ok(await page.getByText(/slammed/).first().isVisible(), "edited text shown");
 ok(await page.getByRole("link", { name: /^edited / }).isVisible(), "'edited' marker shown");

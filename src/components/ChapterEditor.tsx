@@ -149,6 +149,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const [compareWith, setCompareWith] = useState<number | null>(null);
   // When this browser last saved the draft, or that it couldn't.
   const [saved, setSaved] = useState<{ at: number } | { failed: true } | null>(null);
+  // Saving changed text asks whether to keep the chapter's summary or write a new one.
+  const [askSummary, setAskSummary] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const loadedRef = useRef(false);
 
@@ -582,11 +584,23 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   // A generated summary is out of date once the chapter changes (unless the author has rewritten it).
   const ownSummary = (draft.summary ?? "").trim();
   const summaryStale = !!draft.aiSummary && ownSummary === draft.aiSummary.summary && draft.aiSummary.body !== draft.body;
-  // When editing, the chapter's existing summary is kept as it is unless the author changes it.
-  const keptSummary = target.kind === "edit" && !!ownSummary && ownSummary === (target.initialSummary ?? "").trim() && !summaryStale;
+  // When editing, the chapter's summaries are left as they are unless the author changes the summary
+  // or, after changing the text, asks for a new one.
+  const sameSummary = target.kind === "edit" && ownSummary === (target.initialSummary ?? "").trim() && !summaryStale;
+  const keptSummary = sameSummary && !!ownSummary;
+  const textChanged = target.kind === "edit" && draft.body !== target.initialBody;
+  // The text changed but the summary didn't: only the author knows whether it still describes the chapter.
+  const needsSummaryChoice = keptSummary && textChanged && !(draft.aiSummary && draft.aiSummary.body === draft.body);
 
-  async function post() {
+  /** Save; changed text with an unchanged summary asks first, whether to keep the summary or write a new one. */
+  function requestPost() {
+    if (needsSummaryChoice) setAskSummary(true);
+    else void post();
+  }
+
+  async function post(resummarize = false) {
     if (!draft) return;
+    setAskSummary(false);
     startBusy("post");
     setError(null);
 
@@ -597,13 +611,18 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     const own = ownSummary;
     if (ai && ai.body === draft.body && ai.summary === own) {
       summaries = { summary: ai.summary, path_summary: ai.path_summary };
-    } else if (keptSummary && target.kind === "edit" && target.initialPathSummary) {
-      summaries = { summary: own, path_summary: target.initialPathSummary };
+    } else if (target.kind === "edit" && sameSummary && !(resummarize && textChanged) && (own || !textChanged)) {
+      // Nothing to redo: a new title or choices don't change the summaries, and neither does text
+      // the author chose to keep the summary for.
+      summaries = {
+        ...(own ? { summary: own } : {}),
+        ...(target.initialPathSummary ? { path_summary: target.initialPathSummary } : {}),
+      };
     } else {
       const ctl = new AbortController();
       abortRef.current = ctl;
       try {
-        summaries = await makeSummaries(ctl.signal, own || undefined);
+        summaries = await makeSummaries(ctl.signal, resummarize && textChanged ? undefined : own || undefined);
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
           setBusy(null);
@@ -1087,10 +1106,10 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             {summaryStale && (
               <p className="notice">The chapter has changed since this summary was made. Summarize it again or edit it, otherwise it will be posted as it is.</p>
             )}
-            {keptSummary && target.kind === "edit" && draft.body !== target.initialBody && (
+            {needsSummaryChoice && (
               <p className="meta">
-                This is the chapter&apos;s current summary, and it will be kept as it is. If your changes affect what happens,
-                update it or summarize the chapter again.
+                You&apos;ve changed the text. When you save, you&apos;ll be asked whether this summary still fits or should be
+                written again. You can also update it or summarize the chapter again now.
               </p>
             )}
 
@@ -1217,7 +1236,12 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         <div className="action-bar-info" aria-live="polite">
           {statusFor("post")}
           {errorFor("post")}
-          {problems.length > 0 ? (
+          {askSummary && needsSummaryChoice && busy === null ? (
+            <p>
+              <strong className="ask">You changed the chapter text.</strong> Does the existing summary still fit, or should
+              it be written again from the new text? Re-summarizing also refreshes the story-so-far for the chapters after it.
+            </p>
+          ) : problems.length > 0 ? (
             <p>
               <strong>{target.kind === "edit" ? "Can't save yet:" : "Can't post yet:"}</strong>{" "}
               {problems.map((p, i) => (
@@ -1241,9 +1265,23 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             Cancel
           </button>
         )}
-        <button type="button" onClick={post} disabled={busy !== null || problems.length > 0}>
-          {posting ? "Saving…" : target.kind === "edit" ? "Save changes" : "Post chapter"}
-        </button>
+        {askSummary && needsSummaryChoice && busy === null ? (
+          <>
+            <button type="button" className="secondary" onClick={() => setAskSummary(false)}>
+              Cancel
+            </button>
+            <button type="button" className="secondary" onClick={() => void post(false)}>
+              Keep the summary
+            </button>
+            <button type="button" onClick={() => void post(true)}>
+              Re-summarize
+            </button>
+          </>
+        ) : (
+          <button type="button" onClick={requestPost} disabled={busy !== null || problems.length > 0}>
+            {posting ? "Saving…" : target.kind === "edit" ? "Save changes" : "Post chapter"}
+          </button>
+        )}
       </div>
 
       {codexPanel && (
