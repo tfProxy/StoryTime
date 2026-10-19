@@ -2,22 +2,28 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { deleteDraft, listDrafts, type Draft } from "@/lib/drafts";
+import { deleteDraft, listDrafts, type DraftListItem } from "@/lib/drafts";
 
 export default function DraftList() {
-  const [drafts, setDrafts] = useState<Draft[] | null>(null);
+  const [drafts, setDrafts] = useState<DraftListItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     listDrafts()
       .then((d) => !cancelled && setDrafts(d))
-      .catch(() => !cancelled && setDrafts([]));
+      .catch((e) => {
+        if (cancelled) return;
+        setError(`Couldn't load drafts (${e instanceof Error ? e.message : String(e)}).`);
+        setDrafts([]);
+      });
     return () => {
       cancelled = true;
     };
   }, []);
 
   if (drafts === null) return <p className="meta">Loading…</p>;
+  if (error) return <p className="error">{error}</p>;
   if (drafts.length === 0) return <p>No drafts. Start a chapter and it will be saved here automatically.</p>;
 
   return (
@@ -35,7 +41,9 @@ export default function DraftList() {
             className="secondary"
             onClick={() => {
               if (!window.confirm("Delete this draft? This can't be undone.")) return;
-              deleteDraft(d.key).then(() => setDrafts((cur) => cur?.filter((x) => x.key !== d.key) ?? null));
+              deleteDraft(d.key)
+                .then(() => setDrafts((cur) => cur?.filter((x) => x.key !== d.key) ?? null))
+                .catch((e) => window.alert(`Couldn't delete the draft: ${e instanceof Error ? e.message : String(e)}`));
             }}
           >
             Delete

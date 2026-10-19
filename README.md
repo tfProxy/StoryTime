@@ -91,9 +91,13 @@ replacement can be written.
 ## How it works
 
 - No accounts, logins or author names; one person is assumed.
-- The server stores stories (chapters, choices, codex changes) and the settings, including AI keys, so
-  every browser sees the same ones. Drafts live in your browser; the settings page can export settings
-  to a file.
+- The server stores stories (chapters, choices, codex changes), the settings, including AI keys, and
+  drafts, so every browser sees the same ones. A draft is saved as you write, along with the page's
+  working state (brainstorm ideas, length, codex picks, an unsent instruction), so you can start a
+  chapter on one device and finish it on another. If the same draft is changed in two tabs, the
+  second save is refused and the page asks which version to keep. Drafts that older versions kept
+  in the browser move to the server the first time drafts are opened. The settings page can export
+  settings to a file.
 - Any chapter can be edited. Every edit keeps the previous version in `chapter_revisions`, and the
   chapter shows an "edited" marker linking to its history.
 - The codex is an append-only log per story: each change (create / replace / retire) is anchored at
@@ -123,4 +127,4 @@ npm run test:all    # everything
 The API and browser suites build the app if needed and run it on port 3111 with a temporary
 database; the browser tests also run a fake AI server on port 3222. Set
 `E2E_CHANNEL=chrome` (or `bundled`, after `npx playwright-core install chromium`) to use a
-different browser. Pass `--build` (`node tests/run.mjs --build api`) to force a rebuild first.
+different browser, or `E2E_EXECUTABLE=/path/to/chromium` to use a specific browser binary. Pass `--build` (`node tests/run.mjs --build api`) to force a rebuild first.
