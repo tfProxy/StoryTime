@@ -10,6 +10,8 @@ export type Story = {
   style: string;
   root_chapter_id: string | null;
   created_at: number;
+  /** When the cover image was last set (it changes with every upload); null when there is no cover. */
+  cover_version: number | null;
 };
 
 export type Chapter = {
@@ -117,7 +119,7 @@ const now = () => Date.now();
 export function listStories(): (Story & { chapter_count: number })[] {
   return db()
     .prepare(
-      `SELECT s.id, s.title, s.premise, s.style, s.root_chapter_id, s.created_at,
+      `SELECT s.id, s.title, s.premise, s.style, s.root_chapter_id, s.created_at, s.cover_updated_at AS cover_version,
               (SELECT COUNT(*) FROM chapters c WHERE c.story_id = s.id) AS chapter_count
          FROM stories s ORDER BY s.created_at DESC`,
     )
@@ -127,7 +129,7 @@ export function listStories(): (Story & { chapter_count: number })[] {
 export function getStory(id: string): Story | undefined {
   return db()
     .prepare(
-      `SELECT id, title, premise, style, root_chapter_id, created_at
+      `SELECT id, title, premise, style, root_chapter_id, created_at, cover_updated_at AS cover_version
          FROM stories WHERE id = ?`,
     )
     .get(id) as Story | undefined;
@@ -437,6 +439,41 @@ export function editStory(storyId: string, input: z.infer<typeof EditStorySchema
       .run(input.title ?? story.title, input.premise ?? story.premise, input.style ?? story.style, storyId);
     return { ok: true as const };
   })();
+}
+
+/** Cover images: what the browser may upload, checked by the file's first bytes rather than its claimed type. */
+export const COVER_MAX_BYTES = 4 * 1024 * 1024;
+const COVER_SIGNATURES: [type: string, matches: (b: Buffer) => boolean][] = [
+  ["image/png", (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))],
+  ["image/jpeg", (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff],
+  ["image/gif", (b) => ["GIF87a", "GIF89a"].includes(b.subarray(0, 6).toString("latin1"))],
+  ["image/webp", (b) => b.subarray(0, 4).toString("latin1") === "RIFF" && b.subarray(8, 12).toString("latin1") === "WEBP"],
+];
+
+export function setCover(storyId: string, bytes: Buffer): { cover_version: number } {
+  if (bytes.length === 0) throw new PostError("No image was sent", 400);
+  if (bytes.length > COVER_MAX_BYTES) throw new PostError("That image is too large (4 MB at most)", 413);
+  const type = COVER_SIGNATURES.find(([, matches]) => matches(bytes))?.[0];
+  if (!type) throw new PostError("The cover must be a PNG, JPEG, GIF or WebP image", 415);
+  // Two uploads in the same millisecond must still get different versions.
+  const prev = db().prepare(`SELECT cover_updated_at AS v FROM stories WHERE id = ?`).get(storyId) as { v: number | null } | undefined;
+  if (!prev) throw new PostError("That story does not exist", 404);
+  const version = Math.max(now(), (prev.v ?? 0) + 1);
+  db().prepare(`UPDATE stories SET cover = ?, cover_type = ?, cover_updated_at = ? WHERE id = ?`).run(bytes, type, version, storyId);
+  return { cover_version: version };
+}
+
+export function clearCover(storyId: string): { ok: true } {
+  const r = db().prepare(`UPDATE stories SET cover = NULL, cover_type = NULL, cover_updated_at = NULL WHERE id = ?`).run(storyId);
+  if (r.changes === 0) throw new PostError("That story does not exist", 404);
+  return { ok: true };
+}
+
+export function getCover(storyId: string): { type: string; bytes: Buffer; version: number } | undefined {
+  const row = db()
+    .prepare(`SELECT cover, cover_type, cover_updated_at FROM stories WHERE id = ? AND cover IS NOT NULL`)
+    .get(storyId) as { cover: Buffer; cover_type: string; cover_updated_at: number } | undefined;
+  return row && { type: row.cover_type, bytes: row.cover, version: row.cover_updated_at };
 }
 
 // Summaries are a cache derived from chapter text. There are two write paths on purpose:

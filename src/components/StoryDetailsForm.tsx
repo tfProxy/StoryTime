@@ -57,7 +57,7 @@ export default function StoryDetailsForm({ story, heading = "Story details" }: {
         />
       </label>
       <label>
-        Summary <small>(the premise: shown in the story list; the AI also sees it)</small>
+        Summary <small>(the premise: shown when you hover a story in the list; the AI also sees it)</small>
         <AutoTextarea
           style={{ minHeight: "5rem", fontFamily: "inherit" }}
           value={premise}

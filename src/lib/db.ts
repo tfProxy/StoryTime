@@ -161,6 +161,13 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE stories ADD COLUMN style TEXT NOT NULL DEFAULT '';
   `,
+  // 8: an optional cover image per story, shown on the story list. `cover_updated_at` doubles as the
+  // image's version, so it is the only part the list needs to load.
+  `
+  ALTER TABLE stories ADD COLUMN cover BLOB;
+  ALTER TABLE stories ADD COLUMN cover_type TEXT;
+  ALTER TABLE stories ADD COLUMN cover_updated_at INTEGER;
+  `,
 ];
 
 function open(): Database.Database {

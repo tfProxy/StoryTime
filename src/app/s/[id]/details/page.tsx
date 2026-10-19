@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import CodexPanel from "@/components/CodexPanel";
+import CoverEditor from "@/components/CoverEditor";
 import StoryDetailsForm from "@/components/StoryDetailsForm";
 import { getCodexOps } from "@/lib/codexDb";
 import { getChapter, getStory } from "@/lib/stories";
@@ -25,6 +26,7 @@ export default async function StoryDetailsPage({ params }: { params: Promise<{ i
         <p className="meta">Settings for all of “{story.title}”, on every branch.</p>
       </div>
       <StoryDetailsForm heading="Title, summary and style" story={{ id: story.id, title: story.title, premise: story.premise, style: story.style }} />
+      <CoverEditor story={{ id: story.id, title: story.title, cover_version: story.cover_version }} />
       <section className="ai-panel">
         <h2>Codex</h2>
         <p className="meta">
