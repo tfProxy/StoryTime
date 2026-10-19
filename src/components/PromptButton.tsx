@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { PromptParts } from "@/lib/ai/prompts";
+import { copyText } from "@/lib/copyText";
 
 type Props = {
   /** Builds the request the neighbouring button would send. May throw to explain why there isn't one yet. */
@@ -15,30 +16,6 @@ type Props = {
 };
 
 type Shown = { parts: PromptParts } | { error: string };
-
-/** Copies text where `navigator.clipboard` isn't available (it needs a secure context; StoryTime is often served over plain http). */
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    // fall through to the fallback
-  }
-  const area = document.createElement("textarea");
-  area.value = text;
-  area.setAttribute("readonly", "");
-  area.style.position = "fixed";
-  area.style.opacity = "0";
-  document.body.appendChild(area);
-  area.select();
-  try {
-    return document.execCommand("copy");
-  } catch {
-    return false;
-  } finally {
-    area.remove();
-  }
-}
 
 /** The system prompt and message as one block of text, for pasting into a chat. */
 const asText = (p: PromptParts) => (p.system ? `${p.system}\n\n${p.message}` : p.message);

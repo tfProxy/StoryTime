@@ -20,6 +20,14 @@ ok(r.json.settings.autoSuggestChoices === false, "suggesting choices after writi
 r = await call("PUT", "/api/settings", { ...conns, autoSuggestChoices: true });
 ok(r.json.settings.autoSuggestChoices === true && (await call("GET", "/api/settings")).json.settings.autoSuggestChoices === true, "…and can be turned on");
 
+ok(r.json.settings.imagePromptStyle === "tags" && (await call("GET", "/api/settings")).json.settings.imagePromptStyle === "tags", "picture prompts are written as tags unless asked otherwise");
+r = await call("PUT", "/api/settings", { ...conns, imagePromptStyle: "natural" });
+ok(r.json.settings.imagePromptStyle === "natural" && (await call("GET", "/api/settings")).json.settings.imagePromptStyle === "natural", "…and the sentence style is kept");
+r = await call("PUT", "/api/settings", { ...conns, imagePromptStyle: "poetry" });
+ok(r.status === 200 && r.json.settings.imagePromptStyle === "tags", "an unknown picture prompt style falls back to tags");
+r = await call("PUT", "/api/settings", { ...conns, imagePromptStyle: 7 });
+ok(r.json.settings.imagePromptStyle === "tags", "…as does a value that isn't text");
+
 r = await call("PUT", "/api/settings", { connections: "bogus", defaults: { main: { connectionId: "nope", model: "m" } }, contextTokens: 5 });
 ok(r.status === 200 && r.json.settings.connections.length === 0 && r.json.settings.defaults.main === null && r.json.settings.contextTokens === 8000, "invalid fields fall back to defaults");
 

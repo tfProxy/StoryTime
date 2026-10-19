@@ -52,6 +52,10 @@ ok(data.format === "storytime-export" && data.version === 2 && data.story.title 
 ok(data.chapters.length === 3 && data.chapters.map((c) => c.title).join() === "Start,Left,Deep", "json chapters in reading order, without deleted ones");
 ok(data.choices.length === 4 && data.codex.length === 1 && data.codex[0].aliases[0] === "the thief" && data.codex[0].always_include === true, "json choices and codex");
 ok(!x.text.includes("edit_key") && !x.text.includes("author_name"), "no bookkeeping fields in exports");
+ok(data.story.art_style === "", "json: a story with no art style exports an empty one");
+await call("PATCH", `/api/stories/${story}`, { art_style: "Watercolor, soft light" });
+ok(JSON.parse((await get(`/api/stories/${story}/export?format=json`)).text).story.art_style === "Watercolor, soft light", "json: the story's art style is exported");
+await call("PATCH", `/api/stories/${story}`, { art_style: "" });
 
 // ---- errors ----
 ok((await get(`/api/stories/${story}/export?format=pdf`)).status === 400, "unknown format 400");

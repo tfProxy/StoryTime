@@ -38,7 +38,11 @@ export type Settings = {
   disableThinking: boolean;
   /** After the AI writes a chapter, also suggest choices for its ending (one more call to the cheaper model). */
   autoSuggestChoices: boolean;
+  /** How picture prompts are written: comma-separated tags (SDXL, Pony, SD 1.5) or plain sentences (Flux, SD3). */
+  imagePromptStyle: ImagePromptStyle;
 };
+
+export type ImagePromptStyle = "tags" | "natural";
 
 export const DEFAULT_SETTINGS: Settings = {
   connections: [],
@@ -48,6 +52,7 @@ export const DEFAULT_SETTINGS: Settings = {
   contextTokens: 8000,
   disableThinking: false,
   autoSuggestChoices: false,
+  imagePromptStyle: "tags",
 };
 
 // Each field falls back to its default when missing or invalid, so partial files still
@@ -81,6 +86,7 @@ const settingsSchema = z.object({
   contextTokens: z.number().int().min(1000).max(2_000_000).catch(DEFAULT_SETTINGS.contextTokens),
   disableThinking: z.boolean().catch(false),
   autoSuggestChoices: z.boolean().catch(false),
+  imagePromptStyle: z.enum(["tags", "natural"]).catch("tags"),
 });
 
 export function parseSettings(raw: unknown): Settings {

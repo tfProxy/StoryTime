@@ -32,6 +32,30 @@ ok((await call("PATCH", `/api/stories/${story}`, { style: "x".repeat(3001) })).s
 await call("PATCH", `/api/stories/${story}`, { style: "" });
 ok((await call("GET", `/api/stories/${story}`)).json.style === "", "style notes can be cleared");
 
+// ---- the art style for picture prompts ----
+ok(s.art_style === "", "a new story has no art style");
+r = await call("PATCH", `/api/stories/${story}`, { art_style: "  Watercolor storybook, soft muted palette.  " });
+s = (await call("GET", `/api/stories/${story}`)).json;
+ok(r.status === 200 && s.art_style === "Watercolor storybook, soft muted palette." && s.style === "" && s.title === "Styled 2" && s.premise === "q", "the art style can be saved on its own (trimmed), leaving the other fields");
+await call("PATCH", `/api/stories/${story}`, { style: "Keep it short.", title: "Styled 3" });
+s = (await call("GET", `/api/stories/${story}`)).json;
+ok(s.art_style === "Watercolor storybook, soft muted palette." && s.style === "Keep it short." && s.title === "Styled 3", "editing the other fields leaves the art style");
+ok((await call("PATCH", `/api/stories/${story}`, { art_style: "x".repeat(1001) })).status === 400, "the art style has a length limit");
+ok((await call("PATCH", `/api/stories/${story}`, { art_style: "x".repeat(1000) })).status === 200 && (await call("GET", `/api/stories/${story}`)).json.art_style.length === 1000, "…of 1000 characters");
+ok((await call("GET", `/api/stories`)).json.find((x) => x.id === story)?.art_style?.length === 1000, "the story list carries it too");
+await call("PATCH", `/api/stories/${story}`, { art_style: "" });
+ok((await call("GET", `/api/stories/${story}`)).json.art_style === "", "the art style can be cleared");
+await call("PATCH", `/api/stories/${story}`, { art_style: "Ink and wash." });
+const plainExport = await (await fetch(`${B}/api/stories/${story}/export?format=json`)).json();
+ok(plainExport.story.art_style === "Ink and wash.", "the JSON export includes the art style");
+r = await call("POST", "/api/stories/import", plainExport);
+ok(r.status === 201 && (await call("GET", `/api/stories/${r.json.story_id}`)).json.art_style === "Ink and wash.", "…and importing it brings it back");
+delete plainExport.story.art_style;
+r = await call("POST", "/api/stories/import", plainExport);
+ok(r.status === 201 && (await call("GET", `/api/stories/${r.json.story_id}`)).json.art_style === "", "an older export without an art style imports with none");
+const tooLong = structuredClone(plainExport); tooLong.story.art_style = "x".repeat(1001);
+ok((await call("POST", "/api/stories/import", tooLong)).status === 400, "an import with an over-long art style is refused");
+
 // export and import keep them
 await call("PATCH", `/api/stories/${story}`, { style: "Keep it short." });
 const exported = await (await fetch(`${B}/api/stories/${story}/export?format=json`)).json();

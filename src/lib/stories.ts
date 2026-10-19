@@ -8,6 +8,8 @@ export type Story = {
   premise: string;
   /** Author's style notes (point of view, tense, tone, limits), sent with every drafting prompt. */
   style: string;
+  /** The look of the story's pictures (medium, palette, mood), added to every picture prompt. */
+  art_style: string;
   root_chapter_id: string | null;
   created_at: number;
   /** When the cover image was last set (it changes with every upload); null when there is no cover. */
@@ -103,6 +105,7 @@ export const EditStorySchema = z.object({
   title: required(LIMITS.title).optional(),
   premise: text(LIMITS.premise).optional(),
   style: text(LIMITS.style).optional(),
+  art_style: text(LIMITS.artStyle).optional(),
 });
 
 export class PostError extends Error {
@@ -119,7 +122,7 @@ const now = () => Date.now();
 export function listStories(): (Story & { chapter_count: number })[] {
   return db()
     .prepare(
-      `SELECT s.id, s.title, s.premise, s.style, s.root_chapter_id, s.created_at, s.cover_updated_at AS cover_version,
+      `SELECT s.id, s.title, s.premise, s.style, s.art_style, s.root_chapter_id, s.created_at, s.cover_updated_at AS cover_version,
               (SELECT COUNT(*) FROM chapters c WHERE c.story_id = s.id) AS chapter_count
          FROM stories s ORDER BY s.created_at DESC`,
     )
@@ -129,7 +132,7 @@ export function listStories(): (Story & { chapter_count: number })[] {
 export function getStory(id: string): Story | undefined {
   return db()
     .prepare(
-      `SELECT id, title, premise, style, root_chapter_id, created_at, cover_updated_at AS cover_version
+      `SELECT id, title, premise, style, art_style, root_chapter_id, created_at, cover_updated_at AS cover_version
          FROM stories WHERE id = ?`,
     )
     .get(id) as Story | undefined;
@@ -435,8 +438,11 @@ export function editStory(storyId: string, input: z.infer<typeof EditStorySchema
     const story = getStory(storyId);
     if (!story?.root_chapter_id) throw new PostError("That story does not exist", 404);
     db()
-      .prepare(`UPDATE stories SET title = ?, premise = ?, style = ? WHERE id = ?`)
-      .run(input.title ?? story.title, input.premise ?? story.premise, input.style ?? story.style, storyId);
+      .prepare(`UPDATE stories SET title = ?, premise = ?, style = ?, art_style = ? WHERE id = ?`)
+      .run(
+        input.title ?? story.title, input.premise ?? story.premise, input.style ?? story.style,
+        input.art_style ?? story.art_style, storyId,
+      );
     return { ok: true as const };
   })();
 }

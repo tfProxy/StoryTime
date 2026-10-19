@@ -42,6 +42,17 @@ ok(page.status === 200 && (await page.text()).includes("Start v2"), "the importe
 const listed = (await (await fetch(`${B}/api/stories`)).json()).filter((s) => s.title === "Round Trip");
 ok(listed.length === 2, "both copies are listed");
 
+// ---- the art style ----
+ok(data.story.art_style === "", "setup: the original has no art style");
+await call("PATCH", `/api/stories/${story}`, { art_style: "Ink and wash, muted colours" });
+const styled = await exportOf(story);
+r = await call("POST", "/api/stories/import", styled);
+ok(r.status === 201 && (await exportOf(r.json.story_id)).story.art_style === "Ink and wash, muted colours", "the art style round-trips");
+const noArt = structuredClone(styled); delete noArt.story.art_style;
+r = await call("POST", "/api/stories/import", noArt);
+ok(r.status === 201 && (await exportOf(r.json.story_id)).story.art_style === "", "a file without an art style imports with none");
+await call("PATCH", `/api/stories/${story}`, { art_style: "" });
+
 // ---- version 1 files (no revisions) ----
 const v1 = { ...data, version: 1 }; delete v1.revisions;
 ok((await call("POST", "/api/stories/import", v1)).status === 201, "a version 1 export still imports");

@@ -180,6 +180,10 @@ export const MIGRATIONS: string[] = [
     PRIMARY KEY (chapter_id, slot)
   );
   `,
+  // 10: the story's art style (medium, palette, mood), added to every picture prompt for it.
+  `
+  ALTER TABLE stories ADD COLUMN art_style TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 function open(): Database.Database {

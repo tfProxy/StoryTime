@@ -1017,6 +1017,15 @@ main:has(.library) {
   border-radius: 6px;
 }
 
+.image-prompt {
+  margin-bottom: 1rem;
+}
+
+.image-prompt-result {
+  display: grid;
+  gap: 0.75rem;
+}
+
 /* The Illustrate chapter page: one card per picture, side by side when there is room. */
 .image-editors {
   display: grid;
