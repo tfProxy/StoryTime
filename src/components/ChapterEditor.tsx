@@ -34,7 +34,6 @@ import {
 import type { PathChapter } from "@/lib/ai/codexAi";
 import { draftOps, foldCodex, isDraftEntry, type CodexOp } from "@/lib/codex";
 import { deleteDraft, DraftConflict, emptyDraft, getDraft, saveDraft, type Draft } from "@/lib/drafts";
-import { diffWords } from "@/lib/diff";
 import Prose from "./Prose";
 import AutoTextarea from "./AutoTextarea";
 import CodexPanel from "./CodexPanel";
@@ -150,16 +149,12 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const [codexOpen, setCodexOpen] = useState(false);
   // What the codex drawer opens on: an entry id, "new", or the list. `n` remounts it on each open.
   const [codexStart, setCodexStart] = useState<{ editing: string | null; n: number }>({ editing: null, n: 0 });
-  // Brainstorm and Direction are open until there is a chapter, then fold away; null until the author toggles one.
+  // Brainstorm is open until there is a chapter, then folds away; null until the author toggles it.
   const [brainstormPref, setBrainstormPref] = useState<boolean | null>(null);
-  const [directionPref, setDirectionPref] = useState<boolean | null>(null);
   // After the AI writes, keep showing the read-only text until the user chooses to edit it.
   const [reading, setReading] = useState(false);
   // The part of the chapter text selected in the editor; "Revise" then changes only that.
   const [selection, setSelection] = useState<{ start: number; end: number; text: string } | null>(null);
-  // Comparing the draft being shown with another one: whether it's open, and which one.
-  const [compareOpen, setCompareOpen] = useState(false);
-  const [compareWith, setCompareWith] = useState<number | null>(null);
   // When the draft was last saved, or that it couldn't be.
   const [saved, setSaved] = useState<{ at: number } | { failed: true } | null>(null);
   // A save was refused because the draft was saved from another tab or browser first.
@@ -464,7 +459,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     abortRef.current = ctl;
     startBusy(kind);
     setReading(true);
-    setCompareOpen(false);
     // With a passage selected, only that part of the text is rewritten; the rest and the title stay as they are.
     const picked = kind === "refine" ? currentSelection(draft.body) : null;
     const before = picked ? draft.body.slice(0, picked.start) : "";
@@ -893,21 +887,9 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const words = countWords(draft.body);
   const hasBody = draft.body.trim() !== "";
   const brainstormOpen = brainstormPref ?? !hasBody;
-  const directionOpen = directionPref ?? !hasBody;
-  const directionText = draft.prompt.trim().replace(/\s+/g, " ");
-  const directionSnippet = directionText ? snippet(directionText) : "the AI decides";
   const targetWords = LENGTH_WORDS[length];
   const picked = currentSelection(draft.body);
   const pickedWords = picked ? countWords(picked.text) : 0;
-  // Comparing shows what changed from another draft to this one, in place of the text.
-  const otherDraft =
-    compareWith !== null && compareWith !== versionIndex && draft.versions?.[compareWith]
-      ? compareWith
-      : versionIndex > 0
-        ? versionIndex - 1
-        : versionIndex + 1;
-  const comparing = compareOpen && versionCount > 1 && busy === null;
-  const diff = comparing ? diffWords(draft.versions?.[otherDraft]?.body ?? "", draft.body) : [];
   // A chapter with no choices ends its branch.
   const endsBranch = finalChoices.length === 0 && (target.kind !== "edit" || keptExisting === 0);
   // A new chapter with choices can go straight on to writing one of them.
@@ -1180,26 +1162,17 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
           )}
 
           <section className="ai-panel">
-            <details
-              className="fold"
-              open={directionOpen}
-              onToggle={(e) => {
-                if (e.currentTarget.open !== directionOpen) setDirectionPref(e.currentTarget.open);
-              }}
-            >
-              <summary>
-                Direction
-                {!directionOpen && <span className="meta">{directionSnippet}</span>}
-              </summary>
-              <label>
-                What should happen? <small>(optional; leave blank to let the AI decide. Put extra instructions in [square brackets], like “Jim picks up the ring [he is nervous]”)</small>
-                <AutoTextarea
-                  style={{ minHeight: "5.5rem", fontFamily: "inherit" }}
-                  value={draft.prompt}
-                  onChange={(e) => patch({ prompt: e.target.value })}
-                />
-              </label>
-            </details>
+            <h2>Direction</h2>
+            <label>
+              <span>
+                What should happen? <small>(optional; [square brackets] hold extra instructions)</small>
+              </span>
+              <AutoTextarea
+                style={{ minHeight: "5.5rem", fontFamily: "inherit" }}
+                value={draft.prompt}
+                onChange={(e) => patch({ prompt: e.target.value })}
+              />
+            </label>
             <div className="row">
               <select value={length} onChange={(e) => patch({ length: e.target.value as Length })} style={{ width: "auto" }}>
                 <option value="short">Short (~300 words)</option>
@@ -1238,23 +1211,35 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
 
           <section className="ai-panel">
             <h2>Chapter</h2>
-            <div className="row" style={{ flexWrap: "wrap" }} aria-label="Draft versions">
-              {versionCount > 1 && (
-                <>
-                  <button type="button" className="secondary" onClick={() => showVersion(versionIndex - 1)} disabled={busy !== null || versionIndex === 0} aria-label="Previous draft">
-                    &lt;
-                  </button>
-                  <span className="meta">
-                    Draft {versionIndex + 1} of {versionCount}
-                  </span>
-                  <button type="button" className="secondary" onClick={() => showVersion(versionIndex + 1)} disabled={busy !== null || versionIndex === versionCount - 1} aria-label="Next draft">
-                    &gt;
-                  </button>
-                  <button type="button" className="secondary" onClick={() => setCompareOpen((o) => !o)} disabled={busy !== null} aria-pressed={comparing}>
-                    Compare
-                  </button>
-                </>
-              )}
+            <div id="field-title">
+              <label htmlFor="chapter-title">Title</label>
+              <div className="row">
+                <input
+                  id="chapter-title"
+                  aria-label="Chapter title"
+                  style={{ flex: 1, minWidth: 0 }}
+                  value={draft.title}
+                  maxLength={LIMITS.title}
+                  onChange={(e) => patch({ title: e.target.value })}
+                />
+                {versionCount > 1 && (
+                  <div className="row draft-nav" role="group" aria-label="Draft versions">
+                    <button type="button" className="secondary" onClick={() => showVersion(versionIndex - 1)} disabled={busy !== null || versionIndex === 0} aria-label="Previous draft">
+                      &lt;
+                    </button>
+                    <span className="meta" aria-label={`Draft ${versionIndex + 1} of ${versionCount}`}>
+                      {versionIndex + 1}/{versionCount}
+                    </span>
+                    <button type="button" className="secondary" onClick={() => showVersion(versionIndex + 1)} disabled={busy !== null || versionIndex === versionCount - 1} aria-label="Next draft">
+                      &gt;
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="row body-head">
+              <label htmlFor="chapter-body">Chapter text</label>
               <span className="meta word-count" aria-live="polite">
                 {busy === "generate"
                   ? `Writing (${words.toLocaleString()}/~${targetWords.toLocaleString()} words)`
@@ -1262,67 +1247,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               </span>
             </div>
 
-            {comparing && (
-              <div className="row" style={{ flexWrap: "wrap" }}>
-                <label className="inline-label">
-                  Compare with
-                  <select value={otherDraft} onChange={(e) => setCompareWith(Number(e.target.value))} style={{ width: "auto" }}>
-                    {(draft.versions ?? []).map((_, j) =>
-                      j === versionIndex ? null : (
-                        <option key={j} value={j}>
-                          Draft {j + 1}
-                        </option>
-                      ),
-                    )}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => {
-                    if (!window.confirm(`Keep only draft ${versionIndex + 1} and discard the other ${versionCount - 1}?`)) return;
-                    patch({ versions: [{ title: draft.title, body: draft.body }], versionIndex: 0 });
-                    setCompareOpen(false);
-                  }}
-                >
-                  Keep only this draft
-                </button>
-                {versionCount >= MAX_VERSIONS && <span className="meta">Only the latest {MAX_VERSIONS} drafts are kept.</span>}
-              </div>
-            )}
-
-            <label id="field-title">
-              Chapter title
-              <input value={draft.title} maxLength={LIMITS.title} onChange={(e) => patch({ title: e.target.value })} />
-            </label>
-
             <div id="field-body">
-              {comparing ? (
-                <div>
-                  <p className="meta">
-                    Changes from draft {otherDraft + 1} to draft {versionIndex + 1}: <del className="diff-del">removed</del>{" "}
-                    <ins className="diff-add">added</ins>
-                  </p>
-                  <p className="diff">
-                    {diff.map((part, i) =>
-                      part.type === "same" ? (
-                        part.text
-                      ) : part.type === "add" ? (
-                        <ins key={i} className="diff-add">
-                          {part.text}
-                        </ins>
-                      ) : (
-                        <del key={i} className="diff-del">
-                          {part.text}
-                        </del>
-                      ),
-                    )}
-                  </p>
-                  <button type="button" className="secondary" onClick={() => setCompareOpen(false)}>
-                    Back to editing
-                  </button>
-                </div>
-              ) : working || reading ? (
+              {working || reading ? (
                 <div>
                   <Prose text={draft.body} />
                   {!working && (
@@ -1332,19 +1258,17 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                   )}
                 </div>
               ) : (
-                <label>
-                  Chapter text
-                  <AutoTextarea
-                    value={draft.body}
-                    maxLength={LIMITS.body}
-                    onChange={(e) => patch({ body: e.target.value })}
-                    onSelect={(e) => {
-                      const { selectionStart: start, selectionEnd: end, value } = e.currentTarget;
-                      const text = value.slice(start, end);
-                      setSelection(text.trim() ? { start, end, text } : null);
-                    }}
-                  />
-                </label>
+                <AutoTextarea
+                  id="chapter-body"
+                  value={draft.body}
+                  maxLength={LIMITS.body}
+                  onChange={(e) => patch({ body: e.target.value })}
+                  onSelect={(e) => {
+                    const { selectionStart: start, selectionEnd: end, value } = e.currentTarget;
+                    const text = value.slice(start, end);
+                    setSelection(text.trim() ? { start, end, text } : null);
+                  }}
+                />
               )}
             </div>
 
@@ -1593,9 +1517,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
             </p>
           ) : (
             <p className="meta">
-              {words.toLocaleString()} word{words === 1 ? "" : "s"} · ready to {target.kind === "edit" ? "save" : "post"}
-              {endsBranch && " · ends the branch"}
-            </p>
+              {words.toLocaleString()} word{words === 1 ? "" : "s"} · ready to {target.kind === "edit" ? "save" : "post"}            </p>
           )}
         </div>
         {posting && (

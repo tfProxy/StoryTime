@@ -438,7 +438,13 @@ h2 {
 }
 
 /* Keep the live word count on one line, with equal-width digits, so it doesn't jitter as it grows. */
+.body-head {
+  justify-content: space-between;
+}
+
 .word-count {
+  margin: 0;
+  text-align: right;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -448,31 +454,6 @@ h2 {
   align-items: center;
   gap: 0.5rem;
   font-weight: 400;
-}
-
-/* Comparing two drafts: the newer text, with what it dropped and what it added marked. */
-.diff {
-  margin: 0 0 0.75rem;
-  white-space: pre-wrap;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 1.05rem;
-  line-height: 1.7;
-}
-
-.diff-add,
-.diff-del {
-  text-decoration-thickness: 1px;
-  border-radius: 2px;
-}
-
-.diff-add {
-  text-decoration: none;
-  background: color-mix(in srgb, #2e8b57 22%, transparent);
-}
-
-.diff-del {
-  color: var(--muted);
-  background: color-mix(in srgb, #c0392b 18%, transparent);
 }
 
 /* Stays at the bottom of the window so posting is always in reach and the reasons it can't be are in view. */
@@ -939,6 +920,17 @@ fieldset.connection legend {
 }
 
 /* A row holding a model picker wraps, so it fits on a phone. */
+.draft-nav {
+  flex: none;
+  gap: 0.25rem;
+}
+
+.draft-nav .meta {
+  margin: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .row:has(> .model-picker) {
   flex-wrap: wrap;
 }

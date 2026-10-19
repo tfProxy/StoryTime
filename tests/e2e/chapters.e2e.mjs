@@ -54,7 +54,7 @@ await page.getByRole("button", { name: "Revise" }).click();
 await page.getByRole("button", { name: "Edit text" }).click();
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("trembling"));
 ok((await page.getByLabel("Chapter title").inputValue()) === "The Door Revised", "revise updated title");
-ok(await page.getByText("Draft 2 of 2").isVisible(), "a revision counts as another draft");
+ok(await page.getByText("2/2", { exact: true }).isVisible(), "a revision counts as another draft");
 await page.getByRole("button", { name: "Previous draft" }).click();
 ok((await page.getByLabel("Chapter text").inputValue()) === body1, "the previous draft is the text before the revision");
 await page.getByRole("button", { name: "Next draft" }).click();

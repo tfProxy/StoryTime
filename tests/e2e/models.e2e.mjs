@@ -110,10 +110,12 @@ await page.getByRole("button", { name: "Suggest choices" }).click();
 await until(() => calls.length > before, "the second suggest-choices call");
 ok(calls.at(-1).model === "vendor/big", "suggestions use the model picked for them");
 
-// ---- "Make default" saves the pick to Settings ----
-await page.getByRole("button", { name: "Make default" }).first().click();
+// ---- the default is chosen in Settings, not next to the picker ----
+ok((await page.getByRole("button", { name: "Make default" }).count()) === 0, "the picker has no “Make default” button");
+await page.goto(`${BASE}/settings`);
+await page.getByLabel(/^Default model/).selectOption({ index: 2 }); // after the blank entry and "alpha"
 await until(async () => (await settingsNow()).defaults.main?.model === "vendor/big", "the default to change");
-ok(true, "“Make default” makes the picked model the default");
+ok(true, "choosing the default model in Settings changes it");
 
 // ---- removing a connection drops its starred models ----
 await page.goto(`${BASE}/settings`);

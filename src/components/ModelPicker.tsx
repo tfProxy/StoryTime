@@ -4,11 +4,9 @@ import Link from "next/link";
 import { providerInfo } from "@/lib/ai/providers";
 import {
   defaultRef,
-  findConnection,
   modelLabel,
   parseRefKey,
   refKey,
-  saveSettings,
   sameRef,
   useSettings,
   type ModelRef,
@@ -38,12 +36,6 @@ export default function ModelPicker({
   const starred = value ? settings.favorites.some((f) => sameRef(f, value)) : true;
   const favName = (m: string, l: string) => l.trim() || m;
 
-  function makeDefault() {
-    if (!value) return;
-    void saveSettings({ ...settings, defaults: { ...settings.defaults, [role]: value } });
-    onChange(null);
-  }
-
   return (
     <span className="row model-picker" style={{ gap: "0.4rem" }}>
       <select
@@ -71,11 +63,6 @@ export default function ModelPicker({
               </optgroup>
             ))}
       </select>
-      {value && findConnection(settings, value.connectionId) && !sameRef(value, def) && (
-        <button type="button" className="secondary" onClick={makeDefault} title="Use this model by default for new drafts">
-          Make default
-        </button>
-      )}
       {groups.length === 0 && (
         <Link href="/settings#models" className="meta">
           Star models

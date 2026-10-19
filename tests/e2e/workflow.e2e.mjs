@@ -54,7 +54,7 @@ ok(await instruction.isDisabled(), "the revise box is there but disabled until t
 await page.getByLabel("Chapter title").fill("Door");
 await page.getByLabel("Chapter text").fill("One. Two sentences here. Three.");
 ok(await instruction.isEnabled(), "…and enabled once there is text");
-ok(await page.getByText(/posting now ends this branch/).isVisible() && /ends the branch/.test(await page.locator(".action-bar").innerText()), "no choices: the branch-ending notice shows");
+ok(await page.getByText(/posting now ends this branch/).isVisible() && !/ends the branch/.test(await page.locator(".action-bar").innerText()), "no choices: the notice shows by the choices, not in the footer");
 await page.getByPlaceholder("Choice 1").fill("Go in");
 ok(!(await page.getByText(/posting now ends this branch/).isVisible()), "…and goes away with a choice");
 await page.waitForFunction(() => /Draft saved/.test(document.body.innerText));
@@ -78,15 +78,6 @@ ok(asked.system.includes("one marked passage") && asked.user.includes("One. [[ST
 await page.getByRole("button", { name: "Edit text" }).click();
 ok((await page.getByLabel("Chapter text").inputValue()) === "One. REWRITTEN Three.", "the reply replaces just that passage");
 ok((await page.getByLabel("Chapter title").inputValue()) === "Door", "the title is untouched");
-
-// compare the two drafts
-await page.getByRole("button", { name: "Compare" }).click();
-const added = await page.locator(".diff ins").allInnerTexts();
-const removed = await page.locator(".diff del").allInnerTexts();
-ok(added.join("").includes("REWRITTEN") && removed.join("").includes("sentences"), "compare marks what was added and removed: +" + JSON.stringify(added) + " -" + JSON.stringify(removed));
-await page.getByRole("button", { name: "Keep only this draft" }).click();
-ok(!(await page.getByText(/Draft \d of \d/).isVisible()), "keeping only this draft drops the others");
-ok((await page.getByLabel("Chapter text").inputValue()) === "One. REWRITTEN Three.", "…and keeps its text");
 
 // post without writing a summary: one is made
 const before = prompts.length;
