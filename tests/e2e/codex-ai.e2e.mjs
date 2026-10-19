@@ -50,8 +50,7 @@ const browser = await launch();
 const ctx = await browser.newContext();
 await ctx.addInitScript(() => {
   if (!localStorage.getItem("storytime.settings.v1")) {
-    localStorage.setItem("storytime.settings.v1", JSON.stringify({ activeProvider: "ollama",
-      providers: { ollama: { baseUrl: "http://localhost:3222/v1", apiKey: "", model: "main", summaryModel: "cheap" } } }));
+    localStorage.setItem("storytime.settings.v1", JSON.stringify({ connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } }));
   }
 });
 const page = await ctx.newPage();
@@ -135,7 +134,7 @@ await page.locator("article.card", { hasText: "Mira" }).getByText("A human thief
 ok(true, "the root of that story still has the human Mira (changes were anchored per chapter)");
 
 // ---- friendly error on a bad model reply ----
-await page.evaluate(() => { const s = JSON.parse(localStorage.getItem("storytime.settings.v1")); s.providers.ollama.baseUrl = "http://localhost:1/v1"; localStorage.setItem("storytime.settings.v1", JSON.stringify(s)); });
+await page.evaluate(() => { const s = JSON.parse(localStorage.getItem("storytime.settings.v1")); s.connections[0].baseUrl = "http://localhost:1/v1"; localStorage.setItem("storytime.settings.v1", JSON.stringify(s)); });
 await page.goto(`${BASE}/c/${s2.a}/codex`);
 await page.locator("details.ai-panel > summary").click();
 await page.getByRole("button", { name: "Scan for codex changes" }).click();

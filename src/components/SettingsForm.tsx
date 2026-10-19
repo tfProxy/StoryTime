@@ -1,19 +1,25 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { PROVIDERS, providerInfo, type ProviderId } from "@/lib/ai/providers";
+import { PROVIDERS, providerInfo, type ProviderKind } from "@/lib/ai/providers";
 import { AiError, listModels, streamChat } from "@/lib/ai/client";
 import PromptButton from "./PromptButton";
 import {
   exportSettingsJson,
+  findConnection,
   importSettingsJson,
+  modelLabel,
+  newConnection,
+  parseRefKey,
+  refKey,
+  removeConnection,
+  sameRef,
   saveSettings,
   useSettings,
-  type ProviderSettings,
+  type Connection,
+  type ModelRef,
   type Settings,
 } from "@/lib/settings";
-
-const CUSTOM = "__custom__";
 
 // What "Try a sample reply" sends.
 const SAMPLE_REQUEST = {
@@ -21,93 +27,232 @@ const SAMPLE_REQUEST = {
   message: "Write one sentence that opens a fantasy adventure story.",
 };
 
-// A real <select> once models are known (datalists don't open on iOS/Android), with a way to type any name.
-function ModelField({
+// Long lists (OpenRouter has hundreds of models) only show this many until filtered.
+const SHOW_MODELS = 60;
+
+type Status = { kind: "ok" | "error"; text: string };
+
+function ConnectionCard({
+  conn,
+  settings,
+  onChange,
+  onRemove,
+  onToggleFavorite,
+}: {
+  conn: Connection;
+  settings: Settings;
+  onChange: (patch: Partial<Connection>) => void;
+  onRemove: () => void;
+  onToggleFavorite: (ref: ModelRef) => void;
+}) {
+  const info = providerInfo(conn.kind);
+  const [showKey, setShowKey] = useState(false);
+  const [models, setModels] = useState<string[] | null>(null);
+  const [filter, setFilter] = useState("");
+  const [typed, setTyped] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [status, setStatus] = useState<Status | null>(null);
+
+  async function test() {
+    setTesting(true);
+    setStatus(null);
+    try {
+      const ids = await listModels(conn);
+      setModels(ids);
+      setStatus({
+        kind: "ok",
+        text: `Connected. ${ids.length} model${ids.length === 1 ? "" : "s"} available${ids.length ? "; star the ones you want to use" : ""}.`,
+      });
+    } catch (e) {
+      setModels(null);
+      setStatus({ kind: "error", text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  const isFav = (model: string) => settings.favorites.some((f) => sameRef(f, { connectionId: conn.id, model }));
+  const q = filter.trim().toLowerCase();
+  const matching = (models ?? []).filter((m) => !q || m.toLowerCase().includes(q));
+  const shown = matching.slice(0, SHOW_MODELS);
+
+  function addTyped() {
+    const model = typed.trim();
+    if (!model) return;
+    if (!isFav(model)) onToggleFavorite({ connectionId: conn.id, model });
+    setTyped("");
+  }
+
+  return (
+    <fieldset className="card connection" aria-label={conn.name || info.label}>
+      <legend>
+        {conn.name || info.label} <span className="meta">({info.label})</span>
+      </legend>
+      <label>
+        Name
+        <input value={conn.name} onChange={(e) => onChange({ name: e.target.value })} />
+      </label>
+      <label>
+        Server URL
+        <input value={conn.baseUrl} onChange={(e) => onChange({ baseUrl: e.target.value })} />
+        <small>{info.hint}</small>
+      </label>
+      <label>
+        API key {!info.needsKey && <small>(optional)</small>}
+        <span className="row">
+          <input
+            type={showKey ? "text" : "password"}
+            autoComplete="off"
+            value={conn.apiKey}
+            onChange={(e) => onChange({ apiKey: e.target.value })}
+          />
+          <button type="button" className="secondary" onClick={() => setShowKey(!showKey)}>
+            {showKey ? "Hide" : "Show"}
+          </button>
+        </span>
+      </label>
+      <div className="row" style={{ flexWrap: "wrap" }}>
+        <button type="button" onClick={test} disabled={testing}>
+          {testing ? "Testing…" : models ? "Refresh models" : "Test connection"}
+        </button>
+        <button type="button" className="secondary" onClick={onRemove}>
+          Remove connection
+        </button>
+      </div>
+      {status && <p className={status.kind}>{status.text}</p>}
+
+      {models && models.length > 0 && (
+        <div className="model-list">
+          {models.length > 8 && (
+            <input
+              type="search"
+              placeholder={`Filter ${models.length} models`}
+              aria-label="Filter models"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            />
+          )}
+          <ul className="codex-picks">
+            {shown.map((m) => (
+              <li key={m} className="codex-pick">
+                <span style={{ overflowWrap: "anywhere" }}>{m}</span>
+                <button
+                  type="button"
+                  className={isFav(m) ? "" : "secondary"}
+                  aria-pressed={isFav(m)}
+                  aria-label={`${isFav(m) ? "Unstar" : "Star"} ${m}`}
+                  onClick={() => onToggleFavorite({ connectionId: conn.id, model: m })}
+                >
+                  {isFav(m) ? "★ Starred" : "☆ Star"}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {matching.length > shown.length && (
+            <p className="meta">
+              Showing {shown.length} of {matching.length}. Type in the filter to find others.
+            </p>
+          )}
+        </div>
+      )}
+
+      <label>
+        Add a model by name <small>(for models the server doesn&apos;t list)</small>
+        <span className="row">
+          <input
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                addTyped();
+              }
+            }}
+          />
+          <button type="button" className="secondary" onClick={addTyped} disabled={!typed.trim()}>
+            Star
+          </button>
+        </span>
+      </label>
+    </fieldset>
+  );
+}
+
+/** A default-model dropdown over the starred models. */
+function DefaultSelect({
+  settings,
   value,
-  models,
   blankLabel,
   onChange,
 }: {
-  value: string;
-  models: string[];
-  blankLabel?: string;
-  onChange: (v: string) => void;
+  settings: Settings;
+  value: ModelRef | null;
+  blankLabel: string;
+  onChange: (ref: ModelRef | null) => void;
 }) {
-  const [custom, setCustom] = useState(false);
-  if (models.length === 0 || custom) {
-    return (
-      <span className="row">
-        <input value={value} onChange={(e) => onChange(e.target.value)} />
-        {models.length > 0 && (
-          <button type="button" className="secondary" onClick={() => setCustom(false)}>
-            List
-          </button>
-        )}
-      </span>
-    );
-  }
-  const known = value === "" || models.includes(value);
+  const starred = !value || settings.favorites.some((f) => sameRef(f, value));
   return (
-    <select
-      value={known ? value : CUSTOM}
-      onChange={(e) => {
-        if (e.target.value === CUSTOM) setCustom(true);
-        else onChange(e.target.value);
-      }}
-    >
-      {blankLabel ? <option value="">{blankLabel}</option> : !known || value === "" ? <option value="">Choose a model…</option> : null}
-      {models.map((m) => (
-        <option key={m} value={m}>
-          {m}
+    <select value={value ? refKey(value) : ""} onChange={(e) => onChange(e.target.value ? parseRefKey(e.target.value) : null)}>
+      <option value="">{blankLabel}</option>
+      {value && !starred && <option value={refKey(value)}>{modelLabel(settings, value)}</option>}
+      {settings.favorites.map((f) => (
+        <option key={refKey(f)} value={refKey(f)}>
+          {modelLabel(settings, f)}
         </option>
       ))}
-      {!known && <option value={CUSTOM}>{value} (typed)</option>}
-      <option value={CUSTOM}>Type a name…</option>
     </select>
   );
 }
 
 export default function SettingsForm() {
   const settings = useSettings();
-  const info = providerInfo(settings.activeProvider);
-  const p = settings.providers[settings.activeProvider];
-
-  const [showKey, setShowKey] = useState(false);
-  const [models, setModels] = useState<string[]>([]);
-  const [status, setStatus] = useState<{ kind: "ok" | "error" | "info"; text: string } | null>(null);
-  const [testing, setTesting] = useState(false);
+  const [addKind, setAddKind] = useState<ProviderKind>("ollama");
+  const [status, setStatus] = useState<Status | null>(null);
   const [trying, setTrying] = useState(false);
   const [reply, setReply] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  function update(patch: Partial<Settings>) {
-    void saveSettings({ ...settings, ...patch }).then((saved) => {
+  function save(next: Settings) {
+    void saveSettings(next).then((saved) => {
       if (!saved) setStatus({ kind: "error", text: "The server couldn't save the settings. Your changes will be lost on reload." });
     });
   }
-  function updateProvider(patch: Partial<ProviderSettings>) {
-    update({
-      providers: { ...settings.providers, [settings.activeProvider]: { ...p, ...patch } },
-    });
+  const update = (patch: Partial<Settings>) => save({ ...settings, ...patch });
+
+  function updateConnection(id: string, patch: Partial<Connection>) {
+    update({ connections: settings.connections.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
   }
 
-  async function testConnection() {
-    setTesting(true);
-    setStatus(null);
-    try {
-      const ids = await listModels(settings);
-      setModels(ids);
-      setStatus({
-        kind: "ok",
-        text: `Connected. ${ids.length} model${ids.length === 1 ? "" : "s"} available${ids.length ? " (pick one in the Model field below)" : ""}.`,
+  function addConnection() {
+    update({ connections: [...settings.connections, newConnection(settings, addKind)] });
+  }
+
+  function deleteConnection(c: Connection) {
+    const favs = settings.favorites.filter((f) => f.connectionId === c.id).length;
+    const what = favs ? ` and its ${favs} starred model${favs === 1 ? "" : "s"}` : "";
+    if (!window.confirm(`Remove “${c.name || providerInfo(c.kind).label}”${what}?`)) return;
+    save(removeConnection(settings, c.id));
+  }
+
+  function toggleFavorite(ref: ModelRef) {
+    if (settings.favorites.some((f) => sameRef(f, ref))) {
+      const clear = (r: ModelRef | null) => (sameRef(r, ref) ? null : r);
+      update({
+        favorites: settings.favorites.filter((f) => !sameRef(f, ref)),
+        defaults: { main: clear(settings.defaults.main), cheap: clear(settings.defaults.cheap) },
       });
-    } catch (e) {
-      setModels([]);
-      setStatus({ kind: "error", text: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setTesting(false);
+    } else {
+      // The first model starred becomes the default, so a fresh setup works straight away.
+      update({
+        favorites: [...settings.favorites, { ...ref, label: "" }],
+        defaults: settings.defaults.main ? settings.defaults : { ...settings.defaults, main: ref },
+      });
     }
+  }
+
+  function renameFavorite(ref: ModelRef, label: string) {
+    update({ favorites: settings.favorites.map((f) => (sameRef(f, ref) ? { ...f, label } : f)) });
   }
 
   async function tryIt() {
@@ -167,138 +312,162 @@ export default function SettingsForm() {
       </p>
 
       <form onSubmit={(e) => e.preventDefault()}>
-        <label>
-          AI provider
-          <select
-            value={settings.activeProvider}
-            onChange={(e) => {
-              setModels([]);
-              setStatus(null);
-              update({ activeProvider: e.target.value as ProviderId });
-            }}
-          >
-            {PROVIDERS.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.label}
-              </option>
-            ))}
-          </select>
-          <small>{info.hint}</small>
-        </label>
-
-        <label>
-          Server URL
-          <input value={p.baseUrl} onChange={(e) => updateProvider({ baseUrl: e.target.value })} />
-        </label>
-
-        <label>
-          API key {!info.needsKey && <small>(optional)</small>}
-          <span className="row">
-            <input
-              type={showKey ? "text" : "password"}
-              autoComplete="off"
-              value={p.apiKey}
-              onChange={(e) => updateProvider({ apiKey: e.target.value })}
+        <section className="settings-section">
+          <h2>Connections</h2>
+          <p className="meta">
+            Add each AI server you use. You can have several, even of the same kind (say, Ollama on two machines).
+          </p>
+          {settings.connections.map((c) => (
+            <ConnectionCard
+              key={c.id}
+              conn={c}
+              settings={settings}
+              onChange={(patch) => updateConnection(c.id, patch)}
+              onRemove={() => deleteConnection(c)}
+              onToggleFavorite={toggleFavorite}
             />
-            <button type="button" className="secondary" onClick={() => setShowKey(!showKey)}>
-              {showKey ? "Hide" : "Show"}
+          ))}
+          <div className="row">
+            <select aria-label="Kind of connection" value={addKind} onChange={(e) => setAddKind(e.target.value as ProviderKind)} style={{ width: "auto" }}>
+              {PROVIDERS.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.label}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={addConnection}>
+              Add connection
             </button>
-          </span>
-        </label>
+          </div>
+        </section>
 
-        <div className="row">
-          <button type="button" onClick={testConnection} disabled={testing}>
-            {testing ? "Testing…" : "Test connection"}
-          </button>
-        </div>
-        {status && <p className={status.kind === "error" ? "error" : "ok"}>{status.text}</p>}
-
-        <label>
-          Model
-          <ModelField value={p.model} models={models} onChange={(v) => updateProvider({ model: v })} />
-        </label>
-
-        <label>
-          Cheaper model <small>(for summaries and small jobs; leave blank to use the main model)</small>
-          <ModelField
-            value={p.summaryModel}
-            models={models}
-            blankLabel="Same as the main model"
-            onChange={(v) => updateProvider({ summaryModel: v })}
-          />
-        </label>
-
-        <label>
-          Temperature <small>(leave blank for the provider&apos;s default)</small>
-          <input
-            type="number"
-            min={0}
-            max={2}
-            step={0.1}
-            value={settings.temperature ?? ""}
-            onChange={(e) => update({ temperature: e.target.value === "" ? null : Number(e.target.value) })}
-          />
-        </label>
-
-        <label>
-          Context budget <small>(approximate tokens of story context to send; lower it for small local models)</small>
-          <input
-            type="number"
-            min={1000}
-            step={500}
-            value={settings.contextTokens}
-            onChange={(e) => update({ contextTokens: Math.max(1000, Number(e.target.value) || 1000) })}
-          />
-        </label>
-
-        <label className="row" style={{ alignItems: "flex-start" }}>
-          <input
-            type="checkbox"
-            style={{ width: "auto" }}
-            checked={settings.disableThinking}
-            onChange={(e) => update({ disableThinking: e.target.checked })}
-          />
-          <span>
-            Disable thinking{" "}
-            <small>
-              (asks the model to skip extended thinking, for faster and cheaper replies. Sent as thinking: disabled to
-              Anthropic and reasoning_effort: none to other providers; turn it off if your model rejects that.)
-            </small>
-          </span>
-        </label>
-
-        <label className="row" style={{ alignItems: "flex-start" }}>
-          <input
-            type="checkbox"
-            style={{ width: "auto" }}
-            checked={settings.autoSuggestChoices}
-            onChange={(e) => update({ autoSuggestChoices: e.target.checked })}
-          />
-          <span>
-            Suggest choices after writing{" "}
-            <small>
-              (when the AI finishes a chapter, it also offers a few choices for the ending, using the cheaper model. This
-              is one extra request each time.)
-            </small>
-          </span>
-        </label>
-
-        <div className="row">
-          <button type="button" className="secondary" onClick={tryIt} disabled={trying}>
-            {trying ? "Generating…" : "Try a sample reply"}
-          </button>
-          <PromptButton label="Try a sample reply" build={() => SAMPLE_REQUEST} />
-          {trying && (
-            <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
-              Stop
-            </button>
+        <section id="models" className="settings-section">
+          <h2>Starred models</h2>
+          {settings.favorites.length === 0 ? (
+            <p className="meta">
+              None yet. Test a connection above and star the models you want; they become the choices on the writing page.
+            </p>
+          ) : (
+            <>
+              <p className="meta">These are the models you can switch between while writing. A nickname is optional.</p>
+              <ul className="codex-picks">
+                {settings.favorites.map((f) => {
+                  const conn = findConnection(settings, f.connectionId);
+                  return (
+                    <li key={refKey(f)} className="codex-pick" style={{ flexWrap: "wrap" }}>
+                      <span style={{ flex: "1 1 12rem", overflowWrap: "anywhere" }}>
+                        {f.model}
+                        <span className="meta"> · {conn?.name || (conn ? providerInfo(conn.kind).label : "")}</span>
+                      </span>
+                      <input
+                        aria-label={`Nickname for ${f.model}`}
+                        placeholder="Nickname"
+                        value={f.label}
+                        onChange={(e) => renameFavorite(f, e.target.value)}
+                        style={{ flex: "1 1 8rem", width: "auto" }}
+                      />
+                      <button type="button" className="secondary" onClick={() => toggleFavorite(f)} aria-label={`Unstar ${f.model}`}>
+                        Remove
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
           )}
-        </div>
-        {reply && (
-          <blockquote className="sample">
-            {reply}
-          </blockquote>
-        )}
+
+          <label>
+            Default model <small>(for writing chapters; each draft can pick another)</small>
+            <DefaultSelect
+              settings={settings}
+              value={settings.defaults.main}
+              blankLabel="Choose a starred model…"
+              onChange={(r) => update({ defaults: { ...settings.defaults, main: r } })}
+            />
+          </label>
+          <label>
+            Cheaper model <small>(for summaries, suggestions and small jobs; drafts can pick another for suggestions)</small>
+            <DefaultSelect
+              settings={settings}
+              value={settings.defaults.cheap}
+              blankLabel="Same as the default model"
+              onChange={(r) => update({ defaults: { ...settings.defaults, cheap: r } })}
+            />
+          </label>
+        </section>
+
+        <section className="settings-section">
+          <h2>Options</h2>
+          <label>
+            Temperature <small>(leave blank for the provider&apos;s default)</small>
+            <input
+              type="number"
+              min={0}
+              max={2}
+              step={0.1}
+              value={settings.temperature ?? ""}
+              onChange={(e) => update({ temperature: e.target.value === "" ? null : Number(e.target.value) })}
+            />
+          </label>
+
+          <label>
+            Context budget <small>(approximate tokens of story context to send; lower it for small local models)</small>
+            <input
+              type="number"
+              min={1000}
+              step={500}
+              value={settings.contextTokens}
+              onChange={(e) => update({ contextTokens: Math.max(1000, Number(e.target.value) || 1000) })}
+            />
+          </label>
+
+          <label className="row" style={{ alignItems: "flex-start" }}>
+            <input
+              type="checkbox"
+              style={{ width: "auto" }}
+              checked={settings.disableThinking}
+              onChange={(e) => update({ disableThinking: e.target.checked })}
+            />
+            <span>
+              Disable thinking{" "}
+              <small>
+                (asks the model to skip extended thinking, for faster and cheaper replies. Sent as thinking: disabled to
+                Anthropic, reasoning: {"{"}effort: none{"}"} to OpenRouter and reasoning_effort: none to others; turn it
+                off if your model rejects that.)
+              </small>
+            </span>
+          </label>
+
+          <label className="row" style={{ alignItems: "flex-start" }}>
+            <input
+              type="checkbox"
+              style={{ width: "auto" }}
+              checked={settings.autoSuggestChoices}
+              onChange={(e) => update({ autoSuggestChoices: e.target.checked })}
+            />
+            <span>
+              Suggest choices after writing{" "}
+              <small>
+                (when the AI finishes a chapter, it also offers a few choices for the ending, using the suggestions
+                model. This is one extra request each time.)
+              </small>
+            </span>
+          </label>
+
+          <div className="row">
+            <button type="button" className="secondary" onClick={tryIt} disabled={trying}>
+              {trying ? "Generating…" : "Try a sample reply"}
+            </button>
+            <PromptButton label="Try a sample reply" note="Sent to your default model." build={() => SAMPLE_REQUEST} />
+            {trying && (
+              <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
+                Stop
+              </button>
+            )}
+          </div>
+          {status && <p className={status.kind}>{status.text}</p>}
+          {reply && <blockquote className="sample">{reply}</blockquote>}
+        </section>
       </form>
 
       <section>
@@ -322,9 +491,7 @@ export default function SettingsForm() {
             }}
           />
         </div>
-        <p className="meta">
-          The exported file contains your API keys. Keep it private.
-        </p>
+        <p className="meta">The exported file contains your API keys. Keep it private.</p>
       </section>
     </div>
   );

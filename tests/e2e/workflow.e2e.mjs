@@ -43,8 +43,7 @@ const browser = await launch();
 const ctx = await browser.newContext();
 await ctx.addInitScript(() => {
   if (!localStorage.getItem("storytime.settings.v1")) {
-    localStorage.setItem("storytime.settings.v1", JSON.stringify({ activeProvider: "ollama",
-      providers: { ollama: { baseUrl: "http://localhost:3222/v1", apiKey: "", model: "main", summaryModel: "cheap" } } }));
+    localStorage.setItem("storytime.settings.v1", JSON.stringify({ connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } }));
   }
 });
 const page = await ctx.newPage();
@@ -104,7 +103,7 @@ ok(c.title === "Door" && c.summary === "SUM(Door)" && prompts.slice(before).some
 // suggesting choices after writing is a setting, off by default
 const settingsNow = (await get("/api/settings")).settings;
 const withSetting = (on) => ({
-  ...(settingsNow ?? { activeProvider: "ollama", providers: { ollama: { baseUrl: "http://localhost:3222/v1", apiKey: "", model: "main", summaryModel: "cheap" } } }),
+  ...(settingsNow ?? { connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } }),
   autoSuggestChoices: on,
 });
 const put = (body) => fetch(BASE + "/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

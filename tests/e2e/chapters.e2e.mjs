@@ -33,8 +33,7 @@ const browser = await launch();
 const ctx = await browser.newContext();
 await ctx.addInitScript(() => {
   if (!localStorage.getItem("storytime.settings.v1")) {
-    localStorage.setItem("storytime.settings.v1", JSON.stringify({ storytime: 0, activeProvider: "ollama",
-      providers: { ollama: { baseUrl: "http://localhost:3222/v1", apiKey: "", model: "m", summaryModel: "" } } }));
+    localStorage.setItem("storytime.settings.v1", JSON.stringify({ connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "m" }, cheap: null } }));
   }
 });
 const page = await ctx.newPage();
@@ -148,7 +147,7 @@ const c2 = reqs.at(-1).messages[1].content;
 ok(c2.includes("The reader chose: \"Push the door\"") && c2.includes("It creaked, then slammed.") && c2.includes("Premise: A cursed inn"), "continuation prompt carries story so far + choice");
 
 // error path: dead server
-await page.evaluate(() => { const s = JSON.parse(localStorage.getItem("storytime.settings.v1")); s.providers.ollama.baseUrl = "http://localhost:1/v1"; localStorage.setItem("storytime.settings.v1", JSON.stringify(s)); });
+await page.evaluate(() => { const s = JSON.parse(localStorage.getItem("storytime.settings.v1")); s.connections[0].baseUrl = "http://localhost:1/v1"; localStorage.setItem("storytime.settings.v1", JSON.stringify(s)); });
 await page.reload();
 await page.getByRole("button", { name: /^Generate/ }).click().catch(() => {});
 await page.waitForTimeout(1200);

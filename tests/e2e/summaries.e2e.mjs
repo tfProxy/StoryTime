@@ -39,8 +39,7 @@ const ctx = await browser.newContext();
 await ctx.addInitScript(() => {
   if (!localStorage.getItem("storytime.settings.v1")) {
     // A small context budget so older chapters have to be condensed.
-    localStorage.setItem("storytime.settings.v1", JSON.stringify({ activeProvider: "ollama", contextTokens: 1000,
-      providers: { ollama: { baseUrl: "http://localhost:3222/v1", apiKey: "", model: "main", summaryModel: "cheap" } } }));
+    localStorage.setItem("storytime.settings.v1", JSON.stringify({ contextTokens: 1000, connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } }));
   }
 });
 const page = await ctx.newPage();
@@ -107,8 +106,7 @@ ok(repaired.slice(0, 4).every((p, i) => p.path_summary === `SOFAR(L${i + 1})`) &
 const again = sumCalls().length;
 const page2 = await (await browser.newContext()).newPage();
 await page2.context().addInitScript(() => {
-  localStorage.setItem("storytime.settings.v1", JSON.stringify({ activeProvider: "ollama", contextTokens: 1000,
-    providers: { ollama: { baseUrl: "http://localhost:3222/v1", apiKey: "", model: "main", summaryModel: "cheap" } } }));
+  localStorage.setItem("storytime.settings.v1", JSON.stringify({ contextTokens: 1000, connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } }));
 });
 await page2.goto(`${BASE}/c/${lastId}/write?ai=1`);
 await page2.getByRole("button", { name: "Edit text" }).click();

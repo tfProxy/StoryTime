@@ -188,7 +188,7 @@ export async function analyzePath(settings: Settings, opts: AnalyzeOptions): Pro
       system: request.system,
       messages: [{ role: "user", content: request.message }],
       // A whole-path scan makes one call per chapter, so use the cheaper model for it.
-      useSummaryModel: scope === "path",
+      role: scope === "path" ? "cheap" : "main",
       signal: opts.signal,
     });
 

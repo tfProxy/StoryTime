@@ -21,7 +21,7 @@ const server = http.createServer((req, res) => {
 });
 await new Promise<void>((r) => server.listen(0, r));
 const base = `http://localhost:${(server.address() as any).port}/v1`;
-const settings: any = { ...DEFAULT_SETTINGS, activeProvider: "custom", providers: { ...DEFAULT_SETTINGS.providers, custom: { baseUrl: base, apiKey: "", model: "main", summaryModel: "cheap" } } };
+const settings: any = { ...DEFAULT_SETTINGS, connections: [{ id: "t", name: "Test", kind: "custom" as const, baseUrl: base, apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } };
 const tokens = settings.contextTokens;
 
 const ch = (id: string, depth: number, title: string, body: string) => ({ id, depth, title, body, summary: null, path_summary: null });

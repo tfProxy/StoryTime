@@ -26,7 +26,7 @@ const json = async (method, url, body) =>
   (await fetch(BASE + url, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) })).json();
 
 const settingsBefore = (await json("GET", "/api/settings")).settings;
-await json("PUT", "/api/settings", { ...(settingsBefore ?? {}), activeProvider: "ollama", autoSuggestChoices: false, providers: { ...(settingsBefore?.providers ?? {}), ollama: { baseUrl: "http://localhost:3222/v1", apiKey: "", model: "main", summaryModel: "cheap" } } });
+await json("PUT", "/api/settings", { ...(settingsBefore ?? {}), autoSuggestChoices: false, connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } });
 
 const browser = await launch();
 const context = await browser.newContext();

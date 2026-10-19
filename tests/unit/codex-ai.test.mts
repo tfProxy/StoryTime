@@ -21,7 +21,7 @@ const server = http.createServer((req, res) => {
 });
 await new Promise<void>((r) => server.listen(0, r));
 const base = `http://localhost:${(server.address() as any).port}/v1`;
-const settings: any = { ...DEFAULT_SETTINGS, activeProvider: "custom", providers: { ...DEFAULT_SETTINGS.providers, custom: { baseUrl: base, apiKey: "", model: "main", summaryModel: "cheap" } } };
+const settings: any = { ...DEFAULT_SETTINGS, connections: [{ id: "t", name: "Test", kind: "custom" as const, baseUrl: base, apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } };
 
 // ---- parsing ----
 ok((extractJson('Sure!\n```json\n{"a":1}\n```\nHope it helps') as any).a === 1, "extractJson: fenced + chatter");

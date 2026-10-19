@@ -1,15 +1,17 @@
 // Browser-side LLM client. Requests go directly from the user's browser to the provider,
 // so API keys never touch the StoryTime server.
-import { providerInfo, type ProviderId } from "./providers";
-import { activeProviderSettings, type Settings } from "../settings";
+import { providerInfo, type ProviderKind } from "./providers";
+import { defaultRef, findConnection, type Connection, type ModelRef, type Settings } from "../settingsSchema";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
 export type ChatRequest = {
   system?: string;
   messages: ChatMessage[];
-  /** Use the cheaper summary model instead of the main model. */
-  useSummaryModel?: boolean;
+  /** Which default model to use when `model` isn't given: the main one, or the cheaper one for small jobs. */
+  role?: "main" | "cheap";
+  /** A specific model to use instead of the default (picked on the writing page). */
+  model?: ModelRef | null;
   maxTokens?: number;
   signal?: AbortSignal;
 };
@@ -17,7 +19,7 @@ export type ChatRequest = {
 export class AiError extends Error {}
 
 type Resolved = {
-  id: ProviderId;
+  kind: ProviderKind;
   protocol: "openai" | "anthropic";
   baseUrl: string;
   apiKey: string;
@@ -26,19 +28,26 @@ type Resolved = {
   disableThinking: boolean;
 };
 
-function resolve(settings: Settings, useSummaryModel = false): Resolved {
-  const info = providerInfo(settings.activeProvider);
-  const p = activeProviderSettings(settings);
-  const model = (useSummaryModel && p.summaryModel.trim()) || p.model.trim();
-  if (!p.baseUrl.trim()) throw new AiError("No server URL is set for this provider. Open Settings.");
-  if (info.needsKey && !p.apiKey.trim()) throw new AiError(`No API key is set for ${info.label}. Open Settings.`);
-  if (!model) throw new AiError("No model is chosen. Open Settings and pick one.");
+function checkConnection(c: Connection) {
+  const info = providerInfo(c.kind);
+  const name = c.name || info.label;
+  if (!c.baseUrl.trim()) throw new AiError(`No server URL is set for ${name}. Open Settings.`);
+  if (info.needsKey && !c.apiKey.trim()) throw new AiError(`No API key is set for ${name}. Open Settings.`);
+  return info;
+}
+
+function resolve(settings: Settings, req: Pick<ChatRequest, "role" | "model">): Resolved {
+  const ref = req.model ?? defaultRef(settings, req.role ?? "main");
+  if (!ref || !ref.model.trim()) throw new AiError("No model is chosen. Open Settings and pick a default model.");
+  const conn = findConnection(settings, ref.connectionId);
+  if (!conn) throw new AiError(`The connection for ${ref.model} has been removed. Pick another model.`);
+  const info = checkConnection(conn);
   return {
-    id: info.id,
+    kind: conn.kind,
     protocol: info.protocol,
-    baseUrl: p.baseUrl.trim().replace(/\/+$/, ""),
-    apiKey: p.apiKey.trim(),
-    model,
+    baseUrl: conn.baseUrl.trim().replace(/\/+$/, ""),
+    apiKey: conn.apiKey.trim(),
+    model: ref.model.trim(),
     temperature: settings.temperature,
     disableThinking: settings.disableThinking,
   };
@@ -117,7 +126,7 @@ const CORS_HINT =
 
 /** Streams the model's reply as text chunks. */
 export async function* streamChat(settings: Settings, req: ChatRequest): AsyncGenerator<string> {
-  const r = resolve(settings, req.useSummaryModel);
+  const r = resolve(settings, req);
 
   if (r.protocol === "anthropic") {
     const body: Record<string, unknown> = {
@@ -152,7 +161,11 @@ export async function* streamChat(settings: Settings, req: ChatRequest): AsyncGe
   const messages = req.system ? [{ role: "system", content: req.system }, ...req.messages] : req.messages;
   const body: Record<string, unknown> = { model: r.model, stream: true, messages };
   if (r.temperature !== null) body.temperature = r.temperature;
-  if (r.disableThinking) body.reasoning_effort = "none";
+  if (r.disableThinking) {
+    // OpenRouter takes its own reasoning object; OpenAI and most others take reasoning_effort.
+    if (r.kind === "openrouter") body.reasoning = { effort: "none" };
+    else body.reasoning_effort = "none";
+  }
   if (req.maxTokens !== undefined) body.max_tokens = req.maxTokens;
   const res = await send(
     `${r.baseUrl}/chat/completions`,
@@ -187,16 +200,15 @@ export async function completeChat(
   return out;
 }
 
-/** Lists model ids from the provider; doubles as a connection test. */
-export async function listModels(settings: Settings): Promise<string[]> {
-  const info = providerInfo(settings.activeProvider);
-  const p = activeProviderSettings(settings);
-  if (!p.baseUrl.trim()) throw new AiError("Enter a server URL first");
-  if (info.needsKey && !p.apiKey.trim()) throw new AiError("Enter an API key first");
-  const base = p.baseUrl.trim().replace(/\/+$/, "");
+/** Lists model ids on a connection; doubles as a connection test. */
+export async function listModels(conn: Connection): Promise<string[]> {
+  const info = providerInfo(conn.kind);
+  if (!conn.baseUrl.trim()) throw new AiError("Enter a server URL first");
+  if (info.needsKey && !conn.apiKey.trim()) throw new AiError("Enter an API key first");
+  const base = conn.baseUrl.trim().replace(/\/+$/, "");
   const res = await send(
-    info.protocol === "anthropic" ? `${base}/models?limit=100` : `${base}/models`,
-    { headers: headers({ protocol: info.protocol, apiKey: p.apiKey.trim() }) },
+    info.protocol === "anthropic" ? `${base}/models?limit=1000` : `${base}/models`,
+    { headers: headers({ protocol: info.protocol, apiKey: conn.apiKey.trim() }) },
     CORS_HINT,
   );
   const json = (await res.json()) as { data?: { id: string }[]; models?: { name: string }[] };

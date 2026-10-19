@@ -910,3 +910,52 @@ button.icon-button {
 .story-menu-items a + a {
   border-top: 1px solid var(--line);
 }
+
+/* Settings: one card per AI connection. */
+fieldset.connection {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0 0 0.75rem;
+  min-width: 0;
+}
+
+fieldset.connection legend {
+  font-weight: 600;
+  padding: 0 0.25rem;
+}
+
+.model-list {
+  display: grid;
+  gap: 0.5rem;
+  max-height: 24rem;
+  overflow-y: auto;
+}
+
+/* A row holding a model picker wraps, so it fits on a phone. */
+.row:has(> .model-picker) {
+  flex-wrap: wrap;
+}
+
+.model-picker {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.model-picker select {
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
+.model-picker button {
+  white-space: nowrap;
+}
+
+.settings-section {
+  display: grid;
+  gap: 1rem;
+}
+
+.settings-section h2 {
+  margin-bottom: 0;
+}

@@ -37,10 +37,13 @@ const port = (server.address() as any).port;
 const base = `http://localhost:${port}`;
 const assert = (c: boolean, m: string) => { if (!c) { console.log("FAIL", m); process.exitCode = 1; } else console.log("ok  ", m); };
 
-const mk = (id: any, baseUrl: string, extra: any = {}) => ({
-  ...DEFAULT_SETTINGS, activeProvider: id,
-  providers: { ...DEFAULT_SETTINGS.providers, [id]: { baseUrl, apiKey: "k", model: "m", summaryModel: "sm" } }, ...extra,
+const mk = (kind: any, baseUrl: string, extra: any = {}) => ({
+  ...DEFAULT_SETTINGS,
+  connections: [{ id: "c1", name: "Test", kind, baseUrl, apiKey: "k" }],
+  defaults: { main: { connectionId: "c1", model: "m" }, cheap: { connectionId: "c1", model: "sm" } },
+  ...extra,
 });
+const conn = (kind: any, baseUrl: string) => mk(kind, baseUrl).connections[0];
 
 let out = await completeChat(mk("ollama", base + "/o/v1".replace("/v1","")) as any, { system: "sys", messages: [{ role: "user", content: "hi" }] });
 assert(out === "Hello", "openai-compatible stream (split chunks, CRLF): " + JSON.stringify(out));
@@ -49,27 +52,64 @@ assert(seen.at(-1)!.body.messages[0].role === "system" && seen.at(-1)!.body.stre
 assert(seen.at(-1)!.headers!.authorization === "Bearer k", "bearer auth");
 assert(!("temperature" in seen.at(-1)!.body), "no temperature when null");
 
-out = await completeChat(mk("anthropic", base + "/anth/v1", { temperature: 0.7 }) as any, { system: "sys", messages: [{ role: "user", content: "hi" }], useSummaryModel: true });
+out = await completeChat(mk("anthropic", base + "/anth/v1", { temperature: 0.7 }) as any, { system: "sys", messages: [{ role: "user", content: "hi" }], role: "cheap" });
 assert(out === "Hello", "anthropic stream: " + out);
 const a = seen.at(-1)!;
 assert(a.url === "/anth/v1/messages" && a.headers!["x-api-key"] === "k" && a.headers!["anthropic-dangerous-direct-browser-access"] === "true", "anthropic url+headers");
 assert(a.body.system === "sys" && a.body.max_tokens === 4096 && a.body.model === "sm" && a.body.temperature === 0.7, "anthropic body (summary model, temp, max_tokens)");
 
-assert(JSON.stringify(await listModels(mk("custom", base + "/o") as any)) === '["a-model","b-model"]', "listModels sorted");
+assert(JSON.stringify(await listModels(conn("custom", base + "/o"))) === '["a-model","b-model"]', "listModels sorted");
 try { await completeChat(mk("custom", base + "/bad") as any, { messages: [{ role: "user", content: "x" }] }); assert(false, "should throw"); }
 catch (e) { assert(e instanceof AiError && String(e.message).includes("401") && String(e.message).includes("bad key"), "HTTP error surfaced: " + (e as Error).message); }
 try { await completeChat(mk("custom", "http://localhost:1") as any, { messages: [{ role: "user", content: "x" }] }); }
 catch (e) { assert(e instanceof AiError && /CORS/.test((e as Error).message), "network error hint"); }
-try { await completeChat({ ...DEFAULT_SETTINGS } as any, { messages: [] }); }
-catch (e) { assert(/API key/.test((e as Error).message), "missing key message"); }
+try { await completeChat({ ...DEFAULT_SETTINGS } as any, { messages: [] }); assert(false, "no model"); }
+catch (e) { assert(/No model is chosen/.test((e as Error).message), "no default model message"); }
+try { await completeChat(mk("anthropic", base, { connections: [{ id: "c1", name: "A", kind: "anthropic", baseUrl: base, apiKey: "" }] }) as any, { messages: [] }); assert(false, "no key"); }
+catch (e) { assert(/API key is set for A/.test((e as Error).message), "missing key message names the connection"); }
+
+// Picking a model: an explicit one wins over the defaults, and can be on another connection.
+const two = mk("ollama", base + "/o", {
+  connections: [
+    { id: "c1", name: "One", kind: "ollama", baseUrl: base + "/o", apiKey: "" },
+    { id: "c2", name: "Two", kind: "openrouter", baseUrl: base + "/r", apiKey: "rk" },
+  ],
+});
+await completeChat(two as any, { messages: [{ role: "user", content: "x" }], role: "cheap", model: { connectionId: "c2", model: "vendor/big" } });
+assert(seen.at(-1)!.url === "/r/chat/completions" && seen.at(-1)!.body.model === "vendor/big" && seen.at(-1)!.headers!.authorization === "Bearer rk", "explicit model on another connection");
+await completeChat(two as any, { messages: [{ role: "user", content: "x" }], role: "cheap" });
+assert(seen.at(-1)!.url === "/o/chat/completions" && seen.at(-1)!.body.model === "sm", "role cheap uses the cheaper default");
+await completeChat({ ...two, defaults: { main: two.defaults.main, cheap: null } } as any, { messages: [{ role: "user", content: "x" }], role: "cheap" });
+assert(seen.at(-1)!.body.model === "m", "no cheaper default falls back to the main one");
+try { await completeChat(two as any, { messages: [], model: { connectionId: "gone", model: "x" } }); assert(false, "gone"); }
+catch (e) { assert(/has been removed/.test((e as Error).message), "a model on a removed connection is reported"); }
+// Disable thinking: OpenRouter gets its own reasoning object.
+await completeChat({ ...two, disableThinking: true } as any, { messages: [{ role: "user", content: "x" }], model: { connectionId: "c2", model: "vendor/big" } });
+assert(seen.at(-1)!.body.reasoning?.effort === "none" && !("reasoning_effort" in seen.at(-1)!.body), "openrouter: reasoning effort none");
+await completeChat({ ...two, disableThinking: true } as any, { messages: [{ role: "user", content: "x" }] });
+assert(seen.at(-1)!.body.reasoning_effort === "none" && !("reasoning" in seen.at(-1)!.body), "others: reasoning_effort none");
 const ctl = new AbortController(); ctl.abort();
 try { await completeChat(mk("custom", base + "/o") as any, { messages: [{ role: "user", content: "x" }], signal: ctl.signal }); assert(false, "abort"); }
 catch (e) { assert((e as any).name === "AbortError", "abort propagates"); }
 
 // settings parse / export / import
 assert(parseSettings(null).contextTokens === 8000, "parse null -> defaults");
-const messy = parseSettings({ temperature: 9, providers: { openai: { apiKey: "sk-1", model: 3 } }, activeProvider: "nope" });
-assert(messy.temperature === null && messy.activeProvider === "anthropic" && messy.providers.openai.apiKey === "sk-1" && messy.providers.openai.model === "" && messy.providers.anthropic.model === "claude-sonnet-5-5", "tolerant parse");
+const messy = parseSettings({
+  temperature: 9,
+  connections: [
+    { id: "a", name: "A", kind: "nope", baseUrl: "u", apiKey: 3 },
+    { name: "no id" },
+    { id: "a", name: "dup" },
+    { id: "b", kind: "openrouter" },
+  ],
+  favorites: [{ connectionId: "a", model: "x" }, { connectionId: "a", model: "x" }, { connectionId: "zz", model: "y" }, { connectionId: "b", model: " " }],
+  defaults: { main: { connectionId: "zz", model: "y" }, cheap: { connectionId: "a", model: "x" } },
+  activeProvider: "old-format",
+});
+assert(messy.temperature === null && messy.connections.length === 2 && messy.connections[0].kind === "custom" && messy.connections[0].apiKey === "" && messy.connections[1].kind === "openrouter", "tolerant parse: connections");
+assert(messy.favorites.length === 1 && messy.favorites[0].label === "", "tolerant parse: favorites deduped, dangling ones dropped");
+assert(messy.defaults.main === null && messy.defaults.cheap?.model === "x", "tolerant parse: defaults pointing at missing connections are cleared");
+assert(!("activeProvider" in messy), "old fields are dropped");
 const rt = importSettingsJson(exportSettingsJson({ ...DEFAULT_SETTINGS, contextTokens: 1234 }));
 assert(rt.contextTokens === 1234, "export/import round-trip");
 try { importSettingsJson('{"x":1}'); assert(false, "bad file"); } catch (e) { assert(/settings file/.test((e as Error).message), "rejects foreign file"); }

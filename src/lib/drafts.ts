@@ -6,6 +6,7 @@
 
 import type { CodexChange } from "./codex";
 import type { CodexOverrides, Idea, Length } from "./ai/prompts";
+import type { ModelRef } from "./settingsSchema";
 
 export type DraftVersion = { title: string; body: string };
 
@@ -56,6 +57,8 @@ export type Draft = {
   suggestions?: string[];
   /** Codex entries pinned into, or left out of, the prompt by hand. */
   codexOverrides?: CodexOverrides;
+  /** Models picked on this page instead of the defaults: for writing and revising, and for ideas, choices and choice text. */
+  models?: { write?: ModelRef; suggest?: ModelRef };
 
   // Only used when editing a posted chapter:
   /** The chapter revision this draft started from. */

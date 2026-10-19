@@ -30,7 +30,7 @@ const server = http.createServer((req, res) => {
 });
 await new Promise<void>((r) => server.listen(0, r));
 const base = `http://localhost:${(server.address() as { port: number }).port}/v1`;
-const settings = { ...DEFAULT_SETTINGS, activeProvider: "custom" as const, providers: { ...DEFAULT_SETTINGS.providers, custom: { baseUrl: base, apiKey: "", model: "main", summaryModel: "cheap" } } };
+const settings = { ...DEFAULT_SETTINGS, connections: [{ id: "t", name: "Test", kind: "custom" as const, baseUrl: base, apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } };
 
 // Relative URLs (the app's own API) can't be fetched from Node, so intercept them.
 const saved: { url: string; body: Record<string, unknown> }[] = [];

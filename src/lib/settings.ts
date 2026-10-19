@@ -3,8 +3,22 @@
 import { useSyncExternalStore } from "react";
 import { DEFAULT_SETTINGS, parseSettings, type Settings } from "./settingsSchema";
 
-export { activeProviderSettings, exportSettingsJson, importSettingsJson, DEFAULT_SETTINGS, parseSettings } from "./settingsSchema";
-export type { ProviderSettings, Settings } from "./settingsSchema";
+export {
+  defaultRef,
+  exportSettingsJson,
+  findConnection,
+  importSettingsJson,
+  DEFAULT_SETTINGS,
+  modelLabel,
+  newConnection,
+  parseRefKey,
+  parseSettings,
+  refKey,
+  removeConnection,
+  sameRef,
+  usableRef,
+} from "./settingsSchema";
+export type { Connection, Favorite, ModelRef, Settings } from "./settingsSchema";
 
 // The settings live on the StoryTime server (GET/PUT /api/settings), so every browser and
 // session sees the same ones. This module keeps a copy in memory for the hooks to read.

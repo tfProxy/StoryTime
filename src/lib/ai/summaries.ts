@@ -76,7 +76,7 @@ export async function summarizeChapter(
       {
         system: request.system,
         messages: [{ role: "user", content: request.message }],
-        useSummaryModel: true,
+        role: "cheap",
         maxTokens: 1500,
         signal: opts.signal,
       },

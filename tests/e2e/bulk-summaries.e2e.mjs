@@ -43,8 +43,7 @@ const D = await next(C, "D", {});
 const browser = await launch();
 const ctx = await browser.newContext();
 await ctx.addInitScript(() => {
-  localStorage.setItem("storytime.settings.v1", JSON.stringify({ activeProvider: "ollama",
-    providers: { ollama: { baseUrl: "http://localhost:3222/v1", apiKey: "", model: "main", summaryModel: "cheap" } } }));
+  localStorage.setItem("storytime.settings.v1", JSON.stringify({ connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } }));
 });
 const page = await ctx.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });

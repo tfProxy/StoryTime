@@ -2,7 +2,7 @@
 
 Branching, choose-your-own-adventure stories, with optional AI help. It is a single-user app: there
 are no accounts, logins or author names, and anyone who can reach the site can read and edit
-everything. You bring your own AI (OpenAI, Anthropic, or a local model through Ollama), and your keys
+everything. You bring your own AI (OpenAI, Anthropic, OpenRouter, or a local model through Ollama), and your keys
 never leave your browser.
 
 ## What it does
@@ -39,7 +39,7 @@ npm run dev        # http://localhost:3737
 ```
 
 Data lives in `data/storytime.db` (SQLite). Override with `STORYTIME_DB=/path/to/file.db`.
-Each person opens **Settings** in the app to choose an AI provider and paste their own key.
+Each person opens **Settings** in the app to add connections to their AI servers (several are fine, such as two Ollama machines and OpenRouter), star the models they want, and pick the defaults. While writing, each draft can switch to any starred model for writing and for suggestions.
 
 ## Running on Unraid (or any Docker host)
 

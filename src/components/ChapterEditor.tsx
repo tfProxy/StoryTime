@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LIMITS } from "@/lib/limits";
-import { useSettings } from "@/lib/settings";
+import { defaultRef, modelLabel, usableRef, useSettings, type ModelRef } from "@/lib/settings";
 import { completeChat, streamChat } from "@/lib/ai/client";
 import { ensurePathSummaries, neededSummaryIndex, summarizeChapter, summaryRequest, type Summaries } from "@/lib/ai/summaries";
 import {
@@ -41,6 +41,7 @@ import CodexPanel from "./CodexPanel";
 import { PageMenu } from "./SiteMenu";
 import CodexPreview from "./CodexPreview";
 import PromptButton from "./PromptButton";
+import ModelPicker from "./ModelPicker";
 
 export type Target =
   | { kind: "story" }
@@ -318,6 +319,22 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   // Each "Suggest" adds a page of ideas; earlier pages stay so the author can go back to them.
   const ideaPages: Idea[][] = draft.ideaPages ?? [];
   const ideaPage = Math.min(draft.ideaPage ?? 0, Math.max(0, ideaPages.length - 1));
+  // Models picked for this draft; null means the default from Settings (also when the picked one's connection is gone).
+  const writeModel = usableRef(settings, draft.models?.write);
+  const suggestModel = usableRef(settings, draft.models?.suggest);
+  const modelName = (ref: ModelRef | null, role: "main" | "cheap") => {
+    const r = ref ?? defaultRef(settings, role);
+    return r ? modelLabel(settings, r) : "no model (pick one in Settings)";
+  };
+  const suggestNote = `Sent to ${modelName(suggestModel, "cheap")}.`;
+  const setModel = (job: "write" | "suggest", ref: ModelRef | null) =>
+    setDraft((d) => (d ? { ...d, models: { ...d.models, [job]: ref ?? undefined } } : d));
+  const writePicker = (
+    <ModelPicker label="Model for writing" role="main" value={writeModel} onChange={(r) => setModel("write", r)} />
+  );
+  const suggestPicker = (
+    <ModelPicker label="Model for suggestions" role="cheap" value={suggestModel} onChange={(r) => setModel("suggest", r)} />
+  );
   // Ideas already added as choices, by the text they were added with.
   const promoted = draft.promoted ?? {};
   // Manual additions to / removals from the codex entries sent with each prompt.
@@ -466,6 +483,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       for await (const piece of streamChat(settings, {
         system: request.system,
         messages: [{ role: "user", content: request.message }],
+        role: "main",
+        model: writeModel,
         signal: ctl.signal,
       })) {
         text += piece;
@@ -509,7 +528,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     const reply = await completeChat(settings, {
       system: request.system,
       messages: [{ role: "user", content: request.message }],
-      useSummaryModel: true,
+      role: "cheap",
+      model: suggestModel,
       maxTokens: 60,
       signal,
     });
@@ -555,7 +575,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       </button>
       <PromptButton
         label="Regenerate choice text"
-        note="Sent to your cheaper (summary) model."
+        note={suggestNote}
         build={() => choiceLabelRequest(draft.body.trim() ? { title: draft.title, body: draft.body } : null, ctx)}
       />
     </>
@@ -581,7 +601,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       const text = await completeChat(settings, {
         system: request.system,
         messages: [{ role: "user", content: request.message }],
-        useSummaryModel: true,
+        role: "cheap",
+      model: suggestModel,
         maxTokens: 800,
       });
       const found = parseIdeas(text);
@@ -641,7 +662,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       const text = await completeChat(settings, {
         system: request.system,
         messages: [{ role: "user", content: request.message }],
-        useSummaryModel: true,
+        role: "cheap",
+      model: suggestModel,
         maxTokens: 400,
       });
       const found = parseChoices(text);
@@ -930,7 +952,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               <button type="button" className="secondary" onClick={suggestIdeas} disabled={busy !== null}>
                 {busy === "ideas" ? "Thinking…" : ideaPages.length ? "Suggest more" : "Suggest ideas"}
               </button>
-              <PromptButton label="Suggest ideas" note="Sent to your cheaper (summary) model." build={ideasRequest} />
+              <PromptButton label="Suggest ideas" note={suggestNote} build={ideasRequest} />
+              {suggestPicker}
               {ideaPages.length > 1 && (
                 <>
                   <button type="button" className="secondary" onClick={() => patch({ ideaPage: ideaPage - 1 })} disabled={ideaPage === 0} aria-label="Previous ideas">
@@ -1188,9 +1211,10 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               </button>
               <PromptButton
                 label="Generate chapter"
-                note="If earlier chapters need summarizing first, that happens before sending, so the story-so-far part may differ slightly."
+                note={`Sent to ${modelName(writeModel, "main")}. If earlier chapters need summarizing first, that happens before sending, so the story-so-far part may differ slightly.`}
                 build={() => chapterRequest("generate", ctx, null)}
               />
+              {writePicker}
               {working && (
                 <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
                   Stop
@@ -1355,10 +1379,11 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               </button>
               <PromptButton
                 label={picked ? "Revise selection" : "Revise"}
-                note="If earlier chapters need summarizing first, that happens before sending, so the story-so-far part may differ slightly."
+                note={`Sent to ${modelName(writeModel, "main")}. If earlier chapters need summarizing first, that happens before sending, so the story-so-far part may differ slightly.`}
                 disabled={!hasBody}
                 build={() => chapterRequest("refine", ctx, picked)}
               />
+              {writePicker}
               <button type="button" className="secondary" onClick={undo} disabled={busy !== null || draft.undo.length === 0}>
                 Undo
               </button>
@@ -1494,10 +1519,11 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                 </button>
                 <PromptButton
                   label="Suggest choices"
-                  note="Sent to your cheaper (summary) model."
+                  note={suggestNote}
                   disabled={!draft.body.trim()}
                   build={() => choicesRequest()}
                 />
+                {suggestPicker}
               </div>
               {suggestions.length > 0 && (
                 <div className="row" style={{ flexWrap: "wrap" }}>

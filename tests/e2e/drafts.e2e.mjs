@@ -31,7 +31,7 @@ const json = async (method, url, body) =>
   (await fetch(BASE + url, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) })).json();
 
 const settingsBefore = (await json("GET", "/api/settings")).settings;
-await json("PUT", "/api/settings", { ...(settingsBefore ?? {}), activeProvider: "ollama", providers: { ...(settingsBefore?.providers ?? {}), ollama: { baseUrl: "http://localhost:3222/v1", apiKey: "", model: "main", summaryModel: "cheap" } } });
+await json("PUT", "/api/settings", { ...(settingsBefore ?? {}), connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } });
 
 const story = await json("POST", "/api/stories", { title: "Drafty", premise: "p", chapter: { title: "Root", body: "Mira stood at the gate.", choices: ["Go in", "Turn back"] } });
 const root = story.chapter_id;
@@ -52,7 +52,7 @@ const page = watch(await ctxA.newPage());
 await page.goto(writeUrl);
 await page.getByRole("button", { name: "Suggest ideas" }).click();
 await page.getByText("Climb the tower").waitFor();
-await page.locator("select").first().selectOption("long");
+await page.locator("select:has(option[value=long])").selectOption("long");
 await page.getByLabel("Chapter text").fill("She looked up.");
 await page.getByLabel("Instruction for the AI").fill("make it darker");
 await page.waitForFunction(() => /Draft saved/.test(document.body.innerText));
@@ -65,7 +65,7 @@ await page.reload();
 await page.locator("summary", { hasText: "Brainstorm" }).click();
 await page.getByText("Climb the tower").waitFor();
 ok(true, "brainstorm ideas are still there after a reload");
-ok((await page.locator("select").first().inputValue()) === "long", "…and the chapter length");
+ok((await page.locator("select:has(option[value=long])").inputValue()) === "long", "…and the chapter length");
 ok((await page.getByLabel("Instruction for the AI").inputValue()) === "make it darker", "…and the unsent instruction");
 
 // ---- another browser picks it up ----
