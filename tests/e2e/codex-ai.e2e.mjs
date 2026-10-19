@@ -1,5 +1,5 @@
 import http from "node:http";
-import { launch } from "./browser.mjs";
+import { launch, useMockAi } from "./browser.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const calls = [];
@@ -48,11 +48,7 @@ const s2 = await makeStory("Pathy", "Start", "Mira the thief crept PATHSTORY.", 
 
 const browser = await launch();
 const ctx = await browser.newContext();
-await ctx.addInitScript(() => {
-  if (!localStorage.getItem("storytime.settings.v1")) {
-    localStorage.setItem("storytime.settings.v1", JSON.stringify({ connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } }));
-  }
-});
+const ai = await useMockAi(BASE);
 const page = await ctx.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 page.on("dialog", (d) => d.accept());
@@ -134,7 +130,7 @@ await page.locator("article.card", { hasText: "Mira" }).getByText("A human thief
 ok(true, "the root of that story still has the human Mira (changes were anchored per chapter)");
 
 // ---- friendly error on a bad model reply ----
-await page.evaluate(() => { const s = JSON.parse(localStorage.getItem("storytime.settings.v1")); s.connections[0].baseUrl = "http://localhost:1/v1"; localStorage.setItem("storytime.settings.v1", JSON.stringify(s)); });
+await ai.breakConnection();
 await page.goto(`${BASE}/c/${s2.a}/codex`);
 await page.locator("details.ai-panel > summary").click();
 await page.getByRole("button", { name: "Scan for codex changes" }).click();
@@ -142,4 +138,5 @@ await page.getByText(/Couldn't reach/).waitFor({ timeout: 5000 }).catch(() => {}
 ok(await page.getByText(/Couldn't reach/).isVisible().catch(() => false), "unreachable AI shows a clear error");
 
 await browser.close(); mock.close();
+await ai.restore();
 process.exit(failed ? 1 : 0);

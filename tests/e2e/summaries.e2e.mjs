@@ -1,5 +1,5 @@
 import http from "node:http";
-import { launch } from "./browser.mjs";
+import { launch, useMockAi } from "./browser.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const calls = [];
@@ -36,12 +36,7 @@ const idFromUrl = (u) => /\/c\/([^/?]+)/.exec(u)[1];
 
 const browser = await launch();
 const ctx = await browser.newContext();
-await ctx.addInitScript(() => {
-  if (!localStorage.getItem("storytime.settings.v1")) {
-    // A small context budget so older chapters have to be condensed.
-    localStorage.setItem("storytime.settings.v1", JSON.stringify({ contextTokens: 1000, connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } }));
-  }
-});
+const ai = await useMockAi(BASE, { contextTokens: 1000 });
 const page = await ctx.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 page.on("dialog", (d) => d.accept());
@@ -104,10 +99,13 @@ ok(repaired.slice(0, 4).every((p, i) => p.path_summary === `SOFAR(L${i + 1})`) &
 
 // the next writer reuses them (no new summary calls)
 const again = sumCalls().length;
+// The first browser's draft (with the generated text) is saved on the server, and a draft that
+// already has text doesn't auto-generate. Wait for that save, then drop the draft, so the second
+// browser starts fresh rather than racing it.
+const draftUrl = `${BASE}/api/drafts/${encodeURIComponent(`new:${lastId}`)}`;
+for (let i = 0; i < 100 && !(await (await fetch(draftUrl)).json()).draft?.body; i++) await new Promise((r) => setTimeout(r, 100));
+await fetch(draftUrl, { method: "DELETE" });
 const page2 = await (await browser.newContext()).newPage();
-await page2.context().addInitScript(() => {
-  localStorage.setItem("storytime.settings.v1", JSON.stringify({ contextTokens: 1000, connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } }));
-});
 await page2.goto(`${BASE}/c/${lastId}/write?ai=1`);
 await page2.getByRole("button", { name: "Edit text" }).click();
 await page2.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("Generated text here."), null, { timeout: 20000 });
@@ -231,4 +229,5 @@ c = (await chapter(idFromUrl(page.url()))).chapter;
 ok(c.summary === "SUM(Fifth)" && c.path_summary === "SOFAR(Fifth)", "…and stores it");
 
 await browser.close(); mock.close();
+await ai.restore();
 process.exit(failed ? 1 : 0);

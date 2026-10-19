@@ -1,7 +1,7 @@
 // The drafting page's workflow: revising a selected passage, comparing drafts, the save indicator,
 // the end-of-branch notice, and posting without writing a summary first.
 import http from "node:http";
-import { launch } from "./browser.mjs";
+import { launch, useMockAi } from "./browser.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const prompts = [];
@@ -41,11 +41,7 @@ const choice = (await get(`/api/chapters/${root}`)).choices[0];
 
 const browser = await launch();
 const ctx = await browser.newContext();
-await ctx.addInitScript(() => {
-  if (!localStorage.getItem("storytime.settings.v1")) {
-    localStorage.setItem("storytime.settings.v1", JSON.stringify({ connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } }));
-  }
-});
+const ai = await useMockAi(BASE);
 const page = await ctx.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 page.on("dialog", (d) => d.accept());
@@ -133,4 +129,5 @@ await put(settingsNow ? withSetting(settingsNow.autoSuggestChoices) : withSettin
 
 await browser.close();
 mock.close();
+await ai.restore();
 process.exit(failed ? 1 : 0);

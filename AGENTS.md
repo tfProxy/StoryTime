@@ -7,3 +7,12 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+## Running the tests
+
+- `npm test` runs the unit and API suites; `npm run test:e2e` runs the browser suite. Run `npx next build` first after changing app code: the API and browser suites start `next start` on the existing build and only build when there is none.
+- The browser suite uses Microsoft Edge by default (the owner's local Windows/VS Code setup). In a cloud sandbox, use the preinstalled Chromium: `E2E_EXECUTABLE=/opt/pw-browsers/chromium npm run test:e2e`.
+- All 14 browser test files passed in a cloud session on 2026-10-19 (run four times in a row). The only lint error is a known one in `src/components/OutlineSummaries.tsx` (set-state-in-effect).
+- AI settings live on the StoryTime server, not in the browser. Browser tests must point the app at the fake AI server with `useMockAi(BASE, ...)` from `tests/e2e/browser.mjs` (and call `restore()` at the end). Writing settings into `localStorage` only takes effect when the server has none yet, so it silently does nothing once an earlier test has saved settings. That made `chapters`, `codex-ai` and `summaries` fail until it was fixed.
+- The test files share one server and database, in alphabetical order. A test that leaves a draft behind (for example the `story` draft for /new) changes what the next test sees, so delete drafts a test creates.
+- To check next time this runs on the owner's machine (not a cloud session): run `npm run test:e2e` with Edge and confirm all 14 files pass. If any fail only there, add a note here saying which test fails and why.

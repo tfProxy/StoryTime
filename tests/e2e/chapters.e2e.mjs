@@ -1,5 +1,5 @@
 import http from "node:http";
-import { launch } from "./browser.mjs";
+import { launch, useMockAi } from "./browser.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const reqs = [];
@@ -31,11 +31,7 @@ const ok = (c, m) => { console.log(c ? "ok  " : "FAIL", m); if (!c) failed = tru
 
 const browser = await launch();
 const ctx = await browser.newContext();
-await ctx.addInitScript(() => {
-  if (!localStorage.getItem("storytime.settings.v1")) {
-    localStorage.setItem("storytime.settings.v1", JSON.stringify({ connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "m" }, cheap: null } }));
-  }
-});
+const ai = await useMockAi(BASE, { main: "m", cheap: null });
 const page = await ctx.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 page.on("console", (m) => { if (m.type() === "error") console.log("CONSOLE", m.text()); });
@@ -147,11 +143,12 @@ const c2 = reqs.at(-1).messages[1].content;
 ok(c2.includes("The reader chose: \"Push the door\"") && c2.includes("It creaked, then slammed.") && c2.includes("Premise: A cursed inn"), "continuation prompt carries story so far + choice");
 
 // error path: dead server
-await page.evaluate(() => { const s = JSON.parse(localStorage.getItem("storytime.settings.v1")); s.connections[0].baseUrl = "http://localhost:1/v1"; localStorage.setItem("storytime.settings.v1", JSON.stringify(s)); });
+await ai.breakConnection();
 await page.reload();
 await page.getByRole("button", { name: /^Generate/ }).click().catch(() => {});
 await page.waitForTimeout(1200);
 ok(await page.getByText(/Couldn't reach/).isVisible().catch(() => false), "unreachable provider shows friendly error");
 
 await browser.close(); mock.close();
+await ai.restore();
 process.exit(failed ? 1 : 0);

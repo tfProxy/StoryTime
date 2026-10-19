@@ -1,6 +1,6 @@
 // The codex on the writing page: a drawer to view/add entries, and a preview of which entries go into a prompt.
 import http from "node:http";
-import { launch } from "./browser.mjs";
+import { launch, useMockAi } from "./browser.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const prompts = [];
@@ -39,11 +39,7 @@ await entry("The Rule", "Magic costs memories.", { type: "lore", always_include:
 
 const browser = await launch();
 const ctx = await browser.newContext();
-await ctx.addInitScript(() => {
-  if (!localStorage.getItem("storytime.settings.v1")) {
-    localStorage.setItem("storytime.settings.v1", JSON.stringify({ connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "m" }, cheap: null } }));
-  }
-});
+const ai = await useMockAi(BASE, { main: "m", cheap: null });
 const page = await ctx.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 page.on("dialog", (d) => d.accept());
@@ -163,4 +159,5 @@ const rootChoices = (await (await fetch(`${BASE}/api/chapters/${root}`)).json())
 ok(rootChoices.includes("Hide in the reeds") && !rootChoices.includes("Hide"), "the edited text is added to the previous chapter");
 
 await browser.close(); mock.close();
+await ai.restore();
 process.exit(failed ? 1 : 0);

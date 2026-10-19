@@ -1,7 +1,7 @@
 // "Redo summaries" for a whole story: every chapter is rewritten, and each one builds on its parent's
 // new story-so-far.
 import http from "node:http";
-import { launch } from "./browser.mjs";
+import { launch, useMockAi } from "./browser.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const calls = [];
@@ -42,9 +42,7 @@ const D = await next(C, "D", {});
 
 const browser = await launch();
 const ctx = await browser.newContext();
-await ctx.addInitScript(() => {
-  localStorage.setItem("storytime.settings.v1", JSON.stringify({ connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } }));
-});
+const ai = await useMockAi(BASE);
 const page = await ctx.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 page.on("dialog", (d) => d.accept());
@@ -66,4 +64,5 @@ ok((await got(C)).summary === "SUM(C)" && (await got(C)).path_summary === "SOFAR
 ok((await got(D)).summary === "SUM(D)" && (await got(D)).path_summary === "SOFAR(D)", "a chapter with no summary gets one");
 
 await browser.close(); mock.close();
+await ai.restore();
 process.exit(failed ? 1 : 0);
