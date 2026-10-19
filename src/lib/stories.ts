@@ -441,20 +441,26 @@ export function editStory(storyId: string, input: z.infer<typeof EditStorySchema
   })();
 }
 
-/** Cover images: what the browser may upload, checked by the file's first bytes rather than its claimed type. */
-export const COVER_MAX_BYTES = 4 * 1024 * 1024;
-const COVER_SIGNATURES: [type: string, matches: (b: Buffer) => boolean][] = [
+/** Uploaded images (covers, chapter illustrations): checked by the file's first bytes rather than its claimed type. */
+export const IMAGE_MAX_BYTES = 4 * 1024 * 1024;
+const IMAGE_SIGNATURES: [type: string, matches: (b: Buffer) => boolean][] = [
   ["image/png", (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))],
   ["image/jpeg", (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff],
   ["image/gif", (b) => ["GIF87a", "GIF89a"].includes(b.subarray(0, 6).toString("latin1"))],
   ["image/webp", (b) => b.subarray(0, 4).toString("latin1") === "RIFF" && b.subarray(8, 12).toString("latin1") === "WEBP"],
 ];
 
-export function setCover(storyId: string, bytes: Buffer): { cover_version: number } {
+/** The image's type (PNG, JPEG, GIF or WebP), or a PostError saying why it can't be used. */
+export function checkImage(bytes: Buffer, what: string): string {
   if (bytes.length === 0) throw new PostError("No image was sent", 400);
-  if (bytes.length > COVER_MAX_BYTES) throw new PostError("That image is too large (4 MB at most)", 413);
-  const type = COVER_SIGNATURES.find(([, matches]) => matches(bytes))?.[0];
-  if (!type) throw new PostError("The cover must be a PNG, JPEG, GIF or WebP image", 415);
+  if (bytes.length > IMAGE_MAX_BYTES) throw new PostError("That image is too large (4 MB at most)", 413);
+  const type = IMAGE_SIGNATURES.find(([, matches]) => matches(bytes))?.[0];
+  if (!type) throw new PostError(`The ${what} must be a PNG, JPEG, GIF or WebP image`, 415);
+  return type;
+}
+
+export function setCover(storyId: string, bytes: Buffer): { cover_version: number } {
+  const type = checkImage(bytes, "cover");
   // Two uploads in the same millisecond must still get different versions.
   const prev = db().prepare(`SELECT cover_updated_at AS v FROM stories WHERE id = ?`).get(storyId) as { v: number | null } | undefined;
   if (!prev) throw new PostError("That story does not exist", 404);

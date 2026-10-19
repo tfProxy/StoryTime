@@ -1007,6 +1007,42 @@ main:has(.library) {
   width: 7.5rem;
 }
 
+/* A chapter's header and footer pictures, where it is read. Tall pictures are kept within the screen. */
+.chapter-image {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  height: auto;
+  margin: 1rem auto;
+  border-radius: 6px;
+}
+
+/* The Illustrate chapter page: one card per picture, side by side when there is room. */
+.image-editors {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+}
+
+.image-editor-preview,
+.image-editor-empty {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: 6px;
+  background: var(--line);
+}
+
+.image-editor-preview {
+  object-fit: contain;
+}
+
+.image-editor-empty {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
 /* Settings: one card per AI connection. */
 fieldset.connection {
   display: grid;

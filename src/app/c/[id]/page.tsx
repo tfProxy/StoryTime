@@ -4,7 +4,9 @@ import { getChoices, getPath, getStory } from "@/lib/stories";
 import Prose from "@/components/Prose";
 import EditLink from "@/components/EditLink";
 import AddChoice from "@/components/AddChoice";
+import ChapterImage from "@/components/ChapterImage";
 import { PageMenu } from "@/components/SiteMenu";
+import { chapterImageVersions } from "@/lib/chapterImages";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +25,7 @@ export default async function ChapterPage({
   const story = getStory(chapter.story_id);
   if (!story) notFound();
   const choices = getChoices(chapter.id);
+  const images = chapterImageVersions([chapter.id]).get(chapter.id)!;
 
   return (
     <>
@@ -46,6 +49,7 @@ export default async function ChapterPage({
         ))}
       </nav>
 
+      <ChapterImage chapterId={chapter.id} slot="header" version={images.header} />
       <h1>{chapter.title}</h1>
       {chapter.edited_at && (
         <p className="meta">
@@ -53,6 +57,7 @@ export default async function ChapterPage({
         </p>
       )}
       <Prose text={chapter.body} />
+      <ChapterImage chapterId={chapter.id} slot="footer" version={images.footer} />
 
       <section className="choices">
         <h2>{choices.length > 0 ? "What happens next?" : "The story ends here, for now."}</h2>
@@ -85,6 +90,7 @@ export default async function ChapterPage({
         codexGroup={<Link href={`/c/${chapter.id}/summary`}>{chapter.summary && chapter.path_summary ? "Summary" : "Summary (missing)"}</Link>}
       >
         <EditLink chapterId={chapter.id} />
+        <Link href={`/c/${chapter.id}/illustrate`}>Illustrate chapter</Link>
         <Link href={`/c/${chapter.id}/path`}>Read this path</Link>
         <details className="menu-sub">
           <summary>Export</summary>

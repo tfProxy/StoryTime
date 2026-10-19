@@ -168,6 +168,18 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE stories ADD COLUMN cover_type TEXT;
   ALTER TABLE stories ADD COLUMN cover_updated_at INTEGER;
   `,
+  // 9: illustrations for a chapter: one picture above its title (header) and one after its text
+  // (footer). `updated_at` doubles as the image's version, like the story cover.
+  `
+  CREATE TABLE chapter_images (
+    chapter_id TEXT NOT NULL REFERENCES chapters(id),
+    slot       TEXT NOT NULL CHECK (slot IN ('header', 'footer')),
+    image      BLOB NOT NULL,
+    type       TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (chapter_id, slot)
+  );
+  `,
 ];
 
 function open(): Database.Database {

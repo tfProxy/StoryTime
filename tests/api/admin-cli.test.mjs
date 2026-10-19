@@ -30,6 +30,12 @@ const root = s.json.chapter_id;
 const choice = (await api("GET", `/api/chapters/${root}`)).json.choices[0];
 const child = (await api("POST", "/api/chapters", { choice_id: choice.id, title: "CLI child", body: "child text" })).json.chapter_id;
 
+// both chapters get a picture, to check the tool deletes them with the chapter
+const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+const putPicture = (id, slot) => fetch(`${B}/api/chapters/${id}/images/${slot}`, { method: "PUT", headers: { "Content-Type": "image/png" }, body: png });
+const hasPicture = async (id, slot) => (await fetch(`${B}/api/chapters/${id}/images/${slot}`)).status === 200;
+ok((await putPicture(child, "header")).status === 200 && (await putPicture(root, "footer")).status === 200, "the chapters have pictures");
+
 r = cli("stats");
 ok(/stories: \d+/.test(r.out) && /chapters: \d+/.test(r.out), "stats prints counts");
 r = cli("recent", "10", "--kind", "chapter", "--story", s.json.story_id);
@@ -43,6 +49,7 @@ ok(r.code === 1 && /delete the story instead/.test(r.err), "delete refuses a sto
 r = cli("delete", "chapter", child, "--yes");
 ok(r.code === 0 && /Deleted 1 chapter/.test(r.out), "delete permanently: " + r.out.trim());
 ok((await api("GET", `/api/chapters/${child}`)).status === 404, "readers no longer see it");
+ok(!(await hasPicture(child, "header")) && (await hasPicture(root, "footer")), "its picture is deleted with it, and the other chapter's is kept");
 ok((await api("GET", `/api/chapters/${root}`)).json.choices[0].child_chapter_id === null, "the slot is open again");
 
 // deleting a choice takes the chapter written for it, with everything below
@@ -58,6 +65,7 @@ ok((await api("GET", `/api/chapters/${root}`)).json.choices.length === 0, "the c
 r = cli("delete", "story", s.json.story_id, "--yes");
 ok(r.code === 0 && /Deleted 1 chapter/.test(r.out), "delete a story: " + r.out.trim());
 ok((await api("GET", `/api/stories/${s.json.story_id}`)).status === 404, "the story is gone");
+ok(!(await hasPicture(root, "footer")), "…and so are its chapters' pictures");
 
 // revert via CLI
 const s2 = await api("POST", "/api/stories", { title: "CLI revert", chapter: { title: "Orig", body: "original text" } });
