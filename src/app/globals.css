@@ -432,8 +432,15 @@ h2 {
 }
 
 .save-state {
-  margin: 0 0 0 auto;
+  margin: 0;
   font-size: 0.8rem;
+  text-align: right;
+}
+
+/* Keep the live word count on one line, with equal-width digits, so it doesn't jitter as it grows. */
+.word-count {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .inline-label {

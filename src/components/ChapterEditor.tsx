@@ -1255,18 +1255,11 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                   </button>
                 </>
               )}
-              <span className="meta" aria-live="polite">
-                {working ? "Writing… " : ""}
-                {words.toLocaleString()} word{words === 1 ? "" : "s"}
-                {busy === "generate" && <> (aiming for about {targetWords.toLocaleString()})</>}
+              <span className="meta word-count" aria-live="polite">
+                {busy === "generate"
+                  ? `Writing (${words.toLocaleString()}/~${targetWords.toLocaleString()} words)`
+                  : `${working ? "Writing… " : ""}${words.toLocaleString()} word${words === 1 ? "" : "s"}`}
               </span>
-              {saved && (
-                <span className={`meta save-state${"failed" in saved ? " error" : ""}`}>
-                  {"failed" in saved
-                    ? "Couldn't save this draft"
-                    : `Draft saved · ${new Date(saved.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
-                </span>
-              )}
             </div>
 
             {comparing && (
@@ -1394,6 +1387,13 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               </p>
             ) : (
               hasBody && <p className="meta">To change just one passage, select it in the text first{reading ? " (click Edit text)" : ""}.</p>
+            )}
+            {saved && (
+              <div className={`meta save-state${"failed" in saved ? " error" : ""}`}>
+                {"failed" in saved
+                  ? "Couldn't save this draft"
+                  : `Draft saved · ${new Date(saved.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
+              </div>
             )}
           </section>
 
