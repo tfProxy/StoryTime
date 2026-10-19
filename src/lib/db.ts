@@ -148,6 +148,15 @@ export const MIGRATIONS: string[] = [
     value TEXT NOT NULL
   );
   `,
+  // 6: drafts live on the server too, so a chapter started in one browser can be finished in another.
+  // `data` is the whole draft as JSON; the server only reads it to list drafts.
+  `
+  CREATE TABLE drafts (
+    key        TEXT PRIMARY KEY,
+    data       TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 function open(): Database.Database {
