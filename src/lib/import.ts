@@ -62,6 +62,8 @@ export const ImportSchema = z.object({
   story: z.object({
     title: str(LIMITS.title).min(1),
     premise: str(LIMITS.premise).default(""),
+    // Exports made before style notes have none.
+    style: str(LIMITS.style).default(""),
       created_at: time,
   }),
   chapters: z.array(Chapter).min(1).max(5000),
@@ -116,8 +118,8 @@ export function importStory(input: ImportInput): { story_id: string; chapter_id:
 
   return db().transaction(() => {
     db()
-      .prepare(`INSERT INTO stories (id, title, premise, created_at) VALUES (?, ?, ?, ?)`)
-      .run(storyId, input.story.title, input.story.premise, input.story.created_at);
+      .prepare(`INSERT INTO stories (id, title, premise, style, created_at) VALUES (?, ?, ?, ?, ?)`)
+      .run(storyId, input.story.title, input.story.premise, input.story.style, input.story.created_at);
 
     const insertChapter = db().prepare(
       `INSERT INTO chapters (id, story_id, parent_choice_id, depth, title, body, summary, path_summary, posted_at,

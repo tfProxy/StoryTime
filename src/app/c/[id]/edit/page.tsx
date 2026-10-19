@@ -39,6 +39,7 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
         context={{
           storyTitle: story.title,
           premise: story.premise,
+          style: story.style,
           path: path
             .slice(0, -1)
             .map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary })),
@@ -46,6 +47,7 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
           // Codex as it stood before this chapter, so its own consequences aren't fed back in.
           codex: getContextCodex(path.length > 1 ? path[path.length - 2].id : null),
         }}
+        storyId={story.id}
         draftLabel={`${story.title}: editing “${chapter.title}”`}
         // Codex changes made while editing apply from the previous chapter, like the codex the AI sees here.
         codexPanel={

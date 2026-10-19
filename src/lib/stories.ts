@@ -6,6 +6,8 @@ export type Story = {
   id: string;
   title: string;
   premise: string;
+  /** Author's style notes (point of view, tense, tone, limits), sent with every drafting prompt. */
+  style: string;
   root_chapter_id: string | null;
   created_at: number;
 };
@@ -57,6 +59,7 @@ const chapterFields = {
 export const NewStorySchema = z.object({
   title: required(LIMITS.title),
   premise: text(LIMITS.premise).default(""),
+  style: text(LIMITS.style).default(""),
   chapter: z.object(chapterFields),
 });
 
@@ -93,9 +96,11 @@ export const AddChoiceSchema = z.object({
   label: required(LIMITS.label),
 });
 
+// Only the fields sent are changed, so the style notes can be saved on their own.
 export const EditStorySchema = z.object({
-  title: required(LIMITS.title),
-  premise: text(LIMITS.premise).default(""),
+  title: required(LIMITS.title).optional(),
+  premise: text(LIMITS.premise).optional(),
+  style: text(LIMITS.style).optional(),
 });
 
 export class PostError extends Error {
@@ -112,7 +117,7 @@ const now = () => Date.now();
 export function listStories(): (Story & { chapter_count: number })[] {
   return db()
     .prepare(
-      `SELECT s.id, s.title, s.premise, s.root_chapter_id, s.created_at,
+      `SELECT s.id, s.title, s.premise, s.style, s.root_chapter_id, s.created_at,
               (SELECT COUNT(*) FROM chapters c WHERE c.story_id = s.id) AS chapter_count
          FROM stories s ORDER BY s.created_at DESC`,
     )
@@ -122,7 +127,7 @@ export function listStories(): (Story & { chapter_count: number })[] {
 export function getStory(id: string): Story | undefined {
   return db()
     .prepare(
-      `SELECT id, title, premise, root_chapter_id, created_at
+      `SELECT id, title, premise, style, root_chapter_id, created_at
          FROM stories WHERE id = ?`,
     )
     .get(id) as Story | undefined;
@@ -207,20 +212,29 @@ export function getRevisions(chapterId: string): Revision[] {
     .all(chapterId) as Revision[];
 }
 
-function insertChoices(chapterId: string, labels: string[], t: number) {
+/** Returns the new choices' ids, in the order given. */
+function insertChoices(chapterId: string, labels: string[], t: number): string[] {
   const stmt = db().prepare(`INSERT INTO choices (id, parent_chapter_id, label, posted_at) VALUES (?, ?, ?, ?)`);
-  for (const label of labels) stmt.run(newId(), chapterId, label, t);
+  return labels.map((label) => {
+    const id = newId();
+    stmt.run(id, chapterId, label, t);
+    return id;
+  });
 }
 
-export function createStory(input: z.infer<typeof NewStorySchema>): { story_id: string; chapter_id: string } {
+/** What posting a chapter returns; `choice_ids` are its choices, in the order they were given. */
+export type Posted = { story_id: string; chapter_id: string; choice_ids: string[] };
+
+export function createStory(input: z.infer<typeof NewStorySchema>): Posted {
   const storyId = newId();
   const chapterId = newId();
   const t = now();
   const c = input.chapter;
+  let choiceIds: string[] = [];
   db().transaction(() => {
     db()
-      .prepare(`INSERT INTO stories (id, title, premise, created_at) VALUES (?, ?, ?, ?)`)
-      .run(storyId, input.title, input.premise, t);
+      .prepare(`INSERT INTO stories (id, title, premise, style, created_at) VALUES (?, ?, ?, ?, ?)`)
+      .run(storyId, input.title, input.premise, input.style, t);
     db()
       .prepare(
         `INSERT INTO chapters (id, story_id, parent_choice_id, depth, title, body, summary, path_summary, posted_at)
@@ -228,12 +242,12 @@ export function createStory(input: z.infer<typeof NewStorySchema>): { story_id: 
       )
       .run(chapterId, storyId, c.title, c.body, c.summary ?? null, c.path_summary ?? null, t);
     db().prepare(`UPDATE stories SET root_chapter_id = ? WHERE id = ?`).run(chapterId, storyId);
-    insertChoices(chapterId, c.choices, t);
+    choiceIds = insertChoices(chapterId, c.choices, t);
   })();
-  return { story_id: storyId, chapter_id: chapterId };
+  return { story_id: storyId, chapter_id: chapterId, choice_ids: choiceIds };
 }
 
-export function createChapter(input: z.infer<typeof NewChapterSchema>): { story_id: string; chapter_id: string } {
+export function createChapter(input: z.infer<typeof NewChapterSchema>): Posted {
   const chapterId = newId();
   const t = now();
   return db().transaction(() => {
@@ -286,8 +300,8 @@ export function createChapter(input: z.infer<typeof NewChapterSchema>): { story_
       }
       throw e;
     }
-    insertChoices(chapterId, input.choices, t);
-    return { story_id: parentChapter.story_id, chapter_id: chapterId };
+    const choiceIds = insertChoices(chapterId, input.choices, t);
+    return { story_id: parentChapter.story_id, chapter_id: chapterId, choice_ids: choiceIds };
   })();
 }
 
@@ -418,7 +432,9 @@ export function editStory(storyId: string, input: z.infer<typeof EditStorySchema
   return db().transaction(() => {
     const story = getStory(storyId);
     if (!story?.root_chapter_id) throw new PostError("That story does not exist", 404);
-    db().prepare(`UPDATE stories SET title = ?, premise = ? WHERE id = ?`).run(input.title, input.premise, storyId);
+    db()
+      .prepare(`UPDATE stories SET title = ?, premise = ?, style = ? WHERE id = ?`)
+      .run(input.title ?? story.title, input.premise ?? story.premise, input.style ?? story.style, storyId);
     return { ok: true as const };
   })();
 }

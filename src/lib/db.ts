@@ -157,6 +157,10 @@ export const MIGRATIONS: string[] = [
     updated_at INTEGER NOT NULL
   );
   `,
+  // 7: per-story style notes (point of view, tense, tone, limits) sent with every drafting prompt.
+  `
+  ALTER TABLE stories ADD COLUMN style TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 function open(): Database.Database {

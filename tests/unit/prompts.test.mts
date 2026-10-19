@@ -1,4 +1,4 @@
-import { buildStorySoFar, parseChapterOutput, parseChoices, generatePrompt, estimateTokens, explainCodex, buildCodexBlock, ideasPrompt, parseIdeas, parseChoiceLabel } from "../../src/lib/ai/prompts.ts";
+import { buildStorySoFar, choicesPrompt, SYSTEM_CHAPTER, parseChapterOutput, parseChoices, generatePrompt, estimateTokens, explainCodex, buildCodexBlock, ideasPrompt, parseIdeas, parseChoiceLabel } from "../../src/lib/ai/prompts.ts";
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const ch = (n: number, extra: any = {}) => ({ title: `Ch${n}`, body: `body${n} `.repeat(200), summary: null, path_summary: null, ...extra });
 const path = [1,2,3,4,5,6].map((n) => ch(n));
@@ -21,6 +21,12 @@ ok(JSON.stringify(parseChoices('Sure! ["Open the door", "Run", "Hide."]')) === '
 ok(JSON.stringify(parseChoices('1. Open it\n2. "Run away"\n- Hide')) === '["Open it","Run away","Hide"]', "choices lines");
 const g = generatePrompt({ storyTitle: "T", premise: "P", path: [ch(1)], choiceLabel: "Go" }, "dragons", "short", 8000);
 ok(g.includes("Premise: P") && g.includes('The reader chose: "Go"') && g.includes("dragons") && g.includes("about 300 words"), "generate prompt contents");
+ok(!g.includes("Style notes"), "no style notes section when the story has none");
+const styled = { storyTitle: "T", premise: "P", style: "  First person, past tense.\nNo gore.  ", path: [ch(1)], choiceLabel: "Go" };
+const gs = generatePrompt(styled, "", "short", 8000);
+ok(gs.includes("Style notes from the author (follow these in everything you write):\nFirst person, past tense.\nNo gore.") && gs.indexOf("Style notes") < gs.indexOf("Most recent chapters"), "style notes go in the story header, before the story so far");
+ok(ideasPrompt(styled, 8000).includes("No gore.") && choicesPrompt(styled, { title: "x", body: "y" }, [], 8000).includes("No gore."), "…and into the ideas and choice prompts too");
+ok(!SYSTEM_CHAPTER.includes("many people"), "the system prompt doesn't describe a shared, many-writer story");
 
 // ---- codex picking and manual overrides ----
 const cx = (id: string, name: string, extra: Record<string, unknown> = {}) => ({ id, name, type: "character", aliases: [] as string[], content: `${name} info`, always_include: false, ...extra });

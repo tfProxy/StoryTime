@@ -23,6 +23,8 @@ export type ContextCodexEntry = {
 export type StoryContext = {
   storyTitle: string;
   premise: string;
+  /** The author's style notes for the whole story (point of view, tense, tone, limits). */
+  style?: string;
   /** Chapters from the story root down to the chapter being continued; empty for a new story. */
   path: ContextChapter[];
   /** The choice the reader picked to get to the chapter being written, if any. */
@@ -43,7 +45,8 @@ export const LENGTH_WORDS: Record<Length, number> = { short: 300, medium: 600, l
 // Rough estimate; good enough for budgeting.
 export const estimateTokens = (s: string) => Math.ceil(s.length / 4);
 
-const SYSTEM_BASE = `You are a skilled fiction co-author helping write one chapter of a branching, choose-your-own-adventure story that many people write together.
+const SYSTEM_BASE = `You are a skilled fiction co-author helping write one chapter of a branching, choose-your-own-adventure story.
+- If the author gives style notes, follow them; they override your own preferences.
 - Match the established voice, point of view and tense. Keep names, facts and tone consistent with the story so far.
 - Write only the chapter's prose. Do NOT write the reader's choices, menus, or questions like "What do you do?" — choices are added separately.
 - End at a natural decision point or a satisfying stopping place.
@@ -242,6 +245,7 @@ export const codexBudget = (budgetTokens: number) => Math.floor(budgetTokens * 0
 function storyHeader(ctx: StoryContext, budgetTokens: number, extraTrigger = ""): string {
   const parts = [`Story: ${ctx.storyTitle || "(untitled)"}`];
   if (ctx.premise.trim()) parts.push(`Premise: ${ctx.premise.trim()}`);
+  if (ctx.style?.trim()) parts.push(`Style notes from the author (follow these in everything you write):\n${ctx.style.trim()}`);
   if (ctx.codex?.length) {
     // Entries are triggered by the premise, the last few chapters, and whatever is being written now.
     const block = buildCodexBlock(ctx.codex, codexTrigger(ctx, extraTrigger), codexBudget(budgetTokens), ctx.codexOverrides);

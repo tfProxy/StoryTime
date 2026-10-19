@@ -20,6 +20,8 @@ export type Draft = {
   updatedAt: number;
   storyTitle: string;
   premise: string;
+  /** Style notes: a new story's, or unsaved changes to an existing story's (absent when unchanged). */
+  style?: string;
   newChoiceLabel: string;
   title: string;
   body: string;

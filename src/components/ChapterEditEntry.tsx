@@ -19,6 +19,7 @@ type Props = {
   existingChoices: { id: string; label: string; hasChild: boolean }[];
   incomingLabel: string | null;
   context: StoryContext;
+  storyId: string;
   draftLabel: string;
   /** The codex as of the previous chapter; absent for a story's first chapter. */
   codexPanel?: { chapterId: string; path: PathChapter[]; ops: CodexOp[] };
@@ -44,6 +45,7 @@ export default function ChapterEditEntry({ story, ...p }: Props) {
           incomingLabel: p.incomingLabel,
         }}
         context={p.context}
+        storyId={p.storyId}
         draftKey={`edit:${p.chapterId}`}
         resumeHref={`/c/${p.chapterId}/edit`}
         draftLabel={p.draftLabel}
