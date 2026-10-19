@@ -161,8 +161,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const [conflict, setConflict] = useState<{ current: Draft | null } | null>(null);
   // Saving changed text asks whether to keep the chapter's summary or write a new one.
   const [askSummary, setAskSummary] = useState(false);
-  // Which of the new choices "Post and write next" goes on to.
-  const [nextChoice, setNextChoice] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   const loadedRef = useRef(false);
   // The server's `updatedAt` for the version this page has; each save says it builds on it.
@@ -785,8 +783,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     else void post();
   }
 
-  /** `writeNext` is the index of a new choice to start writing straight after posting. */
-  async function post(resummarize = false, writeNext?: number) {
+  async function post(resummarize = false) {
     if (!draft) return;
     setAskSummary(false);
     startBusy("post");
@@ -871,9 +868,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       await saveChainRef.current;
       await deleteDraft(draftKey).catch(() => {});
       const id = target.kind === "edit" ? target.chapterId : data.chapter_id;
-      const nextId = writeNext !== undefined ? (data.choice_ids as string[] | undefined)?.[writeNext] : undefined;
       if (summaryError) router.push(`/c/${id}/summary?failed=${encodeURIComponent(summaryError)}`);
-      else if (nextId) router.push(`/c/${id}/write?choice=${nextId}`);
       else router.push(target.kind === "edit" ? `/c/${id}` : `/c/${id}?posted=1`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -892,8 +887,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const pickedWords = picked ? countWords(picked.text) : 0;
   // A chapter with no choices ends its branch.
   const endsBranch = finalChoices.length === 0 && (target.kind !== "edit" || keptExisting === 0);
-  // A new chapter with choices can go straight on to writing one of them.
-  const canWriteNext = target.kind !== "edit" && finalChoices.length > 0;
 
   const statusFor = (...kinds: (typeof busy)[]) => status && kinds.includes(busy) && <p className="meta">{status}</p>;
   const errorFor = (...kinds: (typeof busy)[]) => error && kinds.includes(lastAction) && <p className="error">{error}</p>;
@@ -1538,39 +1531,9 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
             </button>
           </>
         ) : (
-          <>
-            {canWriteNext && (
-              <>
-                {finalChoices.length > 1 && (
-                  <select
-                    aria-label="Choice to write next"
-                    value={Math.min(nextChoice, finalChoices.length - 1)}
-                    onChange={(e) => setNextChoice(Number(e.target.value))}
-                    disabled={busy !== null}
-                    style={{ width: "auto", maxWidth: "12rem" }}
-                  >
-                    {finalChoices.map((c, i) => (
-                      <option key={i} value={i}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => void post(false, Math.min(nextChoice, finalChoices.length - 1))}
-                  disabled={busy !== null || problems.length > 0}
-                  title={`Post this chapter, then start writing “${finalChoices[Math.min(nextChoice, finalChoices.length - 1)]}”`}
-                >
-                  Post and write next
-                </button>
-              </>
-            )}
-            <button type="button" onClick={requestPost} disabled={busy !== null || problems.length > 0}>
-              {posting ? "Saving…" : target.kind === "edit" ? "Save changes" : "Post chapter"}
-            </button>
-          </>
+          <button type="button" onClick={requestPost} disabled={busy !== null || problems.length > 0}>
+            {posting ? "Saving…" : target.kind === "edit" ? "Save changes" : "Post chapter"}
+          </button>
         )}
       </div>
 

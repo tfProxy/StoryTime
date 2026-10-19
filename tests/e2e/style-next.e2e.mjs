@@ -1,5 +1,5 @@
 // Story style notes reach the prompts and are edited, with the title, summary and story-wide codex,
-// on the story details page; "Post and write next" posts a chapter and opens the chosen choice for writing.
+// on the story details page.
 import http from "node:http";
 import { launch } from "./browser.mjs";
 
@@ -45,18 +45,19 @@ await page.getByLabel(/^Style notes/).fill("STYLE-NEW: first person.");
 await page.getByRole("button", { name: "Generate chapter" }).click();
 await page.getByRole("button", { name: "Edit text" }).waitFor();
 ok(lastChapterPrompt().includes("Style notes from the author (follow these in everything you write):\nSTYLE-NEW: first person."), "a new story's style notes go into the prompt");
-ok(!(await page.getByRole("button", { name: "Post and write next" }).isVisible()), "no “Post and write next” without choices");
+ok((await page.getByRole("button", { name: "Post and write next" }).count()) === 0, "there is no “Post and write next” button");
 
 await page.getByPlaceholder("Choice 1").fill("Left");
 await page.getByRole("button", { name: "+ Add choice" }).click();
 await page.getByPlaceholder("Choice 2").fill("Right");
-await page.getByLabel("Choice to write next").selectOption({ label: "Right" });
-await page.getByRole("button", { name: "Post and write next" }).click();
-await page.waitForURL(/\/c\/[^/]+\/write\?choice=/);
-const root = /\/c\/([^/]+)\/write/.exec(page.url())[1];
+await page.getByRole("button", { name: "Post chapter" }).click();
+await page.waitForURL(/\/c\/[^/]+\?posted=1/);
+const root = /\/c\/([^/?]+)/.exec(page.url())[1];
+await page.locator("a.card.choice-unwritten", { hasText: "Right" }).click();
+await page.waitForURL(/\/write\?choice=/);
 const rootData = await json("GET", `/api/chapters/${root}`);
 const right = rootData.choices.find((c) => c.label === "Right");
-ok(page.url().endsWith(`choice=${right.id}`), "“Post and write next” posts, then opens the chosen choice for writing");
+ok(page.url().endsWith(`choice=${right.id}`), "posting, then opening a choice from the chapter, goes to writing it");
 ok((await page.getByLabel(/Choice text/).inputValue()) === "Right", "…with its choice text filled in");
 const story = await json("GET", `/api/stories/${rootData.chapter.story_id}`);
 ok(story.style === "STYLE-NEW: first person.", "the style notes are saved with the story");
@@ -97,12 +98,13 @@ await page.getByRole("button", { name: "Generate chapter" }).click();
 await page.getByRole("button", { name: "Edit text" }).waitFor();
 ok(lastChapterPrompt().includes("STYLE-EDITED: third person.") && !lastChapterPrompt().includes("STYLE-NEW"), "…and drafting uses them");
 
-// ---- one choice: no picker, straight on ----
+// ---- a second chapter ----
 await page.getByPlaceholder("Choice 1").fill("Onward");
-ok(!(await page.getByLabel("Choice to write next").isVisible()), "with one choice there is nothing to pick");
-await page.getByRole("button", { name: "Post and write next" }).click();
+await page.getByRole("button", { name: "Post chapter" }).click();
+await page.waitForURL(/\/c\/[^/]+\?posted=1/);
+await page.locator("a.card.choice-unwritten", { hasText: "Onward" }).click();
 await page.waitForURL((u) => u.href.includes("/write?choice=") && !u.href.endsWith(right.id));
-ok((await page.getByLabel(/Choice text/).inputValue()) === "Onward", "…and it goes on to that choice");
+ok((await page.getByLabel(/Choice text/).inputValue()) === "Onward", "…and the next chapter's choice opens for writing");
 await page.getByRole("button", { name: "Generate chapter" }).click();
 await page.getByRole("button", { name: "Edit text" }).waitFor();
 ok(lastChapterPrompt().includes("STYLE-EDITED: third person."), "a later chapter's prompt uses the saved notes");

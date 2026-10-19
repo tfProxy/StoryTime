@@ -12,7 +12,6 @@ never leave your browser.
 - **AI drafting** in the browser, in four steps: brainstorm ideas and pick the codex entries, have
   the AI write the chapter from the story so far (revise, undo, step between drafts), write or
   generate a summary and choices, then post. "Continue with AI" jumps straight to a draft.
-  "Post and write next" posts the chapter and opens one of its new choices for writing straight away.
 - **Style notes**: per-story instructions for the AI (point of view, tense, tone, things to avoid),
   sent with every drafting prompt. Set them when starting a story, or change them from the Style
   notes section on any writing page; a change is tried out on that page until you save it for the
