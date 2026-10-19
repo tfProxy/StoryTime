@@ -3,6 +3,7 @@ import { listStories } from "@/lib/stories";
 import ImportStoryMenuItem from "@/components/ImportStoryMenuItem";
 import { PageMenu } from "@/components/SiteMenu";
 import StoryCover from "@/components/StoryCover";
+import StorySummary from "@/components/StorySummary";
 import StoryMenu from "@/components/StoryMenu";
 
 export const dynamic = "force-dynamic";
@@ -18,17 +19,15 @@ export default function Home() {
       <ul className="story-grid">
         {stories.map((s) => (
           <li key={s.id} className="story-card">
-            <Link
-              href={s.root_chapter_id ? `/c/${s.root_chapter_id}` : `/s/${s.id}`}
-              className="story-link"
-              title={s.premise.trim() || undefined}
-            >
+            <Link href={s.root_chapter_id ? `/c/${s.root_chapter_id}` : `/s/${s.id}`} className="story-link">
               <StoryCover story={s} />
               <strong className="story-title">{s.title}</strong>
-              <span className="meta story-count">
-                {s.chapter_count} chapter{s.chapter_count === 1 ? "" : "s"}
-              </span>
             </Link>
+            {/* Takes the row's spare height, so the chapter counts line up across a row. */}
+            <div className="story-summary">{s.premise.trim() && <StorySummary text={s.premise.trim()} />}</div>
+            <span className="meta story-count">
+              {s.chapter_count} chapter{s.chapter_count === 1 ? "" : "s"}
+            </span>
             <div className="story-actions">
               <Link href={`/s/${s.id}/outline`} className="story-outline" aria-label={`Outline of ${s.title}`} title="Outline">
                 <svg viewBox="0 0 24 24" width="1.2rem" height="1.2rem" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

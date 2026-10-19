@@ -11,6 +11,9 @@ const titles = ["Cover one", "Cover two", "Cover three", "Cover four"];
 const ids = [];
 for (const title of titles) ids.push((await post("/api/stories", { title, premise: `About ${title}`, chapter: { title: "Root", body: "b" } })).story_id);
 
+// a story with a long summary, made last so it is in the first row
+const longId = (await post("/api/stories", { title: "Cover long", premise: "The first sentence. The second sentence goes on. A third.", chapter: { title: "Root", body: "b" } })).story_id;
+
 // a 40x60 PNG made in the browser, uploaded through the details page
 const browser = await launch();
 const page = await (await browser.newContext({ viewport: { width: 1000, height: 700 } })).newPage();
@@ -29,6 +32,28 @@ const svgOf = async (t) => card(t).locator(".cover svg").innerHTML();
 ok((await svgOf("Cover one")) === (await svgOf("Cover one")) && (await svgOf("Cover one")) !== (await svgOf("Cover two")), "…different for each story");
 ok((await card("Cover one").getByText("1 chapter", { exact: true }).isVisible()), "the title and chapter count sit under the cover");
 
+// ---- summaries: the first sentence, expandable ----
+const long = card("Cover long");
+ok((await long.getByText(/^The first sentence\./).isVisible()) && !(await long.getByText(/second sentence/).count()), "a summary shows just its first sentence");
+ok((await card("Cover one").getByRole("button", { name: /more/ }).count()) === 0, "…with no [more] button when there is nothing more");
+const countBottoms = () => page.locator(".story-card").evaluateAll((cards) => {
+  const rows = new Map();
+  for (const c of cards) {
+    const top = Math.round(c.getBoundingClientRect().top + scrollY);
+    const bottom = Math.round(c.querySelector(".story-count").getBoundingClientRect().bottom + scrollY);
+    rows.set(top, [...(rows.get(top) ?? []), bottom]);
+  }
+  return [...rows.values()];
+});
+const aligned = async () => (await countBottoms()).every((r) => r.every((b) => b === r[0]));
+ok(await aligned(), "the chapter counts line up across each row");
+const before = (await box(long)).height;
+await long.getByRole("button", { name: "[more]" }).click();
+ok(await long.getByText(/The second sentence goes on\. A third\./).isVisible() && (await box(long)).height > before, "[more] shows the whole summary");
+ok(await aligned(), "…and the row stays aligned when one is open");
+await long.getByRole("button", { name: "[less]" }).click();
+ok(!(await long.getByText(/second sentence/).count()), "[less] folds it back up");
+
 // ---- New story, bottom right ----
 const fab = page.getByRole("link", { name: /New story/ });
 const f = await box(fab), vp = page.viewportSize();
@@ -37,7 +62,7 @@ await page.mouse.wheel(0, 2000);
 ok(Math.abs((await box(fab)).y - f.y) < 1, "…and stays there when the page scrolls");
 
 // ---- menus open inside the window, even for the first and last column ----
-for (const t of ["Cover one", "Cover four"]) {
+for (const t of ["Cover long", "Cover one"]) {
   await page.evaluate(() => window.scrollTo(0, 0));
   await card(t).locator("summary").click();
   const inside = await page
