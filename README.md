@@ -12,6 +12,11 @@ never leave your browser.
 - **AI drafting** in the browser, in four steps: brainstorm ideas and pick the codex entries, have
   the AI write the chapter from the story so far (revise, undo, step between drafts), write or
   generate a summary and choices, then post. "Continue with AI" jumps straight to a draft.
+  "Post and write next" posts the chapter and opens one of its new choices for writing straight away.
+- **Style notes**: per-story instructions for the AI (point of view, tense, tone, things to avoid),
+  sent with every drafting prompt. Set them when starting a story, or change them from the Style
+  notes section on any writing page; a change is tried out on that page until you save it for the
+  whole story.
 - **Codex**: per-branch notes on characters, places and facts (a character who turns into a horse
   stays human on other branches). The AI can scan chapters for entries, draft entries, and bring an
   entry up to date with the story. While writing, you can read, edit and add entries without leaving
@@ -91,9 +96,13 @@ replacement can be written.
 ## How it works
 
 - No accounts, logins or author names; one person is assumed.
-- The server stores stories (chapters, choices, codex changes) and the settings, including AI keys, so
-  every browser sees the same ones. Drafts live in your browser; the settings page can export settings
-  to a file.
+- The server stores stories (chapters, choices, codex changes), the settings, including AI keys, and
+  drafts, so every browser sees the same ones. A draft is saved as you write, along with the page's
+  working state (brainstorm ideas, length, codex picks, an unsent instruction), so you can start a
+  chapter on one device and finish it on another. If the same draft is changed in two tabs, the
+  second save is refused and the page asks which version to keep. Drafts that older versions kept
+  in the browser move to the server the first time drafts are opened. The settings page can export
+  settings to a file.
 - Any chapter can be edited. Every edit keeps the previous version in `chapter_revisions`, and the
   chapter shows an "edited" marker linking to its history.
 - The codex is an append-only log per story: each change (create / replace / retire) is anchored at
@@ -123,4 +132,4 @@ npm run test:all    # everything
 The API and browser suites build the app if needed and run it on port 3111 with a temporary
 database; the browser tests also run a fake AI server on port 3222. Set
 `E2E_CHANNEL=chrome` (or `bundled`, after `npx playwright-core install chromium`) to use a
-different browser. Pass `--build` (`node tests/run.mjs --build api`) to force a rebuild first.
+different browser, or `E2E_EXECUTABLE=/path/to/chromium` to use a specific browser binary. Pass `--build` (`node tests/run.mjs --build api`) to force a rebuild first.

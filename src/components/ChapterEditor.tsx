@@ -31,7 +31,7 @@ import {
 } from "@/lib/ai/prompts";
 import type { PathChapter } from "@/lib/ai/codexAi";
 import { draftOps, foldCodex, isDraftEntry, type CodexOp } from "@/lib/codex";
-import { deleteDraft, emptyDraft, getDraft, putDraft, type Draft } from "@/lib/drafts";
+import { deleteDraft, DraftConflict, emptyDraft, getDraft, saveDraft, type Draft } from "@/lib/drafts";
 import { diffWords } from "@/lib/diff";
 import Prose from "./Prose";
 import AutoTextarea from "./AutoTextarea";
@@ -62,6 +62,8 @@ export type Target =
 type Props = {
   target: Target;
   context: StoryContext;
+  /** The story being written in; absent for a brand-new story. Lets the style notes be saved. */
+  storyId?: string;
   draftKey: string;
   resumeHref: string;
   draftLabel: string;
@@ -76,6 +78,12 @@ const MAX_VERSIONS = 20;
 
 const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
 
+/** One line of text, cut to fit a folded section's heading. */
+function snippet(text: string, max = 70) {
+  const flat = text.trim().replace(/\s+/g, " ");
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+}
+
 // Mounts once and runs `run`; used to kick off generation after the draft has loaded.
 function AutoStart({ run }: { run: () => void }) {
   useEffect(() => {
@@ -85,8 +93,13 @@ function AutoStart({ run }: { run: () => void }) {
   return null;
 }
 
+// Ideas and suggestions cost an AI call, and a half-typed instruction is work too.
+const hasWorkingState = (d: Draft) =>
+  !!(d.ideaPages?.length || d.suggestions?.length || d.instruction?.trim() || d.guidance?.trim() || d.style?.trim());
+
 // Don't litter the drafts list with untouched forms.
 function isBlank(d: Draft, target: Target): boolean {
+  if (hasWorkingState(d)) return false;
   if (target.kind === "edit") {
     return (
       d.title === target.initialTitle &&
@@ -113,25 +126,15 @@ function isBlank(d: Draft, target: Target): boolean {
   );
 }
 
-export default function ChapterEditor({ target, context, draftKey, resumeHref, draftLabel, autoGenerate, codexPanel }: Props) {
+export default function ChapterEditor({ target, context, storyId, draftKey, resumeHref, draftLabel, autoGenerate, codexPanel }: Props) {
   const router = useRouter();
   const settings = useSettings();
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [length, setLength] = useState<Length>("medium");
-  const [instruction, setInstruction] = useState("");
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  // Guidance for "Suggest more"; null until edited, so it follows the choice text by default.
-  const [guidance, setGuidance] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | "generate" | "refine" | "choices" | "ideas" | "summary" | "label" | "post">(null);
-  // Each "Suggest" adds a page of ideas; earlier pages stay so the author can go back to them.
-  const [ideaPages, setIdeaPages] = useState<Idea[][]>([]);
-  const [ideaPage, setIdeaPage] = useState(0);
   // The idea being turned into a choice on the previous chapter ("page:index"), with the text being edited.
   const [promoting, setPromoting] = useState<{ key: string; text: string } | null>(null);
   const [promoteBusy, setPromoteBusy] = useState(false);
   const [promoteError, setPromoteError] = useState<string | null>(null);
-  // Ideas already added as choices, by the text they were added with.
-  const [promoted, setPromoted] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   // The last action started, so its error shows in the section it came from.
   const [lastAction, setLastAction] = useState<typeof busy>(null);
@@ -148,19 +151,51 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const [directionPref, setDirectionPref] = useState<boolean | null>(null);
   // After the AI writes, keep showing the read-only text until the user chooses to edit it.
   const [reading, setReading] = useState(false);
-  // Manual additions to / removals from the codex entries sent with each prompt.
-  const [codexOverrides, setCodexOverrides] = useState<CodexOverrides>({ include: [], exclude: [] });
   // The part of the chapter text selected in the editor; "Revise" then changes only that.
   const [selection, setSelection] = useState<{ start: number; end: number; text: string } | null>(null);
   // Comparing the draft being shown with another one: whether it's open, and which one.
   const [compareOpen, setCompareOpen] = useState(false);
   const [compareWith, setCompareWith] = useState<number | null>(null);
-  // When this browser last saved the draft, or that it couldn't.
+  // When the draft was last saved, or that it couldn't be.
   const [saved, setSaved] = useState<{ at: number } | { failed: true } | null>(null);
+  // A save was refused because the draft was saved from another tab or browser first.
+  const [conflict, setConflict] = useState<{ current: Draft | null } | null>(null);
   // Saving changed text asks whether to keep the chapter's summary or write a new one.
   const [askSummary, setAskSummary] = useState(false);
+  // Style notes just saved to the story, used until the page's data catches up.
+  const [savedStyle, setSavedStyle] = useState<string | null>(null);
+  const [styleBusy, setStyleBusy] = useState(false);
+  // The style notes fold opens by itself when there are unsaved changes; null until the author toggles it.
+  const [stylePref, setStylePref] = useState<boolean | null>(null);
+  const [styleStatus, setStyleStatus] = useState<{ ok: boolean; text: string } | null>(null);
+  // Which of the new choices "Post and write next" goes on to.
+  const [nextChoice, setNextChoice] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   const loadedRef = useRef(false);
+  // The server's `updatedAt` for the version this page has; each save says it builds on it.
+  const baseRef = useRef(0);
+  // Saves run one after another, so each builds on the one before.
+  const saveChainRef = useRef<Promise<void>>(Promise.resolve());
+  // Changes not yet saved (waiting for the debounce, or being sent).
+  const unsavedRef = useRef(0);
+  // Set when the draft is replaced by the stored one, which needn't be saved back.
+  const skipSaveRef = useRef(false);
+  const conflictRef = useRef(false);
+  const busyRef = useRef(false);
+
+  /** Shows a draft as stored on the server. */
+  function showStored(d: Draft) {
+    baseRef.current = d.updatedAt;
+    skipSaveRef.current = true;
+    setSelection(null);
+    setDraft(upgraded(d));
+  }
+
+  // An edit draft saved before summaries were carried into it has no summary field: start it from the chapter's.
+  function upgraded(d: Draft): Draft {
+    if (target.kind === "fill" && !d.newChoiceLabel) return { ...d, newChoiceLabel: target.label };
+    return target.kind === "edit" && d.summary === undefined && target.initialSummary ? { ...d, summary: target.initialSummary } : d;
+  }
 
   // Load any saved draft for this spot.
   useEffect(() => {
@@ -181,16 +216,18 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         choiceEdits: {},
       };
     };
-    // An edit draft saved before summaries were carried into it has no summary field: start it from the chapter's.
-    const upgraded = (d: Draft): Draft => {
-      if (target.kind === "fill" && !d.newChoiceLabel) return { ...d, newChoiceLabel: target.label };
-      return target.kind === "edit" && d.summary === undefined && target.initialSummary ? { ...d, summary: target.initialSummary } : d;
-    };
     getDraft(draftKey)
-      .then((d) => !cancelled && setDraft(d ? upgraded(d) : fresh()))
-      .catch(() => !cancelled && setDraft(fresh()))
-      .finally(() => {
+      .then((d) => {
+        if (cancelled) return;
         loadedRef.current = true;
+        if (d) showStored(d);
+        else setDraft(fresh());
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // Carry on with a fresh form; if a stored draft does exist, the first save says so.
+        loadedRef.current = true;
+        setDraft(fresh());
       });
     return () => {
       cancelled = true;
@@ -199,28 +236,95 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey, resumeHref, draftLabel]);
 
-  // Autosave (debounced) to this browser only.
-  useEffect(() => {
-    if (!draft || !loadedRef.current || isBlank(draft, target)) return;
-    const t = setTimeout(() => {
-      if (!loadedRef.current) return;
-      putDraft(draft)
-        .then(() => setSaved({ at: Date.now() }))
-        .catch(() => setSaved({ failed: true }));
-    }, 500);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft]);
+  async function save(d: Draft) {
+    if (!loadedRef.current || conflictRef.current) return;
+    try {
+      baseRef.current = await saveDraft(d, baseRef.current);
+      setSaved({ at: baseRef.current });
+    } catch (e) {
+      if (e instanceof DraftConflict) {
+        conflictRef.current = true;
+        setConflict({ current: e.current });
+      } else {
+        setSaved({ failed: true });
+      }
+    }
+  }
 
-  // Leaving or reloading while the AI is working would cut it off; ask first.
+  function queueSave(d: Draft) {
+    unsavedRef.current++;
+    saveChainRef.current = saveChainRef.current.then(() => save(d)).finally(() => {
+      unsavedRef.current--;
+    });
+  }
+
+  // Autosave (debounced) to the server.
   useEffect(() => {
-    if (busy === null) return;
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
+    if (!draft || !loadedRef.current) return;
+    if (skipSaveRef.current) {
+      skipSaveRef.current = false;
+      return;
+    }
+    if (conflict || isBlank(draft, target)) return;
+    let fired = false;
+    const unsaved = unsavedRef;
+    unsaved.current++;
+    const t = setTimeout(() => {
+      fired = true;
+      unsaved.current--;
+      queueSave(draft);
+    }, 500);
+    return () => {
+      clearTimeout(t);
+      if (!fired) unsaved.current--;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, conflict]);
+
+  useEffect(() => {
+    busyRef.current = busy !== null;
   }, [busy]);
 
+  // Coming back to this tab after writing somewhere else: show the newer draft, if nothing here is unsaved.
+  useEffect(() => {
+    const check = () => {
+      if (document.visibilityState !== "visible" || !loadedRef.current) return;
+      if (busyRef.current || unsavedRef.current > 0 || conflictRef.current) return;
+      getDraft(draftKey)
+        .then((d) => {
+          if (d && d.updatedAt > baseRef.current && unsavedRef.current === 0 && !busyRef.current && loadedRef.current) showStored(d);
+        })
+        .catch(() => {});
+    };
+    document.addEventListener("visibilitychange", check);
+    return () => document.removeEventListener("visibilitychange", check);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
+
+  // Leaving or reloading while the AI is working would cut it off, and unsaved changes would be lost; ask first.
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if (busyRef.current || unsavedRef.current > 0) e.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, []);
+
   if (!draft) return <p className="meta">Loading draft…</p>;
+
+  // Working state kept in the draft, so it survives a reload.
+  const length: Length = draft.length ?? "medium";
+  const instruction = draft.instruction ?? "";
+  const suggestions = draft.suggestions ?? [];
+  // Guidance for "Suggest more"; null until edited, so it follows the choice text by default.
+  const guidance = draft.guidance ?? null;
+  // Each "Suggest" adds a page of ideas; earlier pages stay so the author can go back to them.
+  const ideaPages: Idea[][] = draft.ideaPages ?? [];
+  const ideaPage = Math.min(draft.ideaPage ?? 0, Math.max(0, ideaPages.length - 1));
+  // Ideas already added as choices, by the text they were added with.
+  const promoted = draft.promoted ?? {};
+  // Manual additions to / removals from the codex entries sent with each prompt.
+  const codexOverrides: CodexOverrides = draft.codexOverrides ?? { include: [], exclude: [] };
 
   // For a brand-new story the title and premise are still being typed in this form.
   const withSummaries = (path: StoryContext["path"], made: Record<string, Summaries>) =>
@@ -242,11 +346,16 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
           always_include: e.always_include,
         }))
       : context.codex;
+  // The story's style notes, with any changes made here that aren't saved to the story yet.
+  const storedStyle = savedStyle ?? context.style ?? "";
+  const style = target.kind === "story" ? (draft.style ?? "") : (draft.style ?? storedStyle);
+  const styleChanged = target.kind !== "story" && draft.style !== undefined && draft.style !== storedStyle;
   const ctx: StoryContext = {
     ...context,
     codex,
     storyTitle: storyInfo.title,
     premise: storyInfo.premise,
+    style,
     path: withSummaries(context.path, madeSummaries),
     // The choice text being typed here (a new branch, or a renamed one) is what the reader will have picked.
     choiceLabel:
@@ -282,6 +391,32 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       return ctx;
     } finally {
       setStatus(null);
+    }
+  }
+
+  /** Saves the style notes edited here to the story, so every chapter written in it uses them. */
+  async function saveStyle() {
+    if (!storyId || draft?.style === undefined) return;
+    const next = draft.style.trim();
+    setStylePref(true); // stay open to show the result
+    setStyleBusy(true);
+    setStyleStatus(null);
+    try {
+      const res = await fetch(`/api/stories/${storyId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ style: next }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+      setSavedStyle(next);
+      patch({ style: undefined });
+      setStyleStatus({ ok: true, text: "Saved for the whole story." });
+      router.refresh();
+    } catch (e) {
+      setStyleStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setStyleBusy(false);
     }
   }
 
@@ -361,7 +496,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
           setDraft((d) => (d ? { ...d, ...(title !== null ? { title } : {}), body } : d));
         }
       }
-      if (kind === "refine") setInstruction("");
+      if (kind === "refine") patch({ instruction: "" });
       // A new branch needs choice text; if the author hasn't written any, make it from the chapter.
       if (kind === "generate" && (target.kind === "new" || target.kind === "fill") && !draft.newChoiceLabel.trim()) {
         const chapter = parseChapterOutput(text);
@@ -456,8 +591,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       });
       const found = parseIdeas(text);
       if (found.length === 0) throw new Error("The AI didn't suggest anything I could read. Try again.");
-      setIdeaPages((pages) => [...pages, found]);
-      setIdeaPage(ideaPages.length);
+      setDraft((d) => (d ? { ...d, ideaPages: [...(d.ideaPages ?? []), found], ideaPage: d.ideaPages?.length ?? 0 } : d));
       setPromoting(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -480,7 +614,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
-      setPromoted((p) => ({ ...p, [key]: label }));
+      setDraft((d) => (d ? { ...d, promoted: { ...d.promoted, [key]: label } } : d));
       setPromoting(null);
       // Reloads the choices that already exist, so the next ideas steer clear of this one.
       router.refresh();
@@ -513,7 +647,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         useSummaryModel: true,
         maxTokens: 400,
       });
-      setSuggestions(parseChoices(text));
+      const found = parseChoices(text);
+      patch({ suggestions: found });
     } catch (e) {
       if (!quiet) setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -525,8 +660,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     if (!draft) return;
     const existing = draft.choices.map((c) => c.trim()).filter(Boolean);
     if (existing.length >= maxNew) return;
-    patch({ choices: [...existing, label, ""].slice(0, maxNew) });
-    setSuggestions((s) => s.filter((x) => x !== label));
+    patch({ choices: [...existing, label, ""].slice(0, maxNew), suggestions: suggestions.filter((x) => x !== label) });
   }
 
   function undo() {
@@ -638,7 +772,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     else void post();
   }
 
-  async function post(resummarize = false) {
+  /** `writeNext` is the index of a new choice to start writing straight after posting. */
+  async function post(resummarize = false, writeNext?: number) {
     if (!draft) return;
     setAskSummary(false);
     startBusy("post");
@@ -701,7 +836,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       };
     } else if (target.kind === "story") {
       url = "/api/stories";
-      payload = { title: draft.storyTitle, premise: draft.premise, chapter };
+      payload = { title: draft.storyTitle, premise: draft.premise, style: (draft.style ?? "").trim(), chapter };
     } else if (target.kind === "fill" && draft.newChoiceLabel.trim() === target.label.trim()) {
       url = "/api/chapters";
       payload = { ...chapter, choice_id: target.choiceId, codex_changes };
@@ -720,9 +855,12 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
       loadedRef.current = false; // stop autosave from re-creating the draft
+      await saveChainRef.current;
       await deleteDraft(draftKey).catch(() => {});
       const id = target.kind === "edit" ? target.chapterId : data.chapter_id;
+      const nextId = writeNext !== undefined ? (data.choice_ids as string[] | undefined)?.[writeNext] : undefined;
       if (summaryError) router.push(`/c/${id}/summary?failed=${encodeURIComponent(summaryError)}`);
+      else if (nextId) router.push(`/c/${id}/write?choice=${nextId}`);
       else router.push(target.kind === "edit" ? `/c/${id}` : `/c/${id}?posted=1`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -738,7 +876,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const brainstormOpen = brainstormPref ?? !hasBody;
   const directionOpen = directionPref ?? !hasBody;
   const directionText = draft.prompt.trim().replace(/\s+/g, " ");
-  const directionSnippet = directionText ? (directionText.length > 70 ? `${directionText.slice(0, 70)}…` : directionText) : "the AI decides";
+  const directionSnippet = directionText ? snippet(directionText) : "the AI decides";
   const targetWords = LENGTH_WORDS[length];
   const picked = currentSelection(draft.body);
   const pickedWords = picked ? countWords(picked.text) : 0;
@@ -753,6 +891,9 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const diff = comparing ? diffWords(draft.versions?.[otherDraft]?.body ?? "", draft.body) : [];
   // A chapter with no choices ends its branch.
   const endsBranch = finalChoices.length === 0 && (target.kind !== "edit" || keptExisting === 0);
+  // A new chapter with choices can go straight on to writing one of them.
+  const canWriteNext = target.kind !== "edit" && finalChoices.length > 0;
+  const styleOpen = stylePref ?? styleChanged;
 
   const statusFor = (...kinds: (typeof busy)[]) => status && kinds.includes(busy) && <p className="meta">{status}</p>;
   const errorFor = (...kinds: (typeof busy)[]) => error && kinds.includes(lastAction) && <p className="error">{error}</p>;
@@ -786,7 +927,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
               <AutoTextarea
                 style={{ minHeight: "3rem", fontFamily: "inherit" }}
                 value={guidanceText}
-                onChange={(e) => setGuidance(e.target.value)}
+                onChange={(e) => patch({ guidance: e.target.value })}
               />
             </label>
             <div className="row">
@@ -795,13 +936,13 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
               </button>
               {ideaPages.length > 1 && (
                 <>
-                  <button type="button" className="secondary" onClick={() => setIdeaPage(ideaPage - 1)} disabled={ideaPage === 0} aria-label="Previous ideas">
+                  <button type="button" className="secondary" onClick={() => patch({ ideaPage: ideaPage - 1 })} disabled={ideaPage === 0} aria-label="Previous ideas">
                     &lt;
                   </button>
                   <span className="meta">
                     Page {ideaPage + 1} of {ideaPages.length}
                   </span>
-                  <button type="button" className="secondary" onClick={() => setIdeaPage(ideaPage + 1)} disabled={ideaPage === ideaPages.length - 1} aria-label="Next ideas">
+                  <button type="button" className="secondary" onClick={() => patch({ ideaPage: ideaPage + 1 })} disabled={ideaPage === ideaPages.length - 1} aria-label="Next ideas">
                     &gt;
                   </button>
                 </>
@@ -888,13 +1029,63 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             )}
           </details>
 
+          {target.kind !== "story" && storyId && (
+            <details
+              className="ai-panel fold"
+              open={styleOpen}
+              onToggle={(e) => {
+                if (e.currentTarget.open !== styleOpen) setStylePref(e.currentTarget.open);
+              }}
+            >
+              <summary>
+                Style notes
+                <span className="meta">{styleChanged ? "not saved" : style.trim() ? snippet(style) : "none"}</span>
+              </summary>
+              <label>
+                For the whole story <small>(point of view, tense, tone, things to avoid; sent with every prompt)</small>
+                <AutoTextarea
+                  style={{ minHeight: "4rem", fontFamily: "inherit" }}
+                  value={style}
+                  maxLength={LIMITS.style}
+                  placeholder="e.g. First person, past tense. Dry humour. No graphic violence."
+                  onChange={(e) => {
+                    setStyleStatus(null);
+                    patch({ style: e.target.value });
+                  }}
+                />
+              </label>
+              {styleChanged && (
+                <>
+                  <p className="meta">Used for drafting here now. Save it to use it for every chapter in this story.</p>
+                  <div className="row">
+                    <button type="button" onClick={saveStyle} disabled={styleBusy}>
+                      {styleBusy ? "Saving…" : "Save for the story"}
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => {
+                        setStylePref(true); // stay open to show what it went back to
+                        patch({ style: undefined });
+                      }}
+                      disabled={styleBusy}
+                    >
+                      Discard changes
+                    </button>
+                  </div>
+                </>
+              )}
+              {styleStatus && <p className={styleStatus.ok ? "ok" : "error"}>{styleStatus.text}</p>}
+            </details>
+          )}
+
           <div className="ai-panel">
             <CodexPreview
               ctx={ctx}
               direction={draft.prompt}
               contextTokens={settings.contextTokens}
               overrides={codexOverrides}
-              onChange={setCodexOverrides}
+              onChange={(next) => patch({ codexOverrides: next })}
               onEdit={codexPanel ? (id) => openCodex(id) : undefined}
               onNew={codexPanel ? () => openCodex("new") : undefined}
               held={codexChanges.map((c) => c.entry_id)}
@@ -919,6 +1110,42 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         </div>
 
         <div className="editor-main">
+          {conflict && (
+            <div className="notice" role="alert">
+              <p>
+                {conflict.current
+                  ? `This draft was changed in another tab or browser (saved ${new Date(conflict.current.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}). Changes here aren't being saved until you pick one.`
+                  : "This draft was posted or deleted in another tab or browser. Changes here aren't being saved."}
+              </p>
+              <div className="row">
+                {conflict.current && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const current = conflict.current!;
+                      conflictRef.current = false;
+                      setConflict(null);
+                      showStored(current);
+                    }}
+                  >
+                    Load that version
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    baseRef.current = conflict.current?.updatedAt ?? 0;
+                    conflictRef.current = false;
+                    setConflict(null);
+                    queueSave(draft);
+                  }}
+                >
+                  {conflict.current ? "Keep this one" : "Save it again"}
+                </button>
+              </div>
+            </div>
+          )}
           {target.kind === "edit" && target.descendantCount > 0 && (
             <p className="notice">
               {target.descendantCount} chapter{target.descendantCount === 1 ? " continues" : "s continue"} from this one.
@@ -960,6 +1187,16 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
                   value={draft.premise}
                   maxLength={LIMITS.premise}
                   onChange={(e) => patch({ premise: e.target.value })}
+                />
+              </label>
+              <label>
+                Style notes <small>(optional; point of view, tense, tone, things to avoid. Only the AI sees these, with every prompt)</small>
+                <AutoTextarea
+                  style={{ minHeight: "4rem", fontFamily: "inherit" }}
+                  value={draft.style ?? ""}
+                  maxLength={LIMITS.style}
+                  placeholder="e.g. First person, past tense. Dry humour. No graphic violence."
+                  onChange={(e) => patch({ style: e.target.value })}
                 />
               </label>
             </section>
@@ -1004,7 +1241,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
               </label>
             </details>
             <div className="row">
-              <select value={length} onChange={(e) => setLength(e.target.value as Length)} style={{ width: "auto" }}>
+              <select value={length} onChange={(e) => patch({ length: e.target.value as Length })} style={{ width: "auto" }}>
                 <option value="short">Short (~300 words)</option>
                 <option value="medium">Medium (~600 words)</option>
                 <option value="long">Long (~1000 words)</option>
@@ -1060,8 +1297,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
               {saved && (
                 <span className={`meta save-state${"failed" in saved ? " error" : ""}`}>
                   {"failed" in saved
-                    ? "Couldn't save this draft in this browser"
-                    : `Saved in this browser · ${new Date(saved.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
+                    ? "Couldn't save this draft"
+                    : `Draft saved · ${new Date(saved.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
                 </span>
               )}
             </div>
@@ -1164,7 +1401,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
                 aria-label="Instruction for the AI"
                 value={instruction}
                 disabled={!hasBody}
-                onChange={(e) => setInstruction(e.target.value)}
+                onChange={(e) => patch({ instruction: e.target.value })}
                 onKeyDown={(e) => {
                   if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
                   e.preventDefault();
@@ -1325,6 +1562,12 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
                 />
               </label>
             )}
+            {styleChanged && (
+              <p className="notice">
+                Your style notes changes aren&apos;t saved to the story. Posting doesn&apos;t save them; use &ldquo;Save for the
+                story&rdquo; under Style notes, or they stay with this draft only.
+              </p>
+            )}
             {codexChanges.length > 0 && (
               <p className="meta">
                 {codexChanges.length} codex change{codexChanges.length === 1 ? "" : "s"} will be saved with this chapter
@@ -1334,8 +1577,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             <p className="meta">
               {target.kind === "edit"
                 ? "The current version is kept in the chapter's history."
-                : "You can edit it later from this browser, and every earlier version is kept."}{" "}
-              Until then, your draft is saved in this browser only.
+                : "You can edit it later, and every earlier version is kept."}{" "}
+              Until then, your draft is saved as you go; open it from Drafts in any browser.
             </p>
           </section>
         </div>
@@ -1387,9 +1630,39 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             </button>
           </>
         ) : (
-          <button type="button" onClick={requestPost} disabled={busy !== null || problems.length > 0}>
-            {posting ? "Saving…" : target.kind === "edit" ? "Save changes" : "Post chapter"}
-          </button>
+          <>
+            {canWriteNext && (
+              <>
+                {finalChoices.length > 1 && (
+                  <select
+                    aria-label="Choice to write next"
+                    value={Math.min(nextChoice, finalChoices.length - 1)}
+                    onChange={(e) => setNextChoice(Number(e.target.value))}
+                    disabled={busy !== null}
+                    style={{ width: "auto", maxWidth: "12rem" }}
+                  >
+                    {finalChoices.map((c, i) => (
+                      <option key={i} value={i}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => void post(false, Math.min(nextChoice, finalChoices.length - 1))}
+                  disabled={busy !== null || problems.length > 0}
+                  title={`Post this chapter, then start writing “${finalChoices[Math.min(nextChoice, finalChoices.length - 1)]}”`}
+                >
+                  Post and write next
+                </button>
+              </>
+            )}
+            <button type="button" onClick={requestPost} disabled={busy !== null || problems.length > 0}>
+              {posting ? "Saving…" : target.kind === "edit" ? "Save changes" : "Post chapter"}
+            </button>
+          </>
         )}
       </div>
 

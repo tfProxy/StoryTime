@@ -2,6 +2,7 @@
 export const LIMITS = {
   title: 200,
   premise: 5000,
+  style: 3000,
   body: 50000,
   summary: 5000,
   label: 200,

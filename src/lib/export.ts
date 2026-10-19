@@ -31,7 +31,7 @@ type RevisionRow = {
 type ChoiceRow = { id: string; parent_chapter_id: string; label: string; posted_at: number };
 
 export type StoryExport = {
-  story: { id: string; title: string; premise: string; created_at: number };
+  story: { id: string; title: string; premise: string; style: string; created_at: number };
   /** In reading order: depth-first from the first chapter. */
   chapters: ChapterRow[];
   choices: ChoiceRow[];
@@ -102,7 +102,7 @@ export function loadStory(storyId: string): StoryExport | null {
   ).filter((r) => ids.has(r.chapter_id));
 
   return {
-    story: { id: story.id, title: story.title, premise: story.premise, created_at: story.created_at },
+    story: { id: story.id, title: story.title, premise: story.premise, style: story.style, created_at: story.created_at },
     chapters,
     choices,
     codex,

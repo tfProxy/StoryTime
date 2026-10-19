@@ -62,8 +62,8 @@ ok(await instruction.isEnabled(), "…and enabled once there is text");
 ok(await page.getByText(/posting now ends this branch/).isVisible() && /ends the branch/.test(await page.locator(".action-bar").innerText()), "no choices: the branch-ending notice shows");
 await page.getByPlaceholder("Choice 1").fill("Go in");
 ok(!(await page.getByText(/posting now ends this branch/).isVisible()), "…and goes away with a choice");
-await page.waitForFunction(() => /Saved in this browser/.test(document.body.innerText));
-ok(true, "the page says when the draft was saved in this browser");
+await page.waitForFunction(() => /Draft saved/.test(document.body.innerText));
+ok(true, "the page says when the draft was saved");
 
 // revise just a selected passage, sent with the Enter key
 const select = (from, to) =>

@@ -189,23 +189,15 @@ ok((await chapter(third)).chapter.path_summary === null, "…and the chapters be
 // an edit draft saved before summaries were carried into it picks up the chapter's summary
 await page.goto(`${BASE}/c/${second}/edit`);
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.length > 0);
-await page.evaluate(async (key) => {
-  const db = await new Promise((res, rej) => { const r = indexedDB.open("storytime", 1); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
-  await new Promise((res, rej) => {
-    const tx = db.transaction("drafts", "readwrite");
-    tx.objectStore("drafts").put({ key, href: "/", label: "old", updatedAt: Date.now(), storyTitle: "", premise: "", newChoiceLabel: "", title: "Second", body: "An old draft body.", choices: [""], prompt: "", undo: [], baseRevision: 5 });
-    tx.oncomplete = res; tx.onerror = () => rej(tx.error);
-  });
-  db.close();
-}, `edit:${second}`);
+await fetch(`${BASE}/api/drafts/${encodeURIComponent(`edit:${second}`)}`, {
+  method: "PUT",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ base: null, draft: { key: `edit:${second}`, href: "/", label: "old", storyTitle: "", premise: "", newChoiceLabel: "", title: "Second", body: "An old draft body.", choices: [""], prompt: "", undo: [], baseRevision: 5 } }),
+});
 await page.goto(`${BASE}/c/${second}/edit`);
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value === "An old draft body.");
 ok((await page.getByLabel(/^Summary/).inputValue()) === "SUM(Second, renamed)", "an older edit draft starts with the chapter's summary");
-await page.evaluate(async (key) => {
-  const db = await new Promise((res) => { const r = indexedDB.open("storytime", 1); r.onsuccess = () => res(r.result); });
-  await new Promise((res) => { const tx = db.transaction("drafts", "readwrite"); tx.objectStore("drafts").delete(key); tx.oncomplete = res; });
-  db.close();
-}, `edit:${second}`);
+await fetch(`${BASE}/api/drafts/${encodeURIComponent(`edit:${second}`)}`, { method: "DELETE" });
 
 // ---- F: the author's own summary is posted as written ----
 await page.goto(`${BASE}/c/${second}/write`);

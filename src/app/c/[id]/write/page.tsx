@@ -56,11 +56,13 @@ export default async function WritePage({
         context={{
           storyTitle: story.title,
           premise: story.premise,
+          style: story.style,
           path: path.map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary })),
           choiceLabel,
           codex: getContextCodex(parent.id),
           siblingChoices: getChoices(parent.id).map((c) => c.label),
         }}
+        storyId={story.id}
         draftKey={draftKey}
         resumeHref={resumeHref}
         draftLabel={draftLabel}

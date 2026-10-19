@@ -21,6 +21,12 @@ ok(JSON.stringify(parseChoices('Sure! ["Open the door", "Run", "Hide."]')) === '
 ok(JSON.stringify(parseChoices('1. Open it\n2. "Run away"\n- Hide')) === '["Open it","Run away","Hide"]', "choices lines");
 const g = generatePrompt({ storyTitle: "T", premise: "P", path: [ch(1)], choiceLabel: "Go" }, "dragons", "short", 8000);
 ok(g.includes("Premise: P") && g.includes('The reader chose: "Go"') && g.includes("dragons") && g.includes("about 300 words"), "generate prompt contents");
+ok(!g.includes("Style notes"), "no style notes section when the story has none");
+const styled = { storyTitle: "T", premise: "P", style: "  First person, past tense.\nNo gore.  ", path: [ch(1)], choiceLabel: "Go" };
+const gs = generatePrompt(styled, "", "short", 8000);
+ok(gs.includes("Style notes from the author (follow these in everything you write):\nFirst person, past tense.\nNo gore.") && gs.indexOf("Style notes") < gs.indexOf("Most recent chapters"), "style notes go in the story header, before the story so far");
+ok(ideasPrompt(styled, 8000).includes("No gore.") && choicesPrompt(styled, { title: "x", body: "y" }, [], 8000).includes("No gore."), "…and into the ideas and choice prompts too");
+ok(!SYSTEM_CHAPTER.includes("many people"), "the system prompt doesn't describe a shared, many-writer story");
 
 // ---- prompt guidance ----
 const base = { storyTitle: "T", premise: "P", path: [ch(1)], choiceLabel: null };
