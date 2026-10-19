@@ -1291,7 +1291,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
 
           <section className="ai-panel">
             <h2>Chapter</h2>
-            <div className="row" aria-label="Draft versions">
+            <div className="row" style={{ flexWrap: "wrap" }} aria-label="Draft versions">
               {versionCount > 1 && (
                 <>
                   <button type="button" className="secondary" onClick={() => showVersion(versionIndex - 1)} disabled={busy !== null || versionIndex === 0} aria-label="Previous draft">
