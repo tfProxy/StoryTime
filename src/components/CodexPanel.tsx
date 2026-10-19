@@ -31,6 +31,8 @@ type Props = {
   openAiHelper?: boolean;
   /** Shown inside the writing page's drawer: no chapter timeline or AI scan, just the entries. */
   embedded?: boolean;
+  /** Shown on the story's details page: the codex at the first chapter, which every branch shares. */
+  storyWide?: boolean;
   /** Open with this entry's form showing ("new" for a new entry). */
   startEditing?: string | null;
   /** The chapter whose codex is being viewed; changes made here are anchored at it. */
@@ -51,7 +53,7 @@ type Change = { op: CodexOp["op"]; entry_id?: string; anchor?: string } & Partia
 const when = (t: number) => new Date(t).toISOString().replace("T", " ").slice(0, 16) + " UTC";
 const localId = () => `draft-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 
-export default function CodexPanel({ story, openAiHelper, embedded, startEditing, chapterId, path, ops, draft }: Props) {
+export default function CodexPanel({ story, openAiHelper, embedded, storyWide, startEditing, chapterId, path, ops, draft }: Props) {
   const router = useRouter();
   const titleOf = (id: string) =>
     id === DRAFT_ANCHOR ? "this chapter (not posted yet)" : (path.find((p) => p.id === id)?.title ?? "an earlier chapter");
@@ -126,7 +128,7 @@ export default function CodexPanel({ story, openAiHelper, embedded, startEditing
 
   return (
     <div style={{ display: "grid", gap: "1.25rem" }}>
-      {!embedded && (
+      {!embedded && !storyWide && (
       <nav className="timeline" aria-label="Chapters on this path">
         {path.map((p, i) => (
           <span key={p.id}>
@@ -142,6 +144,11 @@ export default function CodexPanel({ story, openAiHelper, embedded, startEditing
           saved with the chapter when you post it, for it and the chapters after it. To record something that happened
           earlier, pick that chapter under &ldquo;Takes effect from&rdquo;; that is saved immediately and reaches every
           branch below it.
+        </p>
+      ) : storyWide ? (
+        <p className="notice">
+          Entries here apply to the whole story, on every branch, from the first chapter on. A later chapter can still
+          change or retire one for its own branch; do that from that chapter&apos;s codex.
         </p>
       ) : (
         <p className="notice">
@@ -504,6 +511,7 @@ function EntryForm({
         <input type="checkbox" checked={always} onChange={(e) => setAlways(e.target.checked)} style={{ width: "auto" }} />
         Always include in AI prompts <small>(otherwise only when the name or an alias appears nearby)</small>
       </label>
+      {(inDraft || path.length > 1) && (
       <label>
         Takes effect from{" "}
         <small>
@@ -521,6 +529,7 @@ function EntryForm({
           ))}
         </select>
       </label>
+      )}
       <div className="row">
         <button type="submit" disabled={busy || aiBusy || !name.trim()}>
           {busy ? "Saving…" : initial ? "Save changes" : "Add entry"}

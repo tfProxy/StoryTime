@@ -1,5 +1,5 @@
-// Story style notes reach the prompts and can be saved from any writing page; "Post and write
-// next" posts a chapter and opens the chosen choice for writing.
+// Story style notes reach the prompts and are edited, with the title, summary and story-wide codex,
+// on the story details page; "Post and write next" posts a chapter and opens the chosen choice for writing.
 import http from "node:http";
 import { launch } from "./browser.mjs";
 
@@ -61,29 +61,41 @@ ok((await page.getByLabel(/Choice text/).inputValue()) === "Right", "…with its
 const story = await json("GET", `/api/stories/${rootData.chapter.story_id}`);
 ok(story.style === "STYLE-NEW: first person.", "the style notes are saved with the story");
 
-// ---- editing the style notes while writing ----
-const fold = page.locator("summary", { hasText: "Style notes" });
-ok((await fold.innerText()).includes("STYLE-NEW"), "the writing page shows the story's style notes, folded");
-await fold.click();
-await page.getByLabel(/For the whole story/).fill("STYLE-EDITED: third person.");
-ok((await fold.innerText()).includes("not saved"), "a change is marked as not saved");
-ok(await page.getByText(/style notes changes aren.t saved to the story/).isVisible(), "…and the Finish section says posting won't save it");
+// ---- the writing page shows the notes; they are edited on the story details page ----
+const writeUrl = page.url();
+ok(await page.getByText(/Style notes: STYLE-NEW/).isVisible(), "the writing page shows the story's style notes");
+ok((await page.locator("textarea").evaluateAll((els) => els.map((e) => e.value))).every((v) => !v.includes("STYLE-NEW")), "…but they can't be edited there");
+await page.getByRole("link", { name: "Edit story details" }).waitFor();
+
+await page.goto(`${BASE}/`);
+const card = page.locator(".story-card", { hasText: "Styled tale" });
+await card.getByLabel("Options for Styled tale").click();
+await card.getByRole("link", { name: "Story details" }).click();
+await page.waitForURL(`${BASE}/s/${story.id}/details`);
+ok((await page.getByLabel(/^Style notes/).inputValue()) === "STYLE-NEW: first person.", "the details page opens from the story's menu, with the style notes");
+await page.getByLabel("Story title").fill("Styled tale, renamed");
+await page.getByLabel(/^Summary/).fill("A SUMMARY of the tale.");
+await page.getByLabel(/^Style notes/).fill("STYLE-EDITED: third person.");
+await page.getByRole("button", { name: "Save story details" }).click();
+await page.getByText("Story details saved.").waitFor();
+const edited = await json("GET", `/api/stories/${story.id}`);
+ok(edited.style === "STYLE-EDITED: third person." && edited.title === "Styled tale, renamed" && edited.premise === "A SUMMARY of the tale.", "saving stores the title, summary and style notes");
+
+await page.getByRole("button", { name: "+ New entry" }).click();
+await page.getByLabel("Name", { exact: true }).fill("Lantern");
+await page.getByLabel(/Description/).fill("A brass lantern.");
+ok(!(await page.getByLabel(/Takes effect from/).count()), "a story-wide entry has no chapter to pick");
+await page.getByRole("button", { name: "Add entry" }).click();
+await page.getByText("A brass lantern.").waitFor();
+const rootCodex = await json("GET", `/api/chapters/${root}/codex`);
+ok(rootCodex.ops.some((o) => o.name === "Lantern" && o.anchor_chapter_id === root), "a codex entry added there is anchored at the first chapter");
+
+await page.goto(writeUrl);
+await page.getByText(/Style notes: STYLE-EDITED/).waitFor();
+ok(true, "the writing page shows the saved notes");
 await page.getByRole("button", { name: "Generate chapter" }).click();
 await page.getByRole("button", { name: "Edit text" }).waitFor();
-ok(lastChapterPrompt().includes("STYLE-EDITED: third person.") && !lastChapterPrompt().includes("STYLE-NEW"), "an unsaved change is used for drafting on this page");
-ok((await json("GET", `/api/stories/${story.id}`)).style === "STYLE-NEW: first person.", "…without changing the story yet");
-
-await page.waitForTimeout(1000); // the draft's save
-await page.reload();
-await page.getByLabel(/For the whole story/).waitFor();
-ok((await page.getByLabel(/For the whole story/).inputValue()) === "STYLE-EDITED: third person.", "the unsaved change is kept with the draft over a reload");
-await page.getByRole("button", { name: "Discard changes" }).click();
-ok((await page.getByLabel(/For the whole story/).inputValue()) === "STYLE-NEW: first person.", "discarding goes back to the story's notes");
-await page.getByLabel(/For the whole story/).fill("STYLE-EDITED: third person.");
-await page.getByRole("button", { name: "Save for the story" }).click();
-await page.getByText("Saved for the whole story.").waitFor();
-ok((await json("GET", `/api/stories/${story.id}`)).style === "STYLE-EDITED: third person.", "saving stores it on the story");
-ok(!(await fold.innerText()).includes("not saved"), "…and it's no longer marked as unsaved");
+ok(lastChapterPrompt().includes("STYLE-EDITED: third person.") && !lastChapterPrompt().includes("STYLE-NEW"), "…and drafting uses them");
 
 // ---- one choice: no picker, straight on ----
 await page.getByPlaceholder("Choice 1").fill("Onward");

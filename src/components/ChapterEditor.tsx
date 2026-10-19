@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { LIMITS } from "@/lib/limits";
 import { useSettings } from "@/lib/settings";
 import { completeChat, streamChat } from "@/lib/ai/client";
@@ -64,7 +65,7 @@ export type Target =
 type Props = {
   target: Target;
   context: StoryContext;
-  /** The story being written in; absent for a brand-new story. Lets the style notes be saved. */
+  /** The story being written in; absent for a brand-new story. Links to its details page. */
   storyId?: string;
   draftKey: string;
   resumeHref: string;
@@ -97,7 +98,7 @@ function AutoStart({ run }: { run: () => void }) {
 
 // Ideas and suggestions cost an AI call, and a half-typed instruction is work too.
 const hasWorkingState = (d: Draft) =>
-  !!(d.ideaPages?.length || d.suggestions?.length || d.instruction?.trim() || d.guidance?.trim() || d.style?.trim());
+  !!(d.ideaPages?.length || d.suggestions?.length || d.instruction?.trim() || d.guidance?.trim());
 
 // Don't litter the drafts list with untouched forms.
 function isBlank(d: Draft, target: Target): boolean {
@@ -118,6 +119,7 @@ function isBlank(d: Draft, target: Target): boolean {
   return !(
     d.storyTitle ||
     d.premise ||
+    d.style?.trim() ||
     (d.newChoiceLabel && !(target.kind === "fill" && d.newChoiceLabel === target.label)) ||
     d.title ||
     d.body ||
@@ -163,12 +165,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const [conflict, setConflict] = useState<{ current: Draft | null } | null>(null);
   // Saving changed text asks whether to keep the chapter's summary or write a new one.
   const [askSummary, setAskSummary] = useState(false);
-  // Style notes just saved to the story, used until the page's data catches up.
-  const [savedStyle, setSavedStyle] = useState<string | null>(null);
-  const [styleBusy, setStyleBusy] = useState(false);
-  // The style notes fold opens by itself when there are unsaved changes; null until the author toggles it.
-  const [stylePref, setStylePref] = useState<boolean | null>(null);
-  const [styleStatus, setStyleStatus] = useState<{ ok: boolean; text: string } | null>(null);
   // Which of the new choices "Post and write next" goes on to.
   const [nextChoice, setNextChoice] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -347,10 +343,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
           always_include: e.always_include,
         }))
       : context.codex;
-  // The story's style notes, with any changes made here that aren't saved to the story yet.
-  const storedStyle = savedStyle ?? context.style ?? "";
-  const style = target.kind === "story" ? (draft.style ?? "") : (draft.style ?? storedStyle);
-  const styleChanged = target.kind !== "story" && draft.style !== undefined && draft.style !== storedStyle;
+  // The story's style notes are edited on its details page; a brand-new story types them in this form.
+  const style = target.kind === "story" ? (draft.style ?? "") : (context.style ?? "");
   const ctx: StoryContext = {
     ...context,
     codex,
@@ -392,32 +386,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       return ctx;
     } finally {
       setStatus(null);
-    }
-  }
-
-  /** Saves the style notes edited here to the story, so every chapter written in it uses them. */
-  async function saveStyle() {
-    if (!storyId || draft?.style === undefined) return;
-    const next = draft.style.trim();
-    setStylePref(true); // stay open to show the result
-    setStyleBusy(true);
-    setStyleStatus(null);
-    try {
-      const res = await fetch(`/api/stories/${storyId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ style: next }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
-      setSavedStyle(next);
-      patch({ style: undefined });
-      setStyleStatus({ ok: true, text: "Saved for the whole story." });
-      router.refresh();
-    } catch (e) {
-      setStyleStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setStyleBusy(false);
     }
   }
 
@@ -922,7 +890,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const endsBranch = finalChoices.length === 0 && (target.kind !== "edit" || keptExisting === 0);
   // A new chapter with choices can go straight on to writing one of them.
   const canWriteNext = target.kind !== "edit" && finalChoices.length > 0;
-  const styleOpen = stylePref ?? styleChanged;
 
   const statusFor = (...kinds: (typeof busy)[]) => status && kinds.includes(busy) && <p className="meta">{status}</p>;
   const errorFor = (...kinds: (typeof busy)[]) => error && kinds.includes(lastAction) && <p className="error">{error}</p>;
@@ -1060,53 +1027,9 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
           </details>
 
           {target.kind !== "story" && storyId && (
-            <details
-              className="ai-panel fold"
-              open={styleOpen}
-              onToggle={(e) => {
-                if (e.currentTarget.open !== styleOpen) setStylePref(e.currentTarget.open);
-              }}
-            >
-              <summary>
-                Style notes
-                <span className="meta">{styleChanged ? "not saved" : style.trim() ? snippet(style) : "none"}</span>
-              </summary>
-              <label>
-                For the whole story <small>(point of view, tense, tone, things to avoid; sent with every prompt)</small>
-                <AutoTextarea
-                  style={{ minHeight: "4rem", fontFamily: "inherit" }}
-                  value={style}
-                  maxLength={LIMITS.style}
-                  placeholder="e.g. First person, past tense. Dry humour. No graphic violence."
-                  onChange={(e) => {
-                    setStyleStatus(null);
-                    patch({ style: e.target.value });
-                  }}
-                />
-              </label>
-              {styleChanged && (
-                <>
-                  <p className="meta">Used for drafting here now. Save it to use it for every chapter in this story.</p>
-                  <div className="row">
-                    <button type="button" onClick={saveStyle} disabled={styleBusy}>
-                      {styleBusy ? "Saving…" : "Save for the story"}
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary"
-                      onClick={() => {
-                        setStylePref(true); // stay open to show what it went back to
-                        patch({ style: undefined });
-                      }}
-                      disabled={styleBusy}
-                    >
-                      Discard changes
-                    </button>
-                  </div>
-                </>
-              )}
-              {styleStatus && <p className={styleStatus.ok ? "ok" : "error"}>{styleStatus.text}</p>}
-            </details>
+            <p className="meta">
+              Style notes: {style.trim() ? snippet(style) : "none"} · <Link href={`/s/${storyId}/details`}>Edit story details</Link>
+            </p>
           )}
 
           <div className="ai-panel">
@@ -1604,12 +1527,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                   onChange={(e) => patch({ editNote: e.target.value })}
                 />
               </label>
-            )}
-            {styleChanged && (
-              <p className="notice">
-                Your style notes changes aren&apos;t saved to the story. Posting doesn&apos;t save them; use &ldquo;Save for the
-                story&rdquo; under Style notes, or they stay with this draft only.
-              </p>
             )}
             {codexChanges.length > 0 && (
               <p className="meta">

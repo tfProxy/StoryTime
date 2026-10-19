@@ -1,12 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { LIMITS } from "@/lib/limits";
 import type { StoryContext } from "@/lib/ai/prompts";
 import type { PathChapter } from "@/lib/ai/codexAi";
 import type { CodexOp } from "@/lib/codex";
 import ChapterEditor from "./ChapterEditor";
+import StoryDetailsForm from "./StoryDetailsForm";
 
 type Props = {
   chapterId: string;
@@ -30,7 +28,12 @@ type Props = {
 export default function ChapterEditEntry({ story, ...p }: Props) {
   return (
     <>
-      {story && <StoryMeta story={story} />}
+      {/* The story's title and summary are also edited alongside its first chapter. */}
+      {story && (
+        <div style={{ marginBottom: "1.5rem" }}>
+          <StoryDetailsForm story={story} />
+        </div>
+      )}
       <ChapterEditor
         target={{
           kind: "edit",
@@ -52,60 +55,5 @@ export default function ChapterEditEntry({ story, ...p }: Props) {
         codexPanel={p.codexPanel}
       />
     </>
-  );
-}
-
-// The story's title and blurb are edited alongside its first chapter.
-function StoryMeta({ story }: { story: { id: string; title: string; premise: string } }) {
-  const router = useRouter();
-  const [title, setTitle] = useState(story.title);
-  const [premise, setPremise] = useState(story.premise);
-  const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const changed = title.trim() !== story.title || premise.trim() !== story.premise;
-
-  async function save() {
-    setBusy(true);
-    setStatus(null);
-    try {
-      const res = await fetch(`/api/stories/${story.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, premise }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
-      setStatus({ ok: true, text: "Story details saved." });
-      router.refresh();
-    } catch (e) {
-      setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <section className="ai-panel" style={{ marginBottom: "1.5rem" }}>
-      <h2>Story details</h2>
-      <label>
-        Story title
-        <input value={title} maxLength={LIMITS.title} onChange={(e) => setTitle(e.target.value)} />
-      </label>
-      <label>
-        Premise
-        <textarea
-          style={{ minHeight: "5rem" }}
-          value={premise}
-          maxLength={LIMITS.premise}
-          onChange={(e) => setPremise(e.target.value)}
-        />
-      </label>
-      <div className="row">
-        <button type="button" onClick={save} disabled={busy || !changed || !title.trim()}>
-          {busy ? "Saving…" : "Save story details"}
-        </button>
-        {status && <span className={status.ok ? "ok" : "error"}>{status.text}</span>}
-      </div>
-    </section>
   );
 }

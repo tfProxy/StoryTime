@@ -36,6 +36,7 @@ export default function Home() {
             <details className="story-menu">
               <summary aria-label={`Options for ${s.title}`}>☰</summary>
               <div className="story-menu-items">
+                {s.root_chapter_id && <Link href={`/s/${s.id}/details`}>Story details</Link>}
                 <a href={download(s.id, "md")}>Download readable (Markdown)</a>
                 <a href={download(s.id, "html")}>Download to play offline (HTML)</a>
                 <a href={download(s.id, "twee")}>Download Twine (Twee)</a>
