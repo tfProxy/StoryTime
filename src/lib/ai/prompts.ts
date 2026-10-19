@@ -39,6 +39,9 @@ export type StoryContext = {
 
 export type CodexOverrides = { include: string[]; exclude: string[] };
 
+/** A request as it will be sent: the system prompt (if any) and the message. */
+export type PromptParts = { system?: string; message: string };
+
 export type Length = "short" | "medium" | "long";
 export const LENGTH_WORDS: Record<Length, number> = { short: 300, medium: 600, long: 1000 };
 

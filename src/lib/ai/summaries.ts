@@ -4,7 +4,7 @@
 // (cheaper) model and saved to the server for reuse.
 import { completeChat } from "./client";
 import { extractJson } from "./codexAi";
-import { summaryCoverageIndex, type ContextChapter } from "./prompts";
+import { summaryCoverageIndex, type ContextChapter, type PromptParts } from "./prompts";
 import { LIMITS } from "../limits";
 import type { Settings } from "../settings";
 
@@ -25,29 +25,25 @@ export function summaryWords(body: string): number {
   return Math.min(150, Math.max(40, Math.round(words / 8 / 10) * 10));
 }
 
-/** One step: fold a chapter into the running summary. `previous` is null for a story's first chapter. */
-export async function summarizeChapter(
-  settings: Settings,
-  opts: {
-    story: { title: string; premise: string };
-    previous: string | null;
-    chapter: { title: string; body: string };
-    /** The author's own summary of the chapter; used as-is instead of a generated one. */
-    summary?: string;
-    signal?: AbortSignal;
-    /** Called as the reply streams in, with whatever of the two summaries has been written so far. */
-    onText?: (partial: Summaries) => void;
-  },
-): Promise<Summaries> {
+type SummaryInput = {
+  story: { title: string; premise: string };
+  previous: string | null;
+  chapter: { title: string; body: string };
+  /** The author's own summary of the chapter; used as-is instead of a generated one. */
+  summary?: string;
+};
+
+/** The request that folds a chapter into the running summary. */
+export function summaryRequest(contextTokens: number, opts: SummaryInput): PromptParts {
   const own = opts.summary?.trim() ? clip(opts.summary) : null;
-  const budget = Math.max(1000, settings.contextTokens - 1500);
+  const budget = Math.max(1000, contextTokens - 1500);
   // A chapter can be longer than the model's window; keep the start and the end.
   const maxChars = budget * 3;
   const body =
     opts.chapter.body.length > maxChars
       ? `${opts.chapter.body.slice(0, maxChars / 2)}\n[…]\n${opts.chapter.body.slice(-maxChars / 2)}`
       : opts.chapter.body;
-  const prompt = [
+  const message = [
     `Story: ${opts.story.title}${opts.story.premise.trim() ? `\nPremise: ${opts.story.premise.trim()}` : ""}`,
     opts.previous
       ? `Summary of the story before this chapter:\n${opts.previous}`
@@ -57,6 +53,20 @@ export async function summarizeChapter(
       ? `The author has already summarized this chapter. Use it unchanged as the SUMMARY:\n${own}`
       : `Make the SUMMARY about ${summaryWords(opts.chapter.body)} words.`,
   ].join("\n\n");
+  return { system: SYSTEM_SUMMARY, message };
+}
+
+/** One step: fold a chapter into the running summary. `previous` is null for a story's first chapter. */
+export async function summarizeChapter(
+  settings: Settings,
+  opts: SummaryInput & {
+    signal?: AbortSignal;
+    /** Called as the reply streams in, with whatever of the two summaries has been written so far. */
+    onText?: (partial: Summaries) => void;
+  },
+): Promise<Summaries> {
+  const own = opts.summary?.trim() ? clip(opts.summary) : null;
+  const request = summaryRequest(settings.contextTokens, opts);
 
   // Small or "thinking" models sometimes ramble or break the format, so give it one more go.
   let lastError: unknown;
@@ -64,8 +74,8 @@ export async function summarizeChapter(
     const reply = await completeChat(
       settings,
       {
-        system: SYSTEM_SUMMARY,
-        messages: [{ role: "user", content: prompt }],
+        system: request.system,
+        messages: [{ role: "user", content: request.message }],
         useSummaryModel: true,
         maxTokens: 1500,
         signal: opts.signal,

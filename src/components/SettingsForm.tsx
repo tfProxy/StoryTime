@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { PROVIDERS, providerInfo, type ProviderId } from "@/lib/ai/providers";
 import { AiError, listModels, streamChat } from "@/lib/ai/client";
+import PromptButton from "./PromptButton";
 import {
   exportSettingsJson,
   importSettingsJson,
@@ -13,6 +14,12 @@ import {
 } from "@/lib/settings";
 
 const CUSTOM = "__custom__";
+
+// What "Try a sample reply" sends.
+const SAMPLE_REQUEST = {
+  system: "You are a concise assistant.",
+  message: "Write one sentence that opens a fantasy adventure story.",
+};
 
 // A real <select> once models are known (datalists don't open on iOS/Android), with a way to type any name.
 function ModelField({
@@ -113,8 +120,8 @@ export default function SettingsForm() {
     try {
       let text = "";
       for await (const piece of streamChat(settings, {
-        system: "You are a concise assistant.",
-        messages: [{ role: "user", content: "Write one sentence that opens a fantasy adventure story." }],
+        system: SAMPLE_REQUEST.system,
+        messages: [{ role: "user", content: SAMPLE_REQUEST.message }],
         maxTokens: 120,
         signal: ctl.signal,
       })) {
@@ -280,6 +287,7 @@ export default function SettingsForm() {
           <button type="button" className="secondary" onClick={tryIt} disabled={trying}>
             {trying ? "Generating…" : "Try a sample reply"}
           </button>
+          <PromptButton label="Try a sample reply" build={() => SAMPLE_REQUEST} />
           {trying && (
             <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
               Stop

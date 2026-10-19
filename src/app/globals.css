@@ -766,6 +766,68 @@ button.outline-action {
   margin: 0;
 }
 
+/* The small eye button beside an AI button, and the floating window it opens with the prompt. */
+button.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.6rem;
+}
+
+.prompt-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.prompt-window {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(52rem, 100%);
+  /* A percentage wouldn't work here: the backdrop's grid row is as tall as its content. */
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+
+.prompt-window:focus {
+  outline: none;
+}
+
+.prompt-window-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.prompt-window-head h2 {
+  flex: 1;
+  margin: 0;
+}
+
+.prompt-window-body {
+  overflow-y: auto;
+  padding: 0.75rem 1rem 1rem;
+}
+
+.prompt-window-body h3 {
+  margin: 0.75rem 0 0.35rem;
+  font-size: 0.95rem;
+}
+
+.prompt-window-body .sample {
+  font-size: 0.9rem;
+}
+
 .story-card {
   display: flex;
   justify-content: space-between;

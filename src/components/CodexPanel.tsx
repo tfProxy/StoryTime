@@ -19,8 +19,9 @@ import {
   type EntryType,
 } from "@/lib/codex";
 import { useSettings } from "@/lib/settings";
-import { draftEntry, type PathChapter, type StoryInfo } from "@/lib/ai/codexAi";
+import { draftEntry, entryRequest, type PathChapter, type StoryInfo } from "@/lib/ai/codexAi";
 import CodexAiScan from "./CodexAiScan";
+import PromptButton from "./PromptButton";
 
 type PathItem = PathChapter;
 
@@ -364,6 +365,23 @@ function EntryForm({
     setAlways(f.always_include);
   }
 
+  /** What the AI is asked in each mode, from the form as it stands. */
+  function aiOptions(mode: "draft" | "update") {
+    // Chapters from where this entry was last changed up to here (that chapter included, since the
+    // change may be in its text).
+    const since = initial ? path.filter((c) => c.depth >= initial.op.anchor_depth) : [];
+    const existing = initial || name.trim() ? current() : null;
+    return {
+      story,
+      path,
+      codex: entries.filter((e) => e.entry_id !== initial?.entry_id),
+      direction,
+      existing: existing && existing.name ? existing : null,
+      mode,
+      since,
+    };
+  }
+
   async function runAi(mode: "draft" | "update") {
     const ctl = new AbortController();
     abortRef.current = ctl;
@@ -371,20 +389,7 @@ function EntryForm({
     setAiError(null);
     setAiNote(null);
     try {
-      // Chapters from where this entry was last changed up to here (that chapter included, since the
-      // change may be in its text).
-      const since = initial ? path.filter((c) => c.depth >= initial.op.anchor_depth) : [];
-      const existing = initial || name.trim() ? current() : null;
-      const result = await draftEntry(settings, {
-        story,
-        path,
-        codex: entries.filter((e) => e.entry_id !== initial?.entry_id),
-        direction,
-        existing: existing && existing.name ? existing : null,
-        mode,
-        since,
-        signal: ctl.signal,
-      });
+      const result = await draftEntry(settings, { ...aiOptions(mode), signal: ctl.signal });
       setBeforeAi(current());
       applyFields(result.fields);
       if (result.changedInChapterId) {
@@ -434,10 +439,17 @@ function EntryForm({
           <button type="button" onClick={() => runAi("draft")} disabled={aiBusy || busy || !direction.trim()}>
             {aiBusy ? "Working…" : initial ? "Rewrite with AI" : "Draft with AI"}
           </button>
+          <PromptButton
+            label={initial ? "Rewrite with AI" : "Draft with AI"}
+            build={() => entryRequest(settings.contextTokens, aiOptions("draft"))}
+          />
           {initial && (
-            <button type="button" className="secondary" onClick={() => runAi("update")} disabled={aiBusy || busy}>
-              Update from the story
-            </button>
+            <>
+              <button type="button" className="secondary" onClick={() => runAi("update")} disabled={aiBusy || busy}>
+                Update from the story
+              </button>
+              <PromptButton label="Update from the story" build={() => entryRequest(settings.contextTokens, aiOptions("update"))} />
+            </>
           )}
           {aiBusy && (
             <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>

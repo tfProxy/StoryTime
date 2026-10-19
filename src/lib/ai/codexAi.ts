@@ -2,7 +2,7 @@
 // a single entry. All of it runs in the browser with the user's own key; nothing is saved
 // until the user accepts and posts.
 import { completeChat } from "./client";
-import { buildStorySoFar, estimateTokens, notesBlock, parseInstruction, type ContextChapter } from "./prompts";
+import { buildStorySoFar, estimateTokens, notesBlock, parseInstruction, type ContextChapter, type PromptParts } from "./prompts";
 import { ENTRY_TYPES, foldCodex, type CodexEntry, type CodexOp, type EntryType } from "../codex";
 import type { Settings } from "../settings";
 
@@ -133,10 +133,46 @@ export type AnalyzeOptions = {
   onProposals?: (proposals: Proposal[]) => void;
 };
 
+/**
+ * The request for reading one chapter. The codex it shows is as it stood when the chapter began,
+ * plus `virtualOps`: what a scan has proposed so far.
+ */
+function buildAnalyze(
+  contextTokens: number,
+  opts: { story: StoryInfo; path: PathChapter[]; ops: CodexOp[]; chapter: PathChapter; virtualOps: CodexOp[] },
+): { state: CodexEntry[]; request: PromptParts } {
+  const { story, path, ops, chapter: ch, virtualOps } = opts;
+  const budget = Math.max(1000, contextTokens - 1500);
+  const state = foldCodex([...ops.filter((o) => o.anchor_depth <= ch.depth), ...virtualOps]);
+  const earlier = path.filter((c) => c.depth < ch.depth);
+  const soFar = earlier.length ? buildStorySoFar(earlier, Math.floor(budget * 0.35)) : "";
+  const body = ch.body.length > budget * 2 ? `${ch.body.slice(0, budget * 2)}…` : ch.body;
+
+  const message = [
+    `Story: ${story.title}${story.premise.trim() ? `\nPremise: ${story.premise.trim()}` : ""}`,
+    soFar && `${soFar}`,
+    `Codex so far:\n${describeCodex(state)}`,
+    `Chapter to read: "${ch.title}"\n${body}`,
+    "List the codex changes this chapter establishes, as JSON.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  return { state, request: { system: SYSTEM_ANALYZE, message } };
+}
+
+/**
+ * The request a scan sends first: for the last chapter with "chapter", or for the first with
+ * "path" (the ones after it also hold what the earlier ones proposed).
+ */
+export function scanRequest(contextTokens: number, opts: Omit<AnalyzeOptions, "signal">): PromptParts {
+  const chapter = opts.scope === "chapter" ? opts.path.at(-1) : opts.path[0];
+  if (!chapter) throw new Error("There's no chapter to read.");
+  return buildAnalyze(contextTokens, { ...opts, chapter, virtualOps: [] }).request;
+}
+
 export async function analyzePath(settings: Settings, opts: AnalyzeOptions): Promise<Proposal[]> {
   const { story, path, ops, scope } = opts;
   const targets = scope === "chapter" ? path.slice(-1) : path;
-  const budget = Math.max(1000, settings.contextTokens - 1500);
   const virtualOps: CodexOp[] = [];
   const proposals: Proposal[] = [];
   let counter = 0;
@@ -146,25 +182,11 @@ export async function analyzePath(settings: Settings, opts: AnalyzeOptions): Pro
     opts.onProgress?.(i, targets.length);
     const ch = targets[i];
 
-    // The codex as it stood when this chapter began, plus what this run has proposed so far.
-    const state = foldCodex([...ops.filter((o) => o.anchor_depth <= ch.depth), ...virtualOps]);
-    const earlier = path.filter((c) => c.depth < ch.depth);
-    const soFar = earlier.length ? buildStorySoFar(earlier, Math.floor(budget * 0.35)) : "";
-    const body = ch.body.length > budget * 2 ? `${ch.body.slice(0, budget * 2)}…` : ch.body;
-
-    const prompt = [
-      `Story: ${story.title}${story.premise.trim() ? `\nPremise: ${story.premise.trim()}` : ""}`,
-      soFar && `${soFar}`,
-      `Codex so far:\n${describeCodex(state)}`,
-      `Chapter to read: "${ch.title}"\n${body}`,
-      "List the codex changes this chapter establishes, as JSON.",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
+    const { state, request } = buildAnalyze(settings.contextTokens, { story, path, ops, chapter: ch, virtualOps });
 
     const reply = await completeChat(settings, {
-      system: SYSTEM_ANALYZE,
-      messages: [{ role: "user", content: prompt }],
+      system: request.system,
+      messages: [{ role: "user", content: request.message }],
       // A whole-path scan makes one call per chapter, so use the cheaper model for it.
       useSummaryModel: scope === "path",
       signal: opts.signal,
@@ -305,8 +327,16 @@ export type DraftEntryOptions = {
 
 export type DraftEntryResult = { fields: EntryFields; changedInChapterId: string | null };
 
-export async function draftEntry(settings: Settings, opts: DraftEntryOptions): Promise<DraftEntryResult> {
-  const budget = Math.max(1000, settings.contextTokens - 1500);
+/** The request for drafting or updating an entry; throws if there is nothing to ask yet. */
+export function entryRequest(contextTokens: number, opts: Omit<DraftEntryOptions, "signal">): PromptParts {
+  return buildEntry(contextTokens, opts).request;
+}
+
+function buildEntry(
+  contextTokens: number,
+  opts: Omit<DraftEntryOptions, "signal">,
+): { request: PromptParts; numbered: PathChapter[] } {
+  const budget = Math.max(1000, contextTokens - 1500);
   const parts: string[] = [`Story: ${opts.story.title}${opts.story.premise.trim() ? `\nPremise: ${opts.story.premise.trim()}` : ""}`];
 
   // "[...]" in what the author typed is extra instructions; with no other text, it is the request.
@@ -352,10 +382,14 @@ export async function draftEntry(settings: Settings, opts: DraftEntryOptions): P
   }
   if (notes.length) parts.push(notesBlock(notes));
   parts.push(task);
+  return { request: { system: SYSTEM_ENTRY, message: parts.join("\n\n") }, numbered };
+}
 
+export async function draftEntry(settings: Settings, opts: DraftEntryOptions): Promise<DraftEntryResult> {
+  const { request, numbered } = buildEntry(settings.contextTokens, opts);
   const reply = await completeChat(settings, {
-    system: SYSTEM_ENTRY,
-    messages: [{ role: "user", content: parts.join("\n\n") }],
+    system: request.system,
+    messages: [{ role: "user", content: request.message }],
     signal: opts.signal,
   });
   const json = extractJson(reply) as Record<string, unknown>;

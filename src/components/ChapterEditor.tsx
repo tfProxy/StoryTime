@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { LIMITS } from "@/lib/limits";
 import { useSettings } from "@/lib/settings";
 import { completeChat, streamChat } from "@/lib/ai/client";
-import { ensurePathSummaries, neededSummaryIndex, summarizeChapter, type Summaries } from "@/lib/ai/summaries";
+import { ensurePathSummaries, neededSummaryIndex, summarizeChapter, summaryRequest, type Summaries } from "@/lib/ai/summaries";
 import {
   choicesPrompt,
   choiceLabelPrompt,
@@ -27,6 +27,7 @@ import {
   SYSTEM_PASSAGE,
   type CodexOverrides,
   type Length,
+  type PromptParts,
   type StoryContext,
 } from "@/lib/ai/prompts";
 import type { PathChapter } from "@/lib/ai/codexAi";
@@ -38,6 +39,7 @@ import AutoTextarea from "./AutoTextarea";
 import CodexPanel from "./CodexPanel";
 import { PageMenu } from "./SiteMenu";
 import CodexPreview from "./CodexPreview";
+import PromptButton from "./PromptButton";
 
 export type Target =
   | { kind: "story" }
@@ -145,7 +147,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const [codexOpen, setCodexOpen] = useState(false);
   // What the codex drawer opens on: an entry id, "new", or the list. `n` remounts it on each open.
   const [codexStart, setCodexStart] = useState<{ editing: string | null; n: number }>({ editing: null, n: 0 });
-  const [showPrompt, setShowPrompt] = useState(false);
   // Brainstorm and Direction are open until there is a chapter, then fold away; null until the author toggles one.
   const [brainstormPref, setBrainstormPref] = useState<boolean | null>(null);
   const [directionPref, setDirectionPref] = useState<boolean | null>(null);
@@ -455,6 +456,22 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     return selection && selection.text.trim() && body.slice(selection.start, selection.end) === selection.text ? selection : null;
   }
 
+  /** What "Generate" or "Revise" sends; with a passage selected, "Revise" rewrites just that. */
+  function chapterRequest(kind: "generate" | "refine", from: StoryContext, picked: ReturnType<typeof currentSelection>): PromptParts {
+    if (picked) {
+      const body = draft!.body;
+      const parts = { title: draft!.title, before: body.slice(0, picked.start), passage: body.slice(picked.start, picked.end), after: body.slice(picked.end) };
+      return { system: SYSTEM_PASSAGE, message: passageRefinePrompt(from, parts, instruction, settings.contextTokens) };
+    }
+    return {
+      system: SYSTEM_CHAPTER,
+      message:
+        kind === "generate"
+          ? generatePrompt(from, draft!.prompt, length, settings.contextTokens)
+          : refinePrompt(from, { title: draft!.title, body: draft!.body }, instruction, settings.contextTokens),
+    };
+  }
+
   async function runAi(kind: "generate" | "refine") {
     if (!draft) return;
     setError(null);
@@ -473,18 +490,14 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     let suggestFor: { title: string; body: string } | null = null;
     try {
       const ready = await prepareContext(ctl.signal);
-      const message = picked
-        ? passageRefinePrompt(ready, { title: draft.title, before, passage, after }, instruction, settings.contextTokens)
-        : kind === "generate"
-          ? generatePrompt(ready, draft.prompt, length, settings.contextTokens)
-          : refinePrompt(ready, { title: draft.title, body: draft.body }, instruction, settings.contextTokens);
+      const request = chapterRequest(kind, ready, picked);
       // Keep the text we're replacing, as the previous draft and so the rewrite can be undone.
       setDraft((d) => (d ? { ...d, undo: pushUndo(d), ...startVersion(d) } : d));
       const lead = passage.match(/^\s*/)?.[0] ?? "";
       const trail = passage.match(/\s*$/)?.[0] ?? "";
       for await (const piece of streamChat(settings, {
-        system: picked ? SYSTEM_PASSAGE : SYSTEM_CHAPTER,
-        messages: [{ role: "user", content: message }],
+        system: request.system,
+        messages: [{ role: "user", content: request.message }],
         signal: ctl.signal,
       })) {
         text += piece;
@@ -518,10 +531,16 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   }
 
   /** One sentence of choice text, written by the cheaper model: from the chapter, or from the previous chapter alone when there is no draft. */
+  const choiceLabelRequest = (chapter: { title: string; body: string } | null, ready: StoryContext): PromptParts => ({
+    system: SYSTEM_CHOICE_LABEL,
+    message: choiceLabelPrompt({ ...ready, choiceLabel: null }, chapter, settings.contextTokens),
+  });
+
   async function askChoiceLabel(chapter: { title: string; body: string } | null, ready: StoryContext, signal?: AbortSignal) {
+    const request = choiceLabelRequest(chapter, ready);
     const reply = await completeChat(settings, {
-      system: SYSTEM_CHOICE_LABEL,
-      messages: [{ role: "user", content: choiceLabelPrompt({ ...ready, choiceLabel: null }, chapter, settings.contextTokens) }],
+      system: request.system,
+      messages: [{ role: "user", content: request.message }],
       useSummaryModel: true,
       maxTokens: 60,
       signal,
@@ -556,36 +575,44 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   }
 
   const choiceTextButton = (field: "newChoiceLabel" | "incomingLabel") => (
-    <button
-      type="button"
-      className="secondary"
-      onClick={() => regenerateChoiceText(field)}
-      disabled={busy !== null}
-      title={draft.body.trim() ? "Write one sentence of choice text from this chapter" : "Suggest a choice based on the previous chapter"}
-    >
-      {busy === "label" ? "Thinking…" : "Regenerate"}
-    </button>
+    <>
+      <button
+        type="button"
+        className="secondary"
+        onClick={() => regenerateChoiceText(field)}
+        disabled={busy !== null}
+        title={draft.body.trim() ? "Write one sentence of choice text from this chapter" : "Suggest a choice based on the previous chapter"}
+      >
+        {busy === "label" ? "Thinking…" : "Regenerate"}
+      </button>
+      <PromptButton
+        label="Regenerate choice text"
+        note="Sent to your cheaper (summary) model."
+        build={() => choiceLabelRequest(draft.body.trim() ? { title: draft.title, body: draft.body } : null, ctx)}
+      />
+    </>
   );
+
+  const ideasRequest = (): PromptParts => ({
+    system: SYSTEM_IDEAS,
+    // Untouched, the guidance only echoes the choice text; once edited it is the author's own direction for the ideas.
+    message: ideasPrompt(
+      guidance === null ? ctx : { ...ctx, choiceLabel: null },
+      settings.contextTokens,
+      guidance ?? "",
+      ideaPages.flat().map((i) => i.choice),
+    ),
+  });
 
   /** Ideas for a new branch from the chapter being continued; picking one fills in the form. */
   async function suggestIdeas() {
     setError(null);
     startBusy("ideas");
     try {
+      const request = ideasRequest();
       const text = await completeChat(settings, {
-        system: SYSTEM_IDEAS,
-        messages: [
-          {
-            role: "user",
-            // Untouched, the guidance only echoes the choice text; once edited it is the author's own direction for the ideas.
-            content: ideasPrompt(
-              guidance === null ? ctx : { ...ctx, choiceLabel: null },
-              settings.contextTokens,
-              guidance ?? "",
-              ideaPages.flat().map((i) => i.choice),
-            ),
-          },
-        ],
+        system: request.system,
+        messages: [{ role: "user", content: request.message }],
         useSummaryModel: true,
         maxTokens: 800,
       });
@@ -625,25 +652,27 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     }
   }
 
+  /** `chapter` is the text to suggest for when it isn't in the draft yet (just written). */
+  const choicesRequest = (chapter?: { title: string; body: string }): PromptParts => ({
+    system: SYSTEM_CHOICES,
+    message: choicesPrompt(
+      ctx,
+      chapter ?? { title: draft.title, body: draft.body },
+      draft.choices.filter((c) => c.trim()),
+      settings.contextTokens,
+    ),
+  });
+
   /** `chapter` is the text to suggest for when it isn't in the draft yet (just written); `quiet` leaves a failure unreported. */
   async function suggestChoices(chapter?: { title: string; body: string }, quiet = false) {
     if (!draft) return;
     setError(null);
     startBusy("choices");
     try {
+      const request = choicesRequest(chapter);
       const text = await completeChat(settings, {
-        system: SYSTEM_CHOICES,
-        messages: [
-          {
-            role: "user",
-            content: choicesPrompt(
-              ctx,
-              chapter ?? { title: draft.title, body: draft.body },
-              draft.choices.filter((c) => c.trim()),
-              settings.contextTokens,
-            ),
-          },
-        ],
+        system: request.system,
+        messages: [{ role: "user", content: request.message }],
         useSummaryModel: true,
         maxTokens: 400,
       });
@@ -934,6 +963,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               <button type="button" className="secondary" onClick={suggestIdeas} disabled={busy !== null}>
                 {busy === "ideas" ? "Thinking…" : ideaPages.length ? "Suggest more" : "Suggest ideas"}
               </button>
+              <PromptButton label="Suggest ideas" note="Sent to your cheaper (summary) model." build={ideasRequest} />
               {ideaPages.length > 1 && (
                 <>
                   <button type="button" className="secondary" onClick={() => patch({ ideaPage: ideaPage - 1 })} disabled={ideaPage === 0} aria-label="Previous ideas">
@@ -1091,22 +1121,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               held={codexChanges.map((c) => c.entry_id)}
             />
           </div>
-
-          <details className="ai-panel fold" onToggle={(e) => setShowPrompt(e.currentTarget.open)}>
-            <summary>Preview the prompt</summary>
-            {showPrompt && (
-              <div>
-                <p className="meta">
-                  This is what &quot;Generate&quot; will send. If earlier chapters need summarizing first, that happens
-                  before sending, so the story-so-far part may differ slightly.
-                </p>
-                <h3>System</h3>
-                <pre className="sample">{SYSTEM_CHAPTER}</pre>
-                <h3>Message</h3>
-                <pre className="sample">{generatePrompt(ctx, draft.prompt, length, settings.contextTokens)}</pre>
-              </div>
-            )}
-          </details>
         </div>
 
         <div className="editor-main">
@@ -1249,6 +1263,11 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               <button type="button" onClick={() => runAi("generate")} disabled={busy !== null}>
                 {busy === "generate" ? "Writing…" : draft.body ? "Generate a new draft" : "Generate chapter"}
               </button>
+              <PromptButton
+                label="Generate chapter"
+                note="If earlier chapters need summarizing first, that happens before sending, so the story-so-far part may differ slightly."
+                build={() => chapterRequest("generate", ctx, null)}
+              />
               {working && (
                 <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
                   Stop
@@ -1411,6 +1430,12 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               <button type="button" onClick={() => runAi("refine")} disabled={busy !== null || !hasBody || !instruction.trim()}>
                 {busy === "refine" ? "Revising…" : picked ? "Revise selection" : "Revise"}
               </button>
+              <PromptButton
+                label={picked ? "Revise selection" : "Revise"}
+                note="If earlier chapters need summarizing first, that happens before sending, so the story-so-far part may differ slightly."
+                disabled={!hasBody}
+                build={() => chapterRequest("refine", ctx, picked)}
+              />
               <button type="button" className="secondary" onClick={undo} disabled={busy !== null || draft.undo.length === 0}>
                 Undo
               </button>
@@ -1440,6 +1465,18 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               <button type="button" className="secondary" onClick={summarize} disabled={busy !== null || !draft.body.trim()}>
                 {busy === "summary" ? "Summarizing…" : ownSummary ? "Summarize again" : "Summarize chapter"}
               </button>
+              <PromptButton
+                label="Summarize chapter"
+                note="Sent to your cheaper (summary) model. If the previous chapter has no story-so-far summary yet, that is made first."
+                disabled={!draft.body.trim()}
+                build={() =>
+                  summaryRequest(settings.contextTokens, {
+                    story: storyInfo,
+                    previous: ctx.path.at(-1)?.path_summary ?? null,
+                    chapter: { title: draft.title, body: draft.body },
+                  })
+                }
+              />
               {busy === "summary" && (
                 <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
                   Stop
@@ -1532,6 +1569,12 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                 >
                   {busy === "choices" ? "Thinking…" : "Suggest choices"}
                 </button>
+                <PromptButton
+                  label="Suggest choices"
+                  note="Sent to your cheaper (summary) model."
+                  disabled={!draft.body.trim()}
+                  build={() => choicesRequest()}
+                />
               </div>
               {suggestions.length > 0 && (
                 <div className="row" style={{ flexWrap: "wrap" }}>

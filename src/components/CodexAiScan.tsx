@@ -2,9 +2,10 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { analyzePath, applyProposals, type PathChapter, type Proposal, type StoryInfo } from "@/lib/ai/codexAi";
+import { analyzePath, applyProposals, scanRequest, type PathChapter, type Proposal, type StoryInfo } from "@/lib/ai/codexAi";
 import { ENTRY_TYPES, type CodexOp, type EntryType } from "@/lib/codex";
 import { useSettings } from "@/lib/settings";
+import PromptButton from "./PromptButton";
 
 type Props = {
   story: StoryInfo;
@@ -132,6 +133,15 @@ export default function CodexAiScan({ story, chapterId, path, ops, defaultOpen }
           <button type="button" onClick={scan} disabled={scanning || posting}>
             {scanning ? "Reading…" : "Scan for codex changes"}
           </button>
+          <PromptButton
+            label="Scan for codex changes"
+            note={
+              scope === "path" && path.length > 1
+                ? `This is the first of ${path.length} requests, for the first chapter. Each later one has the same instructions and holds its own chapter and the codex changes proposed so far. Sent to your cheaper (summary) model.`
+                : undefined
+            }
+            build={() => scanRequest(settings.contextTokens, { story, path, ops, scope })}
+          />
           {scanning && (
             <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
               Stop

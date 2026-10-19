@@ -5,8 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSettings } from "@/lib/settings";
 import { LIMITS } from "@/lib/limits";
-import { ensurePathSummaries, summarizeChapter, type Summaries } from "@/lib/ai/summaries";
+import { ensurePathSummaries, summarizeChapter, summaryRequest, type Summaries } from "@/lib/ai/summaries";
 import type { ContextChapter } from "@/lib/ai/prompts";
+import PromptButton from "./PromptButton";
+
+const SUMMARY_NOTE =
+  "Sent to your cheaper (summary) model. If earlier chapters have no story-so-far summary yet, they are summarized first, one request each, and this one builds on theirs.";
 
 type Props = {
   chapterId: string;
@@ -103,6 +107,20 @@ export default function SummaryPanel({ chapterId, story, path }: Props) {
     }
   }
 
+  /**
+   * The request for the first chapter that "Generate" would summarize (the earliest one missing its
+   * story-so-far), or for this chapter alone when regenerating.
+   */
+  function requestFor(force: boolean) {
+    let at = index;
+    if (!force) while (at > 0 && !path[at - 1].path_summary) at--;
+    return summaryRequest(settings.contextTokens, {
+      story,
+      previous: at > 0 ? path[at - 1].path_summary : null,
+      chapter: path[at],
+    });
+  }
+
   async function save() {
     setBusy("save");
     setError(null);
@@ -150,9 +168,12 @@ export default function SummaryPanel({ chapterId, story, path }: Props) {
 
       <div className="row">
         {missing && (
-          <button type="button" onClick={() => generate(false)} disabled={busy !== null}>
-            {busy === "generate" ? "Generating…" : "Generate summary"}
-          </button>
+          <>
+            <button type="button" onClick={() => generate(false)} disabled={busy !== null}>
+              {busy === "generate" ? "Generating…" : "Generate summary"}
+            </button>
+            <PromptButton label="Generate summary" note={SUMMARY_NOTE} build={() => requestFor(false)} />
+          </>
         )}
         <button type="button" onClick={save} disabled={busy !== null || !dirty || !summary.trim() || !pathSummary.trim()}>
           {busy === "save" ? "Saving…" : "Save changes"}
@@ -160,6 +181,7 @@ export default function SummaryPanel({ chapterId, story, path }: Props) {
         <button type="button" className="secondary" onClick={() => generate(true)} disabled={busy !== null}>
           Regenerate
         </button>
+        <PromptButton label="Regenerate summary" note={SUMMARY_NOTE} build={() => requestFor(true)} />
         {busy === "generate" && (
           <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
             Stop
