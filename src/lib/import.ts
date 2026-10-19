@@ -3,7 +3,8 @@ import { db, newId } from "./db";
 import { ENTRY_TYPES } from "./codex";
 import { CODEX_LIMITS } from "./codexDb";
 import { LIMITS } from "./limits";
-import { PostError } from "./stories";
+import { checkImage, IMAGE_MAX_BYTES, PostError } from "./stories";
+import { IMAGE_SLOTS } from "./imageSlots";
 
 // Brings back a story from the "everything" JSON export (see toJson in ./export). The story gets
 // fresh ids, so importing never overwrites anything, and importing twice makes two copies.
@@ -56,6 +57,15 @@ const Revision = z.object({
   created_at: time,
 });
 
+// A picture is at most IMAGE_MAX_BYTES (4 MB), which is about 5.6 million base64 characters.
+const IMAGE_MAX_BASE64 = Math.ceil((IMAGE_MAX_BYTES * 4) / 3) + 4;
+const Image = z.object({
+  chapter_id: id,
+  slot: z.enum(IMAGE_SLOTS),
+  type: z.string().max(100),
+  data: z.string().min(1).max(IMAGE_MAX_BASE64),
+});
+
 export const ImportSchema = z.object({
   format: z.literal("storytime-export", { error: "This isn't a StoryTime export file" }),
   version: z.number().int().min(1).max(2, { error: "This export was made by a newer version of StoryTime" }),
@@ -71,6 +81,8 @@ export const ImportSchema = z.object({
   codex: z.array(CodexOp).max(20000).default([]),
   // Version 1 exports have no revision history.
   revisions: z.array(Revision).max(20000).default([]),
+  // Exports made before chapter pictures have none.
+  images: z.array(Image).max(2 * 5000).default([]),
 });
 
 export type ImportInput = z.infer<typeof ImportSchema>;
@@ -109,6 +121,21 @@ export function importStory(input: ImportInput): { story_id: string; chapter_id:
     if (seenRevisions.has(key) || r.revision >= live.revision) throw new PostError("The chapter revision history is inconsistent", 400);
     seenRevisions.add(key);
   }
+  // Decode and check every picture before anything is written.
+  const seenImages = new Set<string>();
+  const pictures = input.images.map((img) => {
+    if (!chaptersById.has(img.chapter_id)) throw new PostError("A picture belongs to a chapter that isn't in the file", 400);
+    const key = `${img.chapter_id}:${img.slot}`;
+    if (seenImages.has(key)) throw new PostError("The file has two pictures for the same place in a chapter", 400);
+    seenImages.add(key);
+    const bytes = Buffer.from(img.data, "base64");
+    try {
+      return { chapter_id: img.chapter_id, slot: img.slot, bytes, type: checkImage(bytes, "picture") };
+    } catch (e) {
+      if (e instanceof PostError) throw new PostError("A picture in the file isn't a PNG, JPEG, GIF or WebP image, or is over 4 MB", 400);
+      throw e;
+    }
+  });
 
   const storyId = newId();
   const chapterIds = new Map<string, string>();
@@ -174,6 +201,10 @@ export function importStory(input: ImportInput): { story_id: string; chapter_id:
         r.edit_note ?? null, r.created_at,
       );
     }
+    const insertImage = db().prepare(
+      `INSERT INTO chapter_images (chapter_id, slot, image, type, updated_at) VALUES (?, ?, ?, ?, ?)`,
+    );
+    for (const p of pictures) insertImage.run(chapterIds.get(p.chapter_id), p.slot, p.bytes, p.type, Date.now());
     return { story_id: storyId, chapter_id: rootId, chapters: input.chapters.length };
   })();
 }

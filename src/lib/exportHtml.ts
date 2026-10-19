@@ -4,7 +4,19 @@ import { finishedBranches, routeTo, type StoryExport } from "./export";
 // libraries. It remembers which chapters the reader has seen (in that browser's localStorage, keyed
 // by story) and can forget them again. Only finished branches are included, like the Twine export.
 
-type Page = { t: string; b: string; c: [string, string][]; p: string | null };
+/** h and f are the header and footer pictures as data: URIs, when the chapter has them. */
+type Page = { t: string; b: string; c: [string, string][]; p: string | null; h?: string; f?: string };
+
+/** Each chapter's pictures as data: URIs, so the exported file works offline. */
+function imageUris(data: StoryExport) {
+  const uris = new Map<string, { header?: string; footer?: string }>();
+  for (const i of data.images) {
+    const entry = uris.get(i.chapter_id) ?? {};
+    entry[i.slot] = `data:${i.type};base64,${i.data}`;
+    uris.set(i.chapter_id, entry);
+  }
+  return uris;
+}
 
 /** JSON that is safe to put inside a <script> element. */
 const scriptJson = (v: unknown) =>
@@ -34,6 +46,7 @@ button.choice .seen { color: var(--muted); font-size: 0.8rem; margin-left: 0.5re
 nav { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1.5rem 0 0; }
 blockquote { margin: 1rem 0; padding-left: 1rem; border-left: 3px solid var(--line); color: var(--muted); white-space: pre-line; }
 .end { text-align: center; color: var(--muted); font-style: italic; margin: 2rem 0; }
+.chapter-image { display: block; max-width: 100%; max-height: 70vh; height: auto; margin: 1rem auto; border-radius: 6px; }
 `;
 
 // Written without template literals so it can sit inside one.
@@ -98,8 +111,11 @@ const SCRIPT = String.raw`
     state.last = id;
     save();
     document.title = page.t + " \u2013 " + data.title;
-    var kids = [el("h2", {}, [page.t])];
+    var kids = [];
+    if (page.h) kids.push(el("img", { class: "chapter-image chapter-image-header", alt: "", src: page.h }));
+    kids.push(el("h2", {}, [page.t]));
     kids.push(el("div", { class: "prose" }, paragraphs(page.b)));
+    if (page.f) kids.push(el("img", { class: "chapter-image chapter-image-footer", alt: "", src: page.f }));
     if (page.c.length) {
       kids.push(el("div", { class: "choices" }, page.c.map(function (c) {
         var seen = state.seen[c[1]];
@@ -137,6 +153,11 @@ export function toPathHtml(data: StoryExport, chapterId: string): string | null 
       .filter((p) => p.trim())
       .map((p) => `<p>${escapeHtml(p.trim())}</p>`)
       .join("\n");
+  const uris = imageUris(data);
+  const img = (id: string, slot: "header" | "footer") => {
+    const uri = uris.get(id)?.[slot];
+    return uri ? `<img class="chapter-image chapter-image-${slot}" alt="" src="${escapeHtml(uri)}">` : "";
+  };
   const s = data.story;
   const body = [
     `<h1>${escapeHtml(s.title)}</h1>`,
@@ -145,10 +166,12 @@ export function toPathHtml(data: StoryExport, chapterId: string): string | null 
       const via = viaOf(c);
       return `<section>
 ${via ? `<p class="via">${escapeHtml(via.label)}</p>` : ""}
+${img(c.id, "header")}
 <h2>${i + 1}. ${escapeHtml(c.title)}</h2>
 <div class="prose">
 ${paras(c.body)}
 </div>
+${img(c.id, "footer")}
 </section>`;
     }),
     `<p class="end">${toBeContinued ? "…to be continued." : "The end."}</p>`,
@@ -179,6 +202,7 @@ export function toHtml(data: StoryExport): string {
   const { chapters, childBy, choicesBy, leadsToKept } = finishedBranches(data);
   const pages: Record<string, Page> = {};
   const parentOf = new Map<string, string>();
+  const uris = imageUris(data);
   for (const c of chapters) {
     const list: [string, string][] = [];
     for (const ch of choicesBy.get(c.id) ?? []) {
@@ -187,7 +211,12 @@ export function toHtml(data: StoryExport): string {
       list.push([ch.label, child.id]);
       parentOf.set(child.id, c.id);
     }
-    pages[c.id] = { t: c.title, b: c.body.trim(), c: list, p: null };
+    const pictures = uris.get(c.id);
+    pages[c.id] = {
+      t: c.title, b: c.body.trim(), c: list, p: null,
+      ...(pictures?.header ? { h: pictures.header } : {}),
+      ...(pictures?.footer ? { f: pictures.footer } : {}),
+    };
   }
   for (const [child, parent] of parentOf) pages[child].p = parent;
 

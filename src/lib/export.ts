@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { db } from "./db";
 import { getStory } from "./stories";
+import { IMAGE_SLOTS, type ImageSlot } from "./imageSlots";
 
 // Whole-story exports. No internal bookkeeping appears.
 
@@ -29,6 +30,7 @@ type RevisionRow = {
   created_at: number;
 };
 type ChoiceRow = { id: string; parent_chapter_id: string; label: string; posted_at: number };
+export type ImageRow = { chapter_id: string; slot: ImageSlot; type: string; data: string };
 
 export type StoryExport = {
   story: { id: string; title: string; premise: string; style: string; created_at: number };
@@ -38,6 +40,8 @@ export type StoryExport = {
   codex: Record<string, unknown>[];
   /** Earlier versions of the chapters above, oldest first. */
   revisions: RevisionRow[];
+  /** The chapters' illustrations, in reading order, header before footer; `data` is base64. */
+  images: ImageRow[];
 };
 
 /** Live chapters/choices of a story, keeping only those still reachable from the first chapter. */
@@ -101,12 +105,27 @@ export function loadStory(storyId: string): StoryExport | null {
       .all(storyId) as RevisionRow[]
   ).filter((r) => ids.has(r.chapter_id));
 
+  const imageRows = (
+    db()
+      .prepare(
+        `SELECT i.chapter_id, i.slot, i.type, i.image
+           FROM chapter_images i JOIN chapters c ON c.id = i.chapter_id
+          WHERE c.story_id = ?`,
+      )
+      .all(storyId) as { chapter_id: string; slot: ImageSlot; type: string; image: Buffer }[]
+  ).filter((r) => ids.has(r.chapter_id));
+  const position = new Map(chapters.map((c, i) => [c.id, i]));
+  const images: ImageRow[] = imageRows
+    .sort((a, b) => position.get(a.chapter_id)! - position.get(b.chapter_id)! || IMAGE_SLOTS.indexOf(a.slot) - IMAGE_SLOTS.indexOf(b.slot))
+    .map((r) => ({ chapter_id: r.chapter_id, slot: r.slot, type: r.type, data: r.image.toString("base64") }));
+
   return {
     story: { id: story.id, title: story.title, premise: story.premise, style: story.style, created_at: story.created_at },
     chapters,
     choices,
     codex,
     revisions,
+    images,
   };
 }
 

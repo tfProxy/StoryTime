@@ -98,3 +98,34 @@ ok((await get(`/api/stories/${story}/export?format=md&to=nope`)).status === 404,
 ok((await get(`/api/stories/${story}/export?format=twee&to=${deep}`)).status === 400, "to only applies to Markdown");
 // the same story in Markdown still shows everything
 ok((await get(`/api/stories/${story}/export?format=md`)).text.includes("Pending"), "markdown keeps unfinished branches");
+
+// ---- chapter pictures ----
+const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+const putImage = (id, slot, bytes) => fetch(`${B}/api/chapters/${id}/images/${slot}`, { method: "PUT", headers: { "Content-Type": "image/png" }, body: bytes });
+ok((await putImage(root, "header", png)).status === 200 && (await putImage(deep, "footer", png)).status === 200 && (await putImage(deep, "header", png)).status === 200, "setup: pictures on the first and last chapters");
+x = await get(`/api/stories/${story}/export?format=json`);
+const withImages = JSON.parse(x.text);
+ok(withImages.version === 2 && withImages.images.length === 3, "json carries the pictures");
+ok(withImages.images.map((i) => `${i.chapter_id === root ? "root" : "deep"}:${i.slot}`).join() === "root:header,deep:header,deep:footer", "pictures are in reading order, header before footer");
+ok(withImages.images.every((i) => i.type === "image/png" && i.data === png.toString("base64")), "each picture is its type and the base64 of what was uploaded");
+ok(!x.text.includes('"image":') && !x.text.includes("updated_at"), "no database columns leak into the json pictures");
+const noImages = await get(`/api/stories/${story}/export?format=md`);
+ok(!noImages.text.includes("base64"), "markdown stays text only");
+x = await get(`/api/stories/${story}/export?format=twee`);
+ok(!x.text.includes("base64"), "twee stays text only");
+
+const uri = `data:image/png;base64,${png.toString("base64")}`;
+x = await get(`/api/stories/${story}/export?format=html`);
+const embeddedPics = JSON.parse(/<script id="story-data" type="application\/json">([\s\S]*?)<\/script>/.exec(x.text)[1]);
+ok(embeddedPics.pages[embeddedPics.start].h === uri && !embeddedPics.pages[embeddedPics.start].f, "the playable html embeds the first chapter's header as a data: URI");
+ok(Object.values(embeddedPics.pages).filter((p) => p.h === uri).length === 2 && Object.values(embeddedPics.pages).filter((p) => p.f === uri).length === 1, "…and the other pictures too");
+ok(x.text.includes("chapter-image-header") && x.text.includes("chapter-image-footer") && /max-height:\s*70vh/.test(x.text), "the playable html has the picture markup and style");
+x = await get(`/api/stories/${story}/export?format=html&to=${deep}`);
+const imgs = x.text.match(/<img [^>]*>/g) ?? [];
+ok(imgs.length === 3 && imgs.every((t) => t.includes(`src="${uri}"`) && t.includes('alt=""')), "the route html has an img for each picture, embedded as a data: URI");
+const at = (s) => x.text.indexOf(s);
+const firstHeader = at('class="chapter-image chapter-image-header"');
+ok(firstHeader > 0 && firstHeader < at("<h2>1. Start</h2>"), "a header picture comes before the chapter title");
+ok(at("<h2>3. Deep</h2>") < x.text.lastIndexOf('class="chapter-image chapter-image-footer"') && x.text.lastIndexOf('class="chapter-image chapter-image-header"') < at("<h2>3. Deep</h2>"), "…and the footer after the chapter text");
+x = await get(`/api/stories/${story}/export?format=html&to=${left}`);
+ok((x.text.match(/<img /g) ?? []).length === 1, "a route only shows the pictures of its own chapters");

@@ -46,6 +46,36 @@ ok(listed.length === 2, "both copies are listed");
 const v1 = { ...data, version: 1 }; delete v1.revisions;
 ok((await call("POST", "/api/stories/import", v1)).status === 201, "a version 1 export still imports");
 
+// ---- chapter pictures ----
+const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(20, 7)]);
+const putImage = (id, slot, bytes) => fetch(`${B}/api/chapters/${id}/images/${slot}`, { method: "PUT", headers: { "Content-Type": "application/octet-stream" }, body: bytes });
+ok((await putImage(root, "header", png)).status === 200 && (await putImage(left, "footer", jpeg)).status === 200, "setup: a header on the first chapter and a footer on the second");
+const withPics = await exportOf(story);
+ok(withPics.images.length === 2, "export has the two pictures");
+r = await call("POST", "/api/stories/import", withPics);
+ok(r.status === 201, "a story with pictures imports");
+const copyPics = await exportOf(r.json.story_id);
+const pictureAt = async (chapterId, slot) => {
+  const res = await fetch(`${B}/api/chapters/${chapterId}/images/${slot}`);
+  return { status: res.status, type: res.headers.get("content-type"), bytes: Buffer.from(await res.arrayBuffer()) };
+};
+let pic = await pictureAt(r.json.chapter_id, "header");
+ok(pic.status === 200 && pic.type === "image/png" && pic.bytes.equals(png), "the copy's first chapter has the same header picture");
+pic = await pictureAt(copyPics.chapters[1].id, "footer");
+ok(pic.status === 200 && pic.type === "image/jpeg" && pic.bytes.equals(jpeg), "the copy's second chapter has the same footer picture");
+ok((await pictureAt(r.json.chapter_id, "footer")).status === 404 && (await pictureAt(copyPics.chapters[1].id, "header")).status === 404, "slots without a picture stay empty");
+ok(copyPics.images.length === 2 && copyPics.images.every((i) => i.chapter_id !== root && i.chapter_id !== left), "the pictures belong to the copy's own chapters");
+ok((await pictureAt(root, "header")).bytes.equals(png), "the original's picture is untouched");
+// the file's claimed type doesn't matter: it is detected from the bytes
+const mislabeled = structuredClone(withPics); mislabeled.images[0].type = "text/html";
+r = await call("POST", "/api/stories/import", mislabeled);
+ok(r.status === 201 && (await pictureAt(r.json.chapter_id, "header")).type === "image/png", "the picture type comes from the picture, not the file's claim");
+// files from before pictures existed
+const noPics = structuredClone(withPics); delete noPics.images;
+r = await call("POST", "/api/stories/import", noPics);
+ok(r.status === 201 && (await pictureAt(r.json.chapter_id, "header")).status === 404, "an export without pictures still imports");
+
 // ---- bad files ----
 const bad = async (m, mutate) => { const d = structuredClone(data); mutate(d); const x = await call("POST", "/api/stories/import", d); ok(x.status === 400 && x.json?.error, `rejected: ${m} (${x.json?.error})`); };
 await bad("not an export", (d) => { d.format = "other"; });
@@ -58,6 +88,13 @@ await bad("codex on unknown chapter", (d) => { d.codex[0].anchor_chapter_id = "n
 await bad("choice on unknown chapter", (d) => { d.choices[0].parent_chapter_id = "nope"; });
 await bad("too-long title", (d) => { d.chapters[0].title = "x".repeat(500); });
 await bad("revision not older than the live one", (d) => { d.revisions[0].revision = 2; });
+const badPics = async (m, mutate) => { const d = structuredClone(withPics); mutate(d); const x = await call("POST", "/api/stories/import", d); ok(x.status === 400 && x.json?.error, `rejected: ${m} (${x.json?.error})`); };
+await badPics("picture for a chapter that isn't in the file", (d) => { d.images[0].chapter_id = "nope"; });
+await badPics("two pictures for one slot", (d) => { d.images.push({ ...d.images[0] }); });
+await badPics("picture that isn't an image", (d) => { d.images[0].data = Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'></svg>").toString("base64"); });
+await badPics("picture that is empty after decoding", (d) => { d.images[0].data = "="; });
+await badPics("picture over 4 MB", (d) => { d.images[0].data = Buffer.concat([png, Buffer.alloc(4 * 1024 * 1024)]).toString("base64"); });
+await badPics("unknown slot", (d) => { d.images[0].slot = "sidebar"; });
 const before = (await (await fetch(`${B}/api/stories`)).json()).length;
 ok((await call("POST", "/api/stories/import", "nonsense")).status === 400, "non-object body rejected");
 ok((await (await fetch(`${B}/api/stories`)).json()).length === before, "failed imports leave nothing behind");
