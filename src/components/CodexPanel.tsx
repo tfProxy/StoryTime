@@ -426,7 +426,7 @@ function EntryForm({
           </small>
           <input
             value={direction}
-            placeholder={initial ? "e.g. make her more guarded" : "Describe the entry"}
+            placeholder={initial ? "e.g. make her more guarded [keep her name]" : "Describe the entry [extra instructions go in brackets]"}
             onChange={(e) => setDirection(e.target.value)}
           />
         </label>

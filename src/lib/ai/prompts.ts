@@ -57,6 +57,39 @@ export const SYSTEM_CHAPTER = `${SYSTEM_BASE}\n\n${OUTPUT_FORMAT}`;
 export const SYSTEM_CHOICES = `You help write branching stories. You reply with a JSON array of strings and nothing else.`;
 
 /**
+ * Splits text the author typed into the request itself and any "[...]" notes in it, which are
+ * extra instructions for the AI: "Jim picks up the ring [he is nervous]". Brackets that aren't
+ * closed are left alone.
+ */
+export function parseBracketNotes(input: string): { text: string; notes: string[] } {
+  const notes: string[] = [];
+  const text = input
+    .replace(/\[([^\[\]]*)\]/g, (_, note: string) => {
+      if (note.trim()) notes.push(note.trim().replace(/\s+/g, " "));
+      return "";
+    })
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+([.,;:!?])/g, "$1")
+    .replace(/[ \t]+$/gm, "")
+    .trim();
+  return { text, notes };
+}
+
+/** The notes as a block for the prompt, or "" if there are none. */
+export function notesBlock(notes: string[], heading = "Additional instructions from the author (follow these closely)"): string {
+  return notes.length ? `${heading}:\n${notes.map((n) => `- ${n}`).join("\n")}` : "";
+}
+
+/**
+ * For a request that has to say something even if it is nothing but notes ("[make it tenser]"):
+ * the notes become the request itself when there is no other text.
+ */
+export function parseInstruction(input: string): { text: string; notes: string[] } {
+  const { text, notes } = parseBracketNotes(input);
+  return text ? { text, notes } : { text: notes.join("; "), notes: [] };
+}
+
+/**
  * Finds how many of the most recent chapters fit verbatim in the budget. Chapters before
  * `firstVerbatim` have to be condensed. The chapter being continued is always included.
  */
@@ -262,11 +295,15 @@ export const budgetFor =(contextTokens: number) => Math.max(500, contextTokens -
 
 export function generatePrompt(ctx: StoryContext, direction: string, length: Length, contextTokens: number): string {
   const target = ctx.path.length === 0 ? "the opening chapter of this story" : "the next chapter";
+  const { text, notes } = parseBracketNotes(direction);
   return [
     storyHeader(ctx, budgetFor(contextTokens), direction),
     `Write ${target}, about ${LENGTH_WORDS[length]} words.`,
-    direction.trim() ? `Direction from the author: ${direction.trim()}` : "Use your own judgment about what happens.",
-  ].join("\n\n");
+    text ? `Direction from the author: ${text}` : "Use your own judgment about what happens.",
+    notesBlock(notes),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 export function refinePrompt(
@@ -276,11 +313,15 @@ export function refinePrompt(
   contextTokens: number,
 ): string {
   // The chapter being revised is not yet part of the path, so it goes in separately.
+  const { text, notes } = parseInstruction(instruction);
   return [
     storyHeader(ctx, Math.floor(budgetFor(contextTokens) * 0.7), `${current.body}\n${instruction}`),
     `Here is the current draft of the chapter being written:\n# ${current.title || "Untitled"}\n\n${current.body}`,
-    `Revise it according to this instruction: ${instruction.trim()}\nChange only what the instruction asks for; keep every other sentence exactly as written. Return the complete revised chapter.`,
-  ].join("\n\n");
+    `Revise it according to this instruction: ${text}\nChange only what the instruction asks for; keep every other sentence exactly as written. Return the complete revised chapter.`,
+    notesBlock(notes),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 export const SYSTEM_PASSAGE = `${SYSTEM_BASE}\n\nYou rewrite one marked passage of a chapter. Reply with only the rewritten passage: no title, no quotation marks, no commentary, and nothing from outside the marked passage.`;
@@ -293,11 +334,15 @@ export function passageRefinePrompt(
   contextTokens: number,
 ): string {
   const whole = `${current.before}${current.passage}${current.after}`;
+  const { text, notes } = parseInstruction(instruction);
   return [
     storyHeader(ctx, Math.floor(budgetFor(contextTokens) * 0.7), `${whole}\n${instruction}`),
     `Here is the current draft of the chapter being written. The passage to revise is between [[START]] and [[END]]:\n# ${current.title || "Untitled"}\n\n${current.before}[[START]]${current.passage}[[END]]${current.after}`,
-    `Revise only the marked passage according to this instruction: ${instruction.trim()}\nChange only what the instruction asks for, and keep roughly the same length unless it says otherwise. Return just the rewritten passage, which will replace the marked text. It must fit with the text before and after it.`,
-  ].join("\n\n");
+    `Revise only the marked passage according to this instruction: ${text}\nChange only what the instruction asks for, and keep roughly the same length unless it says otherwise. Return just the rewritten passage, which will replace the marked text. It must fit with the text before and after it.`,
+    notesBlock(notes),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 /** What makes a set of choices worth offering; shared by the choice and idea prompts. */
@@ -344,12 +389,13 @@ export function ideasPrompt(ctx: StoryContext, contextTokens: number, guidance =
       (existing.length ? ` These choices already exist, so do not repeat or closely echo them: ${existing.map((e) => `"${e}"`).join(", ")}.` : "") +
       `\nFor each give "choice" (button text, under 12 words) and "direction" (one or two sentences on what happens in the chapter that follows it).`;
   }
-  const given = guidance.trim();
+  const { text: given, notes } = parseBracketNotes(guidance);
   if (given) {
     ask +=
       `\nThe author has given this guidance: "${given}"` +
       `\nEvery idea must include what the guidance describes as events in the chapter itself, not just what follows from it. Each "direction" should cover those events and then take them somewhere different from the other ideas.`;
   }
+  if (notes.length) ask += `\n${notesBlock(notes, "Also follow these instructions from the author in every idea")}`;
   if (earlier.length) {
     ask += `\nThese ideas were already suggested, so give different ones: ${earlier.map((e) => `"${e}"`).join(", ")}.`;
   }

@@ -123,6 +123,14 @@ ok(r.changedInChapterId === "c2", "update maps changed_in back to a chapter id")
 ok(prompts.at(-1)!.user.includes('Chapter 2: "Two"') && prompts.at(-1)!.user.includes("Mira became a horse."), "update prompt numbers the chapters");
 handler = () => '{"name":"Mira","type":"character","content":"x","changed_in":9}';
 ok((await draftEntry(settings, { story, path, codex: [], direction: "", existing: mira, mode: "update", since })).changedInChapterId === null, "update: out-of-range changed_in ignored");
+// ---- [bracketed notes] in an entry request ----
+handler = () => '{"name":"Old Tam","type":"character","content":"x"}';
+await draftEntry(settings, { story, path, codex: [], direction: "a ferryman [he is secretly blind]", existing: null, mode: "draft" });
+let dp = prompts.at(-1)!.user;
+ok(dp.includes("Create a new codex entry for: a ferryman") && !dp.includes("[he is") && dp.includes("- he is secretly blind"), "entry request: bracketed text becomes additional instructions");
+await draftEntry(settings, { story, path, codex: [], direction: "[a ferryman]", existing: null, mode: "draft" });
+ok(prompts.at(-1)!.user.includes("Create a new codex entry for: a ferryman"), "entry request: notes alone are the request");
+
 // ---- both entry-writing prompts carry the quality guide ----
 const sysDraft = prompts.at(-1)!.system;
 const sysScan = prompts.find((p) => p.user.includes("Chapter to read"))!.system;

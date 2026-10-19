@@ -2,7 +2,7 @@
 // a single entry. All of it runs in the browser with the user's own key; nothing is saved
 // until the user accepts and posts.
 import { completeChat } from "./client";
-import { buildStorySoFar, estimateTokens, type ContextChapter } from "./prompts";
+import { buildStorySoFar, estimateTokens, notesBlock, parseInstruction, type ContextChapter } from "./prompts";
 import { ENTRY_TYPES, foldCodex, type CodexEntry, type CodexOp, type EntryType } from "../codex";
 import type { Settings } from "../settings";
 
@@ -309,6 +309,8 @@ export async function draftEntry(settings: Settings, opts: DraftEntryOptions): P
   const budget = Math.max(1000, settings.contextTokens - 1500);
   const parts: string[] = [`Story: ${opts.story.title}${opts.story.premise.trim() ? `\nPremise: ${opts.story.premise.trim()}` : ""}`];
 
+  // "[...]" in what the author typed is extra instructions; with no other text, it is the request.
+  const { text: direction, notes } = parseInstruction(opts.direction);
   let task: string;
   let numbered: PathChapter[] = [];
   if (opts.mode === "update") {
@@ -332,7 +334,7 @@ export async function draftEntry(settings: Settings, opts: DraftEntryOptions): P
     parts.push(`Chapters since the entry was last updated:\n\n${kept.join("\n\n")}`);
     task =
       `Update the entry so it reflects what happened in these chapters (keep details that are still true).` +
-      (opts.direction.trim() ? ` Extra guidance: ${opts.direction.trim()}` : "") +
+      (direction ? ` Extra guidance: ${direction}` : "") +
       `\nAdd "changed_in": the number of the chapter where the most recent change to this entry happened, or null if nothing changed.\n` +
       `Reply with JSON: {"name":"","type":"","aliases":[],"content":"","always_include":false,"changed_in":null}`;
   } else {
@@ -341,13 +343,14 @@ export async function draftEntry(settings: Settings, opts: DraftEntryOptions): P
     if (opts.codex.length) parts.push(`Existing codex entries (don't duplicate these):\n${describeCodex(opts.codex)}`);
     if (opts.existing) {
       parts.push(`Current entry:\n${JSON.stringify(opts.existing)}`);
-      if (!opts.direction.trim()) throw new Error("Tell the AI what to change about this entry.");
-      task = `Rewrite the entry according to this instruction: ${opts.direction.trim()}`;
+      if (!direction) throw new Error("Tell the AI what to change about this entry.");
+      task = `Rewrite the entry according to this instruction: ${direction}`;
     } else {
-      if (!opts.direction.trim()) throw new Error("Describe what you want, for example “a grizzled ferryman who owes the hero a favour”.");
-      task = `Create a new codex entry for: ${opts.direction.trim()}`;
+      if (!direction) throw new Error("Describe what you want, for example “a grizzled ferryman who owes the hero a favour”.");
+      task = `Create a new codex entry for: ${direction}`;
     }
   }
+  if (notes.length) parts.push(notesBlock(notes));
   parts.push(task);
 
   const reply = await completeChat(settings, {

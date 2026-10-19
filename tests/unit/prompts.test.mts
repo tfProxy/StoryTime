@@ -1,4 +1,4 @@
-import { SYSTEM_CHAPTER, refinePrompt, passageRefinePrompt, choicesPrompt, buildStorySoFar, parseChapterOutput, parseChoices, generatePrompt, estimateTokens, explainCodex, buildCodexBlock, ideasPrompt, parseIdeas, parseChoiceLabel } from "../../src/lib/ai/prompts.ts";
+import { parseBracketNotes, parseInstruction, SYSTEM_CHAPTER, refinePrompt, passageRefinePrompt, choicesPrompt, buildStorySoFar, parseChapterOutput, parseChoices, generatePrompt, estimateTokens, explainCodex, buildCodexBlock, ideasPrompt, parseIdeas, parseChoiceLabel } from "../../src/lib/ai/prompts.ts";
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const ch = (n: number, extra: any = {}) => ({ title: `Ch${n}`, body: `body${n} `.repeat(200), summary: null, path_summary: null, ...extra });
 const path = [1,2,3,4,5,6].map((n) => ch(n));
@@ -29,6 +29,25 @@ ok(refinePrompt(base, { title: "A", body: "B" }, "snappier", 8000).includes("kee
 ok(passageRefinePrompt(base, { title: "A", before: "x ", passage: "y", after: " z" }, "shorter", 8000).includes("keep roughly the same length"), "passage prompt keeps the length");
 ok(choicesPrompt(base, { title: "A", body: "B" }, [], 8000).includes("meaningfully different outcomes") && ip0().includes("meaningfully different outcomes") && ip0().includes("differ in kind"), "choice and idea prompts say what a good choice is");
 function ip0() { return ideasPrompt(base, 8000); }
+
+// ---- [bracketed notes] are extra instructions ----
+let bn = parseBracketNotes("Jim picks up the ring [he does not slip it on, he is nervous].");
+ok(bn.text === "Jim picks up the ring." && bn.notes.join("|") === "he does not slip it on, he is nervous", "parseBracketNotes: pulls the note out and tidies the gap");
+bn = parseBracketNotes("[be brief] Jim waits [  no   dialogue ] and [] leaves [unclosed");
+ok(bn.text === "Jim waits and leaves [unclosed" && bn.notes.join("|") === "be brief|no dialogue", "parseBracketNotes: several notes, empty ones dropped, unclosed bracket kept");
+ok(parseBracketNotes("plain").notes.length === 0 && parseBracketNotes("plain").text === "plain", "parseBracketNotes: no brackets changes nothing");
+ok(parseInstruction("[make it tenser]").text === "make it tenser" && parseInstruction("[make it tenser]").notes.length === 0, "parseInstruction: notes alone become the request");
+const gb = generatePrompt(base, "Jim picks up the ring [he does not slip it on, he is nervous]", "short", 8000);
+ok(gb.includes("Direction from the author: Jim picks up the ring\n") && gb.includes("Additional instructions from the author") && gb.includes("- he does not slip it on, he is nervous") && !gb.includes("[he does"), "generate prompt gives bracketed text as additional instructions");
+const gn = generatePrompt(base, "[keep it light]", "short", 8000);
+ok(gn.includes("Use your own judgment") && gn.includes("- keep it light"), "generate prompt: notes without a direction still apply");
+ok(!generatePrompt(base, "dragons", "short", 8000).includes("Additional instructions"), "no notes, no extra block");
+const rb = refinePrompt(base, { title: "A", body: "B" }, "add dialogue [Mira does the talking]", 8000);
+ok(rb.includes("this instruction: add dialogue\n") && rb.includes("- Mira does the talking"), "refine prompt: notes become additional instructions");
+ok(refinePrompt(base, { title: "A", body: "B" }, "[shorter]", 8000).includes("this instruction: shorter\n"), "refine prompt: only a note is still the instruction");
+ok(passageRefinePrompt(base, { title: "A", before: "x ", passage: "y", after: " z" }, "tighter [keep the pun]", 8000).includes("- keep the pun"), "passage prompt: notes become additional instructions");
+const ib = ideasPrompt(base, 8000, "cats attack [none of them die]");
+ok(ib.includes('guidance: "cats attack"') && ib.includes("- none of them die") && !ib.includes("[none"), "ideas prompt: notes apply to every idea");
 
 // ---- codex picking and manual overrides ----
 const cx = (id: string, name: string, extra: Record<string, unknown> = {}) => ({ id, name, type: "character", aliases: [] as string[], content: `${name} info`, always_include: false, ...extra });

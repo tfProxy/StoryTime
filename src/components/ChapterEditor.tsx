@@ -995,7 +995,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
                 {!directionOpen && <span className="meta">{directionSnippet}</span>}
               </summary>
               <label>
-                What should happen? <small>(optional; leave blank to let the AI decide)</small>
+                What should happen? <small>(optional; leave blank to let the AI decide. Put extra instructions in [square brackets], like “Jim picks up the ring [he is nervous]”)</small>
                 <AutoTextarea
                   style={{ minHeight: "5.5rem", fontFamily: "inherit" }}
                   value={draft.prompt}
