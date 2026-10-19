@@ -373,37 +373,52 @@ export type Idea = { choice: string; direction: string };
 
 /**
  * Asks for directions the chapter being written could take. With no choice text yet, each idea
- * is a new choice the reader could pick; once there is one, the ideas all follow from it.
+ * is a new choice the reader could pick; once there is one, the ideas all follow from it. Guidance
+ * from the author, when there is some, is the premise of the chapter and every idea builds on it.
  */
 export function ideasPrompt(ctx: StoryContext, contextTokens: number, guidance = "", earlier: string[] = []): string {
   const existing = ctx.siblingChoices ?? [];
-  const reply = `\nMake the ideas differ in kind (tone, risk, or which character drives the chapter), not small variations of one plot. ${CHOICE_QUALITY}\nReply with only a JSON array of 4 objects like [{"choice":"...","direction":"..."}].`;
+  const { text: given, notes } = parseBracketNotes(guidance);
+  const opening = ctx.path.length === 0;
+  const chapter = opening ? "the opening chapter" : "the next chapter";
+  const avoid = !opening && !ctx.choiceLabel && existing.length
+    ? ` These choices already exist, so do not repeat or closely echo them: ${existing.map((e) => `"${e}"`).join(", ")}.`
+    : "";
+  const choiceField = opening || ctx.choiceLabel
+    ? `"choice" (a short name for the idea, under 12 words)`
+    : `"choice" (button text for the choice the reader could pick at the end of the last chapter to reach it, under 12 words)`;
+  const inChapter = opening ? "in the opening chapter" : "in the chapter";
   let ask: string;
-  if (ctx.path.length === 0) {
+  if (given) {
+    ask =
+      `The author has described what ${chapter} is about: "${given}"` +
+      `\nTreat this as the premise of the chapter. Every idea must include the events it describes, and none may skip or contradict them. Suggest 4 distinct ways to write ${chapter} from this premise` +
+      (ctx.choiceLabel ? `, each following from the reader's choice.` : `.`) +
+      avoid +
+      `\nFor each give ${choiceField} and "direction" (one or two sentences on what happens ${inChapter}: the events of the premise, then where this idea takes them that the other ideas don't).`;
+  } else if (opening) {
     ask =
       `Suggest 4 distinct ways this story could open.` +
-      `\nFor each give "choice" (a short name for the idea, under 12 words) and "direction" (one or two sentences on what happens in the opening chapter).`;
+      `\nFor each give ${choiceField} and "direction" (one or two sentences on what happens ${inChapter}).`;
   } else if (ctx.choiceLabel) {
     ask =
       `Suggest 4 distinct ways the next chapter could play out, each following from the reader's choice.` +
-      `\nFor each give "choice" (a short name for the idea, under 12 words) and "direction" (one or two sentences on what happens in the chapter).`;
+      `\nFor each give ${choiceField} and "direction" (one or two sentences on what happens ${inChapter}).`;
   } else {
     ask =
       `Suggest 4 distinct directions the story could take from the end of the last chapter, each a new choice the reader could pick there.` +
-      (existing.length ? ` These choices already exist, so do not repeat or closely echo them: ${existing.map((e) => `"${e}"`).join(", ")}.` : "") +
+      avoid +
       `\nFor each give "choice" (button text, under 12 words) and "direction" (one or two sentences on what happens in the chapter that follows it).`;
   }
-  const { text: given, notes } = parseBracketNotes(guidance);
-  if (given) {
-    ask +=
-      `\nThe author has given this guidance: "${given}"` +
-      `\nEvery idea must include what the guidance describes as events in the chapter itself, not just what follows from it. Each "direction" should cover those events and then take them somewhere different from the other ideas.`;
-  }
+  const variety = given
+    ? `Make the ideas differ in kind (tone, risk, or which character drives the chapter) in how they play out the premise, not by leaving it out.`
+    : `Make the ideas differ in kind (tone, risk, or which character drives the chapter), not small variations of one plot.`;
+  const reply = `\n${variety} ${CHOICE_QUALITY}\nReply with only a JSON array of 4 objects like [{"choice":"...","direction":"..."}].`;
   if (notes.length) ask += `\n${notesBlock(notes, "Also follow these instructions from the author in every idea")}`;
   if (earlier.length) {
     ask += `\nThese ideas were already suggested, so give different ones: ${earlier.map((e) => `"${e}"`).join(", ")}.`;
   }
-  return [storyHeader(ctx, Math.floor(budgetFor(contextTokens) * 0.7)), ask + reply].join("\n\n");
+  return [storyHeader(ctx, Math.floor(budgetFor(contextTokens) * 0.7), given), ask + reply].join("\n\n");
 }
 
 export const SYSTEM_CHOICE_LABEL = `You help write branching stories. You reply with the button text and nothing else.`;

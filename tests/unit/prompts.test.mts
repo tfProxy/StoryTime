@@ -53,7 +53,7 @@ ok(rb.includes("this instruction: add dialogue\n") && rb.includes("- Mira does t
 ok(refinePrompt(base, { title: "A", body: "B" }, "[shorter]", 8000).includes("this instruction: shorter\n"), "refine prompt: only a note is still the instruction");
 ok(passageRefinePrompt(base, { title: "A", before: "x ", passage: "y", after: " z" }, "tighter [keep the pun]", 8000).includes("- keep the pun"), "passage prompt: notes become additional instructions");
 const ib = ideasPrompt(base, 8000, "cats attack [none of them die]");
-ok(ib.includes('guidance: "cats attack"') && ib.includes("- none of them die") && !ib.includes("[none"), "ideas prompt: notes apply to every idea");
+ok(ib.includes('is about: "cats attack"') && ib.includes("- none of them die") && !ib.includes("[none"), "ideas prompt: notes apply to every idea");
 
 // ---- codex picking and manual overrides ----
 const cx = (id: string, name: string, extra: Record<string, unknown> = {}) => ({ id, name, type: "character", aliases: [] as string[], content: `${name} info`, always_include: false, ...extra });
@@ -77,7 +77,13 @@ ok(ip.includes('"Open it", "Run"') && ip.includes("Suggest 4 distinct directions
 const after = ideasPrompt({ storyTitle: "T", premise: "P", path: [ch(1)], choiceLabel: "Climb the tower", siblingChoices: ["Open it"] }, 8000);
 ok(after.includes('The reader chose: "Climb the tower"') && after.includes("following from the reader's choice") && !after.includes('"Open it"'), "ideasPrompt follows the choice text when there is one");
 const guided = ideasPrompt({ storyTitle: "T", premise: "P", path: [ch(1)], choiceLabel: null }, 8000, "cats attack him, he fights back");
-ok(guided.includes('"cats attack him, he fights back"') && guided.includes("not just what follows from it"), "ideasPrompt makes the guidance part of each idea");
+ok(guided.includes('"cats attack him, he fights back"') && guided.includes("Treat this as the premise of the chapter") && guided.includes("none may skip or contradict them"), "ideasPrompt makes the guidance the premise of each idea");
+ok(guided.includes("in how they play out the premise") && !guided.includes("small variations of one plot"), "…and asks for variety in how it plays out, not in dropping it");
+const guidedFrom = ideasPrompt({ storyTitle: "T", premise: "P", path: [ch(1)], choiceLabel: "Climb", siblingChoices: ["Open it"] }, 8000, "he finds a door");
+ok(guidedFrom.includes("each following from the reader's choice") && !guidedFrom.includes('"Open it"'), "…and still follows the choice text when there is one");
+const guidedOpen = ideasPrompt({ storyTitle: "T", premise: "P", path: [], choiceLabel: null }, 8000, "a storm at sea");
+ok(guidedOpen.includes("the opening chapter is about") && guidedOpen.includes("in the opening chapter"), "…and for the opening chapter");
+ok(ideasPrompt({ storyTitle: "T", premise: "P", path: [ch(1)], choiceLabel: null, codex: [cx("z", "Zed")] }, 8000, "zed arrives").includes("Zed info") && !ideasPrompt({ storyTitle: "T", premise: "P", path: [ch(1)], choiceLabel: null, codex: [cx("z", "Zed")] }, 8000).includes("Zed info"), "…and guidance can trigger codex entries");
 const opening = ideasPrompt({ storyTitle: "T", premise: "P", path: [], choiceLabel: null }, 8000);
 ok(opening.includes("ways this story could open"), "ideasPrompt suggests openings for a new story");
 
