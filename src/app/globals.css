@@ -1067,6 +1067,59 @@ main:has(.library) {
   background: var(--line);
 }
 
+/* The Illustrate chapter page: the chapter above everything on a phone, in a column that stays in view on a wide screen. */
+.illustrate-grid,
+.illustrate-main,
+.illustrate-side {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.illustrate-side {
+  align-content: start;
+}
+
+.illustrate-summary {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.illustrate-fold > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.illustrate-fold[open] > summary {
+  margin-bottom: 0.75rem;
+}
+
+@media (min-width: 64rem) {
+  main:has(.illustrate-grid) {
+    max-width: 72rem;
+  }
+
+  .illustrate-grid {
+    grid-template-columns: minmax(0, 1fr) 22rem;
+    align-items: start;
+  }
+
+  .illustrate-main {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .illustrate-side {
+    grid-column: 2;
+    grid-row: 1;
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+  }
+}
+
 /* The Illustrate chapter page: one card per picture, side by side when there is room. */
 .image-editors {
   display: grid;

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ChapterImageEditor from "@/components/ChapterImageEditor";
+import IllustrateChapter from "@/components/IllustrateChapter";
 import ImagePromptPanel from "@/components/ImagePromptPanel";
 import { chapterImageVersions } from "@/lib/chapterImages";
 import { foldCodex } from "@/lib/codex";
@@ -16,6 +17,7 @@ export default async function IllustratePage({ params }: { params: Promise<{ id:
   const path = getPath(id);
   if (path.length === 0) notFound();
   const chapter = path[path.length - 1];
+  const before = path.at(-2);
   const story = getStory(chapter.story_id);
   if (!story) notFound();
   const versions = chapterImageVersions([chapter.id]).get(chapter.id)!;
@@ -34,16 +36,29 @@ export default async function IllustratePage({ params }: { params: Promise<{ id:
         <Link href={`/c/${id}`}>← Back to “{chapter.title}”</Link>
       </p>
       <h1>Illustrate chapter</h1>
-      <ImagePromptPanel
-        chapterId={chapter.id}
-        story={{ id: story.id, title: story.title, premise: story.premise, art_style: story.art_style }}
-        path={path.map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary }))}
-        codex={codex}
-      />
-      <div className="image-editors">
-        {IMAGE_SLOTS.map((slot) => (
-          <ChapterImageEditor key={slot} chapterId={chapter.id} slot={slot} version={versions[slot]} />
-        ))}
+      <div className="illustrate-grid">
+        <div className="illustrate-side">
+          <IllustrateChapter
+            chapterId={chapter.id}
+            title={chapter.title}
+            body={chapter.body}
+            summary={chapter.summary}
+            earlier={before ? before.path_summary || before.summary || null : null}
+          />
+        </div>
+        <div className="illustrate-main">
+          <ImagePromptPanel
+            chapterId={chapter.id}
+            story={{ id: story.id, title: story.title, premise: story.premise, art_style: story.art_style }}
+            path={path.map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary }))}
+            codex={codex}
+          />
+          <div className="image-editors">
+            {IMAGE_SLOTS.map((slot) => (
+              <ChapterImageEditor key={slot} chapterId={chapter.id} slot={slot} version={versions[slot]} />
+            ))}
+          </div>
+        </div>
       </div>
     </>
   );

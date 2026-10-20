@@ -33,18 +33,9 @@ What it's for: a picture made for one chapter can turn out to suit another, such
 - Optional extra: import from ComfyUI's history (`GET /history?max_items=200`), for pictures made before the log existed or made in ComfyUI itself. Take only entries tagged `storytime` or whose files start with `StoryTime`. The prompt text can be read back from the workflow stored in the entry (`prompt[2]`), using the same node-finding logic as `promptNodes`.
 - Undecided: pictures from other stories would be one more filter. Leave them out unless asked.
 
-### 3. See the chapter while illustrating
+### 3. See the chapter while illustrating (done)
 
-What it's for: checking that a picture matches the chapter without leaving the page.
-
-- The page already loads the chapter's text and summaries (the `path` prop: `body`, `summary`, `path_summary`), so no new data is needed.
-- A **"Chapter"** panel near the top of the page:
-  - It shows the chapter's summary, falling back to "No summary yet" with a link to the chapter.
-  - Below the summary, a "Show the whole chapter" `<details>` with the full text, styled like the reading page. Remember whether it was open (`localStorage`, wrapped in try/catch).
-  - Optionally, a "Story so far" `<details>` with the previous chapter's `path_summary`, the same text the prompt is written from.
-- On wide screens, the panel could sit in a sticky column beside the prompt, so the text stays in view while scrolling to the pictures. On a phone it stays a collapsed block above the prompt.
-- Undecided (ask before building): a collapsible block above the prompt, or a side column on desktop.
-- Tests: an e2e check that the summary is shown, that the full text opens and contains the chapter body, and that nothing overflows at 390px.
+`src/components/IllustrateChapter.tsx` shows the chapter being illustrated: its summary (or "No summary yet" with a link to the summary page), a "Show the whole chapter" fold with the text as the reading page shows it, and a "Story so far" fold with the previous chapter's running summary (the text the prompt is written from; absent on a first chapter). Which folds are open is remembered in `localStorage`. On a screen 64rem or wider it sits in a sticky column beside the prompt and the pictures; on a phone it is a block above the prompt. Test: `tests/e2e/illustrate-chapter.e2e.mjs`.
 
 ### 4. Bring back the prompt a picture was made with
 
@@ -86,7 +77,7 @@ What it's for: making variations of a picture you already have, with a slider fo
 
 ### Order
 
-Item 1 is done. Next are 3 and 4 (small), then 2, then 5. Item 3 doesn't depend on any other and can be done at any time.
+Items 1 and 3 are done. Next are 4 (small), then 2, then 5.
 
 ## Also planned (from the pictures plan)
 
