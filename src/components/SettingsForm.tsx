@@ -112,6 +112,15 @@ function ConnectionCard({
           </button>
         </span>
       </label>
+      <label className="inline-label">
+        <input type="checkbox" checked={conn.freeComfy} onChange={(e) => onChange({ freeComfy: e.target.checked })} />
+        Free ComfyUI&apos;s memory before each request
+      </label>
+      <small>
+        For a model on the same machine as ComfyUI: ComfyUI unloads its models first, so this one has the
+        graphics memory (pictures then take longer to start). Does nothing while no ComfyUI address is set
+        under Pictures.
+      </small>
       <div className="row" style={{ flexWrap: "wrap" }}>
         <button type="button" onClick={test} disabled={testing}>
           {testing ? "Testing…" : models ? "Refresh models" : "Test connection"}

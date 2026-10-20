@@ -10,6 +10,11 @@ export type Connection = {
   kind: ProviderKind;
   baseUrl: string;
   apiKey: string;
+  /**
+   * Ask ComfyUI to unload its models and free memory before each request to this connection, so a model
+   * running on the same machine has the graphics memory. Does nothing while no ComfyUI address is set.
+   */
+  freeComfy: boolean;
 };
 
 /** A model on a particular connection. */
@@ -83,6 +88,7 @@ const connectionSchema = z.object({
   kind: z.enum(PROVIDER_KINDS).catch("custom"),
   baseUrl: z.string().catch(""),
   apiKey: z.string().catch(""),
+  freeComfy: z.boolean().catch(false),
 });
 const refSchema = z.object({ connectionId: z.string().min(1), model: z.string().trim().min(1) });
 const favoriteSchema = refSchema.extend({ label: z.string().catch("") });
@@ -189,7 +195,7 @@ export function newConnection(s: Settings, kind: ProviderKind): Connection {
   for (let n = 2; taken.has(name); n++) name = `${base} ${n}`;
   // crypto.randomUUID needs a secure context, which a LAN address over http isn't.
   const id = `${kind}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-  return { id, name, kind, baseUrl: providerInfo(kind).defaultBaseUrl, apiKey: "" };
+  return { id, name, kind, baseUrl: providerInfo(kind).defaultBaseUrl, apiKey: "", freeComfy: false };
 }
 
 /** Settings without the connection, its favorites, or defaults that used it. */

@@ -2,6 +2,7 @@
 // so API keys never touch the StoryTime server.
 import { providerInfo, type ProviderKind } from "./providers";
 import { defaultRef, findConnection, type Connection, type ModelRef, type Settings } from "../settingsSchema";
+import { freeComfyMemory } from "../comfy/client";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -26,6 +27,8 @@ type Resolved = {
   model: string;
   temperature: number | null;
   disableThinking: boolean;
+  /** Free ComfyUI's memory first (see Connection.freeComfy). */
+  freeComfy: boolean;
 };
 
 function checkConnection(c: Connection) {
@@ -50,6 +53,7 @@ function resolve(settings: Settings, req: Pick<ChatRequest, "role" | "model">): 
     model: ref.model.trim(),
     temperature: settings.temperature,
     disableThinking: settings.disableThinking,
+    freeComfy: conn.freeComfy,
   };
 }
 
@@ -127,6 +131,8 @@ const CORS_HINT =
 /** Streams the model's reply as text chunks. */
 export async function* streamChat(settings: Settings, req: ChatRequest): AsyncGenerator<string> {
   const r = resolve(settings, req);
+  // A model sharing the graphics card with ComfyUI gets the memory first, when the connection asks for it.
+  if (r.freeComfy && settings.comfy.url.trim()) await freeComfyMemory(settings.comfy.url);
 
   if (r.protocol === "anthropic") {
     const body: Record<string, unknown> = {

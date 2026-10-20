@@ -222,6 +222,28 @@ export async function cancelPrompt(url: string, promptId: string): Promise<void>
   }
 }
 
+// How long a request to free ComfyUI's memory may hold up the text request after it.
+const FREE_TIMEOUT_MS = 3000;
+
+/**
+ * Asks ComfyUI to unload its models and free the memory they hold (POST /free), so a text model on the
+ * same machine has room. ComfyUI does it between jobs, so a job that is running finishes first. Never
+ * throws: when ComfyUI is down or slow, the text request goes ahead anyway.
+ */
+export async function freeComfyMemory(url: string): Promise<boolean> {
+  try {
+    const res = await call(url, "/free", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ unload_models: true, free_memory: true }),
+      signal: AbortSignal.timeout(FREE_TIMEOUT_MS),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Where the browser can load one of ComfyUI's pictures from. */
 export function imageUrl(url: string, image: ComfyImage): string {
   const q = new URLSearchParams({ filename: image.filename, subfolder: image.subfolder, type: image.type });

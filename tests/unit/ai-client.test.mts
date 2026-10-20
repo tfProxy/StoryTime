@@ -12,6 +12,7 @@ const server = http.createServer((req, res) => {
       res.setHeader("content-type", "application/json");
       return res.end(JSON.stringify({ data: [{ id: "b-model" }, { id: "a-model" }] }));
     }
+    if (req.url === "/comfy/free") { res.setHeader("content-type", "application/json"); return res.end("{}"); }
     if (req.url === "/bad/chat/completions") { res.statusCode = 401; return res.end(JSON.stringify({ error: { message: "bad key" } })); }
     res.setHeader("content-type", "text/event-stream");
     const chunks = req.url!.startsWith("/anth")
@@ -91,6 +92,30 @@ assert(seen.at(-1)!.body.reasoning_effort === "none" && !("reasoning" in seen.at
 const ctl = new AbortController(); ctl.abort();
 try { await completeChat(mk("custom", base + "/o") as any, { messages: [{ role: "user", content: "x" }], signal: ctl.signal }); assert(false, "abort"); }
 catch (e) { assert((e as any).name === "AbortError", "abort propagates"); }
+
+// Freeing ComfyUI's memory first, for a connection that asks for it.
+const local = (freeComfy: boolean, comfyUrl: string) => ({
+  ...mk("ollama", base + "/o"),
+  connections: [{ id: "c1", name: "Local", kind: "ollama", baseUrl: base + "/o", apiKey: "", freeComfy }],
+  comfy: { ...DEFAULT_SETTINGS.comfy, url: comfyUrl },
+});
+const urlsOf = async (s: any) => {
+  const from = seen.length;
+  const text = await completeChat(s, { messages: [{ role: "user", content: "x" }] });
+  return { text, urls: seen.slice(from).map((x) => x.url) };
+};
+let r = await urlsOf(local(true, base + "/comfy/"));
+assert(r.text === "Hello" && JSON.stringify(r.urls) === '["/comfy/free","/o/chat/completions"]', "freeComfy: ComfyUI is asked to free its memory, then the text request is sent: " + JSON.stringify(r.urls));
+const free = seen.find((x) => x.url === "/comfy/free")!;
+assert(free.body.unload_models === true && free.body.free_memory === true, "…asking it to unload its models and free memory");
+r = await urlsOf(local(false, base + "/comfy"));
+assert(JSON.stringify(r.urls) === '["/o/chat/completions"]', "a connection without the setting doesn't touch ComfyUI");
+r = await urlsOf(local(true, ""));
+assert(r.text === "Hello" && JSON.stringify(r.urls) === '["/o/chat/completions"]', "with no ComfyUI address the setting does nothing");
+r = await urlsOf(local(true, "http://localhost:1"));
+assert(r.text === "Hello", "a ComfyUI that can't be reached doesn't stop the text request");
+assert(parseSettings({ connections: [{ id: "a", kind: "ollama" }] }).connections[0].freeComfy === false, "settings saved before the option have it off");
+assert(parseSettings({ connections: [{ id: "a", kind: "ollama", freeComfy: true }] }).connections[0].freeComfy === true, "…and it is kept when on");
 
 // settings parse / export / import
 assert(parseSettings(null).contextTokens === 8000, "parse null -> defaults");

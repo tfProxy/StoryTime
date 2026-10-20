@@ -15,6 +15,7 @@ Read this before touching the Illustrate page (`src/app/c/[id]/illustrate/page.t
 - **A saved header or footer** keeps the prompt and negative prompt that made it (`chapter_images.job_id/prompt/negative`, copied from the job by `PUT .../images/:slot?job=<id>`). Uploads keep none. The job log and `job_id` are not in the JSON export.
 - **Jobs are tagged in ComfyUI:** `extra_data.storytime = {chapterId, storyId}`, and saved pictures are filed under `StoryTime/<story id>/<chapter id>` where the workflow's prefix is `StoryTime` or contains `{{prefix}}`.
 - **Settings** (`settings.comfy`): url, workflow, checkpoint, width, height, count, denoise (0.05 to 1, default 0.55). They are shared across stories and held on the server.
+- **Freeing ComfyUI's memory for a text model:** each AI connection has `freeComfy`. When it is on and a ComfyUI address is set, `streamChat` first sends `POST /free {unload_models, free_memory}` (`freeComfyMemory` in `comfy/client.ts`; 3 s timeout, failures ignored). Not yet tried against a real ComfyUI.
 - **Tests:** `tests/e2e/fakeComfy.mjs` is a fake ComfyUI (progress over WebSocket, `/view`, `/history`, `/upload/image`, a `fail` mode). The page's tests are `illustrate-comfy`, `illustrate-past`, `illustrate-start`, `illustrate-chapter`, `illustrate-viewer` and `illustrate-draft` (with `tests/api/picture-drafts`); the workflow logic is in `tests/unit/comfy-workflow.test.mts`.
 
 ## Not yet checked against a real ComfyUI

@@ -76,6 +76,15 @@ await until(async () => (await settingsNow())?.favorites.find((f) => f.model ===
 let s = await settingsNow();
 ok(s.connections.length === 2 && s.favorites.length === 2 && s.defaults.main.model === "alpha", "settings hold both connections and both starred models");
 
+// ---- freeing ComfyUI's memory: per connection, and settable with no ComfyUI set up ----
+const freeBox = (conn) => conn.getByRole("checkbox", { name: "Free ComfyUI's memory before each request" });
+ok(await freeBox(ollama).count() === 1 && await freeBox(router).count() === 1 && !(await freeBox(ollama).isChecked()), "each connection has its own Free ComfyUI's memory box, off at first");
+ok(s.comfy.url === "", "(no ComfyUI address is set)");
+await freeBox(ollama).check();
+ok(await until(async () => (await settingsNow()).connections[0].freeComfy === true, "the box to be saved"), "it can be ticked without a ComfyUI address, and is saved for that connection");
+s = await settingsNow();
+ok(s.connections[1].freeComfy === false, "…and only that one");
+
 // ---- a draft uses the default, then a model picked on the page ----
 await page.goto(`${BASE}/new`);
 await page.getByLabel("Story title").fill("Model tale");
