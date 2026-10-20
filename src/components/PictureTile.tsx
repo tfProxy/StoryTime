@@ -19,13 +19,15 @@ type Props = {
   onStart?: (image: ComfyImage) => void;
   /** A short line under the picture, such as its seed and checkpoint. */
   caption?: string;
+  /** Called to bring back the prompt this picture was made with. */
+  onLoadPrompt?: () => void;
 };
 
 /**
  * One picture from ComfyUI with the buttons to use it as the chapter's header or footer. A picture ComfyUI
  * no longer has (or can't be reached for) says so, and can't be used.
  */
-export default function PictureTile({ comfyUrl, image, tileKey, jobId, saver, onStart, caption }: Props) {
+export default function PictureTile({ comfyUrl, image, tileKey, jobId, saver, onStart, caption, onLoadPrompt }: Props) {
   const [missing, setMissing] = useState(false);
   const src = imageUrl(comfyUrl, image);
   return (
@@ -58,6 +60,11 @@ export default function PictureTile({ comfyUrl, image, tileKey, jobId, saver, on
         {onStart && (
           <button type="button" className="secondary" disabled={missing} onClick={() => onStart(image)}>
             Start from this
+          </button>
+        )}
+        {onLoadPrompt && (
+          <button type="button" className="secondary" onClick={onLoadPrompt} title="Put this picture's prompt back in the prompt boxes">
+            Load prompt
           </button>
         )}
       </div>

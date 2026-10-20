@@ -57,10 +57,12 @@ type Props = {
   onClear: () => void;
   /** Called to make new pictures starting from one of these. */
   onStart?: (image: ComfyImage) => void;
+  /** Called to bring back the prompt and settings a picture was made with. */
+  onLoadPrompt?: (picture: Candidate) => void;
 };
 
 /** The pictures made on this visit, grouped by prompt, with Clear at the top where it is easy to reach. */
-export default function NewPictures({ chapterId, comfyUrl, candidates, onClear, onStart }: Props) {
+export default function NewPictures({ chapterId, comfyUrl, candidates, onClear, onStart, onLoadPrompt }: Props) {
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const saver = usePictureSaver(chapterId, comfyUrl, setStatus);
   const groups = byPrompt(candidates);
@@ -103,6 +105,7 @@ export default function NewPictures({ chapterId, comfyUrl, candidates, onClear, 
                   saver={saver}
                   caption={pictureCaption(c)}
                   onStart={onStart}
+                  onLoadPrompt={onLoadPrompt && (() => onLoadPrompt(c))}
                 />
               ))}
             </ul>

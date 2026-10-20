@@ -38,7 +38,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
   const comfy = useSettings().comfy;
 
   function load(p: PromptToLoad) {
-    setLoaded({ nonce: (loaded?.nonce ?? 0) + 1, prompt: p.prompt, negative: p.negative, seed: p.seed });
+    setLoaded({ ...p, nonce: (loaded?.nonce ?? 0) + 1 });
     // On a phone the prompt box is far above the pictures.
     document.getElementById("picture-prompt")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -71,6 +71,15 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
             candidates={candidates}
             onClear={() => setCandidates([])}
             onStart={(image) => startFrom(fromComfyImage(comfy.url, image))}
+            onLoadPrompt={(c) =>
+              load({
+                prompt: c.prompt,
+                negative: c.negative,
+                seed: c.seed,
+                settings: { checkpoint: c.checkpoint, width: c.width, height: c.height, denoise: c.denoise },
+                moment: c.moment,
+              })
+            }
           />
         )}
         <div className="image-editors">
@@ -81,7 +90,14 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
               slot={slot}
               version={versions[slot]}
               made={made[slot]}
-              onLoadPrompt={(m) => load({ prompt: m.prompt, negative: m.negative, seed: m.job?.seed ?? null })}
+              onLoadPrompt={(m) =>
+                load({
+                  prompt: m.prompt,
+                  negative: m.negative,
+                  seed: m.job?.seed ?? null,
+                  settings: m.job && { checkpoint: m.job.checkpoint, width: m.job.width, height: m.job.height, denoise: null },
+                })
+              }
               onStart={comfy.url ? (v) => startFrom(fromSaved(chapterId, slot, v)) : undefined}
             />
           ))}

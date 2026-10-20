@@ -81,6 +81,10 @@ try {
   await page.getByText("Reuse seed").waitFor();
   ok(await promptBox.inputValue() === "lantern glow number 13" && await page.getByRole("textbox", { name: "Negative prompt", exact: true }).inputValue() === "neg 14", "Load prompt fills in the prompt and the negative prompt");
   ok(await page.getByText(`Reuse seed ${1000 + 14}`).isVisible(), "…and offers to reuse its seed");
+  ok(await page.getByText("The loaded picture was made with fake_sdxl_a.safetensors.").isVisible(), "…and says which of its settings differ from the current ones (here the checkpoint)");
+  await page.getByRole("button", { name: "Use its settings" }).click();
+  await page.getByText("The loaded picture was made with").waitFor({ state: "detached" });
+  ok((await call("GET", "/api/settings")).settings.comfy.checkpoint === "fake_sdxl_a.safetensors", "Use its settings saves its checkpoint, and the offer goes away");
 
   // ---- this story: grouped by chapter ----
   await past.getByRole("button", { name: "This story" }).click();

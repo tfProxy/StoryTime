@@ -13,6 +13,7 @@ import PromptButton from "./PromptButton";
 import ComfyGenerate from "./ComfyGenerate";
 import type { StartPicture } from "@/lib/comfy/startPicture";
 import type { Candidate } from "./NewPictures";
+import type { PromptToLoad } from "./PastPictures";
 
 const MOMENT_NAMES: Record<ImageMoment, string> = { start: "Chapter start", end: "Chapter end" };
 const STYLE_NAMES: Record<ImagePromptStyle, string> = {
@@ -21,7 +22,7 @@ const STYLE_NAMES: Record<ImagePromptStyle, string> = {
 };
 
 /** A prompt brought back from a saved picture. `nonce` changes with every request, even for the same prompt. */
-export type LoadedPrompt = { nonce: number; prompt: string; negative: string; seed: number | null };
+export type LoadedPrompt = PromptToLoad & { nonce: number };
 
 type Props = {
   /** Fills in the prompt boxes when it changes. */
@@ -53,12 +54,13 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  // A prompt loaded from a saved picture replaces the boxes once per request.
+  // A prompt loaded from a picture replaces the boxes (and the moment, when known) once per request.
   const [seenLoad, setSeenLoad] = useState(0);
   if (loaded && loaded.nonce !== seenLoad) {
     setSeenLoad(loaded.nonce);
     setResult({ scene: "", prompt: loaded.prompt, negative: loaded.negative });
-    setStatus({ ok: true, text: "Prompt loaded from the saved picture." });
+    if (loaded.moment) setMoment(loaded.moment);
+    setStatus({ ok: true, text: "Prompt loaded from the picture." });
   }
   const style = settings.imagePromptStyle;
   const model = settings.imagePromptModel;

@@ -222,7 +222,8 @@ try {
   ok((await card("Footer picture").locator(".image-made").count()) === 0 && (await card("Footer picture").locator("img.image-editor-preview").count()) === 1, "an uploaded picture shows no Made from");
   ok((await page.getByRole("checkbox", { name: /Reuse seed/ }).count()) === 0, "there is no Reuse seed box before a prompt is loaded");
   await madeFrom.getByRole("button", { name: "Load prompt" }).click();
-  await page.getByText("Prompt loaded from the saved picture.").waitFor();
+  await page.getByText("Prompt loaded from the picture.").waitFor();
+  ok((await page.getByText("The loaded picture was made with").count()) === 0, "…which was made with the current checkpoint and size, so there is nothing else to offer");
   ok((await promptBox.inputValue()) === "a lighthouse at dawn, gulls" && (await negativeBox.inputValue()) === "blurry, text", "Load prompt fills in the Prompt and Negative prompt boxes");
   const reuse = page.getByRole("checkbox", { name: `Reuse seed ${seed}` });
   ok(await reuse.isVisible() && !(await reuse.isChecked()), "…and offers Reuse seed with the picture's seed, unticked");
@@ -248,6 +249,24 @@ try {
   ok(heads.length === 2 && heads[0].startsWith("a lighthouse at night") && heads[1].startsWith("a lighthouse at dusk, gulls"), "…and a new prompt starts a new group, above the older one");
   await card("Header picture").getByRole("button", { name: "Load prompt" }).click();
   ok(!(await reuse.isChecked()), "loading a prompt again unticks Reuse seed");
+
+  // ---- bringing back the prompt of any new picture, with its settings ----
+  await page.getByLabel("Size").selectOption("1024x1024");
+  ok(await until(async () => (await settingsNow()).comfy.width === 1024, "the size to be saved"), "(the size is changed to square)");
+  await page.getByLabel("Moment to show").selectOption("end");
+  const nightTile = page.locator(".picture-group").first().locator(".picture-tile").first();
+  const nightSeed = /seed (\d+)/.exec(await nightTile.locator(".picture-caption").innerText())[1];
+  await nightTile.getByRole("button", { name: "Load prompt" }).click();
+  ok((await promptBox.inputValue()) === "a lighthouse at night" && (await negativeBox.inputValue()) === "blurry, text", "every new picture has Load prompt, which fills in its prompt and negative prompt");
+  ok(await page.getByRole("checkbox", { name: `Reuse seed ${nightSeed}` }).isVisible(), "…offers to reuse that picture's own seed");
+  ok((await page.getByLabel("Moment to show").inputValue()) === "start", "…and puts back the moment it was made for");
+  const offer = page.getByText("The loaded picture was made with 1344 × 768.");
+  ok(await offer.isVisible(), "the settings that differ from the current ones are named (here the size)");
+  ok((await settingsNow()).comfy.width === 1024, "…but not changed until asked");
+  await page.getByRole("button", { name: "Use its settings" }).click();
+  ok(await until(async () => (await settingsNow()).comfy.width === 1344 && (await settingsNow()).comfy.height === 768, "the size to be put back"), "Use its settings puts back its size");
+  await offer.waitFor({ state: "detached" });
+  ok((await page.getByLabel("Size").inputValue()) === "1344x768", "…the Size menu shows it, and the offer goes away");
   if (process.env.E2E_SCREENSHOT_DIR) {
     fs.mkdirSync(process.env.E2E_SCREENSHOT_DIR, { recursive: true });
     await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-made-1000.png`, fullPage: true });

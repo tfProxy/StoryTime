@@ -25,7 +25,7 @@ The tests use a fake. Before building more on this, try once on the real machine
 
 ## Next steps, roughly in order of usefulness
 
-1. **Load prompt should also offer the checkpoint and size.** The job log has them. Now only the prompt, negative and seed are brought back, because the checkpoint and size are shared settings. Option: a "Also use its checkpoint and size" tick beside Reuse seed.
+1. **Remember the prompt per chapter** (server side, so it carries between devices), then **pin and reject pictures** with one gallery for this chapter (Pinned / Unsorted / Rejected / Other chapters) that shows only pinned pictures on return. See the plan agreed in the session that added the job queue.
 2. **Keep Past pictures current.** It lists what existed when the page opened, so pictures made since appear only under the new pictures. Refresh it when a job is recorded and hide the jobs already shown above, so nothing is shown twice. This needs `ComfyGenerate` to tell the workspace (a callback through `ImagePromptPanel`).
 3. **Say which picture is in use.** Mark the past picture that is the current header or footer (the saved picture has `job_id`; the tile needs the image index too, which isn't stored yet).
 4. **Forget lost pictures.** When a past picture's file is gone, offer to remove the record (a `DELETE /api/picture-jobs/:id`), and think about pruning old rows.

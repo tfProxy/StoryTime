@@ -6,6 +6,7 @@ import { saveSettings, useSettings } from "@/lib/settings";
 import type { ComfySettings } from "@/lib/settingsSchema";
 import type { ImageMoment } from "@/lib/ai/imagePrompt";
 import type { LoadedPrompt } from "./ImagePromptPanel";
+import type { MadeWith } from "./PastPictures";
 import type { Candidate } from "./NewPictures";
 import { uploadStart, type StartPicture, type Uploaded } from "@/lib/comfy/startPicture";
 import { describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
@@ -32,6 +33,32 @@ function progressText(p: Progress): string {
   if (p.stage === "queued") return p.ahead ? `Waiting in ComfyUI's queue (${p.ahead} ahead)…` : "Starting…";
   if (p.stage === "running") return `Step ${p.value} of ${p.max}…`;
   return "Loading the pictures…";
+}
+
+/**
+ * Where the settings a loaded picture was made with differ from the current ones: the change to make and
+ * how to describe it, or null when they match. The checkpoint and size are shared by every story, so they
+ * change only when the author asks. A picture made from a starting picture took that picture's size, so
+ * only its strength is offered.
+ */
+function otherSettings(made: MadeWith | null, now: ComfySettings): { patch: Partial<ComfySettings>; text: string } | null {
+  if (!made) return null;
+  const patch: Partial<ComfySettings> = {};
+  const text: string[] = [];
+  if (made.checkpoint && made.checkpoint !== now.checkpoint) {
+    patch.checkpoint = made.checkpoint;
+    text.push(made.checkpoint);
+  }
+  if (made.denoise === null && (made.width !== now.width || made.height !== now.height)) {
+    patch.width = made.width;
+    patch.height = made.height;
+    text.push(`${made.width} × ${made.height}`);
+  }
+  if (made.denoise !== null && made.denoise !== now.denoise) {
+    patch.denoise = made.denoise;
+    text.push(`strength ${made.denoise}`);
+  }
+  return text.length ? { patch, text: text.join(", ") } : null;
 }
 
 type Props = {
@@ -90,6 +117,7 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
   }
 
   const set = (patch: Partial<ComfySettings>) => void saveSettings({ ...settings, comfy: { ...comfy, ...patch } });
+  const other = otherSettings(loaded?.settings ?? null, comfy);
   const busy = progress !== null;
   const size = SIZES.find((s) => s.width === comfy.width && s.height === comfy.height);
 
@@ -265,6 +293,14 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {other && (
+        <div className="row" style={{ flexWrap: "wrap" }}>
+          <button type="button" className="secondary" onClick={() => set(other.patch)}>
+            Use its settings
+          </button>
+          <span className="meta">The loaded picture was made with {other.text}.</span>
         </div>
       )}
       <div className="row" style={{ flexWrap: "wrap" }}>

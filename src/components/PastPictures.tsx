@@ -6,12 +6,19 @@ import type { PictureJob } from "@/lib/pictureJobs";
 import PictureTile from "./PictureTile";
 import { usePictureSaver } from "./usePictureSaver";
 import type { ComfyImage } from "@/lib/comfy/client";
+import type { ImageMoment } from "@/lib/ai/imagePrompt";
 
 const PAGE = 12;
 const SHOWN_PROMPT = 160;
 
-/** What "Load prompt" hands back: the text and, where known, the seed of the job that made the pictures. */
-export type PromptToLoad = { prompt: string; negative: string; seed: number | null };
+/** The shared settings a picture was made with, which "Load prompt" offers to use again. */
+export type MadeWith = { checkpoint: string; width: number; height: number; denoise: number | null };
+
+/**
+ * What "Load prompt" hands back: the text and, where known, the seed, the settings and the moment of the
+ * job that made the pictures.
+ */
+export type PromptToLoad = { prompt: string; negative: string; seed: number | null; settings?: MadeWith | null; moment?: ImageMoment | null };
 
 type Scope = "chapter" | "story";
 const SCOPES: { scope: Scope; label: string }[] = [
@@ -140,7 +147,15 @@ function PastList({ scope, chapterId, storyId, titles, comfyUrl, saver, onLoadPr
                 {[new Date(job.created_at).toLocaleString(), job.checkpoint, `${job.width} × ${job.height}`, `seed ${job.seed}`, job.denoise !== null && `variation, strength ${job.denoise}`].filter(Boolean).join(" · ")}
               </p>
               <div>
-                <button type="button" className="secondary" onClick={() => onLoadPrompt({ prompt: job.prompt, negative: job.negative, seed: job.seed })}>
+                <button type="button" className="secondary" onClick={() =>
+                    onLoadPrompt({
+                      prompt: job.prompt,
+                      negative: job.negative,
+                      seed: job.seed,
+                      settings: { checkpoint: job.checkpoint, width: job.width, height: job.height, denoise: job.denoise },
+                      moment: job.moment,
+                    })
+                  }>
                   Load prompt
                 </button>
               </div>
