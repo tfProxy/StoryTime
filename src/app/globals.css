@@ -1246,6 +1246,53 @@ main:has(.illustrate-grid) {
   font-size: 0.8rem;
 }
 
+.picture-queue-slot:empty {
+  display: none;
+}
+
+/* The jobs being made, each with its prompt, progress and Stop. */
+.comfy-queue {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.comfy-queue li {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  min-width: 0;
+}
+
+.comfy-queue-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.comfy-queue-prompt {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.comfy-queue .meta {
+  margin: 0;
+}
+
+.comfy-queue button {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.9rem;
+}
+
+.comfy-queue progress {
+  width: 100%;
+}
+
 /* A picture's buttons, smaller than usual so a tile's buttons take one or two lines. */
 .tile-actions {
   display: flex;

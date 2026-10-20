@@ -206,12 +206,20 @@ export async function uploadImage(url: string, blob: Blob, filename: string): Pr
   return body.subfolder ? `${body.subfolder}/${body.name}` : body.name;
 }
 
-/** Stops the job: removes it from the queue, or interrupts it if it is running. */
+/**
+ * Stops the job: removes it from the queue, or interrupts it if it is running. Older ComfyUIs interrupt
+ * whichever job is running whatever id is given, so a job that is only waiting is never interrupted:
+ * ComfyUI's queue is checked first (and when that can't be read, the job is interrupted as before).
+ */
 export async function cancelPrompt(url: string, promptId: string): Promise<void> {
   const post = (path: string, body: unknown) =>
     call(url, path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
   await post("/queue", { delete: [promptId] });
-  await post("/interrupt", { prompt_id: promptId });
+  const queue = await json<{ queue_running?: unknown }>(url, "/queue").catch(() => null);
+  const running = Array.isArray(queue?.queue_running) ? queue.queue_running : null;
+  if (running === null || running.some((entry) => Array.isArray(entry) && entry[1] === promptId)) {
+    await post("/interrupt", { prompt_id: promptId });
+  }
 }
 
 /** Where the browser can load one of ComfyUI's pictures from. */

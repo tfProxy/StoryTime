@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { saveSettings, useSettings } from "@/lib/settings";
 import type { ComfySettings } from "@/lib/settingsSchema";
@@ -34,6 +35,11 @@ function progressText(p: Progress): string {
   if (p.stage === "running") return `Step ${p.value} of ${p.max}…`;
   return "Loading the pictures…";
 }
+
+/** A job being made, as listed under the Make pictures button. */
+type Queued = { key: string; prompt: string; count: number; progress: Progress };
+
+const SHOWN_PROMPT = 70;
 
 /**
  * Where the settings a loaded picture was made with differ from the current ones: the change to make and
@@ -74,18 +80,21 @@ type Props = {
   onClearStart?: () => void;
   /** Called with each finished job's pictures. */
   onPictures?: (pictures: Candidate[]) => void;
+  /** Where to show the jobs being made (beside the new pictures); without it they show under the button. */
+  queueSlot?: HTMLElement | null;
 };
 
 /** Makes pictures from the prompt on the ComfyUI machine; the pictures go to `onPictures`. */
-export default function ComfyGenerate({ chapterId, storyId, moment, prompt, negative, loaded = null, start = null, onClearStart, onPictures }: Props) {
+export default function ComfyGenerate({ chapterId, storyId, moment, prompt, negative, loaded = null, start = null, onClearStart, onPictures, queueSlot = null }: Props) {
   const settings = useSettings();
   const comfy = settings.comfy;
   const [checkpoints, setCheckpoints] = useState<string[] | null>(null);
-  const [progress, setProgress] = useState<Progress | null>(null);
+  // The jobs being made, oldest first, as shown; `jobs` holds what Stop needs for each.
+  const [queue, setQueue] = useState<Queued[]>([]);
+  const jobs = useRef(new Map<string, { promptId: string | null; ctl: AbortController }>());
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
-  const job = useRef<{ promptId: string | null; ctl: AbortController } | null>(null);
-  // The starting picture as uploaded to ComfyUI, kept so "Make more" doesn't send it again.
-  const uploaded = useRef<Uploaded | null>(null);
+  // The starting picture's upload to ComfyUI, kept so the next job from it doesn't send it again.
+  const uploaded = useRef<{ key: string; upload: Promise<Uploaded> } | null>(null);
   // Each prompt loaded from a saved picture starts with a new seed again, until the author ticks the box.
   const [reuseSeed, setReuseSeed] = useState(false);
   const [seenLoad, setSeenLoad] = useState(0);
@@ -118,14 +127,25 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
 
   const set = (patch: Partial<ComfySettings>) => void saveSettings({ ...settings, comfy: { ...comfy, ...patch } });
   const other = otherSettings(loaded?.settings ?? null, comfy);
-  const busy = progress !== null;
+  const busy = queue.length > 0;
+  // The list of jobs goes where the new pictures arrive, when the page offers a place for it.
+  const withSlot = (list: ReactNode) => (queueSlot ? createPortal(list, queueSlot) : list);
   const size = SIZES.find((s) => s.width === comfy.width && s.height === comfy.height);
 
+  /**
+   * Queues one job with the prompt and settings as they are now, and waits for its pictures. Several can
+   * run at once: ComfyUI makes them one after another, and each shows its own progress and Stop.
+   */
   async function generate() {
     setStatus(null);
     const ctl = new AbortController();
-    job.current = { promptId: null, ctl };
-    setProgress({ stage: "queued", ahead: null });
+    const key = `job-${randomSeed().toString(36)}`;
+    const job = { promptId: null as string | null, ctl };
+    jobs.current.set(key, job);
+    const setProgress = (progress: Progress) => {
+      setQueue((prev) => prev.map((q) => (q.key === key ? { ...q, progress } : q)));
+    };
+    setQueue((prev) => [...prev, { key, prompt: prompt.trim(), count: comfy.count, progress: { stage: "queued", ahead: null } }]);
     const seed = reuseSeed && loadedSeed !== null ? loadedSeed : randomSeed();
     // Names this job's WebSocket connection, so ComfyUI sends its progress there.
     const clientId = `storytime-${randomSeed().toString(36)}`;
@@ -139,8 +159,15 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
       let from: Uploaded | null = null;
       if (start) {
         setProgress({ stage: "uploading" });
-        if (uploaded.current?.key !== start.key) uploaded.current = await uploadStart(comfy.url, start);
-        from = uploaded.current;
+        if (uploaded.current?.key !== start.key) uploaded.current = { key: start.key, upload: uploadStart(comfy.url, start) };
+        const upload = uploaded.current;
+        try {
+          from = await upload.upload;
+        } catch (e) {
+          // the next job tries the upload again
+          if (uploaded.current === upload) uploaded.current = null;
+          throw e;
+        }
         setProgress({ stage: "queued", ahead: null });
       }
       // From a picture the pictures are its size.
@@ -157,8 +184,14 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
         prefix: filenamePrefix(storyId, chapterId),
         ...(from && { image: from.name, denoise: comfy.denoise }),
       });
+      if (ctl.signal.aborted) throw new DOMException("Stopped", "AbortError");
       const promptId = await queuePrompt(comfy.url, workflow, clientId, { storytime: { chapterId, storyId } });
-      job.current.promptId = promptId;
+      job.promptId = promptId;
+      // Stopped while it was being queued: take it off ComfyUI's queue again.
+      if (ctl.signal.aborted) {
+        void cancelPrompt(comfy.url, promptId);
+        throw new DOMException("Stopped", "AbortError");
+      }
       const images = await waitForPictures(comfy.url, promptId, clientId, setProgress, ctl.signal);
       if (images.length === 0) throw new Error("ComfyUI finished but sent back no pictures. Does the workflow end in a Save Image node?");
       // The pictures are usable even if this fails; they just won't be listed later or keep their prompt.
@@ -201,13 +234,13 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
       if (e instanceof DOMException && e.name === "AbortError") setStatus({ ok: true, text: "Stopped." });
       else setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
     } finally {
-      job.current = null;
-      setProgress(null);
+      jobs.current.delete(key);
+      setQueue((prev) => prev.filter((q) => q.key !== key));
     }
   }
 
-  function stop() {
-    const j = job.current;
+  function stop(key: string) {
+    const j = jobs.current.get(key);
     if (!j) return;
     if (j.promptId) void cancelPrompt(comfy.url, j.promptId);
     j.ctl.abort();
@@ -288,7 +321,7 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
             </label>
             <p className="meta" style={{ margin: 0 }}>Low keeps the picture close; high changes more.</p>
             <div>
-              <button type="button" className="secondary" onClick={onClearStart} disabled={busy}>
+              <button type="button" className="secondary" onClick={onClearStart}>
                 Clear starting picture
               </button>
             </div>
@@ -304,8 +337,13 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
         </div>
       )}
       <div className="row" style={{ flexWrap: "wrap" }}>
-        <button type="button" onClick={() => void generate()} disabled={busy || !prompt.trim()}>
-          {busy ? "Making pictures…" : "Make pictures"}
+        <button
+          type="button"
+          onClick={() => void generate()}
+          disabled={!prompt.trim()}
+          title={busy ? "Adds a job with the prompt and settings as they are now; ComfyUI makes it after the others" : undefined}
+        >
+          {busy ? "Queue more" : "Make pictures"}
         </button>
         {loadedSeed !== null && (
           <label className="inline-label" title="The same seed with a slightly changed prompt gives a close variation">
@@ -313,18 +351,28 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
             Reuse seed {loadedSeed}
           </label>
         )}
-        {busy && (
-          <button type="button" className="secondary" onClick={stop}>
-            Stop
-          </button>
-        )}
-        {progress && (
-          <span className="meta" role="status">
-            {progressText(progress)}
-          </span>
-        )}
       </div>
-      {progress?.stage === "running" && <progress value={progress.value} max={progress.max} aria-label="Progress" />}
+      {busy && withSlot(
+        <ul className="comfy-queue" aria-label="Pictures being made">
+          {queue.map((q) => (
+            <li key={q.key}>
+              <div className="comfy-queue-line">
+                <span className="comfy-queue-prompt" title={q.prompt}>
+                  {q.prompt.length > SHOWN_PROMPT ? `${q.prompt.slice(0, SHOWN_PROMPT).trimEnd()}…` : q.prompt}
+                  <span className="meta"> ×{q.count}</span>
+                </span>
+                <button type="button" className="secondary" onClick={() => stop(q.key)}>
+                  Stop
+                </button>
+              </div>
+              <span className="meta" role="status">
+                {progressText(q.progress)}
+              </span>
+              {q.progress.stage === "running" && <progress value={q.progress.value} max={q.progress.max} aria-label="Progress" />}
+            </li>
+          ))}
+        </ul>,
+      )}
       {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
     </div>
   );

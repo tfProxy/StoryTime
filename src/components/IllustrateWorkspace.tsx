@@ -35,6 +35,8 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
   const [start, setStart] = useState<StartPicture | null>(null);
   // Pictures made on this visit, newest first.
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+  // The place in New pictures where the jobs being made are listed.
+  const [queueSlot, setQueueSlot] = useState<HTMLElement | null>(null);
   const comfy = useSettings().comfy;
 
   function load(p: PromptToLoad) {
@@ -61,6 +63,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
           start={start}
           onClearStart={() => setStart(null)}
           onPictures={(pictures) => setCandidates((prev) => [...pictures, ...prev])}
+          queueSlot={queueSlot}
         />
       </div>
       <div className="illustrate-gallery">
@@ -70,6 +73,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
             comfyUrl={comfy.url}
             candidates={candidates}
             onClear={() => setCandidates([])}
+            queueRef={setQueueSlot}
             onStart={(image) => startFrom(fromComfyImage(comfy.url, image))}
             onLoadPrompt={(c) =>
               load({

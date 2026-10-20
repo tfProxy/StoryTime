@@ -28,7 +28,7 @@ const context = await browser.newContext({ viewport: { width: 1000, height: 1300
 const page = await context.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 
-const makeButton = page.getByRole("button", { name: /^(Make pictures|Make more|Making pictures…)$/ });
+const makeButton = page.getByRole("button", { name: /^(Make pictures|Queue more)$/ });
 const items = page.locator(".candidates li");
 const thumb = page.getByRole("img", { name: "Starting picture" });
 const strength = page.getByRole("slider", { name: "Strength" });
@@ -42,7 +42,7 @@ const make = async (total) => {
   await until(async () => (await items.count()) === total && (await ready()), `${total} pictures`, 150);
 };
 // No job is still being made (each running job shows its progress as a status).
-const ready = async () => (await page.locator(".comfy-generate [role=status]").count()) === 0;
+const ready = async () => (await page.locator(".comfy-queue [role=status]").count()) === 0;
 const settingsNow = async () => (await call("GET", "/api/settings")).settings.comfy;
 
 try {
@@ -93,8 +93,10 @@ try {
   await until(async () => ((await thumb.getAttribute("src")) ?? "").includes(`/api/chapters/${chapterId}/images/header`), "the thumbnail to be the saved header");
   ok(true, "Start from this on the saved header makes it the starting picture");
   const savedMark = comfy.calls.length;
-  await make(8);
-  ok(uploads(savedMark).length === 1 && (await jobs())[0].source === `saved:${chapterId}:header`, "…and it is uploaded, and the log says it came from the saved header");
+  // two jobs queued at once share one upload
+  await makeButton.click();
+  await make(10);
+  ok(uploads(savedMark).length === 1 && prompts(savedMark).length === 2 && (await jobs())[0].source === `saved:${chapterId}:header`, "…two jobs queued at once from it upload it once, and the log says it came from the saved header");
   ok(await page.locator(".image-editor", { has: page.getByRole("heading", { name: "Footer picture" }) }).getByRole("button", { name: "Start from this" }).count() === 0, "an empty slot has no Start from this");
 
   // ---- clear ----
@@ -104,7 +106,7 @@ try {
   await makeButton.click();
   await until(() => prompts(clearMark).length === 1, "a job");
   ok(nodes(prompts(clearMark)[0], "EmptyLatentImage").length === 1 && nodes(prompts(clearMark)[0], "LoadImage").length === 0, "pictures made afterwards are from the prompt alone again");
-  await until(async () => (await items.count()) === 10 && (await ready()), "ten pictures", 150);
+  await until(async () => (await items.count()) === 12 && (await ready()), "twelve pictures", 150);
 
   // ---- from a past picture ----
   await page.goto(`${BASE}/c/${chapterId}/illustrate`);

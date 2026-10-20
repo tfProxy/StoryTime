@@ -219,10 +219,14 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
         return res.end(makePng(index));
       }
       if (p === "/queue" && req.method === "POST") {
-        for (const id of body?.delete ?? []) cancel(id);
+        // Like ComfyUI, deleting only takes waiting jobs off the queue; a running one needs /interrupt.
+        for (const id of body?.delete ?? []) if (jobs.get(id)?.state === "queued") cancel(id);
         return json(200, {});
       }
-      if (p === "/queue") return json(200, { queue_running: [], queue_pending: [] });
+      if (p === "/queue") {
+        const list = (state) => [...jobs.values()].filter((j) => j.state === state).map((j) => [j.no, j.id, {}, {}, []]);
+        return json(200, { queue_running: list("running"), queue_pending: list("queued") });
+      }
       if (p === "/interrupt") {
         cancel(body?.prompt_id);
         return json(200, {});

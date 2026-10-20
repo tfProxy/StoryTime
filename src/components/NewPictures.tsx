@@ -55,6 +55,8 @@ type Props = {
   /** Newest first. */
   candidates: Candidate[];
   onClear: () => void;
+  /** Receives the element the jobs being made are listed in, at the top of the panel. */
+  queueRef?: (element: HTMLElement | null) => void;
   /** Called to make new pictures starting from one of these. */
   onStart?: (image: ComfyImage) => void;
   /** Called to bring back the prompt and settings a picture was made with. */
@@ -62,7 +64,7 @@ type Props = {
 };
 
 /** The pictures made on this visit, grouped by prompt, with Clear at the top where it is easy to reach. */
-export default function NewPictures({ chapterId, comfyUrl, candidates, onClear, onStart, onLoadPrompt }: Props) {
+export default function NewPictures({ chapterId, comfyUrl, candidates, onClear, queueRef, onStart, onLoadPrompt }: Props) {
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const saver = usePictureSaver(chapterId, comfyUrl, setStatus);
   const groups = byPrompt(candidates);
@@ -79,8 +81,9 @@ export default function NewPictures({ chapterId, comfyUrl, candidates, onClear, 
           </button>
         )}
       </div>
+      <div ref={queueRef} className="picture-queue-slot" />
       {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
-      {candidates.length === 0 && <p className="meta" style={{ margin: 0 }}>Pictures you make appear here, grouped by prompt.</p>}
+      {candidates.length === 0 &&<p className="meta" style={{ margin: 0 }}>Pictures you make appear here, grouped by prompt.</p>}
       {groups.map((group) => {
         const first = group[0];
         const moments = [...new Set(group.map((c) => MOMENT_NAMES[c.moment]))].join(", ");

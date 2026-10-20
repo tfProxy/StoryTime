@@ -38,8 +38,8 @@ page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true
 
 const promptBox = page.getByRole("textbox", { name: "Prompt", exact: true });
 const negativeBox = page.getByRole("textbox", { name: "Negative prompt", exact: true });
-const makeButton = page.getByRole("button", { name: /^(Make pictures|Make more|Making pictures…)$/ });
-const live = page.locator(".comfy-generate [role=status]");
+const makeButton = page.getByRole("button", { name: /^(Make pictures|Queue more)$/ });
+const live = page.locator(".comfy-queue [role=status]");
 const items = page.locator(".candidates li");
 const card = (title) => page.locator(".image-editor", { has: page.getByRole("heading", { name: title }) });
 const promptCalls = (from = 0) => comfy.calls.slice(from).filter((c) => c.method === "POST" && c.path === "/prompt");
@@ -141,7 +141,9 @@ try {
   await makeButton.click();
   await live.filter({ hasText: /Step \d+ of 8/ }).waitFor();
   ok(true, "while ComfyUI works, the page shows its progress (Step X of 8)");
-  ok(await page.getByRole("button", { name: "Making pictures…" }).isDisabled() && await page.getByRole("button", { name: "Stop", exact: true }).isVisible(), "…the button says Making pictures… and there is a Stop button");
+  ok(await page.getByRole("button", { name: "Queue more" }).isEnabled() && await page.getByRole("button", { name: "Stop", exact: true }).isVisible(), "…the button says Queue more and stays on, and the job has a Stop button");
+  ok((await page.locator(".comfy-queue li").innerText()).includes("a lighthouse at dawn, gulls ×2"), "…the job is listed with its prompt and how many pictures it makes");
+  ok(await page.locator(".new-pictures .comfy-queue").count() === 1, "…at the top of New pictures, where its pictures will arrive");
   ok(await page.locator('progress[aria-label="Progress"]').isVisible(), "…with a progress bar");
   await items.first().waitFor();
   await picturesLoaded(2);
@@ -331,6 +333,40 @@ try {
   ok(stopCalls.some((c) => c.method === "POST" && c.path === "/queue" && Array.isArray(c.body?.delete) && c.body.delete.length === 1) && stopCalls.some((c) => c.method === "POST" && c.path === "/interrupt"), "…ComfyUI was asked to drop the job from its queue and to interrupt it");
   ok(promptCalls(stopMark).length === 1 && await items.count() === countBeforeStop, "…and no pictures were added by the stopped job");
 
+  // ---- queueing more jobs, with other settings, while one runs ----
+  comfy.setMode({ steps: 8, stepDelay: 250 });
+  const qMark = comfy.calls.length;
+  const qBefore = await items.count();
+  const rows = page.locator(".comfy-queue li");
+  await promptBox.fill("first in line");
+  await makeButton.click();
+  await live.filter({ hasText: /Step \d+ of 8/ }).waitFor();
+  await promptBox.fill("second in line");
+  await page.getByLabel("How many").selectOption("1");
+  ok(await until(async () => (await settingsNow()).comfy.count === 1, "the count to be saved"), "(How many is changed to 1 while the first job runs)");
+  await makeButton.click();
+  await promptBox.fill("third, to be stopped");
+  await makeButton.click();
+  await until(async () => (await rows.count()) === 3 && promptCalls(qMark).length === 3, "three jobs");
+  const rowTexts = await rows.allInnerTexts();
+  ok(rowTexts[0].includes("first in line ×2") && rowTexts[1].includes("second in line ×1") && rowTexts[2].includes("third, to be stopped ×1"), "jobs queued while one runs are listed in order, each with its own prompt and count");
+  ok(promptCalls(qMark).map((c) => Object.values(c.body.prompt).find((n) => n.class_type === "EmptyLatentImage").inputs.batch_size).join() === "2,1,1", "…and each was sent with the settings as they were when it was queued");
+  await until(async () => /Waiting in ComfyUI's queue/.test(await rows.nth(2).locator("[role=status]").innerText()), "the third job to say it is waiting");
+  ok(true, "a job behind others says it is waiting in ComfyUI's queue");
+  const iMark = comfy.calls.length;
+  await rows.nth(2).getByRole("button", { name: "Stop" }).click();
+  await until(async () => (await rows.count()) === 2, "the stopped job to leave the list");
+  await until(async () => comfy.calls.slice(iMark).some((c) => c.method === "GET" && c.path === "/queue"), "ComfyUI's queue to be checked");
+  await page.waitForTimeout(200);
+  const iCalls = comfy.calls.slice(iMark);
+  ok(iCalls.some((c) => c.method === "POST" && c.path === "/queue" && c.body?.delete?.length === 1) && !iCalls.some((c) => c.path === "/interrupt"), "stopping a waiting job only takes it off ComfyUI's queue, so the running job isn't interrupted");
+  await until(async () => (await items.count()) === qBefore + 3 && (await rows.count()) === 0, "both jobs' pictures", 150);
+  ok(true, "the other two jobs finish and add their pictures (2 + 1)");
+  const qHeads = await page.locator(".picture-group-head").allInnerTexts();
+  ok(qHeads[0].startsWith("second in line") && qHeads[0].includes("1 picture") && qHeads[1].startsWith("first in line") && qHeads[1].includes("2 pictures") && !qHeads.some((h) => h.startsWith("third")), "…each under its own prompt, and nothing from the stopped one");
+  await page.getByLabel("How many").selectOption("2");
+  ok(await until(async () => (await settingsNow()).comfy.count === 2, "the count to be saved"), "(How many is back to 2)");
+
   // ---- the WebSocket refused: the page finds the pictures by polling ----
   comfy.setMode({ ws: false, steps: 2, stepDelay: 100, startDelay: 200, fail: null });
   await openIllustrate();
@@ -344,7 +380,7 @@ try {
   const pollCalls = comfy.calls.slice(pollMark);
   ok(pollCalls.some((c) => c.method === "UPGRADE") && pollCalls.filter((c) => c.path.startsWith("/history/")).length >= 1, "…found by asking /history after the WebSocket was refused");
   const log = (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs;
-  ok(log.length === 5 && log[0].prompt === "a lighthouse in fog" && log[0].moment === "end" && log[1].moment === "start", "the log has this job (with Chapter end) after the earlier four, and nothing from the refused, failed or stopped jobs");
+  ok(log.length === 7 && log[0].prompt === "a lighthouse in fog" && log[0].moment === "end" && log[1].moment === "start", "the log has this job (with Chapter end) after the earlier six, and nothing from the refused, failed or stopped jobs");
 
   // ---- the job can't be recorded: the pictures are still usable, just without a prompt kept ----
   await page.route("**/api/picture-jobs", (route) => route.request().method() === "POST" ? route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "disk full" }) }) : route.continue());
@@ -358,7 +394,7 @@ try {
   await page.getByText("Saved as the header picture.").waitFor();
   const unrecorded = (await savedWith()).find((i) => i.slot === "header");
   ok(unrecorded.prompt === null && unrecorded.negative === null, "…and a picture from it saves without a prompt, replacing the one before");
-  ok((await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs.length === 5, "…and nothing was added to the log");
+  ok((await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs.length === 7, "…and nothing was added to the log");
 
   // ---- clearing ----
   await page.getByRole("button", { name: "Clear these pictures" }).click();
