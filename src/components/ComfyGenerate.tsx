@@ -271,11 +271,13 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
                   {/* eslint-disable-next-line @next/next/no-img-element -- served by ComfyUI */}
                   <img src={imageUrl(comfy.url, c.image)} alt={`Picture ${c.image.filename}`} loading="lazy" />
                 </a>
-                {IMAGE_SLOTS.map((slot) => (
-                  <button key={slot} type="button" className="secondary" disabled={saving !== null} onClick={() => void use(c, slot)}>
-                    {saving === `${c.key}-${slot}` ? "Saving…" : `Use as ${SLOT_NAMES[slot]}`}
-                  </button>
-                ))}
+                <div className="row" style={{ flexWrap: "wrap" }}>
+                  {IMAGE_SLOTS.map((slot) => (
+                    <button key={slot} type="button" className="secondary" disabled={saving !== null} onClick={() => void use(c, slot)}>
+                      {saving === `${c.key}-${slot}` ? "Saving…" : `Use as ${SLOT_NAMES[slot]}`}
+                    </button>
+                  ))}
+                </div>
               </li>
             ))}
           </ul>

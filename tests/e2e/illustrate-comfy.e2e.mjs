@@ -147,6 +147,8 @@ try {
   await picturesLoaded(2);
   ok(await items.count() === 2, "two pictures appear (How many = 2)");
   ok(await page.getByRole("list", { name: "Pictures from ComfyUI" }).isVisible() && await live.count() === 0, "…in a list of pictures, and the progress text is gone");
+  const boxes = await page.locator(".candidates img").evaluateAll((imgs) => imgs.map((i) => { const r = i.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }));
+  ok(boxes.length === 2 && boxes[0].x === boxes[1].x && boxes[1].y > boxes[0].y + boxes[0].h - 1 && boxes[0].w > 400, "the pictures are stacked one per line, each as wide as the page allows");
   const srcs = await page.locator(".candidates img").evaluateAll((imgs) => imgs.map((i) => i.src));
   ok(srcs[0] !== srcs[1] && srcs.every((s) => s.startsWith(`${comfy.url}/view?`) && s.includes("StoryTime_")), "…which come from ComfyUI's /view, each a different picture");
   const [a, b] = await Promise.all(srcs.map(async (s) => Buffer.from(await (await fetch(s)).arrayBuffer())));
