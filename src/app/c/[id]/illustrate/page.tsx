@@ -5,7 +5,7 @@ import IllustrateWorkspace from "@/components/IllustrateWorkspace";
 import { chapterImageMade, chapterImageVersions } from "@/lib/chapterImages";
 import { foldCodex } from "@/lib/codex";
 import { getCodexOps } from "@/lib/codexDb";
-import { storyChapterTitles } from "@/lib/pictureJobs";
+import { chapterPictureJobs, storyChapterTitles } from "@/lib/pictureJobs";
 import { getPictureDraft } from "@/lib/pictureDrafts";
 import { getPath, getStory } from "@/lib/stories";
 
@@ -55,6 +55,7 @@ export default async function IllustratePage({ params }: { params: Promise<{ id:
         versions={versions}
         made={chapterImageMade(chapter.id)}
         draft={getPictureDraft(chapter.id)}
+        jobs={chapterPictureJobs(chapter.id)}
       />
     </>
   );

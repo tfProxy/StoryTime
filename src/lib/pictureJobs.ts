@@ -42,16 +42,33 @@ export type PictureJob = {
   source: string | null;
   denoise: number | null;
   images: z.infer<typeof JobImage>[];
+  /** Each picture's mark, in the order of `images`: pinned, rejected, or null. */
+  marks: (PictureMark | null)[];
   created_at: number;
 };
 
-type Row = Omit<PictureJob, "images"> & { images: string; seq: number };
+export const PICTURE_MARKS = ["pinned", "rejected"] as const;
+export type PictureMark = (typeof PICTURE_MARKS)[number];
 
-function toJob(row: Row): PictureJob {
-  const { seq, images, ...job } = row;
-  void seq; // only the cursor for paging uses it
-  return { ...job, images: JSON.parse(images) };
+type Row = Omit<PictureJob, "images" | "marks"> & { images: string; seq: number };
+
+/** The jobs of the rows, with each picture's mark. */
+function toJobs(rows: Row[]): PictureJob[] {
+  const marks = new Map<string, PictureMark>();
+  if (rows.length) {
+    const found = db()
+      .prepare(`SELECT job_id, image_index, mark FROM picture_marks WHERE job_id IN (${rows.map(() => "?").join(",")})`)
+      .all(...rows.map((r) => r.id)) as { job_id: string; image_index: number; mark: PictureMark }[];
+    for (const m of found) marks.set(`${m.job_id}:${m.image_index}`, m.mark);
+  }
+  return rows.map(({ seq, images, ...job }) => {
+    void seq; // only the cursor for paging uses it
+    const list = JSON.parse(images) as PictureJob["images"];
+    return { ...job, images: list, marks: list.map((_, i) => marks.get(`${job.id}:${i}`) ?? null) };
+  });
 }
+
+const toJob = (row: Row) => toJobs([row])[0];
 
 const COLUMNS = `rowid AS seq, id, story_id, chapter_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
                  moment, source, denoise, images, created_at`;
@@ -84,17 +101,52 @@ export function recordPictureJob(input: NewJob): PictureJob {
  * previous page; `next` is the cursor for the page after this one, or null at the end.
  */
 export function listPictureJobs(
-  where: { story: string } | { chapter: string },
+  where: { story: string; notChapter?: string } | { chapter: string },
   page: { before?: number; limit: number },
 ): { jobs: PictureJob[]; next: number | null } {
   const [column, value] = "story" in where ? ["story_id", where.story] : ["chapter_id", where.chapter];
+  // The whole story but one chapter, for "other chapters".
+  const not = "story" in where && where.notChapter ? where.notChapter : null;
   const rows = db()
-    .prepare(`SELECT ${COLUMNS} FROM picture_jobs WHERE ${column} = ? AND rowid < ? ORDER BY rowid DESC LIMIT ?`)
-    .all(value, page.before ?? Number.MAX_SAFE_INTEGER, page.limit + 1) as Row[];
+    .prepare(
+      `SELECT ${COLUMNS} FROM picture_jobs WHERE ${column} = ? ${not ? "AND chapter_id != ?" : ""} AND rowid < ? ORDER BY rowid DESC LIMIT ?`,
+    )
+    .all(...[value, ...(not ? [not] : []), page.before ?? Number.MAX_SAFE_INTEGER, page.limit + 1]) as Row[];
   const more = rows.length > page.limit;
   const shown = rows.slice(0, page.limit);
-  return { jobs: shown.map(toJob), next: more ? shown[shown.length - 1].seq : null };
+  return { jobs: toJobs(shown), next: more ? shown[shown.length - 1].seq : null };
 }
+
+// How many of a chapter's jobs the Illustrate page loads with it.
+const CHAPTER_JOBS = 1000;
+
+/** A chapter's jobs, newest first (the most recent 1000), with their marks: what its Illustrate page shows. */
+export function chapterPictureJobs(chapterId: string): PictureJob[] {
+  return listPictureJobs({ chapter: chapterId }, { limit: CHAPTER_JOBS }).jobs;
+}
+
+/** Pins or rejects one of a job's pictures (by its place in the job's `images`), or clears its mark with null. */
+export function setPictureMark(jobId: string, index: number, mark: PictureMark | null): { mark: PictureMark | null } {
+  const row = db().prepare(`SELECT images FROM picture_jobs WHERE id = ?`).get(jobId) as { images: string } | undefined;
+  if (!row) throw new PostError("That picture job does not exist", 404);
+  if (index >= (JSON.parse(row.images) as unknown[]).length) throw new PostError("That job has no picture at that index", 404);
+  if (mark === null) {
+    db().prepare(`DELETE FROM picture_marks WHERE job_id = ? AND image_index = ?`).run(jobId, index);
+  } else {
+    db()
+      .prepare(
+        `INSERT INTO picture_marks (job_id, image_index, mark, updated_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT (job_id, image_index) DO UPDATE SET mark = excluded.mark, updated_at = excluded.updated_at`,
+      )
+      .run(jobId, index, mark, Date.now());
+  }
+  return { mark };
+}
+
+export const MarkSchema = z.object({
+  index: z.number().int().min(0).max(63),
+  mark: z.enum(PICTURE_MARKS).nullable(),
+});
 
 /** The title of every chapter in a story, by chapter id, to label past pictures with the chapter they were made for. */
 export function storyChapterTitles(storyId: string): Record<string, string> {

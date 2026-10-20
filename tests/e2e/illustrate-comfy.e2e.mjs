@@ -143,7 +143,7 @@ try {
   ok(true, "while ComfyUI works, the page shows its progress (Step X of 8)");
   ok(await page.getByRole("button", { name: "Queue more" }).isEnabled() && await page.getByRole("button", { name: "Stop", exact: true }).isVisible(), "…the button says Queue more and stays on, and the job has a Stop button");
   ok((await page.locator(".comfy-queue li").innerText()).includes("a lighthouse at dawn, gulls ×2"), "…the job is listed with its prompt and how many pictures it makes");
-  ok(await page.locator(".new-pictures .comfy-queue").count() === 1, "…at the top of New pictures, where its pictures will arrive");
+  ok(await page.locator(".chapter-pictures .comfy-queue").count() === 1, "…at the top of the Pictures panel, where its pictures will arrive");
   ok(await page.locator('progress[aria-label="Progress"]').isVisible(), "…with a progress bar");
   await items.first().waitFor();
   await picturesLoaded(2);
@@ -154,8 +154,8 @@ try {
   ok((await page.locator(".picture-caption").first().innerText()).startsWith("fake_sdxl_b · 1344 × 768 · seed "), "each picture says its checkpoint, size and seed");
   const boxes = await page.locator(".candidates img").evaluateAll((imgs) => imgs.map((i) => { const r = i.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }));
   ok(boxes.length === 2 && boxes[1].x > boxes[0].x + boxes[0].w - 1 && Math.abs(boxes[0].y - boxes[1].y) < 2 && boxes[0].w > 300, "at 1000px wide the pictures sit two side by side");
-  const clearBox = await page.getByRole("button", { name: "Clear these pictures" }).boundingBox();
-  ok(clearBox.y < boxes[0].y, "Clear these pictures is above the pictures");
+  const clearBox = await page.getByRole("button", { name: "Clear unpinned" }).boundingBox();
+  ok(clearBox.y < boxes[0].y, "Clear unpinned is above the pictures");
   const srcs = await page.locator(".candidates img").evaluateAll((imgs) => imgs.map((i) => i.src));
   ok(srcs[0] !== srcs[1] && srcs.every((s) => s.startsWith(`${comfy.url}/view?`) && s.includes("StoryTime_")), "…which come from ComfyUI's /view, each a different picture");
   const [a, b] = await Promise.all(srcs.map(async (s) => Buffer.from(await (await fetch(s)).arrayBuffer())));
@@ -199,8 +199,8 @@ try {
   await page.waitForFunction(() => { const i = document.querySelector(".image-editor img.image-editor-preview"); return !!i && i.complete && i.naturalWidth > 0; });
   ok(await preview.evaluate((i) => i.naturalWidth > 0), "…and the Header picture card shows it");
   const headerCardBox = await card("Header picture").boundingBox();
-  const newBox = await page.locator(".new-pictures").boundingBox();
-  ok(headerCardBox.y + headerCardBox.height <= newBox.y + 1, "the chosen header and footer cards are above New pictures, to compare with");
+  const newBox = await page.locator(".chapter-pictures").boundingBox();
+  ok(headerCardBox.y + headerCardBox.height <= newBox.y + 1, "the chosen header and footer cards are above the Pictures panel, to compare with");
   ok((await fetch(`${BASE}/api/chapters/${chapterId}/images/footer`)).status === 404, "…the footer is untouched");
   ok(await items.count() === 2, "the candidates are still there after the page refreshed");
   const savedWith = async () => (await get(`/api/stories/${storyId}/export?format=json`)).images;
@@ -402,8 +402,14 @@ try {
   ok((await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs.length === 7, "…and nothing was added to the log");
 
   // ---- clearing ----
-  await page.getByRole("button", { name: "Clear these pictures" }).click();
-  ok(await items.count() === 0 && await makeButton.innerText() === "Make pictures", "Clear these pictures empties the list");
+  ok(await items.first().getByRole("button", { name: "Pin" }).isDisabled(), "a picture whose job couldn't be recorded can't be pinned");
+  await items.nth(2).getByRole("button", { name: "Pin" }).click();
+  await page.getByText("Pinned.").waitFor();
+  await page.getByRole("button", { name: "Clear unpinned" }).click();
+  ok(await items.count() === 1 && await makeButton.innerText() === "Make pictures", "Clear unpinned leaves only the picture pinned on this visit");
+  ok(await page.getByRole("button", { name: "Clear unpinned" }).count() === 0, "…and goes away");
+  await openIllustrate();
+  ok(await items.count() === 1 && await items.first().getByRole("button", { name: "Unpin" }).count() === 1, "coming back, the pinned picture is still there, and nothing else");
 } finally {
   await putSettings(before ?? {});
   await browser.close();

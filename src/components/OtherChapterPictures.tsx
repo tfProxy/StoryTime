@@ -1,30 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSettings } from "@/lib/settings";
 import type { PictureJob } from "@/lib/pictureJobs";
-import PictureTile from "./PictureTile";
-import { usePictureSaver } from "./usePictureSaver";
 import type { ComfyImage } from "@/lib/comfy/client";
-import type { ImageMoment } from "@/lib/ai/imagePrompt";
+import PictureTile from "./PictureTile";
+import type { PictureSaver } from "./usePictureSaver";
+import type { PromptToLoad } from "./pictures";
 
 const PAGE = 12;
 const SHOWN_PROMPT = 160;
-
-/** The shared settings a picture was made with, which "Load prompt" offers to use again. */
-export type MadeWith = { checkpoint: string; width: number; height: number; denoise: number | null };
-
-/**
- * What "Load prompt" hands back: the text and, where known, the seed, the settings and the moment of the
- * job that made the pictures.
- */
-export type PromptToLoad = { prompt: string; negative: string; seed: number | null; settings?: MadeWith | null; moment?: ImageMoment | null };
-
-type Scope = "chapter" | "story";
-const SCOPES: { scope: Scope; label: string }[] = [
-  { scope: "chapter", label: "This chapter" },
-  { scope: "story", label: "This story" },
-];
 
 type Page = { jobs: PictureJob[]; next: number | null };
 
@@ -42,43 +26,19 @@ type Props = {
   storyId: string;
   /** Every chapter's title in the story, by chapter id. */
   titles: Record<string, string>;
+  comfyUrl: string;
+  saver: PictureSaver;
   onLoadPrompt: (p: PromptToLoad) => void;
   /** Called to make new pictures starting from one of these. */
   onStart: (image: ComfyImage) => void;
 };
 
-/** Pictures made earlier on ComfyUI, for this chapter or any chapter of the story, ready to use again. */
-export default function PastPictures({ chapterId, storyId, titles, onLoadPrompt, onStart }: Props) {
-  const comfy = useSettings().comfy;
-  const [scope, setScope] = useState<Scope>("chapter");
-  const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
-  const saver = usePictureSaver(chapterId, comfy.url, setStatus);
-  if (!comfy.url) return null;
-
-  return (
-    <section className="ai-panel past-pictures" id="past-pictures">
-      <h2>Past pictures</h2>
-      <p className="meta" style={{ margin: 0 }}>
-        Pictures made earlier, as listed when this page opened. They stay in ComfyUI, so one it has since lost can&apos;t be used.
-      </p>
-      <div className="row" role="group" aria-label="Show pictures made for">
-        {SCOPES.map((s) => (
-          <button key={s.scope} type="button" className={scope === s.scope ? undefined : "secondary"} aria-pressed={scope === s.scope} onClick={() => setScope(s.scope)}>
-            {s.label}
-          </button>
-        ))}
-      </div>
-      {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
-      <PastList key={scope} scope={scope} chapterId={chapterId} storyId={storyId} titles={titles} comfyUrl={comfy.url} saver={saver} onLoadPrompt={onLoadPrompt} onStart={onStart} />
-    </section>
-  );
-}
-
-type ListProps = Props & { scope: Scope; comfyUrl: string; saver: ReturnType<typeof usePictureSaver> };
-
-/** The list for one scope; it starts over (a new key) when the scope changes. */
-function PastList({ scope, chapterId, storyId, titles, comfyUrl, saver, onLoadPrompt, onStart }: ListProps) {
-  const query = scope === "chapter" ? `chapter=${encodeURIComponent(chapterId)}` : `story=${encodeURIComponent(storyId)}`;
+/**
+ * Pictures made for the story's other chapters, grouped by chapter and then by job, newest first, a page
+ * at a time. Any of them can be used for this chapter, started from, or have its prompt brought back.
+ */
+export default function OtherChapterPictures({ chapterId, storyId, titles, comfyUrl, saver, onLoadPrompt, onStart }: Props) {
+  const query = `story=${encodeURIComponent(storyId)}&not_chapter=${encodeURIComponent(chapterId)}`;
   const [jobs, setJobs] = useState<PictureJob[]>([]);
   const [next, setNext] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -123,21 +83,12 @@ function PastList({ scope, chapterId, storyId, titles, comfyUrl, saver, onLoadPr
   for (const job of jobs) groups.set(job.chapter_id, [...(groups.get(job.chapter_id) ?? []), job]);
 
   return (
-    <>
+    <div className="other-pictures" id="other-pictures">
       {error && <p className="error" style={{ margin: 0 }}>{error}</p>}
-      {jobs.length === 0 && !loading && !error && (
-        <p className="meta" style={{ margin: 0 }}>
-          {scope === "chapter" ? "No pictures have been made for this chapter yet." : "No pictures have been made for this story yet."}
-        </p>
-      )}
+      {jobs.length === 0 && !loading && !error && <p className="meta" style={{ margin: 0 }}>No pictures have been made for the story&apos;s other chapters yet.</p>}
       {[...groups].map(([group, list]) => (
         <div key={group} className="past-group">
-          {scope === "story" && (
-            <h3>
-              {titles[group] ?? "A chapter that has been removed"}
-              {group === chapterId && <span className="meta"> (this chapter)</span>}
-            </h3>
-          )}
+          <h3>{titles[group] ?? "A chapter that has been removed"}</h3>
           {list.map((job) => (
             <div key={job.id} className="past-job">
               <p className="meta" style={{ margin: 0 }} title={job.prompt}>
@@ -147,7 +98,10 @@ function PastList({ scope, chapterId, storyId, titles, comfyUrl, saver, onLoadPr
                 {[new Date(job.created_at).toLocaleString(), job.checkpoint, `${job.width} × ${job.height}`, `seed ${job.seed}`, job.denoise !== null && `variation, strength ${job.denoise}`].filter(Boolean).join(" · ")}
               </p>
               <div>
-                <button type="button" className="secondary" onClick={() =>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() =>
                     onLoadPrompt({
                       prompt: job.prompt,
                       negative: job.negative,
@@ -155,7 +109,8 @@ function PastList({ scope, chapterId, storyId, titles, comfyUrl, saver, onLoadPr
                       settings: { checkpoint: job.checkpoint, width: job.width, height: job.height, denoise: job.denoise },
                       moment: job.moment,
                     })
-                  }>
+                  }
+                >
                   Load prompt
                 </button>
               </div>
@@ -176,6 +131,6 @@ function PastList({ scope, chapterId, storyId, titles, comfyUrl, saver, onLoadPr
           </button>
         </div>
       )}
-    </>
+    </div>
   );
 }

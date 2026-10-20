@@ -7,8 +7,7 @@ import { saveSettings, useSettings } from "@/lib/settings";
 import type { ComfySettings } from "@/lib/settingsSchema";
 import type { ImageMoment } from "@/lib/ai/imagePrompt";
 import type { LoadedPrompt } from "./ImagePromptPanel";
-import type { MadeWith } from "./PastPictures";
-import type { Candidate } from "./NewPictures";
+import type { MadeWith, Picture } from "./pictures";
 import { uploadStart, type StartPicture, type Uploaded } from "@/lib/comfy/startPicture";
 import { describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
 import { cancelPrompt, listCheckpoints, queuePrompt, waitForPictures, type Progress } from "@/lib/comfy/client";
@@ -79,7 +78,7 @@ type Props = {
   start?: StartPicture | null;
   onClearStart?: () => void;
   /** Called with each finished job's pictures. */
-  onPictures?: (pictures: Candidate[]) => void;
+  onPictures?: (pictures: Picture[]) => void;
   /** Where to show the jobs being made (beside the new pictures); without it they show under the button. */
   queueSlot?: HTMLElement | null;
 };
@@ -217,7 +216,10 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
       const denoise = from ? comfy.denoise : null;
       onPictures?.(
         images.map((image, i) => ({
-          key: `${promptId}-${i}`,
+          key: `${jobId ?? promptId}-${i}`,
+          index: i,
+          mark: null,
+          fresh: true,
           image,
           jobId,
           prompt: prompt.trim(),

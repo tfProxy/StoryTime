@@ -110,10 +110,15 @@ try {
 
   // ---- from a past picture ----
   await page.goto(`${BASE}/c/${chapterId}/illustrate`);
-  const past = page.locator("#past-pictures");
-  await past.locator(".past-job").first().waitFor();
-  ok((await past.innerText()).includes("variation, strength 0.3"), "Past pictures marks a job made from a picture as a variation, with its strength");
-  await past.locator(".past-job").nth(1).locator("li").first().getByRole("button", { name: "Start from this" }).click();
+  const pastTiles = page.locator(".chapter-pictures .picture-tile");
+  // Earlier pictures are under All once the page is opened again.
+  const showAll = async () => {
+    await page.getByRole("group", { name: "Show" }).getByRole("button", { name: /^All/ }).click();
+    await pastTiles.first().waitFor();
+  };
+  await showAll();
+  ok((await page.locator(".chapter-pictures").innerText()).includes("strength 0.3"), "an earlier picture made from a picture says its strength");
+  await pastTiles.nth(1).getByRole("button", { name: "Start from this" }).click();
   await thumb.waitFor();
   ok(((await thumb.getAttribute("src")) ?? "").includes("/view?"), "Start from this on a past picture makes it the starting picture");
 
@@ -129,8 +134,8 @@ try {
   await putSettings({ ...(await call("GET", "/api/settings")).settings, comfy: { ...(await settingsNow()), workflow: JSON.stringify({ "1": { class_type: "CLIPTextEncode", inputs: { text: "{{prompt}}" } }, "2": { class_type: "KSampler", inputs: { seed: "{{seed}}", positive: ["1", 0] } }, "9": { class_type: "SaveImage", inputs: { images: ["2", 0], filename_prefix: "StoryTime" } } }) } });
   await page.reload();
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("a keeper beside a lamp");
-  await past.locator(".past-job").first().waitFor();
-  await past.locator(".past-job").first().locator("li").first().getByRole("button", { name: "Start from this" }).click();
+  await showAll();
+  await pastTiles.first().getByRole("button", { name: "Start from this" }).click();
   await thumb.waitFor();
   const refusedMark = comfy.calls.length;
   await makeButton.click();
@@ -148,8 +153,8 @@ try {
 
   if (process.env.E2E_SCREENSHOT_DIR) {
     await page.goto(`${BASE}/c/${chapterId}/illustrate`);
-    await past.locator(".past-job").first().waitFor();
-    await past.locator(".past-job").nth(1).locator("li").first().getByRole("button", { name: "Start from this" }).click();
+    await showAll();
+    await pastTiles.nth(1).getByRole("button", { name: "Start from this" }).click();
     await thumb.waitFor();
     await page.waitForTimeout(400);
     await page.locator(".comfy-generate").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-start-1000.png` });

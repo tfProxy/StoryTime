@@ -229,6 +229,17 @@ export const MIGRATIONS: string[] = [
     updated_at INTEGER NOT NULL
   );
   `,
+  // 13: pictures the author pinned (contenders for the header or footer) or rejected (hidden unless asked
+  // for), one row per marked picture: its job and its place in the job's `images`. Unmarked pictures have none.
+  `
+  CREATE TABLE picture_marks (
+    job_id      TEXT NOT NULL REFERENCES picture_jobs(id),
+    image_index INTEGER NOT NULL,
+    mark        TEXT NOT NULL CHECK (mark IN ('pinned', 'rejected')),
+    updated_at  INTEGER NOT NULL,
+    PRIMARY KEY (job_id, image_index)
+  );
+  `,
 ];
 
 function open(): Database.Database {

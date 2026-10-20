@@ -12,8 +12,7 @@ import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
 import ComfyGenerate from "./ComfyGenerate";
 import type { StartPicture } from "@/lib/comfy/startPicture";
-import type { Candidate } from "./NewPictures";
-import type { PromptToLoad } from "./PastPictures";
+import type { Picture, PromptToLoad } from "./pictures";
 import type { PictureDraft } from "@/lib/pictureDrafts";
 import { usePictureDraft } from "./usePictureDraft";
 
@@ -33,7 +32,7 @@ type Props = {
   start?: StartPicture | null;
   onClearStart?: () => void;
   /** Called with each finished job's pictures. */
-  onPictures?: (pictures: Candidate[]) => void;
+  onPictures?: (pictures: Picture[]) => void;
   /** Where to show the jobs being made. */
   queueSlot?: HTMLElement | null;
   chapterId: string;

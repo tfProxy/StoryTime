@@ -5,10 +5,11 @@ import { IMAGE_SLOTS, type ImageMade, type ImageSlot, type ImageVersions } from 
 import type { ContextChapter, ContextCodexEntry } from "@/lib/ai/prompts";
 import ChapterImageEditor from "./ChapterImageEditor";
 import ImagePromptPanel, { type LoadedPrompt } from "./ImagePromptPanel";
-import NewPictures, { type Candidate } from "./NewPictures";
-import PastPictures, { type PromptToLoad } from "./PastPictures";
+import ChapterPictures from "./ChapterPictures";
+import { picturesOf, type Picture, type PromptToLoad } from "./pictures";
 import { useSettings } from "@/lib/settings";
 import type { PictureDraft } from "@/lib/pictureDrafts";
+import type { PictureJob } from "@/lib/pictureJobs";
 import { fromComfyImage, fromSaved, type StartPicture } from "@/lib/comfy/startPicture";
 
 type Props = {
@@ -24,21 +25,23 @@ type Props = {
   made: Record<ImageSlot, ImageMade | null>;
   /** The prompt boxes as last left for this chapter. */
   draft: PictureDraft | null;
+  /** The chapter's picture jobs as the page opened, newest first, with their marks. */
+  jobs: PictureJob[];
 };
 
 /**
  * The Illustrate page's two columns: the chapter and the prompt on one side (above everything on a phone),
  * the pictures on the other. The state they share lives here: the prompt loaded from a picture (each load
  * carries a number, so loading the same prompt twice still counts as a new request), the starting picture,
- * and the pictures made on this visit.
+ * and the chapter's pictures (those made earlier, then those made on this visit).
  */
-export default function IllustrateWorkspace({ chapterId, chapter, titles, story, path, codex, versions, made, draft }: Props) {
+export default function IllustrateWorkspace({ chapterId, chapter, titles, story, path, codex, versions, made, draft, jobs }: Props) {
   const [loaded, setLoaded] = useState<LoadedPrompt | null>(null);
   // The picture new pictures start from (image to image), when one is chosen.
   const [start, setStart] = useState<StartPicture | null>(null);
-  // Pictures made on this visit, newest first.
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  // The place in New pictures where the jobs being made are listed.
+  // The chapter's pictures, newest first.
+  const [pictures, setPictures] = useState<Picture[]>(() => picturesOf(jobs));
+  // The place in the pictures panel where the jobs being made are listed.
   const [queueSlot, setQueueSlot] = useState<HTMLElement | null>(null);
   const comfy = useSettings().comfy;
 
@@ -65,7 +68,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
           loaded={loaded}
           start={start}
           onClearStart={() => setStart(null)}
-          onPictures={(pictures) => setCandidates((prev) => [...pictures, ...prev])}
+          onPictures={(made) => setPictures((prev) => [...made, ...prev])}
           queueSlot={queueSlot}
           draft={draft}
         />
@@ -93,25 +96,19 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
           ))}
         </div>
         {comfy.url && (
-          <NewPictures
+          <ChapterPictures
             chapterId={chapterId}
+            storyId={story.id}
+            titles={titles}
             comfyUrl={comfy.url}
-            candidates={candidates}
-            onClear={() => setCandidates([])}
+            pictures={pictures}
+            onChange={(key, patch) => setPictures((prev) => prev.map((p) => (p.key === key ? { ...p, ...patch } : p)))}
+            onClear={() => setPictures((prev) => prev.map((p) => (p.fresh ? { ...p, fresh: false } : p)))}
             queueRef={setQueueSlot}
             onStart={(image) => startFrom(fromComfyImage(comfy.url, image))}
-            onLoadPrompt={(c) =>
-              load({
-                prompt: c.prompt,
-                negative: c.negative,
-                seed: c.seed,
-                settings: { checkpoint: c.checkpoint, width: c.width, height: c.height, denoise: c.denoise },
-                moment: c.moment,
-              })
-            }
+            onLoadPrompt={load}
           />
         )}
-        <PastPictures chapterId={chapterId} storyId={story.id} titles={titles} onLoadPrompt={load} onStart={(image) => startFrom(fromComfyImage(comfy.url, image))} />
       </div>
     </div>
   );

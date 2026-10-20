@@ -1211,20 +1211,78 @@ main:has(.illustrate-grid) {
   }
 }
 
-/* New pictures: the title and Clear stay at the top of the panel while it is scrolled through. */
-.new-pictures-bar {
+/* The chapter's pictures: the title, Clear and the views stay at the top of the panel while it is scrolled through. */
+.chapter-pictures-bar {
   position: sticky;
   top: 0;
-  z-index: 1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
+  z-index: 2;
+  display: grid;
   gap: 0.5rem;
   margin: -0.75rem -1rem 0;
   padding: 0.75rem 1rem 0.5rem;
   border-radius: 8px 8px 0 0;
   background: var(--card);
+}
+
+.chapter-pictures-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.picture-views {
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.picture-views button,
+button.undo {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.9rem;
+}
+
+/* Pin and reject sit on the picture's top right corner. A pinned picture has an accent outline. */
+.picture-frame {
+  position: relative;
+}
+
+.picture-marks {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  display: flex;
+  gap: 0.3rem;
+}
+
+.picture-marks button {
+  width: 2.2rem;
+  height: 2.2rem;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--fg);
+  font-size: 1.1rem;
+  line-height: 1;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+}
+
+.picture-marks button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+.picture-tile.pinned img,
+.picture-tile.pinned .picture-missing {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.picture-tile.rejected img {
+  opacity: 0.6;
 }
 
 .picture-group {

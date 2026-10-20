@@ -127,3 +127,29 @@ const long = structuredClone(data); long.images[0].prompt = "x".repeat(20001);
 ok((await call("POST", "/api/stories/import", long)).status === 400, "an exported prompt over 20,000 characters is rejected");
 const typed = structuredClone(data); typed.images[0].prompt = 5;
 ok((await call("POST", "/api/stories/import", typed)).status === 400, "…as is one that isn't text");
+
+// ---- marks: pinned and rejected pictures ----
+const marked = (await call("POST", "/api/picture-jobs", job(one, 40))).json;
+ok(JSON.stringify(marked.marks) === "[null,null]", "a new job's pictures have no marks");
+r = await call("PUT", `/api/picture-jobs/${marked.id}/mark`, { index: 1, mark: "pinned" });
+ok(r.status === 200 && r.json.mark === "pinned", "a picture can be pinned");
+const listed = async () => (await call("GET", `/api/picture-jobs?chapter=${one}`)).json.jobs.find((j) => j.id === marked.id).marks;
+ok(JSON.stringify(await listed()) === '[null,"pinned"]', "…and the list shows the mark on that picture only");
+await call("PUT", `/api/picture-jobs/${marked.id}/mark`, { index: 1, mark: "rejected" });
+await call("PUT", `/api/picture-jobs/${marked.id}/mark`, { index: 0, mark: "pinned" });
+ok(JSON.stringify(await listed()) === '["pinned","rejected"]', "a mark can be changed, and each picture has its own");
+r = await call("PUT", `/api/picture-jobs/${marked.id}/mark`, { index: 1, mark: null });
+ok(r.status === 200 && JSON.stringify(await listed()) === '["pinned",null]', "null clears a mark");
+ok((await call("PUT", `/api/picture-jobs/${marked.id}/mark`, { index: 1, mark: null })).status === 200, "…and clearing one that isn't there is fine");
+ok((await call("PUT", `/api/picture-jobs/${marked.id}/mark`, { index: 2, mark: "pinned" })).status === 404, "a picture past the end of the job is refused");
+ok((await call("PUT", `/api/picture-jobs/no-such-job/mark`, { index: 0, mark: "pinned" })).status === 404, "…as is a job that doesn't exist");
+ok((await call("PUT", `/api/picture-jobs/${marked.id}/mark`, { index: 0, mark: "liked" })).status === 400, "…and a mark other than pinned, rejected or null");
+ok((await call("PUT", `/api/picture-jobs/${marked.id}/mark`, { index: -1, mark: "pinned" })).status === 400, "…and a negative index");
+ok((await call("PUT", `/api/picture-jobs/${marked.id}/mark`, { mark: "pinned" })).status === 400, "…and a missing index");
+ok(JSON.stringify(await listed()) === '["pinned",null]', "…none of which changed anything");
+r = await call("GET", `/api/picture-jobs?story=${story}`);
+ok(r.json.jobs.find((j) => j.id === marked.id).marks[0] === "pinned", "a story's list has the marks too");
+
+// ---- the story without one chapter ----
+r = await call("GET", `/api/picture-jobs?story=${story}&not_chapter=${one}&limit=200`);
+ok(r.json.jobs.length > 0 && r.json.jobs.every((j) => j.chapter_id === two), "not_chapter leaves that chapter's jobs out of the story's list");

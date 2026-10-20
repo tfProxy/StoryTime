@@ -5,7 +5,8 @@ export const dynamic = "force-dynamic";
 
 const bad = (error: string) => Response.json({ error }, { status: 400 });
 
-// The pictures made so far, newest first: ?story=<id> for a whole story or ?chapter=<id> for one chapter.
+// The pictures made so far, newest first: ?story=<id> for a whole story (&not_chapter=<id> to leave one
+// chapter out) or ?chapter=<id> for one chapter. Each job lists its pictures' marks (pinned, rejected or null).
 // Page through with ?before=<next from the last page> and ?limit= (1 to 200, default 50).
 export async function GET(request: Request) {
   const q = new URL(request.url).searchParams;
@@ -16,7 +17,8 @@ export async function GET(request: Request) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 200) return bad("limit must be a whole number from 1 to 200");
   const before = q.has("before") ? Number(q.get("before")) : undefined;
   if (before !== undefined && (!Number.isInteger(before) || before < 1)) return bad("before must be the next value from an earlier page");
-  return Response.json(listPictureJobs(story ? { story } : { chapter: chapter! }, { before, limit }));
+  const notChapter = q.get("not_chapter") ?? undefined;
+  return Response.json(listPictureJobs(story ? { story, notChapter } : { chapter: chapter! }, { before, limit }));
 }
 
 // Records a finished job: the prompt and settings, and where ComfyUI put the pictures.
