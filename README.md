@@ -83,6 +83,100 @@ Notes:
   their browser (use the PC's or server's LAN address, not `localhost`, unless Ollama runs on the
   same machine as the browser).
 
+## Edit models in ComfyUI
+
+On a chapter's Illustrate page, a picture's ☰ menu has two ways to start from it:
+
+- **Redraw from this** makes new pictures from the prompt, starting from the picture, with a
+  Strength slider (low keeps it close, high changes more).
+- **Edit this** changes the picture by following an instruction, such as "remove the logo on his
+  shirt" or "add more smoke around him". The prompt isn't used. Each click makes one edit with a new
+  seed, and **Edit this** on an edit carries on from it.
+
+Both open the same starting picture, on the Redraw or the Edit tab, and you can switch tabs. Edits
+need one of two edit models on your ComfyUI machine. **Edit this** stays greyed out until ComfyUI
+has at least one of them.
+
+| Model | Good at | Download size | Graphics card |
+| --- | --- | --- | --- |
+| Qwen-Image-Edit (2509) | Precise changes: removing or adding things, text, clothes | about 30 GB | 24 GB is comfortable; 16 GB works if the PC has 64 GB of RAM (ComfyUI moves part of the model there, which is slower) |
+| FLUX.1 Kontext dev | Keeping a character the same while changing the scene or the style | about 17 GB | 12 to 16 GB |
+
+You can install one or both. Each edit loads its model, so the first edit after making ordinary
+pictures (or after a text model has used the card) takes longer.
+
+### 1. Update ComfyUI
+
+The edit models need a ComfyUI from autumn 2025 or newer.
+
+- **ComfyUI Desktop:** it updates itself; restart it to pick up an update.
+- **Windows portable:** run `update\update_comfyui.bat`.
+- **Installed with git:** in the ComfyUI folder, run `git pull`, then
+  `pip install -r requirements.txt` in the same Python environment ComfyUI uses.
+- **ComfyUI Manager:** Manager › Update ComfyUI, then restart.
+
+### 2. Find the models folder
+
+Every file below goes in a subfolder of ComfyUI's `models` folder:
+
+- Windows portable: `ComfyUI_windows_portable\ComfyUI\models`
+- git install: `ComfyUI/models`
+- ComfyUI Desktop: `Documents\ComfyUI\models` (or the folder you chose when installing)
+
+The subfolders (`diffusion_models`, `text_encoders`, `vae`) already exist; create any that don't. A
+file can also go in a subfolder of its own, such as `diffusion_models/qwen/`.
+
+### 3. Download Qwen-Image-Edit
+
+| File | Put it in | Size |
+| --- | --- | --- |
+| [qwen_image_edit_2509_fp8_e4m3fn.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_edit_2509_fp8_e4m3fn.safetensors) | `models/diffusion_models` | about 20 GB |
+| [qwen_2.5_vl_7b_fp8_scaled.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors) | `models/text_encoders` | about 9 GB |
+| [qwen_image_vae.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors) | `models/vae` | about 250 MB |
+
+### 4. Download FLUX.1 Kontext dev
+
+| File | Put it in | Size |
+| --- | --- | --- |
+| [flux1-dev-kontext_fp8_scaled.safetensors](https://huggingface.co/Comfy-Org/flux1-kontext-dev_ComfyUI/resolve/main/split_files/diffusion_models/flux1-dev-kontext_fp8_scaled.safetensors) | `models/diffusion_models` | about 12 GB |
+| [clip_l.safetensors](https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors) | `models/text_encoders` | about 250 MB |
+| [t5xxl_fp8_e4m3fn_scaled.safetensors](https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn_scaled.safetensors) | `models/text_encoders` | about 5 GB |
+| [ae.safetensors](https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/resolve/main/split_files/vae/ae.safetensors) | `models/vae` | about 330 MB |
+
+FLUX.1 Kontext dev is under Black Forest Labs' non-commercial licence, which suits a personal story
+app. If you already make pictures with FLUX.1, you probably have `clip_l`, `t5xxl` and `ae`
+already.
+
+The links download straight away in a browser. For files this big a download manager or the
+command line can resume a broken download, for example `curl -L -C - -O <link>` (in PowerShell,
+`curl.exe`). If a link stops working, search Hugging Face for the file name.
+
+### 5. Restart ComfyUI and check
+
+Restart ComfyUI so it lists the new files. Then, in StoryTime, open **Settings › Pictures (ComfyUI)**
+and press **Check setup**. It reports:
+
+- the checkpoints and the nodes your picture workflow uses;
+- for each edit model, whether ComfyUI has each file and the nodes it needs. A missing file is named
+  with the folder it goes in. Missing nodes, or a text encoder type ComfyUI doesn't know, mean
+  ComfyUI needs updating (step 1).
+
+A model is offered on the Illustrate page only when everything it needs is there. The check looks
+for the files above by name, and also accepts other versions of the same file, such as a bf16
+model, another fp8 version, `t5xxl_fp16`, or a newer Qwen-Image-Edit release. If several match, the
+one listed above is used. GGUF versions are not supported, because they need a custom loader node.
+
+### Tips for instructions
+
+- Say what to change, not the whole scene: "remove the logo on his shirt", "make it night",
+  "add more smoke around him", "change her coat to red".
+- Change one thing at a time, and use **Edit this** on the result for the next change. Every pass
+  softens the picture a little, so a long chain of edits slowly loses detail.
+- Edits keep the picture's shape at about one megapixel (a 1344 × 768 picture comes back at
+  1360 × 768).
+- An edit doesn't use the story's checkpoint or art style, so a strong style change can drift from
+  the rest of the story. Redraw at a low strength brings it back.
+
 ## Maintenance
 
 There is no admin page. The command-line tool runs on the machine hosting the database:
