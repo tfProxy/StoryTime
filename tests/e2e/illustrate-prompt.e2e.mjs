@@ -39,7 +39,7 @@ const storyId = created.story_id;
 const browser = await launch();
 const context = await browser.newContext({ viewport: { width: 1000, height: 900 } });
 await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: BASE });
-const ai = await useMockAi(BASE);
+const ai = await useMockAi(BASE, { favorites: [{ connectionId: "t", model: "artist", label: "Artist" }], imagePromptModel: null });
 const page = await context.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 const settingsNow = async () => (await get("/api/settings")).settings;
@@ -92,10 +92,13 @@ try {
   await promptStyle.selectOption({ label: "Sentences (Flux, SD3)" });
   ok(await until(async () => (await settingsNow()).imagePromptStyle === "natural", "the setting to be saved"), "choosing Sentences saves imagePromptStyle \"natural\" on the server");
 
-  // ---- write a prompt for the footer ----
-  // (a select inside its label gets a name that includes its options, so find it through the label's text)
-  const forSlot = page.locator("label", { hasText: /^For/ }).locator("select");
-  await forSlot.selectOption({ label: "Footer picture" });
+  // ---- write a prompt for the chapter's end ----
+  ok(await page.getByText(/^For$/).count() === 0 && await page.getByRole("option", { name: "Footer picture" }).count() === 0, "there is no For header/footer choice");
+  const moment = page.getByLabel("Moment to show");
+  ok((await moment.inputValue()) === "start" && (await moment.locator("option").allInnerTexts()).join("|") === "Chapter start|Chapter end", "the moment menu offers Chapter start and Chapter end, starting on Chapter start");
+  const writeRow = await page.getByRole("button", { name: "Write prompt", exact: true }).evaluate((b) => b.parentElement === document.querySelector('[aria-label="Moment to show"]').parentElement);
+  ok(writeRow, "…and sits beside the Write prompt button");
+  await moment.selectOption({ label: "Chapter end" });
   await direction.fill("Jim taking the first bite [close-up]");
   reply = 'Here you go:\n```json\n{"scene":"Jim eats.","prompt":"a man with blonde hair eating a sandwich in a kitchen","negative":"text, watermark"}\n```';
   const callsBefore = calls.length;
@@ -107,7 +110,7 @@ try {
   ok(sent.user.includes("Jim made a sandwich in the kitchen. He took a big bite.") && sent.user.includes('"Lunch"'), "…with the chapter");
   ok(sent.user.includes("Jim [character]: A tall man with blonde hair and a green apron.") && !sent.user.includes("Zed"), "…and the codex entry it mentions, not the other");
   ok(sent.user.includes("The author wants the picture to show: Jim taking the first bite\n") && sent.user.includes("- close-up"), "…and what to show, with the [note] as an instruction");
-  ok(sent.user.includes("closing moment") && !sent.user.includes("goes above the chapter's title"), "…and the footer task");
+  ok(sent.user.includes("closing moment") && !sent.user.includes("set the scene"), "…and the chapter end task");
   ok(sent.system.includes("plain descriptive English") && !sent.system.includes("comma-separated tags (Stable"), "…written for the sentence style");
   ok(sent.user.includes("Earlier in the story") === false, "…the previous chapter has no summary, so none is sent");
   // (a textarea inside its label gets a name that includes its own text, so find them by position: prompt, then negative)
@@ -132,15 +135,15 @@ try {
   await page.getByRole("button", { name: "Copy prompt", exact: true }).click();
   ok((await page.evaluate(() => navigator.clipboard.readText())) === "edited by hand", "an edited prompt is what gets copied");
 
-  // ---- back to tags, written again for the header ----
+  // ---- back to tags, written again for the chapter's start ----
   await promptStyle.selectOption({ label: "Tags (SDXL, Pony, SD 1.5)" });
   ok(await until(async () => (await settingsNow()).imagePromptStyle === "tags", "the setting to be saved"), "switching back saves imagePromptStyle \"tags\"");
-  await forSlot.selectOption({ label: "Header picture" });
+  await moment.selectOption({ label: "Chapter start" });
   await direction.fill("");
   await page.getByRole("button", { name: "Write again" }).click();
   await page.waitForFunction(() => document.querySelector(".image-prompt-result textarea")?.value.endsWith(", watercolor storybook, soft light"));
   const again = calls.at(-1);
-  ok(again.system.includes("comma-separated tags") && again.user.includes("goes above the chapter's title") && !again.user.includes("The author wants"), "writing again uses the tag style, the header task and no direction");
+  ok(again.system.includes("comma-separated tags") && again.user.includes("set the scene") && !again.user.includes("closing moment") && !again.user.includes("The author wants"), "writing again uses the tag style, the chapter start task and no direction");
   ok((await promptBox.inputValue()) === "a man with blonde hair eating a sandwich in a kitchen, watercolor storybook, soft light", "the art style is added as another tag");
 
   // ---- an art style changed just before writing is saved and used ----
@@ -168,6 +171,22 @@ try {
   await bad("Sorry, I can't draw.", /didn't return anything I could read/, "a reply that isn't JSON shows an error");
   await bad('{"scene":"x","prompt":""}', /no prompt in it/, "a reply with no prompt shows an error");
   ok((await promptBox.inputValue()).endsWith("pencil sketch"), "…and the earlier prompt is kept");
+
+  // ---- the model for picture prompts is a setting, shared by every chapter's page ----
+  const picker = page.getByLabel("Model for picture prompts");
+  ok((await picker.locator("option:checked").innerText()).startsWith("Default"), "the model starts on the default");
+  await picker.selectOption({ label: "Artist" });
+  ok(await until(async () => (await settingsNow()).imagePromptModel?.model === "artist", "the model to be saved"), "choosing a model saves imagePromptModel on the server");
+  reply = '{"scene":"s","prompt":"p","negative":""}';
+  await page.getByRole("button", { name: "Write again" }).click();
+  await page.getByText("Scene: s", { exact: true }).waitFor();
+  ok(calls.at(-1).model === "artist", "…and prompts are written with it");
+  await page.goto(`${BASE}/c/${created.chapter_id}/illustrate`);
+  await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
+  await page.waitForFunction(() => document.querySelector('[aria-label="Model for picture prompts"] option:checked')?.textContent === "Artist");
+  ok(true, "another chapter's Illustrate page has the same model chosen");
+  await page.getByLabel("Model for picture prompts").selectOption({ index: 0 });
+  ok(await until(async () => (await settingsNow()).imagePromptModel === null, "the default to be saved"), "going back to the default saves null");
 } finally {
   // leave the server's settings as they were
   await ai.restore();

@@ -41,7 +41,6 @@ const makeButton = page.getByRole("button", { name: /^(Make pictures|Make more|M
 const live = page.locator(".comfy-generate [role=status]");
 const items = page.locator(".candidates li");
 const card = (title) => page.locator(".image-editor", { has: page.getByRole("heading", { name: title }) });
-const forSlot = page.locator("label", { hasText: /^For/ }).locator("select");
 const promptCalls = (from = 0) => comfy.calls.slice(from).filter((c) => c.method === "POST" && c.path === "/prompt");
 const picturesLoaded = (n) => page.waitForFunction((n) => {
   const imgs = [...document.querySelectorAll(".candidates img")];
@@ -183,15 +182,13 @@ try {
   ok((await fetch(`${BASE}/api/chapters/${chapterId}/images/footer`)).status === 404, "…the footer is untouched");
   ok(await items.count() === 2, "the candidates are still there after the page refreshed");
 
-  await forSlot.selectOption({ label: "Footer picture" });
-  ok(await page.getByRole("button", { name: "Use as footer picture" }).count() === 2 && await page.getByRole("button", { name: "Use as header picture" }).count() === 0, "with For set to Footer picture, the buttons say Use as footer picture");
+  ok(await page.getByRole("button", { name: "Use as footer picture" }).count() === 2 && await page.getByRole("button", { name: "Use as header picture" }).count() === 2, "every picture can be used as the header or the footer");
   await page.getByRole("button", { name: "Use as footer picture" }).nth(1).click();
   await page.getByText("Saved as the footer picture.").waitFor();
   const footer = await fetch(`${BASE}/api/chapters/${chapterId}/images/footer`);
   ok(footer.status === 200 && footer.headers.get("content-type") === "image/jpeg", "…and one saves as the footer picture");
   await card("Footer picture").locator("img.image-editor-preview").waitFor();
   ok(true, "…which the Footer picture card shows");
-  await forSlot.selectOption({ label: "Header picture" });
 
   // ---- the page on a phone ----
   await page.setViewportSize({ width: 390, height: 844 });

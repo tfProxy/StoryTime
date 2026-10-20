@@ -14,7 +14,7 @@ const base = {
   story,
   path: [ch("One", "Jim made a sandwich in the kitchen.")],
   codex: [jim, zed],
-  slot: "header" as const,
+  moment: "start" as const,
   direction: "",
   style: "tags" as const,
 };
@@ -32,14 +32,15 @@ for (const [name, r] of [["tags", tags], ["natural", natural]] as const) {
 }
 ok(tags.message === natural.message, "the message does not depend on the prompt style");
 
-// ---- header and footer tasks ----
-const header = imagePromptRequest(8000, { ...base, slot: "header" });
-const footer = imagePromptRequest(8000, { ...base, slot: "footer" });
-ok(header.message.includes("goes above the chapter's title") && !header.message.includes("closing moment"), "header task: set the scene near the beginning");
-ok(footer.message.includes("closing moment") && footer.message.includes("goes after the chapter's text") && !footer.message.includes("goes above"), "footer task: the closing moment");
+// ---- chapter start and chapter end tasks ----
+const header = imagePromptRequest(8000, { ...base, moment: "start" });
+const footer = imagePromptRequest(8000, { ...base, moment: "end" });
+ok(header.message.includes("shows the start of the chapter") && header.message.includes("set the scene") && !header.message.includes("closing moment"), "start task: set the scene near the beginning");
+ok(footer.message.includes("closing moment") && footer.message.includes("shows the end of the chapter") && !footer.message.includes("set the scene"), "end task: the closing moment");
+ok(!header.message.includes("header") && !footer.message.includes("footer"), "the task doesn't say where the picture will go");
 ok(header.message.includes('The chapter to illustrate, "One":\nJim made a sandwich in the kitchen.'), "the chapter's title and text are in the message");
 ok(header.message.startsWith("Story: The Tale\n\nPremise: A kitchen comedy."), "the message starts with the story's title and premise");
-ok(header.message.indexOf("The chapter to illustrate") < header.message.indexOf("This picture goes"), "the task comes after the chapter");
+ok(header.message.indexOf("The chapter to illustrate") < header.message.indexOf("This picture shows"), "the task comes after the chapter");
 
 // ---- codex entries: picked by what the chapter mentions ----
 ok(header.message.includes("Jim [character]: A tall man with blonde hair") && !header.message.includes("Zed"), "the entry the chapter mentions is in, an unmentioned one is not");
@@ -60,7 +61,7 @@ ok(dir.message.includes("The author wants the picture to show: Jim taking the fi
 ok(dir.message.includes("Additional instructions from the author") && dir.message.includes("- close-up") && dir.message.includes("- warm light") && !dir.message.includes("[close-up]"), "[notes] become additional instructions");
 const onlyNote = imagePromptRequest(8000, { ...base, direction: "[wide shot]" });
 ok(!onlyNote.message.includes("The author wants") && onlyNote.message.includes("- wide shot"), "a direction of only a note adds just the instruction");
-ok(dir.message.indexOf("The author wants") > dir.message.indexOf("This picture goes"), "the direction comes after the task");
+ok(dir.message.indexOf("The author wants") > dir.message.indexOf("This picture shows"), "the direction comes after the task");
 
 // ---- the story so far: only the chapter before ----
 const two = [ch("One", "Opening.", { summary: "S-ONE", path_summary: "PS-ONE" }), ch("Two", "Jim ate.")];
@@ -71,12 +72,12 @@ ok(!imagePromptRequest(8000, { ...base, path: [ch("One", "Opening."), ch("Two", 
 ok(!header.message.includes("Earlier in the story"), "a first chapter has no earlier story");
 ok(withPrev.message.includes('The chapter to illustrate, "Two"') && !withPrev.message.includes("Opening."), "only the last chapter of the path is the one illustrated");
 
-// ---- a very long chapter is cut; the header keeps the start, the footer the end ----
+// ---- a very long chapter is cut; a start picture keeps the start, an end picture the end ----
 const long = ch("Long", `STARTMARK ${"word ".repeat(40000)} ENDMARK`);
 for (const tokens of [8000, 3000]) {
-  const h = imagePromptRequest(tokens, { ...base, codex: [], path: [long], slot: "header" });
-  const f = imagePromptRequest(tokens, { ...base, codex: [], path: [long], slot: "footer" });
-  ok(h.message.includes("STARTMARK") && !h.message.includes("ENDMARK") && f.message.includes("ENDMARK") && !f.message.includes("STARTMARK"), `${tokens} tokens: header keeps the start, footer keeps the end`);
+  const h = imagePromptRequest(tokens, { ...base, codex: [], path: [long], moment: "start" });
+  const f = imagePromptRequest(tokens, { ...base, codex: [], path: [long], moment: "end" });
+  ok(h.message.includes("STARTMARK") && !h.message.includes("ENDMARK") && f.message.includes("ENDMARK") && !f.message.includes("STARTMARK"), `${tokens} tokens: start keeps the start, end keeps the end`);
   ok(h.message.includes("…\n\nThis picture") && f.message.includes('"Long":\n…'), `${tokens} tokens: the cut is marked with an ellipsis`);
   const budget = tokens - 1500;
   ok(estimateTokens(h.message) <= budget + 400 && estimateTokens(f.message) <= budget + 400, `${tokens} tokens: the message fits near the budget (${estimateTokens(h.message)} <= ${budget})`);
@@ -125,7 +126,7 @@ const server = http.createServer((req, res) => {
 });
 await new Promise<void>((r) => server.listen(0, r));
 const settings: any = { ...DEFAULT_SETTINGS, connections: [{ id: "t", name: "Test", kind: "custom" as const, baseUrl: `http://localhost:${(server.address() as any).port}/v1`, apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } };
-const written = await writeImagePrompt(settings, { ...base, slot: "footer", direction: "Jim eating" });
+const written = await writeImagePrompt(settings, { ...base, moment: "end", direction: "Jim eating" });
 ok(written.prompt === "a man with blonde hair eating" && written.scene === "Jim eats.", "writeImagePrompt returns the parsed reply");
 ok(seen[0].model === "cheap" && seen[0].user.includes("closing moment") && seen[0].user.includes("Jim [character]") && seen[0].system.includes("comma-separated tags"), "writeImagePrompt uses the cheaper model and sends the request");
 server.close();

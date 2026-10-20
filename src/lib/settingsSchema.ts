@@ -40,6 +40,8 @@ export type Settings = {
   autoSuggestChoices: boolean;
   /** How picture prompts are written: comma-separated tags (SDXL, Pony, SD 1.5) or plain sentences (Flux, SD3). */
   imagePromptStyle: ImagePromptStyle;
+  /** Model that writes picture prompts on the Illustrate page; null uses the cheaper default. */
+  imagePromptModel: ModelRef | null;
   /** The ComfyUI machine that makes pictures, and the choices last used on the Illustrate page. */
   comfy: ComfySettings;
 };
@@ -67,6 +69,7 @@ export const DEFAULT_SETTINGS: Settings = {
   disableThinking: false,
   autoSuggestChoices: false,
   imagePromptStyle: "tags",
+  imagePromptModel: null,
   comfy: { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4 },
 };
 
@@ -102,6 +105,7 @@ const settingsSchema = z.object({
   disableThinking: z.boolean().catch(false),
   autoSuggestChoices: z.boolean().catch(false),
   imagePromptStyle: z.enum(["tags", "natural"]).catch("tags"),
+  imagePromptModel: refSchema.nullable().catch(null),
   comfy: z
     .object({
       url: z.string().catch(""),
@@ -124,7 +128,13 @@ export function parseSettings(raw: unknown): Settings {
   const favs = new Set<string>();
   const favorites = s.favorites.filter((f) => seen.has(f.connectionId) && !favs.has(refKey(f)) && favs.add(refKey(f)));
   const live = (r: ModelRef | null) => (r && seen.has(r.connectionId) ? { connectionId: r.connectionId, model: r.model } : null);
-  return { ...s, connections, favorites, defaults: { main: live(s.defaults.main), cheap: live(s.defaults.cheap) } };
+  return {
+    ...s,
+    connections,
+    favorites,
+    defaults: { main: live(s.defaults.main), cheap: live(s.defaults.cheap) },
+    imagePromptModel: live(s.imagePromptModel),
+  };
 }
 
 // ---- helpers ----
@@ -187,6 +197,7 @@ export function removeConnection(s: Settings, id: string): Settings {
     connections: s.connections.filter((c) => c.id !== id),
     favorites: s.favorites.filter((f) => f.connectionId !== id),
     defaults: { main: keep(s.defaults.main), cheap: keep(s.defaults.cheap) },
+    imagePromptModel: keep(s.imagePromptModel),
   };
 }
 

@@ -14,8 +14,10 @@ import {
   type ContextCodexEntry,
   type PromptParts,
 } from "./prompts";
-import type { ImageSlot } from "../imageSlots";
 import type { ImagePromptStyle, ModelRef, Settings } from "../settingsSchema";
+
+/** Which part of the chapter the picture shows. */
+export type ImageMoment = "start" | "end";
 
 export type ImagePromptOptions = {
   story: { title: string; premise: string };
@@ -23,7 +25,7 @@ export type ImagePromptOptions = {
   path: ContextChapter[];
   /** Codex entries in effect at that chapter. */
   codex: ContextCodexEntry[];
-  slot: ImageSlot;
+  moment: ImageMoment;
   /** What the author wants shown, optionally with "[...]" notes. Empty lets the AI choose. */
   direction: string;
   style: ImagePromptStyle;
@@ -57,9 +59,9 @@ ${STYLE_RULES[style]}
 Reply with JSON only: {"scene":"","prompt":"","negative":""}
 "scene" is one or two plain sentences telling the author which moment you chose.`;
 
-const SLOT_TASK: Record<ImageSlot, string> = {
-  header: "This picture goes above the chapter's title, so it should set the scene: show where and when the chapter takes place, and who is there, near its beginning.",
-  footer: "This picture goes after the chapter's text, so it should show the chapter's closing moment, without giving away anything that happens later.",
+const MOMENT_TASK: Record<ImageMoment, string> = {
+  start: "This picture shows the start of the chapter, so it should set the scene: show where and when the chapter takes place, and who is there, near its beginning.",
+  end: "This picture shows the end of the chapter, so it should show the chapter's closing moment, without giving away anything that happens later.",
 };
 
 /** The request for a picture prompt; throws if there is no chapter to illustrate. */
@@ -80,10 +82,10 @@ export function imagePromptRequest(contextTokens: number, opts: ImagePromptOptio
 
   // The chapter itself gets what is left; a very long one keeps the part the picture is about.
   const room = Math.max(500, budget - estimateTokens(parts.join("\n\n"))) * 4;
-  const body = chapter.body.length <= room ? chapter.body : opts.slot === "header" ? `${chapter.body.slice(0, room)}…` : `…${chapter.body.slice(-room)}`;
+  const body = chapter.body.length <= room ? chapter.body : opts.moment === "start" ? `${chapter.body.slice(0, room)}…` : `…${chapter.body.slice(-room)}`;
   parts.push(`The chapter to illustrate, "${chapter.title}":\n${body}`);
 
-  parts.push(SLOT_TASK[opts.slot]);
+  parts.push(MOMENT_TASK[opts.moment]);
   if (direction) parts.push(`The author wants the picture to show: ${direction}`);
   if (notes.length) parts.push(notesBlock(notes));
   return { system: SYSTEM_IMAGE(opts.style), message: parts.join("\n\n") };

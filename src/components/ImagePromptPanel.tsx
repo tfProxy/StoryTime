@@ -1,19 +1,18 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { saveSettings, useSettings, type ModelRef } from "@/lib/settings";
+import { saveSettings, useSettings } from "@/lib/settings";
 import type { ImagePromptStyle } from "@/lib/settingsSchema";
 import { LIMITS } from "@/lib/limits";
 import { copyText } from "@/lib/copyText";
-import { IMAGE_SLOTS, type ImageSlot } from "@/lib/imageSlots";
 import { codexBudget, budgetFor, explainCodex, type ContextChapter, type ContextCodexEntry } from "@/lib/ai/prompts";
-import { imagePromptRequest, withArtStyle, writeImagePrompt } from "@/lib/ai/imagePrompt";
+import { imagePromptRequest, withArtStyle, writeImagePrompt, type ImageMoment } from "@/lib/ai/imagePrompt";
 import AutoTextarea from "./AutoTextarea";
 import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
 import ComfyGenerate from "./ComfyGenerate";
 
-const SLOT_NAMES: Record<ImageSlot, string> = { header: "Header picture", footer: "Footer picture" };
+const MOMENT_NAMES: Record<ImageMoment, string> = { start: "Chapter start", end: "Chapter end" };
 const STYLE_NAMES: Record<ImagePromptStyle, string> = {
   tags: "Tags (SDXL, Pony, SD 1.5)",
   natural: "Sentences (Flux, SD3)",
@@ -33,9 +32,8 @@ type Result = { scene: string; prompt: string; negative: string };
 export default function ImagePromptPanel({ chapterId, story, path, codex }: Props) {
   const settings = useSettings();
   const chapter = path[path.length - 1];
-  const [slot, setSlot] = useState<ImageSlot>("header");
+  const [moment, setMoment] = useState<ImageMoment>("start");
   const [direction, setDirection] = useState("");
-  const [model, setModel] = useState<ModelRef | null>(null);
   const [artStyle, setArtStyle] = useState(story.art_style);
   const [savedArtStyle, setSavedArtStyle] = useState(story.art_style);
   const [result, setResult] = useState<Result>({ scene: "", prompt: "", negative: "" });
@@ -44,8 +42,9 @@ export default function ImagePromptPanel({ chapterId, story, path, codex }: Prop
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const style = settings.imagePromptStyle;
+  const model = settings.imagePromptModel;
 
-  const options = () => ({ story, path, codex, slot, direction, style });
+  const options = () => ({ story, path, codex, moment, direction, style });
   const used = explainCodex(codex, `${chapter.body}\n${direction}`, codexBudget(budgetFor(settings.contextTokens)))
     .filter((r) => r.state === "included")
     .map((r) => r.entry.name);
@@ -102,16 +101,6 @@ export default function ImagePromptPanel({ chapterId, story, path, codex }: Prop
 
       <div className="row" style={{ flexWrap: "wrap" }}>
         <label className="row" style={{ gap: "0.4rem" }}>
-          For
-          <select aria-label="For" value={slot} onChange={(e) => setSlot(e.target.value as ImageSlot)} style={{ width: "auto" }}>
-            {IMAGE_SLOTS.map((s) => (
-              <option key={s} value={s}>
-                {SLOT_NAMES[s]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="row" style={{ gap: "0.4rem" }}>
           Prompt style
           <select
             value={style}
@@ -156,7 +145,25 @@ export default function ImagePromptPanel({ chapterId, story, path, codex }: Prop
       </p>
 
       <div className="row" style={{ flexWrap: "wrap" }}>
-        <ModelPicker label="Model for picture prompts" role="cheap" value={model} onChange={setModel} />
+        <ModelPicker
+          label="Model for picture prompts"
+          role="cheap"
+          value={model}
+          onChange={(ref) => void saveSettings({ ...settings, imagePromptModel: ref })}
+        />
+        <select
+          aria-label="Moment to show"
+          title="Which part of the chapter the picture shows"
+          value={moment}
+          onChange={(e) => setMoment(e.target.value as ImageMoment)}
+          style={{ width: "auto" }}
+        >
+          {(Object.keys(MOMENT_NAMES) as ImageMoment[]).map((m) => (
+            <option key={m} value={m}>
+              {MOMENT_NAMES[m]}
+            </option>
+          ))}
+        </select>
         <button type="button" onClick={() => void write()} disabled={busy}>
           {busy ? "Writing…" : written ? "Write again" : "Write prompt"}
         </button>
@@ -199,7 +206,7 @@ export default function ImagePromptPanel({ chapterId, story, path, codex }: Prop
       </div>
       {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
 
-      <ComfyGenerate chapterId={chapterId} slot={slot} prompt={result.prompt} negative={result.negative} />
+      <ComfyGenerate chapterId={chapterId} prompt={result.prompt} negative={result.negative} />
     </section>
   );
 }

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { saveSettings, useSettings } from "@/lib/settings";
 import type { ComfySettings } from "@/lib/settingsSchema";
-import type { ImageSlot } from "@/lib/imageSlots";
+import { IMAGE_SLOTS, type ImageSlot } from "@/lib/imageSlots";
 import { prepareImage } from "@/lib/prepareImage";
 import { describeWorkflow, fillWorkflow, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
 import {
@@ -40,8 +40,8 @@ function progressText(p: Progress): string {
   return "Loading the pictures…";
 }
 
-/** Makes pictures from the prompt on the ComfyUI machine, and saves the one the author picks. */
-export default function ComfyGenerate({ chapterId, slot, prompt, negative }: { chapterId: string; slot: ImageSlot; prompt: string; negative: string }) {
+/** Makes pictures from the prompt on the ComfyUI machine, and saves the ones the author picks. */
+export default function ComfyGenerate({ chapterId, prompt, negative }: { chapterId: string; prompt: string; negative: string }) {
   const router = useRouter();
   const settings = useSettings();
   const comfy = settings.comfy;
@@ -119,8 +119,8 @@ export default function ComfyGenerate({ chapterId, slot, prompt, negative }: { c
     j.ctl.abort();
   }
 
-  async function use(c: Candidate) {
-    setSaving(c.key);
+  async function use(c: Candidate, slot: ImageSlot) {
+    setSaving(`${c.key}-${slot}`);
     setStatus(null);
     try {
       const blob = await prepareImage(await fetchImage(comfy.url, c.image), MAX_SIDE);
@@ -214,9 +214,11 @@ export default function ComfyGenerate({ chapterId, slot, prompt, negative }: { c
                   {/* eslint-disable-next-line @next/next/no-img-element -- served by ComfyUI */}
                   <img src={imageUrl(comfy.url, c.image)} alt={`Picture ${c.image.filename}`} loading="lazy" />
                 </a>
-                <button type="button" className="secondary" disabled={saving !== null} onClick={() => void use(c)}>
-                  {saving === c.key ? "Saving…" : `Use as ${SLOT_NAMES[slot]}`}
-                </button>
+                {IMAGE_SLOTS.map((slot) => (
+                  <button key={slot} type="button" className="secondary" disabled={saving !== null} onClick={() => void use(c, slot)}>
+                    {saving === `${c.key}-${slot}` ? "Saving…" : `Use as ${SLOT_NAMES[slot]}`}
+                  </button>
+                ))}
               </li>
             ))}
           </ul>

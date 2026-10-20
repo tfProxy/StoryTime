@@ -28,6 +28,14 @@ ok(r.status === 200 && r.json.settings.imagePromptStyle === "tags", "an unknown 
 r = await call("PUT", "/api/settings", { ...conns, imagePromptStyle: 7 });
 ok(r.json.settings.imagePromptStyle === "tags", "…as does a value that isn't text");
 
+ok(r.json.settings.imagePromptModel === null, "picture prompts use the default model unless one is chosen");
+r = await call("PUT", "/api/settings", { ...conns, imagePromptModel: { connectionId: "o", model: "pics" } });
+ok((await call("GET", "/api/settings")).json.settings.imagePromptModel?.model === "pics", "…and a chosen one is kept");
+r = await call("PUT", "/api/settings", { ...conns, imagePromptModel: { connectionId: "gone", model: "pics" } });
+ok(r.json.settings.imagePromptModel === null, "…but dropped when its connection doesn't exist");
+r = await call("PUT", "/api/settings", { ...conns, imagePromptModel: "pics" });
+ok(r.json.settings.imagePromptModel === null, "…or when it isn't a model");
+
 // ---- ComfyUI (picture making) ----
 const comfyDefaults = { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4 };
 r = await call("PUT", "/api/settings", conns);
