@@ -1,7 +1,7 @@
 // The eye button beside each AI button opens a floating window with the prompt it would send,
 // and a button there copies the prompt.
 import http from "node:http";
-import { launch } from "./browser.mjs";
+import { launch, startStory } from "./browser.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const prompts = [];
@@ -37,9 +37,7 @@ page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true
 const dialog = page.getByRole("dialog");
 const viewPrompt = (name) => page.getByTitle(`View the prompt: ${name}`, { exact: true });
 
-await page.goto(`${BASE}/new`);
-await page.getByLabel("Story title").fill("Prompt tale");
-await page.getByLabel("Premise").fill("A lighthouse keeper.");
+await startStory(page, BASE, { title: "Prompt tale", premise: "A lighthouse keeper." });
 await page.getByLabel(/^What should happen/).fill("a storm arrives [keep it short]");
 
 // ---- the Generate button's prompt ----

@@ -43,7 +43,8 @@ import PromptButton from "./PromptButton";
 import ModelPicker from "./ModelPicker";
 
 export type Target =
-  | { kind: "story" }
+  /** The first chapter of a story that has none yet. */
+  | { kind: "first"; storyId: string }
   | { kind: "fill"; choiceId: string; label: string; parentChapterId: string }
   | { kind: "new"; parentChapterId: string }
   | {
@@ -65,7 +66,7 @@ export type Target =
 type Props = {
   target: Target;
   context: StoryContext;
-  /** The story being written in; absent for a brand-new story. Links to its details page. */
+  /** The story being written in. Links to its details page. */
   storyId?: string;
   draftKey: string;
   resumeHref: string;
@@ -333,13 +334,9 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   // Manual additions to / removals from the codex entries sent with each prompt.
   const codexOverrides: CodexOverrides = draft.codexOverrides ?? { include: [], exclude: [] };
 
-  // For a brand-new story the title and premise are still being typed in this form.
   const withSummaries = (path: StoryContext["path"], made: Record<string, Summaries>) =>
     path.map((c) => (c.id && made[c.id] ? { ...c, summary: made[c.id].summary, path_summary: made[c.id].path_summary } : c));
-  const storyInfo =
-    target.kind === "story"
-      ? { title: draft.storyTitle, premise: draft.premise }
-      : { title: context.storyTitle, premise: context.premise };
+  const storyInfo = { title: context.storyTitle, premise: context.premise };
   // Codex changes held in this draft apply to the chapter being written.
   const codexChanges = draft.codexChanges ?? [];
   const codex =
@@ -353,8 +350,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
           always_include: e.always_include,
         }))
       : context.codex;
-  // The story's style notes are edited on its details page; a brand-new story types them in this form.
-  const style = target.kind === "story" ? (draft.style ?? "") : (context.style ?? "");
+  // The story's style notes are edited on its details page.
+  const style = context.style ?? "";
   const ctx: StoryContext = {
     ...context,
     codex,
@@ -683,7 +680,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const finalChoices = draft.choices.map((c) => c.trim()).filter(Boolean);
   // `field` is the id of the part of the form that fixes it.
   const problems: { text: string; field: string }[] = [];
-  if (target.kind === "story" && !draft.storyTitle.trim()) problems.push({ text: "Add a story title.", field: "field-storyTitle" });
   if ((target.kind === "new" || target.kind === "fill") && !draft.newChoiceLabel.trim()) {
     problems.push({ text: "Add the choice text for the previous chapter.", field: "field-choice" });
   }
@@ -844,9 +840,9 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
         add_choices: finalChoices,
         codex_changes,
       };
-    } else if (target.kind === "story") {
-      url = "/api/stories";
-      payload = { title: draft.storyTitle, premise: draft.premise, style: (draft.style ?? "").trim(), chapter };
+    } else if (target.kind === "first") {
+      url = `/api/stories/${target.storyId}/first-chapter`;
+      payload = chapter;
     } else if (target.kind === "fill" && draft.newChoiceLabel.trim() === target.label.trim()) {
       url = "/api/chapters";
       payload = { ...chapter, choice_id: target.choiceId, codex_changes };
@@ -1024,7 +1020,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
             )}
           </details>
 
-          {target.kind !== "story" && storyId && (
+          {storyId && (
             <p className="meta">
               Style notes: {style.trim() ? snippet(style) : "none"} · <Link href={`/s/${storyId}/details`}>Edit story details</Link>
             </p>
@@ -1101,38 +1097,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                   {choiceTextButton("incomingLabel")}
                 </span>
                 {errorFor("label")}
-              </label>
-            </section>
-          )}
-
-          {target.kind === "story" && (
-            <section className="ai-panel">
-              <label id="field-storyTitle">
-                Story title
-                <input
-                  value={draft.storyTitle}
-                  maxLength={LIMITS.title}
-                  onChange={(e) => patch({ storyTitle: e.target.value })}
-                />
-              </label>
-              <label>
-                Premise <small>(optional blurb shown on the story page; the AI also sees it)</small>
-                <textarea
-                  style={{ minHeight: "6rem" }}
-                  value={draft.premise}
-                  maxLength={LIMITS.premise}
-                  onChange={(e) => patch({ premise: e.target.value })}
-                />
-              </label>
-              <label>
-                Style notes <small>(optional; point of view, tense, tone, things to avoid. Only the AI sees these, with every prompt)</small>
-                <AutoTextarea
-                  style={{ minHeight: "4rem", fontFamily: "inherit" }}
-                  value={draft.style ?? ""}
-                  maxLength={LIMITS.style}
-                  placeholder="e.g. First person, past tense. Dry humour. No graphic violence."
-                  onChange={(e) => patch({ style: e.target.value })}
-                />
               </label>
             </section>
           )}

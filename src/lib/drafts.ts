@@ -11,7 +11,10 @@ import type { ModelRef } from "./settingsSchema";
 export type DraftVersion = { title: string; body: string };
 
 export type Draft = {
-  /** One draft per place you're writing: "story", "fill:<choiceId>", "new:<chapterId>" or "edit:<chapterId>". */
+  /**
+   * One draft per place you're writing: "first:<storyId>", "fill:<choiceId>", "new:<chapterId>" or
+   * "edit:<chapterId>". ("story" was a new story's, title and all, before stories were made first.)
+   */
   key: string;
   /** Where to go to resume this draft. */
   href: string;

@@ -60,12 +60,16 @@ const chapterFields = {
   choices: z.array(required(LIMITS.label)).max(LIMITS.choices).default([]),
 };
 
+// A story starts with its first chapter, or (from the New story form) with none yet: that is written
+// afterwards and posted with FirstChapterSchema.
 export const NewStorySchema = z.object({
   title: required(LIMITS.title),
   premise: text(LIMITS.premise).default(""),
   style: text(LIMITS.style).default(""),
-  chapter: z.object(chapterFields),
+  chapter: z.object(chapterFields).optional(),
 });
+
+export const FirstChapterSchema = z.object(chapterFields);
 
 // Where the new chapter attaches: either fill an existing unwritten choice,
 // or add a brand-new choice (with this chapter as its child) to a chapter.
@@ -230,26 +234,39 @@ function insertChoices(chapterId: string, labels: string[], t: number): string[]
 /** What posting a chapter returns; `choice_ids` are its choices, in the order they were given. */
 export type Posted = { story_id: string; chapter_id: string; choice_ids: string[] };
 
-export function createStory(input: z.infer<typeof NewStorySchema>): Posted {
-  const storyId = newId();
+/** Adds a story's first chapter and its choices; inside a transaction. */
+function insertFirstChapter(storyId: string, c: z.infer<typeof FirstChapterSchema>, t: number): Posted {
   const chapterId = newId();
+  db()
+    .prepare(
+      `INSERT INTO chapters (id, story_id, parent_choice_id, depth, title, body, summary, path_summary, posted_at)
+       VALUES (?, ?, NULL, 0, ?, ?, ?, ?, ?)`,
+    )
+    .run(chapterId, storyId, c.title, c.body, c.summary ?? null, c.path_summary ?? null, t);
+  db().prepare(`UPDATE stories SET root_chapter_id = ? WHERE id = ?`).run(chapterId, storyId);
+  return { story_id: storyId, chapter_id: chapterId, choice_ids: insertChoices(chapterId, c.choices, t) };
+}
+
+/** A new story, with its first chapter when given; without one, `chapter_id` is null. */
+export function createStory(input: z.infer<typeof NewStorySchema>): Posted | { story_id: string; chapter_id: null; choice_ids: [] } {
+  const storyId = newId();
   const t = now();
-  const c = input.chapter;
-  let choiceIds: string[] = [];
-  db().transaction(() => {
+  return db().transaction(() => {
     db()
       .prepare(`INSERT INTO stories (id, title, premise, style, created_at) VALUES (?, ?, ?, ?, ?)`)
       .run(storyId, input.title, input.premise, input.style, t);
-    db()
-      .prepare(
-        `INSERT INTO chapters (id, story_id, parent_choice_id, depth, title, body, summary, path_summary, posted_at)
-         VALUES (?, ?, NULL, 0, ?, ?, ?, ?, ?)`,
-      )
-      .run(chapterId, storyId, c.title, c.body, c.summary ?? null, c.path_summary ?? null, t);
-    db().prepare(`UPDATE stories SET root_chapter_id = ? WHERE id = ?`).run(chapterId, storyId);
-    choiceIds = insertChoices(chapterId, c.choices, t);
+    return input.chapter ? insertFirstChapter(storyId, input.chapter, t) : { story_id: storyId, chapter_id: null, choice_ids: [] as [] };
   })();
-  return { story_id: storyId, chapter_id: chapterId, choice_ids: choiceIds };
+}
+
+/** Posts the first chapter of a story that has none yet. */
+export function createFirstChapter(storyId: string, input: z.infer<typeof FirstChapterSchema>): Posted {
+  return db().transaction(() => {
+    const story = getStory(storyId);
+    if (!story) throw new PostError("That story does not exist", 404);
+    if (story.root_chapter_id) throw new PostError("That story already has its first chapter", 409);
+    return insertFirstChapter(storyId, input, now());
+  })();
 }
 
 export function createChapter(input: z.infer<typeof NewChapterSchema>): Posted {
@@ -436,7 +453,7 @@ export function addChoice(chapterId: string, input: z.infer<typeof AddChoiceSche
 export function editStory(storyId: string, input: z.infer<typeof EditStorySchema>): { ok: true } {
   return db().transaction(() => {
     const story = getStory(storyId);
-    if (!story?.root_chapter_id) throw new PostError("That story does not exist", 404);
+    if (!story) throw new PostError("That story does not exist", 404);
     db()
       .prepare(`UPDATE stories SET title = ?, premise = ?, style = ?, art_style = ? WHERE id = ?`)
       .run(

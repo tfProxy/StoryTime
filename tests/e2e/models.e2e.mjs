@@ -1,7 +1,7 @@
 // AI connections and starred models are set up in Settings; each draft can pick its own
 // model for writing and for suggestions, which is remembered with the draft.
 import http from "node:http";
-import { launch } from "./browser.mjs";
+import { launch, startStory } from "./browser.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const calls = [];
@@ -86,8 +86,8 @@ s = await settingsNow();
 ok(s.connections[1].freeComfy === false, "…and only that one");
 
 // ---- a draft uses the default, then a model picked on the page ----
-await page.goto(`${BASE}/new`);
-await page.getByLabel("Story title").fill("Model tale");
+const storyId = await startStory(page, BASE, { title: "Model tale" });
+const draftUrl = `/api/drafts/first:${storyId}`;
 const writePicker = page.getByLabel("Model for writing").first();
 ok((await writePicker.inputValue()) === "", "the writing model starts on the default");
 await page.getByRole("button", { name: "Generate chapter" }).click();
@@ -101,9 +101,9 @@ await until(() => calls.filter((c) => c.system.includes("Output format")).length
 gen = calls.filter((c) => c.system.includes("Output format")).at(-1);
 ok(gen.url === "/b/v1/chat/completions" && gen.model === "vendor/big" && gen.auth === "Bearer rk", "after picking another model, generating uses it, on its own connection");
 
-await until(async () => (await json("GET", "/api/drafts/story")).draft?.models?.write?.model === "vendor/big", "the pick to be saved with the draft");
+await until(async () => (await json("GET", draftUrl)).draft?.models?.write?.model === "vendor/big", "the pick to be saved with the draft");
 await page.reload();
-await page.getByLabel("Story title").waitFor();
+await page.getByLabel("Chapter title").waitFor();
 ok((await page.getByLabel("Model for writing").first().inputValue()).includes("vendor/big"), "the picked model is remembered with the draft");
 ok((await settingsNow()).defaults.main.model === "alpha", "…without changing the default");
 
@@ -133,7 +133,7 @@ await until(async () => (await settingsNow()).connections.length === 1, "the con
 s = await settingsNow();
 ok(s.favorites.length === 1 && s.favorites[0].model === "alpha" && s.defaults.main === null, "removing a connection drops its starred models and the default that used it");
 
-await fetch(`${BASE}/api/drafts/story`, { method: "DELETE" });
+await fetch(`${BASE}${draftUrl}`, { method: "DELETE" });
 await json("PUT", "/api/settings", settingsBefore ?? {});
 await browser.close();
 mock.close();

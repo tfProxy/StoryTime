@@ -70,6 +70,23 @@ export function putDraft(
   })();
 }
 
+/**
+ * Moves a draft to another key, with a new place to resume it and a new label (used when a story started
+ * as a draft on the old New story page becomes a story whose first chapter is still to be written).
+ * Does nothing when there is no draft at `from`, or one at `to` already.
+ */
+export function moveDraft(from: string, to: string, patch: { href: string; label: string }): boolean {
+  const d = db();
+  return d.transaction(() => {
+    const row = d.prepare("SELECT key, data, updated_at FROM drafts WHERE key = ?").get(from) as Row | undefined;
+    if (!row || d.prepare("SELECT 1 FROM drafts WHERE key = ?").get(to)) return false;
+    const data = { ...(JSON.parse(row.data) as Record<string, unknown>), ...patch };
+    d.prepare("INSERT INTO drafts (key, data, updated_at) VALUES (?, ?, ?)").run(to, JSON.stringify(data), Math.max(Date.now(), row.updated_at + 1));
+    d.prepare("DELETE FROM drafts WHERE key = ?").run(from);
+    return true;
+  })();
+}
+
 export function deleteDraft(key: string): boolean {
   return db().prepare("DELETE FROM drafts WHERE key = ?").run(key).changes > 0;
 }

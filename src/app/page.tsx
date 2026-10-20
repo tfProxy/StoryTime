@@ -19,7 +19,7 @@ export default function Home() {
       <ul className="story-grid">
         {stories.map((s) => (
           <li key={s.id} className="story-card">
-            <Link href={s.root_chapter_id ? `/c/${s.root_chapter_id}` : `/s/${s.id}`} className="story-link">
+            <Link href={s.root_chapter_id ? `/c/${s.root_chapter_id}` : `/s/${s.id}/details`} className="story-link">
               <StoryCover story={s} />
               <strong className="story-title">{s.title}</strong>
             </Link>
@@ -29,17 +29,24 @@ export default function Home() {
               {s.chapter_count} chapter{s.chapter_count === 1 ? "" : "s"}
             </span>
             <div className="story-actions">
-              <Link href={`/s/${s.id}/outline`} className="story-outline" aria-label={`Outline of ${s.title}`} title="Outline">
-                <svg viewBox="0 0 24 24" width="1.2rem" height="1.2rem" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="5" cy="12" r="2.2" /><circle cx="19" cy="5.5" r="2.2" /><circle cx="19" cy="18.5" r="2.2" /><path d="M7.2 12h3.3c2 0 2.5-6.5 6.3-6.5 M10.5 12c2 0 2.5 6.5 6.3 6.5" />
-                </svg>
-              </Link>
+              {s.root_chapter_id && (
+                <Link href={`/s/${s.id}/outline`} className="story-outline" aria-label={`Outline of ${s.title}`} title="Outline">
+                  <svg viewBox="0 0 24 24" width="1.2rem" height="1.2rem" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="5" cy="12" r="2.2" /><circle cx="19" cy="5.5" r="2.2" /><circle cx="19" cy="18.5" r="2.2" /><path d="M7.2 12h3.3c2 0 2.5-6.5 6.3-6.5 M10.5 12c2 0 2.5 6.5 6.3 6.5" />
+                  </svg>
+                </Link>
+              )}
               <StoryMenu label={`Options for ${s.title}`}>
-                {s.root_chapter_id && <Link href={`/s/${s.id}/details`}>Story details</Link>}
-                <a href={download(s.id, "md")}>Download readable (Markdown)</a>
-                <a href={download(s.id, "html")}>Download to play offline (HTML)</a>
-                <a href={download(s.id, "twee")}>Download Twine (Twee)</a>
-                <a href={download(s.id, "json")}>Download everything (JSON)</a>
+                <Link href={`/s/${s.id}/details`}>Story details</Link>
+                {/* Nothing to download until the first chapter is written. */}
+                {s.root_chapter_id && (
+                  <>
+                    <a href={download(s.id, "md")}>Download readable (Markdown)</a>
+                    <a href={download(s.id, "html")}>Download to play offline (HTML)</a>
+                    <a href={download(s.id, "twee")}>Download Twine (Twee)</a>
+                    <a href={download(s.id, "json")}>Download everything (JSON)</a>
+                  </>
+                )}
               </StoryMenu>
             </div>
           </li>

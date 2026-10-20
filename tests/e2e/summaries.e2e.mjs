@@ -1,5 +1,5 @@
 import http from "node:http";
-import { launch, useMockAi } from "./browser.mjs";
+import { launch, startStory, useMockAi } from "./browser.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const calls = [];
@@ -42,8 +42,7 @@ page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true
 page.on("dialog", (d) => d.accept());
 
 // ---- A: a first chapter gets summaries when posted ----
-await page.goto(`${BASE}/new`);
-await page.getByLabel("Story title").fill("Summary story");
+await startStory(page, BASE, { title: "Summary story" });
 await page.getByLabel("Chapter title").fill("First");
 await page.getByLabel("Chapter text").fill("Mira found a key.");
 await page.getByPlaceholder("Choice 1").fill("Next");

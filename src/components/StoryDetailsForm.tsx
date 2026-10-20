@@ -5,10 +5,21 @@ import { useRouter } from "next/navigation";
 import { LIMITS } from "@/lib/limits";
 import AutoTextarea from "./AutoTextarea";
 
-type Story = { id: string; title: string; premise: string; style?: string };
+/** A story's details; without an `id`, the form makes a new story with them. */
+type Story = { id?: string; title: string; premise: string; style?: string };
 
-/** The story's title and summary, plus its style notes when `style` is given. Saved together. */
-export default function StoryDetailsForm({ story, heading = "Story details" }: { story: Story; heading?: string }) {
+type Props = {
+  story: Story;
+  heading?: string;
+  /** With no story id: keep the draft started on the old New story page as the new story's first chapter. */
+  adoptDraft?: boolean;
+};
+
+/**
+ * The story's title and summary, plus its style notes when `style` is given. Saved together. For a new
+ * story (no id) the button creates it, then opens its details page, where its first chapter is started.
+ */
+export default function StoryDetailsForm({ story, heading = "Story details", adoptDraft = false }: Props) {
   const router = useRouter();
   const withStyle = story.style !== undefined;
   const [saved, setSaved] = useState(story);
@@ -17,27 +28,32 @@ export default function StoryDetailsForm({ story, heading = "Story details" }: {
   const [style, setStyle] = useState(story.style ?? "");
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const creating = story.id === undefined;
   const changed =
-    title.trim() !== saved.title || premise.trim() !== saved.premise || (withStyle && style.trim() !== (saved.style ?? ""));
+    creating || title.trim() !== saved.title || premise.trim() !== saved.premise || (withStyle && style.trim() !== (saved.style ?? ""));
 
   async function save() {
     setBusy(true);
     setStatus(null);
     const next = { title: title.trim(), premise: premise.trim(), ...(withStyle ? { style: style.trim() } : {}) };
     try {
-      const res = await fetch(`/api/stories/${story.id}`, {
-        method: "PATCH",
+      const res = await fetch(creating ? "/api/stories" : `/api/stories/${story.id}`, {
+        method: creating ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(next),
+        body: JSON.stringify(creating ? { ...next, adopt_draft: adoptDraft } : next),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+      if (creating) {
+        router.push(`/s/${data.story_id}/details`);
+        return;
+      }
       setSaved({ ...saved, ...next });
       setStatus({ ok: true, text: "Story details saved." });
       router.refresh();
+      setBusy(false);
     } catch (e) {
       setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
-    } finally {
       setBusy(false);
     }
   }
@@ -85,7 +101,7 @@ export default function StoryDetailsForm({ story, heading = "Story details" }: {
       )}
       <div className="row" style={{ flexWrap: "wrap" }}>
         <button type="button" onClick={save} disabled={busy || !changed || !title.trim()}>
-          {busy ? "Saving…" : "Save story details"}
+          {creating ? (busy ? "Creating…" : "Create story") : busy ? "Saving…" : "Save story details"}
         </button>
         {status && <span className={status.ok ? "ok" : "error"}>{status.text}</span>}
       </div>

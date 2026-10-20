@@ -1,5 +1,5 @@
 import http from "node:http";
-import { launch, useMockAi } from "./browser.mjs";
+import { launch, startStory, useMockAi } from "./browser.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const reqs = [];
@@ -36,9 +36,13 @@ const page = await ctx.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 page.on("console", (m) => { if (m.type() === "error") console.log("CONSOLE", m.text()); });
 
+// ---- a new story starts with its details; its first chapter is written next ----
 await page.goto(BASE + "/new");
-await page.getByLabel("Story title").fill("The Haunted Inn");
-await page.getByLabel(/^Premise/).fill("A cursed inn on a hill.");
+ok(await page.getByLabel("Chapter title").count() === 0 && await page.getByRole("button", { name: "Generate chapter" }).count() === 0, "the New story page has no chapter to draft, only the story's details");
+const storyId = await startStory(page, BASE, { title: "The Haunted Inn", premise: "A cursed inn on a hill." });
+const story = await (await fetch(`${BASE}/api/stories/${storyId}`)).json();
+ok(story.title === "The Haunted Inn" && story.premise === "A cursed inn on a hill." && story.root_chapter_id === null, "Create story makes the story, with no chapters yet");
+ok(await page.getByLabel("Story title").count() === 0, "the first chapter's page doesn't ask for the story's title again");
 await page.getByLabel(/What should happen/).fill("a stranger arrives");
 await page.getByRole("button", { name: "Generate chapter" }).click();
 await page.getByRole("button", { name: "Edit text" }).click();
@@ -71,11 +75,11 @@ ok((await page.getByPlaceholder("Choice 1").inputValue()) === "Open the door" &&
 await page.waitForTimeout(900);
 await page.reload();
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.length > 0);
-ok((await page.getByLabel("Story title").inputValue()) === "The Haunted Inn" && (await page.getByLabel("Chapter title").inputValue()) === "The Door", "draft restored after reload");
+ok((await page.getByLabel("Chapter title").inputValue()) === "The Door", "draft restored after reload");
 await page.goto(BASE + "/drafts");
 await page.getByText("The Door").first().waitFor({ timeout: 5000 }).catch(() => {}); ok(await page.getByText("The Door").first().isVisible(), "draft listed on /drafts");
 await page.getByRole("link", { name: /The Door/ }).click();
-await page.waitForURL("**/new");
+await page.waitForURL(`**/s/${storyId}/write`);
 
 ok(await page.getByRole("button", { name: "Post chapter" }).isEnabled(), "posting doesn't need a summary written first");
 await page.getByLabel(/^Summary/).fill("Someone enters the haunted inn.");
@@ -85,10 +89,12 @@ ok(await page.getByRole("heading", { name: "The Door" }).isVisible(), "posted ch
 ok((await page.locator(".card.choice-unwritten").count()) === 2, "two unwritten choices shown");
 const chapterUrl = page.url().split("?")[0];
 
-// draft is gone, and name was remembered as default
-await page.goto(BASE + "/new");
-await page.waitForTimeout(600);
-ok((await page.getByLabel("Story title").inputValue()) === "", "draft cleared after posting");
+// the draft is gone, and the story's details page now leads to reading it
+ok((await (await fetch(`${BASE}/api/drafts/first:${storyId}`)).json()).draft == null, "draft cleared after posting");
+await page.goto(`${BASE}/s/${storyId}/details`);
+ok(await page.getByRole("link", { name: "Read “The Haunted Inn”" }).isVisible() && await page.getByRole("link", { name: "Start writing" }).count() === 0, "the story's details page offers Read instead of Start writing");
+await page.goto(`${BASE}/s/${storyId}/write`);
+ok(await page.getByText("already has its first chapter").isVisible(), "the first chapter's page says it is written, with a link to read it");
 
 // ---- editing a posted chapter ----
 await page.goto(chapterUrl);

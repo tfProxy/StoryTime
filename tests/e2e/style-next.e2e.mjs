@@ -1,7 +1,7 @@
 // Story style notes reach the prompts and are edited, with the title, summary and story-wide codex,
 // on the story details page.
 import http from "node:http";
-import { launch } from "./browser.mjs";
+import { launch, startStory } from "./browser.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const prompts = [];
@@ -39,9 +39,7 @@ page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true
 page.on("dialog", (d) => d.accept());
 
 // ---- a new story with style notes ----
-await page.goto(`${BASE}/new`);
-await page.getByLabel("Story title").fill("Styled tale");
-await page.getByLabel(/^Style notes/).fill("STYLE-NEW: first person.");
+await startStory(page, BASE, { title: "Styled tale", style: "STYLE-NEW: first person." });
 await page.getByRole("button", { name: "Generate chapter" }).click();
 await page.getByRole("button", { name: "Edit text" }).waitFor();
 ok(lastChapterPrompt().includes("Style notes from the author (follow these in everything you write):\nSTYLE-NEW: first person."), "a new story's style notes go into the prompt");
