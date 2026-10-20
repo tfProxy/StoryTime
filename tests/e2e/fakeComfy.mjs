@@ -17,6 +17,9 @@
 //   fail        null | "refuse" (POST /prompt answers 400 with node_errors, like a workflow ComfyUI
 //               rejects) | "error" (the job starts, then fails with an execution error) | "upload"
 //               (POST /upload/image answers 400)
+//   files       the model files the loaders list in /object_info, by folder: { diffusion_models,
+//               text_encoders, vae } (default none, so no edit model is ready)
+//   missingNodes  node names /object_info answers {} for, like a ComfyUI too old to have them
 import crypto from "node:crypto";
 import http from "node:http";
 import zlib from "node:zlib";
@@ -80,8 +83,40 @@ function textFrame(text) {
   return Buffer.concat([head, payload]);
 }
 
-export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.safetensors", "fake_sdxl_b.safetensors"], ws = true, steps = 4, stepDelay = 120, startDelay = 300, fail = null, version = "0.3.99" } = {}) {
-  const mode = { checkpoints, ws, steps, stepDelay, startDelay, fail, version };
+/** The files of each folder that look like the edit models' files, for tests that install them. */
+export const EDIT_FILES = {
+  diffusion_models: ["qwen_image_edit_2509_fp8_e4m3fn.safetensors", "flux1-dev-kontext_fp8_scaled.safetensors"],
+  text_encoders: ["qwen_2.5_vl_7b_fp8_scaled.safetensors", "clip_l.safetensors", "t5xxl_fp8_e4m3fn_scaled.safetensors"],
+  vae: ["qwen_image_vae.safetensors", "ae.safetensors"],
+};
+
+// The nodes the fake knows; /object_info answers {} for any other.
+const NODES = [
+  "CheckpointLoaderSimple", "KSampler", "EmptyLatentImage", "CLIPTextEncode", "VAEDecode", "VAEEncode", "SaveImage", "LoadImage",
+  "RepeatLatentBatch", "ImageScale", "UNETLoader", "CLIPLoader", "DualCLIPLoader", "VAELoader", "TextEncodeQwenImageEditPlus",
+  "ModelSamplingAuraFlow", "CFGNorm", "ReferenceLatent", "FluxGuidance", "ConditioningZeroOut",
+];
+
+export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.safetensors", "fake_sdxl_b.safetensors"], ws = true, steps = 4, stepDelay = 120, startDelay = 300, fail = null, version = "0.3.99", files = {}, missingNodes = [] } = {}) {
+  const mode = { checkpoints, ws, steps, stepDelay, startDelay, fail, version, files, missingNodes };
+  const folder = (name) => mode.files[name] ?? [];
+
+  /** What /object_info says about a node: its loaders list the files (DualCLIPLoader in ComfyUI's newer COMBO form). */
+  function nodeInfo(name) {
+    const combo = (list) => [list, {}];
+    const required = {
+      CheckpointLoaderSimple: { ckpt_name: combo(mode.checkpoints) },
+      UNETLoader: { unet_name: combo(folder("diffusion_models")), weight_dtype: combo(["default", "fp8_e4m3fn"]) },
+      CLIPLoader: { clip_name: combo(folder("text_encoders")), type: combo(["stable_diffusion", "sd3", "qwen_image"]) },
+      DualCLIPLoader: {
+        clip_name1: ["COMBO", { options: folder("text_encoders") }],
+        clip_name2: ["COMBO", { options: folder("text_encoders") }],
+        type: ["COMBO", { options: ["sdxl", "sd3", "flux"] }],
+      },
+      VAELoader: { vae_name: combo(folder("vae")) },
+    }[name] ?? {};
+    return { input: { required }, name };
+  }
   const calls = [];
   const jobs = new Map(); // prompt_id -> job
   const uploads = new Set(); // names of pictures uploaded with POST /upload/image
@@ -138,6 +173,13 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
       nodeErrors["3"] = { class_type: "KSampler", dependent_outputs: ["9"], errors: [{ type: "required_input_missing", message: "Required input is missing", details: "positive" }] };
     }
     for (const [id, node] of nodes) {
+      if (node?.class_type && (!NODES.includes(node.class_type) || mode.missingNodes.includes(node.class_type))) {
+        nodeErrors[id] = { class_type: node.class_type, dependent_outputs: [], errors: [{ type: "invalid_prompt", message: `Cannot execute because node ${node.class_type} does not exist.`, details: "" }] };
+      }
+      const unet = node?.inputs?.unet_name;
+      if (node?.class_type === "UNETLoader" && !folder("diffusion_models").includes(unet)) {
+        nodeErrors[id] = { class_type: "UNETLoader", dependent_outputs: ["21"], errors: [{ type: "value_not_in_list", message: "Value not in list", details: `unet_name: '${unet}'` }] };
+      }
       const name = node?.inputs?.ckpt_name;
       if (node?.class_type === "CheckpointLoaderSimple" && !mode.checkpoints.includes(name)) {
         nodeErrors[id] = {
@@ -195,6 +237,10 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
       const p = url.pathname;
       if (p === "/system_stats") return json(200, { system: { comfyui_version: mode.version, os: "nt" }, devices: [] });
       if (p === "/models/checkpoints") return json(200, mode.checkpoints);
+      if (p.startsWith("/object_info/")) {
+        const name = decodeURIComponent(p.slice("/object_info/".length));
+        return json(200, NODES.includes(name) && !mode.missingNodes.includes(name) ? { [name]: nodeInfo(name) } : {});
+      }
       if (p === "/upload/image" && req.method === "POST") {
         // multipart/form-data: only the file name is read; a name taken twice gets "(1)" like ComfyUI does.
         const given = /name="image"; filename="([^"]+)"/.exec(typeof body === "string" ? body : "")?.[1];

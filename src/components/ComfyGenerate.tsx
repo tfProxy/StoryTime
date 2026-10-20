@@ -6,7 +6,11 @@ import { saveSettings, useSettings } from "@/lib/settings";
 import type { ComfySettings } from "@/lib/settingsSchema";
 import type { ImageMoment } from "@/lib/ai/imagePrompt";
 import type { LoadedPrompt } from "./ImagePromptPanel";
-import type { MadeWith, PendingJob, Picture } from "./pictures";
+import type { MadeWith, PendingJob, Picture, StartMode } from "./pictures";
+import { editBlocked, type EditModels } from "./useEditModels";
+import AutoTextarea from "./AutoTextarea";
+import { LIMITS } from "@/lib/limits";
+import { editSize, type EditCheck } from "@/lib/comfy/editModels";
 import { uploadStart, type StartPicture, type Uploaded } from "@/lib/comfy/startPicture";
 import { describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
 import { cancelPrompt, listCheckpoints, queuePrompt, waitForPictures, type Progress } from "@/lib/comfy/client";
@@ -45,6 +49,8 @@ type JobInput = {
   moment: ImageMoment;
   comfy: ComfySettings;
   start: StartPicture | null;
+  /** An edit of the starting picture by instruction, with the model to make it; null to redraw it or make new pictures. */
+  edit: { check: EditCheck; instruction: string } | null;
   /** The seed to use, or null for a random one. */
   seed: number | null;
 };
@@ -54,7 +60,10 @@ type Gathering = { key: string; input: JobInput; count: number; timer: ReturnTyp
 
 /** What has to match for a click to join the job being gathered. */
 const sameJob = (a: JobInput) =>
-  JSON.stringify([a.prompt, a.negative, a.moment, a.comfy.url, a.comfy.workflow, a.comfy.checkpoint, a.comfy.width, a.comfy.height, a.start?.key ?? null, a.start ? a.comfy.denoise : null, a.seed]);
+  JSON.stringify([
+    a.prompt, a.negative, a.moment, a.comfy.url, a.comfy.workflow, a.comfy.checkpoint, a.comfy.width, a.comfy.height, a.start?.key ?? null,
+    a.start && !a.edit ? a.comfy.denoise : null, a.edit?.check.model.id ?? null, a.edit?.instruction ?? null, a.seed,
+  ]);
 
 /**
  * Where the settings a loaded picture was made with differ from the current ones: the change to make and
@@ -91,16 +100,33 @@ type Props = {
   /** The picture new pictures start from (image to image), or null to make them from the prompt alone. */
   start?: StartPicture | null;
   onClearStart?: () => void;
+  /** Whether the starting picture is redrawn from the prompt (at a strength) or edited by instruction, and how to switch. */
+  startMode?: StartMode;
+  onStartMode?: (mode: StartMode) => void;
+  /** Which edit models ComfyUI can run. */
+  editModels?: EditModels;
   /** Called with each finished job's pictures. */
   onPictures?: (pictures: Picture[]) => void;
   /** Called with the jobs being made, newest first, whenever they change; the Pictures panel shows them. */
   onQueue?: (jobs: PendingJob[]) => void;
 };
 
-/** Makes pictures from the prompt on the ComfyUI machine; the pictures go to `onPictures`. */
-export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, prompt, negative, loaded = null, start = null, onClearStart, onPictures, onQueue }: Props) {
+/**
+ * Makes pictures from the prompt on the ComfyUI machine, or from a starting picture: redrawn from the
+ * prompt at a strength, or edited by an instruction with an edit model. The pictures go to `onPictures`.
+ */
+export default function ComfyGenerate({
+  chapterId, storyId, checkpoint, moment, prompt, negative, loaded = null, start = null, onClearStart,
+  startMode = "redraw", onStartMode, editModels = { state: "checking" }, onPictures, onQueue,
+}: Props) {
   const settings = useSettings();
   const comfy = settings.comfy;
+  // What to change, when editing the starting picture by instruction.
+  const [instruction, setInstruction] = useState("");
+  const editing = start !== null && startMode === "edit";
+  const blocked = editBlocked(editModels);
+  const ready = editModels.state === "done" ? editModels.ready : [];
+  const chosen = ready.find((c) => c.model.id === comfy.editModel) ?? ready[0] ?? null;
   // The jobs being made, oldest first; `jobs` holds what Stop needs for each.
   const [queue, setQueue] = useState<Queued[]>([]);
   const jobs = useRef(new Map<string, { promptId: string | null; ctl: AbortController; url: string }>());
@@ -182,13 +208,16 @@ export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, 
    */
   function ask() {
     setStatus(null);
+    if (editing && !chosen) return setStatus({ ok: false, text: blocked ?? "No edit model is ready." });
     const input: JobInput = {
       prompt: prompt.trim(),
-      negative: negative.trim(),
+      // Edits follow the instruction alone.
+      negative: editing ? "" : negative.trim(),
       moment,
       // The checkpoint is the story's, not the shared setting.
       comfy: { ...comfy, checkpoint },
       start,
+      edit: editing && chosen ? { check: chosen, instruction: instruction.trim() } : null,
       seed: reuseSeed && loadedSeed !== null ? loadedSeed : null,
     };
     const g = gathering.current;
@@ -216,11 +245,13 @@ export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, 
         progress: { stage: "gathering" },
         prompt: input.prompt,
         negative: input.negative,
-        checkpoint,
+        checkpoint: input.edit ? input.edit.check.files.model : checkpoint,
         width: comfy.width,
         height: comfy.height,
-        denoise: start ? comfy.denoise : null,
+        denoise: start && !input.edit ? comfy.denoise : null,
         source: start?.source ?? null,
+        instruction: input.edit?.instruction ?? null,
+        editModel: input.edit?.check.model.id ?? null,
         moment,
       },
     ]);
@@ -240,7 +271,7 @@ export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, 
     const job = jobs.current.get(key);
     if (!job) return;
     const { ctl } = job;
-    const { prompt, negative, moment, comfy, start } = input;
+    const { prompt, negative, moment, comfy, start, edit } = input;
     const setProgress = (progress: Progress) => {
       setQueue((prev) => prev.map((q) => (q.key === key ? { ...q, progress } : q)));
     };
@@ -249,11 +280,17 @@ export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, 
     // Names this job's WebSocket connection, so ComfyUI sends its progress there.
     const clientId = `storytime-${randomSeed().toString(36)}`;
     try {
-      if (!prompt) throw new Error("Write or type a prompt first.");
-      const base = parseWorkflow(comfy.workflow);
-      if (describeWorkflow(base).checkpoint && !comfy.checkpoint) throw new Error("This story has no checkpoint chosen. Choose one in Story details.");
-      if (start && !describeWorkflow(base).image) {
-        throw new Error("Your workflow can't start from a picture. Clear the starting picture, or see Settings for how to allow it.");
+      // An edit uses its own workflow, so the picture workflow and the story's checkpoint don't matter.
+      const base = edit ? null : parseWorkflow(comfy.workflow);
+      if (edit) {
+        if (!start) throw new Error("Choose a picture to edit first.");
+        if (!edit.instruction) throw new Error("Say what to change first.");
+      } else {
+        if (!prompt) throw new Error("Write or type a prompt first.");
+        if (describeWorkflow(base!).checkpoint && !comfy.checkpoint) throw new Error("This story has no checkpoint chosen. Choose one in Story details.");
+        if (start && !describeWorkflow(base!).image) {
+          throw new Error("Your workflow can't start from a picture. Clear the starting picture, or see Settings for how to allow it.");
+        }
       }
       let from: Uploaded | null = null;
       if (start) {
@@ -269,21 +306,27 @@ export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, 
         }
         setProgress({ stage: "queued", ahead: null });
       }
-      // From a picture the pictures are its size.
-      const width = from?.width ?? comfy.width;
-      const height = from?.height ?? comfy.height;
+      // From a picture the pictures are its size; an edit is its shape at about one megapixel.
+      const { width, height } = from && edit ? editSize(from.width, from.height) : { width: from?.width ?? comfy.width, height: from?.height ?? comfy.height };
       if (from) setQueue((prev) => prev.map((q) => (q.key === key ? { ...q, width, height } : q)));
-      const workflow = fillWorkflow(base, {
-        prompt,
-        negative,
-        checkpoint: comfy.checkpoint,
-        width,
-        height,
-        count,
-        seed,
-        prefix: filenamePrefix(storyId, chapterId),
-        ...(from && { image: from.name, denoise: comfy.denoise }),
-      });
+      const prefix = filenamePrefix(storyId, chapterId);
+      const workflow =
+        edit && from
+          ? edit.check.model.build(edit.check.files, { image: from.name, instruction: edit.instruction, seed, count, width, height, prefix })
+          : fillWorkflow(base!, {
+              prompt,
+              negative,
+              checkpoint: comfy.checkpoint,
+              width,
+              height,
+              count,
+              seed,
+              prefix,
+              ...(from && { image: from.name, denoise: comfy.denoise }),
+            });
+      // What the pictures were made with: the edit model's file, or the story's checkpoint.
+      const madeWith = edit ? edit.check.files.model : comfy.checkpoint;
+      const denoise = from && !edit ? comfy.denoise : null;
       if (ctl.signal.aborted) throw new DOMException("Stopped", "AbortError");
       const promptId = await queuePrompt(comfy.url, workflow, clientId, { storytime: { chapterId, storyId } });
       job.promptId = promptId;
@@ -302,19 +345,19 @@ export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, 
           prompt_id: promptId,
           prompt,
           negative,
-          checkpoint: comfy.checkpoint,
+          checkpoint: madeWith,
           width,
           height,
           seed,
           count,
           moment,
-          ...(from && { source: start!.source, denoise: comfy.denoise }),
+          ...(from && { source: start!.source, denoise }),
+          ...(edit && { instruction: edit.instruction, edit_model: edit.check.model.id }),
           images,
         });
       } catch (e) {
         setStatus({ ok: false, text: `The pictures are ready, but StoryTime couldn't record how they were made: ${e instanceof Error ? e.message : String(e)}` });
       }
-      const denoise = from ? comfy.denoise : null;
       onPictures?.(
         images.map((image, i) => ({
           key: `${jobId ?? promptId}-${i}`,
@@ -326,11 +369,13 @@ export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, 
           prompt,
           negative,
           seed,
-          checkpoint: comfy.checkpoint,
+          checkpoint: madeWith,
           width,
           height,
           denoise,
           source: from ? start!.source : null,
+          instruction: edit?.instruction ?? null,
+          editModel: edit?.check.model.id ?? null,
           moment,
           chapterId,
           madeAt: Date.now(),
@@ -378,21 +423,81 @@ export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, 
           <img src={start.thumb} alt="Starting picture" />
           <div className="start-picture-controls">
             <p style={{ margin: 0 }}>
-              <strong>Starting from this picture.</strong> <span className="meta">The new pictures are its size.</span>
+              <strong>Starting from this picture.</strong>
             </p>
-            <label className="strength">
-              Strength {comfy.denoise.toFixed(2)}
-              <input
-                type="range"
-                aria-label="Strength"
-                min={0.05}
-                max={1}
-                step={0.05}
-                value={comfy.denoise}
-                onChange={(e) => set({ denoise: Number(e.target.value) })}
-              />
-            </label>
-            <p className="meta" style={{ margin: 0 }}>Low keeps the picture close; high changes more.</p>
+            <div className="row start-modes" role="tablist" aria-label="What to do with it">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={!editing}
+                className={editing ? "secondary" : undefined}
+                onClick={() => onStartMode?.("redraw")}
+                title="Make new pictures from the prompt, starting from this one"
+              >
+                Redraw
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={editing}
+                className={editing ? undefined : "secondary"}
+                onClick={() => onStartMode?.("edit")}
+                disabled={!editing && blocked !== null}
+                title={blocked ?? "Change this picture by telling an edit model what to change"}
+              >
+                Edit
+              </button>
+            </div>
+            {editing ? (
+              chosen ? (
+                <>
+                  <label className="row" style={{ gap: "0.4rem" }}>
+                    Model
+                    <select aria-label="Edit model" value={chosen.model.id} onChange={(e) => set({ editModel: e.target.value })} style={{ width: "auto" }}>
+                      {ready.map((c) => (
+                        <option key={c.model.id} value={c.model.id}>
+                          {c.model.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="meta" style={{ margin: 0 }}>{chosen.model.blurb}</p>
+                  <label>
+                    What to change
+                    <AutoTextarea
+                      aria-label="What to change"
+                      style={{ minHeight: "2.6rem", fontFamily: "inherit" }}
+                      maxLength={LIMITS.picturePrompt}
+                      placeholder="e.g. remove the logo on his shirt; add more smoke around him"
+                      value={instruction}
+                      onChange={(e) => setInstruction(e.target.value)}
+                    />
+                  </label>
+                  <p className="meta" style={{ margin: 0 }}>The prompt above isn&apos;t used. Edits keep the picture&apos;s shape, at about one megapixel.</p>
+                </>
+              ) : (
+                <p className="error" style={{ margin: 0 }}>
+                  {blocked ?? "No edit model is ready."} <Link href="/settings#pictures">Settings</Link>
+                </p>
+              )
+            ) : (
+              <>
+                <p className="meta" style={{ margin: 0 }}>The new pictures are its size.</p>
+                <label className="strength">
+                  Strength {comfy.denoise.toFixed(2)}
+                  <input
+                    type="range"
+                    aria-label="Strength"
+                    min={0.05}
+                    max={1}
+                    step={0.05}
+                    value={comfy.denoise}
+                    onChange={(e) => set({ denoise: Number(e.target.value) })}
+                  />
+                </label>
+                <p className="meta" style={{ margin: 0 }}>Low keeps the picture close; high changes more.</p>
+              </>
+            )}
             <div>
               <button type="button" className="secondary" onClick={onClearStart}>
                 Clear starting picture
@@ -413,10 +518,10 @@ export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, 
         <button
           type="button"
           onClick={ask}
-          disabled={!prompt.trim()}
+          disabled={editing ? !chosen || !instruction.trim() : !prompt.trim()}
           title="Each click makes one picture. Quick clicks with nothing changed in between go to ComfyUI as one job."
         >
-          {busy ? "Queue more" : "Make pictures"}
+          {busy ? "Queue more" : editing ? "Make edit" : "Make pictures"}
         </button>
         <span className="meta">One picture per click.</span>
         {loadedSeed !== null && (

@@ -1078,6 +1078,66 @@ main:has(.library) {
   gap: 0.25rem;
 }
 
+.start-picture-controls textarea,
+.start-picture-controls select {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* On a phone the thumbnail goes above its controls, which need the width for the edit instruction. */
+@media (max-width: 520px) {
+  .start-picture {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .start-picture img {
+    max-width: 12rem;
+  }
+}
+
+/* Redraw or Edit: two buttons side by side, the chosen one filled. */
+.start-modes {
+  gap: 0.35rem;
+}
+
+.start-modes button {
+  padding-block: 0.3rem;
+}
+
+/* The Settings setup check: a list of ticks and crosses per part. */
+.comfy-check {
+  display: grid;
+  gap: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  background: var(--card);
+  overflow-wrap: anywhere;
+}
+
+.comfy-check h3 {
+  margin: 0.4rem 0 0;
+  font-size: 1rem;
+}
+
+.comfy-check ul {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.9rem;
+}
+
+.comfy-check li code {
+  color: var(--fg);
+}
+
+.comfy-check-model {
+  display: grid;
+  gap: 0.2rem;
+}
+
 .strength input[type="range"] {
   padding: 0;
   border: 0;

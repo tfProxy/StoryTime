@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore } from "react";
 import type { ComfySettings as Comfy } from "@/lib/settingsSchema";
 import { comfyVersion, listCheckpoints } from "@/lib/comfy/client";
 import { describeWorkflow, parseWorkflow, WorkflowError, type WorkflowFit } from "@/lib/comfy/workflow";
+import { checkComfy, type ComfyCheck } from "@/lib/comfy/check";
 import AutoTextarea from "./AutoTextarea";
 
 const noop = () => () => {};
@@ -39,12 +40,95 @@ function workflowSummary(text: string): { ok: boolean; text: string } {
   }
 }
 
+// Where the README explains how to install the edit models.
+const SETUP_HELP = "https://github.com/tfProxy/StoryTime#edit-models-in-comfyui";
+
+/** One line of the setup check: a tick or a cross, and what it means. */
+function Line({ ok, children }: { ok: boolean; children: React.ReactNode }) {
+  return (
+    <li className={ok ? "ok" : "error"}>
+      <span aria-hidden="true">{ok ? "✓ " : "✗ "}</span>
+      {children}
+    </li>
+  );
+}
+
+/** What the setup check found: the picture workflow's nodes, the checkpoints, and each edit model's nodes and files. */
+function CheckReport({ check }: { check: ComfyCheck }) {
+  return (
+    <div className="comfy-check" role="status">
+      <p style={{ margin: 0 }}>Connected to ComfyUI {check.version}.</p>
+      <h3>Making pictures</h3>
+      <ul>
+        <Line ok={check.checkpoints.length > 0}>
+          {check.checkpoints.length > 0
+            ? `${check.checkpoints.length} checkpoint${check.checkpoints.length === 1 ? "" : "s"} in models/checkpoints.`
+            : "No checkpoints in models/checkpoints: put an SDXL checkpoint there and restart ComfyUI."}
+        </Line>
+        {check.workflowError ? (
+          <Line ok={false}>{check.workflowError}</Line>
+        ) : (
+          <Line ok={check.missingNodes!.length === 0}>
+            {check.missingNodes!.length === 0
+              ? "ComfyUI has every node the picture workflow uses."
+              : `ComfyUI doesn't have these nodes the picture workflow uses: ${check.missingNodes!.join(", ")}. Install the custom nodes they come from, or update ComfyUI.`}
+          </Line>
+        )}
+      </ul>
+      <h3>Edit models (for Edit this)</h3>
+      {check.edits.map((e) => (
+        <div key={e.model.id} className="comfy-check-model">
+          <p style={{ margin: 0 }} className={e.ready ? "ok" : "error"}>
+            <strong>{e.model.name}</strong>: {e.ready ? "ready." : "not ready, so it isn't offered."}
+          </p>
+          <ul>
+            {e.parts.map((p) => (
+              <Line key={p.part.key} ok={p.file !== null}>
+                {p.part.label}:{" "}
+                {p.file ? (
+                  <code>{p.file}</code>
+                ) : (
+                  <>
+                    missing. Put <code>{p.part.recommended}</code> in <code>ComfyUI/models/{p.part.folder}</code>.
+                  </>
+                )}
+              </Line>
+            ))}
+            {e.missingNodes.length > 0 && (
+              <Line ok={false}>ComfyUI doesn&apos;t have the nodes {e.missingNodes.join(", ")}. Update ComfyUI.</Line>
+            )}
+            {e.missingOptions.length > 0 && <Line ok={false}>ComfyUI is too old ({e.missingOptions.join("; ")}). Update ComfyUI.</Line>}
+          </ul>
+        </div>
+      ))}
+      <p className="meta" style={{ margin: 0 }}>
+        New files show up after ComfyUI is restarted (or after Refresh in its menu). <a href={SETUP_HELP} target="_blank" rel="noreferrer">Step-by-step setup</a>
+      </p>
+    </div>
+  );
+}
+
 /** The ComfyUI section of Settings: where it is, a connection test, and an optional workflow of your own. */
 export default function ComfySettings({ comfy, onChange }: { comfy: Comfy; onChange: (patch: Partial<Comfy>) => void }) {
   const origin = useOrigin();
   const [testing, setTesting] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const summary = workflowSummary(comfy.workflow);
+  const [checking, setChecking] = useState(false);
+  const [check, setCheck] = useState<ComfyCheck | null>(null);
+
+  async function runCheck() {
+    setChecking(true);
+    setStatus(null);
+    setCheck(null);
+    try {
+      setCheck(await checkComfy(comfy.url, comfy.workflow));
+    } catch (e) {
+      setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setChecking(false);
+    }
+  }
 
   async function test() {
     setTesting(true);
@@ -81,8 +165,12 @@ export default function ComfySettings({ comfy, onChange }: { comfy: Comfy; onCha
         <button type="button" className="secondary" onClick={() => void test()} disabled={testing || !comfy.url}>
           {testing ? "Testing…" : "Test connection"}
         </button>
+        <button type="button" className="secondary" onClick={() => void runCheck()} disabled={checking || !comfy.url}>
+          {checking ? "Checking…" : "Check setup"}
+        </button>
         {status && <span className={status.ok ? "ok" : "error"}>{status.text}</span>}
       </div>
+      {check && <CheckReport check={check} />}
       <label>
         Workflow <small>(optional: paste a workflow exported from ComfyUI with Workflow › Export (API); leave empty for the built-in SDXL one)</small>
         <AutoTextarea

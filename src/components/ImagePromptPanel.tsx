@@ -12,7 +12,8 @@ import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
 import ComfyGenerate from "./ComfyGenerate";
 import type { StartPicture } from "@/lib/comfy/startPicture";
-import type { PendingJob, Picture, PromptToLoad } from "./pictures";
+import type { PendingJob, Picture, PromptToLoad, StartMode } from "./pictures";
+import type { EditModels } from "./useEditModels";
 import type { PictureBoxes, PictureDraft } from "@/lib/pictureDrafts";
 import { EMPTY_BOXES, usePictureDraft } from "./usePictureDraft";
 import { PROMPT_STYLE_NAMES, unsetPictureSettings, type StoryPictures } from "./StoryPictureSettings";
@@ -33,6 +34,11 @@ type Props = {
   /** The picture new pictures start from (image to image), and how to drop it. */
   start?: StartPicture | null;
   onClearStart?: () => void;
+  /** Whether the starting picture is redrawn from the prompt or edited by instruction, and how to switch. */
+  startMode?: StartMode;
+  onStartMode?: (mode: StartMode) => void;
+  /** Which edit models ComfyUI can run. */
+  editModels?: EditModels;
   /** Called with each finished job's pictures. */
   onPictures?: (pictures: Picture[]) => void;
   /** Called with the jobs being made, newest first. */
@@ -51,7 +57,7 @@ type Props = {
  * (chapter start, chapter end) has its own boxes, so switching between them brings each one's prompt back;
  * they are kept for the chapter on the server, so they are there again next time.
  */
-export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null, start = null, onClearStart, onPictures, onQueue, draft = null }: Props) {
+export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null, start = null, onClearStart, startMode = "redraw", onStartMode, editModels, onPictures, onQueue, draft = null }: Props) {
   const settings = useSettings();
   const chapter = path[path.length - 1];
   const [moment, setMoment] = useState<ImageMoment>(draft?.moment ?? "start");
@@ -230,6 +236,9 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
         negative={result.negative}
         loaded={loaded}
         start={start}
+        startMode={startMode}
+        onStartMode={onStartMode}
+        editModels={editModels}
         onPictures={onPictures}
         onQueue={onQueue}
         onClearStart={onClearStart}

@@ -6,7 +6,8 @@ import type { ContextChapter, ContextCodexEntry } from "@/lib/ai/prompts";
 import ChapterImageEditor from "./ChapterImageEditor";
 import ImagePromptPanel, { type IllustratedStory, type LoadedPrompt } from "./ImagePromptPanel";
 import ChapterPictures from "./ChapterPictures";
-import { picturesOf, type PendingJob, type Picture, type PromptToLoad } from "./pictures";
+import { picturesOf, type PendingJob, type Picture, type PromptToLoad, type StartMode } from "./pictures";
+import { editBlocked, useEditModels } from "./useEditModels";
 import { useSettings } from "@/lib/settings";
 import type { PictureDraft } from "@/lib/pictureDrafts";
 import type { PictureJob } from "@/lib/pictureJobs";
@@ -37,22 +38,25 @@ type Props = {
  */
 export default function IllustrateWorkspace({ chapterId, chapter, titles, story, path, codex, versions, made, draft, jobs }: Props) {
   const [loaded, setLoaded] = useState<LoadedPrompt | null>(null);
-  // The picture new pictures start from (image to image), when one is chosen.
+  // The picture new pictures start from, when one is chosen, and whether it is redrawn or edited.
   const [start, setStart] = useState<StartPicture | null>(null);
+  const [startMode, setStartMode] = useState<StartMode>("redraw");
+  const comfy = useSettings().comfy;
+  const editModels = useEditModels(comfy.url);
+  const blocked = editBlocked(editModels);
   // The chapter's pictures, newest first.
   const [pictures, setPictures] = useState<Picture[]>(() => picturesOf(jobs));
   // The jobs being made, newest first, shown among the pictures.
   const [pending, setPending] = useState<PendingJob[]>([]);
-  const comfy = useSettings().comfy;
-
   function load(p: PromptToLoad) {
     setLoaded({ ...p, nonce: (loaded?.nonce ?? 0) + 1 });
     // On a phone the prompt box is far above the pictures.
     document.getElementById("picture-prompt")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function startFrom(picture: StartPicture) {
+  function startFrom(picture: StartPicture, mode: StartMode) {
     setStart(picture);
+    setStartMode(mode);
     document.getElementById("picture-prompt")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -67,6 +71,9 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
           codex={codex}
           loaded={loaded}
           start={start}
+          startMode={startMode}
+          onStartMode={setStartMode}
+          editModels={editModels}
           onClearStart={() => setStart(null)}
           onPictures={(made) => setPictures((prev) => [...made, ...prev])}
           onQueue={setPending}
@@ -91,7 +98,8 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
                   settings: m.job && { checkpoint: m.job.checkpoint, width: m.job.width, height: m.job.height, denoise: null },
                 })
               }
-              onStart={comfy.url ? (v) => startFrom(fromSaved(chapterId, slot, v)) : undefined}
+              onStart={comfy.url ? (v, mode) => startFrom(fromSaved(chapterId, slot, v), mode) : undefined}
+              editBlocked={blocked}
             />
           ))}
         </div>
@@ -105,7 +113,8 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
             onChange={(key, patch) => setPictures((prev) => prev.map((p) => (p.key === key ? { ...p, ...patch } : p)))}
             onClear={() => setPictures((prev) => prev.map((p) => (p.fresh ? { ...p, fresh: false } : p)))}
             pending={pending}
-            onStart={(image) => startFrom(fromComfyImage(comfy.url, image))}
+            onStart={(image, mode) => startFrom(fromComfyImage(comfy.url, image), mode)}
+            editBlocked={blocked}
             onLoadPrompt={load}
             used={{ header: made.header?.from ?? null, footer: made.footer?.from ?? null }}
           />

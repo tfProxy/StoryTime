@@ -2,6 +2,7 @@
 // ComfyUI, so ComfyUI must allow this site's origin (start it with --enable-cors-header <origin>)
 // and, when StoryTime is served over https, be on https too.
 import type { Workflow } from "./workflow";
+import type { NodeInfo } from "./editModels";
 
 export class ComfyError extends Error {}
 
@@ -65,7 +66,21 @@ export async function listCheckpoints(url: string): Promise<string[]> {
   return Array.isArray(options) ? options.filter((x): x is string => typeof x === "string") : [];
 }
 
-type NodeErrors = Record<string, { class_type?: string; errors?: { message?: string; details?: string }[] }>;
+/**
+ * What ComfyUI says about each of these nodes (its inputs, and the choices they offer), or null for a
+ * node ComfyUI doesn't have. Asked one node at a time: the list of every node can be several megabytes.
+ */
+export async function nodeInfo(url: string, names: string[]): Promise<Record<string, NodeInfo>> {
+  const answers = await Promise.all(
+    names.map(async (name) => {
+      const info = await json<Record<string, NodeInfo>>(url, `/object_info/${encodeURIComponent(name)}`);
+      return [name, info[name] ?? null] as const;
+    }),
+  );
+  return Object.fromEntries(answers);
+}
+
+type NodeErrors =Record<string, { class_type?: string; errors?: { message?: string; details?: string }[] }>;
 
 /** Explains a refused workflow in one line. */
 function refusal(body: { error?: { message?: string; details?: string }; node_errors?: NodeErrors }): string {

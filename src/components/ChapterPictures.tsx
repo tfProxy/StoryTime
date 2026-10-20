@@ -9,7 +9,7 @@ import OtherChapterPictures from "./OtherChapterPictures";
 import PictureViewer from "./PictureViewer";
 import PictureInfo from "./PictureInfo";
 import { usePictureSaver } from "./usePictureSaver";
-import { inView, pictureCaption, progressText, timeline, type PendingJob, type Picture, type PictureView, type PromptToLoad } from "./pictures";
+import { inView, pictureCaption, progressText, timeline, type PendingJob, type Picture, type PictureView, type PromptToLoad, type StartMode } from "./pictures";
 
 const SHOWN_PROMPT = 80;
 
@@ -40,8 +40,10 @@ type Props = {
   onClear: () => void;
   /** The jobs being made, newest first; they show at the top, a place kept for each of their pictures. */
   pending?: PendingJob[];
-  /** Called to make new pictures starting from one of these. */
-  onStart: (image: ComfyImage) => void;
+  /** Called to make new pictures starting from one of these: redrawn from the prompt, or edited by instruction. */
+  onStart: (image: ComfyImage, mode: StartMode) => void;
+  /** Why pictures can't be edited by instruction now (no edit model installed), or null. */
+  editBlocked?: string | null;
   /** Called to bring back the prompt and settings a picture was made with. */
   onLoadPrompt: (p: PromptToLoad) => void;
   /** Which picture is the chapter's header and footer now, when known. */
@@ -54,7 +56,7 @@ type Props = {
  * this visit, so coming back shows only the pinned ones; "All" every one but the rejected; and "Rejected"
  * those, to restore one. "Other chapters" lists what was made for the rest of the story.
  */
-export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, pictures, onChange, onClear, pending = [], onStart, onLoadPrompt, used }: Props) {
+export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, pictures, onChange, onClear, pending = [], onStart, editBlocked = null, onLoadPrompt, used }: Props) {
   /** The slots a picture is saved in now. */
   const inUse = (p: Picture): ImageSlot[] => IMAGE_SLOTS.filter((slot) => used?.[slot] && used[slot].jobId === p.jobId && used[slot].index === p.index);
   const [view, setView] = useState<View>("shortlist");
@@ -167,7 +169,7 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
         const first = group.pending[0] ?? group.pictures[0];
         return (
           <div key={group.key} className="picture-group">
-            <ul className="candidates" aria-label={`Pictures from “${short(first.prompt, SHOWN_PROMPT)}”`}>
+            <ul className="candidates" aria-label={`Pictures from “${first.instruction ? `Edit: ${short(first.instruction, SHOWN_PROMPT)}` : short(first.prompt, SHOWN_PROMPT)}”`}>
               {group.pending.map((job) => (
                 <PendingTiles key={job.key} job={job} />
               ))}
@@ -183,6 +185,7 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
                   saver={saver}
                   caption={pictureCaption(p)}
                   onStart={onStart}
+                  editBlocked={editBlocked}
                   mark={p.mark}
                   onMark={(next) => void mark(p, next)}
                   onOpen={() => {
@@ -198,7 +201,17 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
         );
       })}
       {view === "other" ? (
-        <OtherChapterPictures chapterId={chapterId} storyId={storyId} titles={titles} comfyUrl={comfyUrl} saver={saver} onLoadPrompt={loadFrom} onStart={onStart} onInfo={setInfo} />
+        <OtherChapterPictures
+          chapterId={chapterId}
+          storyId={storyId}
+          titles={titles}
+          comfyUrl={comfyUrl}
+          saver={saver}
+          onLoadPrompt={loadFrom}
+          onStart={onStart}
+          editBlocked={editBlocked}
+          onInfo={setInfo}
+        />
       ) : (
         shown.length === 0 && !(joined && pending.length > 0) && <p className="meta" style={{ margin: 0 }}>{empty()}</p>
       )}
@@ -216,10 +229,11 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
             loadFrom(p);
           }}
           onInfo={setInfo}
-          onStart={(p) => {
+          onStart={(p, mode) => {
             setViewing(null);
-            onStart(p.image);
+            onStart(p.image, mode);
           }}
+          editBlocked={editBlocked}
           saver={saver}
           status={status}
         />
@@ -236,11 +250,12 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
             setViewing(null);
             loadFrom(info);
           }}
-          onStart={() => {
+          onStart={(mode) => {
             setInfo(null);
             setViewing(null);
-            onStart(info.image);
+            onStart(info.image, mode);
           }}
+          editBlocked={editBlocked}
         />
       )}
     </section>

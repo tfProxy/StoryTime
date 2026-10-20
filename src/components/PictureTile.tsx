@@ -5,7 +5,8 @@ import type { ImageSlot } from "@/lib/imageSlots";
 import { imageUrl, type ComfyImage } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
 import type { PictureSaver } from "./usePictureSaver";
-import PictureButtons, { InUseBadge } from "./PictureButtons";
+import PictureButtons, { InUseBadge, startItems } from "./PictureButtons";
+import type { StartMode } from "./pictures";
 
 type Props = {
   comfyUrl: string;
@@ -19,8 +20,10 @@ type Props = {
   saver: PictureSaver;
   /** The slots this picture is saved in now (the chapter's header, footer, or both). */
   inUse?: ImageSlot[];
-  /** Called to make new pictures starting from this one. */
-  onStart?: (image: ComfyImage) => void;
+  /** Called to make new pictures starting from this one: redrawn from the prompt, or edited by instruction. */
+  onStart?: (image: ComfyImage, mode: StartMode) => void;
+  /** Why it can't be edited by instruction now (no edit model installed), or null. */
+  editBlocked?: string | null;
   /** A short line under the picture, such as its seed and checkpoint. */
   caption?: string;
   /** Called to bring back the prompt this picture was made with. */
@@ -39,7 +42,7 @@ type Props = {
  * when it is the chapter's header or footer now, a badge saying so. A picture ComfyUI no longer has (or
  * can't be reached for) says so, and can't be used.
  */
-export default function PictureTile({ comfyUrl, image, tileKey, jobId, index, saver, inUse = [], onStart, caption, onLoadPrompt, mark = null, onMark, onOpen, onInfo }: Props) {
+export default function PictureTile({ comfyUrl, image, tileKey, jobId, index, saver, inUse = [], onStart, editBlocked = null, caption, onLoadPrompt, mark = null, onMark, onOpen, onInfo }: Props) {
   const [missing, setMissing] = useState(false);
   const src = imageUrl(comfyUrl, image);
   return (
@@ -77,7 +80,7 @@ export default function PictureTile({ comfyUrl, image, tileKey, jobId, index, sa
           mark={mark}
           onMark={onMark}
           menu={[
-            onStart && !missing && { label: "Start from this", title: "Make new pictures starting from this one", run: () => onStart(image) },
+            ...(onStart && !missing ? startItems((mode) => onStart(image, mode), editBlocked) : []),
             onLoadPrompt && { label: "Load prompt", title: "Put this picture's prompt back in the prompt boxes", run: onLoadPrompt },
             onInfo && { label: "Info", title: "Everything this picture was made with, to copy", run: onInfo },
             !missing && { label: "Open in a new tab", href: src },

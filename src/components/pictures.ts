@@ -3,6 +3,10 @@
 import type { ImageMoment } from "@/lib/ai/imagePrompt";
 import type { ComfyImage, Progress } from "@/lib/comfy/client";
 import type { PictureJob, PictureMark } from "@/lib/pictureJobs";
+import { editModel } from "@/lib/comfy/editModels";
+
+/** How a starting picture is used: redrawn from the prompt at a strength, or edited by instruction. */
+export type StartMode = "redraw" | "edit";
 
 /** The shared settings a picture was made with, which "Load prompt" offers to use again. */
 export type MadeWith = { checkpoint: string; width: number; height: number; denoise: number | null };
@@ -33,6 +37,9 @@ export type Picture = {
   denoise: number | null;
   /** The starting picture it was made from (`comfy:…` or `saved:…`), or null. */
   source: string | null;
+  /** An edit: what it was told to change, and the edit model's id (see EDIT_MODELS); null otherwise. */
+  instruction: string | null;
+  editModel: string | null;
   moment: ImageMoment | null;
   /** The chapter it was made for. */
   chapterId: string;
@@ -60,6 +67,8 @@ export function picturesOf(jobs: PictureJob[]): Picture[] {
       height: job.height,
       denoise: job.denoise,
       source: job.source,
+      instruction: job.instruction ?? null,
+      editModel: job.edit_model ?? null,
       moment: job.moment,
       chapterId: job.chapter_id,
       madeAt: job.created_at,
@@ -71,9 +80,9 @@ export function picturesOf(jobs: PictureJob[]): Picture[] {
 }
 
 /** What tells pictures from the same prompt apart: the seed and the settings. */
-export function pictureCaption(c: { seed: number; checkpoint: string; width: number; height: number; denoise: number | null }): string {
+export function pictureCaption(c: { seed: number; checkpoint: string; width: number; height: number; denoise: number | null; editModel?: string | null }): string {
   return [
-    c.checkpoint.replace(/\.(safetensors|ckpt)$/i, ""),
+    (c.editModel && editModel(c.editModel)?.name) || c.checkpoint.replace(/\.(safetensors|ckpt)$/i, ""),
     `${c.width} × ${c.height}`,
     `seed ${c.seed}`,
     c.denoise !== null && `strength ${c.denoise}`,
@@ -112,7 +121,9 @@ export function pictureDetails(p: Picture, titles: Record<string, string>): Pict
   return [
     { label: "Chapter", value: p.moment ? `${chapter}, ${MOMENT_NAMES[p.moment]}` : chapter },
     { label: "Made", value: new Date(p.madeAt).toLocaleString() },
-    { label: "Checkpoint", value: p.checkpoint || "(the workflow's own)" },
+    ...(p.editModel
+      ? [{ label: "Edit model", value: `${editModel(p.editModel)?.name ?? p.editModel} (${p.checkpoint})` }]
+      : [{ label: "Checkpoint", value: p.checkpoint || "(the workflow's own)" }]),
     { label: "Size", value: `${p.width} × ${p.height}` },
     { label: "Seed", value: String(p.seed) },
     ...(p.batch > 1 ? [{ label: "Batch", value: `picture ${p.index + 1} of ${p.batch} (batch size ${p.batch}, batch index ${p.index})` }] : []),
@@ -133,6 +144,7 @@ function codeBlock(text: string): string {
 export function pictureMarkdown(p: Picture, titles: Record<string, string>): string {
   return [
     `# ${p.image.filename}`,
+    ...(p.instruction ? ["## Edit instruction", codeBlock(p.instruction)] : []),
     "## Prompt",
     codeBlock(p.prompt),
     "## Negative prompt",
@@ -156,7 +168,7 @@ export function progressText(p: JobProgress): string {
 }
 
 /** What a run of pictures shares: the prompts and the settings they were made with. */
-type MadeFrom = Pick<Picture, "prompt" | "negative" | "checkpoint" | "width" | "height" | "denoise" | "source" | "moment">;
+type MadeFrom = Pick<Picture, "prompt" | "negative" | "checkpoint" | "width" | "height" | "denoise" | "source" | "instruction" | "editModel" | "moment">;
 
 /** A job still being made, with a place kept for each of its pictures. */
 export type PendingJob = MadeFrom & { key: string; count: number; progress: JobProgress; stop: () => void };
@@ -166,7 +178,7 @@ export type PendingJob = MadeFrom & { key: string; count: number; progress: JobP
  * only counts for pictures made from the prompt alone.
  */
 const settingsOf = (m: MadeFrom) =>
-  JSON.stringify([m.prompt, m.negative, m.checkpoint, m.moment, m.source, m.denoise, m.source ? null : [m.width, m.height]]);
+  JSON.stringify([m.prompt, m.negative, m.checkpoint, m.moment, m.source, m.denoise, m.instruction, m.editModel, m.source ? null : [m.width, m.height]]);
 
 /** A run of pictures made one after another with the same settings: its jobs still being made, then its pictures. */
 export type PictureRun = { key: string; pending: PendingJob[]; pictures: Picture[] };

@@ -301,10 +301,10 @@ try {
 
   // ---- the ☰ menu ----
   const more = items.first().getByRole("button", { name: "More" });
-  ok(await items.first().getByRole("button", { name: "Load prompt" }).count() === 0 && await items.first().getByRole("button", { name: "Start from this" }).count() === 0, "Load prompt and Start from this are not buttons on the tile");
+  ok(await items.first().getByRole("button", { name: "Load prompt" }).count() === 0 && await items.first().getByRole("button", { name: "Redraw from this" }).count() === 0, "Load prompt and Redraw from this are not buttons on the tile");
   await more.click();
   const menu = items.first().getByRole("menu");
-  ok((await menu.getByRole("menuitem").allInnerTexts()).join("|") === "This is the header picture|Use as footer picture|Start from this|Load prompt|Info|Open in a new tab" && await more.getAttribute("aria-expanded") === "true", "…but in the ☰ menu, after Use as header and footer, with Info and Open in a new tab");
+  ok((await menu.getByRole("menuitem").allInnerTexts()).join("|") === "This is the header picture|Use as footer picture|Redraw from this|Edit this|Load prompt|Info|Open in a new tab" && await more.getAttribute("aria-expanded") === "true", "…but in the ☰ menu, after Use as header and footer, with Info and Open in a new tab");
   const inUseItem = menu.getByRole("menuitem", { name: "This is the header picture" });
   ok(await inUseItem.getAttribute("aria-disabled") === "true", "…where the slot the picture is in says so, and can't be chosen again");
   await inUseItem.click({ force: true });

@@ -1,4 +1,4 @@
-// Image to image on the Illustrate page: "Start from this" on a new picture, a saved header and a past picture,
+// Image to image on the Illustrate page: "Redraw from this" on a new picture, a saved header and a past picture,
 // the Strength slider, the starting picture uploaded to (the fake) ComfyUI, the workflow that is queued, what the
 // job log keeps, Clear, and the errors. The fake ComfyUI refuses a LoadImage for a picture that wasn't uploaded.
 import { launch } from "./browser.mjs";
@@ -57,10 +57,10 @@ try {
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("a keeper beside a lamp");
   await page.getByRole("textbox", { name: "Negative prompt", exact: true }).fill("blurry");
 
-  // Start from this is in a picture's ☰ menu.
+  // Redraw from this is in a picture's ☰ menu.
   const startFrom = async (tile) => {
     await tile.getByRole("button", { name: "More" }).click();
-    await tile.getByRole("menuitem", { name: "Start from this" }).click();
+    await tile.getByRole("menuitem", { name: "Redraw from this" }).click();
   };
 
   // ---- plain pictures first ----
@@ -71,7 +71,7 @@ try {
   // ---- start from a new picture ----
   await startFrom(items.first());
   await thumb.waitFor();
-  ok(await strength.isVisible() && await strength.inputValue() === "0.55", "Start from this shows the picture and a Strength slider at 0.55");
+  ok(await strength.isVisible() && await strength.inputValue() === "0.55", "Redraw from this shows the picture and a Strength slider at 0.55");
   ok(await page.getByText("Low keeps the picture close; high changes more.").isVisible(), "…with a line saying what Strength does");
   ok(await sizeMenu.isDisabled(), "…and the Size menu is off, as the size comes from the picture");
   const clickedSrc = await items.first().locator("img").getAttribute("src");
@@ -101,17 +101,17 @@ try {
   await items.first().getByRole("menuitem", { name: "Use as header picture" }).click();
   await page.getByText("Saved as the header picture.").waitFor();
   const header = page.locator(".image-editor", { has: page.getByRole("heading", { name: "Header picture" }) });
-  await header.getByRole("button", { name: "Start from this" }).waitFor();
-  await header.getByRole("button", { name: "Start from this" }).click();
+  await header.getByRole("button", { name: "Redraw from this" }).waitFor();
+  await header.getByRole("button", { name: "Redraw from this" }).click();
   await until(async () => ((await thumb.getAttribute("src")) ?? "").includes(`/api/chapters/${chapterId}/images/header`), "the thumbnail to be the saved header");
-  ok(true, "Start from this on the saved header makes it the starting picture");
+  ok(true, "Redraw from this on the saved header makes it the starting picture");
   const savedMark = comfy.calls.length;
   // two jobs from it share one upload
   await makeTwo();
   await until(() => prompts(savedMark).length === 1, "the first job to be sent");
   await make(10);
   ok(uploads(savedMark).length === 1 && prompts(savedMark).length === 2 && (await jobs())[0].source === `saved:${chapterId}:header`, "…two jobs from it upload it once, and the log says it came from the saved header");
-  ok(await page.locator(".image-editor", { has: page.getByRole("heading", { name: "Footer picture" }) }).getByRole("button", { name: "Start from this" }).count() === 0, "an empty slot has no Start from this");
+  ok(await page.locator(".image-editor", { has: page.getByRole("heading", { name: "Footer picture" }) }).getByRole("button", { name: "Redraw from this" }).count() === 0, "an empty slot has no Redraw from this");
 
   // ---- clear ----
   await page.getByRole("button", { name: "Clear starting picture" }).click();
@@ -134,7 +134,7 @@ try {
   ok((await page.locator(".chapter-pictures").innerText()).includes("strength 0.3"), "an earlier picture made from a picture says its strength");
   await startFrom(pastTiles.nth(1));
   await thumb.waitFor();
-  ok(((await thumb.getAttribute("src")) ?? "").includes("/view?"), "Start from this on a past picture makes it the starting picture");
+  ok(((await thumb.getAttribute("src")) ?? "").includes("/view?"), "Redraw from this on a past picture makes it the starting picture");
 
   // ---- errors ----
   comfy.setMode({ fail: "upload" });

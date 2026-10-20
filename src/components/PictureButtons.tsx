@@ -6,6 +6,7 @@ import type { ComfyImage } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
 import { SLOT_NAMES, type PictureSaver } from "./usePictureSaver";
 import { FooterIcon, HeaderIcon, MenuIcon, PinIcon } from "./PictureIcons";
+import type { StartMode } from "./pictures";
 
 // The buttons and badge on a picture, the same on a tile in the Pictures panel and in the full-size viewer.
 
@@ -30,6 +31,22 @@ export function InUseBadge({ inUse }: { inUse: ImageSlot[] }) {
 }
 
 export type MenuItem = { label: string; title?: string; run?: () => void; href?: string; icon?: () => React.JSX.Element; disabled?: boolean };
+
+/**
+ * The ☰ menu's two ways to start from a picture: redraw it from the prompt at a strength, or edit it by
+ * instruction. `editBlocked` says why editing can't be used now (no edit model installed), or is null.
+ */
+export function startItems(start: (mode: StartMode) => void, editBlocked: string | null): MenuItem[] {
+  return [
+    { label: "Redraw from this", title: "Make new pictures from the prompt, starting from this one", run: () => start("redraw") },
+    {
+      label: "Edit this",
+      title: editBlocked ?? "Change this picture by telling an edit model what to change",
+      disabled: editBlocked !== null,
+      run: () => start("edit"),
+    },
+  ];
+}
 
 type Props = {
   image: ComfyImage;

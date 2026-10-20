@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { copyText } from "@/lib/copyText";
-import { pictureDetails, pictureMarkdown, type Picture } from "./pictures";
+import { pictureDetails, pictureMarkdown, type Picture, type StartMode } from "./pictures";
 
 type Props = {
   picture: Picture;
@@ -11,15 +11,17 @@ type Props = {
   onClose: () => void;
   /** Puts the picture's prompt and settings back in the prompt boxes. */
   onLoadPrompt?: () => void;
-  /** Makes new pictures starting from this one. */
-  onStart?: () => void;
+  /** Makes new pictures starting from this one: redrawn from the prompt, or edited by instruction. */
+  onStart?: (mode: StartMode) => void;
+  /** Why it can't be edited by instruction now (no edit model installed), or null. */
+  editBlocked?: string | null;
 };
 
 /**
  * Everything a picture was made with, to make it again here or elsewhere: its prompts and settings, with
  * buttons to copy the prompts, or all of it as Markdown. A modal <dialog>, also over the full-size viewer.
  */
-export default function PictureInfo({ picture, titles, onClose, onLoadPrompt, onStart }: Props) {
+export default function PictureInfo({ picture, titles, onClose, onLoadPrompt, onStart, editBlocked = null }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [copied, setCopied] = useState<{ ok: boolean; text: string; what: string } | null>(null);
   // The button last copied from says so.
@@ -31,7 +33,7 @@ export default function PictureInfo({ picture, titles, onClose, onLoadPrompt, on
     const back = document.activeElement as HTMLElement | null;
     const d = dialog.current;
     if (d && !d.open) d.showModal();
-    // Without scrolling: Load prompt and Start from this scroll up to the prompt as Info closes.
+    // Without scrolling: Load prompt, Redraw from this and Edit this scroll up to the prompt as Info closes.
     return () => back?.focus({ preventScroll: true });
   }, []);
 
@@ -57,6 +59,12 @@ export default function PictureInfo({ picture, titles, onClose, onLoadPrompt, on
           ✕
         </button>
       </div>
+      {picture.instruction && (
+        <div className="picture-info-field">
+          <h3>Edit instruction</h3>
+          <p className="picture-info-text">{picture.instruction}</p>
+        </div>
+      )}
       <div className="picture-info-field">
         <h3>Prompt</h3>
         <p className="picture-info-text">{picture.prompt}</p>
@@ -100,9 +108,20 @@ export default function PictureInfo({ picture, titles, onClose, onLoadPrompt, on
             </button>
           )}
           {onStart && (
-            <button type="button" className="secondary" onClick={onStart} title="Make new pictures starting from this one">
-              Start from this
-            </button>
+            <>
+              <button type="button" className="secondary" onClick={() => onStart("redraw")} title="Make new pictures from the prompt, starting from this one">
+                Redraw from this
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => onStart("edit")}
+                disabled={editBlocked !== null}
+                title={editBlocked ?? "Change this picture by telling an edit model what to change"}
+              >
+                Edit this
+              </button>
+            </>
           )}
         </div>
       )}

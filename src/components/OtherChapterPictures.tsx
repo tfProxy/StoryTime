@@ -5,7 +5,7 @@ import type { PictureJob } from "@/lib/pictureJobs";
 import type { ComfyImage } from "@/lib/comfy/client";
 import PictureTile from "./PictureTile";
 import type { PictureSaver } from "./usePictureSaver";
-import { pictureCaption, picturesOf, type Picture } from "./pictures";
+import { pictureCaption, picturesOf, type Picture, type StartMode } from "./pictures";
 
 const PAGE = 12;
 const SHOWN_PROMPT = 80;
@@ -31,8 +31,10 @@ type Props = {
   saver: PictureSaver;
   /** Called to bring back the prompt and settings a picture was made with. */
   onLoadPrompt: (picture: Picture) => void;
-  /** Called to make new pictures starting from one of these. */
-  onStart: (image: ComfyImage) => void;
+  /** Called to make new pictures starting from one of these: redrawn from the prompt, or edited by instruction. */
+  onStart: (image: ComfyImage, mode: StartMode) => void;
+  /** Why they can't be edited by instruction now, or null. */
+  editBlocked: string | null;
   /** Shows everything a picture was made with. */
   onInfo: (picture: Picture) => void;
 };
@@ -41,7 +43,7 @@ type Props = {
  * Pictures made for the story's other chapters, grouped by chapter and then by job, newest first, a page
  * at a time. Any of them can be used for this chapter, started from, or have its prompt brought back.
  */
-export default function OtherChapterPictures({ chapterId, storyId, titles, comfyUrl, saver, onLoadPrompt, onStart, onInfo }: Props) {
+export default function OtherChapterPictures({ chapterId, storyId, titles, comfyUrl, saver, onLoadPrompt, onStart, editBlocked, onInfo }: Props) {
   const query = `story=${encodeURIComponent(storyId)}&not_chapter=${encodeURIComponent(chapterId)}`;
   const [jobs, setJobs] = useState<PictureJob[]>([]);
   const [next, setNext] = useState<number | null>(null);
@@ -96,7 +98,7 @@ export default function OtherChapterPictures({ chapterId, storyId, titles, comfy
           {/* No text per job: a line between jobs, and Info on a picture says how it was made. */}
           {list.map((job) => (
             <div key={job.id} className="past-job">
-              <ul className="past-tiles" aria-label={`Pictures from “${short(job.prompt)}”`}>
+              <ul className="past-tiles" aria-label={`Pictures from “${job.instruction ? `Edit: ${short(job.instruction)}` : short(job.prompt)}”`}>
                 {picturesOf([job]).map((p) => (
                   <PictureTile
                     key={p.key}
@@ -108,6 +110,7 @@ export default function OtherChapterPictures({ chapterId, storyId, titles, comfy
                     saver={saver}
                     caption={pictureCaption(p)}
                     onStart={onStart}
+                    editBlocked={editBlocked}
                     onLoadPrompt={() => onLoadPrompt(p)}
                     onInfo={() => onInfo(p)}
                   />

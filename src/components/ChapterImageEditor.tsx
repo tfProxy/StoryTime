@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { prepareImage } from "@/lib/prepareImage";
 import { chapterImageUrl, type ImageMade, type ImageSlot } from "@/lib/imageSlots";
+import type { StartMode } from "./pictures";
 
 // The longest side an uploaded illustration keeps. Bigger pictures are scaled down in the browser first.
 const MAX_SIDE = 1600;
@@ -23,12 +24,14 @@ type Props = {
   made?: ImageMade | null;
   /** Called with `made` when the author asks to bring its prompt back. */
   onLoadPrompt?: (made: ImageMade) => void;
-  /** Called with the saved picture's version to make new pictures starting from it. */
-  onStart?: (version: number) => void;
+  /** Called with the saved picture's version to make new pictures starting from it: redrawn, or edited by instruction. */
+  onStart?: (version: number, mode: StartMode) => void;
+  /** Why it can't be edited by instruction now, or null. */
+  editBlocked?: string | null;
 };
 
 /** Upload, replace or remove one of a chapter's pictures. Changes apply straight away. */
-export default function ChapterImageEditor({ chapterId, slot, version: initial, made = null, onLoadPrompt, onStart }: Props) {
+export default function ChapterImageEditor({ chapterId, slot, version: initial, made = null, onLoadPrompt, onStart, editBlocked = null }: Props) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [version, setVersion] = useState(initial);
@@ -114,9 +117,20 @@ export default function ChapterImageEditor({ chapterId, slot, version: initial, 
           {busy ? "Saving…" : version === null ? "Upload picture" : "Replace picture"}
         </button>
         {version !== null && onStart && (
-          <button type="button" className="secondary" disabled={busy} onClick={() => onStart(version)}>
-            Start from this
-          </button>
+          <>
+            <button type="button" className="secondary" disabled={busy} onClick={() => onStart(version, "redraw")} title="Make new pictures from the prompt, starting from this one">
+              Redraw from this
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy || editBlocked !== null}
+              onClick={() => onStart(version, "edit")}
+              title={editBlocked ?? "Change this picture by telling an edit model what to change"}
+            >
+              Edit this
+            </button>
+          </>
         )}
         {version !== null && (
           <button

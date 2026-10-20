@@ -5,8 +5,8 @@ import type { ImageSlot } from "@/lib/imageSlots";
 import { imageUrl } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
 import type { PictureSaver } from "./usePictureSaver";
-import { pictureCaption, type Picture } from "./pictures";
-import PictureButtons, { InUseBadge } from "./PictureButtons";
+import { pictureCaption, type Picture, type StartMode } from "./pictures";
+import PictureButtons, { InUseBadge, startItems } from "./PictureButtons";
 
 // How far a finger has to move sideways to count as a swipe.
 const SWIPE_PX = 50;
@@ -25,8 +25,10 @@ type Props = {
   onLoadPrompt: (picture: Picture) => void;
   /** Shows everything the picture was made with (the Info popup, over the viewer). */
   onInfo: (picture: Picture) => void;
-  /** Makes new pictures starting from the one shown. */
-  onStart?: (picture: Picture) => void;
+  /** Makes new pictures starting from the one shown: redrawn from the prompt, or edited by instruction. */
+  onStart?: (picture: Picture, mode: StartMode) => void;
+  /** Why it can't be edited by instruction now, or null. */
+  editBlocked?: string | null;
   saver: PictureSaver;
   /** The panel's last message (a mark, a save), repeated here because the panel is hidden behind. */
   status: { ok: boolean; text: string; undo?: () => void } | null;
@@ -36,7 +38,7 @@ type Props = {
  * One picture as large as the screen allows, with the view's others a key or a swipe away: ← and → move,
  * P pins, X rejects (or restores), Esc closes. A modal <dialog>, so the page behind can't be reached.
  */
-export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, onClose, onMark, onLoadPrompt, onInfo, onStart, saver, status }: Props) {
+export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, onClose, onMark, onLoadPrompt, onInfo, onStart, editBlocked = null, saver, status }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const swipe = useRef<number | null>(null);
   const [missing, setMissing] = useState<string | null>(null);
@@ -88,8 +90,8 @@ export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, 
         <span className="viewer-count" role="status">
           {at + 1} of {list.length}
         </span>
-        <p className="viewer-prompt" title={current.prompt}>
-          {current.prompt}
+        <p className="viewer-prompt" title={current.instruction ?? current.prompt}>
+          {current.instruction ? `Edit: ${current.instruction}` : current.prompt}
         </p>
         <button type="button" className="viewer-close" onClick={onClose} aria-label="Close" title="Close (Esc)">
           ✕
@@ -141,7 +143,7 @@ export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, 
             pinHint=" (P)"
             rejectHint=" (X)"
             menu={[
-              onStart && missing !== src && { label: "Start from this", title: "Make new pictures starting from this one", run: () => onStart(current) },
+              ...(onStart && missing !== src ? startItems((mode) => onStart(current, mode), editBlocked) : []),
               { label: "Load prompt", title: "Put this picture's prompt back in the prompt boxes", run: () => onLoadPrompt(current) },
               { label: "Info", title: "Everything this picture was made with, to copy", run: () => onInfo(current) },
               missing !== src && { label: "Open in a new tab", href: src },
