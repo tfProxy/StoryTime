@@ -30,7 +30,7 @@ const page = await context.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 
 const makeButton = page.getByRole("button", { name: /^(Make pictures|Queue more)$/ });
-const items = page.locator(".candidates li");
+const items = page.locator(".candidates li.picture-tile");
 const thumb = page.getByRole("img", { name: "Starting picture" });
 const strength = page.getByRole("slider", { name: "Strength" });
 const sizeMenu = page.getByLabel("Size", { exact: true });
@@ -48,7 +48,7 @@ const make = async (total) => {
   await until(async () => (await items.count()) === total && (await ready()), `${total} pictures`, 150);
 };
 // No job is still being made (each running job shows its progress as a status).
-const ready = async () => (await page.locator(".comfy-queue [role=status]").count()) === 0;
+const ready = async () => (await page.locator(".comfy-pending-tile [role=status]").count()) === 0;
 const settingsNow = async () => (await call("GET", "/api/settings")).settings.comfy;
 
 try {
@@ -97,7 +97,8 @@ try {
   ok(uploads(again).length === 0 && nodes(prompts(again)[0], "LoadImage")[0].inputs.image === load.inputs.image, "Make more from the same picture reuses the upload");
 
   // ---- from a saved picture ----
-  await items.first().getByRole("button", { name: "Use as header picture" }).click();
+  await items.first().getByRole("button", { name: "More" }).click();
+  await items.first().getByRole("menuitem", { name: "Use as header picture" }).click();
   await page.getByText("Saved as the header picture.").waitFor();
   const header = page.locator(".image-editor", { has: page.getByRole("heading", { name: "Header picture" }) });
   await header.getByRole("button", { name: "Start from this" }).waitFor();

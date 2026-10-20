@@ -106,26 +106,30 @@ try {
   ok(await until(async () => (await marks()).dawn === "-,pinned", "the button pin"), "the Pin button pins too");
 
   // ---- use it ----
-  await viewer.getByRole("button", { name: "Use as header picture" }).click();
+  await viewer.getByRole("button", { name: "More" }).click();
+  await viewer.getByRole("menuitem", { name: "Use as header picture" }).click();
   await viewer.getByText("Saved as the header picture.").waitFor();
   const header = (await call("GET", `/api/stories/${story.story_id}/export?format=json`)).images.find((i) => i.slot === "header");
-  ok(header?.prompt === "harbour at dawn", "Use as header in the viewer saves the picture shown, with its prompt");
+  ok(header?.prompt === "harbour at dawn", "Use as header in the viewer's ☰ menu saves the picture shown, with its prompt");
   await viewer.locator(".picture-in-use").waitFor();
-  const headerButton = viewer.getByRole("button", { name: "Use as header picture" });
-  ok((await viewer.locator(".picture-in-use").innerText()).trim() === "Header" && await headerButton.getAttribute("aria-pressed") === "true", "…which then shows it is the header, on the picture and on the button");
+  ok((await viewer.locator(".picture-in-use").innerText()).trim() === "Header", "…which then shows it is the header, on the picture");
+  await viewer.getByRole("button", { name: "More" }).click();
+  ok(await viewer.getByRole("menuitem", { name: "This is the header picture" }).getAttribute("aria-disabled") === "true", "…and in its menu");
+  await page.keyboard.press("Escape");
+  const usedAt = await count();
   await page.keyboard.press("ArrowLeft");
-  ok(await viewer.locator(".picture-in-use").count() === 0 && await headerButton.getAttribute("aria-pressed") === "false", "…and the picture before it doesn't (the keys still work after saving)");
+  ok(await viewer.locator(".picture-in-use").count() === 0 && await count() !== usedAt, "…and the picture before it doesn't (the keys still work after saving)");
   // the same buttons, in the same place, as on a tile
   const viewerButtons = await viewer.locator(".picture-marks > button, .picture-marks .tile-menu > button").evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label")));
   const tileButtons = await tiles.first().locator(".picture-marks > button, .picture-marks .tile-menu > button").evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label")));
-  ok(viewerButtons.join() === "Pin,Reject,Use as header picture,Use as footer picture,More" && tileButtons.join() === viewerButtons.join(), `the viewer has the tile's buttons, in the same order (${viewerButtons.join()})`);
+  ok(viewerButtons.join() === "Pin,Reject,More" && tileButtons.join() === viewerButtons.join(), `the viewer has the tile's buttons, in the same order (${viewerButtons.join()})`);
   const frame = await viewer.locator(".viewer-frame").boundingBox();
   const marksBox = await viewer.locator(".picture-marks").boundingBox();
   const shown = await viewer.locator(".viewer-frame img").evaluate((i) => i.naturalWidth / i.naturalHeight);
   ok(Math.abs(frame.x + frame.width - (marksBox.x + marksBox.width)) < 12 && Math.abs(marksBox.y - frame.y) < 12, "…on the picture's top right corner");
   ok(Math.abs(frame.width / frame.height - shown) < 0.02, "…which is the picture's own shape");
   await viewer.getByRole("button", { name: "More" }).click();
-  ok((await viewer.getByRole("menuitem").allInnerTexts()).join("|") === "Start from this|Load prompt|Open in a new tab", "its ☰ menu has Start from this, Load prompt and Open in a new tab");
+  ok((await viewer.getByRole("menuitem").allInnerTexts()).join("|") === "Use as header picture|Use as footer picture|Start from this|Load prompt|Open in a new tab", "its ☰ menu has Use as header and footer, Start from this, Load prompt and Open in a new tab");
   await page.keyboard.press("Escape");
   ok(await viewer.getByRole("menu").count() === 0 && await viewer.isVisible(), "Esc closes the menu, not the viewer");
   await page.keyboard.press("ArrowRight");

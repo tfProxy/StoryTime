@@ -89,7 +89,9 @@ try {
   // ---- a picture ComfyUI no longer has ----
   const gone = tileFor("a picture ComfyUI has lost");
   await gone.getByText("ComfyUI no longer has this picture").waitFor();
-  ok(await gone.getByRole("button", { name: "Use as header picture" }).isDisabled() && await gone.getByRole("button", { name: "Reject" }).isEnabled(), "a picture ComfyUI has lost says so and can't be used, but can be rejected");
+  await gone.getByRole("button", { name: "More" }).click();
+  ok(await gone.getByRole("menuitem").count() === 1 && await gone.getByRole("menuitem", { name: "Load prompt" }).count() === 1 && await gone.getByRole("button", { name: "Reject" }).isEnabled(), "a picture ComfyUI has lost says so and can't be used (its menu only has Load prompt), but can be rejected");
+  await page.keyboard.press("Escape");
 
   // ---- pin ----
   const thirteen = tileFor("lantern glow number 13");
@@ -119,7 +121,8 @@ try {
   ok(await viewButton("All (14)").count() === 1 && await tileFor("lantern glow number 6").count() === 1, "…and it is back under All");
 
   // ---- use one and load its prompt ----
-  await thirteen.getByRole("button", { name: "Use as header picture" }).click();
+  await thirteen.getByRole("button", { name: "More" }).click();
+  await thirteen.getByRole("menuitem", { name: "Use as header picture" }).click();
   await gallery.getByText("Saved as the header picture.").waitFor();
   const header = (await exported()).find((i) => i.slot === "header" && i.chapter_id === second);
   ok(header?.prompt === "lantern glow number 13", `using an earlier picture saves it as the header, with the prompt that made it (${header?.prompt})`);
@@ -156,7 +159,9 @@ try {
   await other.locator(".past-job").first().waitFor();
   ok(await other.locator("h3").allInnerTexts().then((h) => h.length === 1 && h[0] === "The cellar"), "Other chapters lists the story's other chapters under their titles, not this one");
   ok(await other.locator(".past-job img").count() === 2, "…with their pictures");
-  await other.getByRole("button", { name: "Use as footer picture" }).first().click();
+  const otherTile = other.locator(".picture-tile").first();
+  await otherTile.getByRole("button", { name: "More" }).click();
+  await otherTile.getByRole("menuitem", { name: "Use as footer picture" }).click();
   await gallery.getByText("Saved as the footer picture.").waitFor();
   const footer = (await exported()).find((i) => i.slot === "footer" && i.chapter_id === second);
   ok(footer?.prompt === "a cellar stair, dim light", "a picture made for another chapter can be saved here, and keeps its prompt");

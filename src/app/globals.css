@@ -1411,8 +1411,8 @@ dialog.picture-viewer::backdrop {
 
 
 /*
- * A picture's buttons sit on its top right corner: pin and reject, then use as header and footer, then the
- * ☰ menu. A pinned picture has an accent outline; one in use has a badge on its top left corner.
+ * A picture's buttons sit on its top right corner: pin and reject, then the ☰ menu (which has use as
+ * header and footer). A pinned picture has an accent outline; one in use has a badge on its top left corner.
  */
 .picture-frame {
   position: relative;
@@ -1452,15 +1452,10 @@ dialog.picture-viewer::backdrop {
   color: var(--accent-fg);
 }
 
-/* The header and footer buttons are marked unavailable rather than disabled, to keep the keyboard focus. */
+/* Menu items are marked unavailable rather than disabled, so the arrow keys still reach them. */
 .picture-marks button[aria-disabled="true"] {
   opacity: 0.6;
   cursor: default;
-}
-
-/* The slot a picture is in keeps its pressed look. */
-.picture-marks button[aria-pressed="true"][aria-disabled="true"] {
-  opacity: 1;
 }
 
 .tile-menu {
@@ -1483,7 +1478,9 @@ dialog.picture-viewer::backdrop {
 
 .picture-marks .tile-menu-list button,
 .tile-menu-list a {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   width: 100%;
   height: auto;
   padding: 0.5rem 0.7rem;
@@ -1565,36 +1562,10 @@ dialog.picture-viewer::backdrop {
   overflow-wrap: anywhere;
 }
 
-.picture-queue-slot:empty {
-  display: none;
-}
-
 /*
- * The jobs being made, each like a group of pictures: its prompt and Stop, then a place kept for each of
- * its pictures at their size (laid out as the pictures will be), with the job's progress over them.
+ * A job being made keeps a place for each of its pictures in the picture grid, at their size, with the
+ * job's progress (and, on the first, Stop) over it.
  */
-.comfy-queue {
-  display: grid;
-  gap: 1rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.comfy-queue li {
-  display: grid;
-  gap: 0.6rem;
-  min-width: 0;
-  border-top: 1px solid var(--line);
-  padding-top: 0.75rem;
-}
-
-.comfy-pending-tiles {
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
-}
-
 .comfy-pending-tile {
   position: relative;
   display: grid;
@@ -1634,28 +1605,13 @@ dialog.picture-viewer::backdrop {
   text-align: center;
 }
 
-.comfy-queue-line {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.comfy-queue-prompt {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.comfy-queue .meta {
-  margin: 0;
-}
-
-.comfy-queue button {
-  padding: 0.25rem 0.6rem;
+.comfy-pending-progress button {
+  justify-self: center;
+  padding: 0.25rem 0.8rem;
   font-size: 0.9rem;
 }
 
-.comfy-queue progress {
+.comfy-pending-progress progress {
   width: 100%;
 }
 

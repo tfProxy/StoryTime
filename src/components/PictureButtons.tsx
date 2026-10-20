@@ -29,7 +29,7 @@ export function InUseBadge({ inUse }: { inUse: ImageSlot[] }) {
   );
 }
 
-export type MenuItem = { label: string; title?: string; run?: () => void; href?: string };
+export type MenuItem = { label: string; title?: string; run?: () => void; href?: string; icon?: () => React.JSX.Element; disabled?: boolean };
 
 type Props = {
   image: ComfyImage;
@@ -55,13 +55,26 @@ type Props = {
 };
 
 /**
- * On the picture's top right corner: pin and reject, use as the chapter's header or footer, and a ☰ menu
- * with the rest. The header and footer buttons are never `disabled`, only marked so, so the keyboard focus
- * stays on them while a picture is saved.
+ * On the picture's top right corner: pin and reject, and a ☰ menu with Use as header or footer picture
+ * and the rest. Which slot the picture is in now shows as a badge on its other corner (InUseBadge).
  */
 export default function PictureButtons({ image, tileKey, jobId, index, saver, inUse, missing, mark = null, onMark, pinHint = "", rejectHint = "", menu }: Props) {
   // A picture whose job couldn't be recorded has nothing to keep a mark on.
   const unmarkable = jobId === null ? "StoryTime couldn't record this picture, so it can't be pinned or rejected" : undefined;
+  // Use as header and footer come first in the menu; the one it is already is shown, but can't be chosen.
+  const slotItems: MenuItem[] = missing
+    ? []
+    : IMAGE_SLOTS.map((slot) => {
+        const used = inUse.includes(slot);
+        const saving = saver.saving === `${tileKey}-${slot}`;
+        return {
+          label: saving ? `Saving as the ${SLOT_NAMES[slot]}…` : used ? `This is the ${SLOT_NAMES[slot]}` : `Use as ${SLOT_NAMES[slot]}`,
+          title: used ? `This is the chapter's ${SLOT_NAMES[slot]}` : `Use as the chapter's ${SLOT_NAMES[slot]}`,
+          icon: SLOT_ICONS[slot],
+          disabled: used || saver.saving !== null,
+          run: () => void saver.use(tileKey, image, jobId, index, slot),
+        };
+      });
   return (
     <div className="picture-marks">
       {onMark && (
@@ -88,29 +101,7 @@ export default function PictureButtons({ image, tileKey, jobId, index, saver, in
           <span className="picture-marks-gap" />
         </>
       )}
-      {IMAGE_SLOTS.map((slot) => {
-        const Icon = SLOT_ICONS[slot];
-        const used = inUse.includes(slot);
-        const saving = saver.saving === `${tileKey}-${slot}`;
-        const off = used || saver.saving !== null || missing;
-        return (
-          <button
-            key={slot}
-            type="button"
-            aria-label={`Use as ${SLOT_NAMES[slot]}`}
-            aria-pressed={used}
-            aria-disabled={off}
-            aria-busy={saving}
-            title={used ? `This is the chapter's ${SLOT_NAMES[slot]}` : `Use as the chapter's ${SLOT_NAMES[slot]}`}
-            onClick={() => {
-              if (!off) void saver.use(tileKey, image, jobId, index, slot);
-            }}
-          >
-            {saving ? "…" : <Icon />}
-          </button>
-        );
-      })}
-      <PictureMenu items={menu} />
+      <PictureMenu items={[...slotItems, ...menu]} />
     </div>
   );
 }
@@ -165,16 +156,21 @@ function PictureMenu({ items }: { items: (MenuItem | false | undefined | null)[]
                 {item.label}
               </a>
             ) : (
+              // Unavailable items are marked so rather than disabled, so the arrow keys still reach them.
               <button
                 key={item.label}
                 type="button"
                 role="menuitem"
                 title={item.title}
+                aria-disabled={item.disabled || undefined}
                 onClick={() => {
-                  setOpen(false);
+                  if (item.disabled) return;
+                  // Back to ☰, so the keyboard (and the viewer's keys) carry on from there.
+                  close();
                   item.run?.();
                 }}
               >
+                {item.icon && <item.icon />}
                 {item.label}
               </button>
             ),

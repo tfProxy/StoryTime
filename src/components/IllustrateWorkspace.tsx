@@ -6,7 +6,7 @@ import type { ContextChapter, ContextCodexEntry } from "@/lib/ai/prompts";
 import ChapterImageEditor from "./ChapterImageEditor";
 import ImagePromptPanel, { type IllustratedStory, type LoadedPrompt } from "./ImagePromptPanel";
 import ChapterPictures from "./ChapterPictures";
-import { picturesOf, type Picture, type PromptToLoad } from "./pictures";
+import { picturesOf, type PendingJob, type Picture, type PromptToLoad } from "./pictures";
 import { useSettings } from "@/lib/settings";
 import type { PictureDraft } from "@/lib/pictureDrafts";
 import type { PictureJob } from "@/lib/pictureJobs";
@@ -41,8 +41,8 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
   const [start, setStart] = useState<StartPicture | null>(null);
   // The chapter's pictures, newest first.
   const [pictures, setPictures] = useState<Picture[]>(() => picturesOf(jobs));
-  // The place in the pictures panel where the jobs being made are listed.
-  const [queueSlot, setQueueSlot] = useState<HTMLElement | null>(null);
+  // The jobs being made, newest first, shown among the pictures.
+  const [pending, setPending] = useState<PendingJob[]>([]);
   const comfy = useSettings().comfy;
 
   function load(p: PromptToLoad) {
@@ -69,7 +69,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
           start={start}
           onClearStart={() => setStart(null)}
           onPictures={(made) => setPictures((prev) => [...made, ...prev])}
-          queueSlot={queueSlot}
+          onQueue={setPending}
           draft={draft}
         />
       </div>
@@ -104,7 +104,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
             pictures={pictures}
             onChange={(key, patch) => setPictures((prev) => prev.map((p) => (p.key === key ? { ...p, ...patch } : p)))}
             onClear={() => setPictures((prev) => prev.map((p) => (p.fresh ? { ...p, fresh: false } : p)))}
-            queueRef={setQueueSlot}
+            pending={pending}
             onStart={(image) => startFrom(fromComfyImage(comfy.url, image))}
             onLoadPrompt={load}
             used={{ header: made.header?.from ?? null, footer: made.footer?.from ?? null }}

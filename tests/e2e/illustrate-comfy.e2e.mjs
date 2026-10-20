@@ -47,8 +47,16 @@ const makeTwo = async () => {
   await makeButton.click();
   await makeButton.click();
 };
-const live = page.locator(".comfy-queue [role=status]");
-const items = page.locator(".candidates li");
+const live = page.locator(".comfy-pending-tile [role=status]");
+const items = page.locator(".candidates li.picture-tile");
+// A job being made: its first place, which has its progress text and Stop. Newest first.
+const rows = page.locator(".comfy-pending-tile:has([role=status])");
+const headTexts = () => page.locator(".picture-group-head").allInnerTexts();
+// Use as header or footer is in a picture's ☰ menu.
+const useAs = async (tile, slot) => {
+  await tile.getByRole("button", { name: "More" }).click();
+  await tile.getByRole("menuitem", { name: `Use as ${slot} picture` }).click();
+};
 const card = (title) => page.locator(".image-editor", { has: page.getByRole("heading", { name: title }) });
 const promptCalls = (from = 0) => comfy.calls.slice(from).filter((c) => c.method === "POST" && c.path === "/prompt");
 const picturesLoaded = (n) => page.waitForFunction((n) => {
@@ -158,18 +166,18 @@ try {
   // ---- quick clicks with nothing changed are one job ----
   const mark = comfy.calls.length;
   await makeButton.click();
-  const gatherRow = page.locator(".comfy-queue li").first();
-  ok(await until(async () => (await gatherRow.innerText()).includes("a lighthouse at dawn, gulls ×1") && (await gatherRow.innerText()).includes("Click again for more pictures in this job"), "the gathering job"), "a click lists a job of one picture that a moment more can still add to");
+  const gatherGroup = page.locator(".picture-group").first();
+  ok(await until(async () => (await gatherGroup.innerText()).includes("a lighthouse at dawn, gulls") && (await gatherGroup.innerText()).includes("1 being made") && (await gatherGroup.innerText()).includes("Click again for more pictures in this job"), "the gathering job"), "a click shows a job of one picture, under its prompt, that a moment more can still add to");
   await makeButton.click();
-  ok(await until(async () => (await gatherRow.innerText()).includes("×2"), "×2") && await page.locator(".comfy-queue li").count() === 1, "…and a second quick click adds a picture to it rather than a job");
-  ok(await gatherRow.locator(".comfy-pending-tile").count() === 2, "…and a place for its picture straight away");
+  ok(await until(async () => (await gatherGroup.innerText()).includes("2 being made"), "2 being made") && await rows.count() === 1, "…and a second quick click adds a picture to it rather than a job");
+  ok(await gatherGroup.locator(".comfy-pending-tile").count() === 2, "…and a place for its picture straight away");
   await until(() => promptCalls(mark).length === 1, "the job to be sent");
   ok(Object.values(promptCalls(mark)[0].body.prompt).find((n) => n.class_type === "EmptyLatentImage").inputs.batch_size === 2, "…which goes to ComfyUI as one job of two pictures once the clicks stop");
   await live.filter({ hasText: /Step \d+ of 8/ }).waitFor();
   ok(true, "while ComfyUI works, the page shows its progress (Step X of 8)");
   ok(await page.getByRole("button", { name: "Queue more" }).isEnabled() && await page.getByRole("button", { name: "Stop", exact: true }).isVisible(), "…the button says Queue more and stays on, and the job has a Stop button");
-  ok((await page.locator(".comfy-queue li").innerText()).includes("a lighthouse at dawn, gulls ×2"), "…the job is listed with its prompt and how many pictures it makes");
-  ok(await page.locator(".chapter-pictures .comfy-queue").count() === 1, "…at the top of the Pictures panel, where its pictures will arrive");
+  ok((await headTexts())[0].includes("Chapter start · 2 being made · not: blurry, text"), "…the job shows under its prompt, saying how many pictures it makes");
+  ok(await page.locator(".chapter-pictures .picture-group").first().locator(".candidates li").first().evaluate((li) => li.classList.contains("comfy-pending-tile")), "…in the picture grid at the top of the Pictures panel, where its pictures will arrive");
   ok(await page.locator('progress[aria-label="Progress"]').isVisible(), "…with a progress bar");
   const pending = page.locator(".comfy-pending-tile");
   const pendingBoxes = await pending.evaluateAll((ts) => ts.map((t) => { const r = t.getBoundingClientRect(); return { w: r.width, h: r.height }; }));
@@ -220,7 +228,8 @@ try {
 
   // ---- using a picture ----
   ok((await card("Header picture").locator("img.image-editor-preview").count()) === 0, "the header picture is empty before");
-  await page.getByRole("button", { name: "Use as header picture" }).first().click();
+  ok(await page.getByRole("button", { name: /Use as (header|footer) picture/ }).count() === 0, "Use as header and footer are not buttons on the tile");
+  await useAs(items.first(), "header");
   await page.getByText("Saved as the header picture.").waitFor();
   const header = await fetch(`${BASE}/api/chapters/${chapterId}/images/header`);
   const headerBytes = Buffer.from(await header.arrayBuffer());
@@ -238,8 +247,7 @@ try {
   const headerMade = (await savedWith()).find((i) => i.slot === "header");
   ok(headerMade.prompt === "a lighthouse at dawn, gulls" && headerMade.negative === "blurry, text", "the saved header remembers the prompt and negative prompt that made it");
 
-  ok(await page.getByRole("button", { name: "Use as footer picture" }).count() === 2 && await page.getByRole("button", { name: "Use as header picture" }).count() === 2, "every picture can be used as the header or the footer");
-  await page.getByRole("button", { name: "Use as footer picture" }).nth(1).click();
+  await useAs(items.nth(1), "footer");
   await page.getByText("Saved as the footer picture.").waitFor();
   const footer = await fetch(`${BASE}/api/chapters/${chapterId}/images/footer`);
   ok(footer.status === 200 && footer.headers.get("content-type") === "image/jpeg", "…and one saves as the footer picture");
@@ -249,18 +257,20 @@ try {
   const badge = (n) => items.nth(n).locator(".picture-in-use");
   await badge(1).waitFor();
   ok((await badge(0).innerText()).trim() === "Header" && (await badge(1).innerText()).trim() === "Footer", "the pictures in use say so: Header on the first, Footer on the second");
-  const inUseButton = items.first().getByRole("button", { name: "Use as header picture" });
-  ok(await inUseButton.getAttribute("aria-pressed") === "true" && await inUseButton.isDisabled() && await items.nth(1).getByRole("button", { name: "Use as header picture" }).getAttribute("aria-pressed") === "false", "…and the header button of the one in use is shown pressed, and can't save it again");
 
   // ---- the ☰ menu ----
   const more = items.first().getByRole("button", { name: "More" });
   ok(await items.first().getByRole("button", { name: "Load prompt" }).count() === 0 && await items.first().getByRole("button", { name: "Start from this" }).count() === 0, "Load prompt and Start from this are not buttons on the tile");
   await more.click();
   const menu = items.first().getByRole("menu");
-  ok((await menu.getByRole("menuitem").allInnerTexts()).join("|") === "Start from this|Load prompt|Open in a new tab" && await more.getAttribute("aria-expanded") === "true", "…but in the ☰ menu, with Open in a new tab");
-  ok(await items.first().getByRole("menuitem", { name: "Start from this" }).evaluate((e) => e === document.activeElement), "…which puts the keyboard on its first item");
+  ok((await menu.getByRole("menuitem").allInnerTexts()).join("|") === "This is the header picture|Use as footer picture|Start from this|Load prompt|Open in a new tab" && await more.getAttribute("aria-expanded") === "true", "…but in the ☰ menu, after Use as header and footer, with Open in a new tab");
+  const inUseItem = menu.getByRole("menuitem", { name: "This is the header picture" });
+  ok(await inUseItem.getAttribute("aria-disabled") === "true", "…where the slot the picture is in says so, and can't be chosen again");
+  await inUseItem.click({ force: true });
+  ok(await menu.count() === 1 && (await savedWith()).find((i) => i.slot === "header").prompt === "a lighthouse at dawn, gulls", "…(clicking it does nothing)");
+  ok(await inUseItem.evaluate((e) => e === document.activeElement), "…which puts the keyboard on its first item");
   await page.keyboard.press("ArrowDown");
-  ok(await items.first().getByRole("menuitem", { name: "Load prompt" }).evaluate((e) => e === document.activeElement), "…↓ moves down it");
+  ok(await menu.getByRole("menuitem", { name: "Use as footer picture" }).evaluate((e) => e === document.activeElement), "…↓ moves down it");
   await page.keyboard.press("Escape");
   ok(await menu.count() === 0 && await more.evaluate((e) => e === document.activeElement), "Esc closes it, back on the ☰ button");
   await more.click();
@@ -294,15 +304,15 @@ try {
   await reuse.check();
   from = comfy.calls.length;
   await makeTwo();
-  await page.waitForFunction(() => document.querySelectorAll(".candidates li").length === 4);
+  await page.waitForFunction(() => document.querySelectorAll(".candidates li.picture-tile").length === 4 && !document.querySelector(".comfy-pending-tile"));
   ok(seedOf(promptCalls(from)[0]) === seed, "with Reuse seed ticked, the queued workflow has the picture's seed");
   const reused = (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs[0];
   ok(reused.seed === seed && reused.prompt === "a lighthouse at dusk, gulls", "…and the log records that seed with the changed prompt");
   let heads = await page.locator(".picture-group-head").allInnerTexts();
-  ok(heads.length === 1 && heads[0].startsWith("a lighthouse at dusk, gulls") && heads[0].includes("4 pictures"), "pictures from the same prompt are grouped together, whatever their seed");
+  ok(heads.length === 1 && heads[0].startsWith("a lighthouse at dusk, gulls") && heads[0].includes("4 pictures"), "two jobs in a row with the same prompt and settings show as one group, whatever their seed");
   await promptBox.fill("a lighthouse at night");
   await makeTwo();
-  await page.waitForFunction(() => document.querySelectorAll(".candidates li").length === 6);
+  await page.waitForFunction(() => document.querySelectorAll(".candidates li.picture-tile").length === 6 && !document.querySelector(".comfy-pending-tile"));
   heads = await page.locator(".picture-group-head").allInnerTexts();
   ok(heads.length === 2 && heads[0].startsWith("a lighthouse at night") && heads[1].startsWith("a lighthouse at dusk, gulls"), "…and a new prompt starts a new group, above the older one");
   await card("Header picture").getByRole("button", { name: "Load prompt" }).click();
@@ -396,7 +406,6 @@ try {
   comfy.setMode({ steps: 8, stepDelay: 250 });
   const qMark = comfy.calls.length;
   const qBefore = await items.count();
-  const rows = page.locator(".comfy-queue li");
   await promptBox.fill("first in line");
   await makeTwo();
   await live.filter({ hasText: /Step \d+ of 8/ }).waitFor();
@@ -406,13 +415,15 @@ try {
   await promptBox.fill("third, to be stopped");
   await makeButton.click();
   await until(async () => (await rows.count()) === 3 && promptCalls(qMark).length === 3, "three jobs");
-  const rowTexts = await rows.allInnerTexts();
-  ok(rowTexts[0].includes("first in line ×2") && rowTexts[1].includes("second in line ×1") && rowTexts[2].includes("third, to be stopped ×1"), "jobs queued while one runs are listed in order, each with its own prompt and count");
+  const rowHeads = (await headTexts()).slice(0, 3);
+  ok(rowHeads[0].startsWith("third, to be stopped") && rowHeads[0].includes("1 being made") && rowHeads[1].startsWith("second in line") && rowHeads[1].includes("1 being made") && rowHeads[2].startsWith("first in line") && rowHeads[2].includes("2 being made"), `jobs queued while one runs are shown newest first, each under its own prompt with its count, so the running one is last (${rowHeads.map((h) => h.split("\n")[0]).join(" / ")})`);
+  const rowTops = await rows.evaluateAll((rs) => rs.map((r) => r.getBoundingClientRect().top));
+  ok(rowTops.length === 3 && rowTops[0] < rowTops[1] && rowTops[1] < rowTops[2], "…top to bottom");
   ok(promptCalls(qMark).map((c) => Object.values(c.body.prompt).find((n) => n.class_type === "EmptyLatentImage").inputs.batch_size).join() === "2,1,1", "…and each was sent with the settings as they were when it was queued");
-  await until(async () => /Waiting in ComfyUI's queue/.test(await rows.nth(2).locator("[role=status]").innerText()), "the third job to say it is waiting");
+  await until(async () => /Waiting in ComfyUI's queue/.test(await rows.nth(0).locator("[role=status]").innerText()), "the third job to say it is waiting");
   ok(true, "a job behind others says it is waiting in ComfyUI's queue");
   const iMark = comfy.calls.length;
-  await rows.nth(2).getByRole("button", { name: "Stop" }).click();
+  await rows.nth(0).getByRole("button", { name: "Stop" }).click();
   await until(async () => (await rows.count()) === 2, "the stopped job to leave the list");
   await until(async () => comfy.calls.slice(iMark).some((c) => c.method === "GET" && c.path === "/queue"), "ComfyUI's queue to be checked");
   await page.waitForTimeout(200);
@@ -423,12 +434,30 @@ try {
   const qHeads = await page.locator(".picture-group-head").allInnerTexts();
   ok(qHeads[0].startsWith("second in line") && qHeads[0].includes("1 picture") && qHeads[1].startsWith("first in line") && qHeads[1].includes("2 pictures") && !qHeads.some((h) => h.startsWith("third")), "…each under its own prompt, and nothing from the stopped one");
 
+  // ---- the same settings again after others start a new group; straight after, they join it ----
+  await promptBox.fill("first in line");
+  await makeTwo();
+  await until(async () => (await rows.count()) === 0, "the job", 150);
+  let abaHeads = await headTexts();
+  ok(abaHeads.length === qHeads.length + 1 && abaHeads[0].startsWith("first in line") && abaHeads[1].startsWith("second in line") && abaHeads[2].startsWith("first in line"), "first, second, then first again makes three groups");
+  await makeTwo();
+  await until(async () => (await headTexts())[0].includes("2 being made"), "the next job to show");
+  abaHeads = await headTexts();
+  const topGroup = page.locator(".picture-group").first();
+  const topClasses = await topGroup.locator(".candidates li").evaluateAll((lis) => lis.map((li) => li.className));
+  ok(abaHeads.length === qHeads.length + 1 && abaHeads[0].includes("2 pictures · 2 being made"), "a job with the same settings as the newest group joins it while it is being made");
+  ok(topClasses.length === 4 && topClasses.slice(0, 2).every((c) => c.includes("comfy-pending-tile")) && topClasses.slice(2).every((c) => c.includes("picture-tile")), "…with its places first, above the pictures already made");
+  await until(async () => (await rows.count()) === 0 && (await headTexts())[0].includes("4 pictures"), "the job to finish", 150);
+  ok(true, "…and its pictures stay in that group");
+
   // ---- at most eight pictures a job ----
   const capMark = comfy.calls.length;
   await promptBox.fill("ten quick clicks");
   for (let i = 0; i < 10; i++) await makeButton.click();
-  ok(await until(async () => (await rows.count()) === 2, "two jobs") && (await rows.nth(0).innerText()).includes("ten quick clicks ×8") && (await rows.nth(1).innerText()).includes("ten quick clicks ×2"), "ten quick clicks make a job of eight and another of two");
-  await rows.nth(1).getByRole("button", { name: "Stop" }).click();
+  const jobSize = async (n) => page.locator(`.comfy-pending-tile[data-job="${await rows.nth(n).getAttribute("data-job")}"]`).count();
+  ok(await until(async () => (await rows.count()) === 2, "two jobs") && await jobSize(0) === 2 && await jobSize(1) === 8, "ten quick clicks make a job of eight and another of two (newest first)");
+  ok((await headTexts())[0].includes("10 being made") && (await headTexts())[1].startsWith("first in line"), "…shown as one group, as their settings are the same");
+  await rows.nth(0).getByRole("button", { name: "Stop" }).click();
   ok(await until(async () => (await rows.count()) === 1, "the gathering job to go"), "Stop on a job not sent yet drops it");
   await rows.nth(0).getByRole("button", { name: "Stop" }).click();
   await until(async () => (await rows.count()) === 0, "the other job to stop");
@@ -443,13 +472,13 @@ try {
   await promptBox.fill("a lighthouse in fog");
   const pollMark = comfy.calls.length;
   await makeTwo();
-  await page.locator(".candidates li").first().waitFor({ timeout: 15000 });
+  await items.first().waitFor({ timeout: 15000 });
   await picturesLoaded(await items.count());
   ok(await items.count() === 2, "with no WebSocket, the pictures still arrive");
   const pollCalls = comfy.calls.slice(pollMark);
   ok(pollCalls.some((c) => c.method === "UPGRADE") && pollCalls.filter((c) => c.path.startsWith("/history/")).length >= 1, "…found by asking /history after the WebSocket was refused");
   const log = (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs;
-  ok(log.length === 7 && log[0].prompt === "a lighthouse in fog" && log[0].moment === "end" && log[1].moment === "start", "the log has this job (with Chapter end) after the earlier six, and nothing from the refused, failed or stopped jobs");
+  ok(log.length === 9 && log[0].prompt === "a lighthouse in fog" && log[0].moment === "end" && log[1].moment === "start", "the log has this job (with Chapter end) after the earlier eight, and nothing from the refused, failed or stopped jobs");
 
   // ---- the job can't be recorded: the pictures are still usable, just without a prompt kept ----
   await page.route("**/api/picture-jobs", (route) => route.request().method() === "POST" ? route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "disk full" }) }) : route.continue());
@@ -459,11 +488,11 @@ try {
   await picturesLoaded(4);
   ok(await items.count() === 4, "when the job can't be recorded, the page says so and still shows the new pictures");
   await page.unroute("**/api/picture-jobs");
-  await page.getByRole("button", { name: "Use as header picture" }).first().click();
+  await useAs(items.first(), "header");
   await page.getByText("Saved as the header picture.").waitFor();
   const unrecorded = (await savedWith()).find((i) => i.slot === "header");
   ok(unrecorded.prompt === null && unrecorded.negative === null, "…and a picture from it saves without a prompt, replacing the one before");
-  ok((await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs.length === 7, "…and nothing was added to the log");
+  ok((await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs.length === 9, "…and nothing was added to the log");
 
   // ---- clearing ----
   ok(await items.first().getByRole("button", { name: "Pin" }).isDisabled(), "a picture whose job couldn't be recorded can't be pinned");

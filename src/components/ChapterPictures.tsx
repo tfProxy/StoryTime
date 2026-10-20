@@ -9,7 +9,7 @@ import PictureTile from "./PictureTile";
 import OtherChapterPictures from "./OtherChapterPictures";
 import PictureViewer from "./PictureViewer";
 import { usePictureSaver } from "./usePictureSaver";
-import { byPrompt, inView, pictureCaption, type Picture, type PictureView, type PromptToLoad } from "./pictures";
+import { inView, pictureCaption, progressText, timeline, type PendingJob, type Picture, type PictureView, type PromptToLoad } from "./pictures";
 
 const SHOWN_PROMPT = 160;
 const MOMENT_NAMES: Record<ImageMoment, string> = { start: "Chapter start", end: "Chapter end" };
@@ -39,8 +39,8 @@ type Props = {
   onChange: (key: string, patch: Partial<Picture>) => void;
   /** Stops showing this visit's unpinned pictures with the pinned ones. */
   onClear: () => void;
-  /** Receives the element the jobs being made are listed in, at the top of the panel. */
-  queueRef?: (element: HTMLElement | null) => void;
+  /** The jobs being made, newest first; they show at the top, a place kept for each of their pictures. */
+  pending?: PendingJob[];
   /** Called to make new pictures starting from one of these. */
   onStart: (image: ComfyImage) => void;
   /** Called to bring back the prompt and settings a picture was made with. */
@@ -50,11 +50,12 @@ type Props = {
 };
 
 /**
- * The chapter's pictures, grouped by prompt. "Pinned & new" (the default) shows the pinned ones and those
- * made on this visit, so coming back shows only the pinned ones; "All" every one but the rejected; and
- * "Rejected" those, to restore one. "Other chapters" lists what was made for the rest of the story.
+ * The chapter's pictures, newest first, in runs made one after another with the same prompt and settings,
+ * under the jobs still being made. "Pinned & new" (the default) shows the pinned ones and those made on
+ * this visit, so coming back shows only the pinned ones; "All" every one but the rejected; and "Rejected"
+ * those, to restore one. "Other chapters" lists what was made for the rest of the story.
  */
-export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, pictures, onChange, onClear, queueRef, onStart, onLoadPrompt, used }: Props) {
+export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, pictures, onChange, onClear, pending = [], onStart, onLoadPrompt, used }: Props) {
   /** The slots a picture is saved in now. */
   const inUse = (p: Picture): ImageSlot[] => IMAGE_SLOTS.filter((slot) => used?.[slot] && used[slot].jobId === p.jobId && used[slot].index === p.index);
   const [view, setView] = useState<View>("shortlist");
@@ -65,9 +66,12 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
 
   const count = (v: PictureView) => pictures.filter((p) => inView(p, v)).length;
   const shown = view === "other" ? [] : pictures.filter((p) => inView(p, view));
-  const groups = byPrompt(shown);
+  // New pictures arrive in Pinned & new and All, so there the jobs being made join the run they continue;
+  // elsewhere they show on their own at the top.
+  const joined = view === "shortlist" || view === "all";
+  const groups = joined ? timeline(pending, shown) : [...timeline(pending, []), ...timeline([], shown)];
   // The viewer goes through the pictures in the order they are shown.
-  const ordered = groups.flat();
+  const ordered = groups.flatMap((g) => g.pictures);
   const viewed = ordered.find((p) => p.key === viewing) ?? null;
 
   /** A mark changed in the viewer: when it takes the picture out of this view, the viewer moves on to the next one. */
@@ -144,7 +148,6 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
           ))}
         </div>
       </div>
-      <div ref={queueRef} className="picture-queue-slot" />
       {status && (
         <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>
           {status.text}
@@ -158,51 +161,62 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
           )}
         </p>
       )}
+      {groups.map((group) => {
+        const first = group.pending[0] ?? group.pictures[0];
+        const all = [...group.pending, ...group.pictures];
+        const moments = [...new Set(all.flatMap((p) => (p.moment ? [MOMENT_NAMES[p.moment]] : [])))].join(", ");
+        const made = group.pictures.length;
+        const coming = group.pending.reduce((n, job) => n + job.count, 0);
+        return (
+          <div key={group.key} className="picture-group">
+            <div className="picture-group-head">
+              <p style={{ margin: 0 }} title={first.prompt}>
+                {short(first.prompt, SHOWN_PROMPT)}
+              </p>
+              <p className="meta" style={{ margin: 0 }}>
+                {[
+                  moments,
+                  made > 0 && (made === 1 ? "1 picture" : `${made} pictures`),
+                  coming > 0 && `${coming} being made`,
+                  first.negative && `not: ${short(first.negative, 60)}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            </div>
+            <ul className="candidates" aria-label="Pictures from this prompt">
+              {group.pending.map((job) => (
+                <PendingTiles key={job.key} job={job} />
+              ))}
+              {group.pictures.map((p) => (
+                <PictureTile
+                  key={p.key}
+                  comfyUrl={comfyUrl}
+                  image={p.image}
+                  tileKey={p.key}
+                  jobId={p.jobId}
+                  index={p.index}
+                  inUse={inUse(p)}
+                  saver={saver}
+                  caption={pictureCaption(p)}
+                  onStart={onStart}
+                  mark={p.mark}
+                  onMark={(next) => void mark(p, next)}
+                  onOpen={() => {
+                    setStatus(null);
+                    setViewing(p.key);
+                  }}
+                  onLoadPrompt={() => loadFrom(p)}
+                />
+              ))}
+            </ul>
+          </div>
+        );
+      })}
       {view === "other" ? (
         <OtherChapterPictures chapterId={chapterId} storyId={storyId} titles={titles} comfyUrl={comfyUrl} saver={saver} onLoadPrompt={onLoadPrompt} onStart={onStart} />
       ) : (
-        <>
-          {shown.length === 0 && <p className="meta" style={{ margin: 0 }}>{empty()}</p>}
-          {groups.map((group) => {
-            const first = group[0];
-            const moments = [...new Set(group.flatMap((p) => (p.moment ? [MOMENT_NAMES[p.moment]] : [])))].join(", ");
-            return (
-              <div key={first.key} className="picture-group">
-                <div className="picture-group-head">
-                  <p style={{ margin: 0 }} title={first.prompt}>
-                    {short(first.prompt, SHOWN_PROMPT)}
-                  </p>
-                  <p className="meta" style={{ margin: 0 }}>
-                    {[moments, group.length === 1 ? "1 picture" : `${group.length} pictures`, first.negative && `not: ${short(first.negative, 60)}`].filter(Boolean).join(" · ")}
-                  </p>
-                </div>
-                <ul className="candidates" aria-label="Pictures from this prompt">
-                  {group.map((p) => (
-                    <PictureTile
-                      key={p.key}
-                      comfyUrl={comfyUrl}
-                      image={p.image}
-                      tileKey={p.key}
-                      jobId={p.jobId}
-                      index={p.index}
-                      inUse={inUse(p)}
-                      saver={saver}
-                      caption={pictureCaption(p)}
-                      onStart={onStart}
-                      mark={p.mark}
-                      onMark={(next) => void mark(p, next)}
-                      onOpen={() => {
-                        setStatus(null);
-                        setViewing(p.key);
-                      }}
-                      onLoadPrompt={() => loadFrom(p)}
-                    />
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
-        </>
+        shown.length === 0 && !(joined && pending.length > 0) && <p className="meta" style={{ margin: 0 }}>{empty()}</p>
       )}
       {viewed && (
         <PictureViewer
@@ -227,4 +241,25 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
       )}
     </section>
   );
+}
+
+/**
+ * A place kept for each picture of a job being made, at the pictures' size, in the picture grid. The
+ * pictures of a job are made together, so each place shows the job's progress; only the first is read
+ * out, and has the job's Stop.
+ */
+function PendingTiles({ job }: { job: PendingJob }) {
+  return Array.from({ length: job.count }, (_, i) => (
+    <li key={i} className="comfy-pending-tile" data-job={job.key} style={{ aspectRatio: `${job.width} / ${job.height}` }}>
+      <div className="comfy-pending-progress" aria-hidden={i > 0 || undefined}>
+        <span role={i === 0 ? "status" : undefined}>{progressText(job.progress)}</span>
+        {job.progress.stage === "running" && <progress value={job.progress.value} max={job.progress.max} aria-label={i === 0 ? "Progress" : undefined} />}
+        {i === 0 && (
+          <button type="button" className="secondary" onClick={job.stop} title="Stop making these pictures">
+            Stop
+          </button>
+        )}
+      </div>
+    </li>
+  ));
 }

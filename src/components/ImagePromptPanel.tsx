@@ -12,7 +12,7 @@ import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
 import ComfyGenerate from "./ComfyGenerate";
 import type { StartPicture } from "@/lib/comfy/startPicture";
-import type { Picture, PromptToLoad } from "./pictures";
+import type { PendingJob, Picture, PromptToLoad } from "./pictures";
 import type { PictureBoxes, PictureDraft } from "@/lib/pictureDrafts";
 import { EMPTY_BOXES, usePictureDraft } from "./usePictureDraft";
 import { PROMPT_STYLE_NAMES, unsetPictureSettings, type StoryPictures } from "./StoryPictureSettings";
@@ -35,8 +35,8 @@ type Props = {
   onClearStart?: () => void;
   /** Called with each finished job's pictures. */
   onPictures?: (pictures: Picture[]) => void;
-  /** Where to show the jobs being made. */
-  queueSlot?: HTMLElement | null;
+  /** Called with the jobs being made, newest first. */
+  onQueue?: (jobs: PendingJob[]) => void;
   chapterId: string;
   story: IllustratedStory;
   /** The story from its first chapter down to the chapter being illustrated. */
@@ -51,7 +51,7 @@ type Props = {
  * (chapter start, chapter end) has its own boxes, so switching between them brings each one's prompt back;
  * they are kept for the chapter on the server, so they are there again next time.
  */
-export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null, start = null, onClearStart, onPictures, queueSlot, draft = null }: Props) {
+export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null, start = null, onClearStart, onPictures, onQueue, draft = null }: Props) {
   const settings = useSettings();
   const chapter = path[path.length - 1];
   const [moment, setMoment] = useState<ImageMoment>(draft?.moment ?? "start");
@@ -231,7 +231,7 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
         loaded={loaded}
         start={start}
         onPictures={onPictures}
-        queueSlot={queueSlot}
+        onQueue={onQueue}
         onClearStart={onClearStart}
       />
     </section>

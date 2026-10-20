@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { saveSettings, useSettings } from "@/lib/settings";
 import type { ComfySettings } from "@/lib/settingsSchema";
 import type { ImageMoment } from "@/lib/ai/imagePrompt";
 import type { LoadedPrompt } from "./ImagePromptPanel";
-import type { MadeWith, Picture } from "./pictures";
+import type { MadeWith, PendingJob, Picture } from "./pictures";
 import { uploadStart, type StartPicture, type Uploaded } from "@/lib/comfy/startPicture";
 import { describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
 import { cancelPrompt, listCheckpoints, queuePrompt, waitForPictures, type Progress } from "@/lib/comfy/client";
@@ -33,27 +32,11 @@ export const GATHER_MS = 800;
 /** The most pictures one job makes; a click beyond it starts another job. */
 export const MAX_BATCH = 8;
 
-/** A job's progress, or "gathering" while more clicks can still be added to it. */
-type JobProgress = Progress | { stage: "gathering" };
-
-function progressText(p: JobProgress): string {
-  if (p.stage === "gathering") return "Click again for more pictures in this job…";
-  if (p.stage === "uploading") return "Sending the starting picture to ComfyUI…";
-  if (p.stage === "queued") return p.ahead ? `Waiting in ComfyUI's queue (${p.ahead} ahead)…` : "Starting…";
-  if (p.stage === "running") return `Step ${p.value} of ${p.max}…`;
-  return "Loading the pictures…";
-}
-
-/** A job being made, as listed under the Make pictures button. */
-type Queued = {
-  key: string;
-  prompt: string;
-  count: number;
-  progress: JobProgress;
-  /** The pictures' size, for their placeholders: the size setting, or the starting picture's once it is read. */
-  width: number;
-  height: number;
-};
+/**
+ * A job being made, as the Pictures panel shows it (a PendingJob without its Stop). The size is the size
+ * setting, or the starting picture's once it is read.
+ */
+type Queued = Omit<PendingJob, "stop">;
 
 /** Everything a job is made with, as it was when it was asked for. */
 type JobInput = {
@@ -72,8 +55,6 @@ type Gathering = { key: string; input: JobInput; count: number; timer: ReturnTyp
 /** What has to match for a click to join the job being gathered. */
 const sameJob = (a: JobInput) =>
   JSON.stringify([a.prompt, a.negative, a.moment, a.comfy.url, a.comfy.workflow, a.comfy.checkpoint, a.comfy.width, a.comfy.height, a.start?.key ?? null, a.start ? a.comfy.denoise : null, a.seed]);
-
-const SHOWN_PROMPT = 70;
 
 /**
  * Where the settings a loaded picture was made with differ from the current ones: the change to make and
@@ -112,22 +93,46 @@ type Props = {
   onClearStart?: () => void;
   /** Called with each finished job's pictures. */
   onPictures?: (pictures: Picture[]) => void;
-  /** Where to show the jobs being made (beside the new pictures); without it they show under the button. */
-  queueSlot?: HTMLElement | null;
+  /** Called with the jobs being made, newest first, whenever they change; the Pictures panel shows them. */
+  onQueue?: (jobs: PendingJob[]) => void;
 };
 
 /** Makes pictures from the prompt on the ComfyUI machine; the pictures go to `onPictures`. */
-export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, prompt, negative, loaded = null, start = null, onClearStart, onPictures, queueSlot = null }: Props) {
+export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, prompt, negative, loaded = null, start = null, onClearStart, onPictures, onQueue }: Props) {
   const settings = useSettings();
   const comfy = settings.comfy;
-  // The jobs being made, oldest first, as shown; `jobs` holds what Stop needs for each.
+  // The jobs being made, oldest first; `jobs` holds what Stop needs for each.
   const [queue, setQueue] = useState<Queued[]>([]);
-  const jobs = useRef(new Map<string, { promptId: string | null; ctl: AbortController }>());
+  const jobs = useRef(new Map<string, { promptId: string | null; ctl: AbortController; url: string }>());
   // The newest job, while clicks can still add pictures to it.
   const gathering = useRef<Gathering | null>(null);
   // A job still gathering when the page is left is not sent.
   useEffect(() => () => clearTimeout(gathering.current?.timer), []);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
+
+  function stop(key: string) {
+    const g = gathering.current;
+    if (g?.key === key) {
+      // Not sent yet: just drop it.
+      clearTimeout(g.timer);
+      gathering.current = null;
+      jobs.current.delete(key);
+      setQueue((prev) => prev.filter((q) => q.key !== key));
+      setStatus({ ok: true, text: "Stopped." });
+      return;
+    }
+    const j = jobs.current.get(key);
+    if (!j) return;
+    if (j.promptId) void cancelPrompt(j.url, j.promptId);
+    j.ctl.abort();
+  }
+
+  // The Pictures panel shows the jobs, newest first, among the pictures.
+  useEffect(() => {
+    // `stop` only uses refs and state setters, so any render's one will do.
+    onQueue?.(queue.map((q) => ({ ...q, stop: () => stop(q.key) })).reverse());
+  }, [queue, onQueue]);
+  useEffect(() => () => onQueue?.([]), [onQueue]);
   // The starting picture's upload to ComfyUI, kept so the next job from it doesn't send it again.
   const uploaded = useRef<{ key: string; upload: Promise<Uploaded> } | null>(null);
   // Each prompt loaded from a saved picture starts with a new seed again, until the author ticks the box.
@@ -168,8 +173,6 @@ export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, 
   const set = (patch: Partial<ComfySettings>) => void saveSettings({ ...settings, comfy: { ...comfy, ...patch } });
   const other = otherSettings(loaded?.settings ?? null, comfy);
   const busy = queue.length > 0;
-  // The list of jobs goes where the new pictures arrive, when the page offers a place for it.
-  const withSlot = (list: ReactNode) => (queueSlot ? createPortal(list, queueSlot) : list);
   const size = SIZES.find((s) => s.width === comfy.width && s.height === comfy.height);
 
   /**
@@ -202,10 +205,25 @@ export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, 
       send(g);
     }
     const key = `job-${randomSeed().toString(36)}`;
-    jobs.current.set(key, { promptId: null, ctl: new AbortController() });
+    jobs.current.set(key, { promptId: null, ctl: new AbortController(), url: comfy.url });
     const next: Gathering = { key, input, count: 1, timer: setTimeout(() => send(next), GATHER_MS) };
     gathering.current = next;
-    setQueue((prev) => [...prev, { key, prompt: input.prompt, count: 1, progress: { stage: "gathering" }, width: comfy.width, height: comfy.height }]);
+    setQueue((prev) => [
+      ...prev,
+      {
+        key,
+        count: 1,
+        progress: { stage: "gathering" },
+        prompt: input.prompt,
+        negative: input.negative,
+        checkpoint,
+        width: comfy.width,
+        height: comfy.height,
+        denoise: start ? comfy.denoise : null,
+        source: start?.source ?? null,
+        moment,
+      },
+    ]);
   }
 
   /** Sends a gathered job: no more clicks join it. */
@@ -312,6 +330,7 @@ export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, 
           width,
           height,
           denoise,
+          source: from ? start!.source : null,
           moment,
         })),
       );
@@ -322,23 +341,6 @@ export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, 
       jobs.current.delete(key);
       setQueue((prev) => prev.filter((q) => q.key !== key));
     }
-  }
-
-  function stop(key: string) {
-    const g = gathering.current;
-    if (g?.key === key) {
-      // Not sent yet: just drop it.
-      clearTimeout(g.timer);
-      gathering.current = null;
-      jobs.current.delete(key);
-      setQueue((prev) => prev.filter((q) => q.key !== key));
-      setStatus({ ok: true, text: "Stopped." });
-      return;
-    }
-    const j = jobs.current.get(key);
-    if (!j) return;
-    if (j.promptId) void cancelPrompt(comfy.url, j.promptId);
-    j.ctl.abort();
   }
 
   return (
@@ -421,35 +423,6 @@ export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, 
           </label>
         )}
       </div>
-      {busy && withSlot(
-        <ul className="comfy-queue" aria-label="Pictures being made">
-          {queue.map((q) => (
-            <li key={q.key}>
-              <div className="comfy-queue-line">
-                <span className="comfy-queue-prompt" title={q.prompt}>
-                  {q.prompt.length > SHOWN_PROMPT ? `${q.prompt.slice(0, SHOWN_PROMPT).trimEnd()}…` : q.prompt}
-                  <span className="meta"> ×{q.count}</span>
-                </span>
-                <button type="button" className="secondary" onClick={() => stop(q.key)}>
-                  Stop
-                </button>
-              </div>
-              {/* The pictures' places, kept for them at their size, with the job's progress over them. */}
-              {/* The pictures of a job are made together, so each shows the job's progress; only the first is read out. */}
-              <div className="comfy-pending-tiles">
-                {Array.from({ length: q.count }, (_, i) => (
-                  <div key={i} className="comfy-pending-tile" style={{ aspectRatio: `${q.width} / ${q.height}` }}>
-                    <div className="comfy-pending-progress" aria-hidden={i > 0 || undefined}>
-                      <span role={i === 0 ? "status" : undefined}>{progressText(q.progress)}</span>
-                      {q.progress.stage === "running" && <progress value={q.progress.value} max={q.progress.max} aria-label={i === 0 ? "Progress" : undefined} />}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </li>
-          ))}
-        </ul>,
-      )}
       {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
     </div>
   );
