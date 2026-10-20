@@ -1,28 +1,25 @@
 # TODO
 
-Planned work that hasn't been started. Each item says what it is for, how it could be built, and what is still undecided.
+Planned work. Each item says what it is for, how it could be built, and what is still undecided.
 
 ## Illustrate chapter page
 
 These build on the page at `src/app/c/[id]/illustrate/page.tsx`, with `ImagePromptPanel` and `ComfyGenerate` in `src/components/`, and the ComfyUI code in `src/lib/comfy/`. All ComfyUI calls are made from the browser, never from the StoryTime server.
 
-### 1. Record how each picture was made (do this first)
+### 1. Record how each picture was made (done)
 
-Items 2, 3 and 4 all need to know, for a picture, what prompt and settings made it and which chapter it was made for. ComfyUI's own history can't be relied on: it is kept in memory and lost when ComfyUI restarts. Its output files survive a restart, but the API has no way to list them.
+Items 2, 4 and 5 need to know, for a picture, what prompt and settings made it and which chapter it was made for. ComfyUI's own history can't be relied on: it is kept in memory and lost when ComfyUI restarts. Its output files survive a restart, but the API has no way to list them. So StoryTime keeps its own log. What exists now:
 
-- **A job log in StoryTime.**
-  - New migration: a `picture_jobs` table with the columns `id`, `chapter_id`, `story_id`, `prompt_id`, `prompt`, `negative`, `checkpoint`, `width`, `height`, `seed`, `count`, `moment`, `source` (null, or which picture an img2img job started from), `denoise`, `created_at`, and `images` (a JSON list of ComfyUI `{filename, subfolder, type}`).
-  - `ComfyGenerate` writes a row once a job finishes, through a new `POST /api/picture-jobs`. Readers: `GET /api/picture-jobs?story=…`, newest first, paged, and later `GET /api/picture-jobs?chapter=…`.
-  - The pictures themselves stay in ComfyUI. The log only stores where they are, and the page shows them through ComfyUI's `/view`. If a file has been deleted on the ComfyUI machine, its tile says so instead of showing a broken image.
-- **Tag the job in ComfyUI as well**, so jobs can be matched up while ComfyUI's history still has them:
-  - Send `extra_data: { storytime: { chapterId, storyId } }` with `POST /prompt`. ComfyUI keeps it in the history entry.
-  - Set `filename_prefix` on every `SaveImage` node to something like `StoryTime/<story id>/<chapter id>`. In `fillWorkflow`, overwrite only the built-in `StoryTime` prefix or a `{{prefix}}` placeholder, so a custom workflow's own prefix is left alone.
-- **Remember how the saved header and footer pictures were made.**
-  - Same migration: add `job_id`, `prompt` and `negative` columns to `chapter_images`. They are null for uploads.
-  - `ComfyGenerate.use()` sends them along with the picture. The `PUT` route takes them as query parameters, or a small JSON part, since the body is the image.
-  - Add them to the JSON export and import (`src/lib/export.ts`, `src/lib/import.ts`), and to `scripts/adminCore.mjs` `deleteItem`.
-- Tests: an API test for the job log routes, a migration check, and an export/import round trip that includes the new columns. Extend `illustrate-comfy.e2e.mjs` so it checks that a row is written and that `extra_data` and the filename prefix reach the fake ComfyUI.
-- Undecided: should old log rows be pruned (by age, or by a count per story)? Rows are small, so probably not at first.
+- **The job log** (migration 11, `src/lib/pictureJobs.ts`, `src/app/api/picture-jobs/route.ts`).
+  - `picture_jobs` has one row per finished job: the prompt, negative prompt, checkpoint, size, seed, count, `moment` (`start` or `end`), `source` and `denoise` (both null until img2img exists), and `images`, the list of ComfyUI `{filename, subfolder, type}`.
+  - `ComfyGenerate` records a job with `POST /api/picture-jobs` once ComfyUI has finished. If that fails the pictures still appear, with a message, and can be used; they just have no prompt kept.
+  - `GET /api/picture-jobs?story=<id>` or `?chapter=<id>` lists jobs newest first. `limit` is 1 to 200 (default 50). The reply is `{ jobs, next }`: pass `next` back as `before` for the following page; `next` is null at the end.
+  - The pictures stay in ComfyUI, so item 2 still has to show them through ComfyUI's `/view`, and say so on a tile whose file is gone.
+- **Jobs are tagged in ComfyUI.** `POST /prompt` carries `extra_data: { storytime: { chapterId, storyId } }`, and the saved pictures are filed under `StoryTime/<story id>/<chapter id>`. `fillWorkflow` sets that prefix only where the workflow's `filename_prefix` is `StoryTime` or contains `{{prefix}}`; any other prefix is left alone.
+- **A saved header or footer remembers its prompt.** `chapter_images` has `job_id`, `prompt` and `negative` (null for uploads). `PUT /api/chapters/:id/images/:slot?job=<job id>` looks the job up and copies its prompt and negative prompt, so a long prompt never travels in the URL. The job can belong to any chapter, which is what item 2 needs. A job id that isn't known is ignored. The prompt and negative prompt are in the JSON export and import; `job_id` is not, and neither is the job log (the pictures belong to the ComfyUI machine).
+- `scripts/adminCore.mjs` deletes a chapter's jobs along with the chapter.
+- Not done: pruning old log rows. Rows are small, so it can wait.
+- For item 4, "Load prompt" on a saved picture can read `prompt` and `negative` from `chapter_images`; that needs a way to fetch them (nothing returns them yet except the export). The seed is only in the job log, so a saved picture whose job is gone can't bring its seed back.
 
 ### 2. Past pictures, including other chapters'
 
@@ -89,7 +86,7 @@ What it's for: making variations of a picture you already have, with a slider fo
 
 ### Order
 
-Item 1 comes first, because items 2, 4 and 5 depend on it. After that, 3 and 4 (small), then 2, then 5. Item 3 doesn't depend on any other and can be done at any time.
+Item 1 is done. Next are 3 and 4 (small), then 2, then 5. Item 3 doesn't depend on any other and can be done at any time.
 
 ## Also planned (from the pictures plan)
 

@@ -4,6 +4,7 @@ export const LIMITS = {
   premise: 5000,
   style: 3000,
   artStyle: 1000,
+  picturePrompt: 20000,
   body: 50000,
   summary: 5000,
   label: 200,

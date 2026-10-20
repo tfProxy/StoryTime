@@ -7,7 +7,8 @@ import { saveSettings, useSettings } from "@/lib/settings";
 import type { ComfySettings } from "@/lib/settingsSchema";
 import { IMAGE_SLOTS, type ImageSlot } from "@/lib/imageSlots";
 import { prepareImage } from "@/lib/prepareImage";
-import { describeWorkflow, fillWorkflow, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
+import type { ImageMoment } from "@/lib/ai/imagePrompt";
+import { describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
 import {
   cancelPrompt,
   fetchImage,
@@ -32,7 +33,16 @@ const SIZES: { label: string; width: number; height: number }[] = [
 
 const SLOT_NAMES: Record<ImageSlot, string> = { header: "header picture", footer: "footer picture" };
 
-type Candidate = { image: ComfyImage; seed: number; key: string };
+/** `jobId` is the picture job's record in StoryTime, or null when it couldn't be recorded. */
+type Candidate = { image: ComfyImage; seed: number; key: string; jobId: string | null };
+
+/** Records a finished job in StoryTime's log; returns the record's id. */
+async function recordJob(job: Record<string, unknown>): Promise<string> {
+  const res = await fetch("/api/picture-jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(job) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || typeof data.id !== "string") throw new Error(data.error ?? `Couldn't record the job (${res.status})`);
+  return data.id;
+}
 
 function progressText(p: Progress): string {
   if (p.stage === "queued") return p.ahead ? `Waiting in ComfyUI's queue (${p.ahead} ahead)…` : "Starting…";
@@ -40,8 +50,10 @@ function progressText(p: Progress): string {
   return "Loading the pictures…";
 }
 
+type Props = { chapterId: string; storyId: string; moment: ImageMoment; prompt: string; negative: string };
+
 /** Makes pictures from the prompt on the ComfyUI machine, and saves the ones the author picks. */
-export default function ComfyGenerate({ chapterId, prompt, negative }: { chapterId: string; prompt: string; negative: string }) {
+export default function ComfyGenerate({ chapterId, storyId, moment, prompt, negative }: Props) {
   const router = useRouter();
   const settings = useSettings();
   const comfy = settings.comfy;
@@ -97,12 +109,32 @@ export default function ComfyGenerate({ chapterId, prompt, negative }: { chapter
         height: comfy.height,
         count: comfy.count,
         seed,
+        prefix: filenamePrefix(storyId, chapterId),
       });
-      const promptId = await queuePrompt(comfy.url, workflow, clientId);
+      const promptId = await queuePrompt(comfy.url, workflow, clientId, { storytime: { chapterId, storyId } });
       job.current.promptId = promptId;
       const images = await waitForPictures(comfy.url, promptId, clientId, setProgress, ctl.signal);
       if (images.length === 0) throw new Error("ComfyUI finished but sent back no pictures. Does the workflow end in a Save Image node?");
-      setCandidates((prev) => [...images.map((image, i) => ({ image, seed, key: `${promptId}-${i}` })), ...prev]);
+      // The pictures are usable even if this fails; they just won't be listed later or keep their prompt.
+      let jobId: string | null = null;
+      try {
+        jobId = await recordJob({
+          chapter_id: chapterId,
+          prompt_id: promptId,
+          prompt: prompt.trim(),
+          negative: negative.trim(),
+          checkpoint: comfy.checkpoint,
+          width: comfy.width,
+          height: comfy.height,
+          seed,
+          count: comfy.count,
+          moment,
+          images,
+        });
+      } catch (e) {
+        setStatus({ ok: false, text: `The pictures are ready, but StoryTime couldn't record how they were made: ${e instanceof Error ? e.message : String(e)}` });
+      }
+      setCandidates((prev) => [...images.map((image, i) => ({ image, seed, key: `${promptId}-${i}`, jobId })), ...prev]);
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") setStatus({ ok: true, text: "Stopped." });
       else setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
@@ -124,7 +156,9 @@ export default function ComfyGenerate({ chapterId, prompt, negative }: { chapter
     setStatus(null);
     try {
       const blob = await prepareImage(await fetchImage(comfy.url, c.image), MAX_SIDE);
-      const res = await fetch(`/api/chapters/${chapterId}/images/${slot}`, { method: "PUT", headers: { "Content-Type": "image/jpeg" }, body: blob });
+      // The job lets StoryTime keep the prompt with the picture.
+      const made = c.jobId ? `?job=${encodeURIComponent(c.jobId)}` : "";
+      const res = await fetch(`/api/chapters/${chapterId}/images/${slot}${made}`, { method: "PUT", headers: { "Content-Type": "image/jpeg" }, body: blob });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Couldn't save the picture (${res.status})`);
       setStatus({ ok: true, text: `Saved as the ${SLOT_NAMES[slot]}.` });

@@ -74,12 +74,15 @@ function refusal(body: { error?: { message?: string; details?: string }; node_er
   return [body.error?.message ?? "ComfyUI refused the workflow.", ...nodes].join(" · ");
 }
 
-/** Queues the workflow; returns its prompt id. */
-export async function queuePrompt(url: string, workflow: Workflow, clientId: string): Promise<string> {
+/**
+ * Queues the workflow; returns its prompt id. `extraData` is kept by ComfyUI with the job's history
+ * entry, which is how a job can be matched to a chapter while ComfyUI still remembers it.
+ */
+export async function queuePrompt(url: string, workflow: Workflow, clientId: string, extraData?: Record<string, unknown>): Promise<string> {
   const res = await call(url, "/prompt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: workflow, client_id: clientId }),
+    body: JSON.stringify({ prompt: workflow, client_id: clientId, ...(extraData && { extra_data: extraData }) }),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new ComfyError(refusal(body));

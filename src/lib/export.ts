@@ -30,7 +30,8 @@ type RevisionRow = {
   created_at: number;
 };
 type ChoiceRow = { id: string; parent_chapter_id: string; label: string; posted_at: number };
-export type ImageRow = { chapter_id: string; slot: ImageSlot; type: string; data: string };
+/** `prompt` and `negative` are how the picture was made; null for an uploaded one. */
+export type ImageRow = { chapter_id: string; slot: ImageSlot; type: string; data: string; prompt: string | null; negative: string | null };
 
 export type StoryExport = {
   story: { id: string; title: string; premise: string; style: string; art_style: string; created_at: number };
@@ -108,16 +109,16 @@ export function loadStory(storyId: string): StoryExport | null {
   const imageRows = (
     db()
       .prepare(
-        `SELECT i.chapter_id, i.slot, i.type, i.image
+        `SELECT i.chapter_id, i.slot, i.type, i.image, i.prompt, i.negative
            FROM chapter_images i JOIN chapters c ON c.id = i.chapter_id
           WHERE c.story_id = ?`,
       )
-      .all(storyId) as { chapter_id: string; slot: ImageSlot; type: string; image: Buffer }[]
+      .all(storyId) as { chapter_id: string; slot: ImageSlot; type: string; image: Buffer; prompt: string | null; negative: string | null }[]
   ).filter((r) => ids.has(r.chapter_id));
   const position = new Map(chapters.map((c, i) => [c.id, i]));
   const images: ImageRow[] = imageRows
     .sort((a, b) => position.get(a.chapter_id)! - position.get(b.chapter_id)! || IMAGE_SLOTS.indexOf(a.slot) - IMAGE_SLOTS.indexOf(b.slot))
-    .map((r) => ({ chapter_id: r.chapter_id, slot: r.slot, type: r.type, data: r.image.toString("base64") }));
+    .map((r) => ({ chapter_id: r.chapter_id, slot: r.slot, type: r.type, data: r.image.toString("base64"), prompt: r.prompt, negative: r.negative }));
 
   return {
     story: { id: story.id, title: story.title, premise: story.premise, style: story.style, art_style: story.art_style, created_at: story.created_at },

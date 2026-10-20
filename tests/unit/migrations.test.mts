@@ -53,5 +53,36 @@ try {
   d.prepare(`INSERT INTO chapters (id, story_id, parent_choice_id, depth, title, body, posted_at) VALUES ('dup', 'keep', 'ka', 1, 't', 'b', 1)`).run();
 } catch { dup = true; }
 ok(dup, "the one-chapter-per-choice index still holds");
+
+// the picture job log, and the prompts kept with saved pictures
+ok(["id", "story_id", "chapter_id", "prompt_id", "prompt", "negative", "checkpoint", "width", "height", "seed", "count", "moment", "source", "denoise", "images", "created_at"].every((c) => cols("picture_jobs").includes(c)), "the picture job log has its columns");
+ok(["job_id", "prompt", "negative"].every((c) => cols("chapter_images").includes(c)), "saved pictures can remember the job and prompt that made them");
+const job = (id: string, promptId: string, chapterId = "a", moment: string | null = null) =>
+  d.prepare(`INSERT INTO picture_jobs (id, story_id, chapter_id, prompt_id, prompt, width, height, seed, count, moment, images, created_at) VALUES (?, 'keep', ?, ?, 'p', 1, 1, 1, 1, ?, '[]', 1)`).run(id, chapterId, promptId, moment);
+job("j1", "x");
+let twice = false;
+try { job("j2", "x"); } catch { twice = true; }
+ok(twice, "one ComfyUI job is recorded once per chapter");
+job("j3", "x", "a2");
+let badMoment = false;
+try { job("j4", "y", "a", "middle"); } catch { badMoment = true; }
+ok(badMoment, "a moment other than start or end is refused");
+let orphan = false;
+try { job("j5", "z", "no-such-chapter"); } catch { orphan = true; }
+ok(orphan, "a job needs a chapter that exists");
+
+// a database that already has pictures (schema version 10) keeps them when it gets the job log
+const before = new Database(path.join(dir, "v10.db"));
+before.pragma("foreign_keys = ON");
+for (let v = 0; v < 10; v++) before.exec(MIGRATIONS[v]);
+before.prepare(`INSERT INTO stories (id, title, root_chapter_id, created_at) VALUES ('s', 's', 'c', 1)`).run();
+before.pragma("foreign_keys = OFF");
+before.prepare(`INSERT INTO chapters (id, story_id, depth, title, body, posted_at) VALUES ('c', 's', 0, 't', 'b', 1)`).run();
+before.pragma("foreign_keys = ON");
+before.prepare(`INSERT INTO chapter_images (chapter_id, slot, image, type, updated_at) VALUES ('c', 'header', x'89504e47', 'image/png', 7)`).run();
+before.exec(MIGRATIONS[10]);
+const kept = before.prepare(`SELECT type, updated_at, job_id, prompt, negative FROM chapter_images WHERE chapter_id = 'c' AND slot = 'header'`).get() as Record<string, unknown>;
+ok(kept.type === "image/png" && kept.updated_at === 7 && kept.job_id === null && kept.prompt === null && kept.negative === null, "an existing picture is kept, with no prompt");
+before.close();
 d.close();
 fs.rmSync(dir, { recursive: true, force: true });

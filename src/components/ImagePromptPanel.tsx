@@ -182,6 +182,7 @@ export default function ImagePromptPanel({ chapterId, story, path, codex }: Prop
             <AutoTextarea
               aria-label="Prompt"
               style={{ minHeight: "5rem", fontFamily: "inherit" }}
+              maxLength={LIMITS.picturePrompt}
               value={result.prompt}
               onChange={(e) => setResult({ ...result, prompt: e.target.value })}
             />
@@ -191,6 +192,7 @@ export default function ImagePromptPanel({ chapterId, story, path, codex }: Prop
             <AutoTextarea
               aria-label="Negative prompt"
               style={{ minHeight: "2.6rem", fontFamily: "inherit" }}
+              maxLength={LIMITS.picturePrompt}
               value={result.negative}
               onChange={(e) => setResult({ ...result, negative: e.target.value })}
             />
@@ -206,7 +208,7 @@ export default function ImagePromptPanel({ chapterId, story, path, codex }: Prop
       </div>
       {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
 
-      <ComfyGenerate chapterId={chapterId} prompt={result.prompt} negative={result.negative} />
+      <ComfyGenerate chapterId={chapterId} storyId={story.id} moment={moment} prompt={result.prompt} negative={result.negative} />
     </section>
   );
 }

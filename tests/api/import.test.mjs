@@ -86,6 +86,12 @@ ok(r.status === 201 && (await pictureAt(r.json.chapter_id, "header")).type === "
 const noPics = structuredClone(withPics); delete noPics.images;
 r = await call("POST", "/api/stories/import", noPics);
 ok(r.status === 201 && (await pictureAt(r.json.chapter_id, "header")).status === 404, "an export without pictures still imports");
+// files from before pictures remembered their prompts
+const noPrompts = structuredClone(withPics);
+for (const i of noPrompts.images) { delete i.prompt; delete i.negative; }
+r = await call("POST", "/api/stories/import", noPrompts);
+ok(r.status === 201 && (await pictureAt(r.json.chapter_id, "header")).status === 200, "an export whose pictures have no prompts still imports");
+ok((await exportOf(r.json.story_id)).images.every((i) => i.prompt === null && i.negative === null), "…and its pictures have no prompts");
 
 // ---- bad files ----
 const bad = async (m, mutate) => { const d = structuredClone(data); mutate(d); const x = await call("POST", "/api/stories/import", d); ok(x.status === 400 && x.json?.error, `rejected: ${m} (${x.json?.error})`); };

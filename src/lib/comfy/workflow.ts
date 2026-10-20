@@ -7,6 +7,9 @@
 //   any text input;
 // - or, when there are no placeholders, the usual nodes are found and filled in: the checkpoint
 //   loader, the empty latent image, the sampler's seed, and the text encoders feeding the sampler.
+//
+// Either way, the saved pictures' file name prefix (`filename_prefix`) is set when it is "StoryTime",
+// the built-in workflow's prefix, or contains "{{prefix}}". Any other prefix is left alone.
 
 export type WorkflowNode = { class_type: string; inputs: Record<string, unknown>; _meta?: unknown };
 export type Workflow = Record<string, WorkflowNode>;
@@ -19,7 +22,14 @@ export type PictureParams = {
   height: number;
   count: number;
   seed: number;
+  /** Where ComfyUI files the pictures; see `filenamePrefix`. Without it they keep the default prefix. */
+  prefix?: string;
 };
+
+const DEFAULT_PREFIX = "StoryTime";
+
+/** The file name prefix for a chapter's pictures, so they can be found in ComfyUI's output folder. */
+export const filenamePrefix = (storyId: string, chapterId: string) => `${DEFAULT_PREFIX}/${storyId}/${chapterId}`;
 
 /** What a workflow lets StoryTime set, for showing in Settings. */
 export type WorkflowFit = {
@@ -151,8 +161,24 @@ export function describeWorkflow(wf: Workflow): WorkflowFit {
   };
 }
 
+/** Sets the file name prefix of the saved pictures, where the workflow lets StoryTime choose it. */
+function setPrefix(wf: Workflow, prefix: string) {
+  for (const node of Object.values(wf)) {
+    const v = node.inputs.filename_prefix;
+    if (typeof v !== "string") continue;
+    if (v.includes("{{prefix}}")) node.inputs.filename_prefix = v.split("{{prefix}}").join(prefix);
+    else if (v === DEFAULT_PREFIX) node.inputs.filename_prefix = prefix;
+  }
+}
+
 /** A copy of the workflow with the picture's settings filled in. Throws WorkflowError if the prompt has nowhere to go. */
 export function fillWorkflow(wf: Workflow, p: PictureParams): Workflow {
+  const out = fillSettings(wf, p);
+  setPrefix(out, p.prefix ?? DEFAULT_PREFIX);
+  return out;
+}
+
+function fillSettings(wf: Workflow, p: PictureParams): Workflow {
   const out: Workflow = JSON.parse(JSON.stringify(wf));
   if (placeholdersIn(out).size > 0) {
     if (!placeholdersIn(out).has("{{prompt}}")) throw new WorkflowError("The workflow has placeholders but no {{prompt}}, so the prompt has nowhere to go.");

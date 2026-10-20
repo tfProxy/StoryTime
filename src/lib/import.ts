@@ -64,6 +64,9 @@ const Image = z.object({
   slot: z.enum(IMAGE_SLOTS),
   type: z.string().max(100),
   data: z.string().min(1).max(IMAGE_MAX_BASE64),
+  // Exports made before pictures remembered their prompts have none.
+  prompt: nullableStr(LIMITS.picturePrompt),
+  negative: nullableStr(LIMITS.picturePrompt),
 });
 
 export const ImportSchema = z.object({
@@ -132,7 +135,10 @@ export function importStory(input: ImportInput): { story_id: string; chapter_id:
     seenImages.add(key);
     const bytes = Buffer.from(img.data, "base64");
     try {
-      return { chapter_id: img.chapter_id, slot: img.slot, bytes, type: checkImage(bytes, "picture") };
+      return {
+        chapter_id: img.chapter_id, slot: img.slot, bytes, type: checkImage(bytes, "picture"),
+        prompt: img.prompt ?? null, negative: img.negative ?? null,
+      };
     } catch (e) {
       if (e instanceof PostError) throw new PostError("A picture in the file isn't a PNG, JPEG, GIF or WebP image, or is over 4 MB", 400);
       throw e;
@@ -204,9 +210,9 @@ export function importStory(input: ImportInput): { story_id: string; chapter_id:
       );
     }
     const insertImage = db().prepare(
-      `INSERT INTO chapter_images (chapter_id, slot, image, type, updated_at) VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO chapter_images (chapter_id, slot, image, type, updated_at, prompt, negative) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     );
-    for (const p of pictures) insertImage.run(chapterIds.get(p.chapter_id), p.slot, p.bytes, p.type, Date.now());
+    for (const p of pictures) insertImage.run(chapterIds.get(p.chapter_id), p.slot, p.bytes, p.type, Date.now(), p.prompt, p.negative);
     return { story_id: storyId, chapter_id: rootId, chapters: input.chapters.length };
   })();
 }

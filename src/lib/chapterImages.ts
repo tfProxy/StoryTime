@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { jobPrompts } from "./pictureJobs";
 import { checkImage, PostError } from "./stories";
 import type { ImageSlot, ImageVersions } from "./imageSlots";
 
@@ -8,9 +9,14 @@ function requireChapter(chapterId: string) {
   if (!db().prepare(`SELECT 1 FROM chapters WHERE id = ?`).get(chapterId)) throw new PostError("That chapter does not exist", 404);
 }
 
-export function setChapterImage(chapterId: string, slot: ImageSlot, bytes: Buffer): { version: number } {
+/**
+ * Sets a slot's picture. `jobId` names the picture job (see ./pictureJobs) that made it: its prompt and
+ * negative prompt are kept with the picture, which is left without them when the job is unknown.
+ */
+export function setChapterImage(chapterId: string, slot: ImageSlot, bytes: Buffer, jobId?: string | null): { version: number } {
   const type = checkImage(bytes, "picture");
   requireChapter(chapterId);
+  const made = jobId ? jobPrompts(jobId) : undefined;
   const prev = db()
     .prepare(`SELECT updated_at AS v FROM chapter_images WHERE chapter_id = ? AND slot = ?`)
     .get(chapterId, slot) as { v: number } | undefined;
@@ -18,10 +24,11 @@ export function setChapterImage(chapterId: string, slot: ImageSlot, bytes: Buffe
   const version = Math.max(Date.now(), (prev?.v ?? 0) + 1);
   db()
     .prepare(
-      `INSERT INTO chapter_images (chapter_id, slot, image, type, updated_at) VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT (chapter_id, slot) DO UPDATE SET image = excluded.image, type = excluded.type, updated_at = excluded.updated_at`,
+      `INSERT INTO chapter_images (chapter_id, slot, image, type, updated_at, job_id, prompt, negative) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (chapter_id, slot) DO UPDATE SET image = excluded.image, type = excluded.type, updated_at = excluded.updated_at,
+         job_id = excluded.job_id, prompt = excluded.prompt, negative = excluded.negative`,
     )
-    .run(chapterId, slot, bytes, type, version);
+    .run(chapterId, slot, bytes, type, version, made ? jobId : null, made?.prompt ?? null, made?.negative ?? null);
   return { version };
 }
 

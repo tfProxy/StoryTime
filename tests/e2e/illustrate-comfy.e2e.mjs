@@ -23,6 +23,7 @@ const until = async (fn, what, tries = 60) => {
 // ---- a chapter to illustrate ----
 const created = await post("/api/stories", { title: "Lighthouse tale", premise: "A keeper and a storm.", chapter: { title: "The lamp", body: "The keeper climbed the stairs to light the lamp.", choices: [] } });
 const chapterId = created.chapter_id;
+const storyId = created.story_id;
 
 // Settings live on the server: remember what is there and put it back at the end.
 const before = await settingsNow();
@@ -167,6 +168,15 @@ try {
   ok(JSON.stringify(wf).includes("{{") === false, "…and no placeholder left over");
   const clientId = sent[0].body.client_id;
   ok(typeof clientId === "string" && clientId.length > 0 && comfy.calls.slice(mark).some((c) => c.method === "UPGRADE" && c.path === "/ws" && c.query.clientId === clientId), "…with a client id that the page's WebSocket connection also used");
+  ok(JSON.stringify(sent[0].body.extra_data) === JSON.stringify({ storytime: { chapterId, storyId } }), "…tagged with the chapter and story, in extra_data");
+  ok(nodesOf("SaveImage")[0].inputs.filename_prefix === `StoryTime/${storyId}/${chapterId}`, "…and the pictures are filed under StoryTime/<story>/<chapter>");
+
+  // ---- the job log ----
+  const logged = (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs;
+  ok(logged.length === 1 && logged[0].story_id === storyId, "the finished job was recorded for this chapter");
+  ok(logged[0].prompt === "a lighthouse at dawn, gulls" && logged[0].negative === "blurry, text" && logged[0].checkpoint === "fake_sdxl_b.safetensors", "…with the prompt, negative prompt and checkpoint");
+  ok(logged[0].width === 1344 && logged[0].height === 768 && logged[0].count === 2 && logged[0].seed === seed && logged[0].moment === "start", "…the size, count, seed and the moment chosen");
+  ok(logged[0].images.map((i) => i.filename).join() === srcs.map((s) => new URL(s).searchParams.get("filename")).join() && logged[0].images.every((i) => i.type === "output"), "…and where ComfyUI put the two pictures, as shown on the page");
 
   // ---- using a picture ----
   ok((await card("Header picture").locator("img.image-editor-preview").count()) === 0, "the header picture is empty before");
@@ -181,6 +191,9 @@ try {
   ok(await preview.evaluate((i) => i.naturalWidth > 0), "…and the Header picture card shows it");
   ok((await fetch(`${BASE}/api/chapters/${chapterId}/images/footer`)).status === 404, "…the footer is untouched");
   ok(await items.count() === 2, "the candidates are still there after the page refreshed");
+  const savedWith = async () => (await get(`/api/stories/${storyId}/export?format=json`)).images;
+  const headerMade = (await savedWith()).find((i) => i.slot === "header");
+  ok(headerMade.prompt === "a lighthouse at dawn, gulls" && headerMade.negative === "blurry, text", "the saved header remembers the prompt and negative prompt that made it");
 
   ok(await page.getByRole("button", { name: "Use as footer picture" }).count() === 2 && await page.getByRole("button", { name: "Use as header picture" }).count() === 2, "every picture can be used as the header or the footer");
   await page.getByRole("button", { name: "Use as footer picture" }).nth(1).click();
@@ -189,6 +202,7 @@ try {
   ok(footer.status === 200 && footer.headers.get("content-type") === "image/jpeg", "…and one saves as the footer picture");
   await card("Footer picture").locator("img.image-editor-preview").waitFor();
   ok(true, "…which the Footer picture card shows");
+  ok((await savedWith()).find((i) => i.slot === "footer").prompt === "a lighthouse at dawn, gulls", "…and the footer remembers the prompt too");
 
   // ---- the page on a phone ----
   await page.setViewportSize({ width: 390, height: 844 });
@@ -253,6 +267,7 @@ try {
   comfy.setMode({ ws: false, steps: 2, stepDelay: 100, startDelay: 200, fail: null });
   await openIllustrate();
   await promptBox.fill("a lighthouse in fog");
+  await page.getByLabel("Moment to show").selectOption("end");
   const pollMark = comfy.calls.length;
   await makeButton.click();
   await page.locator(".candidates li").first().waitFor({ timeout: 15000 });
@@ -260,6 +275,22 @@ try {
   ok(await items.count() === 2, "with no WebSocket, the pictures still arrive");
   const pollCalls = comfy.calls.slice(pollMark);
   ok(pollCalls.some((c) => c.method === "UPGRADE") && pollCalls.filter((c) => c.path.startsWith("/history/")).length >= 1, "…found by asking /history after the WebSocket was refused");
+  const log = (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs;
+  ok(log.length === 2 && log[0].prompt === "a lighthouse in fog" && log[0].moment === "end" && log[1].moment === "start", "the log has this job (with Chapter end) after the first, and nothing from the refused, failed or stopped jobs");
+
+  // ---- the job can't be recorded: the pictures are still usable, just without a prompt kept ----
+  await page.route("**/api/picture-jobs", (route) => route.request().method() === "POST" ? route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "disk full" }) }) : route.continue());
+  await page.getByLabel("Moment to show").selectOption("start");
+  await makeButton.click();
+  await page.getByText(/couldn't record how they were made: disk full/).waitFor({ timeout: 15000 });
+  await picturesLoaded(4);
+  ok(await items.count() === 4, "when the job can't be recorded, the page says so and still shows the new pictures");
+  await page.unroute("**/api/picture-jobs");
+  await page.getByRole("button", { name: "Use as header picture" }).first().click();
+  await page.getByText("Saved as the header picture.").waitFor();
+  const unrecorded = (await savedWith()).find((i) => i.slot === "header");
+  ok(unrecorded.prompt === null && unrecorded.negative === null, "…and a picture from it saves without a prompt, replacing the one before");
+  ok((await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs.length === 2, "…and nothing was added to the log");
 
   // ---- clearing ----
   await page.getByRole("button", { name: "Clear these pictures" }).click();

@@ -1,4 +1,4 @@
-import { BUILTIN_WORKFLOW, describeWorkflow, fillWorkflow, parseWorkflow, randomSeed, WorkflowError, type PictureParams, type Workflow } from "../../src/lib/comfy/workflow.ts";
+import { BUILTIN_WORKFLOW, describeWorkflow, filenamePrefix, fillWorkflow, parseWorkflow, randomSeed, WorkflowError, type PictureParams, type Workflow } from "../../src/lib/comfy/workflow.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const throwsWorkflowError = (fn: () => unknown) => {
@@ -160,6 +160,30 @@ const same: Workflow = {
 };
 const sameOut = fillWorkflow(same, params);
 ok(sameOut["1"].inputs.text === "a lighthouse at dawn" && !describeWorkflow(same).negative, "one encoder on both inputs gets the prompt and no negative");
+
+// ---- the file name prefix of the saved pictures ----
+const prefix = filenamePrefix("story1", "chap2");
+ok(prefix === "StoryTime/story1/chap2", "a chapter's pictures are filed under StoryTime/<story>/<chapter>");
+const prefixOf = (wf: Workflow) => Object.values(wf).find((n) => n.class_type === "SaveImage")!.inputs.filename_prefix;
+ok(prefixOf(fillWorkflow(BUILTIN_WORKFLOW, { ...params, prefix })) === prefix, "the built-in workflow's StoryTime prefix is replaced");
+ok(prefixOf(fillWorkflow(BUILTIN_WORKFLOW, params)) === "StoryTime" && prefixOf(BUILTIN_WORKFLOW) === "StoryTime", "…and kept when no prefix is given, and the built-in workflow itself is unchanged");
+const save = (filename_prefix: string): Workflow => ({
+  "1": { class_type: "CLIPTextEncode", inputs: { text: "{{prompt}}" } },
+  "2": { class_type: "SaveImage", inputs: { images: ["1", 0], filename_prefix } },
+});
+ok(prefixOf(fillWorkflow(save("mine/portraits"), { ...params, prefix })) === "mine/portraits", "a prefix of the workflow's own is left alone");
+ok(prefixOf(fillWorkflow(save("{{prefix}}"), { ...params, prefix })) === prefix, "{{prefix}} is replaced");
+ok(prefixOf(fillWorkflow(save("tales/{{prefix}}/final"), { ...params, prefix })) === `tales/${prefix}/final`, "…also inside longer text");
+ok(prefixOf(fillWorkflow(save("{{prefix}}"), params)) === "StoryTime", "{{prefix}} with no prefix given becomes StoryTime, never left as it is");
+ok(prefixOf(fillWorkflow(save("StoryTime"), { ...params, prefix })) === prefix, "a placeholder workflow's prefix of StoryTime is replaced too");
+const detectedSave: Workflow = {
+  "1": { class_type: "CLIPTextEncode", inputs: { text: "x" } },
+  "2": { class_type: "KSampler", inputs: { seed: 1, positive: ["1", 0] } },
+  "3": { class_type: "SaveImage", inputs: { images: ["2", 0], filename_prefix: "{{prefix}}" } },
+};
+const detectedFit = describeWorkflow(detectedSave);
+ok(detectedFit.mode === "detected" && detectedFit.prompt, "{{prefix}} alone doesn't turn a workflow into a placeholder one");
+ok(prefixOf(fillWorkflow(detectedSave, { ...params, prefix })) === prefix && fillWorkflow(detectedSave, { ...params, prefix })["1"].inputs.text === params.prompt, "…and it is filled in beside the automatic settings");
 
 // ---- randomSeed ----
 const seeds = Array.from({ length: 50 }, randomSeed);

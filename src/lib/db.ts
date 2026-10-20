@@ -184,6 +184,38 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE stories ADD COLUMN art_style TEXT NOT NULL DEFAULT '';
   `,
+  // 11: a log of the picture jobs made on the ComfyUI machine, so a picture can be found again with the
+  // prompt and settings that made it. The pictures stay in ComfyUI; `images` is a JSON list of where
+  // they are ({filename, subfolder, type}). A job is recorded once per ComfyUI prompt id and chapter.
+  // `source` and `denoise` are for pictures made from another picture (nothing sets them yet).
+  // chapter_images also remembers how a saved picture was made (null for uploads). `job_id` has no
+  // foreign key: the picture outlives its job when the chapter the job was made for is deleted.
+  `
+  CREATE TABLE picture_jobs (
+    id         TEXT PRIMARY KEY,
+    story_id   TEXT NOT NULL REFERENCES stories(id),
+    chapter_id TEXT NOT NULL REFERENCES chapters(id),
+    prompt_id  TEXT NOT NULL,
+    prompt     TEXT NOT NULL,
+    negative   TEXT NOT NULL DEFAULT '',
+    checkpoint TEXT NOT NULL DEFAULT '',
+    width      INTEGER NOT NULL,
+    height     INTEGER NOT NULL,
+    seed       INTEGER NOT NULL,
+    count      INTEGER NOT NULL,
+    moment     TEXT CHECK (moment IN ('start', 'end')),
+    source     TEXT,
+    denoise    REAL,
+    images     TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX picture_jobs_prompt ON picture_jobs(chapter_id, prompt_id);
+  CREATE INDEX picture_jobs_story ON picture_jobs(story_id);
+
+  ALTER TABLE chapter_images ADD COLUMN job_id TEXT;
+  ALTER TABLE chapter_images ADD COLUMN prompt TEXT;
+  ALTER TABLE chapter_images ADD COLUMN negative TEXT;
+  `,
 ];
 
 function open(): Database.Database {

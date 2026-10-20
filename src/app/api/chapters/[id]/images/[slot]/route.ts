@@ -22,12 +22,14 @@ export async function GET(request: Request, ctx: Ctx) {
   return new Response(new Uint8Array(image.bytes), { headers: { ...headers, "Content-Type": image.type } });
 }
 
-// Replace the picture. The body is the image itself (PNG, JPEG, GIF or WebP).
+// Replace the picture. The body is the image itself (PNG, JPEG, GIF or WebP). ?job=<id> says which
+// picture job made it, so its prompt is kept with the picture.
 export async function PUT(request: Request, ctx: Ctx) {
   const { id, slot } = await ctx.params;
   if (!isImageSlot(slot)) return badSlot();
   try {
-    return Response.json(setChapterImage(id, slot, Buffer.from(await request.arrayBuffer())));
+    const job = new URL(request.url).searchParams.get("job");
+    return Response.json(setChapterImage(id, slot, Buffer.from(await request.arrayBuffer()), job));
   } catch (e) {
     return fail(e);
   }

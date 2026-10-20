@@ -145,6 +145,7 @@ export function deleteItem(db, kind, id) {
     if (chapterIds.length) {
       db.prepare(`DELETE FROM chapter_revisions WHERE chapter_id IN (${marks})`).run(...chapterIds);
       db.prepare(`DELETE FROM chapter_images WHERE chapter_id IN (${marks})`).run(...chapterIds);
+      db.prepare(`DELETE FROM picture_jobs WHERE chapter_id IN (${marks})`).run(...chapterIds);
       db.prepare(`DELETE FROM choices WHERE parent_chapter_id IN (${marks})`).run(...chapterIds);
       db.prepare(`DELETE FROM chapters WHERE id IN (${marks})`).run(...chapterIds);
     }
