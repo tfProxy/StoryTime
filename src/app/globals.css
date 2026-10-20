@@ -1049,6 +1049,42 @@ main:has(.library) {
 }
 
 /* One picture per line, in the order they were made, so each has room to be looked at closely. */
+/* The picture new pictures start from (image to image): a thumbnail beside the strength control. */
+.start-picture {
+  display: grid;
+  grid-template-columns: minmax(5rem, 9rem) minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.start-picture img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 9rem;
+  object-fit: contain;
+  border-radius: 6px;
+  background: var(--line);
+}
+
+.start-picture-controls {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.strength {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.strength input[type="range"] {
+  padding: 0;
+  border: 0;
+  background: none;
+  accent-color: var(--accent, currentColor);
+}
+
 .picture-tile {
   display: grid;
   gap: 0.4rem;

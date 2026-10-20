@@ -11,6 +11,7 @@ import AutoTextarea from "./AutoTextarea";
 import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
 import ComfyGenerate from "./ComfyGenerate";
+import type { StartPicture } from "@/lib/comfy/startPicture";
 
 const MOMENT_NAMES: Record<ImageMoment, string> = { start: "Chapter start", end: "Chapter end" };
 const STYLE_NAMES: Record<ImagePromptStyle, string> = {
@@ -24,6 +25,10 @@ export type LoadedPrompt = { nonce: number; prompt: string; negative: string; se
 type Props = {
   /** Fills in the prompt boxes when it changes. */
   loaded?: LoadedPrompt | null;
+  /** The picture new pictures start from (image to image), and how to change or drop it. */
+  start?: StartPicture | null;
+  onStart?: (picture: StartPicture) => void;
+  onClearStart?: () => void;
   chapterId: string;
   story: { id: string; title: string; premise: string; art_style: string };
   /** The story from its first chapter down to the chapter being illustrated. */
@@ -34,7 +39,7 @@ type Props = {
 type Result = { scene: string; prompt: string; negative: string };
 
 /** Writes a prompt for an image generator from the chapter and the codex entries it mentions. */
-export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null }: Props) {
+export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null, start = null, onStart, onClearStart }: Props) {
   const settings = useSettings();
   const chapter = path[path.length - 1];
   const [moment, setMoment] = useState<ImageMoment>("start");
@@ -227,6 +232,9 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
         prompt={result.prompt}
         negative={result.negative}
         loaded={loaded}
+        start={start}
+        onStart={onStart}
+        onClearStart={onClearStart}
       />
     </section>
   );

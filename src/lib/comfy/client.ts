@@ -8,6 +8,7 @@ export class ComfyError extends Error {}
 export type ComfyImage = { filename: string; subfolder: string; type: string };
 
 export type Progress =
+  | { stage: "uploading" }
   | { stage: "queued"; ahead: number | null }
   | { stage: "running"; value: number; max: number }
   | { stage: "loading" };
@@ -188,6 +189,21 @@ export function waitForPictures(
     onProgress({ stage: "queued", ahead: null });
     timer = setTimeout(check, 1000);
   });
+}
+
+/**
+ * Puts a picture in ComfyUI's input folder, to start a job from. Returns the name a LoadImage node takes
+ * (with its subfolder, when ComfyUI used one).
+ */
+export async function uploadImage(url: string, blob: Blob, filename: string): Promise<string> {
+  const form = new FormData();
+  form.append("image", blob, filename);
+  form.append("type", "input");
+  form.append("overwrite", "true");
+  const res = await call(url, "/upload/image", { method: "POST", body: form });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || typeof body.name !== "string") throw new ComfyError(`ComfyUI wouldn't take the starting picture (${res.status}).`);
+  return body.subfolder ? `${body.subfolder}/${body.name}` : body.name;
 }
 
 /** Stops the job: removes it from the queue, or interrupts it if it is running. */

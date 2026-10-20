@@ -5,6 +5,7 @@ import { useSettings } from "@/lib/settings";
 import type { PictureJob } from "@/lib/pictureJobs";
 import PictureTile from "./PictureTile";
 import { usePictureSaver } from "./usePictureSaver";
+import type { ComfyImage } from "@/lib/comfy/client";
 
 const PAGE = 12;
 const SHOWN_PROMPT = 160;
@@ -35,10 +36,12 @@ type Props = {
   /** Every chapter's title in the story, by chapter id. */
   titles: Record<string, string>;
   onLoadPrompt: (p: PromptToLoad) => void;
+  /** Called to make new pictures starting from one of these. */
+  onStart: (image: ComfyImage) => void;
 };
 
 /** Pictures made earlier on ComfyUI, for this chapter or any chapter of the story, ready to use again. */
-export default function PastPictures({ chapterId, storyId, titles, onLoadPrompt }: Props) {
+export default function PastPictures({ chapterId, storyId, titles, onLoadPrompt, onStart }: Props) {
   const comfy = useSettings().comfy;
   const [scope, setScope] = useState<Scope>("chapter");
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
@@ -59,7 +62,7 @@ export default function PastPictures({ chapterId, storyId, titles, onLoadPrompt 
         ))}
       </div>
       {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
-      <PastList key={scope} scope={scope} chapterId={chapterId} storyId={storyId} titles={titles} comfyUrl={comfy.url} saver={saver} onLoadPrompt={onLoadPrompt} />
+      <PastList key={scope} scope={scope} chapterId={chapterId} storyId={storyId} titles={titles} comfyUrl={comfy.url} saver={saver} onLoadPrompt={onLoadPrompt} onStart={onStart} />
     </section>
   );
 }
@@ -67,7 +70,7 @@ export default function PastPictures({ chapterId, storyId, titles, onLoadPrompt 
 type ListProps = Props & { scope: Scope; comfyUrl: string; saver: ReturnType<typeof usePictureSaver> };
 
 /** The list for one scope; it starts over (a new key) when the scope changes. */
-function PastList({ scope, chapterId, storyId, titles, comfyUrl, saver, onLoadPrompt }: ListProps) {
+function PastList({ scope, chapterId, storyId, titles, comfyUrl, saver, onLoadPrompt, onStart }: ListProps) {
   const query = scope === "chapter" ? `chapter=${encodeURIComponent(chapterId)}` : `story=${encodeURIComponent(storyId)}`;
   const [jobs, setJobs] = useState<PictureJob[]>([]);
   const [next, setNext] = useState<number | null>(null);
@@ -134,7 +137,7 @@ function PastList({ scope, chapterId, storyId, titles, comfyUrl, saver, onLoadPr
                 {job.prompt.length > SHOWN_PROMPT ? `${job.prompt.slice(0, SHOWN_PROMPT).trimEnd()}…` : job.prompt}
               </p>
               <p className="meta" style={{ margin: 0 }}>
-                {[new Date(job.created_at).toLocaleString(), job.checkpoint, `${job.width} × ${job.height}`, `seed ${job.seed}`].filter(Boolean).join(" · ")}
+                {[new Date(job.created_at).toLocaleString(), job.checkpoint, `${job.width} × ${job.height}`, `seed ${job.seed}`, job.denoise !== null && `variation, strength ${job.denoise}`].filter(Boolean).join(" · ")}
               </p>
               <div>
                 <button type="button" className="secondary" onClick={() => onLoadPrompt({ prompt: job.prompt, negative: job.negative, seed: job.seed })}>
@@ -143,7 +146,7 @@ function PastList({ scope, chapterId, storyId, titles, comfyUrl, saver, onLoadPr
               </div>
               <ul className="past-tiles" aria-label="Pictures from one job">
                 {job.images.map((image, i) => (
-                  <PictureTile key={`${job.id}-${i}`} comfyUrl={comfyUrl} image={image} tileKey={`${job.id}-${i}`} jobId={job.id} saver={saver} />
+                  <PictureTile key={`${job.id}-${i}`} comfyUrl={comfyUrl} image={image} tileKey={`${job.id}-${i}`} jobId={job.id} saver={saver} onStart={onStart} />
                 ))}
               </ul>
             </div>

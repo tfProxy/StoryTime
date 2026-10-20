@@ -58,6 +58,8 @@ export type ComfySettings = {
   height: number;
   /** How many pictures to make at once. */
   count: number;
+  /** Image to image: how far a picture may change from the one it starts from, 0.05 (barely) to 1 (completely). */
+  denoise: number;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -70,7 +72,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoSuggestChoices: false,
   imagePromptStyle: "tags",
   imagePromptModel: null,
-  comfy: { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4 },
+  comfy: { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4, denoise: 0.55 },
 };
 
 // Each field falls back to its default when missing or invalid, so partial files still
@@ -114,6 +116,7 @@ const settingsSchema = z.object({
       width: z.number().int().min(64).max(4096).catch(DEFAULT_SETTINGS.comfy.width),
       height: z.number().int().min(64).max(4096).catch(DEFAULT_SETTINGS.comfy.height),
       count: z.number().int().min(1).max(8).catch(DEFAULT_SETTINGS.comfy.count),
+      denoise: z.number().min(0.05).max(1).catch(DEFAULT_SETTINGS.comfy.denoise),
     })
     .catch(DEFAULT_SETTINGS.comfy),
 });

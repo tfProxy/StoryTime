@@ -1,4 +1,4 @@
-import { BUILTIN_WORKFLOW, describeWorkflow, filenamePrefix, fillWorkflow, parseWorkflow, randomSeed, WorkflowError, type PictureParams, type Workflow } from "../../src/lib/comfy/workflow.ts";
+import { BUILTIN_IMG2IMG, BUILTIN_WORKFLOW, describeWorkflow, filenamePrefix, fillWorkflow, parseWorkflow, randomSeed, WorkflowError, type PictureParams, type Workflow } from "../../src/lib/comfy/workflow.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const throwsWorkflowError = (fn: () => unknown) => {
@@ -184,6 +184,47 @@ const detectedSave: Workflow = {
 const detectedFit = describeWorkflow(detectedSave);
 ok(detectedFit.mode === "detected" && detectedFit.prompt, "{{prefix}} alone doesn't turn a workflow into a placeholder one");
 ok(prefixOf(fillWorkflow(detectedSave, { ...params, prefix })) === prefix && fillWorkflow(detectedSave, { ...params, prefix })["1"].inputs.text === params.prompt, "…and it is filled in beside the automatic settings");
+
+// ---- starting from a picture (image to image) ----
+const imgParams: PictureParams = { ...params, image: "storytime-abc.png", denoise: 0.4 };
+const imgBefore = JSON.stringify(BUILTIN_WORKFLOW);
+const imgBuilt = fillWorkflow(BUILTIN_WORKFLOW, imgParams);
+ok(JSON.stringify(BUILTIN_WORKFLOW) === imgBefore && JSON.stringify(BUILTIN_IMG2IMG).includes("{{image}}"), "img2img builtin: the built-in workflows are not changed by filling");
+ok(Object.values(imgBuilt).some((n) => n.class_type === "LoadImage" && n.inputs.image === "storytime-abc.png"), "img2img builtin: a LoadImage node has the uploaded picture's name");
+ok(!Object.values(imgBuilt).some((n) => n.class_type === "EmptyLatentImage"), "img2img builtin: there is no empty latent image");
+ok(imgBuilt["3"].inputs.denoise === 0.4 && typeof imgBuilt["3"].inputs.denoise === "number", "img2img builtin: the sampler's denoise is the strength, as a number");
+ok(JSON.stringify(imgBuilt["3"].inputs.latent_image) === '["12",0]' && JSON.stringify(imgBuilt["12"].inputs.samples) === '["11",0]' && JSON.stringify(imgBuilt["11"].inputs.pixels) === '["10",0]', "img2img builtin: the picture goes LoadImage → VAEEncode → RepeatLatentBatch → sampler");
+ok(imgBuilt["12"].inputs.amount === 2 && imgBuilt["3"].inputs.seed === 12345 && imgBuilt["6"].inputs.text === "a lighthouse at dawn" && imgBuilt["4"].inputs.ckpt_name === "sdxl_base.safetensors", "img2img builtin: the batch is the count, and seed, prompt and checkpoint are set");
+ok(JSON.stringify(imgBuilt["11"].inputs.vae) === '["4",2]' && JSON.stringify(imgBuilt).includes("{{") === false, "img2img builtin: the checkpoint's VAE encodes, and no placeholder is left");
+ok(fillWorkflow(BUILTIN_WORKFLOW, { ...imgParams, denoise: undefined })["3"].inputs.denoise === 1, "img2img builtin: with no strength given, denoise is 1");
+ok(fillWorkflow(BUILTIN_WORKFLOW, params)["3"].inputs.denoise === 1 && fillWorkflow(BUILTIN_WORKFLOW, params)["5"].class_type === "EmptyLatentImage", "builtin: with no picture the text-to-image workflow is used, as before");
+ok(describeWorkflow(BUILTIN_WORKFLOW).image === true, "describe: the built-in workflow can start from a picture");
+
+const imgPlaceholders: Workflow = {
+  "1": { class_type: "KSampler", inputs: { seed: "{{seed}}", denoise: "{{denoise}}", positive: ["2", 0], latent_image: ["6", 0] } },
+  "2": { class_type: "CLIPTextEncode", inputs: { text: "{{prompt}}" } },
+  "5": { class_type: "LoadImage", inputs: { image: "{{image}}" } },
+  "6": { class_type: "VAEEncode", inputs: { pixels: ["5", 0], vae: ["7", 0] } },
+};
+const imgFilled = fillWorkflow(imgPlaceholders, imgParams);
+ok(imgFilled["5"].inputs.image === "storytime-abc.png" && imgFilled["1"].inputs.denoise === 0.4 && typeof imgFilled["1"].inputs.denoise === "number", "img2img placeholders: {{image}} is the name and {{denoise}} a number");
+ok(describeWorkflow(imgPlaceholders).image === true && describeWorkflow(custom).image === false, "describe: a workflow can start from a picture when it has {{image}}");
+const needsPicture = throwsWorkflowError(() => fillWorkflow(imgPlaceholders, params));
+ok(needsPicture !== null && needsPicture.includes("choose a picture"), "img2img placeholders: a workflow with {{image}} and no picture chosen is an error saying to choose one");
+const noImageSlot = throwsWorkflowError(() => fillWorkflow(custom, imgParams));
+ok(noImageSlot !== null && noImageSlot.includes("{{image}}"), "img2img placeholders: starting from a picture with a workflow that has none is an error mentioning {{image}}");
+ok(fillWorkflow({ ...custom, "1": { ...custom["1"], inputs: { ...custom["1"].inputs, denoise: "{{denoise}}" } } }, params)["1"].inputs.denoise === 1, "placeholders: {{denoise}} with no picture is 1");
+
+const sdxlImg = fillWorkflow(sdxl, imgParams);
+ok(!("5" in sdxlImg) && JSON.stringify(sdxl["5"].class_type) === '"EmptyLatentImage"', "img2img detected: the empty latent image is replaced (in the copy)");
+ok(sdxlImg.storytime_image.inputs.image === "storytime-abc.png" && JSON.stringify(sdxlImg.storytime_encode.inputs.vae) === '["4",2]' && sdxlImg.storytime_repeat.inputs.amount === 2, "img2img detected: LoadImage, VAEEncode (with the decoder's VAE) and RepeatLatentBatch are added");
+ok(JSON.stringify(sdxlImg["3"].inputs.latent_image) === '["storytime_repeat",0]' && sdxlImg["3"].inputs.denoise === 0.4, "img2img detected: the sampler takes the picture's latent, at the chosen strength");
+ok(sdxlImg["6"].inputs.text === "a lighthouse at dawn" && sdxlImg["3"].inputs.seed === 12345, "img2img detected: the prompt and seed are still set");
+ok(describeWorkflow(sdxl).image === true && describeWorkflow(bare).image === false, "describe: a detected workflow can start from a picture when it has an empty latent, a VAE and a denoise");
+const fluxImg = fillWorkflow(flux, imgParams);
+ok(fluxImg["17"].inputs.denoise === 0.4 && JSON.stringify(fluxImg["19"].inputs.latent_image) === '["storytime_repeat",0]' && JSON.stringify(fluxImg.storytime_encode.inputs.vae) === '["21",0]', "img2img detected (Flux): the scheduler's denoise is set and the VAE loader's VAE is used");
+const cantStart = throwsWorkflowError(() => fillWorkflow({ ...sdxl, "3": { class_type: "KSampler", inputs: { ...sdxl["3"].inputs, denoise: "x" } } }, imgParams));
+ok(cantStart !== null && cantStart.includes("{{image}}"), "img2img detected: a workflow with no numeric denoise is an error pointing to {{image}} and {{denoise}}");
 
 // ---- randomSeed ----
 const seeds = Array.from({ length: 50 }, randomSeed);

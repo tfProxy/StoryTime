@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { IMAGE_SLOTS } from "@/lib/imageSlots";
 import { imageUrl, type ComfyImage } from "@/lib/comfy/client";
 import { SLOT_NAMES, type PictureSaver } from "./usePictureSaver";
@@ -13,15 +13,15 @@ type Props = {
   /** The picture job's record in StoryTime, or null when it couldn't be recorded. */
   jobId: string | null;
   saver: PictureSaver;
-  /** More buttons, after the Use buttons. */
-  children?: ReactNode;
+  /** Called to make new pictures starting from this one. */
+  onStart?: (image: ComfyImage) => void;
 };
 
 /**
  * One picture from ComfyUI with the buttons to use it as the chapter's header or footer. A picture ComfyUI
  * no longer has (or can't be reached for) says so, and can't be used.
  */
-export default function PictureTile({ comfyUrl, image, tileKey, jobId, saver, children }: Props) {
+export default function PictureTile({ comfyUrl, image, tileKey, jobId, saver, onStart }: Props) {
   const [missing, setMissing] = useState(false);
   const src = imageUrl(comfyUrl, image);
   return (
@@ -42,7 +42,11 @@ export default function PictureTile({ comfyUrl, image, tileKey, jobId, saver, ch
             {saver.saving === `${tileKey}-${slot}` ? "Saving…" : `Use as ${SLOT_NAMES[slot]}`}
           </button>
         ))}
-        {children}
+        {onStart && (
+          <button type="button" className="secondary" disabled={missing} onClick={() => onStart(image)}>
+            Start from this
+          </button>
+        )}
       </div>
     </li>
   );

@@ -1,5 +1,6 @@
 // A fake ComfyUI server for the browser tests. It speaks just enough of ComfyUI's HTTP and WebSocket
-// API for StoryTime: /system_stats, /models/checkpoints, /prompt, /history/<id>, /view, /queue,
+// API for StoryTime: /system_stats, /models/checkpoints, /upload/image (names only; /prompt refuses a
+// LoadImage naming a picture that wasn't uploaded), /prompt, /history/<id>, /view, /queue,
 // /interrupt and a WebSocket at /ws that reports progress. Node has no WebSocket server built in, so
 // the handshake and the (unmasked, short) text frames are done by hand below.
 //
@@ -14,7 +15,8 @@
 //               the page has to find the pictures by polling /history
 //   steps       progress messages per job, with `stepDelay` ms between them (default 4 and 120)
 //   fail        null | "refuse" (POST /prompt answers 400 with node_errors, like a workflow ComfyUI
-//               rejects) | "error" (the job starts, then fails with an execution error)
+//               rejects) | "error" (the job starts, then fails with an execution error) | "upload"
+//               (POST /upload/image answers 400)
 import crypto from "node:crypto";
 import http from "node:http";
 import zlib from "node:zlib";
@@ -82,6 +84,7 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
   const mode = { checkpoints, ws, steps, stepDelay, startDelay, fail, version };
   const calls = [];
   const jobs = new Map(); // prompt_id -> job
+  const uploads = new Set(); // names of pictures uploaded with POST /upload/image
   const history = {};
   const sockets = new Map(); // client id -> socket
   const conns = new Set();
@@ -147,7 +150,20 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
     if (Object.keys(nodeErrors).length > 0) {
       return { status: 400, body: { error: { type: "prompt_outputs_failed_validation", message: "Prompt outputs failed validation", details: "", extra_info: {} }, node_errors: nodeErrors } };
     }
-    const batch = nodes.map(([, n]) => n?.inputs?.batch_size).find((v) => typeof v === "number") ?? 1;
+    for (const [id, node] of nodes) {
+      const image = node?.inputs?.image;
+      if (node?.class_type === "LoadImage" && !uploads.has(image)) {
+        nodeErrors[id] = {
+          class_type: "LoadImage",
+          dependent_outputs: ["9"],
+          errors: [{ type: "value_not_in_list", message: "Value not in list", details: `image: '${image}' not in [${[...uploads].map((u) => `'${u}'`).join(", ")}]` }],
+        };
+      }
+    }
+    if (Object.keys(nodeErrors).length > 0) {
+      return { status: 400, body: { error: { type: "prompt_outputs_failed_validation", message: "Prompt outputs failed validation", details: "", extra_info: {} }, node_errors: nodeErrors } };
+    }
+    const batch = nodes.map(([, n]) => n?.inputs?.batch_size ?? n?.inputs?.amount).find((v) => typeof v === "number") ?? 1;
     const job = { id: crypto.randomUUID(), no: ++jobNo, clientId: String(body.client_id ?? ""), count: batch, state: "queued", cancelled: false };
     jobs.set(job.id, job);
     chain = chain.then(() => run(job)).catch(() => {});
@@ -179,6 +195,15 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
       const p = url.pathname;
       if (p === "/system_stats") return json(200, { system: { comfyui_version: mode.version, os: "nt" }, devices: [] });
       if (p === "/models/checkpoints") return json(200, mode.checkpoints);
+      if (p === "/upload/image" && req.method === "POST") {
+        // multipart/form-data: only the file name is read; a name taken twice gets "(1)" like ComfyUI does.
+        const given = /name="image"; filename="([^"]+)"/.exec(typeof body === "string" ? body : "")?.[1];
+        if (!given || mode.fail === "upload") return json(400, { error: "no image" });
+        let name = given;
+        while (uploads.has(name)) name = name.replace(/(\(\d+\))?(\.\w+)$/, (_, n, ext) => `(${n ? Number(n.slice(1, -1)) + 1 : 1})${ext}`);
+        uploads.add(name);
+        return json(200, { name, subfolder: "", type: "input" });
+      }
       if (p === "/prompt" && req.method === "POST") {
         const r = queue(body && typeof body === "object" ? body : {});
         return json(r.status, r.body);

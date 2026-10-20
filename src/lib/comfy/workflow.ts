@@ -8,6 +8,11 @@
 // - or, when there are no placeholders, the usual nodes are found and filled in: the checkpoint
 //   loader, the empty latent image, the sampler's seed, and the text encoders feeding the sampler.
 //
+// Starting from a picture (image to image): "{{image}}" is the name of the picture uploaded to ComfyUI
+// (put it in a LoadImage node) and "{{denoise}}" is the strength, 0 to 1. The built-in workflow has an
+// image variant. A workflow without placeholders has its empty latent image replaced by the picture
+// (LoadImage, VAEEncode, RepeatLatentBatch) and its samplers' `denoise` set.
+//
 // Either way, the saved pictures' file name prefix (`filename_prefix`) is set when it is "StoryTime",
 // the built-in workflow's prefix, or contains "{{prefix}}". Any other prefix is left alone.
 
@@ -24,6 +29,10 @@ export type PictureParams = {
   seed: number;
   /** Where ComfyUI files the pictures; see `filenamePrefix`. Without it they keep the default prefix. */
   prefix?: string;
+  /** Image to image: the starting picture's name in ComfyUI's input folder. The size then comes from the picture. */
+  image?: string;
+  /** Image to image: how far the pictures may drift from the starting one, 0 to 1 (default 1). */
+  denoise?: number;
 };
 
 const DEFAULT_PREFIX = "StoryTime";
@@ -40,6 +49,8 @@ export type WorkflowFit = {
   size: boolean;
   count: boolean;
   seed: boolean;
+  /** Whether it can start from a picture. */
+  image: boolean;
 };
 
 /** Text-to-image with an SDXL checkpoint: 30 steps of DPM++ 2M Karras at CFG 6. */
@@ -57,6 +68,15 @@ export const BUILTIN_WORKFLOW: Workflow = {
   "7": { class_type: "CLIPTextEncode", inputs: { text: "{{negative}}", clip: ["4", 1] } },
   "8": { class_type: "VAEDecode", inputs: { samples: ["3", 0], vae: ["4", 2] } },
   "9": { class_type: "SaveImage", inputs: { filename_prefix: "StoryTime", images: ["8", 0] } },
+};
+
+/** The built-in workflow starting from a picture: its latent comes from the picture, not an empty image. */
+export const BUILTIN_IMG2IMG: Workflow = {
+  ...Object.fromEntries(Object.entries(BUILTIN_WORKFLOW).filter(([id]) => id !== "5")),
+  "3": { class_type: "KSampler", inputs: { ...BUILTIN_WORKFLOW["3"].inputs, denoise: "{{denoise}}", latent_image: ["12", 0] } },
+  "10": { class_type: "LoadImage", inputs: { image: "{{image}}" } },
+  "11": { class_type: "VAEEncode", inputs: { pixels: ["10", 0], vae: ["4", 2] } },
+  "12": { class_type: "RepeatLatentBatch", inputs: { samples: ["11", 0], amount: "{{count}}" } },
 };
 
 export class WorkflowError extends Error {}
@@ -86,8 +106,8 @@ export function parseWorkflow(text: string): Workflow {
   return obj as Workflow;
 }
 
-const NUMBER_SLOTS = { "{{seed}}": "seed", "{{width}}": "width", "{{height}}": "height", "{{count}}": "count" } as const;
-const TEXT_SLOTS = { "{{prompt}}": "prompt", "{{negative}}": "negative", "{{checkpoint}}": "checkpoint" } as const;
+const NUMBER_SLOTS = { "{{seed}}": "seed", "{{width}}": "width", "{{height}}": "height", "{{count}}": "count", "{{denoise}}": "denoise" } as const;
+const TEXT_SLOTS = { "{{prompt}}": "prompt", "{{negative}}": "negative", "{{checkpoint}}": "checkpoint", "{{image}}": "image" } as const;
 
 const isLink = (v: unknown): v is [string, number] => Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "number";
 
@@ -133,9 +153,18 @@ function promptNodes(wf: Workflow): { positive: string | null; negative: string 
   return { positive, negative: negative === positive ? null : negative };
 }
 
+const hasDenoise = (n: WorkflowNode) => typeof n.inputs.denoise === "number";
+
+/** Where the VAE comes from, as a link: the decoder's own, else the checkpoint's. */
+function vaeSource(wf: Workflow): [string, number] | null {
+  for (const node of Object.values(wf)) if (node.class_type === "VAEDecode" && isLink(node.inputs.vae)) return node.inputs.vae;
+  const loader = Object.entries(wf).find(([, n]) => n.class_type === "CheckpointLoaderSimple");
+  return loader ? [loader[0], 2] : null;
+}
+
 /** What the workflow lets StoryTime set. */
 export function describeWorkflow(wf: Workflow): WorkflowFit {
-  if (wf === BUILTIN_WORKFLOW) return { mode: "builtin", prompt: true, negative: true, checkpoint: true, size: true, count: true, seed: true };
+  if (wf === BUILTIN_WORKFLOW) return { mode: "builtin", prompt: true, negative: true, checkpoint: true, size: true, count: true, seed: true, image: true };
   const found = placeholdersIn(wf);
   if (found.size > 0) {
     return {
@@ -146,6 +175,7 @@ export function describeWorkflow(wf: Workflow): WorkflowFit {
       size: found.has("{{width}}") && found.has("{{height}}"),
       count: found.has("{{count}}"),
       seed: found.has("{{seed}}"),
+      image: found.has("{{image}}"),
     };
   }
   const nodes = Object.values(wf);
@@ -158,6 +188,7 @@ export function describeWorkflow(wf: Workflow): WorkflowFit {
     size: nodes.some((n) => LATENTS.test(n.class_type)),
     count: nodes.some((n) => LATENTS.test(n.class_type)),
     seed: nodes.some((n) => SEED_INPUTS.some((k) => typeof n.inputs[k] === "number")),
+    image: nodes.some((n) => LATENTS.test(n.class_type)) && vaeSource(wf) !== null && nodes.some(hasDenoise),
   };
 }
 
@@ -173,20 +204,47 @@ function setPrefix(wf: Workflow, prefix: string) {
 
 /** A copy of the workflow with the picture's settings filled in. Throws WorkflowError if the prompt has nowhere to go. */
 export function fillWorkflow(wf: Workflow, p: PictureParams): Workflow {
-  const out = fillSettings(wf, p);
+  const out = fillSettings(p.image && wf === BUILTIN_WORKFLOW ? BUILTIN_IMG2IMG : wf, p);
   setPrefix(out, p.prefix ?? DEFAULT_PREFIX);
   return out;
 }
 
+/** Replaces the empty latent image with the starting picture, and sets how far the samplers may change it. */
+function startFromImage(wf: Workflow, p: PictureParams & { image: string }) {
+  const empties = Object.entries(wf).filter(([, n]) => LATENTS.test(n.class_type)).map(([id]) => id);
+  const vae = vaeSource(wf);
+  const samplers = Object.values(wf).filter(hasDenoise);
+  if (empties.length === 0 || !vae || samplers.length === 0) {
+    throw new WorkflowError(
+      "Couldn't work out how to start this workflow from a picture. Put {{image}} in a Load Image node and {{denoise}} in the sampler's denoise, and export it again.",
+    );
+  }
+  const [load, encode, repeat] = ["storytime_image", "storytime_encode", "storytime_repeat"];
+  wf[load] = { class_type: "LoadImage", inputs: { image: p.image } };
+  wf[encode] = { class_type: "VAEEncode", inputs: { pixels: [load, 0], vae } };
+  wf[repeat] = { class_type: "RepeatLatentBatch", inputs: { samples: [encode, 0], amount: p.count } };
+  for (const node of Object.values(wf)) {
+    for (const [k, v] of Object.entries(node.inputs)) if (isLink(v) && empties.includes(v[0])) node.inputs[k] = [repeat, 0];
+  }
+  for (const id of empties) delete wf[id];
+  for (const node of samplers) node.inputs.denoise = p.denoise ?? 1;
+}
+
 function fillSettings(wf: Workflow, p: PictureParams): Workflow {
   const out: Workflow = JSON.parse(JSON.stringify(wf));
-  if (placeholdersIn(out).size > 0) {
-    if (!placeholdersIn(out).has("{{prompt}}")) throw new WorkflowError("The workflow has placeholders but no {{prompt}}, so the prompt has nowhere to go.");
+  const found = placeholdersIn(out);
+  if (found.size > 0) {
+    if (!found.has("{{prompt}}")) throw new WorkflowError("The workflow has placeholders but no {{prompt}}, so the prompt has nowhere to go.");
+    if (found.has("{{image}}") && !p.image) throw new WorkflowError("This workflow starts from a picture ({{image}}), so choose a picture to start from first.");
+    if (p.image && !found.has("{{image}}")) {
+      throw new WorkflowError("This workflow has placeholders but no {{image}}, so it can't start from a picture. Put {{image}} in a Load Image node and {{denoise}} in the sampler.");
+    }
+    const value = { ...p, image: p.image ?? "", denoise: p.denoise ?? 1 };
     for (const node of Object.values(out)) {
       for (const [k, v] of Object.entries(node.inputs)) {
         if (typeof v !== "string") continue;
-        if (v in NUMBER_SLOTS) node.inputs[k] = p[NUMBER_SLOTS[v as keyof typeof NUMBER_SLOTS]];
-        else node.inputs[k] = v.replace(/\{\{(prompt|negative|checkpoint)\}\}/g, (_, key: "prompt" | "negative" | "checkpoint") => p[key]);
+        if (v in NUMBER_SLOTS) node.inputs[k] = value[NUMBER_SLOTS[v as keyof typeof NUMBER_SLOTS]];
+        else node.inputs[k] = v.replace(/\{\{(prompt|negative|checkpoint|image)\}\}/g, (_, key: "prompt" | "negative" | "checkpoint" | "image") => value[key]);
       }
     }
     return out;
@@ -211,6 +269,7 @@ function fillSettings(wf: Workflow, p: PictureParams): Workflow {
     }
     for (const k of SEED_INPUTS) if (typeof node.inputs[k] === "number") node.inputs[k] = p.seed;
   }
+  if (p.image) startFromImage(out, { ...p, image: p.image });
   return out;
 }
 

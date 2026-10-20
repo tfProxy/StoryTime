@@ -23,14 +23,16 @@ const FIT_NAMES: [keyof Omit<WorkflowFit, "mode">, string][] = [
 function workflowSummary(text: string): { ok: boolean; text: string } {
   try {
     const fit = describeWorkflow(parseWorkflow(text));
-    if (fit.mode === "builtin") return { ok: true, text: "Using the built-in SDXL workflow (30 steps, DPM++ 2M Karras, CFG 6)." };
+    if (fit.mode === "builtin") return { ok: true, text: "Using the built-in SDXL workflow (30 steps, DPM++ 2M Karras, CFG 6). It can also start from a picture." };
     const sets = FIT_NAMES.filter(([k]) => fit[k]).map(([, n]) => n);
     const misses = FIT_NAMES.filter(([k]) => !fit[k]).map(([, n]) => n);
     const how = fit.mode === "placeholders" ? "Placeholders found" : "Found automatically";
     if (!fit.prompt) return { ok: false, text: `${how}, but nothing for the prompt. Put {{prompt}} in the positive prompt's text.` };
     return {
       ok: true,
-      text: `${how}: StoryTime sets the ${sets.join(", ")}.${misses.length ? ` The workflow keeps its own ${misses.join(", ")}.` : ""}`,
+      text:
+        `${how}: StoryTime sets the ${sets.join(", ")}.${misses.length ? ` The workflow keeps its own ${misses.join(", ")}.` : ""}` +
+        (fit.image ? " It can start from a picture." : " It can't start from a picture."),
     };
   } catch (e) {
     return { ok: false, text: e instanceof WorkflowError ? e.message : String(e) };
@@ -97,7 +99,9 @@ export default function ComfySettings({ comfy, onChange }: { comfy: Comfy; onCha
         In your own workflow, inputs set to <code>{"{{prompt}}"}</code>, <code>{"{{negative}}"}</code>,{" "}
         <code>{"{{checkpoint}}"}</code>, <code>{"{{width}}"}</code>, <code>{"{{height}}"}</code>, <code>{"{{count}}"}</code> and{" "}
         <code>{"{{seed}}"}</code> are filled in. Without them, StoryTime finds the checkpoint loader, empty latent image,
-        sampler and prompt nodes itself.
+        sampler and prompt nodes itself. To start from a picture, put <code>{"{{image}}"}</code> in a Load Image node
+        and <code>{"{{denoise}}"}</code> in the sampler&apos;s denoise; without placeholders, StoryTime swaps the empty
+        latent image for the picture.
       </p>
     </section>
   );

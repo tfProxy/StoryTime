@@ -37,10 +37,10 @@ r = await call("PUT", "/api/settings", { ...conns, imagePromptModel: "pics" });
 ok(r.json.settings.imagePromptModel === null, "…or when it isn't a model");
 
 // ---- ComfyUI (picture making) ----
-const comfyDefaults = { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4 };
+const comfyDefaults = { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4, denoise: 0.55 };
 r = await call("PUT", "/api/settings", conns);
 ok(JSON.stringify(r.json.settings.comfy) === JSON.stringify(comfyDefaults), "ComfyUI settings default to no address, the built-in workflow, 1344 x 768 and 4 pictures");
-const comfyIn = { url: "http://comfy.local:8188", workflow: '{"1":{"class_type":"X","inputs":{}}}', checkpoint: "sdxl.safetensors", width: 1024, height: 1024, count: 2 };
+const comfyIn = { url: "http://comfy.local:8188", workflow: '{"1":{"class_type":"X","inputs":{}}}', checkpoint: "sdxl.safetensors", width: 1024, height: 1024, count: 2, denoise: 0.3 };
 r = await call("PUT", "/api/settings", { ...conns, comfy: comfyIn });
 ok(JSON.stringify(r.json.settings.comfy) === JSON.stringify(comfyIn) && JSON.stringify((await call("GET", "/api/settings")).json.settings.comfy) === JSON.stringify(comfyIn), "ComfyUI settings are saved and read back");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, count: 20, width: 10, height: 99999 } });
@@ -51,6 +51,14 @@ r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, count: 2
 ok(r.json.settings.comfy.count === 4 && r.json.settings.comfy.width === 1344 && r.json.settings.comfy.url === "" && r.json.settings.comfy.checkpoint === "" && r.json.settings.comfy.height === 1024, "fractions, text where a number belongs and numbers where text belongs each fall back on their own");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, count: 8, width: 64, height: 4096 } });
 ok(r.json.settings.comfy.count === 8 && r.json.settings.comfy.width === 64 && r.json.settings.comfy.height === 4096, "the limits themselves (8 pictures, 64 and 4096 pixels) are allowed");
+r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, denoise: 0.01 } });
+ok(r.json.settings.comfy.denoise === 0.55 && r.json.settings.comfy.count === 2, "a strength below 0.05 falls back to 0.55, keeping the other fields");
+r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, denoise: 1.5 } });
+ok(r.json.settings.comfy.denoise === 0.55, "a strength above 1 falls back to 0.55");
+r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, denoise: 1 } });
+ok(r.json.settings.comfy.denoise === 1, "a strength of exactly 1 is allowed");
+r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, denoise: undefined } });
+ok(r.json.settings.comfy.denoise === 0.55, "settings saved before the strength existed get 0.55");
 r = await call("PUT", "/api/settings", { ...conns, comfy: "yes" });
 ok(JSON.stringify(r.json.settings.comfy) === JSON.stringify(comfyDefaults), "a ComfyUI setting that isn't an object falls back to the defaults");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, workflow: "x".repeat(500_001) } });

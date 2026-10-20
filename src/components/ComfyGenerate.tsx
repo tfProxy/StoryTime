@@ -7,6 +7,7 @@ import type { ComfySettings } from "@/lib/settingsSchema";
 import type { ImageMoment } from "@/lib/ai/imagePrompt";
 import type { LoadedPrompt } from "./ImagePromptPanel";
 import PictureTile from "./PictureTile";
+import { fromComfyImage, uploadStart, type StartPicture, type Uploaded } from "@/lib/comfy/startPicture";
 import { usePictureSaver } from "./usePictureSaver";
 import { describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
 import { cancelPrompt, listCheckpoints, queuePrompt, waitForPictures, type ComfyImage, type Progress } from "@/lib/comfy/client";
@@ -31,6 +32,7 @@ async function recordJob(job: Record<string, unknown>): Promise<string> {
 }
 
 function progressText(p: Progress): string {
+  if (p.stage === "uploading") return "Sending the starting picture to ComfyUI…";
   if (p.stage === "queued") return p.ahead ? `Waiting in ComfyUI's queue (${p.ahead} ahead)…` : "Starting…";
   if (p.stage === "running") return `Step ${p.value} of ${p.max}…`;
   return "Loading the pictures…";
@@ -44,10 +46,14 @@ type Props = {
   negative: string;
   /** A prompt brought back from a saved picture; its seed can be used again. */
   loaded?: LoadedPrompt | null;
+  /** The picture new pictures start from (image to image), or null to make them from the prompt alone. */
+  start?: StartPicture | null;
+  onStart?: (picture: StartPicture) => void;
+  onClearStart?: () => void;
 };
 
 /** Makes pictures from the prompt on the ComfyUI machine, and saves the ones the author picks. */
-export default function ComfyGenerate({ chapterId, storyId, moment, prompt, negative, loaded = null }: Props) {
+export default function ComfyGenerate({ chapterId, storyId, moment, prompt, negative, loaded = null, start = null, onStart, onClearStart }: Props) {
   const settings = useSettings();
   const comfy = settings.comfy;
   const [checkpoints, setCheckpoints] = useState<string[] | null>(null);
@@ -56,6 +62,8 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const saver = usePictureSaver(chapterId, comfy.url, setStatus);
   const job = useRef<{ promptId: string | null; ctl: AbortController } | null>(null);
+  // The starting picture as uploaded to ComfyUI, kept so "Make more" doesn't send it again.
+  const uploaded = useRef<Uploaded | null>(null);
   // Each prompt loaded from a saved picture starts with a new seed again, until the author ticks the box.
   const [reuseSeed, setReuseSeed] = useState(false);
   const [seenLoad, setSeenLoad] = useState(0);
@@ -102,15 +110,29 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
       if (!prompt.trim()) throw new Error("Write or type a prompt first.");
       const base = parseWorkflow(comfy.workflow);
       if (describeWorkflow(base).checkpoint && !comfy.checkpoint) throw new Error("Pick a checkpoint first.");
+      if (start && !describeWorkflow(base).image) {
+        throw new Error("Your workflow can't start from a picture. Clear the starting picture, or see Settings for how to allow it.");
+      }
+      let from: Uploaded | null = null;
+      if (start) {
+        setProgress({ stage: "uploading" });
+        if (uploaded.current?.key !== start.key) uploaded.current = await uploadStart(comfy.url, start);
+        from = uploaded.current;
+        setProgress({ stage: "queued", ahead: null });
+      }
+      // From a picture the pictures are its size.
+      const width = from?.width ?? comfy.width;
+      const height = from?.height ?? comfy.height;
       const workflow = fillWorkflow(base, {
         prompt: prompt.trim(),
         negative: negative.trim(),
         checkpoint: comfy.checkpoint,
-        width: comfy.width,
-        height: comfy.height,
+        width,
+        height,
         count: comfy.count,
         seed,
         prefix: filenamePrefix(storyId, chapterId),
+        ...(from && { image: from.name, denoise: comfy.denoise }),
       });
       const promptId = await queuePrompt(comfy.url, workflow, clientId, { storytime: { chapterId, storyId } });
       job.current.promptId = promptId;
@@ -125,11 +147,12 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
           prompt: prompt.trim(),
           negative: negative.trim(),
           checkpoint: comfy.checkpoint,
-          width: comfy.width,
-          height: comfy.height,
+          width,
+          height,
           seed,
           count: comfy.count,
           moment,
+          ...(from && { source: start!.source, denoise: comfy.denoise }),
           images,
         });
       } catch (e) {
@@ -182,6 +205,8 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
               const [width, height] = e.target.value.split("x").map(Number);
               set({ width, height });
             }}
+            disabled={start !== null}
+            title={start ? "Pictures made from a starting picture are its size" : undefined}
             style={{ width: "auto" }}
           >
             {!size && <option value={`${comfy.width}x${comfy.height}`}>{`${comfy.width} × ${comfy.height}`}</option>}
@@ -203,6 +228,35 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
           </select>
         </label>
       </div>
+      {start && (
+        <div className="start-picture">
+          {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
+          <img src={start.thumb} alt="Starting picture" />
+          <div className="start-picture-controls">
+            <p style={{ margin: 0 }}>
+              <strong>Starting from this picture.</strong> <span className="meta">The new pictures are its size.</span>
+            </p>
+            <label className="strength">
+              Strength {comfy.denoise.toFixed(2)}
+              <input
+                type="range"
+                aria-label="Strength"
+                min={0.05}
+                max={1}
+                step={0.05}
+                value={comfy.denoise}
+                onChange={(e) => set({ denoise: Number(e.target.value) })}
+              />
+            </label>
+            <p className="meta" style={{ margin: 0 }}>Low keeps the picture close; high changes more.</p>
+            <div>
+              <button type="button" className="secondary" onClick={onClearStart} disabled={busy}>
+                Clear starting picture
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="row" style={{ flexWrap: "wrap" }}>
         <button type="button" onClick={() => void generate()} disabled={busy || !prompt.trim()}>
           {busy ? "Making pictures…" : candidates.length ? "Make more" : "Make pictures"}
@@ -231,7 +285,15 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
         <>
           <ul className="candidates" aria-label="Pictures from ComfyUI">
             {candidates.map((c) => (
-              <PictureTile key={c.key} comfyUrl={comfy.url} image={c.image} tileKey={c.key} jobId={c.jobId} saver={saver} />
+              <PictureTile
+                key={c.key}
+                comfyUrl={comfy.url}
+                image={c.image}
+                tileKey={c.key}
+                jobId={c.jobId}
+                saver={saver}
+                onStart={onStart && ((image) => onStart(fromComfyImage(comfy.url, image)))}
+              />
             ))}
           </ul>
           <p className="row" style={{ margin: 0 }}>
