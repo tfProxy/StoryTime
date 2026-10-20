@@ -18,6 +18,12 @@ export default function ChapterImageEditor({ chapterId, slot, version: initial }
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [version, setVersion] = useState(initial);
+  // A picture saved elsewhere on the page (from ComfyUI) arrives as a new version prop after a refresh.
+  const [seen, setSeen] = useState(initial);
+  if (initial !== seen) {
+    setSeen(initial);
+    setVersion(initial);
+  }
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const { title, where } = LABELS[slot];

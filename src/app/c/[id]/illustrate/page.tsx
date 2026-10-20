@@ -35,6 +35,7 @@ export default async function IllustratePage({ params }: { params: Promise<{ id:
       </p>
       <h1>Illustrate chapter</h1>
       <ImagePromptPanel
+        chapterId={chapter.id}
         story={{ id: story.id, title: story.title, premise: story.premise, art_style: story.art_style }}
         path={path.map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary }))}
         codex={codex}

@@ -63,6 +63,17 @@ try {
   ok((await used.innerText()) === "Codex entries used: Jim", "…and dropped again when it is removed");
   ok(await page.getByRole("button", { name: "Write prompt", exact: true }).isVisible() && await page.getByRole("button", { name: "View prompt" }).isVisible(), "the page offers Write prompt and the eye button");
 
+  // ---- the Prompt and Negative prompt fields are there from the start, so you can type your own ----
+  const typedPrompt = page.getByRole("textbox", { name: "Prompt", exact: true });
+  const typedNegative = page.getByRole("textbox", { name: "Negative prompt", exact: true });
+  ok(await typedPrompt.isVisible() && await typedNegative.isVisible(), "the Prompt and Negative prompt fields are shown before anything is written");
+  ok((await typedPrompt.inputValue()) === "" && (await typedNegative.inputValue()) === "", "…and are empty");
+  ok(await page.getByText(/^Scene:/).count() === 0, "…with no scene yet");
+  ok(await page.getByRole("button", { name: "Copy prompt", exact: true }).isDisabled() && await page.getByRole("button", { name: "Copy negative" }).isDisabled(), "…and the copy buttons are off while they are empty");
+  await typedPrompt.fill("my own prompt");
+  ok(await page.getByRole("button", { name: "Copy prompt", exact: true }).isEnabled(), "typing a prompt turns Copy prompt on");
+  ok(await page.getByRole("button", { name: "Write prompt", exact: true }).isVisible(), "…and the button still says Write prompt, since none was written");
+
   // ---- the story's art style is saved when the field loses focus ----
   const art = page.getByLabel("Art style for this story");
   ok((await art.inputValue()) === "" && (await get(`/api/stories/${storyId}`)).art_style === "", "a new story has no art style");
@@ -103,7 +114,7 @@ try {
   const promptBox = page.locator(".image-prompt-result textarea").nth(0);
   const negativeBox = page.locator(".image-prompt-result textarea").nth(1);
   ok((await page.locator(".image-prompt-result label").nth(0).innerText()).startsWith("Prompt") && (await page.locator(".image-prompt-result label").nth(1).innerText()).startsWith("Negative prompt"), "the result has a Prompt and a Negative prompt field");
-  ok((await promptBox.inputValue()) === "a man with blonde hair eating a sandwich in a kitchen. watercolor storybook, soft light.", "the prompt has the art style added as a sentence");
+  ok((await promptBox.inputValue()) === "a man with blonde hair eating a sandwich in a kitchen. watercolor storybook, soft light.", "the prompt has the art style added as a sentence (replacing what was typed before)");
   ok((await negativeBox.inputValue()) === "text, watermark", "the negative prompt is shown");
   ok(await page.getByText("Scene: Jim eats.").isVisible() && await page.getByRole("button", { name: "Write again" }).isVisible(), "the scene is shown and the button now says Write again");
   ok((await get(`/api/stories/${storyId}`)).art_style === "watercolor storybook, soft light", "the art style on the story is unchanged");

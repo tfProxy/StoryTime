@@ -40,9 +40,23 @@ export type Settings = {
   autoSuggestChoices: boolean;
   /** How picture prompts are written: comma-separated tags (SDXL, Pony, SD 1.5) or plain sentences (Flux, SD3). */
   imagePromptStyle: ImagePromptStyle;
+  /** The ComfyUI machine that makes pictures, and the choices last used on the Illustrate page. */
+  comfy: ComfySettings;
 };
 
 export type ImagePromptStyle = "tags" | "natural";
+
+export type ComfySettings = {
+  /** Where ComfyUI is, e.g. https://comfy.example.ts.net; "" when there is none. */
+  url: string;
+  /** A workflow exported from ComfyUI in API format, as JSON; "" uses the built-in SDXL workflow. */
+  workflow: string;
+  checkpoint: string;
+  width: number;
+  height: number;
+  /** How many pictures to make at once. */
+  count: number;
+};
 
 export const DEFAULT_SETTINGS: Settings = {
   connections: [],
@@ -53,6 +67,7 @@ export const DEFAULT_SETTINGS: Settings = {
   disableThinking: false,
   autoSuggestChoices: false,
   imagePromptStyle: "tags",
+  comfy: { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4 },
 };
 
 // Each field falls back to its default when missing or invalid, so partial files still
@@ -87,6 +102,16 @@ const settingsSchema = z.object({
   disableThinking: z.boolean().catch(false),
   autoSuggestChoices: z.boolean().catch(false),
   imagePromptStyle: z.enum(["tags", "natural"]).catch("tags"),
+  comfy: z
+    .object({
+      url: z.string().catch(""),
+      workflow: z.string().max(500_000).catch(""),
+      checkpoint: z.string().catch(""),
+      width: z.number().int().min(64).max(4096).catch(DEFAULT_SETTINGS.comfy.width),
+      height: z.number().int().min(64).max(4096).catch(DEFAULT_SETTINGS.comfy.height),
+      count: z.number().int().min(1).max(8).catch(DEFAULT_SETTINGS.comfy.count),
+    })
+    .catch(DEFAULT_SETTINGS.comfy),
 });
 
 export function parseSettings(raw: unknown): Settings {

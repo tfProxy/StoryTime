@@ -1026,6 +1026,47 @@ main:has(.library) {
   gap: 0.75rem;
 }
 
+/* Making pictures with ComfyUI, under the prompt; candidates in a grid with a button under each. */
+.comfy-generate {
+  display: grid;
+  gap: 0.75rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+}
+
+.comfy-generate h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.comfy-generate progress {
+  width: 100%;
+}
+
+.candidates {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.candidates li {
+  display: grid;
+  gap: 0.4rem;
+  align-content: start;
+}
+
+.candidates img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: contain;
+  border-radius: 6px;
+  background: var(--line);
+}
+
 /* The Illustrate chapter page: one card per picture, side by side when there is room. */
 .image-editors {
   display: grid;

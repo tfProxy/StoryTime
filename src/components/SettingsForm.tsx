@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { PROVIDERS, providerInfo, type ProviderKind } from "@/lib/ai/providers";
 import { AiError, listModels, streamChat } from "@/lib/ai/client";
 import PromptButton from "./PromptButton";
+import ComfySettings from "./ComfySettings";
 import {
   exportSettingsJson,
   findConnection,
@@ -395,6 +396,8 @@ export default function SettingsForm() {
             />
           </label>
         </section>
+
+        <ComfySettings comfy={settings.comfy} onChange={(patch) => update({ comfy: { ...settings.comfy, ...patch } })} />
 
         <section className="settings-section">
           <h2>Options</h2>

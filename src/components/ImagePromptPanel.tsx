@@ -11,6 +11,7 @@ import { imagePromptRequest, withArtStyle, writeImagePrompt } from "@/lib/ai/ima
 import AutoTextarea from "./AutoTextarea";
 import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
+import ComfyGenerate from "./ComfyGenerate";
 
 const SLOT_NAMES: Record<ImageSlot, string> = { header: "Header picture", footer: "Footer picture" };
 const STYLE_NAMES: Record<ImagePromptStyle, string> = {
@@ -19,6 +20,7 @@ const STYLE_NAMES: Record<ImagePromptStyle, string> = {
 };
 
 type Props = {
+  chapterId: string;
   story: { id: string; title: string; premise: string; art_style: string };
   /** The story from its first chapter down to the chapter being illustrated. */
   path: ContextChapter[];
@@ -28,7 +30,7 @@ type Props = {
 type Result = { scene: string; prompt: string; negative: string };
 
 /** Writes a prompt for an image generator from the chapter and the codex entries it mentions. */
-export default function ImagePromptPanel({ story, path, codex }: Props) {
+export default function ImagePromptPanel({ chapterId, story, path, codex }: Props) {
   const settings = useSettings();
   const chapter = path[path.length - 1];
   const [slot, setSlot] = useState<ImageSlot>("header");
@@ -36,7 +38,8 @@ export default function ImagePromptPanel({ story, path, codex }: Props) {
   const [model, setModel] = useState<ModelRef | null>(null);
   const [artStyle, setArtStyle] = useState(story.art_style);
   const [savedArtStyle, setSavedArtStyle] = useState(story.art_style);
-  const [result, setResult] = useState<Result | null>(null);
+  const [result, setResult] = useState<Result>({ scene: "", prompt: "", negative: "" });
+  const [written, setWritten] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -74,6 +77,7 @@ export default function ImagePromptPanel({ story, path, codex }: Props) {
       await saveArtStyle();
       const p = await writeImagePrompt(settings, { ...options(), model, signal: ctl.signal });
       setResult({ scene: p.scene, prompt: withArtStyle(p.prompt, artStyle, style), negative: p.negative });
+      setWritten(true);
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) {
         setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
@@ -92,8 +96,8 @@ export default function ImagePromptPanel({ story, path, codex }: Props) {
     <section className="ai-panel image-prompt">
       <h2>Picture prompt</h2>
       <p className="meta" style={{ margin: 0 }}>
-        Writes a prompt for your image generator from this chapter and the codex entries it mentions. Make the picture
-        there, then upload it below.
+        Writes a prompt for your image generator from this chapter and the codex entries it mentions (or type your
+        own). Make the pictures with ComfyUI here, or elsewhere and upload them below.
       </p>
 
       <div className="row" style={{ flexWrap: "wrap" }}>
@@ -154,7 +158,7 @@ export default function ImagePromptPanel({ story, path, codex }: Props) {
       <div className="row" style={{ flexWrap: "wrap" }}>
         <ModelPicker label="Model for picture prompts" role="cheap" value={model} onChange={setModel} />
         <button type="button" onClick={() => void write()} disabled={busy}>
-          {busy ? "Writing…" : result ? "Write again" : "Write prompt"}
+          {busy ? "Writing…" : written ? "Write again" : "Write prompt"}
         </button>
         <PromptButton label="Write prompt" build={() => imagePromptRequest(settings.contextTokens, options())} />
         {busy && (
@@ -164,9 +168,8 @@ export default function ImagePromptPanel({ story, path, codex }: Props) {
         )}
       </div>
 
-      {result && (
-        <div className="image-prompt-result">
-          {result.scene && <p className="meta" style={{ margin: 0 }}>Scene: {result.scene}</p>}
+      <div className="image-prompt-result">
+        {result.scene && <p className="meta" style={{ margin: 0 }}>Scene: {result.scene}</p>}
           <label>
             Prompt
             <AutoTextarea
@@ -186,16 +189,17 @@ export default function ImagePromptPanel({ story, path, codex }: Props) {
             />
           </label>
           <div className="row" style={{ flexWrap: "wrap" }}>
-            <button type="button" className="secondary" onClick={() => void copy(result.prompt, "Prompt")}>
+            <button type="button" className="secondary" onClick={() => void copy(result.prompt, "Prompt")} disabled={!result.prompt}>
               Copy prompt
             </button>
             <button type="button" className="secondary" onClick={() => void copy(result.negative, "Negative prompt")} disabled={!result.negative}>
               Copy negative
             </button>
           </div>
-        </div>
-      )}
+      </div>
       {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
+
+      <ComfyGenerate chapterId={chapterId} slot={slot} prompt={result.prompt} negative={result.negative} />
     </section>
   );
 }
