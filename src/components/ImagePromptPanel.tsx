@@ -14,6 +14,8 @@ import ComfyGenerate from "./ComfyGenerate";
 import type { StartPicture } from "@/lib/comfy/startPicture";
 import type { Candidate } from "./NewPictures";
 import type { PromptToLoad } from "./PastPictures";
+import type { PictureDraft } from "@/lib/pictureDrafts";
+import { usePictureDraft } from "./usePictureDraft";
 
 const MOMENT_NAMES: Record<ImageMoment, string> = { start: "Chapter start", end: "Chapter end" };
 const STYLE_NAMES: Record<ImagePromptStyle, string> = {
@@ -39,19 +41,25 @@ type Props = {
   /** The story from its first chapter down to the chapter being illustrated. */
   path: ContextChapter[];
   codex: ContextCodexEntry[];
+  /** The prompt boxes as last left for this chapter, to start from. */
+  draft?: PictureDraft | null;
 };
 
 type Result = { scene: string; prompt: string; negative: string };
 
-/** Writes a prompt for an image generator from the chapter and the codex entries it mentions. */
-export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null, start = null, onClearStart, onPictures, queueSlot }: Props) {
+/**
+ * Writes a prompt for an image generator from the chapter and the codex entries it mentions. What is in
+ * the boxes is kept for the chapter on the server, so it is there again next time.
+ */
+export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null, start = null, onClearStart, onPictures, queueSlot, draft = null }: Props) {
   const settings = useSettings();
   const chapter = path[path.length - 1];
-  const [moment, setMoment] = useState<ImageMoment>("start");
-  const [direction, setDirection] = useState("");
+  const [moment, setMoment] = useState<ImageMoment>(draft?.moment ?? "start");
+  const [direction, setDirection] = useState(draft?.direction ?? "");
   const [artStyle, setArtStyle] = useState(story.art_style);
   const [savedArtStyle, setSavedArtStyle] = useState(story.art_style);
-  const [result, setResult] = useState<Result>({ scene: "", prompt: "", negative: "" });
+  const [result, setResult] = useState<Result>({ scene: draft?.scene ?? "", prompt: draft?.prompt ?? "", negative: draft?.negative ?? "" });
+  const saveError = usePictureDraft(chapterId, { prompt: result.prompt, negative: result.negative, scene: result.scene, direction, moment }, draft);
   const [written, setWritten] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
@@ -230,6 +238,7 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
           </div>
       </div>
       {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
+      {saveError && <p className="error" style={{ margin: 0 }}>Couldn&apos;t keep the prompt for next time: {saveError}</p>}
 
       <ComfyGenerate
         chapterId={chapterId}

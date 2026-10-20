@@ -216,6 +216,19 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE chapter_images ADD COLUMN prompt TEXT;
   ALTER TABLE chapter_images ADD COLUMN negative TEXT;
   `,
+  // 12: what was in the Illustrate page's prompt boxes for each chapter, so it is there again on return
+  // (on any device). One row per chapter, replaced as the author types.
+  `
+  CREATE TABLE picture_drafts (
+    chapter_id TEXT PRIMARY KEY REFERENCES chapters(id),
+    prompt     TEXT NOT NULL DEFAULT '',
+    negative   TEXT NOT NULL DEFAULT '',
+    scene      TEXT NOT NULL DEFAULT '',
+    direction  TEXT NOT NULL DEFAULT '',
+    moment     TEXT NOT NULL DEFAULT 'start' CHECK (moment IN ('start', 'end')),
+    updated_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 function open(): Database.Database {

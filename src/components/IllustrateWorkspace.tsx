@@ -8,6 +8,7 @@ import ImagePromptPanel, { type LoadedPrompt } from "./ImagePromptPanel";
 import NewPictures, { type Candidate } from "./NewPictures";
 import PastPictures, { type PromptToLoad } from "./PastPictures";
 import { useSettings } from "@/lib/settings";
+import type { PictureDraft } from "@/lib/pictureDrafts";
 import { fromComfyImage, fromSaved, type StartPicture } from "@/lib/comfy/startPicture";
 
 type Props = {
@@ -21,6 +22,8 @@ type Props = {
   codex: ContextCodexEntry[];
   versions: ImageVersions;
   made: Record<ImageSlot, ImageMade | null>;
+  /** The prompt boxes as last left for this chapter. */
+  draft: PictureDraft | null;
 };
 
 /**
@@ -29,7 +32,7 @@ type Props = {
  * carries a number, so loading the same prompt twice still counts as a new request), the starting picture,
  * and the pictures made on this visit.
  */
-export default function IllustrateWorkspace({ chapterId, chapter, titles, story, path, codex, versions, made }: Props) {
+export default function IllustrateWorkspace({ chapterId, chapter, titles, story, path, codex, versions, made, draft }: Props) {
   const [loaded, setLoaded] = useState<LoadedPrompt | null>(null);
   // The picture new pictures start from (image to image), when one is chosen.
   const [start, setStart] = useState<StartPicture | null>(null);
@@ -64,6 +67,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
           onClearStart={() => setStart(null)}
           onPictures={(pictures) => setCandidates((prev) => [...pictures, ...prev])}
           queueSlot={queueSlot}
+          draft={draft}
         />
       </div>
       <div className="illustrate-gallery">

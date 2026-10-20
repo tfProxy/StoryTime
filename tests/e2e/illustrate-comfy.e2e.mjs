@@ -219,7 +219,9 @@ try {
   // ---- bringing a saved picture's prompt back ----
   await fetch(`${BASE}/api/chapters/${chapterId}/images/footer`, { method: "PUT", headers: { "Content-Type": "image/jpeg" }, body: headerBytes });
   await openIllustrate();
-  ok((await promptBox.inputValue()) === "", "after a reload the prompt box is empty again");
+  ok((await promptBox.inputValue()) === "a lighthouse at dawn, gulls", "after a reload the prompt box still has the last prompt (it is kept for the chapter)");
+  await promptBox.fill("");
+  await negativeBox.fill("");
   const madeFrom = card("Header picture").locator(".image-made");
   await madeFrom.waitFor();
   ok((await madeFrom.innerText()).includes("Made from: a lighthouse at dawn, gulls"), "the Header picture card says what it was made from");
