@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { prepareImage } from "@/lib/prepareImage";
-import { chapterImageUrl, type ImageSlot } from "@/lib/imageSlots";
+import { chapterImageUrl, type ImageMade, type ImageSlot } from "@/lib/imageSlots";
 
 // The longest side an uploaded illustration keeps. Bigger pictures are scaled down in the browser first.
 const MAX_SIDE = 1600;
@@ -13,8 +13,20 @@ const LABELS: Record<ImageSlot, { title: string; where: string }> = {
   footer: { title: "Footer picture", where: "Shown after the chapter's text, before the choices." },
 };
 
+const SHOWN_PROMPT = 160;
+
+type Props = {
+  chapterId: string;
+  slot: ImageSlot;
+  version: number | null;
+  /** What the saved picture was made from, when it came from ComfyUI. */
+  made?: ImageMade | null;
+  /** Called with `made` when the author asks to bring its prompt back. */
+  onLoadPrompt?: (made: ImageMade) => void;
+};
+
 /** Upload, replace or remove one of a chapter's pictures. Changes apply straight away. */
-export default function ChapterImageEditor({ chapterId, slot, version: initial }: { chapterId: string; slot: ImageSlot; version: number | null }) {
+export default function ChapterImageEditor({ chapterId, slot, version: initial, made = null, onLoadPrompt }: Props) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [version, setVersion] = useState(initial);
@@ -59,6 +71,25 @@ export default function ChapterImageEditor({ chapterId, slot, version: initial }
         <img className="image-editor-preview" src={chapterImageUrl(chapterId, slot, version)} alt={`${title} preview`} />
       ) : (
         <div className="image-editor-empty">No picture yet</div>
+      )}
+      {version !== null && made && (
+        <div className="image-made">
+          <p className="meta" style={{ margin: 0 }} title={made.prompt}>
+            Made from: {made.prompt.length > SHOWN_PROMPT ? `${made.prompt.slice(0, SHOWN_PROMPT).trimEnd()}…` : made.prompt}
+          </p>
+          {made.job && (
+            <p className="meta" style={{ margin: 0 }}>
+              {[made.job.checkpoint, `${made.job.width} × ${made.job.height}`, `seed ${made.job.seed}`].filter(Boolean).join(" · ")}
+            </p>
+          )}
+          {onLoadPrompt && (
+            <div>
+              <button type="button" className="secondary" onClick={() => onLoadPrompt(made)}>
+                Load prompt
+              </button>
+            </div>
+          )}
+        </div>
       )}
       <input
         ref={input}

@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { jobPrompts } from "./pictureJobs";
 import { checkImage, PostError } from "./stories";
-import type { ImageSlot, ImageVersions } from "./imageSlots";
+import type { ImageMade, ImageSlot, ImageVersions } from "./imageSlots";
 
 // A chapter's illustrations: at most one picture per slot (see ./imageSlots).
 
@@ -43,6 +43,23 @@ export function getChapterImage(chapterId: string, slot: ImageSlot): { type: str
     .prepare(`SELECT image, type, updated_at FROM chapter_images WHERE chapter_id = ? AND slot = ?`)
     .get(chapterId, slot) as { image: Buffer; type: string; updated_at: number } | undefined;
   return row && { type: row.type, bytes: row.image, version: row.updated_at };
+}
+
+/** What each saved picture of a chapter was made from; a slot is null when empty or when the picture was uploaded. */
+export function chapterImageMade(chapterId: string): Record<ImageSlot, ImageMade | null> {
+  const out: Record<ImageSlot, ImageMade | null> = { header: null, footer: null };
+  const rows = db()
+    .prepare(
+      `SELECT i.slot, i.prompt, i.negative, j.seed, j.checkpoint, j.width, j.height
+       FROM chapter_images i LEFT JOIN picture_jobs j ON j.id = i.job_id
+       WHERE i.chapter_id = ? AND i.prompt IS NOT NULL`,
+    )
+    .all(chapterId) as { slot: ImageSlot; prompt: string; negative: string | null; seed: number | null; checkpoint: string | null; width: number | null; height: number | null }[];
+  for (const r of rows) {
+    const job = r.seed === null ? null : { seed: r.seed, checkpoint: r.checkpoint ?? "", width: r.width ?? 0, height: r.height ?? 0 };
+    out[r.slot] = { prompt: r.prompt, negative: r.negative ?? "", job };
+  }
+  return out;
 }
 
 /** The image versions of each of the given chapters (chapters without images get nulls). */

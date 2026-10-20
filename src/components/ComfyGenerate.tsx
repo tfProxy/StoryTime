@@ -8,6 +8,7 @@ import type { ComfySettings } from "@/lib/settingsSchema";
 import { IMAGE_SLOTS, type ImageSlot } from "@/lib/imageSlots";
 import { prepareImage } from "@/lib/prepareImage";
 import type { ImageMoment } from "@/lib/ai/imagePrompt";
+import type { LoadedPrompt } from "./ImagePromptPanel";
 import { describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
 import {
   cancelPrompt,
@@ -50,10 +51,18 @@ function progressText(p: Progress): string {
   return "Loading the pictures…";
 }
 
-type Props = { chapterId: string; storyId: string; moment: ImageMoment; prompt: string; negative: string };
+type Props = {
+  chapterId: string;
+  storyId: string;
+  moment: ImageMoment;
+  prompt: string;
+  negative: string;
+  /** A prompt brought back from a saved picture; its seed can be used again. */
+  loaded?: LoadedPrompt | null;
+};
 
 /** Makes pictures from the prompt on the ComfyUI machine, and saves the ones the author picks. */
-export default function ComfyGenerate({ chapterId, storyId, moment, prompt, negative }: Props) {
+export default function ComfyGenerate({ chapterId, storyId, moment, prompt, negative, loaded = null }: Props) {
   const router = useRouter();
   const settings = useSettings();
   const comfy = settings.comfy;
@@ -63,6 +72,14 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
   const [saving, setSaving] = useState<string | null>(null);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const job = useRef<{ promptId: string | null; ctl: AbortController } | null>(null);
+  // Each prompt loaded from a saved picture starts with a new seed again, until the author ticks the box.
+  const [reuseSeed, setReuseSeed] = useState(false);
+  const [seenLoad, setSeenLoad] = useState(0);
+  if (loaded && loaded.nonce !== seenLoad) {
+    setSeenLoad(loaded.nonce);
+    setReuseSeed(false);
+  }
+  const loadedSeed = loaded?.seed ?? null;
 
   // The checkpoint list comes from ComfyUI whenever its address changes.
   useEffect(() => {
@@ -94,9 +111,9 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
     const ctl = new AbortController();
     job.current = { promptId: null, ctl };
     setProgress({ stage: "queued", ahead: null });
-    const seed = randomSeed();
+    const seed = reuseSeed && loadedSeed !== null ? loadedSeed : randomSeed();
     // Names this job's WebSocket connection, so ComfyUI sends its progress there.
-    const clientId = `storytime-${seed.toString(36)}`;
+    const clientId = `storytime-${randomSeed().toString(36)}`;
     try {
       if (!prompt.trim()) throw new Error("Write or type a prompt first.");
       const base = parseWorkflow(comfy.workflow);
@@ -225,6 +242,12 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
         <button type="button" onClick={() => void generate()} disabled={busy || !prompt.trim()}>
           {busy ? "Making pictures…" : candidates.length ? "Make more" : "Make pictures"}
         </button>
+        {loadedSeed !== null && (
+          <label className="inline-label" title="The same seed with a slightly changed prompt gives a close variation">
+            <input type="checkbox" checked={reuseSeed} onChange={(e) => setReuseSeed(e.target.checked)} />
+            Reuse seed {loadedSeed}
+          </label>
+        )}
         {busy && (
           <button type="button" className="secondary" onClick={stop}>
             Stop

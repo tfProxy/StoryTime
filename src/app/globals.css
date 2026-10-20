@@ -456,6 +456,11 @@ h2 {
   font-weight: 400;
 }
 
+.inline-label input[type="checkbox"] {
+  width: auto;
+  flex: none;
+}
+
 /* Stays at the bottom of the window so posting is always in reach and the reasons it can't be are in view. */
 .action-bar {
   position: sticky;
@@ -1125,6 +1130,13 @@ main:has(.library) {
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+}
+
+.image-made {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .image-editor-preview,

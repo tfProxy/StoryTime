@@ -204,6 +204,41 @@ try {
   ok(true, "…which the Footer picture card shows");
   ok((await savedWith()).find((i) => i.slot === "footer").prompt === "a lighthouse at dawn, gulls", "…and the footer remembers the prompt too");
 
+  // ---- bringing a saved picture's prompt back ----
+  await fetch(`${BASE}/api/chapters/${chapterId}/images/footer`, { method: "PUT", headers: { "Content-Type": "image/jpeg" }, body: headerBytes });
+  await openIllustrate();
+  ok((await promptBox.inputValue()) === "", "after a reload the prompt box is empty again");
+  const madeFrom = card("Header picture").locator(".image-made");
+  await madeFrom.waitFor();
+  ok((await madeFrom.innerText()).includes("Made from: a lighthouse at dawn, gulls"), "the Header picture card says what it was made from");
+  ok((await madeFrom.innerText()).includes(`fake_sdxl_b.safetensors · 1344 × 768 · seed ${seed}`), "…with the checkpoint, size and seed");
+  ok((await card("Footer picture").locator(".image-made").count()) === 0 && (await card("Footer picture").locator("img.image-editor-preview").count()) === 1, "an uploaded picture shows no Made from");
+  ok((await page.getByRole("checkbox", { name: /Reuse seed/ }).count()) === 0, "there is no Reuse seed box before a prompt is loaded");
+  await madeFrom.getByRole("button", { name: "Load prompt" }).click();
+  await page.getByText("Prompt loaded from the saved picture.").waitFor();
+  ok((await promptBox.inputValue()) === "a lighthouse at dawn, gulls" && (await negativeBox.inputValue()) === "blurry, text", "Load prompt fills in the Prompt and Negative prompt boxes");
+  const reuse = page.getByRole("checkbox", { name: `Reuse seed ${seed}` });
+  ok(await reuse.isVisible() && !(await reuse.isChecked()), "…and offers Reuse seed with the picture's seed, unticked");
+  await promptBox.fill("a lighthouse at dusk, gulls");
+  const seedOf = (call) => Object.values(call.body.prompt).find((n) => n.class_type === "KSampler").inputs.seed;
+  let from = comfy.calls.length;
+  await makeButton.click();
+  await picturesLoaded(2);
+  ok(seedOf(promptCalls(from)[0]) !== seed, "making pictures without the box ticked uses a new seed");
+  await reuse.check();
+  from = comfy.calls.length;
+  await makeButton.click();
+  await page.waitForFunction(() => document.querySelectorAll(".candidates li").length === 4);
+  ok(seedOf(promptCalls(from)[0]) === seed, "with Reuse seed ticked, the queued workflow has the picture's seed");
+  const reused = (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs[0];
+  ok(reused.seed === seed && reused.prompt === "a lighthouse at dusk, gulls", "…and the log records that seed with the changed prompt");
+  await card("Header picture").getByRole("button", { name: "Load prompt" }).click();
+  ok(!(await reuse.isChecked()), "loading a prompt again unticks Reuse seed");
+  if (process.env.E2E_SCREENSHOT_DIR) {
+    fs.mkdirSync(process.env.E2E_SCREENSHOT_DIR, { recursive: true });
+    await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-made-1000.png`, fullPage: true });
+  }
+
   // ---- the page on a phone ----
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator(".candidates").scrollIntoViewIfNeeded();
@@ -225,7 +260,7 @@ try {
   await refused.waitFor();
   const refusedText = await refused.innerText();
   ok(refusedText.includes("Prompt outputs failed validation") && refusedText.includes("KSampler 3: Required input is missing (positive)"), `a workflow ComfyUI refuses shows its reason: "${refusedText}"`);
-  ok(await makeButton.isEnabled() && await items.count() === 2, "…the button is usable again and the earlier pictures are kept");
+  ok(await makeButton.isEnabled() && await items.count() === 4, "…the button is usable again and the earlier pictures are kept");
   comfy.setMode({ fail: null });
 
   // a checkpoint ComfyUI doesn't have (the saved name outlived the file)
@@ -276,7 +311,7 @@ try {
   const pollCalls = comfy.calls.slice(pollMark);
   ok(pollCalls.some((c) => c.method === "UPGRADE") && pollCalls.filter((c) => c.path.startsWith("/history/")).length >= 1, "…found by asking /history after the WebSocket was refused");
   const log = (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs;
-  ok(log.length === 2 && log[0].prompt === "a lighthouse in fog" && log[0].moment === "end" && log[1].moment === "start", "the log has this job (with Chapter end) after the first, and nothing from the refused, failed or stopped jobs");
+  ok(log.length === 4 && log[0].prompt === "a lighthouse in fog" && log[0].moment === "end" && log[1].moment === "start", "the log has this job (with Chapter end) after the earlier three, and nothing from the refused, failed or stopped jobs");
 
   // ---- the job can't be recorded: the pictures are still usable, just without a prompt kept ----
   await page.route("**/api/picture-jobs", (route) => route.request().method() === "POST" ? route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "disk full" }) }) : route.continue());
@@ -290,7 +325,7 @@ try {
   await page.getByText("Saved as the header picture.").waitFor();
   const unrecorded = (await savedWith()).find((i) => i.slot === "header");
   ok(unrecorded.prompt === null && unrecorded.negative === null, "…and a picture from it saves without a prompt, replacing the one before");
-  ok((await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs.length === 2, "…and nothing was added to the log");
+  ok((await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs.length === 4, "…and nothing was added to the log");
 
   // ---- clearing ----
   await page.getByRole("button", { name: "Clear these pictures" }).click();

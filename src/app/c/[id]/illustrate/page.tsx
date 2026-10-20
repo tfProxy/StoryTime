@@ -1,12 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import ChapterImageEditor from "@/components/ChapterImageEditor";
 import IllustrateChapter from "@/components/IllustrateChapter";
-import ImagePromptPanel from "@/components/ImagePromptPanel";
-import { chapterImageVersions } from "@/lib/chapterImages";
+import IllustrateWorkspace from "@/components/IllustrateWorkspace";
+import { chapterImageMade, chapterImageVersions } from "@/lib/chapterImages";
 import { foldCodex } from "@/lib/codex";
 import { getCodexOps } from "@/lib/codexDb";
-import { IMAGE_SLOTS } from "@/lib/imageSlots";
 import { getPath, getStory } from "@/lib/stories";
 
 export const dynamic = "force-dynamic";
@@ -47,17 +45,14 @@ export default async function IllustratePage({ params }: { params: Promise<{ id:
           />
         </div>
         <div className="illustrate-main">
-          <ImagePromptPanel
+          <IllustrateWorkspace
             chapterId={chapter.id}
             story={{ id: story.id, title: story.title, premise: story.premise, art_style: story.art_style }}
             path={path.map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary }))}
             codex={codex}
+            versions={versions}
+            made={chapterImageMade(chapter.id)}
           />
-          <div className="image-editors">
-            {IMAGE_SLOTS.map((slot) => (
-              <ChapterImageEditor key={slot} chapterId={chapter.id} slot={slot} version={versions[slot]} />
-            ))}
-          </div>
         </div>
       </div>
     </>

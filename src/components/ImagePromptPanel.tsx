@@ -18,7 +18,12 @@ const STYLE_NAMES: Record<ImagePromptStyle, string> = {
   natural: "Sentences (Flux, SD3)",
 };
 
+/** A prompt brought back from a saved picture. `nonce` changes with every request, even for the same prompt. */
+export type LoadedPrompt = { nonce: number; prompt: string; negative: string; seed: number | null };
+
 type Props = {
+  /** Fills in the prompt boxes when it changes. */
+  loaded?: LoadedPrompt | null;
   chapterId: string;
   story: { id: string; title: string; premise: string; art_style: string };
   /** The story from its first chapter down to the chapter being illustrated. */
@@ -29,7 +34,7 @@ type Props = {
 type Result = { scene: string; prompt: string; negative: string };
 
 /** Writes a prompt for an image generator from the chapter and the codex entries it mentions. */
-export default function ImagePromptPanel({ chapterId, story, path, codex }: Props) {
+export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null }: Props) {
   const settings = useSettings();
   const chapter = path[path.length - 1];
   const [moment, setMoment] = useState<ImageMoment>("start");
@@ -41,6 +46,13 @@ export default function ImagePromptPanel({ chapterId, story, path, codex }: Prop
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // A prompt loaded from a saved picture replaces the boxes once per request.
+  const [seenLoad, setSeenLoad] = useState(0);
+  if (loaded && loaded.nonce !== seenLoad) {
+    setSeenLoad(loaded.nonce);
+    setResult({ scene: "", prompt: loaded.prompt, negative: loaded.negative });
+    setStatus({ ok: true, text: "Prompt loaded from the saved picture." });
+  }
   const style = settings.imagePromptStyle;
   const model = settings.imagePromptModel;
 
@@ -92,7 +104,7 @@ export default function ImagePromptPanel({ chapterId, story, path, codex }: Prop
   }
 
   return (
-    <section className="ai-panel image-prompt">
+    <section className="ai-panel image-prompt" id="picture-prompt">
       <h2>Picture prompt</h2>
       <p className="meta" style={{ margin: 0 }}>
         Writes a prompt for your image generator from this chapter and the codex entries it mentions (or type your
@@ -208,7 +220,14 @@ export default function ImagePromptPanel({ chapterId, story, path, codex }: Prop
       </div>
       {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
 
-      <ComfyGenerate chapterId={chapterId} storyId={story.id} moment={moment} prompt={result.prompt} negative={result.negative} />
+      <ComfyGenerate
+        chapterId={chapterId}
+        storyId={story.id}
+        moment={moment}
+        prompt={result.prompt}
+        negative={result.negative}
+        loaded={loaded}
+      />
     </section>
   );
 }

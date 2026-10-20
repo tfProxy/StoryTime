@@ -19,7 +19,6 @@ Items 2, 4 and 5 need to know, for a picture, what prompt and settings made it a
 - **A saved header or footer remembers its prompt.** `chapter_images` has `job_id`, `prompt` and `negative` (null for uploads). `PUT /api/chapters/:id/images/:slot?job=<job id>` looks the job up and copies its prompt and negative prompt, so a long prompt never travels in the URL. The job can belong to any chapter, which is what item 2 needs. A job id that isn't known is ignored. The prompt and negative prompt are in the JSON export and import; `job_id` is not, and neither is the job log (the pictures belong to the ComfyUI machine).
 - `scripts/adminCore.mjs` deletes a chapter's jobs along with the chapter.
 - Not done: pruning old log rows. Rows are small, so it can wait.
-- For item 4, "Load prompt" on a saved picture can read `prompt` and `negative` from `chapter_images`; that needs a way to fetch them (nothing returns them yet except the export). The seed is only in the job log, so a saved picture whose job is gone can't bring its seed back.
 
 ### 2. Past pictures, including other chapters'
 
@@ -37,20 +36,12 @@ What it's for: a picture made for one chapter can turn out to suit another, such
 
 `src/components/IllustrateChapter.tsx` shows the chapter being illustrated: its summary (or "No summary yet" with a link to the summary page), a "Show the whole chapter" fold with the text as the reading page shows it, and a "Story so far" fold with the previous chapter's running summary (the text the prompt is written from; absent on a first chapter). Which folds are open is remembered in `localStorage`. On a screen 64rem or wider it sits in a sticky column beside the prompt and the pictures; on a phone it is a block above the prompt. Test: `tests/e2e/illustrate-chapter.e2e.mjs`.
 
-### 4. Bring back the prompt a picture was made with
+### 4. Bring back the prompt a picture was made with (done)
 
-What it's for: going back to a chosen picture's prompt, changing it and making more.
+A saved header or footer that came from ComfyUI shows "Made from: …" (the prompt cut to 160 characters; the full prompt is the tooltip), the checkpoint, size and seed when the job is still in the log, and a **Load prompt** button. It fills in the Prompt and Negative prompt boxes and scrolls to them. `IllustrateWorkspace` holds the prompt box and the picture cards, and `chapterImageMade` (`src/lib/chapterImages.ts`) reads what each saved picture was made from for the server-rendered page. After a load, a **Reuse seed N** box appears beside Make more; it is unticked, and ticking it queues the job with that seed.
 
-- Needs item 1, which stores the prompt with each saved picture and each logged job.
-- Under the Header picture and Footer picture cards, show "Made from: …" with the prompt cut short, and a **"Load prompt"** button. Past-picture tiles (item 2) get the same button.
-- "Load prompt" fills in the Prompt and Negative prompt fields, and also the checkpoint, size and seed if wanted. The seed is the useful one: the same seed with a slightly changed prompt gives a close variation.
-- Wiring: the prompt fields live in `ImagePromptPanel`, while the image editors are separate components on the server-rendered page. Choose one:
-  - (a) Move the prompt state into a small client wrapper that holds the panel and the editors.
-  - (b) Use a tiny context, or a custom DOM event (`storytime:load-prompt`).
-  
-  (a) is cleaner.
-- Add an optional "Reuse seed" checkbox next to "Make more". It uses the loaded seed instead of a random one, and `fillWorkflow` already accepts a seed.
-- Tests: an e2e test that makes a picture, uses it, reloads the page, clicks Load prompt, and checks the fields.
+- Not done: Load prompt does not change the checkpoint or size settings (they are shared settings, and changing them silently seemed wrong); the card shows them so they can be set by hand. Item 2's past-picture tiles still need their own Load prompt button, which can call the same load.
+- Test: `tests/e2e/illustrate-comfy.e2e.mjs` (Made from, Load prompt, Reuse seed, an uploaded picture showing no Made from).
 
 ### 5. Image to image, with a strength control
 
@@ -77,7 +68,7 @@ What it's for: making variations of a picture you already have, with a slider fo
 
 ### Order
 
-Items 1 and 3 are done. Next are 4 (small), then 2, then 5.
+Items 1, 3 and 4 are done. Next are 2, then 5.
 
 ## Also planned (from the pictures plan)
 
