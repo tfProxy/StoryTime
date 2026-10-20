@@ -25,13 +25,15 @@ type Props = {
   /** Whether the author pinned or rejected it, and how to change that (no buttons without it). */
   mark?: PictureMark | null;
   onMark?: (mark: PictureMark | null) => void;
+  /** Called to show the picture full size; without it (or with Ctrl, Cmd, Shift or the middle button) it opens in a new tab. */
+  onOpen?: () => void;
 };
 
 /**
  * One picture from ComfyUI with the buttons to use it as the chapter's header or footer, and to pin or
  * reject it. A picture ComfyUI no longer has (or can't be reached for) says so, and can't be used.
  */
-export default function PictureTile({ comfyUrl, image, tileKey, jobId, saver, onStart, caption, onLoadPrompt, mark = null, onMark }: Props) {
+export default function PictureTile({ comfyUrl, image, tileKey, jobId, saver, onStart, caption, onLoadPrompt, mark = null, onMark, onOpen }: Props) {
   const [missing, setMissing] = useState(false);
   const src = imageUrl(comfyUrl, image);
   // A picture whose job couldn't be recorded has nothing to keep a mark on.
@@ -44,7 +46,17 @@ export default function PictureTile({ comfyUrl, image, tileKey, jobId, saver, on
             ComfyUI no longer has this picture, or can&apos;t be reached.
           </p>
         ) : (
-          <a href={src} target="_blank" rel="noreferrer" title="Open full size">
+          <a
+            href={src}
+            target="_blank"
+            rel="noreferrer"
+            title="Open full size"
+            onClick={(e) => {
+              if (!onOpen || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+              e.preventDefault();
+              onOpen();
+            }}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element -- served by ComfyUI */}
             <img src={src} alt={`Picture ${image.filename}`} loading="lazy" onError={() => setMissing(true)} />
           </a>

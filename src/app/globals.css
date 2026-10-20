@@ -1140,6 +1140,10 @@ main:has(.library) {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
 }
 
+.picture-tile a {
+  cursor: zoom-in;
+}
+
 .picture-tile img {
   display: block;
   width: 100%;
@@ -1241,6 +1245,168 @@ main:has(.illustrate-grid) {
 button.undo {
   padding: 0.3rem 0.65rem;
   font-size: 0.9rem;
+}
+
+/*
+ * The full-size viewer: the whole screen, dark in both themes so the picture's own colours read true.
+ * The picture takes all the room the bars leave.
+ */
+dialog.picture-viewer {
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: #111;
+  color: #eee;
+}
+
+dialog.picture-viewer[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+dialog.picture-viewer::backdrop {
+  background: rgb(0 0 0 / 0.85);
+}
+
+.picture-viewer button,
+.picture-viewer .viewer-link {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.9rem;
+  border: 1px solid #555;
+  border-radius: 6px;
+  background: #222;
+  color: #eee;
+}
+
+.picture-viewer button:disabled {
+  opacity: 0.45;
+}
+
+.picture-viewer button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+.viewer-top {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  min-width: 0;
+}
+
+.viewer-count {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: #bbb;
+}
+
+.viewer-prompt {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.picture-viewer .viewer-close {
+  flex: none;
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+  font-size: 1.1rem;
+}
+
+.viewer-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+/* The picture fills the stage at its own shape, scaled up or down. */
+.viewer-stage img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.viewer-missing {
+  margin: 0;
+  padding: 1rem;
+  color: #bbb;
+}
+
+.picture-viewer .viewer-step {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3rem;
+  height: 4.5rem;
+  padding: 0;
+  font-size: 2rem;
+  line-height: 1;
+  background: rgb(0 0 0 / 0.45);
+  border-color: transparent;
+}
+
+.viewer-prev {
+  left: 0.5rem;
+}
+
+.viewer-next {
+  right: 0.5rem;
+}
+
+.viewer-bottom {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem 0.75rem;
+}
+
+.viewer-caption,
+.viewer-ok,
+.viewer-error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #bbb;
+}
+
+.viewer-ok {
+  color: #9fd8a5;
+}
+
+/* The keys are only worth naming where there is a keyboard. */
+@media (hover: none) {
+  .viewer-keys {
+    display: none;
+  }
+}
+
+.viewer-error {
+  color: #f0a5a0;
+}
+
+.viewer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.picture-viewer .viewer-link {
+  text-decoration: none;
 }
 
 /* Pin and reject sit on the picture's top right corner. A pinned picture has an accent outline. */

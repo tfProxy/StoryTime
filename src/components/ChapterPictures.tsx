@@ -6,6 +6,7 @@ import type { ComfyImage } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
 import PictureTile from "./PictureTile";
 import OtherChapterPictures from "./OtherChapterPictures";
+import PictureViewer from "./PictureViewer";
 import { usePictureSaver } from "./usePictureSaver";
 import { byPrompt, inView, pictureCaption, type Picture, type PictureView, type PromptToLoad } from "./pictures";
 
@@ -53,10 +54,26 @@ type Props = {
 export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, pictures, onChange, onClear, queueRef, onStart, onLoadPrompt }: Props) {
   const [view, setView] = useState<View>("shortlist");
   const [status, setStatus] = useState<Status | null>(null);
+  // The picture shown full size, if any.
+  const [viewing, setViewing] = useState<string | null>(null);
   const saver = usePictureSaver(chapterId, comfyUrl, setStatus);
 
   const count = (v: PictureView) => pictures.filter((p) => inView(p, v)).length;
   const shown = view === "other" ? [] : pictures.filter((p) => inView(p, view));
+  const groups = byPrompt(shown);
+  // The viewer goes through the pictures in the order they are shown.
+  const ordered = groups.flat();
+  const viewed = ordered.find((p) => p.key === viewing) ?? null;
+
+  /** A mark changed in the viewer: when it takes the picture out of this view, the viewer moves on to the next one. */
+  function markInViewer(p: Picture, next: PictureMark | null) {
+    if (view !== "other" && !inView({ ...p, mark: next }, view)) {
+      const at = ordered.findIndex((q) => q.key === p.key);
+      const after = ordered[at + 1] ?? ordered[at - 1] ?? null;
+      setViewing(after?.key ?? null);
+    }
+    void mark(p, next);
+  }
   const clearable = pictures.some((p) => p.fresh && p.mark === null);
   const VIEWS: { view: View; label: string }[] = [
     { view: "shortlist", label: `Pinned & new (${count("shortlist")})` },
@@ -82,6 +99,16 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
       onChange(p.key, { mark: before });
       setStatus({ ok: false, text: `Couldn't change the mark: ${e instanceof Error ? e.message : String(e)}` });
     }
+  }
+
+  function loadFrom(p: Picture) {
+    onLoadPrompt({
+      prompt: p.prompt,
+      negative: p.negative,
+      seed: p.seed,
+      settings: { checkpoint: p.checkpoint, width: p.width, height: p.height, denoise: p.denoise },
+      moment: p.moment,
+    });
   }
 
   function empty(): string {
@@ -131,7 +158,7 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
       ) : (
         <>
           {shown.length === 0 && <p className="meta" style={{ margin: 0 }}>{empty()}</p>}
-          {byPrompt(shown).map((group) => {
+          {groups.map((group) => {
             const first = group[0];
             const moments = [...new Set(group.flatMap((p) => (p.moment ? [MOMENT_NAMES[p.moment]] : [])))].join(", ");
             return (
@@ -157,15 +184,11 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
                       onStart={onStart}
                       mark={p.mark}
                       onMark={(next) => void mark(p, next)}
-                      onLoadPrompt={() =>
-                        onLoadPrompt({
-                          prompt: p.prompt,
-                          negative: p.negative,
-                          seed: p.seed,
-                          settings: { checkpoint: p.checkpoint, width: p.width, height: p.height, denoise: p.denoise },
-                          moment: p.moment,
-                        })
-                      }
+                      onOpen={() => {
+                        setStatus(null);
+                        setViewing(p.key);
+                      }}
+                      onLoadPrompt={() => loadFrom(p)}
                     />
                   ))}
                 </ul>
@@ -173,6 +196,22 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
             );
           })}
         </>
+      )}
+      {viewed && (
+        <PictureViewer
+          comfyUrl={comfyUrl}
+          list={ordered}
+          current={viewed}
+          onShow={setViewing}
+          onClose={() => setViewing(null)}
+          onMark={markInViewer}
+          onLoadPrompt={(p) => {
+            setViewing(null);
+            loadFrom(p);
+          }}
+          saver={saver}
+          status={status}
+        />
       )}
     </section>
   );
