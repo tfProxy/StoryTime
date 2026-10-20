@@ -30,8 +30,8 @@ type Props = {
 };
 
 /**
- * The Illustrate page's two columns: the chapter and the prompt on one side (above everything on a phone),
- * the pictures on the other. The state they share lives here: the prompt loaded from a picture (each load
+ * The Illustrate page's two columns: the chapter and the prompt on one side, the pictures on the other. On a
+ * phone the chosen header and footer come first (CSS moves them), then the chapter, the prompt and the pictures. The state they share lives here: the prompt loaded from a picture (each load
  * carries a number, so loading the same prompt twice still counts as a new request), the starting picture,
  * and the chapter's pictures (those made earlier, then those made on this visit).
  */

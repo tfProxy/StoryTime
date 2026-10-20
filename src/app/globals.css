@@ -1156,7 +1156,8 @@ main:has(.library) {
 }
 
 /*
- * The Illustrate chapter page: on a phone the chapter, the prompt and then the pictures, one under the other.
+ * The Illustrate chapter page: on a phone the chosen header and footer, the chapter, the prompt and then the
+ * pictures, one under the other.
  * On a wide screen the page uses the whole width: the chapter and the prompt in a column that stays in view,
  * and the pictures beside it.
  */
@@ -1191,6 +1192,17 @@ main:has(.illustrate-grid) {
 
 .illustrate-fold[open] > summary {
   margin-bottom: 0.75rem;
+}
+
+/* In one column the chosen header and footer come first, above the chapter and the prompt. */
+@media (width < 64rem) {
+  .illustrate-gallery {
+    display: contents;
+  }
+
+  .illustrate-gallery > .image-editors {
+    order: -1;
+  }
 }
 
 @media (min-width: 64rem) {
