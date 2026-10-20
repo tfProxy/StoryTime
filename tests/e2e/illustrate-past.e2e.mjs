@@ -47,13 +47,14 @@ const page = await context.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 const gallery = page.locator(".chapter-pictures");
 const tiles = gallery.locator(".candidates .picture-tile");
-const heads = () => gallery.locator(".picture-group-head > p:first-child").allInnerTexts();
+// Each run's prompt, newest first: runs have no heading, so it comes from the name of the run's list.
+const heads = () => gallery.locator(".picture-group .candidates").evaluateAll((uls) => uls.map((ul) => ul.getAttribute("aria-label").replace(/^Pictures from “/, "").replace(/”$/, "")));
 const viewButton = (name) => gallery.getByRole("group", { name: "Show" }).getByRole("button", { name });
 const showView = async (name) => {
   await viewButton(name).click();
   ok(await viewButton(name).getAttribute("aria-pressed") === "true", `(showing ${name})`);
 };
-const tileFor = (prompt) => gallery.locator(".picture-group", { has: page.getByText(prompt, { exact: true }) }).locator(".picture-tile");
+const tileFor = (prompt) => gallery.getByRole("list", { name: `Pictures from “${prompt}”`, exact: true }).locator(".picture-tile");
 const other = page.locator("#other-pictures");
 const exported = async () => (await call("GET", `/api/stories/${story.story_id}/export?format=json`)).images;
 const open = async (id) => {
@@ -90,7 +91,7 @@ try {
   const gone = tileFor("a picture ComfyUI has lost");
   await gone.getByText("ComfyUI no longer has this picture").waitFor();
   await gone.getByRole("button", { name: "More" }).click();
-  ok(await gone.getByRole("menuitem").count() === 1 && await gone.getByRole("menuitem", { name: "Load prompt" }).count() === 1 && await gone.getByRole("button", { name: "Reject" }).isEnabled(), "a picture ComfyUI has lost says so and can't be used (its menu only has Load prompt), but can be rejected");
+  ok((await gone.getByRole("menuitem").allInnerTexts()).join("|") === "Load prompt|Info" && await gone.getByRole("button", { name: "Reject" }).isEnabled(), "a picture ComfyUI has lost says so and can't be used (its menu only has Load prompt and Info), but can be rejected");
   await page.keyboard.press("Escape");
 
   // ---- pin ----
@@ -159,7 +160,14 @@ try {
   await other.locator(".past-job").first().waitFor();
   ok(await other.locator("h3").allInnerTexts().then((h) => h.length === 1 && h[0] === "The cellar"), "Other chapters lists the story's other chapters under their titles, not this one");
   ok(await other.locator(".past-job img").count() === 2, "…with their pictures");
+  ok(!(await other.locator(".past-job").first().innerText()).includes("a cellar stair") && await other.getByRole("button", { name: "Load prompt" }).count() === 0, "…and no prompt or Load prompt button above each job");
   const otherTile = other.locator(".picture-tile").first();
+  await otherTile.getByRole("button", { name: "More" }).click();
+  await otherTile.getByRole("menuitem", { name: "Info" }).click();
+  const info = page.getByRole("dialog", { name: "Picture info" });
+  ok((await info.innerText()).includes("a cellar stair, dim light") && (await info.innerText()).includes("“The cellar”"), "Info on another chapter's picture shows its prompt and the chapter it was made for");
+  await info.getByRole("button", { name: "Close" }).click();
+  await info.waitFor({ state: "detached" });
   await otherTile.getByRole("button", { name: "More" }).click();
   await otherTile.getByRole("menuitem", { name: "Use as footer picture" }).click();
   await gallery.getByText("Saved as the footer picture.").waitFor();

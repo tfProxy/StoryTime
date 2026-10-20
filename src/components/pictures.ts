@@ -34,6 +34,12 @@ export type Picture = {
   /** The starting picture it was made from (`comfy:…` or `saved:…`), or null. */
   source: string | null;
   moment: ImageMoment | null;
+  /** The chapter it was made for. */
+  chapterId: string;
+  /** When its job finished (ms since 1970). */
+  madeAt: number;
+  /** How many pictures its job made together (ComfyUI's batch size); `index` is its place in that batch. */
+  batch: number;
   mark: PictureMark | null;
   fresh: boolean;
 };
@@ -55,6 +61,9 @@ export function picturesOf(jobs: PictureJob[]): Picture[] {
       denoise: job.denoise,
       source: job.source,
       moment: job.moment,
+      chapterId: job.chapter_id,
+      madeAt: job.created_at,
+      batch: job.images.length,
       mark: job.marks[index] ?? null,
       fresh: false,
     })),
@@ -71,6 +80,68 @@ export function pictureCaption(c: { seed: number; checkpoint: string; width: num
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+const MOMENT_NAMES: Record<ImageMoment, string> = { start: "chapter start", end: "chapter end" };
+const SLOT_NAMES: Record<string, string> = { header: "header picture", footer: "footer picture" };
+
+/** The file path ComfyUI keeps a picture under. */
+const filePath = (image: ComfyImage) => `${image.subfolder ? `${image.subfolder}/` : ""}${image.filename}`;
+
+/** What a starting picture (`comfy:<file>` or `saved:<chapter id>:<slot>`) was, in words. */
+export function sourceText(source: string, titles: Record<string, string>): string {
+  if (source.startsWith("comfy:")) return `ComfyUI picture ${source.slice("comfy:".length)}`;
+  const saved = /^saved:(.+):(header|footer)$/.exec(source);
+  if (saved) {
+    const title = titles[saved[1]];
+    return `the saved ${SLOT_NAMES[saved[2]]} of ${title ? `“${title}”` : "a chapter that has been removed"}`;
+  }
+  return source;
+}
+
+/** One line of a picture's details: what it is, and its value. */
+export type PictureDetail = { label: string; value: string };
+
+/**
+ * Everything a picture was made with besides its prompts, for the Info popup and its Markdown: enough
+ * to make it again in ComfyUI. The seed is the job's: ComfyUI gives each picture of a batch its own
+ * noise from it, so the batch size and the picture's place in it count too.
+ */
+export function pictureDetails(p: Picture, titles: Record<string, string>): PictureDetail[] {
+  const chapter = titles[p.chapterId] ? `“${titles[p.chapterId]}”` : "A chapter that has been removed";
+  return [
+    { label: "Chapter", value: p.moment ? `${chapter}, ${MOMENT_NAMES[p.moment]}` : chapter },
+    { label: "Made", value: new Date(p.madeAt).toLocaleString() },
+    { label: "Checkpoint", value: p.checkpoint || "(the workflow's own)" },
+    { label: "Size", value: `${p.width} × ${p.height}` },
+    { label: "Seed", value: String(p.seed) },
+    ...(p.batch > 1 ? [{ label: "Batch", value: `picture ${p.index + 1} of ${p.batch} (batch size ${p.batch}, batch index ${p.index})` }] : []),
+    ...(p.source ? [{ label: "Started from", value: sourceText(p.source, titles) }] : []),
+    ...(p.denoise !== null ? [{ label: "Strength (denoise)", value: String(p.denoise) }] : []),
+    { label: "File", value: `${filePath(p.image)} (ComfyUI ${p.image.type})` },
+  ];
+}
+
+/** A Markdown code block that holds `text` as it is, whatever backticks it contains. */
+function codeBlock(text: string): string {
+  const longest = Math.max(0, ...[...text.matchAll(/`+/g)].map((m) => m[0].length));
+  const fence = "`".repeat(Math.max(3, longest + 1));
+  return `${fence}\n${text}\n${fence}`;
+}
+
+/** The picture's prompts and details as Markdown, the prompts in code blocks so they copy as they are. */
+export function pictureMarkdown(p: Picture, titles: Record<string, string>): string {
+  return [
+    `# ${p.image.filename}`,
+    "## Prompt",
+    codeBlock(p.prompt),
+    "## Negative prompt",
+    p.negative ? codeBlock(p.negative) : "None.",
+    "## Settings",
+    pictureDetails(p, titles)
+      .map((d) => `- **${d.label}:** ${d.value}`)
+      .join("\n"),
+  ].join("\n\n") + "\n";
 }
 
 /** A job's progress, or "gathering" while more clicks can still be added to it. */

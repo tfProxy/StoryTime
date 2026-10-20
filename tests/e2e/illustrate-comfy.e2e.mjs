@@ -51,7 +51,17 @@ const live = page.locator(".comfy-pending-tile [role=status]");
 const items = page.locator(".candidates li.picture-tile");
 // A job being made: its first place, which has its progress text and Stop. Newest first.
 const rows = page.locator(".comfy-pending-tile:has([role=status])");
-const headTexts = () => page.locator(".picture-group-head").allInnerTexts();
+// Each run of pictures, newest first, described as "<prompt> · N pictures · N being made". The runs have
+// no heading on the page: the prompt comes from the name of the run's list, the counts from its tiles.
+const headTexts = () =>
+  page.locator(".picture-group .candidates").evaluateAll((uls) =>
+    uls.map((ul) => {
+      const prompt = ul.getAttribute("aria-label").replace(/^Pictures from “/, "").replace(/”$/, "");
+      const made = ul.querySelectorAll("li.picture-tile").length;
+      const coming = ul.querySelectorAll("li.comfy-pending-tile").length;
+      return [prompt, made && `${made} picture${made === 1 ? "" : "s"}`, coming && `${coming} being made`].filter(Boolean).join(" · ");
+    }),
+  );
 // Use as header or footer is in a picture's ☰ menu.
 const useAs = async (tile, slot) => {
   await tile.getByRole("button", { name: "More" }).click();
@@ -167,16 +177,16 @@ try {
   const mark = comfy.calls.length;
   await makeButton.click();
   const gatherGroup = page.locator(".picture-group").first();
-  ok(await until(async () => (await gatherGroup.innerText()).includes("a lighthouse at dawn, gulls") && (await gatherGroup.innerText()).includes("1 being made") && (await gatherGroup.innerText()).includes("Click again for more pictures in this job"), "the gathering job"), "a click shows a job of one picture, under its prompt, that a moment more can still add to");
+  ok(await until(async () => (await headTexts())[0] === "a lighthouse at dawn, gulls · 1 being made" && (await gatherGroup.innerText()).includes("Click again for more pictures in this job"), "the gathering job"), "a click shows a job of one picture, in a run of its prompt, that a moment more can still add to");
   await makeButton.click();
-  ok(await until(async () => (await gatherGroup.innerText()).includes("2 being made"), "2 being made") && await rows.count() === 1, "…and a second quick click adds a picture to it rather than a job");
+  ok(await until(async () => (await headTexts())[0].endsWith("2 being made"), "2 being made") && await rows.count() === 1, "…and a second quick click adds a picture to it rather than a job");
   ok(await gatherGroup.locator(".comfy-pending-tile").count() === 2, "…and a place for its picture straight away");
   await until(() => promptCalls(mark).length === 1, "the job to be sent");
   ok(Object.values(promptCalls(mark)[0].body.prompt).find((n) => n.class_type === "EmptyLatentImage").inputs.batch_size === 2, "…which goes to ComfyUI as one job of two pictures once the clicks stop");
   await live.filter({ hasText: /Step \d+ of 8/ }).waitFor();
   ok(true, "while ComfyUI works, the page shows its progress (Step X of 8)");
   ok(await page.getByRole("button", { name: "Queue more" }).isEnabled() && await page.getByRole("button", { name: "Stop", exact: true }).isVisible(), "…the button says Queue more and stays on, and the job has a Stop button");
-  ok((await headTexts())[0].includes("Chapter start · 2 being made · not: blurry, text"), "…the job shows under its prompt, saying how many pictures it makes");
+  ok((await headTexts())[0] === "a lighthouse at dawn, gulls · 2 being made", "…the job shows a place for each picture it makes");
   ok(await page.locator(".chapter-pictures .picture-group").first().locator(".candidates li").first().evaluate((li) => li.classList.contains("comfy-pending-tile")), "…in the picture grid at the top of the Pictures panel, where its pictures will arrive");
   ok(await page.locator('progress[aria-label="Progress"]').isVisible(), "…with a progress bar");
   const pending = page.locator(".comfy-pending-tile");
@@ -186,9 +196,40 @@ try {
   await items.first().waitFor();
   await picturesLoaded(2);
   ok(await items.count() === 2, "two pictures appear");
-  ok(await page.getByRole("list", { name: "Pictures from this prompt" }).isVisible() && await live.count() === 0, "…in a list of pictures from this prompt, and the progress text is gone");
+  ok(await page.getByRole("list", { name: "Pictures from “a lighthouse at dawn, gulls”" }).isVisible() && await live.count() === 0, "…in a list named after their prompt, and the progress text is gone");
   const group = page.locator(".picture-group").first();
-  ok((await group.locator(".picture-group-head").innerText()).includes("a lighthouse at dawn, gulls") && (await group.locator(".picture-group-head").innerText()).includes("Chapter start · 2 pictures · not: blurry, text"), "…under the prompt, the moment, the count and the negative prompt");
+  const groupText = await group.innerText();
+  ok(!groupText.includes("a lighthouse at dawn") && !groupText.includes("blurry") && !groupText.includes("Chapter start"), "…with no heading: the prompt, the moment and the negative prompt aren't shown above them");
+
+  // ---- Info: everything a picture was made with ----
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: BASE });
+  const firstTile = items.first();
+  await firstTile.getByRole("button", { name: "More" }).click();
+  await firstTile.getByRole("menuitem", { name: "Info" }).click();
+  const info = page.getByRole("dialog", { name: "Picture info" });
+  await info.waitFor();
+  const infoText = await info.innerText();
+  const firstSeed = (await page.locator(".picture-caption").first().innerText()).match(/seed (\d+)/)[1];
+  ok(infoText.includes("a lighthouse at dawn, gulls") && infoText.includes("blurry, text"), "Info in the ☰ menu shows the prompt and the negative prompt");
+  ok(["“The lamp”, chapter start", "fake_sdxl_b.safetensors", "1344 × 768", firstSeed, "picture 1 of 2 (batch size 2, batch index 0)", "(ComfyUI output)"].every((t) => infoText.includes(t)), `…the chapter and moment, checkpoint, size, seed, its place in the batch and its file (${infoText.replace(/\n/g, " | ")})`);
+  await info.getByRole("button", { name: "Copy prompt" }).click();
+  await info.getByText("Copied the prompt.").waitFor();
+  ok(await page.evaluate(() => navigator.clipboard.readText()) === "a lighthouse at dawn, gulls", "Copy prompt copies the prompt");
+  await info.getByRole("button", { name: "Copy all as Markdown" }).click();
+  await info.getByText("Copied everything as Markdown.").waitFor();
+  const md = await page.evaluate(() => navigator.clipboard.readText());
+  ok(md.includes("## Prompt\n\n```\na lighthouse at dawn, gulls\n```") && md.includes("## Negative prompt\n\n```\nblurry, text\n```") && md.includes(`- **Seed:** ${firstSeed}`), "Copy all as Markdown copies the prompts in code blocks and the settings as a list");
+  // Served over plain http (the NAS), there is no navigator.clipboard: the copy falls back to a hidden text box inside the popup.
+  await page.evaluate(() => {
+    const read = navigator.clipboard.readText.bind(navigator.clipboard);
+    window.__readClipboard = read;
+    Object.defineProperty(Navigator.prototype, "clipboard", { get: () => undefined, configurable: true });
+  });
+  await info.getByRole("button", { name: "Copy negative prompt" }).click();
+  await info.getByText("Copied the negative prompt.").waitFor();
+  ok(await page.evaluate(() => window.__readClipboard()) === "blurry, text" && await info.getByRole("button", { name: "Copied ✓" }).isVisible(), "without the clipboard API (plain http) copying still works, and the button says Copied");
+  await page.keyboard.press("Escape");
+  ok(await until(async () => (await info.count()) === 0, "Info to close") && await firstTile.getByRole("button", { name: "More" }).evaluate((b) => b === document.activeElement), "Esc closes it, back on the picture's ☰");
   ok((await page.locator(".picture-caption").first().innerText()).startsWith("fake_sdxl_b · 1344 × 768 · seed "), "each picture says its checkpoint, size and seed");
   const boxes = await page.locator(".candidates img").evaluateAll((imgs) => imgs.map((i) => { const r = i.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }));
   ok(boxes.length === 2 && boxes[1].x > boxes[0].x + boxes[0].w - 1 && Math.abs(boxes[0].y - boxes[1].y) < 2 && boxes[0].w > 300, "at 1000px wide the pictures sit two side by side");
@@ -263,7 +304,7 @@ try {
   ok(await items.first().getByRole("button", { name: "Load prompt" }).count() === 0 && await items.first().getByRole("button", { name: "Start from this" }).count() === 0, "Load prompt and Start from this are not buttons on the tile");
   await more.click();
   const menu = items.first().getByRole("menu");
-  ok((await menu.getByRole("menuitem").allInnerTexts()).join("|") === "This is the header picture|Use as footer picture|Start from this|Load prompt|Open in a new tab" && await more.getAttribute("aria-expanded") === "true", "…but in the ☰ menu, after Use as header and footer, with Open in a new tab");
+  ok((await menu.getByRole("menuitem").allInnerTexts()).join("|") === "This is the header picture|Use as footer picture|Start from this|Load prompt|Info|Open in a new tab" && await more.getAttribute("aria-expanded") === "true", "…but in the ☰ menu, after Use as header and footer, with Info and Open in a new tab");
   const inUseItem = menu.getByRole("menuitem", { name: "This is the header picture" });
   ok(await inUseItem.getAttribute("aria-disabled") === "true", "…where the slot the picture is in says so, and can't be chosen again");
   await inUseItem.click({ force: true });
@@ -308,12 +349,12 @@ try {
   ok(seedOf(promptCalls(from)[0]) === seed, "with Reuse seed ticked, the queued workflow has the picture's seed");
   const reused = (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs[0];
   ok(reused.seed === seed && reused.prompt === "a lighthouse at dusk, gulls", "…and the log records that seed with the changed prompt");
-  let heads = await page.locator(".picture-group-head").allInnerTexts();
+  let heads = await headTexts();
   ok(heads.length === 1 && heads[0].startsWith("a lighthouse at dusk, gulls") && heads[0].includes("4 pictures"), "two jobs in a row with the same prompt and settings show as one group, whatever their seed");
   await promptBox.fill("a lighthouse at night");
   await makeTwo();
   await page.waitForFunction(() => document.querySelectorAll(".candidates li.picture-tile").length === 6 && !document.querySelector(".comfy-pending-tile"));
-  heads = await page.locator(".picture-group-head").allInnerTexts();
+  heads = await headTexts();
   ok(heads.length === 2 && heads[0].startsWith("a lighthouse at night") && heads[1].startsWith("a lighthouse at dusk, gulls"), "…and a new prompt starts a new group, above the older one");
   await card("Header picture").getByRole("button", { name: "Load prompt" }).click();
   ok(!(await reuse.isChecked()), "loading a prompt again unticks Reuse seed");
@@ -396,7 +437,8 @@ try {
   await page.getByRole("button", { name: "Stop", exact: true }).click();
   await page.getByText("Stopped.").waitFor();
   ok(true, "Stop during a slow job shows Stopped.");
-  ok(await makeButton.isEnabled() && await page.getByRole("button", { name: "Stop", exact: true }).count() === 0 && await live.count() === 0, "…and the page is ready again");
+  // The job's places leave the Pictures panel a render after the message shows.
+  ok(await until(async () => await makeButton.isEnabled() && await page.getByRole("button", { name: "Stop", exact: true }).count() === 0 && await live.count() === 0, "the stopped job to go"), "…and the page is ready again");
   await until(async () => comfy.calls.slice(stopMark).some((c) => c.path === "/interrupt"), "ComfyUI to be told to interrupt");
   const stopCalls = comfy.calls.slice(stopMark);
   ok(stopCalls.some((c) => c.method === "POST" && c.path === "/queue" && Array.isArray(c.body?.delete) && c.body.delete.length === 1) && stopCalls.some((c) => c.method === "POST" && c.path === "/interrupt"), "…ComfyUI was asked to drop the job from its queue and to interrupt it");
@@ -431,7 +473,7 @@ try {
   ok(iCalls.some((c) => c.method === "POST" && c.path === "/queue" && c.body?.delete?.length === 1) && !iCalls.some((c) => c.path === "/interrupt"), "stopping a waiting job only takes it off ComfyUI's queue, so the running job isn't interrupted");
   await until(async () => (await items.count()) === qBefore + 3 && (await rows.count()) === 0, "both jobs' pictures", 150);
   ok(true, "the other two jobs finish and add their pictures (2 + 1)");
-  const qHeads = await page.locator(".picture-group-head").allInnerTexts();
+  const qHeads = await headTexts();
   ok(qHeads[0].startsWith("second in line") && qHeads[0].includes("1 picture") && qHeads[1].startsWith("first in line") && qHeads[1].includes("2 pictures") && !qHeads.some((h) => h.startsWith("third")), "…each under its own prompt, and nothing from the stopped one");
 
   // ---- the same settings again after others start a new group; straight after, they join it ----
@@ -455,7 +497,8 @@ try {
   await promptBox.fill("ten quick clicks");
   for (let i = 0; i < 10; i++) await makeButton.click();
   const jobSize = async (n) => page.locator(`.comfy-pending-tile[data-job="${await rows.nth(n).getAttribute("data-job")}"]`).count();
-  ok(await until(async () => (await rows.count()) === 2, "two jobs") && await jobSize(0) === 2 && await jobSize(1) === 8, "ten quick clicks make a job of eight and another of two (newest first)");
+  // The second job shows at the ninth click, so wait for the tenth to join it too.
+  ok(await until(async () => (await rows.count()) === 2 && await jobSize(0) === 2 && await jobSize(1) === 8, "two jobs of 2 and 8"), "ten quick clicks make a job of eight and another of two (newest first)");
   ok((await headTexts())[0].includes("10 being made") && (await headTexts())[1].startsWith("first in line"), "…shown as one group, as their settings are the same");
   await rows.nth(0).getByRole("button", { name: "Stop" }).click();
   ok(await until(async () => (await rows.count()) === 1, "the gathering job to go"), "Stop on a job not sent yet drops it");

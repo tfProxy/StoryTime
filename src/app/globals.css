@@ -1557,9 +1557,91 @@ dialog.picture-viewer::backdrop {
   overflow-wrap: anywhere;
 }
 
-.picture-group-head {
+/* The Info popup: everything a picture was made with, to copy. Over the page, or over the full-size viewer. */
+dialog.picture-info {
+  width: min(40rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--fg);
+}
+
+dialog.picture-info[open] {
   display: grid;
-  gap: 0.2rem;
+  gap: 0.9rem;
+}
+
+dialog.picture-info::backdrop {
+  background: rgb(0 0 0 / 0.5);
+}
+
+.picture-info-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.picture-info h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.picture-info h3 {
+  margin: 0 0 0.3rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.picture-info-text {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.picture-info-details {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.35rem 1rem;
+  margin: 0;
+}
+
+.picture-info-details > div {
+  display: contents;
+}
+
+.picture-info-details dt {
+  color: var(--muted);
+}
+
+.picture-info-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* On a phone each detail's name goes above its value. */
+@media (width < 30rem) {
+  .picture-info-details {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.1rem;
+  }
+
+  .picture-info-details dd {
+    margin-bottom: 0.4rem;
+  }
+}
+
+.picture-info-actions {
+  flex-wrap: wrap;
 }
 
 .picture-caption {

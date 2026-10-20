@@ -23,6 +23,8 @@ type Props = {
   onClose: () => void;
   onMark: (picture: Picture, mark: PictureMark | null) => void;
   onLoadPrompt: (picture: Picture) => void;
+  /** Shows everything the picture was made with (the Info popup, over the viewer). */
+  onInfo: (picture: Picture) => void;
   /** Makes new pictures starting from the one shown. */
   onStart?: (picture: Picture) => void;
   saver: PictureSaver;
@@ -34,7 +36,7 @@ type Props = {
  * One picture as large as the screen allows, with the view's others a key or a swipe away: ← and → move,
  * P pins, X rejects (or restores), Esc closes. A modal <dialog>, so the page behind can't be reached.
  */
-export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, onClose, onMark, onLoadPrompt, onStart, saver, status }: Props) {
+export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, onClose, onMark, onLoadPrompt, onInfo, onStart, saver, status }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const swipe = useRef<number | null>(null);
   const [missing, setMissing] = useState<string | null>(null);
@@ -141,6 +143,7 @@ export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, 
             menu={[
               onStart && missing !== src && { label: "Start from this", title: "Make new pictures starting from this one", run: () => onStart(current) },
               { label: "Load prompt", title: "Put this picture's prompt back in the prompt boxes", run: () => onLoadPrompt(current) },
+              { label: "Info", title: "Everything this picture was made with, to copy", run: () => onInfo(current) },
               missing !== src && { label: "Open in a new tab", href: src },
             ]}
           />

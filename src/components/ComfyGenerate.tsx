@@ -332,6 +332,9 @@ export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, 
           denoise,
           source: from ? start!.source : null,
           moment,
+          chapterId,
+          madeAt: Date.now(),
+          batch: images.length,
         })),
       );
     } catch (e) {

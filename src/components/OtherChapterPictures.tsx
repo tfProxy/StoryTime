@@ -5,10 +5,11 @@ import type { PictureJob } from "@/lib/pictureJobs";
 import type { ComfyImage } from "@/lib/comfy/client";
 import PictureTile from "./PictureTile";
 import type { PictureSaver } from "./usePictureSaver";
-import type { PromptToLoad } from "./pictures";
+import { pictureCaption, picturesOf, type Picture } from "./pictures";
 
 const PAGE = 12;
-const SHOWN_PROMPT = 160;
+const SHOWN_PROMPT = 80;
+const short = (text: string) => (text.length > SHOWN_PROMPT ? `${text.slice(0, SHOWN_PROMPT).trimEnd()}…` : text);
 
 type Page = { jobs: PictureJob[]; next: number | null };
 
@@ -28,16 +29,19 @@ type Props = {
   titles: Record<string, string>;
   comfyUrl: string;
   saver: PictureSaver;
-  onLoadPrompt: (p: PromptToLoad) => void;
+  /** Called to bring back the prompt and settings a picture was made with. */
+  onLoadPrompt: (picture: Picture) => void;
   /** Called to make new pictures starting from one of these. */
   onStart: (image: ComfyImage) => void;
+  /** Shows everything a picture was made with. */
+  onInfo: (picture: Picture) => void;
 };
 
 /**
  * Pictures made for the story's other chapters, grouped by chapter and then by job, newest first, a page
  * at a time. Any of them can be used for this chapter, started from, or have its prompt brought back.
  */
-export default function OtherChapterPictures({ chapterId, storyId, titles, comfyUrl, saver, onLoadPrompt, onStart }: Props) {
+export default function OtherChapterPictures({ chapterId, storyId, titles, comfyUrl, saver, onLoadPrompt, onStart, onInfo }: Props) {
   const query = `story=${encodeURIComponent(storyId)}&not_chapter=${encodeURIComponent(chapterId)}`;
   const [jobs, setJobs] = useState<PictureJob[]>([]);
   const [next, setNext] = useState<number | null>(null);
@@ -89,34 +93,24 @@ export default function OtherChapterPictures({ chapterId, storyId, titles, comfy
       {[...groups].map(([group, list]) => (
         <div key={group} className="past-group">
           <h3>{titles[group] ?? "A chapter that has been removed"}</h3>
+          {/* No text per job: a line between jobs, and Info on a picture says how it was made. */}
           {list.map((job) => (
             <div key={job.id} className="past-job">
-              <p className="meta" style={{ margin: 0 }} title={job.prompt}>
-                {job.prompt.length > SHOWN_PROMPT ? `${job.prompt.slice(0, SHOWN_PROMPT).trimEnd()}…` : job.prompt}
-              </p>
-              <p className="meta" style={{ margin: 0 }}>
-                {[new Date(job.created_at).toLocaleString(), job.checkpoint, `${job.width} × ${job.height}`, `seed ${job.seed}`, job.denoise !== null && `variation, strength ${job.denoise}`].filter(Boolean).join(" · ")}
-              </p>
-              <div>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() =>
-                    onLoadPrompt({
-                      prompt: job.prompt,
-                      negative: job.negative,
-                      seed: job.seed,
-                      settings: { checkpoint: job.checkpoint, width: job.width, height: job.height, denoise: job.denoise },
-                      moment: job.moment,
-                    })
-                  }
-                >
-                  Load prompt
-                </button>
-              </div>
-              <ul className="past-tiles" aria-label="Pictures from one job">
-                {job.images.map((image, i) => (
-                  <PictureTile key={`${job.id}-${i}`} comfyUrl={comfyUrl} image={image} tileKey={`${job.id}-${i}`} jobId={job.id} index={i} saver={saver} onStart={onStart} />
+              <ul className="past-tiles" aria-label={`Pictures from “${short(job.prompt)}”`}>
+                {picturesOf([job]).map((p) => (
+                  <PictureTile
+                    key={p.key}
+                    comfyUrl={comfyUrl}
+                    image={p.image}
+                    tileKey={p.key}
+                    jobId={p.jobId}
+                    index={p.index}
+                    saver={saver}
+                    caption={pictureCaption(p)}
+                    onStart={onStart}
+                    onLoadPrompt={() => onLoadPrompt(p)}
+                    onInfo={() => onInfo(p)}
+                  />
                 ))}
               </ul>
             </div>

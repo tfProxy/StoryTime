@@ -30,6 +30,8 @@ type Props = {
   onMark?: (mark: PictureMark | null) => void;
   /** Called to show the picture full size; without it (or with Ctrl, Cmd, Shift or the middle button) it opens in a new tab. */
   onOpen?: () => void;
+  /** Shows everything the picture was made with (the Info popup). */
+  onInfo?: () => void;
 };
 
 /**
@@ -37,7 +39,7 @@ type Props = {
  * when it is the chapter's header or footer now, a badge saying so. A picture ComfyUI no longer has (or
  * can't be reached for) says so, and can't be used.
  */
-export default function PictureTile({ comfyUrl, image, tileKey, jobId, index, saver, inUse = [], onStart, caption, onLoadPrompt, mark = null, onMark, onOpen }: Props) {
+export default function PictureTile({ comfyUrl, image, tileKey, jobId, index, saver, inUse = [], onStart, caption, onLoadPrompt, mark = null, onMark, onOpen, onInfo }: Props) {
   const [missing, setMissing] = useState(false);
   const src = imageUrl(comfyUrl, image);
   return (
@@ -77,6 +79,7 @@ export default function PictureTile({ comfyUrl, image, tileKey, jobId, index, sa
           menu={[
             onStart && !missing && { label: "Start from this", title: "Make new pictures starting from this one", run: () => onStart(image) },
             onLoadPrompt && { label: "Load prompt", title: "Put this picture's prompt back in the prompt boxes", run: onLoadPrompt },
+            onInfo && { label: "Info", title: "Everything this picture was made with, to copy", run: onInfo },
             !missing && { label: "Open in a new tab", href: src },
           ]}
         />

@@ -1,18 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import type { ImageMoment } from "@/lib/ai/imagePrompt";
 import type { ComfyImage } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
 import { IMAGE_SLOTS, type ImageSlot } from "@/lib/imageSlots";
 import PictureTile from "./PictureTile";
 import OtherChapterPictures from "./OtherChapterPictures";
 import PictureViewer from "./PictureViewer";
+import PictureInfo from "./PictureInfo";
 import { usePictureSaver } from "./usePictureSaver";
 import { inView, pictureCaption, progressText, timeline, type PendingJob, type Picture, type PictureView, type PromptToLoad } from "./pictures";
 
-const SHOWN_PROMPT = 160;
-const MOMENT_NAMES: Record<ImageMoment, string> = { start: "Chapter start", end: "Chapter end" };
+const SHOWN_PROMPT = 80;
 
 const short = (text: string, max: number) => (text.length > max ? `${text.slice(0, max).trimEnd()}…` : text);
 
@@ -62,6 +61,8 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
   const [status, setStatus] = useState<Status | null>(null);
   // The picture shown full size, if any.
   const [viewing, setViewing] = useState<string | null>(null);
+  // The picture whose Info popup is open, if any.
+  const [info, setInfo] = useState<Picture | null>(null);
   const saver = usePictureSaver(chapterId, comfyUrl, setStatus);
 
   const count = (v: PictureView) => pictures.filter((p) => inView(p, v)).length;
@@ -162,29 +163,11 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
         </p>
       )}
       {groups.map((group) => {
+        // No heading: a line between runs says the settings changed, and Info on a picture says what they were.
         const first = group.pending[0] ?? group.pictures[0];
-        const all = [...group.pending, ...group.pictures];
-        const moments = [...new Set(all.flatMap((p) => (p.moment ? [MOMENT_NAMES[p.moment]] : [])))].join(", ");
-        const made = group.pictures.length;
-        const coming = group.pending.reduce((n, job) => n + job.count, 0);
         return (
           <div key={group.key} className="picture-group">
-            <div className="picture-group-head">
-              <p style={{ margin: 0 }} title={first.prompt}>
-                {short(first.prompt, SHOWN_PROMPT)}
-              </p>
-              <p className="meta" style={{ margin: 0 }}>
-                {[
-                  moments,
-                  made > 0 && (made === 1 ? "1 picture" : `${made} pictures`),
-                  coming > 0 && `${coming} being made`,
-                  first.negative && `not: ${short(first.negative, 60)}`,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-            </div>
-            <ul className="candidates" aria-label="Pictures from this prompt">
+            <ul className="candidates" aria-label={`Pictures from “${short(first.prompt, SHOWN_PROMPT)}”`}>
               {group.pending.map((job) => (
                 <PendingTiles key={job.key} job={job} />
               ))}
@@ -207,6 +190,7 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
                     setViewing(p.key);
                   }}
                   onLoadPrompt={() => loadFrom(p)}
+                  onInfo={() => setInfo(p)}
                 />
               ))}
             </ul>
@@ -214,7 +198,7 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
         );
       })}
       {view === "other" ? (
-        <OtherChapterPictures chapterId={chapterId} storyId={storyId} titles={titles} comfyUrl={comfyUrl} saver={saver} onLoadPrompt={onLoadPrompt} onStart={onStart} />
+        <OtherChapterPictures chapterId={chapterId} storyId={storyId} titles={titles} comfyUrl={comfyUrl} saver={saver} onLoadPrompt={loadFrom} onStart={onStart} onInfo={setInfo} />
       ) : (
         shown.length === 0 && !(joined && pending.length > 0) && <p className="meta" style={{ margin: 0 }}>{empty()}</p>
       )}
@@ -231,12 +215,32 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
             setViewing(null);
             loadFrom(p);
           }}
+          onInfo={setInfo}
           onStart={(p) => {
             setViewing(null);
             onStart(p.image);
           }}
           saver={saver}
           status={status}
+        />
+      )}
+      {/* After the viewer, so it opens over it. */}
+      {info && (
+        <PictureInfo
+          key={info.key}
+          picture={info}
+          titles={titles}
+          onClose={() => setInfo(null)}
+          onLoadPrompt={() => {
+            setInfo(null);
+            setViewing(null);
+            loadFrom(info);
+          }}
+          onStart={() => {
+            setInfo(null);
+            setViewing(null);
+            onStart(info.image);
+          }}
         />
       )}
     </section>

@@ -129,9 +129,20 @@ try {
   ok(Math.abs(frame.x + frame.width - (marksBox.x + marksBox.width)) < 12 && Math.abs(marksBox.y - frame.y) < 12, "…on the picture's top right corner");
   ok(Math.abs(frame.width / frame.height - shown) < 0.02, "…which is the picture's own shape");
   await viewer.getByRole("button", { name: "More" }).click();
-  ok((await viewer.getByRole("menuitem").allInnerTexts()).join("|") === "Use as header picture|Use as footer picture|Start from this|Load prompt|Open in a new tab", "its ☰ menu has Use as header and footer, Start from this, Load prompt and Open in a new tab");
+  ok((await viewer.getByRole("menuitem").allInnerTexts()).join("|") === "Use as header picture|Use as footer picture|Start from this|Load prompt|Info|Open in a new tab", "its ☰ menu has Use as header and footer, Start from this, Load prompt, Info and Open in a new tab");
   await page.keyboard.press("Escape");
   ok(await viewer.getByRole("menu").count() === 0 && await viewer.isVisible(), "Esc closes the menu, not the viewer");
+  const viewedPrompt = await viewer.locator(".viewer-prompt").innerText();
+  await viewer.getByRole("button", { name: "More" }).click();
+  await viewer.getByRole("menuitem", { name: "Info" }).click();
+  const info = page.getByRole("dialog", { name: "Picture info" });
+  await info.waitFor();
+  const infoBox = await info.boundingBox();
+  const atInfo = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("dialog")?.className, [infoBox.x + infoBox.width / 2, infoBox.y + 20]);
+  ok(atInfo === "picture-info" && (await info.innerText()).includes(viewedPrompt), "Info opens over the viewer, for the picture shown");
+  await page.keyboard.press("Escape");
+  await info.waitFor({ state: "detached" });
+  ok(await viewer.isVisible(), "…and Esc closes Info, not the viewer");
   await page.keyboard.press("ArrowRight");
   await page.keyboard.press("ArrowRight");
 
