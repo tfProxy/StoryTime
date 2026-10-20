@@ -39,6 +39,13 @@ page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true
 const promptBox = page.getByRole("textbox", { name: "Prompt", exact: true });
 const negativeBox = page.getByRole("textbox", { name: "Negative prompt", exact: true });
 const makeButton = page.getByRole("button", { name: /^(Make pictures|Queue more)$/ });
+// Longer than the page waits for more clicks before sending a job (GATHER_MS).
+const GATHER_WAIT = 1000;
+// Two quick clicks: one job of two pictures.
+const makeTwo = async () => {
+  await makeButton.click();
+  await makeButton.click();
+};
 const live = page.locator(".comfy-queue [role=status]");
 const items = page.locator(".candidates li");
 const card = (title) => page.locator(".image-editor", { has: page.getByRole("heading", { name: title }) });
@@ -134,11 +141,17 @@ try {
 
   await checkpoint.selectOption("fake_sdxl_b.safetensors");
   ok(await until(async () => (await settingsNow()).comfy.checkpoint === "fake_sdxl_b.safetensors", "the checkpoint to be saved"), "choosing a checkpoint saves it in the settings");
-  await page.getByLabel("How many").selectOption("2");
-  ok(await until(async () => (await settingsNow()).comfy.count === 2, "the count to be saved"), "How many = 2 is saved too");
+  ok(await page.getByLabel("How many").count() === 0 && await page.getByText("One picture per click.").isVisible(), "there is no How many menu: each click makes one picture");
 
+  // ---- quick clicks with nothing changed are one job ----
   const mark = comfy.calls.length;
   await makeButton.click();
+  const gatherRow = page.locator(".comfy-queue li").first();
+  ok(await until(async () => (await gatherRow.innerText()).includes("a lighthouse at dawn, gulls ×1") && (await gatherRow.innerText()).includes("Click again for more pictures in this job"), "the gathering job"), "a click lists a job of one picture that a moment more can still add to");
+  await makeButton.click();
+  ok(await until(async () => (await gatherRow.innerText()).includes("×2"), "×2") && await page.locator(".comfy-queue li").count() === 1, "…and a second quick click adds a picture to it rather than a job");
+  await until(() => promptCalls(mark).length === 1, "the job to be sent");
+  ok(Object.values(promptCalls(mark)[0].body.prompt).find((n) => n.class_type === "EmptyLatentImage").inputs.batch_size === 2, "…which goes to ComfyUI as one job of two pictures once the clicks stop");
   await live.filter({ hasText: /Step \d+ of 8/ }).waitFor();
   ok(true, "while ComfyUI works, the page shows its progress (Step X of 8)");
   ok(await page.getByRole("button", { name: "Queue more" }).isEnabled() && await page.getByRole("button", { name: "Stop", exact: true }).isVisible(), "…the button says Queue more and stays on, and the job has a Stop button");
@@ -147,7 +160,7 @@ try {
   ok(await page.locator('progress[aria-label="Progress"]').isVisible(), "…with a progress bar");
   await items.first().waitFor();
   await picturesLoaded(2);
-  ok(await items.count() === 2, "two pictures appear (How many = 2)");
+  ok(await items.count() === 2, "two pictures appear");
   ok(await page.getByRole("list", { name: "Pictures from this prompt" }).isVisible() && await live.count() === 0, "…in a list of pictures from this prompt, and the progress text is gone");
   const group = page.locator(".picture-group").first();
   ok((await group.locator(".picture-group-head").innerText()).includes("a lighthouse at dawn, gulls") && (await group.locator(".picture-group-head").innerText()).includes("Chapter start · 2 pictures · not: blurry, text"), "…under the prompt, the moment, the count and the negative prompt");
@@ -257,12 +270,12 @@ try {
   await promptBox.fill("a lighthouse at dusk, gulls");
   const seedOf = (call) => Object.values(call.body.prompt).find((n) => n.class_type === "KSampler").inputs.seed;
   let from = comfy.calls.length;
-  await makeButton.click();
+  await makeTwo();
   await picturesLoaded(2);
   ok(seedOf(promptCalls(from)[0]) !== seed, "making pictures without the box ticked uses a new seed");
   await reuse.check();
   from = comfy.calls.length;
-  await makeButton.click();
+  await makeTwo();
   await page.waitForFunction(() => document.querySelectorAll(".candidates li").length === 4);
   ok(seedOf(promptCalls(from)[0]) === seed, "with Reuse seed ticked, the queued workflow has the picture's seed");
   const reused = (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs[0];
@@ -270,7 +283,7 @@ try {
   let heads = await page.locator(".picture-group-head").allInnerTexts();
   ok(heads.length === 1 && heads[0].startsWith("a lighthouse at dusk, gulls") && heads[0].includes("4 pictures"), "pictures from the same prompt are grouped together, whatever their seed");
   await promptBox.fill("a lighthouse at night");
-  await makeButton.click();
+  await makeTwo();
   await page.waitForFunction(() => document.querySelectorAll(".candidates li").length === 6);
   heads = await page.locator(".picture-group-head").allInnerTexts();
   ok(heads.length === 2 && heads[0].startsWith("a lighthouse at night") && heads[1].startsWith("a lighthouse at dusk, gulls"), "…and a new prompt starts a new group, above the older one");
@@ -365,12 +378,11 @@ try {
   const qBefore = await items.count();
   const rows = page.locator(".comfy-queue li");
   await promptBox.fill("first in line");
-  await makeButton.click();
+  await makeTwo();
   await live.filter({ hasText: /Step \d+ of 8/ }).waitFor();
   await promptBox.fill("second in line");
-  await page.getByLabel("How many").selectOption("1");
-  ok(await until(async () => (await settingsNow()).comfy.count === 1, "the count to be saved"), "(How many is changed to 1 while the first job runs)");
   await makeButton.click();
+  // a changed prompt sends the job gathered so far at once, and starts another
   await promptBox.fill("third, to be stopped");
   await makeButton.click();
   await until(async () => (await rows.count()) === 3 && promptCalls(qMark).length === 3, "three jobs");
@@ -390,8 +402,19 @@ try {
   ok(true, "the other two jobs finish and add their pictures (2 + 1)");
   const qHeads = await page.locator(".picture-group-head").allInnerTexts();
   ok(qHeads[0].startsWith("second in line") && qHeads[0].includes("1 picture") && qHeads[1].startsWith("first in line") && qHeads[1].includes("2 pictures") && !qHeads.some((h) => h.startsWith("third")), "…each under its own prompt, and nothing from the stopped one");
-  await page.getByLabel("How many").selectOption("2");
-  ok(await until(async () => (await settingsNow()).comfy.count === 2, "the count to be saved"), "(How many is back to 2)");
+
+  // ---- at most eight pictures a job ----
+  const capMark = comfy.calls.length;
+  await promptBox.fill("ten quick clicks");
+  for (let i = 0; i < 10; i++) await makeButton.click();
+  ok(await until(async () => (await rows.count()) === 2, "two jobs") && (await rows.nth(0).innerText()).includes("ten quick clicks ×8") && (await rows.nth(1).innerText()).includes("ten quick clicks ×2"), "ten quick clicks make a job of eight and another of two");
+  await rows.nth(1).getByRole("button", { name: "Stop" }).click();
+  ok(await until(async () => (await rows.count()) === 1, "the gathering job to go"), "Stop on a job not sent yet drops it");
+  await rows.nth(0).getByRole("button", { name: "Stop" }).click();
+  await until(async () => (await rows.count()) === 0, "the other job to stop");
+  await page.waitForTimeout(GATHER_WAIT);
+  const capCalls = promptCalls(capMark);
+  ok(capCalls.length === 1 && Object.values(capCalls[0].body.prompt).find((n) => n.class_type === "EmptyLatentImage").inputs.batch_size === 8, "…so only the job of eight was sent to ComfyUI");
 
   // ---- the WebSocket refused: the page finds the pictures by polling ----
   comfy.setMode({ ws: false, steps: 2, stepDelay: 100, startDelay: 200, fail: null });
@@ -399,7 +422,7 @@ try {
   await page.getByLabel("Moment to show").selectOption("end");
   await promptBox.fill("a lighthouse in fog");
   const pollMark = comfy.calls.length;
-  await makeButton.click();
+  await makeTwo();
   await page.locator(".candidates li").first().waitFor({ timeout: 15000 });
   await picturesLoaded(await items.count());
   ok(await items.count() === 2, "with no WebSocket, the pictures still arrive");
@@ -411,7 +434,7 @@ try {
   // ---- the job can't be recorded: the pictures are still usable, just without a prompt kept ----
   await page.route("**/api/picture-jobs", (route) => route.request().method() === "POST" ? route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "disk full" }) }) : route.continue());
   await page.getByLabel("Moment to show").selectOption("start");
-  await makeButton.click();
+  await makeTwo();
   await page.getByText(/couldn't record how they were made: disk full/).waitFor({ timeout: 15000 });
   await picturesLoaded(4);
   ok(await items.count() === 4, "when the job can't be recorded, the page says so and still shows the new pictures");

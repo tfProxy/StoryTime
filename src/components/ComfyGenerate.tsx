@@ -28,7 +28,16 @@ async function recordJob(job: Record<string, unknown>): Promise<string> {
   return data.id;
 }
 
-function progressText(p: Progress): string {
+/** How long after the last click a job is sent, so quick clicks with the same settings make one job. */
+export const GATHER_MS = 800;
+/** The most pictures one job makes; a click beyond it starts another job. */
+export const MAX_BATCH = 8;
+
+/** A job's progress, or "gathering" while more clicks can still be added to it. */
+type JobProgress = Progress | { stage: "gathering" };
+
+function progressText(p: JobProgress): string {
+  if (p.stage === "gathering") return "Click again for more pictures in this job…";
   if (p.stage === "uploading") return "Sending the starting picture to ComfyUI…";
   if (p.stage === "queued") return p.ahead ? `Waiting in ComfyUI's queue (${p.ahead} ahead)…` : "Starting…";
   if (p.stage === "running") return `Step ${p.value} of ${p.max}…`;
@@ -36,7 +45,25 @@ function progressText(p: Progress): string {
 }
 
 /** A job being made, as listed under the Make pictures button. */
-type Queued = { key: string; prompt: string; count: number; progress: Progress };
+type Queued = { key: string; prompt: string; count: number; progress: JobProgress };
+
+/** Everything a job is made with, as it was when it was asked for. */
+type JobInput = {
+  prompt: string;
+  negative: string;
+  moment: ImageMoment;
+  comfy: ComfySettings;
+  start: StartPicture | null;
+  /** The seed to use, or null for a random one. */
+  seed: number | null;
+};
+
+/** A job not sent yet, which more clicks can still add pictures to. */
+type Gathering = { key: string; input: JobInput; count: number; timer: ReturnType<typeof setTimeout> };
+
+/** What has to match for a click to join the job being gathered. */
+const sameJob = (a: JobInput) =>
+  JSON.stringify([a.prompt, a.negative, a.moment, a.comfy.url, a.comfy.workflow, a.comfy.checkpoint, a.comfy.width, a.comfy.height, a.start?.key ?? null, a.start ? a.comfy.denoise : null, a.seed]);
 
 const SHOWN_PROMPT = 70;
 
@@ -91,6 +118,10 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
   // The jobs being made, oldest first, as shown; `jobs` holds what Stop needs for each.
   const [queue, setQueue] = useState<Queued[]>([]);
   const jobs = useRef(new Map<string, { promptId: string | null; ctl: AbortController }>());
+  // The newest job, while clicks can still add pictures to it.
+  const gathering = useRef<Gathering | null>(null);
+  // A job still gathering when the page is left is not sent.
+  useEffect(() => () => clearTimeout(gathering.current?.timer), []);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   // The starting picture's upload to ComfyUI, kept so the next job from it doesn't send it again.
   const uploaded = useRef<{ key: string; upload: Promise<Uploaded> } | null>(null);
@@ -132,24 +163,64 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
   const size = SIZES.find((s) => s.width === comfy.width && s.height === comfy.height);
 
   /**
-   * Queues one job with the prompt and settings as they are now, and waits for its pictures. Several can
+   * One click asks for one picture. Clicks with the same prompt and settings, each within GATHER_MS of the
+   * last, are gathered into one job (up to MAX_BATCH pictures); a click with anything changed sends the
+   * job being gathered at once and starts another.
+   */
+  function ask() {
+    setStatus(null);
+    const input: JobInput = {
+      prompt: prompt.trim(),
+      negative: negative.trim(),
+      moment,
+      comfy,
+      start,
+      seed: reuseSeed && loadedSeed !== null ? loadedSeed : null,
+    };
+    const g = gathering.current;
+    if (g && sameJob(g.input) === sameJob(input) && g.count < MAX_BATCH) {
+      g.count += 1;
+      clearTimeout(g.timer);
+      g.timer = setTimeout(() => send(g), GATHER_MS);
+      const count = g.count;
+      setQueue((prev) => prev.map((q) => (q.key === g.key ? { ...q, count } : q)));
+      return;
+    }
+    if (g) {
+      clearTimeout(g.timer);
+      send(g);
+    }
+    const key = `job-${randomSeed().toString(36)}`;
+    jobs.current.set(key, { promptId: null, ctl: new AbortController() });
+    const next: Gathering = { key, input, count: 1, timer: setTimeout(() => send(next), GATHER_MS) };
+    gathering.current = next;
+    setQueue((prev) => [...prev, { key, prompt: input.prompt, count: 1, progress: { stage: "gathering" } }]);
+  }
+
+  /** Sends a gathered job: no more clicks join it. */
+  function send(g: Gathering) {
+    if (gathering.current === g) gathering.current = null;
+    void generate(g.key, g.input, g.count);
+  }
+
+  /**
+   * Queues one job with the prompt and settings it was asked with, and waits for its pictures. Several can
    * run at once: ComfyUI makes them one after another, and each shows its own progress and Stop.
    */
-  async function generate() {
-    setStatus(null);
-    const ctl = new AbortController();
-    const key = `job-${randomSeed().toString(36)}`;
-    const job = { promptId: null as string | null, ctl };
-    jobs.current.set(key, job);
+  async function generate(key: string, input: JobInput, count: number) {
+    const job = jobs.current.get(key);
+    if (!job) return;
+    const { ctl } = job;
+    const { prompt, negative, moment, comfy, start } = input;
     const setProgress = (progress: Progress) => {
       setQueue((prev) => prev.map((q) => (q.key === key ? { ...q, progress } : q)));
     };
-    setQueue((prev) => [...prev, { key, prompt: prompt.trim(), count: comfy.count, progress: { stage: "queued", ahead: null } }]);
-    const seed = reuseSeed && loadedSeed !== null ? loadedSeed : randomSeed();
+    setProgress({ stage: "queued", ahead: null });
+    const seed = input.seed ?? randomSeed();
     // Names this job's WebSocket connection, so ComfyUI sends its progress there.
     const clientId = `storytime-${randomSeed().toString(36)}`;
     try {
-      if (!prompt.trim()) throw new Error("Write or type a prompt first.");
+      if (!prompt) throw new Error("Write or type a prompt first.");
       const base = parseWorkflow(comfy.workflow);
       if (describeWorkflow(base).checkpoint && !comfy.checkpoint) throw new Error("Pick a checkpoint first.");
       if (start && !describeWorkflow(base).image) {
@@ -173,12 +244,12 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
       const width = from?.width ?? comfy.width;
       const height = from?.height ?? comfy.height;
       const workflow = fillWorkflow(base, {
-        prompt: prompt.trim(),
-        negative: negative.trim(),
+        prompt,
+        negative,
         checkpoint: comfy.checkpoint,
         width,
         height,
-        count: comfy.count,
+        count,
         seed,
         prefix: filenamePrefix(storyId, chapterId),
         ...(from && { image: from.name, denoise: comfy.denoise }),
@@ -199,13 +270,13 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
         jobId = await recordJob({
           chapter_id: chapterId,
           prompt_id: promptId,
-          prompt: prompt.trim(),
-          negative: negative.trim(),
+          prompt,
+          negative,
           checkpoint: comfy.checkpoint,
           width,
           height,
           seed,
-          count: comfy.count,
+          count,
           moment,
           ...(from && { source: start!.source, denoise: comfy.denoise }),
           images,
@@ -222,8 +293,8 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
           fresh: true,
           image,
           jobId,
-          prompt: prompt.trim(),
-          negative: negative.trim(),
+          prompt,
+          negative,
           seed,
           checkpoint: comfy.checkpoint,
           width,
@@ -242,6 +313,16 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
   }
 
   function stop(key: string) {
+    const g = gathering.current;
+    if (g?.key === key) {
+      // Not sent yet: just drop it.
+      clearTimeout(g.timer);
+      gathering.current = null;
+      jobs.current.delete(key);
+      setQueue((prev) => prev.filter((q) => q.key !== key));
+      setStatus({ ok: true, text: "Stopped." });
+      return;
+    }
     const j = jobs.current.get(key);
     if (!j) return;
     if (j.promptId) void cancelPrompt(comfy.url, j.promptId);
@@ -290,16 +371,6 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
             ))}
           </select>
         </label>
-        <label className="row" style={{ gap: "0.4rem" }}>
-          How many
-          <select aria-label="How many" value={comfy.count} onChange={(e) => set({ count: Number(e.target.value) })} style={{ width: "auto" }}>
-            {[1, 2, 3, 4, 6, 8].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
       {start && (
         <div className="start-picture">
@@ -341,12 +412,13 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
       <div className="row" style={{ flexWrap: "wrap" }}>
         <button
           type="button"
-          onClick={() => void generate()}
+          onClick={ask}
           disabled={!prompt.trim()}
-          title={busy ? "Adds a job with the prompt and settings as they are now; ComfyUI makes it after the others" : undefined}
+          title="Each click makes one picture. Quick clicks with nothing changed in between go to ComfyUI as one job."
         >
           {busy ? "Queue more" : "Make pictures"}
         </button>
+        <span className="meta">One picture per click.</span>
         {loadedSeed !== null && (
           <label className="inline-label" title="The same seed with a slightly changed prompt gives a close variation">
             <input type="checkbox" checked={reuseSeed} onChange={(e) => setReuseSeed(e.target.checked)} />

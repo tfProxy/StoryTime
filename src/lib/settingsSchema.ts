@@ -61,7 +61,7 @@ export type ComfySettings = {
   checkpoint: string;
   width: number;
   height: number;
-  /** How many pictures to make at once. */
+  /** How many pictures to make at once. No longer used by the Illustrate page, which makes one per click. */
   count: number;
   /** Image to image: how far a picture may change from the one it starts from, 0.05 (barely) to 1 (completely). */
   denoise: number;
