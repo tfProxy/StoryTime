@@ -96,6 +96,12 @@ export function listPictureJobs(
   return { jobs: shown.map(toJob), next: more ? shown[shown.length - 1].seq : null };
 }
 
+/** The title of every chapter in a story, by chapter id, to label past pictures with the chapter they were made for. */
+export function storyChapterTitles(storyId: string): Record<string, string> {
+  const rows = db().prepare(`SELECT id, title FROM chapters WHERE story_id = ?`).all(storyId) as { id: string; title: string }[];
+  return Object.fromEntries(rows.map((r) => [r.id, r.title]));
+}
+
 /** The prompt and negative prompt of a job, or undefined when there is no such job. */
 export function jobPrompts(jobId: string): { prompt: string; negative: string } | undefined {
   return db().prepare(`SELECT prompt, negative FROM picture_jobs WHERE id = ?`).get(jobId) as { prompt: string; negative: string } | undefined;

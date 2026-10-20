@@ -1049,7 +1049,45 @@ main:has(.library) {
 }
 
 /* One picture per line, in the order they were made, so each has room to be looked at closely. */
-.candidates {
+.picture-tile {
+  display: grid;
+  gap: 0.4rem;
+  align-content: start;
+  min-width: 0;
+}
+
+.picture-missing {
+  display: grid;
+  place-items: center;
+  min-height: 8rem;
+  margin: 0;
+  padding: 0.5rem;
+  text-align: center;
+  border-radius: 6px;
+  background: var(--line);
+}
+
+/* Past pictures: grouped by chapter, then by job; the pictures of a job share the width when there is room. */
+.past-group,
+.past-job {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.past-group h3 {
+  margin: 0.5rem 0 0;
+  font-size: 1rem;
+}
+
+.past-job {
+  overflow-wrap: anywhere;
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+}
+
+.candidates,
+.past-tiles {
   display: grid;
   gap: 1rem;
   margin: 0;
@@ -1057,13 +1095,11 @@ main:has(.library) {
   list-style: none;
 }
 
-.candidates li {
-  display: grid;
-  gap: 0.4rem;
-  align-content: start;
+.past-tiles {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
 }
 
-.candidates img {
+.picture-tile img {
   display: block;
   width: 100%;
   height: auto;

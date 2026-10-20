@@ -5,9 +5,12 @@ import { IMAGE_SLOTS, type ImageMade, type ImageSlot, type ImageVersions } from 
 import type { ContextChapter, ContextCodexEntry } from "@/lib/ai/prompts";
 import ChapterImageEditor from "./ChapterImageEditor";
 import ImagePromptPanel, { type LoadedPrompt } from "./ImagePromptPanel";
+import PastPictures, { type PromptToLoad } from "./PastPictures";
 
 type Props = {
   chapterId: string;
+  /** Every chapter's title in the story, by chapter id. */
+  titles: Record<string, string>;
   story: { id: string; title: string; premise: string; art_style: string };
   path: ContextChapter[];
   codex: ContextCodexEntry[];
@@ -19,11 +22,11 @@ type Props = {
  * The prompt box and the picture cards together, so a saved picture's "Load prompt" can fill in the box.
  * Each load carries a number, so loading the same prompt twice still counts as a new request.
  */
-export default function IllustrateWorkspace({ chapterId, story, path, codex, versions, made }: Props) {
+export default function IllustrateWorkspace({ chapterId, titles, story, path, codex, versions, made }: Props) {
   const [loaded, setLoaded] = useState<LoadedPrompt | null>(null);
 
-  function load(m: ImageMade) {
-    setLoaded({ nonce: (loaded?.nonce ?? 0) + 1, prompt: m.prompt, negative: m.negative, seed: m.job?.seed ?? null });
+  function load(p: PromptToLoad) {
+    setLoaded({ nonce: (loaded?.nonce ?? 0) + 1, prompt: p.prompt, negative: p.negative, seed: p.seed });
     // On a phone the prompt box is far above the cards.
     document.getElementById("picture-prompt")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -31,9 +34,17 @@ export default function IllustrateWorkspace({ chapterId, story, path, codex, ver
   return (
     <>
       <ImagePromptPanel chapterId={chapterId} story={story} path={path} codex={codex} loaded={loaded} />
+      <PastPictures chapterId={chapterId} storyId={story.id} titles={titles} onLoadPrompt={load} />
       <div className="image-editors">
         {IMAGE_SLOTS.map((slot) => (
-          <ChapterImageEditor key={slot} chapterId={chapterId} slot={slot} version={versions[slot]} made={made[slot]} onLoadPrompt={load} />
+          <ChapterImageEditor
+            key={slot}
+            chapterId={chapterId}
+            slot={slot}
+            version={versions[slot]}
+            made={made[slot]}
+            onLoadPrompt={(m) => load({ prompt: m.prompt, negative: m.negative, seed: m.job?.seed ?? null })}
+          />
         ))}
       </div>
     </>

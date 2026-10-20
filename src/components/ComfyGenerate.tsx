@@ -2,27 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { saveSettings, useSettings } from "@/lib/settings";
 import type { ComfySettings } from "@/lib/settingsSchema";
-import { IMAGE_SLOTS, type ImageSlot } from "@/lib/imageSlots";
-import { prepareImage } from "@/lib/prepareImage";
 import type { ImageMoment } from "@/lib/ai/imagePrompt";
 import type { LoadedPrompt } from "./ImagePromptPanel";
+import PictureTile from "./PictureTile";
+import { usePictureSaver } from "./usePictureSaver";
 import { describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
-import {
-  cancelPrompt,
-  fetchImage,
-  imageUrl,
-  listCheckpoints,
-  queuePrompt,
-  waitForPictures,
-  type ComfyImage,
-  type Progress,
-} from "@/lib/comfy/client";
-
-// Saved pictures keep at most this many pixels on their longest side, like uploads.
-const MAX_SIDE = 1600;
+import { cancelPrompt, listCheckpoints, queuePrompt, waitForPictures, type ComfyImage, type Progress } from "@/lib/comfy/client";
 
 /** Sizes that suit SDXL (about one megapixel). */
 const SIZES: { label: string; width: number; height: number }[] = [
@@ -31,8 +18,6 @@ const SIZES: { label: string; width: number; height: number }[] = [
   { label: "Square 1024 × 1024", width: 1024, height: 1024 },
   { label: "Portrait 768 × 1344", width: 768, height: 1344 },
 ];
-
-const SLOT_NAMES: Record<ImageSlot, string> = { header: "header picture", footer: "footer picture" };
 
 /** `jobId` is the picture job's record in StoryTime, or null when it couldn't be recorded. */
 type Candidate = { image: ComfyImage; seed: number; key: string; jobId: string | null };
@@ -63,14 +48,13 @@ type Props = {
 
 /** Makes pictures from the prompt on the ComfyUI machine, and saves the ones the author picks. */
 export default function ComfyGenerate({ chapterId, storyId, moment, prompt, negative, loaded = null }: Props) {
-  const router = useRouter();
   const settings = useSettings();
   const comfy = settings.comfy;
   const [checkpoints, setCheckpoints] = useState<string[] | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [saving, setSaving] = useState<string | null>(null);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
+  const saver = usePictureSaver(chapterId, comfy.url, setStatus);
   const job = useRef<{ promptId: string | null; ctl: AbortController } | null>(null);
   // Each prompt loaded from a saved picture starts with a new seed again, until the author ticks the box.
   const [reuseSeed, setReuseSeed] = useState(false);
@@ -168,25 +152,6 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
     j.ctl.abort();
   }
 
-  async function use(c: Candidate, slot: ImageSlot) {
-    setSaving(`${c.key}-${slot}`);
-    setStatus(null);
-    try {
-      const blob = await prepareImage(await fetchImage(comfy.url, c.image), MAX_SIDE);
-      // The job lets StoryTime keep the prompt with the picture.
-      const made = c.jobId ? `?job=${encodeURIComponent(c.jobId)}` : "";
-      const res = await fetch(`/api/chapters/${chapterId}/images/${slot}${made}`, { method: "PUT", headers: { "Content-Type": "image/jpeg" }, body: blob });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? `Couldn't save the picture (${res.status})`);
-      setStatus({ ok: true, text: `Saved as the ${SLOT_NAMES[slot]}.` });
-      router.refresh();
-    } catch (e) {
-      setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setSaving(null);
-    }
-  }
-
   return (
     <div className="comfy-generate">
       <h3>Make pictures</h3>
@@ -266,19 +231,7 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
         <>
           <ul className="candidates" aria-label="Pictures from ComfyUI">
             {candidates.map((c) => (
-              <li key={c.key}>
-                <a href={imageUrl(comfy.url, c.image)} target="_blank" rel="noreferrer" title="Open full size">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- served by ComfyUI */}
-                  <img src={imageUrl(comfy.url, c.image)} alt={`Picture ${c.image.filename}`} loading="lazy" />
-                </a>
-                <div className="row" style={{ flexWrap: "wrap" }}>
-                  {IMAGE_SLOTS.map((slot) => (
-                    <button key={slot} type="button" className="secondary" disabled={saving !== null} onClick={() => void use(c, slot)}>
-                      {saving === `${c.key}-${slot}` ? "Saving…" : `Use as ${SLOT_NAMES[slot]}`}
-                    </button>
-                  ))}
-                </div>
-              </li>
+              <PictureTile key={c.key} comfyUrl={comfy.url} image={c.image} tileKey={c.key} jobId={c.jobId} saver={saver} />
             ))}
           </ul>
           <p className="row" style={{ margin: 0 }}>

@@ -5,6 +5,7 @@ import IllustrateWorkspace from "@/components/IllustrateWorkspace";
 import { chapterImageMade, chapterImageVersions } from "@/lib/chapterImages";
 import { foldCodex } from "@/lib/codex";
 import { getCodexOps } from "@/lib/codexDb";
+import { storyChapterTitles } from "@/lib/pictureJobs";
 import { getPath, getStory } from "@/lib/stories";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +48,7 @@ export default async function IllustratePage({ params }: { params: Promise<{ id:
         <div className="illustrate-main">
           <IllustrateWorkspace
             chapterId={chapter.id}
+            titles={storyChapterTitles(story.id)}
             story={{ id: story.id, title: story.title, premise: story.premise, art_style: story.art_style }}
             path={path.map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary }))}
             codex={codex}
