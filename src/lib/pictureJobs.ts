@@ -9,21 +9,29 @@ import { PostError } from "./stories";
 const text = (max: number) => z.string().max(max);
 const JobImage = z.object({ filename: text(500).min(1), subfolder: text(500), type: text(50).min(1) });
 
-export const NewJobSchema = z.object({
-  chapter_id: z.string().min(1).max(100),
-  prompt_id: text(200).min(1),
-  prompt: text(LIMITS.picturePrompt).min(1),
-  negative: text(LIMITS.picturePrompt).default(""),
-  checkpoint: text(500).default(""),
-  width: z.number().int().min(1).max(16384),
-  height: z.number().int().min(1).max(16384),
-  seed: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-  count: z.number().int().min(1).max(64),
-  moment: z.enum(["start", "end"]).nullish(),
-  source: text(1000).nullish(),
-  denoise: z.number().min(0).max(1).nullish(),
-  images: z.array(JobImage).min(1).max(64),
-});
+export const NewJobSchema = z
+  .object({
+    chapter_id: z.string().min(1).max(100),
+    prompt_id: text(200).min(1),
+    // An edit follows its instruction, so it may have no prompt.
+    prompt: text(LIMITS.picturePrompt),
+    negative: text(LIMITS.picturePrompt).default(""),
+    checkpoint: text(500).default(""),
+    width: z.number().int().min(1).max(16384),
+    height: z.number().int().min(1).max(16384),
+    seed: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    count: z.number().int().min(1).max(64),
+    moment: z.enum(["start", "end"]).nullish(),
+    source: text(1000).nullish(),
+    denoise: z.number().min(0).max(1).nullish(),
+    /** An edit: what it was told to change, and the model (an id from EDIT_MODELS). Both or neither. */
+    instruction: text(LIMITS.picturePrompt).min(1).nullish(),
+    edit_model: text(100).min(1).nullish(),
+    images: z.array(JobImage).min(1).max(64),
+  })
+  .refine((j) => !j.instruction === !j.edit_model, { message: "an edit needs both its instruction and its model", path: ["instruction"] })
+  .refine((j) => j.prompt.length > 0 || !!j.instruction, { message: "a prompt is needed (or, for an edit, an instruction)", path: ["prompt"] })
+  .refine((j) => !j.instruction || !!j.source, { message: "an edit needs the picture it started from", path: ["source"] });
 export type NewJob = z.infer<typeof NewJobSchema>;
 
 export type PictureJob = {
@@ -41,6 +49,8 @@ export type PictureJob = {
   moment: "start" | "end" | null;
   source: string | null;
   denoise: number | null;
+  instruction: string | null;
+  edit_model: string | null;
   images: z.infer<typeof JobImage>[];
   /** Each picture's mark, in the order of `images`: pinned, rejected, or null. */
   marks: (PictureMark | null)[];
@@ -71,7 +81,7 @@ function toJobs(rows: Row[]): PictureJob[] {
 const toJob = (row: Row) => toJobs([row])[0];
 
 const COLUMNS = `rowid AS seq, id, story_id, chapter_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
-                 moment, source, denoise, images, created_at`;
+                 moment, source, denoise, instruction, edit_model, images, created_at`;
 
 /** Records a finished job for a chapter. Recording the same ComfyUI job again returns the first record. */
 export function recordPictureJob(input: NewJob): PictureJob {
@@ -85,13 +95,13 @@ export function recordPictureJob(input: NewJob): PictureJob {
   db()
     .prepare(
       `INSERT INTO picture_jobs (id, story_id, chapter_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
-                                 moment, source, denoise, images, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                 moment, source, denoise, instruction, edit_model, images, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id, chapter.story_id, input.chapter_id, input.prompt_id, input.prompt, input.negative, input.checkpoint,
       input.width, input.height, input.seed, input.count, input.moment ?? null, input.source ?? null,
-      input.denoise ?? null, JSON.stringify(input.images), Date.now(),
+      input.denoise ?? null, input.instruction ?? null, input.edit_model ?? null, JSON.stringify(input.images), Date.now(),
     );
   return toJob(db().prepare(`SELECT ${COLUMNS} FROM picture_jobs WHERE id = ?`).get(id) as Row);
 }

@@ -153,3 +153,26 @@ ok(r.json.jobs.find((j) => j.id === marked.id).marks[0] === "pinned", "a story's
 // ---- the story without one chapter ----
 r = await call("GET", `/api/picture-jobs?story=${story}&not_chapter=${one}&limit=200`);
 ok(r.json.jobs.length > 0 && r.json.jobs.every((j) => j.chapter_id === two), "not_chapter leaves that chapter's jobs out of the story's list");
+
+// ---- edits by instruction ----
+{
+  const s = await call("POST", "/api/stories", { title: "Edits", chapter: { title: "One", body: "first", choices: [] } });
+  const ch = s.json.chapter_id;
+  const edit = (n, extra = {}) => job(ch, n, { prompt: "", negative: "", source: "comfy:StoryTime_1_0.png", instruction: "remove the logo on his shirt", edit_model: "qwen-image-edit", ...extra });
+  let e = await call("POST", "/api/picture-jobs", edit(1));
+  ok(e.status === 201 && e.json.instruction === "remove the logo on his shirt" && e.json.edit_model === "qwen-image-edit" && e.json.prompt === "" && e.json.denoise === null, "an edit is recorded with its instruction and model, and may have no prompt");
+  e = await call("POST", "/api/picture-jobs", edit(2, { prompt: "a keeper" }));
+  ok(e.status === 201 && e.json.prompt === "a keeper", "…or keep the prompt it was made beside");
+  const plain = (await call("GET", `/api/picture-jobs?chapter=${one}`)).json.jobs[0];
+  ok(plain.instruction === null && plain.edit_model === null, "other jobs have neither");
+  const no = async (what, extra) => {
+    const x = await call("POST", "/api/picture-jobs", edit(9, extra));
+    ok(x.status === 400 && x.json?.error, `rejected: ${what} (${x.json?.error})`);
+  };
+  await no("an instruction without a model", { edit_model: undefined });
+  await no("a model without an instruction", { instruction: undefined });
+  await no("an empty instruction", { instruction: "" });
+  await no("an edit with no picture it started from", { source: undefined });
+  await no("no prompt and no instruction", { instruction: undefined, edit_model: undefined });
+  ok((await call("GET", `/api/picture-jobs?chapter=${ch}`)).json.jobs.length === 2, "…and nothing was recorded by those");
+}

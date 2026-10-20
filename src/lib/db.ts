@@ -269,6 +269,12 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE stories ADD COLUMN image_prompt_style TEXT CHECK (image_prompt_style IN ('tags', 'natural'));
   ALTER TABLE stories ADD COLUMN checkpoint TEXT NOT NULL DEFAULT '';
   `,
+  // 17: pictures made by editing a starting picture with an instruction ("remove the logo"): the
+  // instruction and the edit model (an id from EDIT_MODELS). Null for every other picture.
+  `
+  ALTER TABLE picture_jobs ADD COLUMN instruction TEXT;
+  ALTER TABLE picture_jobs ADD COLUMN edit_model TEXT;
+  `,
 ];
 
 function open(): Database.Database {
