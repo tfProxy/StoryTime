@@ -49,7 +49,14 @@ export default async function IllustratePage({ params }: { params: Promise<{ id:
           />
         }
         titles={storyChapterTitles(story.id)}
-        story={{ id: story.id, title: story.title, premise: story.premise, art_style: story.art_style }}
+        story={{
+          id: story.id,
+          title: story.title,
+          premise: story.premise,
+          art_style: story.art_style,
+          image_prompt_style: story.image_prompt_style,
+          checkpoint: story.checkpoint,
+        }}
         path={path.map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary }))}
         codex={codex}
         versions={versions}

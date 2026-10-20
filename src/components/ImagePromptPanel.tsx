@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { saveSettings, useSettings } from "@/lib/settings";
-import type { ImagePromptStyle } from "@/lib/settingsSchema";
 import { LIMITS } from "@/lib/limits";
 import { copyText } from "@/lib/copyText";
 import { codexBudget, budgetFor, explainCodex, type ContextChapter, type ContextCodexEntry } from "@/lib/ai/prompts";
@@ -15,12 +15,14 @@ import type { StartPicture } from "@/lib/comfy/startPicture";
 import type { Picture, PromptToLoad } from "./pictures";
 import type { PictureBoxes, PictureDraft } from "@/lib/pictureDrafts";
 import { EMPTY_BOXES, usePictureDraft } from "./usePictureDraft";
+import { PROMPT_STYLE_NAMES, unsetPictureSettings, type StoryPictures } from "./StoryPictureSettings";
 
 const MOMENT_NAMES: Record<ImageMoment, string> = { start: "Chapter start", end: "Chapter end" };
-const STYLE_NAMES: Record<ImagePromptStyle, string> = {
-  tags: "Tags (SDXL, Pony, SD 1.5)",
-  natural: "Sentences (Flux, SD3)",
-};
+
+const short = (text: string, max: number) => (text.length > max ? `${text.slice(0, max).trimEnd()}…` : text);
+
+/** The story fields the picture prompt uses: its premise, and its picture settings (see StoryPictureSettings). */
+export type IllustratedStory = { id: string; title: string; premise: string } & StoryPictures;
 
 /** A prompt brought back from a saved picture. `nonce` changes with every request, even for the same prompt. */
 export type LoadedPrompt = PromptToLoad & { nonce: number };
@@ -36,7 +38,7 @@ type Props = {
   /** Where to show the jobs being made. */
   queueSlot?: HTMLElement | null;
   chapterId: string;
-  story: { id: string; title: string; premise: string; art_style: string };
+  story: IllustratedStory;
   /** The story from its first chapter down to the chapter being illustrated. */
   path: ContextChapter[];
   codex: ContextCodexEntry[];
@@ -53,8 +55,6 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
   const settings = useSettings();
   const chapter = path[path.length - 1];
   const [moment, setMoment] = useState<ImageMoment>(draft?.moment ?? "start");
-  const [artStyle, setArtStyle] = useState(story.art_style);
-  const [savedArtStyle, setSavedArtStyle] = useState(story.art_style);
   // Each moment's boxes; those of the moment chosen are shown.
   const [boxes, setBoxes] = useState<Record<ImageMoment, PictureBoxes>>(() => ({ start: draft?.start ?? EMPTY_BOXES, end: draft?.end ?? EMPTY_BOXES }));
   const result = boxes[moment];
@@ -75,31 +75,16 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
     setMoment(into);
     setStatus({ ok: true, text: "Prompt loaded from the picture." });
   }
-  const style = settings.imagePromptStyle;
+  // Tags until the story's prompt style is chosen.
+  const style = story.image_prompt_style ?? "tags";
   const model = settings.imagePromptModel;
+  const unset = unsetPictureSettings(story);
+  const settingsHref = `/s/${story.id}/details#pictures`;
 
   const options = () => ({ story, path, codex, moment, direction, style });
   const used = explainCodex(codex, `${chapter.body}\n${direction}`, codexBudget(budgetFor(settings.contextTokens)))
     .filter((r) => r.state === "included")
     .map((r) => r.entry.name);
-
-  async function saveArtStyle() {
-    const next = artStyle.trim();
-    if (next === savedArtStyle) return;
-    try {
-      const res = await fetch(`/api/stories/${story.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ art_style: next }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? `Couldn't save the art style (${res.status})`);
-      setSavedArtStyle(next);
-      setStatus({ ok: true, text: "Art style saved." });
-    } catch (e) {
-      setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
-    }
-  }
 
   async function write() {
     // The prompt goes to the moment it was written for, even if another is chosen meanwhile.
@@ -109,9 +94,8 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
     setBusy(true);
     setStatus(null);
     try {
-      await saveArtStyle();
       const p = await writeImagePrompt(settings, { ...options(), model, signal: ctl.signal });
-      change(forMoment, { scene: p.scene, prompt: withArtStyle(p.prompt, artStyle, style), negative: p.negative });
+      change(forMoment, { scene: p.scene, prompt: withArtStyle(p.prompt, story.art_style, style), negative: p.negative });
       setWritten((prev) => ({ ...prev, [forMoment]: true }));
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) {
@@ -135,35 +119,21 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
         own). Make the pictures with ComfyUI here, or elsewhere and upload them below.
       </p>
 
-      <div className="row" style={{ flexWrap: "wrap" }}>
-        <label className="row" style={{ gap: "0.4rem" }}>
-          Prompt style
-          <select
-            value={style}
-            onChange={(e) => void saveSettings({ ...settings, imagePromptStyle: e.target.value as ImagePromptStyle })}
-            style={{ width: "auto" }}
-          >
-            {(Object.keys(STYLE_NAMES) as ImagePromptStyle[]).map((s) => (
-              <option key={s} value={s}>
-                {STYLE_NAMES[s]}
-              </option>
-            ))}
-          </select>
-        </label>
+      {/* The story's picture settings, the same for all its chapters, are set on its details page. */}
+      <div className="story-pictures">
+        <p style={{ margin: 0 }}>
+          <span className="meta">This story&apos;s pictures:</span> {story.image_prompt_style ? PROMPT_STYLE_NAMES[story.image_prompt_style] : "no prompt style"} ·{" "}
+          {story.art_style.trim() ? <span title={story.art_style}>{short(story.art_style.trim(), 80)}</span> : "no art style"} ·{" "}
+          {story.checkpoint || "no checkpoint"} · <Link href={settingsHref}>Change</Link>
+        </p>
+        {unset.length > 0 && (
+          <p className="notice" style={{ margin: 0 }}>
+            Not chosen yet for this story: {unset.join(", ")}.{" "}
+            {!story.image_prompt_style && "Prompts are written as tags until a prompt style is chosen. "}
+            <Link href={settingsHref}>Choose them in Story details</Link>
+          </p>
+        )}
       </div>
-
-      <label>
-        Art style for this story
-        <AutoTextarea
-          style={{ minHeight: "2.6rem", fontFamily: "inherit" }}
-          value={artStyle}
-          maxLength={LIMITS.artStyle}
-          placeholder="e.g. watercolor storybook illustration, soft muted palette, warm light"
-          onChange={(e) => setArtStyle(e.target.value)}
-          onBlur={() => void saveArtStyle()}
-        />
-        <span className="meta">Added to the end of every picture prompt in this story, so the pictures match.</span>
-      </label>
 
       <div className="row">
         <label className="row" style={{ gap: "0.4rem" }}>
@@ -254,6 +224,7 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
       <ComfyGenerate
         chapterId={chapterId}
         storyId={story.id}
+        checkpoint={story.checkpoint}
         moment={moment}
         prompt={result.prompt}
         negative={result.negative}

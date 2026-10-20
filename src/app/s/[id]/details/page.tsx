@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import CodexPanel from "@/components/CodexPanel";
 import CoverEditor from "@/components/CoverEditor";
 import StoryDetailsForm from "@/components/StoryDetailsForm";
+import StoryPictureSettings from "@/components/StoryPictureSettings";
 import { getCodexOps } from "@/lib/codexDb";
 import { getChapter, getStory } from "@/lib/stories";
 
@@ -40,6 +41,9 @@ export default async function StoryDetailsPage({ params }: { params: Promise<{ i
         </div>
       </div>
       <StoryDetailsForm heading="Title, summary and style" story={{ id: story.id, title: story.title, premise: story.premise, style: story.style }} />
+      <StoryPictureSettings
+        story={{ id: story.id, image_prompt_style: story.image_prompt_style, art_style: story.art_style, checkpoint: story.checkpoint }}
+      />
       <CoverEditor story={{ id: story.id, title: story.title, cover_version: story.cover_version }} />
       <section className="ai-panel">
         <h2>Codex</h2>

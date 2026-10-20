@@ -18,6 +18,7 @@ const until = async (fn, what, tries = 100) => {
 
 const story = await call("POST", "/api/stories", { title: "Variations", chapter: { title: "The lamp", body: "The keeper lit the lamp.", choices: [] } });
 const chapterId = story.chapter_id;
+await call("PATCH", `/api/stories/${story.story_id}`, { checkpoint: "fake_sdxl_a.safetensors" });
 const before = (await call("GET", "/api/settings")).settings;
 const comfy = await startFakeComfy({ port: COMFY_PORT, steps: 2, stepDelay: 60, startDelay: 100 });
 const baseComfy = { url: comfy.url, workflow: "", checkpoint: "fake_sdxl_a.safetensors", width: 1344, height: 768, count: 2, denoise: 0.55 };

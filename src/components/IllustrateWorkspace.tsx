@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { IMAGE_SLOTS, type ImageMade, type ImageSlot, type ImageVersions } from "@/lib/imageSlots";
 import type { ContextChapter, ContextCodexEntry } from "@/lib/ai/prompts";
 import ChapterImageEditor from "./ChapterImageEditor";
-import ImagePromptPanel, { type LoadedPrompt } from "./ImagePromptPanel";
+import ImagePromptPanel, { type IllustratedStory, type LoadedPrompt } from "./ImagePromptPanel";
 import ChapterPictures from "./ChapterPictures";
 import { picturesOf, type Picture, type PromptToLoad } from "./pictures";
 import { useSettings } from "@/lib/settings";
@@ -18,7 +18,7 @@ type Props = {
   chapter: ReactNode;
   /** Every chapter's title in the story, by chapter id. */
   titles: Record<string, string>;
-  story: { id: string; title: string; premise: string; art_style: string };
+  story: IllustratedStory;
   path: ContextChapter[];
   codex: ContextCodexEntry[];
   versions: ImageVersions;

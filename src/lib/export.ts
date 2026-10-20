@@ -34,7 +34,16 @@ type ChoiceRow = { id: string; parent_chapter_id: string; label: string; posted_
 export type ImageRow = { chapter_id: string; slot: ImageSlot; type: string; data: string; prompt: string | null; negative: string | null };
 
 export type StoryExport = {
-  story: { id: string; title: string; premise: string; style: string; art_style: string; created_at: number };
+  story: {
+    id: string;
+    title: string;
+    premise: string;
+    style: string;
+    art_style: string;
+    image_prompt_style: "tags" | "natural" | null;
+    checkpoint: string;
+    created_at: number;
+  };
   /** In reading order: depth-first from the first chapter. */
   chapters: ChapterRow[];
   choices: ChoiceRow[];
@@ -121,7 +130,16 @@ export function loadStory(storyId: string): StoryExport | null {
     .map((r) => ({ chapter_id: r.chapter_id, slot: r.slot, type: r.type, data: r.image.toString("base64"), prompt: r.prompt, negative: r.negative }));
 
   return {
-    story: { id: story.id, title: story.title, premise: story.premise, style: story.style, art_style: story.art_style, created_at: story.created_at },
+    story: {
+      id: story.id,
+      title: story.title,
+      premise: story.premise,
+      style: story.style,
+      art_style: story.art_style,
+      image_prompt_style: story.image_prompt_style,
+      checkpoint: story.checkpoint,
+      created_at: story.created_at,
+    },
     chapters,
     choices,
     codex,

@@ -74,23 +74,24 @@ try {
   ok(await page.getByRole("button", { name: "Copy prompt", exact: true }).isEnabled(), "typing a prompt turns Copy prompt on");
   ok(await page.getByRole("button", { name: "Write prompt", exact: true }).isVisible(), "…and the button still says Write prompt, since none was written");
 
-  // ---- the story's art style is saved when the field loses focus ----
-  const art = page.getByLabel("Art style for this story");
-  ok((await art.inputValue()) === "" && (await get(`/api/stories/${storyId}`)).art_style === "", "a new story has no art style");
-  await art.fill("watercolor storybook, soft light");
-  ok((await get(`/api/stories/${storyId}`)).art_style === "", "typing alone doesn't save it");
-  await art.blur();
-  await page.getByText("Art style saved.").waitFor();
-  ok((await get(`/api/stories/${storyId}`)).art_style === "watercolor storybook, soft light", "leaving the field saves the art style on the story");
-  await page.reload();
-  ok((await page.getByLabel("Art style for this story").inputValue()) === "watercolor storybook, soft light", "…and it is there when the page is opened again");
-
-  // ---- the prompt style is a setting on the server ----
-  const promptStyle = page.getByLabel("Prompt style");
-  const before = (await settingsNow()).imagePromptStyle;
-  ok(before === "tags" && (await promptStyle.inputValue()) === "tags", "picture prompts are written as tags by default");
-  await promptStyle.selectOption({ label: "Sentences (Flux, SD3)" });
-  ok(await until(async () => (await settingsNow()).imagePromptStyle === "natural", "the setting to be saved"), "choosing Sentences saves imagePromptStyle \"natural\" on the server");
+  // ---- the prompt style and art style are the story's, set on its details page ----
+  ok(await page.getByLabel(/Art style/).count() === 0 && await page.getByLabel("Prompt style").count() === 0, "the Illustrate page has no art style or prompt style fields");
+  const pictureLine = page.locator(".story-pictures");
+  ok((await pictureLine.innerText()).includes("no prompt style") && (await pictureLine.innerText()).includes("Not chosen yet for this story: prompt style, art style, checkpoint."), "a new story says which picture settings aren't chosen yet");
+  await page.waitForTimeout(1000); // (the typed prompt is kept)
+  await page.getByRole("link", { name: "Choose them in Story details" }).click();
+  await page.waitForURL(`**/s/${storyId}/details#pictures`);
+  const pics = page.locator("#pictures");
+  ok(await pics.getByLabel("Prompt style").inputValue() === "", "…and links to the story's details page, where they are chosen");
+  await pics.getByLabel("Prompt style").selectOption({ label: "Sentences (Flux, SD3)" });
+  await pics.getByLabel("Art style").fill("watercolor storybook, soft light");
+  await pics.getByRole("button", { name: "Save picture settings" }).click();
+  await pics.getByText("Picture settings saved.").waitFor();
+  const pictured = await get(`/api/stories/${storyId}`);
+  ok(pictured.image_prompt_style === "natural" && pictured.art_style === "watercolor storybook, soft light", "saving there keeps the prompt style and art style with the story");
+  ok((await settingsNow()).imagePromptStyle === "tags", "…not in the shared settings");
+  await page.goto(`${BASE}/c/${chapter}/illustrate`);
+  ok((await pictureLine.innerText()).includes("Sentences (Flux, SD3) · watercolor storybook, soft light") && (await pictureLine.innerText()).includes("Not chosen yet for this story: checkpoint."), "the Illustrate page shows them, and that only the checkpoint is left");
 
   // ---- write a prompt for the chapter's end ----
   ok(await page.getByText(/^For$/).count() === 0 && await page.getByRole("option", { name: "Footer picture" }).count() === 0, "there is no For header/footer choice");
@@ -142,21 +143,25 @@ try {
   ok((await page.evaluate(() => navigator.clipboard.readText())) === "edited by hand", "an edited prompt is what gets copied");
 
   // ---- back to tags, written again for the chapter's start ----
-  await promptStyle.selectOption({ label: "Tags (SDXL, Pony, SD 1.5)" });
-  ok(await until(async () => (await settingsNow()).imagePromptStyle === "tags", "the setting to be saved"), "switching back saves imagePromptStyle \"tags\"");
+  await fetch(`${BASE}/api/stories/${storyId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image_prompt_style: "tags" }) });
+  await page.waitForTimeout(1000); // (the edited prompt is kept)
+  await page.reload();
+  ok((await pictureLine.innerText()).includes("Tags (SDXL, Pony, SD 1.5)"), "(the story's prompt style is changed to tags)");
   await moment.selectOption({ label: "Chapter start" });
-  ok((await promptBox.inputValue()) === "" && (await direction.inputValue()) === "", "Chapter start has its own boxes, empty so far");
+  ok((await promptBox.inputValue()) === "my own prompt" && (await direction.inputValue()) === "", `Chapter start has its own boxes, with the prompt typed there earlier (${await promptBox.inputValue()})`);
   await page.getByRole("button", { name: "Write prompt", exact: true }).click();
   await page.waitForFunction(() => document.querySelector(".image-prompt-result textarea")?.value.endsWith(", watercolor storybook, soft light"));
   const again = calls.at(-1);
   ok(again.system.includes("comma-separated tags") && again.user.includes("set the scene") && !again.user.includes("closing moment") && !again.user.includes("The author wants"), "writing again uses the tag style, the chapter start task and no direction");
   ok((await promptBox.inputValue()) === "a man with blonde hair eating a sandwich in a kitchen, watercolor storybook, soft light", "the art style is added as another tag");
 
-  // ---- an art style changed just before writing is saved and used ----
-  await art.fill("pencil sketch");
-  await page.getByRole("button", { name: "Write again" }).click();
+  // ---- a changed art style is used for the next prompt ----
+  await fetch(`${BASE}/api/stories/${storyId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ art_style: "pencil sketch" }) });
+  await page.waitForTimeout(1000); // (the written prompt is kept)
+  await page.reload();
+  await page.getByRole("button", { name: "Write prompt", exact: true }).click();
   await page.waitForFunction(() => document.querySelector(".image-prompt-result textarea")?.value.endsWith(", pencil sketch"));
-  ok((await get(`/api/stories/${storyId}`)).art_style === "pencil sketch", "writing saves a changed art style first");
+  ok(true, "a changed story art style is added to the next prompt written");
 
   // ---- the eye button shows what would be sent ----
   await direction.fill("Jim at the table");

@@ -262,6 +262,13 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE chapter_images ADD COLUMN image_index INTEGER;
   `,
+  // 16: the picture settings that keep a story's pictures alike are the story's, beside its art style:
+  // how picture prompts are written (tags or sentences; null until chosen) and the ComfyUI checkpoint
+  // ('' until chosen).
+  `
+  ALTER TABLE stories ADD COLUMN image_prompt_style TEXT CHECK (image_prompt_style IN ('tags', 'natural'));
+  ALTER TABLE stories ADD COLUMN checkpoint TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 function open(): Database.Database {

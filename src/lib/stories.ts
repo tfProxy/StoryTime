@@ -10,6 +10,10 @@ export type Story = {
   style: string;
   /** The look of the story's pictures (medium, palette, mood), added to every picture prompt. */
   art_style: string;
+  /** How its picture prompts are written: tags (SDXL and the like) or sentences (Flux, SD3); null until chosen. */
+  image_prompt_style: "tags" | "natural" | null;
+  /** The ComfyUI checkpoint its pictures are made with; "" until chosen. */
+  checkpoint: string;
   root_chapter_id: string | null;
   created_at: number;
   /** When the cover image was last set (it changes with every upload); null when there is no cover. */
@@ -110,6 +114,8 @@ export const EditStorySchema = z.object({
   premise: text(LIMITS.premise).optional(),
   style: text(LIMITS.style).optional(),
   art_style: text(LIMITS.artStyle).optional(),
+  image_prompt_style: z.enum(["tags", "natural"]).nullable().optional(),
+  checkpoint: text(LIMITS.label).optional(),
 });
 
 export class PostError extends Error {
@@ -126,7 +132,7 @@ const now = () => Date.now();
 export function listStories(): (Story & { chapter_count: number })[] {
   return db()
     .prepare(
-      `SELECT s.id, s.title, s.premise, s.style, s.art_style, s.root_chapter_id, s.created_at, s.cover_updated_at AS cover_version,
+      `SELECT s.id, s.title, s.premise, s.style, s.art_style, s.image_prompt_style, s.checkpoint, s.root_chapter_id, s.created_at, s.cover_updated_at AS cover_version,
               (SELECT COUNT(*) FROM chapters c WHERE c.story_id = s.id) AS chapter_count
          FROM stories s ORDER BY s.created_at DESC`,
     )
@@ -136,7 +142,7 @@ export function listStories(): (Story & { chapter_count: number })[] {
 export function getStory(id: string): Story | undefined {
   return db()
     .prepare(
-      `SELECT id, title, premise, style, art_style, root_chapter_id, created_at, cover_updated_at AS cover_version
+      `SELECT id, title, premise, style, art_style, image_prompt_style, checkpoint, root_chapter_id, created_at, cover_updated_at AS cover_version
          FROM stories WHERE id = ?`,
     )
     .get(id) as Story | undefined;
@@ -455,10 +461,12 @@ export function editStory(storyId: string, input: z.infer<typeof EditStorySchema
     const story = getStory(storyId);
     if (!story) throw new PostError("That story does not exist", 404);
     db()
-      .prepare(`UPDATE stories SET title = ?, premise = ?, style = ?, art_style = ? WHERE id = ?`)
+      .prepare(`UPDATE stories SET title = ?, premise = ?, style = ?, art_style = ?, image_prompt_style = ?, checkpoint = ? WHERE id = ?`)
       .run(
         input.title ?? story.title, input.premise ?? story.premise, input.style ?? story.style,
-        input.art_style ?? story.art_style, storyId,
+        input.art_style ?? story.art_style,
+        input.image_prompt_style === undefined ? story.image_prompt_style : input.image_prompt_style,
+        input.checkpoint ?? story.checkpoint, storyId,
       );
     return { ok: true as const };
   })();

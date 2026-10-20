@@ -57,6 +57,9 @@ ok(dup, "the one-chapter-per-choice index still holds");
 // the picture job log, and the prompts kept with saved pictures
 ok(["id", "story_id", "chapter_id", "prompt_id", "prompt", "negative", "checkpoint", "width", "height", "seed", "count", "moment", "source", "denoise", "images", "created_at"].every((c) => cols("picture_jobs").includes(c)), "the picture job log has its columns");
 ok(["job_id", "prompt", "negative", "image_index"].every((c) => cols("chapter_images").includes(c)), "saved pictures can remember the job, picture and prompt that made them");
+ok(["art_style", "image_prompt_style", "checkpoint"].every((c) => cols("stories").includes(c)), "stories keep their picture settings");
+const keptStory = d.prepare(`SELECT image_prompt_style, checkpoint FROM stories WHERE id = 'keep'`).get() as Record<string, unknown>;
+ok(keptStory.image_prompt_style === null && keptStory.checkpoint === "", "an existing story starts with no prompt style or checkpoint chosen");
 const job = (id: string, promptId: string, chapterId = "a", moment: string | null = null) =>
   d.prepare(`INSERT INTO picture_jobs (id, story_id, chapter_id, prompt_id, prompt, width, height, seed, count, moment, images, created_at) VALUES (?, 'keep', ?, ?, 'p', 1, 1, 1, 1, ?, '[]', 1)`).run(id, chapterId, promptId, moment);
 job("j1", "x");

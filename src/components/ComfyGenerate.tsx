@@ -77,18 +77,14 @@ const SHOWN_PROMPT = 70;
 
 /**
  * Where the settings a loaded picture was made with differ from the current ones: the change to make and
- * how to describe it, or null when they match. The checkpoint and size are shared by every story, so they
- * change only when the author asks. A picture made from a starting picture took that picture's size, so
- * only its strength is offered.
+ * how to describe it, or null when they match. The size is shared by every story, so it changes only when
+ * the author asks. A picture made from a starting picture took that picture's size, so only its strength is
+ * offered. (The checkpoint is the story's, set on its details page, so it isn't offered here.)
  */
 function otherSettings(made: MadeWith | null, now: ComfySettings): { patch: Partial<ComfySettings>; text: string } | null {
   if (!made) return null;
   const patch: Partial<ComfySettings> = {};
   const text: string[] = [];
-  if (made.checkpoint && made.checkpoint !== now.checkpoint) {
-    patch.checkpoint = made.checkpoint;
-    text.push(made.checkpoint);
-  }
   if (made.denoise === null && (made.width !== now.width || made.height !== now.height)) {
     patch.width = made.width;
     patch.height = made.height;
@@ -104,6 +100,8 @@ function otherSettings(made: MadeWith | null, now: ComfySettings): { patch: Part
 type Props = {
   chapterId: string;
   storyId: string;
+  /** The story's checkpoint (set on its details page); "" when none is chosen. */
+  checkpoint: string;
   moment: ImageMoment;
   prompt: string;
   negative: string;
@@ -119,10 +117,9 @@ type Props = {
 };
 
 /** Makes pictures from the prompt on the ComfyUI machine; the pictures go to `onPictures`. */
-export default function ComfyGenerate({ chapterId, storyId, moment, prompt, negative, loaded = null, start = null, onClearStart, onPictures, queueSlot = null }: Props) {
+export default function ComfyGenerate({ chapterId, storyId, checkpoint, moment, prompt, negative, loaded = null, start = null, onClearStart, onPictures, queueSlot = null }: Props) {
   const settings = useSettings();
   const comfy = settings.comfy;
-  const [checkpoints, setCheckpoints] = useState<string[] | null>(null);
   // The jobs being made, oldest first, as shown; `jobs` holds what Stop needs for each.
   const [queue, setQueue] = useState<Queued[]>([]);
   const jobs = useRef(new Map<string, { promptId: string | null; ctl: AbortController }>());
@@ -142,18 +139,23 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
   }
   const loadedSeed = loaded?.seed ?? null;
 
-  // The checkpoint list comes from ComfyUI whenever its address changes.
+  // Asking ComfyUI for its checkpoints says early whether it can be reached, and whether it still has the
+  // story's checkpoint.
   useEffect(() => {
     if (!comfy.url) return;
     let live = true;
     listCheckpoints(comfy.url).then(
-      (list) => live && setCheckpoints(list),
+      (list) => {
+        if (live && checkpoint && !list.includes(checkpoint)) {
+          setStatus({ ok: false, text: `ComfyUI doesn't list this story's checkpoint (${checkpoint}). Choose another in Story details.` });
+        }
+      },
       (e) => live && setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) }),
     );
     return () => {
       live = false;
     };
-  }, [comfy.url]);
+  }, [comfy.url, checkpoint]);
 
   if (!comfy.url) {
     return (
@@ -181,7 +183,8 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
       prompt: prompt.trim(),
       negative: negative.trim(),
       moment,
-      comfy,
+      // The checkpoint is the story's, not the shared setting.
+      comfy: { ...comfy, checkpoint },
       start,
       seed: reuseSeed && loadedSeed !== null ? loadedSeed : null,
     };
@@ -230,7 +233,7 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
     try {
       if (!prompt) throw new Error("Write or type a prompt first.");
       const base = parseWorkflow(comfy.workflow);
-      if (describeWorkflow(base).checkpoint && !comfy.checkpoint) throw new Error("Pick a checkpoint first.");
+      if (describeWorkflow(base).checkpoint && !comfy.checkpoint) throw new Error("This story has no checkpoint chosen. Choose one in Story details.");
       if (start && !describeWorkflow(base).image) {
         throw new Error("Your workflow can't start from a picture. Clear the starting picture, or see Settings for how to allow it.");
       }
@@ -342,23 +345,6 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
     <div className="comfy-generate">
       <h3>Make pictures</h3>
       <div className="row" style={{ flexWrap: "wrap" }}>
-        <label className="row" style={{ gap: "0.4rem" }}>
-          Checkpoint
-          <select
-            aria-label="Checkpoint"
-            value={comfy.checkpoint}
-            onChange={(e) => set({ checkpoint: e.target.value })}
-            style={{ width: "auto", maxWidth: "min(20rem, 100%)" }}
-          >
-            {!comfy.checkpoint && <option value="">{checkpoints === null ? "Loading…" : "Pick a checkpoint"}</option>}
-            {comfy.checkpoint && !checkpoints?.includes(comfy.checkpoint) && <option value={comfy.checkpoint}>{comfy.checkpoint}</option>}
-            {(checkpoints ?? []).map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
         <label className="row" style={{ gap: "0.4rem" }}>
           Size
           <select

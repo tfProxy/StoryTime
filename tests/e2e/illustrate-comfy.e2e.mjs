@@ -12,6 +12,7 @@ let failed = false;
 const ok = (c, m) => { console.log(c ? "ok  " : "FAIL", m); if (!c) failed = true; };
 const post = async (url, body) => (await fetch(BASE + url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
 const get = async (url) => (await fetch(BASE + url)).json();
+const call = async (method, url, body) => (await fetch(BASE + url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
 const putSettings = (s) => fetch(`${BASE}/api/settings`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(s) });
 const settingsNow = async () => (await get("/api/settings")).settings;
 const until = async (fn, what, tries = 60) => {
@@ -125,10 +126,8 @@ try {
   // ---- the Illustrate page with an address ----
   await openIllustrate();
   await page.getByRole("heading", { name: "Make pictures" }).waitFor();
-  const checkpoint = page.getByLabel("Checkpoint");
-  await checkpoint.locator("option", { hasText: "fake_sdxl_b.safetensors" }).waitFor({ state: "attached" });
-  const options = await checkpoint.locator("option").allInnerTexts();
-  ok(options.includes("fake_sdxl_a.safetensors") && options.includes("fake_sdxl_b.safetensors"), "the Checkpoint list shows the checkpoints from ComfyUI");
+  ok(await page.getByLabel("Checkpoint").count() === 0, "there is no Checkpoint menu on the Illustrate page: the checkpoint is the story's");
+  ok((await page.locator(".story-pictures").innerText()).includes("no checkpoint") && await page.getByRole("link", { name: "Choose them in Story details" }).isVisible(), "a story with no checkpoint says so, with a link to its details page");
   ok(await makeButton.isDisabled(), "Make pictures is off while the prompt is empty");
 
   await promptBox.fill("a lighthouse at dawn, gulls");
@@ -136,11 +135,24 @@ try {
   ok(await makeButton.isEnabled(), "typing your own prompt turns Make pictures on");
 
   await makeButton.click();
-  await page.getByText("Pick a checkpoint first.").waitFor();
+  await page.getByText("This story has no checkpoint chosen. Choose one in Story details.").waitFor();
   ok(promptCalls().length === 0, "making pictures with no checkpoint chosen says so, and sends nothing to ComfyUI");
 
+  // ---- the checkpoint is chosen on the story's details page ----
+  await page.getByRole("link", { name: "Choose them in Story details" }).click();
+  await page.waitForURL(`**/s/${storyId}/details#pictures`);
+  const checkpoint = page.locator("#pictures").getByLabel("Checkpoint");
+  await checkpoint.locator("option", { hasText: "fake_sdxl_b.safetensors" }).waitFor({ state: "attached" });
+  const options = await checkpoint.locator("option").allInnerTexts();
+  ok(options.includes("fake_sdxl_a.safetensors") && options.includes("fake_sdxl_b.safetensors"), "its Checkpoint list shows the checkpoints from ComfyUI");
   await checkpoint.selectOption("fake_sdxl_b.safetensors");
-  ok(await until(async () => (await settingsNow()).comfy.checkpoint === "fake_sdxl_b.safetensors", "the checkpoint to be saved"), "choosing a checkpoint saves it in the settings");
+  await page.getByRole("button", { name: "Save picture settings" }).click();
+  await page.getByText("Picture settings saved.").waitFor();
+  ok((await get(`/api/stories/${storyId}`)).checkpoint === "fake_sdxl_b.safetensors", "choosing a checkpoint there saves it with the story");
+  await openIllustrate();
+  await promptBox.fill("a lighthouse at dawn, gulls");
+  await negativeBox.fill("blurry, text");
+  ok((await page.locator(".story-pictures").innerText()).includes("fake_sdxl_b.safetensors"), "the Illustrate page shows the story's checkpoint");
   ok(await page.getByLabel("How many").count() === 0 && await page.getByText("One picture per click.").isVisible(), "there is no How many menu: each click makes one picture");
 
   // ---- quick clicks with nothing changed are one job ----
@@ -344,17 +356,19 @@ try {
   comfy.setMode({ fail: null });
 
   // a checkpoint ComfyUI doesn't have (the saved name outlived the file)
-  await putSettings({ ...(await settingsNow()), comfy: { ...(await settingsNow()).comfy, checkpoint: "gone.safetensors" } });
+  await call("PATCH", `/api/stories/${storyId}`, { checkpoint: "gone.safetensors" });
   await openIllustrate();
   await promptBox.fill("a lighthouse");
-  ok(await page.getByLabel("Checkpoint").inputValue() === "gone.safetensors", "a saved checkpoint that ComfyUI no longer lists is still shown");
+  await page.getByText("ComfyUI doesn't list this story's checkpoint (gone.safetensors). Choose another in Story details.").waitFor();
+  ok(true, "a story checkpoint that ComfyUI no longer lists is reported when the page opens");
   await makeButton.click();
-  const gone = page.locator(".comfy-generate p.error");
+  const gone = page.locator(".comfy-generate p.error", { hasText: "Value not in list" });
   await gone.waitFor();
   const goneText = await gone.innerText();
-  ok(goneText.includes("Value not in list") && goneText.includes("CheckpointLoaderSimple") && goneText.includes("gone.safetensors"), `…and trying it shows ComfyUI's node error: "${goneText}"`);
-  await page.getByLabel("Checkpoint").selectOption("fake_sdxl_a.safetensors");
-  ok(await until(async () => (await settingsNow()).comfy.checkpoint === "fake_sdxl_a.safetensors", "the checkpoint to be saved"), "choosing a listed checkpoint again fixes it");
+  ok(goneText.includes("CheckpointLoaderSimple") && goneText.includes("gone.safetensors"), `…and trying it shows ComfyUI's node error: "${goneText}"`);
+  await call("PATCH", `/api/stories/${storyId}`, { checkpoint: "fake_sdxl_a.safetensors" });
+  await openIllustrate();
+  ok(await page.locator(".comfy-generate p.error").count() === 0, "choosing a listed checkpoint again fixes it");
 
   // a job that fails while running
   comfy.setMode({ fail: "error", steps: 6, stepDelay: 100 });

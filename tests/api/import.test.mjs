@@ -53,6 +53,21 @@ r = await call("POST", "/api/stories/import", noArt);
 ok(r.status === 201 && (await exportOf(r.json.story_id)).story.art_style === "", "a file without an art style imports with none");
 await call("PATCH", `/api/stories/${story}`, { art_style: "" });
 
+// ---- the prompt style and checkpoint ----
+ok(data.story.image_prompt_style === null && data.story.checkpoint === "", "setup: the original has no prompt style or checkpoint chosen");
+await call("PATCH", `/api/stories/${story}`, { image_prompt_style: "natural", checkpoint: "sdxl/juggernaut.safetensors" });
+const pictured = await exportOf(story);
+r = await call("POST", "/api/stories/import", pictured);
+const back = (await exportOf(r.json.story_id)).story;
+ok(r.status === 201 && back.image_prompt_style === "natural" && back.checkpoint === "sdxl/juggernaut.safetensors", "the prompt style and checkpoint round-trip");
+const older = structuredClone(pictured); delete older.story.image_prompt_style; delete older.story.checkpoint;
+r = await call("POST", "/api/stories/import", older);
+const olderBack = (await exportOf(r.json.story_id)).story;
+ok(r.status === 201 && olderBack.image_prompt_style === null && olderBack.checkpoint === "", "a file from before them imports with neither chosen");
+ok((await call("PATCH", `/api/stories/${story}`, { image_prompt_style: "pictures" })).status === 400, "a prompt style other than tags or natural is refused");
+await call("PATCH", `/api/stories/${story}`, { image_prompt_style: null, checkpoint: "" });
+ok((await exportOf(story)).story.image_prompt_style === null, "the prompt style can be unset again");
+
 // ---- version 1 files (no revisions) ----
 const v1 = { ...data, version: 1 }; delete v1.revisions;
 ok((await call("POST", "/api/stories/import", v1)).status === 201, "a version 1 export still imports");

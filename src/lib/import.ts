@@ -79,6 +79,9 @@ export const ImportSchema = z.object({
     style: str(LIMITS.style).default(""),
     // Exports made before picture prompts have no art style.
     art_style: str(LIMITS.artStyle).default(""),
+    // ...and before picture settings were the story's, no prompt style or checkpoint.
+    image_prompt_style: z.enum(["tags", "natural"]).nullable().default(null),
+    checkpoint: str(LIMITS.label).default(""),
       created_at: time,
   }),
   chapters: z.array(Chapter).min(1).max(5000),
@@ -153,8 +156,11 @@ export function importStory(input: ImportInput): { story_id: string; chapter_id:
 
   return db().transaction(() => {
     db()
-      .prepare(`INSERT INTO stories (id, title, premise, style, art_style, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
-      .run(storyId, input.story.title, input.story.premise, input.story.style, input.story.art_style, input.story.created_at);
+      .prepare(`INSERT INTO stories (id, title, premise, style, art_style, image_prompt_style, checkpoint, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(
+        storyId, input.story.title, input.story.premise, input.story.style, input.story.art_style,
+        input.story.image_prompt_style, input.story.checkpoint, input.story.created_at,
+      );
 
     const insertChapter = db().prepare(
       `INSERT INTO chapters (id, story_id, parent_choice_id, depth, title, body, summary, path_summary, posted_at,

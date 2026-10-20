@@ -1558,6 +1558,13 @@ dialog.picture-viewer::backdrop {
   font-size: 0.8rem;
 }
 
+/* The story's picture settings, as a line above the picture prompt. */
+.story-pictures {
+  display: grid;
+  gap: 0.4rem;
+  overflow-wrap: anywhere;
+}
+
 .picture-queue-slot:empty {
   display: none;
 }
