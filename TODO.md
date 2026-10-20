@@ -1,74 +1,39 @@
 # TODO
 
-Planned work. Each item says what it is for, how it could be built, and what is still undecided.
+Planned work, with what you need to know to start. Finished work isn't listed; the code and tests describe it.
 
-## Illustrate chapter page
+## How chapter pictures work now
 
-These build on the page at `src/app/c/[id]/illustrate/page.tsx`, with `ImagePromptPanel` and `ComfyGenerate` in `src/components/`, and the ComfyUI code in `src/lib/comfy/`. All ComfyUI calls are made from the browser, never from the StoryTime server.
+Read this before touching the Illustrate page (`src/app/c/[id]/illustrate/page.tsx`). All ComfyUI calls are made from the browser, never from the StoryTime server.
 
-### 1. Record how each picture was made (done)
+- **Components** (`src/components/`): `IllustrateWorkspace` holds the state shared by the page (the prompt loaded from a saved picture, and the starting picture). It renders `ImagePromptPanel` (prompt, then `ComfyGenerate`), `PastPictures` and the two `ChapterImageEditor` cards. `PictureTile` is one picture with its Use / Start from this buttons, and `usePictureSaver` saves a picture as the header or footer; both are shared by new and past pictures. `IllustrateChapter` is the chapter panel.
+- **ComfyUI code** (`src/lib/comfy/`): `client.ts` (HTTP and WebSocket calls, `uploadImage`), `workflow.ts` (filling a workflow; see below), `startPicture.ts` (`StartPicture`, `fromComfyImage`, `fromSaved`, `uploadStart`).
+- **Workflows.** Built-in SDXL text-to-image, and `BUILTIN_IMG2IMG` when a starting picture is chosen. A custom workflow (Settings) is filled by placeholders (`{{prompt}} {{negative}} {{checkpoint}} {{width}} {{height}} {{count}} {{seed}} {{prefix}}`, and for image to image `{{image}} {{denoise}}`), or, with none, by finding the usual nodes. A custom workflow with no placeholders is started from a picture by swapping its `EmptyLatentImage` for LoadImage → VAEEncode → RepeatLatentBatch and setting every numeric `denoise` input; it needs a VAE (a `VAEDecode`'s link or a `CheckpointLoaderSimple`). `describeWorkflow(...).image` says whether a workflow can.
+- **The job log** (`picture_jobs`; `src/lib/pictureJobs.ts`; `/api/picture-jobs`). One row per finished job: prompt, negative, checkpoint, size, seed, count, `moment`, `source` (`comfy:<subfolder/file>` or `saved:<chapter id>:<slot>`, null for text-to-image), `denoise`, and `images` (ComfyUI `{filename, subfolder, type}`). `GET ?story=` or `?chapter=` lists newest first, `limit` 1 to 200, and `next` is passed back as `before`. The pictures stay in ComfyUI and are shown through its `/view`, so a lost file shows "ComfyUI no longer has this picture".
+- **A saved header or footer** keeps the prompt and negative prompt that made it (`chapter_images.job_id/prompt/negative`, copied from the job by `PUT .../images/:slot?job=<id>`). Uploads keep none. The job log and `job_id` are not in the JSON export.
+- **Jobs are tagged in ComfyUI:** `extra_data.storytime = {chapterId, storyId}`, and saved pictures are filed under `StoryTime/<story id>/<chapter id>` where the workflow's prefix is `StoryTime` or contains `{{prefix}}`.
+- **Settings** (`settings.comfy`): url, workflow, checkpoint, width, height, count, denoise (0.05 to 1, default 0.55). They are shared across stories and held on the server.
+- **Tests:** `tests/e2e/fakeComfy.mjs` is a fake ComfyUI (progress over WebSocket, `/view`, `/history`, `/upload/image`, a `fail` mode). The page's tests are `illustrate-comfy`, `illustrate-past`, `illustrate-start` and `illustrate-chapter`; the workflow logic is in `tests/unit/comfy-workflow.test.mts`.
 
-Items 2, 4 and 5 need to know, for a picture, what prompt and settings made it and which chapter it was made for. ComfyUI's own history can't be relied on: it is kept in memory and lost when ComfyUI restarts. Its output files survive a restart, but the API has no way to list them. So StoryTime keeps its own log. What exists now:
+## Not yet checked against a real ComfyUI
 
-- **The job log** (migration 11, `src/lib/pictureJobs.ts`, `src/app/api/picture-jobs/route.ts`).
-  - `picture_jobs` has one row per finished job: the prompt, negative prompt, checkpoint, size, seed, count, `moment` (`start` or `end`), `source` and `denoise` (both null until img2img exists), and `images`, the list of ComfyUI `{filename, subfolder, type}`.
-  - `ComfyGenerate` records a job with `POST /api/picture-jobs` once ComfyUI has finished. If that fails the pictures still appear, with a message, and can be used; they just have no prompt kept.
-  - `GET /api/picture-jobs?story=<id>` or `?chapter=<id>` lists jobs newest first. `limit` is 1 to 200 (default 50). The reply is `{ jobs, next }`: pass `next` back as `before` for the following page; `next` is null at the end.
-  - The pictures stay in ComfyUI, so item 2 still has to show them through ComfyUI's `/view`, and say so on a tile whose file is gone.
-- **Jobs are tagged in ComfyUI.** `POST /prompt` carries `extra_data: { storytime: { chapterId, storyId } }`, and the saved pictures are filed under `StoryTime/<story id>/<chapter id>`. `fillWorkflow` sets that prefix only where the workflow's `filename_prefix` is `StoryTime` or contains `{{prefix}}`; any other prefix is left alone.
-- **A saved header or footer remembers its prompt.** `chapter_images` has `job_id`, `prompt` and `negative` (null for uploads). `PUT /api/chapters/:id/images/:slot?job=<job id>` looks the job up and copies its prompt and negative prompt, so a long prompt never travels in the URL. The job can belong to any chapter, which is what item 2 needs. A job id that isn't known is ignored. The prompt and negative prompt are in the JSON export and import; `job_id` is not, and neither is the job log (the pictures belong to the ComfyUI machine).
-- `scripts/adminCore.mjs` deletes a chapter's jobs along with the chapter.
-- Not done: pruning old log rows. Rows are small, so it can wait.
+The tests use a fake. Before building more on this, try once on the real machine and write down what differs:
 
-### 2. Past pictures, including other chapters'
+1. Past pictures: make pictures, reload, and use one from "Past pictures". Restart ComfyUI and check the pictures still load from `/view`.
+2. Start from a picture with the built-in workflow, then with your own exported workflow (with and without `{{image}}`). Check the upload (`/upload/image`, `type=input`) works through your CORS setup, and that a 1344 × 768 start picture fits in memory.
+3. A workflow with `KSamplerAdvanced` has no `denoise` input, so StoryTime says it can't start from a picture. See whether that matters to you.
 
-What it's for: a picture made for one chapter can turn out to suit another, such as the one before.
+## Next steps, roughly in order of usefulness
 
-- A **"Past pictures"** section on the Illustrate page, under the new candidates. It is read from the job log (item 1) for the whole story, newest first.
-  - Group the pictures by the chapter they were made for, with the chapter's title, and add a filter for "this chapter" or "this story".
-  - Load more as you scroll, or with a "Show more" button.
-- Each tile reuses the candidate card: "Use as header picture", "Use as footer picture", "Open full size", plus "Load prompt" (item 3) and "Start from this" (item 4). Using a picture saves it to the chapter whose page is open, whichever chapter it was made for.
-- Turn the candidate tile in `ComfyGenerate.tsx` into its own component, so new and past pictures share it.
-- Optional extra: import from ComfyUI's history (`GET /history?max_items=200`), for pictures made before the log existed or made in ComfyUI itself. Take only entries tagged `storytime` or whose files start with `StoryTime`. The prompt text can be read back from the workflow stored in the entry (`prompt[2]`), using the same node-finding logic as `promptNodes`.
-- Undecided: pictures from other stories would be one more filter. Leave them out unless asked.
-
-### 3. See the chapter while illustrating (done)
-
-`src/components/IllustrateChapter.tsx` shows the chapter being illustrated: its summary (or "No summary yet" with a link to the summary page), a "Show the whole chapter" fold with the text as the reading page shows it, and a "Story so far" fold with the previous chapter's running summary (the text the prompt is written from; absent on a first chapter). Which folds are open is remembered in `localStorage`. On a screen 64rem or wider it sits in a sticky column beside the prompt and the pictures; on a phone it is a block above the prompt. Test: `tests/e2e/illustrate-chapter.e2e.mjs`.
-
-### 4. Bring back the prompt a picture was made with (done)
-
-A saved header or footer that came from ComfyUI shows "Made from: …" (the prompt cut to 160 characters; the full prompt is the tooltip), the checkpoint, size and seed when the job is still in the log, and a **Load prompt** button. It fills in the Prompt and Negative prompt boxes and scrolls to them. `IllustrateWorkspace` holds the prompt box and the picture cards, and `chapterImageMade` (`src/lib/chapterImages.ts`) reads what each saved picture was made from for the server-rendered page. After a load, a **Reuse seed N** box appears beside Make more; it is unticked, and ticking it queues the job with that seed.
-
-- Not done: Load prompt does not change the checkpoint or size settings (they are shared settings, and changing them silently seemed wrong); the card shows them so they can be set by hand. Item 2's past-picture tiles still need their own Load prompt button, which can call the same load.
-- Test: `tests/e2e/illustrate-comfy.e2e.mjs` (Made from, Load prompt, Reuse seed, an uploaded picture showing no Made from).
-
-### 5. Image to image, with a strength control
-
-What it's for: making variations of a picture you already have, with a slider for how far they may drift.
-
-- Starting picture: any candidate, past picture, or the chapter's saved header or footer picture ("Start from this" on each tile or card). The chosen one shows as a small thumbnail with a "Clear" button. With nothing chosen, the page makes pictures from the prompt alone as it does now.
-- Getting the picture to ComfyUI: `POST /upload/image`, multipart, with fields `image` and `type=input`. The reply gives the name to put in a `LoadImage` node.
-  - A picture already in ComfyUI's output folder could be referred to as `"name.png [output]"` without uploading. Check that the installed ComfyUI version accepts that before relying on it.
-  - The saved header or footer is fetched from StoryTime's `/api/chapters/:id/images/:slot` and then uploaded.
-- Workflow, in `src/lib/comfy/workflow.ts`:
-  - Add a built-in img2img variant: `LoadImage` → `VAEEncode` (with the checkpoint's VAE) → `KSampler.latent_image`, with `denoise` set to the strength. For more than one picture, add `RepeatLatentBatch` with `amount = count`.
-  - For custom workflows, add `{{image}}` and `{{denoise}}` placeholders. With no placeholders, detect the `EmptyLatentImage` and rewire it automatically, as `fillWorkflow` does for the prompt.
-  - Extend `describeWorkflow` so Settings says whether a workflow can do img2img.
-- Controls:
-  - A **Strength** slider from 0.05 to 1.0, saved in `settings.comfy.denoise` (schema default about 0.55, with `.catch`).
-  - Help text: "Low keeps the picture close; high changes more."
-  - The Size menu is disabled while a starting picture is chosen, because the size comes from the picture. Optionally, offer a scale (1×, 1.5×) for upscaling passes.
-- The job log (item 1) records `source` and `denoise`, so a variation's history can be followed.
-- Tests:
-  - Unit tests for the img2img workflow building, both built-in and placeholder.
-  - Extend `fakeComfy.mjs` with `/upload/image`.
-  - An e2e test that starts from a candidate and checks that the queued workflow has a `LoadImage` with the uploaded name and the chosen denoise.
-- Undecided: inpainting (masking part of the picture) would be a separate later step, and isn't covered here.
-
-### Order
-
-Items 1, 3 and 4 are done. Next are 2, then 5.
+1. **Load prompt should also offer the checkpoint and size.** The job log has them. Now only the prompt, negative and seed are brought back, because the checkpoint and size are shared settings. Option: a "Also use its checkpoint and size" tick beside Reuse seed.
+2. **Keep Past pictures current.** It lists what existed when the page opened, so pictures made since appear only under the new pictures. Refresh it when a job is recorded and hide the jobs already shown above, so nothing is shown twice. This needs `ComfyGenerate` to tell the workspace (a callback through `ImagePromptPanel`).
+3. **Say which picture is in use.** Mark the past picture that is the current header or footer (the saved picture has `job_id`; the tile needs the image index too, which isn't stored yet).
+4. **Forget lost pictures.** When a past picture's file is gone, offer to remove the record (a `DELETE /api/picture-jobs/:id`), and think about pruning old rows.
+5. **Settings writes while sliding Strength.** Each tick saves all settings, including the workflow text, to the server. Debounce it if it is noticeable on the NAS.
+6. **Scale / upscale pass.** A Scale menu (1×, 1.5×) that resizes the starting picture before re-drawing it. Left out for now.
+7. **Import from ComfyUI's history** (`GET /history?max_items=200`) for pictures made before the log existed or in ComfyUI itself. Take entries tagged `storytime` or whose files start with `StoryTime`; the prompt can be read back from the stored workflow (`prompt[2]`) with the node-finding in `workflow.ts`. Not built.
+8. **Pictures from other stories** as one more filter in Past pictures. Left out unless asked.
+9. **Inpainting** (masking part of a picture) is a separate, larger step.
 
 ## Also planned (from the pictures plan)
 
