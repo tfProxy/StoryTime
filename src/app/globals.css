@@ -1409,7 +1409,26 @@ dialog.picture-viewer::backdrop {
   text-decoration: none;
 }
 
-/* Pin and reject sit on the picture's top right corner. A pinned picture has an accent outline. */
+.viewer-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.picture-viewer button[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* The picture in use as the header in the viewer keeps its pressed look. */
+.picture-viewer button[aria-pressed="true"][aria-disabled="true"] {
+  opacity: 1;
+}
+
+/*
+ * A picture's buttons sit on its top right corner: pin and reject, then use as header and footer, then the
+ * ☰ menu. A pinned picture has an accent outline; one in use has a badge on its top left corner.
+ */
 .picture-frame {
   position: relative;
 }
@@ -1419,10 +1438,17 @@ dialog.picture-viewer::backdrop {
   top: 0.4rem;
   right: 0.4rem;
   display: flex;
+  align-items: center;
   gap: 0.3rem;
 }
 
+.picture-marks-gap {
+  width: 0.3rem;
+}
+
 .picture-marks button {
+  display: grid;
+  place-items: center;
   width: 2.2rem;
   height: 2.2rem;
   padding: 0;
@@ -1439,6 +1465,80 @@ dialog.picture-viewer::backdrop {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-fg);
+}
+
+.picture-marks button[aria-pressed="true"]:disabled {
+  opacity: 1;
+}
+
+.tile-menu {
+  position: relative;
+}
+
+.tile-menu-list {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  right: 0;
+  z-index: 5;
+  display: grid;
+  min-width: 11rem;
+  padding: 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.25);
+}
+
+.picture-marks .tile-menu-list button,
+.tile-menu-list a {
+  display: block;
+  width: 100%;
+  height: auto;
+  padding: 0.5rem 0.7rem;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  box-shadow: none;
+  color: var(--fg);
+  font-size: 0.95rem;
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.picture-marks .tile-menu-list button:hover,
+.tile-menu-list a:hover,
+.picture-marks .tile-menu-list button:focus-visible,
+.tile-menu-list a:focus-visible {
+  background: var(--line);
+}
+
+.picture-in-use {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  pointer-events: none;
+}
+
+.picture-in-use span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 0.85rem;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+}
+
+.viewer-stage .picture-in-use {
+  top: 0.6rem;
+  left: 0.6rem;
 }
 
 .picture-tile.pinned img,
@@ -1515,23 +1615,6 @@ dialog.picture-viewer::backdrop {
 
 .comfy-queue progress {
   width: 100%;
-}
-
-/* A picture's buttons, smaller than usual so a tile's buttons take one or two lines. */
-.tile-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.tile-actions > .meta {
-  margin: 0;
-}
-
-.tile-actions button {
-  padding: 0.3rem 0.65rem;
-  font-size: 0.9rem;
 }
 
 /* The Illustrate chapter page: one card per picture, side by side when there is room. */

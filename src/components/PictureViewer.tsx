@@ -6,6 +6,8 @@ import { imageUrl } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
 import { SLOT_NAMES, type PictureSaver } from "./usePictureSaver";
 import { pictureCaption, type Picture } from "./pictures";
+import { PinIcon } from "./PictureIcons";
+import { SLOT_ICONS, SLOT_TITLES } from "./PictureTile";
 
 // How far a finger has to move sideways to count as a swipe.
 const SWIPE_PX = 50;
@@ -16,6 +18,8 @@ type Props = {
   list: Picture[];
   /** The picture being shown. */
   current: Picture;
+  /** The slots it is saved in now (the chapter's header, footer, or both). */
+  inUse: ImageSlot[];
   onShow: (key: string) => void;
   onClose: () => void;
   onMark: (picture: Picture, mark: PictureMark | null) => void;
@@ -29,7 +33,7 @@ type Props = {
  * One picture as large as the screen allows, with the view's others a key or a swipe away: ← and → move,
  * P pins, X rejects (or restores), Esc closes. A modal <dialog>, so the page behind can't be reached.
  */
-export default function PictureViewer({ comfyUrl, list, current, onShow, onClose, onMark, onLoadPrompt, saver, status }: Props) {
+export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, onClose, onMark, onLoadPrompt, saver, status }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const swipe = useRef<number | null>(null);
   const [missing, setMissing] = useState<string | null>(null);
@@ -105,6 +109,18 @@ export default function PictureViewer({ comfyUrl, list, current, onShow, onClose
           // eslint-disable-next-line @next/next/no-img-element -- served by ComfyUI
           <img key={src} src={src} alt={`Picture ${current.image.filename}`} draggable={false} onError={() => setMissing(src)} />
         )}
+        {inUse.length > 0 && (
+          <div className="picture-in-use">
+            {inUse.map((slot) => {
+              const Icon = SLOT_ICONS[slot];
+              return (
+                <span key={slot} title={`This is the chapter's ${SLOT_NAMES[slot]}`}>
+                  <Icon /> {SLOT_TITLES[slot]}
+                </span>
+              );
+            })}
+          </div>
+        )}
         {prev && (
           <button type="button" className="viewer-step viewer-prev" aria-label="Previous picture" title="Previous (←)" onClick={() => onShow(prev.key)}>
             ‹
@@ -123,22 +139,32 @@ export default function PictureViewer({ comfyUrl, list, current, onShow, onClose
         </p>
         <div className="viewer-actions">
           <button type="button" aria-pressed={current.mark === "pinned"} disabled={!markable} onClick={pin} title="Pin or unpin (P)">
-            {current.mark === "pinned" ? "★ Unpin" : "☆ Pin"}
+            <PinIcon filled={current.mark === "pinned"} /> {current.mark === "pinned" ? "Unpin" : "Pin"}
           </button>
           <button type="button" disabled={!markable} onClick={reject} title={current.mark === "rejected" ? "Restore (X)" : "Reject (X)"}>
             {current.mark === "rejected" ? "↺ Restore" : "✕ Reject"}
           </button>
-          {IMAGE_SLOTS.map((slot: ImageSlot) => (
-            <button
-              key={slot}
-              type="button"
-              aria-label={`Use as ${SLOT_NAMES[slot]}`}
-              disabled={saver.saving !== null || missing === src}
-              onClick={() => void saver.use(current.key, current.image, current.jobId, slot)}
-            >
-              {saver.saving === `${current.key}-${slot}` ? "Saving…" : slot === "header" ? "Use as header" : "Use as footer"}
-            </button>
-          ))}
+          {IMAGE_SLOTS.map((slot: ImageSlot) => {
+            const Icon = SLOT_ICONS[slot];
+            const used = inUse.includes(slot);
+            // Not `disabled`: the button keeps the keyboard focus while saving, so the keys still work after.
+            const off = used || saver.saving !== null || missing === src;
+            return (
+              <button
+                key={slot}
+                type="button"
+                aria-label={`Use as ${SLOT_NAMES[slot]}`}
+                aria-pressed={used}
+                aria-disabled={off}
+                title={used ? `This is the chapter's ${SLOT_NAMES[slot]}` : undefined}
+                onClick={() => {
+                  if (!off) void saver.use(current.key, current.image, current.jobId, current.index, slot);
+                }}
+              >
+                <Icon /> {saver.saving === `${current.key}-${slot}` ? "Saving…" : used ? `${SLOT_TITLES[slot]} picture` : `Use as ${slot}`}
+              </button>
+            );
+          })}
           <button type="button" onClick={() => onLoadPrompt(current)}>
             Load prompt
           </button>

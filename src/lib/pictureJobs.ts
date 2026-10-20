@@ -155,6 +155,8 @@ export function storyChapterTitles(storyId: string): Record<string, string> {
 }
 
 /** The prompt and negative prompt of a job, or undefined when there is no such job. */
-export function jobPrompts(jobId: string): { prompt: string; negative: string } | undefined {
-  return db().prepare(`SELECT prompt, negative FROM picture_jobs WHERE id = ?`).get(jobId) as { prompt: string; negative: string } | undefined;
+export function jobPrompts(jobId: string): { prompt: string; negative: string; count: number } | undefined {
+  return db().prepare(`SELECT prompt, negative, json_array_length(images) AS count FROM picture_jobs WHERE id = ?`).get(jobId) as
+    | { prompt: string; negative: string; count: number }
+    | undefined;
 }

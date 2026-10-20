@@ -116,7 +116,7 @@ export default function OtherChapterPictures({ chapterId, storyId, titles, comfy
               </div>
               <ul className="past-tiles" aria-label="Pictures from one job">
                 {job.images.map((image, i) => (
-                  <PictureTile key={`${job.id}-${i}`} comfyUrl={comfyUrl} image={image} tileKey={`${job.id}-${i}`} jobId={job.id} saver={saver} onStart={onStart} />
+                  <PictureTile key={`${job.id}-${i}`} comfyUrl={comfyUrl} image={image} tileKey={`${job.id}-${i}`} jobId={job.id} index={i} saver={saver} onStart={onStart} />
                 ))}
               </ul>
             </div>

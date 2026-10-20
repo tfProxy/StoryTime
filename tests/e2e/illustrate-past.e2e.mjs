@@ -123,7 +123,10 @@ try {
   await gallery.getByText("Saved as the header picture.").waitFor();
   const header = (await exported()).find((i) => i.slot === "header" && i.chapter_id === second);
   ok(header?.prompt === "lantern glow number 13", `using an earlier picture saves it as the header, with the prompt that made it (${header?.prompt})`);
-  await thirteen.getByRole("button", { name: "Load prompt" }).click();
+  await thirteen.locator(".picture-in-use").waitFor();
+  ok((await thirteen.locator(".picture-in-use").innerText()).trim() === "Header", "…and it is marked as the header");
+  await thirteen.getByRole("button", { name: "More" }).click();
+  await thirteen.getByRole("menuitem", { name: "Load prompt" }).click();
   const promptBox = page.getByRole("textbox", { name: "Prompt", exact: true });
   await page.getByText("Reuse seed").waitFor();
   ok(await promptBox.inputValue() === "lantern glow number 13" && await page.getByRole("textbox", { name: "Negative prompt", exact: true }).inputValue() === "neg 14", "Load prompt fills in the prompt and the negative prompt");

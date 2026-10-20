@@ -93,7 +93,7 @@ try {
   // ---- pin and reject ----
   await page.keyboard.press("p");
   ok(await until(async () => (await marks()).dawn === "pinned,-", "the pin"), "P pins the picture shown");
-  ok(await viewer.getByRole("button", { name: "★ Unpin" }).getAttribute("aria-pressed") === "true" && (await viewer.innerText()).includes("Pinned."), "…the viewer shows it pinned, and says so");
+  ok(await viewer.getByRole("button", { name: "Unpin", exact: true }).getAttribute("aria-pressed") === "true" && (await viewer.innerText()).includes("Pinned."), "…the viewer shows it pinned, and says so");
   await page.keyboard.press("P");
   ok(await until(async () => (await marks()).dawn === "-,-", "the unpin"), "P again unpins it");
   await page.keyboard.press("x");
@@ -102,7 +102,7 @@ try {
   await viewer.getByRole("button", { name: "Undo" }).click();
   ok(await until(async () => (await marks()).dawn === "-,-", "the undo"), "Undo in the viewer brings it back");
   ok(await count() === "4 of 4", "…into the list again");
-  await viewer.getByRole("button", { name: "☆ Pin" }).click();
+  await viewer.getByRole("button", { name: "Pin", exact: true }).click();
   ok(await until(async () => (await marks()).dawn === "-,pinned", "the button pin"), "the Pin button pins too");
 
   // ---- use it ----
@@ -110,6 +110,12 @@ try {
   await viewer.getByText("Saved as the header picture.").waitFor();
   const header = (await call("GET", `/api/stories/${story.story_id}/export?format=json`)).images.find((i) => i.slot === "header");
   ok(header?.prompt === "harbour at dawn", "Use as header in the viewer saves the picture shown, with its prompt");
+  await viewer.locator(".picture-in-use").waitFor();
+  const headerButton = viewer.getByRole("button", { name: "Use as header picture" });
+  ok((await viewer.locator(".picture-in-use").innerText()).trim() === "Header" && (await headerButton.innerText()).trim() === "Header picture" && await headerButton.getAttribute("aria-pressed") === "true", "…which then shows it is the header, on the picture and on the button");
+  await page.keyboard.press("ArrowLeft");
+  ok(await viewer.locator(".picture-in-use").count() === 0 && (await headerButton.innerText()).trim() === "Use as header", "…and the picture before it doesn't");
+  await page.keyboard.press("ArrowRight");
 
   // ---- close ----
   await page.keyboard.press("Escape");

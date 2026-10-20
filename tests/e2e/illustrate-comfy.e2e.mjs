@@ -215,6 +215,26 @@ try {
   await card("Footer picture").locator("img.image-editor-preview").waitFor();
   ok(true, "…which the Footer picture card shows");
   ok((await savedWith()).find((i) => i.slot === "footer").prompt === "a lighthouse at dawn, gulls", "…and the footer remembers the prompt too");
+  const badge = (n) => items.nth(n).locator(".picture-in-use");
+  await badge(1).waitFor();
+  ok((await badge(0).innerText()).trim() === "Header" && (await badge(1).innerText()).trim() === "Footer", "the pictures in use say so: Header on the first, Footer on the second");
+  const inUseButton = items.first().getByRole("button", { name: "Use as header picture" });
+  ok(await inUseButton.getAttribute("aria-pressed") === "true" && await inUseButton.isDisabled() && await items.nth(1).getByRole("button", { name: "Use as header picture" }).getAttribute("aria-pressed") === "false", "…and the header button of the one in use is shown pressed, and can't save it again");
+
+  // ---- the ☰ menu ----
+  const more = items.first().getByRole("button", { name: "More" });
+  ok(await items.first().getByRole("button", { name: "Load prompt" }).count() === 0 && await items.first().getByRole("button", { name: "Start from this" }).count() === 0, "Load prompt and Start from this are not buttons on the tile");
+  await more.click();
+  const menu = items.first().getByRole("menu");
+  ok((await menu.getByRole("menuitem").allInnerTexts()).join("|") === "Start from this|Load prompt|Open in a new tab" && await more.getAttribute("aria-expanded") === "true", "…but in the ☰ menu, with Open in a new tab");
+  ok(await items.first().getByRole("menuitem", { name: "Start from this" }).evaluate((e) => e === document.activeElement), "…which puts the keyboard on its first item");
+  await page.keyboard.press("ArrowDown");
+  ok(await items.first().getByRole("menuitem", { name: "Load prompt" }).evaluate((e) => e === document.activeElement), "…↓ moves down it");
+  await page.keyboard.press("Escape");
+  ok(await menu.count() === 0 && await more.evaluate((e) => e === document.activeElement), "Esc closes it, back on the ☰ button");
+  await more.click();
+  await page.locator(".chapter-pictures h2").click();
+  ok(await menu.count() === 0, "…and so does a click elsewhere");
 
   // ---- bringing a saved picture's prompt back ----
   await fetch(`${BASE}/api/chapters/${chapterId}/images/footer`, { method: "PUT", headers: { "Content-Type": "image/jpeg" }, body: headerBytes });
@@ -263,7 +283,8 @@ try {
   await page.getByLabel("Moment to show").selectOption("end");
   const nightTile = page.locator(".picture-group").first().locator(".picture-tile").first();
   const nightSeed = /seed (\d+)/.exec(await nightTile.locator(".picture-caption").innerText())[1];
-  await nightTile.getByRole("button", { name: "Load prompt" }).click();
+  await nightTile.getByRole("button", { name: "More" }).click();
+  await nightTile.getByRole("menuitem", { name: "Load prompt" }).click();
   ok((await promptBox.inputValue()) === "a lighthouse at night" && (await negativeBox.inputValue()) === "blurry, text", "every new picture has Load prompt, which fills in its prompt and negative prompt");
   ok(await page.getByRole("checkbox", { name: `Reuse seed ${nightSeed}` }).isVisible(), "…offers to reuse that picture's own seed");
   ok((await page.getByLabel("Moment to show").inputValue()) === "start", "…and puts back the moment it was made for");

@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { ImageMoment } from "@/lib/ai/imagePrompt";
 import type { ComfyImage } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
+import { IMAGE_SLOTS, type ImageSlot } from "@/lib/imageSlots";
 import PictureTile from "./PictureTile";
 import OtherChapterPictures from "./OtherChapterPictures";
 import PictureViewer from "./PictureViewer";
@@ -44,6 +45,8 @@ type Props = {
   onStart: (image: ComfyImage) => void;
   /** Called to bring back the prompt and settings a picture was made with. */
   onLoadPrompt: (p: PromptToLoad) => void;
+  /** Which picture is the chapter's header and footer now, when known. */
+  used?: Record<ImageSlot, { jobId: string; index: number } | null>;
 };
 
 /**
@@ -51,7 +54,9 @@ type Props = {
  * made on this visit, so coming back shows only the pinned ones; "All" every one but the rejected; and
  * "Rejected" those, to restore one. "Other chapters" lists what was made for the rest of the story.
  */
-export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, pictures, onChange, onClear, queueRef, onStart, onLoadPrompt }: Props) {
+export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, pictures, onChange, onClear, queueRef, onStart, onLoadPrompt, used }: Props) {
+  /** The slots a picture is saved in now. */
+  const inUse = (p: Picture): ImageSlot[] => IMAGE_SLOTS.filter((slot) => used?.[slot] && used[slot].jobId === p.jobId && used[slot].index === p.index);
   const [view, setView] = useState<View>("shortlist");
   const [status, setStatus] = useState<Status | null>(null);
   // The picture shown full size, if any.
@@ -115,7 +120,7 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
     if (view === "rejected") return "No rejected pictures.";
     if (view === "all") return "No pictures yet.";
     if (pictures.length === 0) {
-      return "Pictures you make appear here, grouped by prompt. Pin (☆) the ones worth keeping: when you come back, only pinned pictures show, and the rest are under All.";
+      return "Pictures you make appear here, grouped by prompt. Pin the ones worth keeping (the thumbtack): when you come back, only pinned pictures show, and the rest are under All.";
     }
     return `No pinned pictures. The ones made earlier are under All (${count("all")}).`;
   }
@@ -179,6 +184,8 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
                       image={p.image}
                       tileKey={p.key}
                       jobId={p.jobId}
+                      index={p.index}
+                      inUse={inUse(p)}
                       saver={saver}
                       caption={pictureCaption(p)}
                       onStart={onStart}
@@ -202,6 +209,7 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
           comfyUrl={comfyUrl}
           list={ordered}
           current={viewed}
+          inUse={inUse(viewed)}
           onShow={setViewing}
           onClose={() => setViewing(null)}
           onMark={markInViewer}

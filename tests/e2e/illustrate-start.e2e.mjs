@@ -51,13 +51,19 @@ try {
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("a keeper beside a lamp");
   await page.getByRole("textbox", { name: "Negative prompt", exact: true }).fill("blurry");
 
+  // Start from this is in a picture's ☰ menu.
+  const startFrom = async (tile) => {
+    await tile.getByRole("button", { name: "More" }).click();
+    await tile.getByRole("menuitem", { name: "Start from this" }).click();
+  };
+
   // ---- plain pictures first ----
   ok(await thumb.count() === 0 && await strength.count() === 0, "with nothing chosen there is no starting picture and no Strength slider");
   await make(2);
   ok(prompts().length === 1 && nodes(prompts()[0], "EmptyLatentImage").length === 1 && nodes(prompts()[0], "LoadImage").length === 0 && uploads().length === 0, "pictures made with no starting picture use the empty latent image and upload nothing");
 
   // ---- start from a new picture ----
-  await items.first().getByRole("button", { name: "Start from this" }).click();
+  await startFrom(items.first());
   await thumb.waitFor();
   ok(await strength.isVisible() && await strength.inputValue() === "0.55", "Start from this shows the picture and a Strength slider at 0.55");
   ok(await page.getByText("Low keeps the picture close; high changes more.").isVisible(), "…with a line saying what Strength does");
@@ -118,7 +124,7 @@ try {
   };
   await showAll();
   ok((await page.locator(".chapter-pictures").innerText()).includes("strength 0.3"), "an earlier picture made from a picture says its strength");
-  await pastTiles.nth(1).getByRole("button", { name: "Start from this" }).click();
+  await startFrom(pastTiles.nth(1));
   await thumb.waitFor();
   ok(((await thumb.getAttribute("src")) ?? "").includes("/view?"), "Start from this on a past picture makes it the starting picture");
 
@@ -135,7 +141,7 @@ try {
   await page.reload();
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("a keeper beside a lamp");
   await showAll();
-  await pastTiles.first().getByRole("button", { name: "Start from this" }).click();
+  await startFrom(pastTiles.first());
   await thumb.waitFor();
   const refusedMark = comfy.calls.length;
   await makeButton.click();
@@ -154,7 +160,7 @@ try {
   if (process.env.E2E_SCREENSHOT_DIR) {
     await page.goto(`${BASE}/c/${chapterId}/illustrate`);
     await showAll();
-    await pastTiles.nth(1).getByRole("button", { name: "Start from this" }).click();
+    await startFrom(pastTiles.nth(1));
     await thumb.waitFor();
     await page.waitForTimeout(400);
     await page.locator(".comfy-generate").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-start-1000.png` });

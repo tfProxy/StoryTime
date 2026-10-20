@@ -257,6 +257,11 @@ export const MIGRATIONS: string[] = [
     SELECT chapter_id, moment, prompt, negative, scene, direction, updated_at FROM picture_drafts;
   DROP TABLE picture_drafts;
   `,
+  // 15: which of its job's pictures a saved header or footer is (its place in the job's `images`), so the
+  // Illustrate page can mark the picture in use. Null for uploads and for pictures saved before this.
+  `
+  ALTER TABLE chapter_images ADD COLUMN image_index INTEGER;
+  `,
 ];
 
 function open(): Database.Database {

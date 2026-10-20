@@ -107,6 +107,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
             queueRef={setQueueSlot}
             onStart={(image) => startFrom(fromComfyImage(comfy.url, image))}
             onLoadPrompt={load}
+            used={{ header: made.header?.from ?? null, footer: made.footer?.from ?? null }}
           />
         )}
       </div>

@@ -23,13 +23,15 @@ export async function GET(request: Request, ctx: Ctx) {
 }
 
 // Replace the picture. The body is the image itself (PNG, JPEG, GIF or WebP). ?job=<id> says which
-// picture job made it, so its prompt is kept with the picture.
+// picture job made it, so its prompt is kept with the picture, and &index=<n> which of the job's pictures
+// it is (ignored when it isn't one of them).
 export async function PUT(request: Request, ctx: Ctx) {
   const { id, slot } = await ctx.params;
   if (!isImageSlot(slot)) return badSlot();
   try {
-    const job = new URL(request.url).searchParams.get("job");
-    return Response.json(setChapterImage(id, slot, Buffer.from(await request.arrayBuffer()), job));
+    const query = new URL(request.url).searchParams;
+    const index = query.get("index");
+    return Response.json(setChapterImage(id, slot, Buffer.from(await request.arrayBuffer()), query.get("job"), index === null || !/^\d+$/.test(index) ? null : Number(index)));
   } catch (e) {
     return fail(e);
   }

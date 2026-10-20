@@ -15,6 +15,8 @@ export type ImageMade = {
   prompt: string;
   negative: string;
   job: { seed: number; checkpoint: string; width: number; height: number } | null;
+  /** Which picture of which job it is, when known (saved from a recorded job). */
+  from: { jobId: string; index: number } | null;
 };
 
 export function isImageSlot(slot: string): slot is ImageSlot {
