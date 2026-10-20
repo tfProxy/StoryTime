@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { IMAGE_SLOTS, type ImageSlot } from "@/lib/imageSlots";
+import type { ImageSlot } from "@/lib/imageSlots";
 import { imageUrl } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
-import { SLOT_NAMES, type PictureSaver } from "./usePictureSaver";
+import type { PictureSaver } from "./usePictureSaver";
 import { pictureCaption, type Picture } from "./pictures";
-import { PinIcon } from "./PictureIcons";
-import { SLOT_ICONS, SLOT_TITLES } from "./PictureTile";
+import PictureButtons, { InUseBadge } from "./PictureButtons";
 
 // How far a finger has to move sideways to count as a swipe.
 const SWIPE_PX = 50;
@@ -24,6 +23,8 @@ type Props = {
   onClose: () => void;
   onMark: (picture: Picture, mark: PictureMark | null) => void;
   onLoadPrompt: (picture: Picture) => void;
+  /** Makes new pictures starting from the one shown. */
+  onStart?: (picture: Picture) => void;
   saver: PictureSaver;
   /** The panel's last message (a mark, a save), repeated here because the panel is hidden behind. */
   status: { ok: boolean; text: string; undo?: () => void } | null;
@@ -33,7 +34,7 @@ type Props = {
  * One picture as large as the screen allows, with the view's others a key or a swipe away: ← and → move,
  * P pins, X rejects (or restores), Esc closes. A modal <dialog>, so the page behind can't be reached.
  */
-export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, onClose, onMark, onLoadPrompt, saver, status }: Props) {
+export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, onClose, onMark, onLoadPrompt, onStart, saver, status }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const swipe = useRef<number | null>(null);
   const [missing, setMissing] = useState<string | null>(null);
@@ -41,6 +42,9 @@ export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, 
   const prev = at > 0 ? list[at - 1] : null;
   const next = at >= 0 && at < list.length - 1 ? list[at + 1] : null;
   const src = imageUrl(comfyUrl, current.image);
+  // The picture's shape: as loaded, or until then the size it was made at.
+  const [loaded, setLoaded] = useState<{ src: string; ratio: number } | null>(null);
+  const ratio = loaded?.src === src ? loaded.ratio : current.width > 0 && current.height > 0 ? current.width / current.height : 4 / 3;
 
   useEffect(() => {
     const d = dialog.current;
@@ -103,24 +107,44 @@ export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, 
           else if (dx >= SWIPE_PX && prev) onShow(prev.key);
         }}
       >
-        {missing === src ? (
-          <p className="viewer-missing">ComfyUI no longer has this picture, or can&apos;t be reached.</p>
-        ) : (
-          // eslint-disable-next-line @next/next/no-img-element -- served by ComfyUI
-          <img key={src} src={src} alt={`Picture ${current.image.filename}`} draggable={false} onError={() => setMissing(src)} />
-        )}
-        {inUse.length > 0 && (
-          <div className="picture-in-use">
-            {inUse.map((slot) => {
-              const Icon = SLOT_ICONS[slot];
-              return (
-                <span key={slot} title={`This is the chapter's ${SLOT_NAMES[slot]}`}>
-                  <Icon /> {SLOT_TITLES[slot]}
-                </span>
-              );
-            })}
-          </div>
-        )}
+        {/* Sized to the picture's shape, so its buttons sit on its corners as they do on a tile. */}
+        <div className="viewer-frame" style={{ "--ratio": ratio } as React.CSSProperties}>
+          {missing === src ? (
+            <p className="viewer-missing">ComfyUI no longer has this picture, or can&apos;t be reached.</p>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element -- served by ComfyUI
+            <img
+              key={src}
+              src={src}
+              alt={`Picture ${current.image.filename}`}
+              draggable={false}
+              onError={() => setMissing(src)}
+              onLoad={(e) => {
+                const i = e.currentTarget;
+                if (i.naturalWidth > 0 && i.naturalHeight > 0) setLoaded({ src, ratio: i.naturalWidth / i.naturalHeight });
+              }}
+            />
+          )}
+          <InUseBadge inUse={inUse} />
+          <PictureButtons
+            image={current.image}
+            tileKey={current.key}
+            jobId={current.jobId}
+            index={current.index}
+            saver={saver}
+            inUse={inUse}
+            missing={missing === src}
+            mark={current.mark}
+            onMark={(next) => onMark(current, next)}
+            pinHint=" (P)"
+            rejectHint=" (X)"
+            menu={[
+              onStart && missing !== src && { label: "Start from this", title: "Make new pictures starting from this one", run: () => onStart(current) },
+              { label: "Load prompt", title: "Put this picture's prompt back in the prompt boxes", run: () => onLoadPrompt(current) },
+              missing !== src && { label: "Open in a new tab", href: src },
+            ]}
+          />
+        </div>
         {prev && (
           <button type="button" className="viewer-step viewer-prev" aria-label="Previous picture" title="Previous (←)" onClick={() => onShow(prev.key)}>
             ‹
@@ -137,41 +161,6 @@ export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, 
           {pictureCaption(current)}
           <span className="viewer-keys"> · ← → move · P pin · X reject · Esc close</span>
         </p>
-        <div className="viewer-actions">
-          <button type="button" aria-pressed={current.mark === "pinned"} disabled={!markable} onClick={pin} title="Pin or unpin (P)">
-            <PinIcon filled={current.mark === "pinned"} /> {current.mark === "pinned" ? "Unpin" : "Pin"}
-          </button>
-          <button type="button" disabled={!markable} onClick={reject} title={current.mark === "rejected" ? "Restore (X)" : "Reject (X)"}>
-            {current.mark === "rejected" ? "↺ Restore" : "✕ Reject"}
-          </button>
-          {IMAGE_SLOTS.map((slot: ImageSlot) => {
-            const Icon = SLOT_ICONS[slot];
-            const used = inUse.includes(slot);
-            // Not `disabled`: the button keeps the keyboard focus while saving, so the keys still work after.
-            const off = used || saver.saving !== null || missing === src;
-            return (
-              <button
-                key={slot}
-                type="button"
-                aria-label={`Use as ${SLOT_NAMES[slot]}`}
-                aria-pressed={used}
-                aria-disabled={off}
-                title={used ? `This is the chapter's ${SLOT_NAMES[slot]}` : undefined}
-                onClick={() => {
-                  if (!off) void saver.use(current.key, current.image, current.jobId, current.index, slot);
-                }}
-              >
-                <Icon /> {saver.saving === `${current.key}-${slot}` ? "Saving…" : used ? `${SLOT_TITLES[slot]} picture` : `Use as ${slot}`}
-              </button>
-            );
-          })}
-          <button type="button" onClick={() => onLoadPrompt(current)}>
-            Load prompt
-          </button>
-          <a href={src} target="_blank" rel="noreferrer" className="viewer-link">
-            Open in a new tab
-          </a>
-        </div>
         {status && (
           <p className={status.ok ? "viewer-ok" : "viewer-error"}>
             {status.text}

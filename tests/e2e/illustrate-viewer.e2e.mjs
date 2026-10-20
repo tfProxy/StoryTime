@@ -112,9 +112,23 @@ try {
   ok(header?.prompt === "harbour at dawn", "Use as header in the viewer saves the picture shown, with its prompt");
   await viewer.locator(".picture-in-use").waitFor();
   const headerButton = viewer.getByRole("button", { name: "Use as header picture" });
-  ok((await viewer.locator(".picture-in-use").innerText()).trim() === "Header" && (await headerButton.innerText()).trim() === "Header picture" && await headerButton.getAttribute("aria-pressed") === "true", "…which then shows it is the header, on the picture and on the button");
+  ok((await viewer.locator(".picture-in-use").innerText()).trim() === "Header" && await headerButton.getAttribute("aria-pressed") === "true", "…which then shows it is the header, on the picture and on the button");
   await page.keyboard.press("ArrowLeft");
-  ok(await viewer.locator(".picture-in-use").count() === 0 && (await headerButton.innerText()).trim() === "Use as header", "…and the picture before it doesn't");
+  ok(await viewer.locator(".picture-in-use").count() === 0 && await headerButton.getAttribute("aria-pressed") === "false", "…and the picture before it doesn't (the keys still work after saving)");
+  // the same buttons, in the same place, as on a tile
+  const viewerButtons = await viewer.locator(".picture-marks > button, .picture-marks .tile-menu > button").evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label")));
+  const tileButtons = await tiles.first().locator(".picture-marks > button, .picture-marks .tile-menu > button").evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label")));
+  ok(viewerButtons.join() === "Pin,Reject,Use as header picture,Use as footer picture,More" && tileButtons.join() === viewerButtons.join(), `the viewer has the tile's buttons, in the same order (${viewerButtons.join()})`);
+  const frame = await viewer.locator(".viewer-frame").boundingBox();
+  const marksBox = await viewer.locator(".picture-marks").boundingBox();
+  const shown = await viewer.locator(".viewer-frame img").evaluate((i) => i.naturalWidth / i.naturalHeight);
+  ok(Math.abs(frame.x + frame.width - (marksBox.x + marksBox.width)) < 12 && Math.abs(marksBox.y - frame.y) < 12, "…on the picture's top right corner");
+  ok(Math.abs(frame.width / frame.height - shown) < 0.02, "…which is the picture's own shape");
+  await viewer.getByRole("button", { name: "More" }).click();
+  ok((await viewer.getByRole("menuitem").allInnerTexts()).join("|") === "Start from this|Load prompt|Open in a new tab", "its ☰ menu has Start from this, Load prompt and Open in a new tab");
+  await page.keyboard.press("Escape");
+  ok(await viewer.getByRole("menu").count() === 0 && await viewer.isVisible(), "Esc closes the menu, not the viewer");
+  await page.keyboard.press("ArrowRight");
   await page.keyboard.press("ArrowRight");
 
   // ---- close ----
@@ -131,7 +145,8 @@ try {
   // ---- load a prompt from it ----
   await tiles.first().locator("a").click();
   await viewer.waitFor();
-  await viewer.getByRole("button", { name: "Load prompt" }).click();
+  await viewer.getByRole("button", { name: "More" }).click();
+  await viewer.getByRole("menuitem", { name: "Load prompt" }).click();
   await viewer.waitFor({ state: "detached" });
   ok((await page.getByRole("textbox", { name: "Prompt", exact: true }).inputValue()) === "harbour at noon" && await page.getByText("Reuse seed 502").isVisible(), "Load prompt closes the viewer and brings back the picture's prompt and seed");
 

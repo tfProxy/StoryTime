@@ -217,6 +217,10 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
             setViewing(null);
             loadFrom(p);
           }}
+          onStart={(p) => {
+            setViewing(null);
+            onStart(p.image);
+          }}
           saver={saver}
           status={status}
         />
