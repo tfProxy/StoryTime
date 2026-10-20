@@ -39,8 +39,10 @@ const nodes = (wf, type) => Object.values(wf).filter((n) => n.class_type === typ
 const jobs = async () => (await call("GET", `/api/picture-jobs?chapter=${chapterId}`)).jobs;
 const make = async (total) => {
   await makeButton.click();
-  await until(async () => (await items.count()) === total && (await page.getByRole("button", { name: "Make more" }).isEnabled()), `${total} pictures`, 150);
+  await until(async () => (await items.count()) === total && (await ready()), `${total} pictures`, 150);
 };
+// No job is still being made (each running job shows its progress as a status).
+const ready = async () => (await page.locator(".comfy-generate [role=status]").count()) === 0;
 const settingsNow = async () => (await call("GET", "/api/settings")).settings.comfy;
 
 try {
@@ -99,10 +101,10 @@ try {
   await page.getByRole("button", { name: "Clear starting picture" }).click();
   ok(await thumb.count() === 0 && await strength.count() === 0 && await sizeMenu.isEnabled(), "Clear starting picture removes it and the Size menu works again");
   const clearMark = comfy.calls.length;
-  await page.getByRole("button", { name: "Make more" }).click();
+  await makeButton.click();
   await until(() => prompts(clearMark).length === 1, "a job");
   ok(nodes(prompts(clearMark)[0], "EmptyLatentImage").length === 1 && nodes(prompts(clearMark)[0], "LoadImage").length === 0, "pictures made afterwards are from the prompt alone again");
-  await until(async () => (await items.count()) === 10 && (await page.getByRole("button", { name: "Make more" }).isEnabled()), "ten pictures", 150);
+  await until(async () => (await items.count()) === 10 && (await ready()), "ten pictures", 150);
 
   // ---- from a past picture ----
   await page.goto(`${BASE}/c/${chapterId}/illustrate`);

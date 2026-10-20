@@ -1131,6 +1131,11 @@ main:has(.library) {
   list-style: none;
 }
 
+/* One picture per line on a phone, two side by side on a tablet or laptop, three on a very wide screen. */
+.candidates {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+}
+
 .past-tiles {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
 }
@@ -1140,23 +1145,33 @@ main:has(.library) {
   width: 100%;
   height: auto;
   min-height: 8rem;
-  max-height: 85vh;
+  max-height: 75vh;
   object-fit: contain;
   border-radius: 6px;
   background: var(--line);
 }
 
-/* The Illustrate chapter page: the chapter above everything on a phone, in a column that stays in view on a wide screen. */
+/*
+ * The Illustrate chapter page: on a phone the chapter, the prompt and then the pictures, one under the other.
+ * On a wide screen the page uses the whole width: the chapter and the prompt in a column that stays in view,
+ * and the pictures beside it.
+ */
 .illustrate-grid,
-.illustrate-main,
-.illustrate-side {
+.illustrate-controls,
+.illustrate-gallery {
   display: grid;
   gap: 1rem;
   min-width: 0;
 }
 
-.illustrate-side {
+.illustrate-controls,
+.illustrate-gallery {
   align-content: start;
+}
+
+/* Wider than the reading pages even in one column, so a tablet fits two pictures side by side. */
+main:has(.illustrate-grid) {
+  max-width: 64rem;
 }
 
 .illustrate-summary {
@@ -1175,28 +1190,77 @@ main:has(.library) {
 }
 
 @media (min-width: 64rem) {
+  /* A small bottom padding, so the column that stays in view isn't pushed up at the end of the page. */
   main:has(.illustrate-grid) {
-    max-width: 72rem;
+    max-width: 120rem;
+    padding-bottom: 1rem;
   }
 
   .illustrate-grid {
-    grid-template-columns: minmax(0, 1fr) 22rem;
+    grid-template-columns: minmax(22rem, 28rem) minmax(0, 1fr);
     align-items: start;
   }
 
-  .illustrate-main {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
-  .illustrate-side {
-    grid-column: 2;
-    grid-row: 1;
+  .illustrate-controls {
     position: sticky;
     top: 1rem;
     max-height: calc(100vh - 2rem);
     overflow-y: auto;
+    /* room for the panels' borders inside the scrolling column */
+    padding: 1px;
   }
+}
+
+/* New pictures: the title and Clear stay at the top of the panel while it is scrolled through. */
+.new-pictures-bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: -0.75rem -1rem 0;
+  padding: 0.75rem 1rem 0.5rem;
+  border-radius: 8px 8px 0 0;
+  background: var(--card);
+}
+
+.picture-group {
+  display: grid;
+  gap: 0.6rem;
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.picture-group-head {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.picture-caption {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+/* A picture's buttons, smaller than usual so a tile's buttons take one or two lines. */
+.tile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tile-actions > .meta {
+  margin: 0;
+}
+
+.tile-actions button {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.9rem;
 }
 
 /* The Illustrate chapter page: one card per picture, side by side when there is room. */

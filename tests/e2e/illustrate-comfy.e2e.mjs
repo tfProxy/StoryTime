@@ -146,14 +146,19 @@ try {
   await items.first().waitFor();
   await picturesLoaded(2);
   ok(await items.count() === 2, "two pictures appear (How many = 2)");
-  ok(await page.getByRole("list", { name: "Pictures from ComfyUI" }).isVisible() && await live.count() === 0, "…in a list of pictures, and the progress text is gone");
+  ok(await page.getByRole("list", { name: "Pictures from this prompt" }).isVisible() && await live.count() === 0, "…in a list of pictures from this prompt, and the progress text is gone");
+  const group = page.locator(".picture-group").first();
+  ok((await group.locator(".picture-group-head").innerText()).includes("a lighthouse at dawn, gulls") && (await group.locator(".picture-group-head").innerText()).includes("Chapter start · 2 pictures · not: blurry, text"), "…under the prompt, the moment, the count and the negative prompt");
+  ok((await page.locator(".picture-caption").first().innerText()).startsWith("fake_sdxl_b · 1344 × 768 · seed "), "each picture says its checkpoint, size and seed");
   const boxes = await page.locator(".candidates img").evaluateAll((imgs) => imgs.map((i) => { const r = i.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }));
-  ok(boxes.length === 2 && boxes[0].x === boxes[1].x && boxes[1].y > boxes[0].y + boxes[0].h - 1 && boxes[0].w > 400, "the pictures are stacked one per line, each as wide as the page allows");
+  ok(boxes.length === 2 && boxes[1].x > boxes[0].x + boxes[0].w - 1 && Math.abs(boxes[0].y - boxes[1].y) < 2 && boxes[0].w > 300, "at 1000px wide the pictures sit two side by side");
+  const clearBox = await page.getByRole("button", { name: "Clear these pictures" }).boundingBox();
+  ok(clearBox.y < boxes[0].y, "Clear these pictures is above the pictures");
   const srcs = await page.locator(".candidates img").evaluateAll((imgs) => imgs.map((i) => i.src));
   ok(srcs[0] !== srcs[1] && srcs.every((s) => s.startsWith(`${comfy.url}/view?`) && s.includes("StoryTime_")), "…which come from ComfyUI's /view, each a different picture");
   const [a, b] = await Promise.all(srcs.map(async (s) => Buffer.from(await (await fetch(s)).arrayBuffer())));
   ok(!a.equals(b) && a.subarray(1, 4).toString() === "PNG", "…and are different PNG images");
-  ok(await makeButton.innerText() === "Make more" && await makeButton.isEnabled(), "the button now says Make more");
+  ok(await makeButton.innerText() === "Make pictures" && await makeButton.isEnabled(), "the button is ready again");
 
   // what was sent to ComfyUI
   const sent = promptCalls(mark);
@@ -234,6 +239,13 @@ try {
   ok(seedOf(promptCalls(from)[0]) === seed, "with Reuse seed ticked, the queued workflow has the picture's seed");
   const reused = (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs[0];
   ok(reused.seed === seed && reused.prompt === "a lighthouse at dusk, gulls", "…and the log records that seed with the changed prompt");
+  let heads = await page.locator(".picture-group-head").allInnerTexts();
+  ok(heads.length === 1 && heads[0].startsWith("a lighthouse at dusk, gulls") && heads[0].includes("4 pictures"), "pictures from the same prompt are grouped together, whatever their seed");
+  await promptBox.fill("a lighthouse at night");
+  await makeButton.click();
+  await page.waitForFunction(() => document.querySelectorAll(".candidates li").length === 6);
+  heads = await page.locator(".picture-group-head").allInnerTexts();
+  ok(heads.length === 2 && heads[0].startsWith("a lighthouse at night") && heads[1].startsWith("a lighthouse at dusk, gulls"), "…and a new prompt starts a new group, above the older one");
   await card("Header picture").getByRole("button", { name: "Load prompt" }).click();
   ok(!(await reuse.isChecked()), "loading a prompt again unticks Reuse seed");
   if (process.env.E2E_SCREENSHOT_DIR) {
@@ -243,7 +255,7 @@ try {
 
   // ---- the page on a phone ----
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator(".candidates").scrollIntoViewIfNeeded();
+  await page.locator(".candidates").first().scrollIntoViewIfNeeded();
   const overflow = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth, wide: [...document.querySelectorAll(".candidates img, .comfy-generate select, .comfy-generate button")].filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1).length }));
   ok(overflow.scroll <= overflow.inner, `no sideways scrolling at 390px wide with pictures showing (page ${overflow.scroll}px, window ${overflow.inner}px)`);
   ok(overflow.wide === 0, "…and no picture, menu or button sticks out past the right edge");
@@ -262,7 +274,7 @@ try {
   await refused.waitFor();
   const refusedText = await refused.innerText();
   ok(refusedText.includes("Prompt outputs failed validation") && refusedText.includes("KSampler 3: Required input is missing (positive)"), `a workflow ComfyUI refuses shows its reason: "${refusedText}"`);
-  ok(await makeButton.isEnabled() && await items.count() === 4, "…the button is usable again and the earlier pictures are kept");
+  ok(await makeButton.isEnabled() && await items.count() === 6, "…the button is usable again and the earlier pictures are kept");
   comfy.setMode({ fail: null });
 
   // a checkpoint ComfyUI doesn't have (the saved name outlived the file)
@@ -313,7 +325,7 @@ try {
   const pollCalls = comfy.calls.slice(pollMark);
   ok(pollCalls.some((c) => c.method === "UPGRADE") && pollCalls.filter((c) => c.path.startsWith("/history/")).length >= 1, "…found by asking /history after the WebSocket was refused");
   const log = (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs;
-  ok(log.length === 4 && log[0].prompt === "a lighthouse in fog" && log[0].moment === "end" && log[1].moment === "start", "the log has this job (with Chapter end) after the earlier three, and nothing from the refused, failed or stopped jobs");
+  ok(log.length === 5 && log[0].prompt === "a lighthouse in fog" && log[0].moment === "end" && log[1].moment === "start", "the log has this job (with Chapter end) after the earlier four, and nothing from the refused, failed or stopped jobs");
 
   // ---- the job can't be recorded: the pictures are still usable, just without a prompt kept ----
   await page.route("**/api/picture-jobs", (route) => route.request().method() === "POST" ? route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "disk full" }) }) : route.continue());
@@ -327,7 +339,7 @@ try {
   await page.getByText("Saved as the header picture.").waitFor();
   const unrecorded = (await savedWith()).find((i) => i.slot === "header");
   ok(unrecorded.prompt === null && unrecorded.negative === null, "…and a picture from it saves without a prompt, replacing the one before");
-  ok((await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs.length === 4, "…and nothing was added to the log");
+  ok((await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs.length === 5, "…and nothing was added to the log");
 
   // ---- clearing ----
   await page.getByRole("button", { name: "Clear these pictures" }).click();

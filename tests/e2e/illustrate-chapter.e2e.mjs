@@ -34,11 +34,19 @@ try {
   ok(await panel.getByText("Mara stepped back as the walls began to glow.").isVisible() && await panel.getByText("The lantern flared blue.").isVisible(), "opening it shows the whole chapter, paragraph by paragraph");
   ok((await text.locator(".prose p").count()) === 2, "…as two paragraphs");
 
-  // beside the prompt, and in view while the page is scrolled
+  // above the prompt, in a column beside the pictures, and in view while the page is scrolled
   const side = await panel.boundingBox();
   const prompt = await page.locator(".image-prompt").boundingBox();
-  ok(side.x > prompt.x + prompt.width - 1, `on a wide screen the chapter is in a column beside the prompt (chapter ${Math.round(side.x)}px, prompt ends ${Math.round(prompt.x + prompt.width)}px)`);
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const gallery = await page.locator(".illustrate-gallery").boundingBox();
+  ok(Math.abs(side.x - prompt.x) < 2 && side.y + side.height <= prompt.y + 1, "on a wide screen the chapter is above the prompt, in the same column");
+  ok(gallery.x > side.x + side.width - 1 && gallery.width > side.width, `…and the pictures have the wider column beside it (pictures from ${Math.round(gallery.x)}px, ${Math.round(gallery.width)}px wide)`);
+  // stands in for a long list of pictures
+  await page.evaluate(() => {
+    const tall = document.createElement("div");
+    tall.style.height = "3000px";
+    document.querySelector(".illustrate-gallery").append(tall);
+    window.scrollTo(0, document.body.scrollHeight);
+  });
   const scrolled = await panel.boundingBox();
   ok(scrolled.y >= 0 && scrolled.y < 100, `…and it stays in view when the page is scrolled to the bottom (top at ${Math.round(scrolled.y)}px)`);
 
@@ -81,9 +89,9 @@ try {
   await panel.waitFor();
   await page.locator(".illustrate-fold summary").first().click();
   const small = await page.evaluate(() => {
-    const side = document.querySelector(".illustrate-side").getBoundingClientRect();
-    const main = document.querySelector(".illustrate-main").getBoundingClientRect();
-    const wide = [...document.querySelectorAll(".illustrate-side *")].filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1).length;
+    const side = document.querySelector(".illustrate-chapter").getBoundingClientRect();
+    const main = document.querySelector(".image-prompt").getBoundingClientRect();
+    const wide = [...document.querySelectorAll(".illustrate-controls *")].filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1).length;
     return { above: side.bottom <= main.top + 1, scroll: document.documentElement.scrollWidth, inner: window.innerWidth, wide };
   });
   ok(small.above, "on a phone the chapter is above the prompt");

@@ -11,6 +11,7 @@ import { getPath, getStory } from "@/lib/stories";
 export const dynamic = "force-dynamic";
 
 // A posted chapter's pictures: one above its title and one after its text, and a prompt for making them.
+// On a wide screen the chapter and the prompt are one column and the pictures the other.
 export default async function IllustratePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const path = getPath(id);
@@ -35,8 +36,9 @@ export default async function IllustratePage({ params }: { params: Promise<{ id:
         <Link href={`/c/${id}`}>← Back to “{chapter.title}”</Link>
       </p>
       <h1>Illustrate chapter</h1>
-      <div className="illustrate-grid">
-        <div className="illustrate-side">
+      <IllustrateWorkspace
+        chapterId={chapter.id}
+        chapter={
           <IllustrateChapter
             chapterId={chapter.id}
             title={chapter.title}
@@ -44,19 +46,14 @@ export default async function IllustratePage({ params }: { params: Promise<{ id:
             summary={chapter.summary}
             earlier={before ? before.path_summary || before.summary || null : null}
           />
-        </div>
-        <div className="illustrate-main">
-          <IllustrateWorkspace
-            chapterId={chapter.id}
-            titles={storyChapterTitles(story.id)}
-            story={{ id: story.id, title: story.title, premise: story.premise, art_style: story.art_style }}
-            path={path.map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary }))}
-            codex={codex}
-            versions={versions}
-            made={chapterImageMade(chapter.id)}
-          />
-        </div>
-      </div>
+        }
+        titles={storyChapterTitles(story.id)}
+        story={{ id: story.id, title: story.title, premise: story.premise, art_style: story.art_style }}
+        path={path.map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary }))}
+        codex={codex}
+        versions={versions}
+        made={chapterImageMade(chapter.id)}
+      />
     </>
   );
 }

@@ -5,6 +5,8 @@ import { IMAGE_SLOTS } from "@/lib/imageSlots";
 import { imageUrl, type ComfyImage } from "@/lib/comfy/client";
 import { SLOT_NAMES, type PictureSaver } from "./usePictureSaver";
 
+const SLOT_TITLES: Record<(typeof IMAGE_SLOTS)[number], string> = { header: "Header", footer: "Footer" };
+
 type Props = {
   comfyUrl: string;
   image: ComfyImage;
@@ -15,13 +17,15 @@ type Props = {
   saver: PictureSaver;
   /** Called to make new pictures starting from this one. */
   onStart?: (image: ComfyImage) => void;
+  /** A short line under the picture, such as its seed and checkpoint. */
+  caption?: string;
 };
 
 /**
  * One picture from ComfyUI with the buttons to use it as the chapter's header or footer. A picture ComfyUI
  * no longer has (or can't be reached for) says so, and can't be used.
  */
-export default function PictureTile({ comfyUrl, image, tileKey, jobId, saver, onStart }: Props) {
+export default function PictureTile({ comfyUrl, image, tileKey, jobId, saver, onStart, caption }: Props) {
   const [missing, setMissing] = useState(false);
   const src = imageUrl(comfyUrl, image);
   return (
@@ -36,10 +40,19 @@ export default function PictureTile({ comfyUrl, image, tileKey, jobId, saver, on
           <img src={src} alt={`Picture ${image.filename}`} loading="lazy" onError={() => setMissing(true)} />
         </a>
       )}
-      <div className="row" style={{ flexWrap: "wrap" }}>
+      {caption && <p className="meta picture-caption">{caption}</p>}
+      <div className="tile-actions">
+        <span className="meta">Use as</span>
         {IMAGE_SLOTS.map((slot) => (
-          <button key={slot} type="button" className="secondary" disabled={saver.saving !== null || missing} onClick={() => void saver.use(tileKey, image, jobId, slot)}>
-            {saver.saving === `${tileKey}-${slot}` ? "Saving…" : `Use as ${SLOT_NAMES[slot]}`}
+          <button
+            key={slot}
+            type="button"
+            className="secondary"
+            aria-label={`Use as ${SLOT_NAMES[slot]}`}
+            disabled={saver.saving !== null || missing}
+            onClick={() => void saver.use(tileKey, image, jobId, slot)}
+          >
+            {saver.saving === `${tileKey}-${slot}` ? "Saving…" : SLOT_TITLES[slot]}
           </button>
         ))}
         {onStart && (

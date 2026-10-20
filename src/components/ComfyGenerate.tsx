@@ -6,11 +6,10 @@ import { saveSettings, useSettings } from "@/lib/settings";
 import type { ComfySettings } from "@/lib/settingsSchema";
 import type { ImageMoment } from "@/lib/ai/imagePrompt";
 import type { LoadedPrompt } from "./ImagePromptPanel";
-import PictureTile from "./PictureTile";
-import { fromComfyImage, uploadStart, type StartPicture, type Uploaded } from "@/lib/comfy/startPicture";
-import { usePictureSaver } from "./usePictureSaver";
+import type { Candidate } from "./NewPictures";
+import { uploadStart, type StartPicture, type Uploaded } from "@/lib/comfy/startPicture";
 import { describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
-import { cancelPrompt, listCheckpoints, queuePrompt, waitForPictures, type ComfyImage, type Progress } from "@/lib/comfy/client";
+import { cancelPrompt, listCheckpoints, queuePrompt, waitForPictures, type Progress } from "@/lib/comfy/client";
 
 /** Sizes that suit SDXL (about one megapixel). */
 const SIZES: { label: string; width: number; height: number }[] = [
@@ -19,9 +18,6 @@ const SIZES: { label: string; width: number; height: number }[] = [
   { label: "Square 1024 × 1024", width: 1024, height: 1024 },
   { label: "Portrait 768 × 1344", width: 768, height: 1344 },
 ];
-
-/** `jobId` is the picture job's record in StoryTime, or null when it couldn't be recorded. */
-type Candidate = { image: ComfyImage; seed: number; key: string; jobId: string | null };
 
 /** Records a finished job in StoryTime's log; returns the record's id. */
 async function recordJob(job: Record<string, unknown>): Promise<string> {
@@ -48,19 +44,18 @@ type Props = {
   loaded?: LoadedPrompt | null;
   /** The picture new pictures start from (image to image), or null to make them from the prompt alone. */
   start?: StartPicture | null;
-  onStart?: (picture: StartPicture) => void;
   onClearStart?: () => void;
+  /** Called with each finished job's pictures. */
+  onPictures?: (pictures: Candidate[]) => void;
 };
 
-/** Makes pictures from the prompt on the ComfyUI machine, and saves the ones the author picks. */
-export default function ComfyGenerate({ chapterId, storyId, moment, prompt, negative, loaded = null, start = null, onStart, onClearStart }: Props) {
+/** Makes pictures from the prompt on the ComfyUI machine; the pictures go to `onPictures`. */
+export default function ComfyGenerate({ chapterId, storyId, moment, prompt, negative, loaded = null, start = null, onClearStart, onPictures }: Props) {
   const settings = useSettings();
   const comfy = settings.comfy;
   const [checkpoints, setCheckpoints] = useState<string[] | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
-  const saver = usePictureSaver(chapterId, comfy.url, setStatus);
   const job = useRef<{ promptId: string | null; ctl: AbortController } | null>(null);
   // The starting picture as uploaded to ComfyUI, kept so "Make more" doesn't send it again.
   const uploaded = useRef<Uploaded | null>(null);
@@ -158,7 +153,22 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
       } catch (e) {
         setStatus({ ok: false, text: `The pictures are ready, but StoryTime couldn't record how they were made: ${e instanceof Error ? e.message : String(e)}` });
       }
-      setCandidates((prev) => [...images.map((image, i) => ({ image, seed, key: `${promptId}-${i}`, jobId })), ...prev]);
+      const denoise = from ? comfy.denoise : null;
+      onPictures?.(
+        images.map((image, i) => ({
+          key: `${promptId}-${i}`,
+          image,
+          jobId,
+          prompt: prompt.trim(),
+          negative: negative.trim(),
+          seed,
+          checkpoint: comfy.checkpoint,
+          width,
+          height,
+          denoise,
+          moment,
+        })),
+      );
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") setStatus({ ok: true, text: "Stopped." });
       else setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
@@ -259,7 +269,7 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
       )}
       <div className="row" style={{ flexWrap: "wrap" }}>
         <button type="button" onClick={() => void generate()} disabled={busy || !prompt.trim()}>
-          {busy ? "Making pictures…" : candidates.length ? "Make more" : "Make pictures"}
+          {busy ? "Making pictures…" : "Make pictures"}
         </button>
         {loadedSeed !== null && (
           <label className="inline-label" title="The same seed with a slightly changed prompt gives a close variation">
@@ -280,30 +290,6 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
       </div>
       {progress?.stage === "running" && <progress value={progress.value} max={progress.max} aria-label="Progress" />}
       {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
-
-      {candidates.length > 0 && (
-        <>
-          <ul className="candidates" aria-label="Pictures from ComfyUI">
-            {candidates.map((c) => (
-              <PictureTile
-                key={c.key}
-                comfyUrl={comfy.url}
-                image={c.image}
-                tileKey={c.key}
-                jobId={c.jobId}
-                saver={saver}
-                onStart={onStart && ((image) => onStart(fromComfyImage(comfy.url, image)))}
-              />
-            ))}
-          </ul>
-          <p className="row" style={{ margin: 0 }}>
-            <button type="button" className="secondary" onClick={() => setCandidates([])} disabled={busy}>
-              Clear these pictures
-            </button>
-            <span className="meta">They stay in ComfyUI&apos;s output folder.</span>
-          </p>
-        </>
-      )}
     </div>
   );
 }

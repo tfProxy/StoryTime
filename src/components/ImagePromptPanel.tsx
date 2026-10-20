@@ -12,6 +12,7 @@ import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
 import ComfyGenerate from "./ComfyGenerate";
 import type { StartPicture } from "@/lib/comfy/startPicture";
+import type { Candidate } from "./NewPictures";
 
 const MOMENT_NAMES: Record<ImageMoment, string> = { start: "Chapter start", end: "Chapter end" };
 const STYLE_NAMES: Record<ImagePromptStyle, string> = {
@@ -25,10 +26,11 @@ export type LoadedPrompt = { nonce: number; prompt: string; negative: string; se
 type Props = {
   /** Fills in the prompt boxes when it changes. */
   loaded?: LoadedPrompt | null;
-  /** The picture new pictures start from (image to image), and how to change or drop it. */
+  /** The picture new pictures start from (image to image), and how to drop it. */
   start?: StartPicture | null;
-  onStart?: (picture: StartPicture) => void;
   onClearStart?: () => void;
+  /** Called with each finished job's pictures. */
+  onPictures?: (pictures: Candidate[]) => void;
   chapterId: string;
   story: { id: string; title: string; premise: string; art_style: string };
   /** The story from its first chapter down to the chapter being illustrated. */
@@ -39,7 +41,7 @@ type Props = {
 type Result = { scene: string; prompt: string; negative: string };
 
 /** Writes a prompt for an image generator from the chapter and the codex entries it mentions. */
-export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null, start = null, onStart, onClearStart }: Props) {
+export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null, start = null, onClearStart, onPictures }: Props) {
   const settings = useSettings();
   const chapter = path[path.length - 1];
   const [moment, setMoment] = useState<ImageMoment>("start");
@@ -233,7 +235,7 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
         negative={result.negative}
         loaded={loaded}
         start={start}
-        onStart={onStart}
+        onPictures={onPictures}
         onClearStart={onClearStart}
       />
     </section>
