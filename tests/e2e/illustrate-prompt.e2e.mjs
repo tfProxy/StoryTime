@@ -96,8 +96,14 @@ try {
   ok(await page.getByText(/^For$/).count() === 0 && await page.getByRole("option", { name: "Footer picture" }).count() === 0, "there is no For header/footer choice");
   const moment = page.getByLabel("Moment to show");
   ok((await moment.inputValue()) === "start" && (await moment.locator("option").allInnerTexts()).join("|") === "Chapter start|Chapter end", "the moment menu offers Chapter start and Chapter end, starting on Chapter start");
-  const writeRow = await page.getByRole("button", { name: "Write prompt", exact: true }).evaluate((b) => b.parentElement === document.querySelector('[aria-label="Moment to show"]').parentElement);
-  ok(writeRow, "…and sits beside the Write prompt button");
+  const order = await page.evaluate(() => {
+    const menu = document.querySelector('[aria-label="Moment to show"]');
+    const model = document.querySelector('[aria-label="Model for picture prompts"]');
+    const show = [...document.querySelectorAll("label")].find((l) => l.textContent.startsWith("What to show"));
+    const before = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    return before(menu, show) && before(menu, model);
+  });
+  ok(order, "…and comes before What to show and the model picker");
   await moment.selectOption({ label: "Chapter end" });
   await direction.fill("Jim taking the first bite [close-up]");
   reply = 'Here you go:\n```json\n{"scene":"Jim eats.","prompt":"a man with blonde hair eating a sandwich in a kitchen","negative":"text, watermark"}\n```';
@@ -139,8 +145,8 @@ try {
   await promptStyle.selectOption({ label: "Tags (SDXL, Pony, SD 1.5)" });
   ok(await until(async () => (await settingsNow()).imagePromptStyle === "tags", "the setting to be saved"), "switching back saves imagePromptStyle \"tags\"");
   await moment.selectOption({ label: "Chapter start" });
-  await direction.fill("");
-  await page.getByRole("button", { name: "Write again" }).click();
+  ok((await promptBox.inputValue()) === "" && (await direction.inputValue()) === "", "Chapter start has its own boxes, empty so far");
+  await page.getByRole("button", { name: "Write prompt", exact: true }).click();
   await page.waitForFunction(() => document.querySelector(".image-prompt-result textarea")?.value.endsWith(", watercolor storybook, soft light"));
   const again = calls.at(-1);
   ok(again.system.includes("comma-separated tags") && again.user.includes("set the scene") && !again.user.includes("closing moment") && !again.user.includes("The author wants"), "writing again uses the tag style, the chapter start task and no direction");

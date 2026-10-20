@@ -83,6 +83,14 @@ before.prepare(`INSERT INTO chapter_images (chapter_id, slot, image, type, updat
 before.exec(MIGRATIONS[10]);
 const kept = before.prepare(`SELECT type, updated_at, job_id, prompt, negative FROM chapter_images WHERE chapter_id = 'c' AND slot = 'header'`).get() as Record<string, unknown>;
 ok(kept.type === "image/png" && kept.updated_at === 7 && kept.job_id === null && kept.prompt === null && kept.negative === null, "an existing picture is kept, with no prompt");
+
+// a prompt kept per chapter (schema version 13) becomes that chapter's prompt for its moment
+for (let v = 11; v < 13; v++) before.exec(MIGRATIONS[v]);
+before.prepare(`INSERT INTO picture_drafts (chapter_id, prompt, negative, scene, direction, moment, updated_at) VALUES ('c', 'a “lamp”', 'blur', 'sc', 'dir', 'end', 9)`).run();
+before.exec(MIGRATIONS[13]);
+const moved = before.prepare(`SELECT * FROM picture_prompts`).all() as Record<string, unknown>[];
+ok(moved.length === 1 && JSON.stringify(moved[0]) === JSON.stringify({ chapter_id: "c", moment: "end", prompt: "a “lamp”", negative: "blur", scene: "sc", direction: "dir", updated_at: 9 }), "a saved prompt is kept, under the moment it was saved with");
+ok(!before.prepare(`SELECT 1 FROM sqlite_master WHERE name = 'picture_drafts'`).get(), "…and the old table is gone");
 before.close();
 d.close();
 fs.rmSync(dir, { recursive: true, force: true });

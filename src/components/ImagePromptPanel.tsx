@@ -13,8 +13,8 @@ import PromptButton from "./PromptButton";
 import ComfyGenerate from "./ComfyGenerate";
 import type { StartPicture } from "@/lib/comfy/startPicture";
 import type { Picture, PromptToLoad } from "./pictures";
-import type { PictureDraft } from "@/lib/pictureDrafts";
-import { usePictureDraft } from "./usePictureDraft";
+import type { PictureBoxes, PictureDraft } from "@/lib/pictureDrafts";
+import { EMPTY_BOXES, usePictureDraft } from "./usePictureDraft";
 
 const MOMENT_NAMES: Record<ImageMoment, string> = { start: "Chapter start", end: "Chapter end" };
 const STYLE_NAMES: Record<ImagePromptStyle, string> = {
@@ -44,22 +44,25 @@ type Props = {
   draft?: PictureDraft | null;
 };
 
-type Result = { scene: string; prompt: string; negative: string };
-
 /**
- * Writes a prompt for an image generator from the chapter and the codex entries it mentions. What is in
- * the boxes is kept for the chapter on the server, so it is there again next time.
+ * Writes a prompt for an image generator from the chapter and the codex entries it mentions. Each moment
+ * (chapter start, chapter end) has its own boxes, so switching between them brings each one's prompt back;
+ * they are kept for the chapter on the server, so they are there again next time.
  */
 export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null, start = null, onClearStart, onPictures, queueSlot, draft = null }: Props) {
   const settings = useSettings();
   const chapter = path[path.length - 1];
   const [moment, setMoment] = useState<ImageMoment>(draft?.moment ?? "start");
-  const [direction, setDirection] = useState(draft?.direction ?? "");
   const [artStyle, setArtStyle] = useState(story.art_style);
   const [savedArtStyle, setSavedArtStyle] = useState(story.art_style);
-  const [result, setResult] = useState<Result>({ scene: draft?.scene ?? "", prompt: draft?.prompt ?? "", negative: draft?.negative ?? "" });
-  const saveError = usePictureDraft(chapterId, { prompt: result.prompt, negative: result.negative, scene: result.scene, direction, moment }, draft);
-  const [written, setWritten] = useState(false);
+  // Each moment's boxes; those of the moment chosen are shown.
+  const [boxes, setBoxes] = useState<Record<ImageMoment, PictureBoxes>>(() => ({ start: draft?.start ?? EMPTY_BOXES, end: draft?.end ?? EMPTY_BOXES }));
+  const result = boxes[moment];
+  const direction = result.direction;
+  const change = (m: ImageMoment, patch: Partial<PictureBoxes>) => setBoxes((prev) => ({ ...prev, [m]: { ...prev[m], ...patch } }));
+  const saveError = usePictureDraft(chapterId, { ...result, moment }, draft);
+  // The moments a prompt was written for on this visit.
+  const [written, setWritten] = useState<Record<ImageMoment, boolean>>({ start: false, end: false });
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -67,8 +70,9 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
   const [seenLoad, setSeenLoad] = useState(0);
   if (loaded && loaded.nonce !== seenLoad) {
     setSeenLoad(loaded.nonce);
-    setResult({ scene: "", prompt: loaded.prompt, negative: loaded.negative });
-    if (loaded.moment) setMoment(loaded.moment);
+    const into = loaded.moment ?? moment;
+    change(into, { scene: "", prompt: loaded.prompt, negative: loaded.negative });
+    setMoment(into);
     setStatus({ ok: true, text: "Prompt loaded from the picture." });
   }
   const style = settings.imagePromptStyle;
@@ -98,6 +102,8 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
   }
 
   async function write() {
+    // The prompt goes to the moment it was written for, even if another is chosen meanwhile.
+    const forMoment = moment;
     const ctl = new AbortController();
     abortRef.current = ctl;
     setBusy(true);
@@ -105,8 +111,8 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
     try {
       await saveArtStyle();
       const p = await writeImagePrompt(settings, { ...options(), model, signal: ctl.signal });
-      setResult({ scene: p.scene, prompt: withArtStyle(p.prompt, artStyle, style), negative: p.negative });
-      setWritten(true);
+      change(forMoment, { scene: p.scene, prompt: withArtStyle(p.prompt, artStyle, style), negative: p.negative });
+      setWritten((prev) => ({ ...prev, [forMoment]: true }));
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) {
         setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
@@ -159,6 +165,25 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
         <span className="meta">Added to the end of every picture prompt in this story, so the pictures match.</span>
       </label>
 
+      <div className="row">
+        <label className="row" style={{ gap: "0.4rem" }}>
+          Picture for
+          <select
+            aria-label="Moment to show"
+            title="Which part of the chapter the picture shows. Each has its own prompt."
+            value={moment}
+            onChange={(e) => setMoment(e.target.value as ImageMoment)}
+            style={{ width: "auto" }}
+          >
+            {(Object.keys(MOMENT_NAMES) as ImageMoment[]).map((m) => (
+              <option key={m} value={m}>
+                {MOMENT_NAMES[m]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
       <label>
         What to show (optional)
         <input
@@ -166,7 +191,7 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
           value={direction}
           maxLength={LIMITS.label}
           placeholder="e.g. Jim taking the first bite [close-up]"
-          onChange={(e) => setDirection(e.target.value)}
+          onChange={(e) => change(moment, { direction: e.target.value })}
         />
       </label>
 
@@ -181,21 +206,8 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
           value={model}
           onChange={(ref) => void saveSettings({ ...settings, imagePromptModel: ref })}
         />
-        <select
-          aria-label="Moment to show"
-          title="Which part of the chapter the picture shows"
-          value={moment}
-          onChange={(e) => setMoment(e.target.value as ImageMoment)}
-          style={{ width: "auto" }}
-        >
-          {(Object.keys(MOMENT_NAMES) as ImageMoment[]).map((m) => (
-            <option key={m} value={m}>
-              {MOMENT_NAMES[m]}
-            </option>
-          ))}
-        </select>
         <button type="button" onClick={() => void write()} disabled={busy}>
-          {busy ? "Writing…" : written ? "Write again" : "Write prompt"}
+          {busy ? "Writing…" : written[moment] ? "Write again" : "Write prompt"}
         </button>
         <PromptButton label="Write prompt" build={() => imagePromptRequest(settings.contextTokens, options())} />
         {busy && (
@@ -214,7 +226,7 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
               style={{ minHeight: "5rem", fontFamily: "inherit" }}
               maxLength={LIMITS.picturePrompt}
               value={result.prompt}
-              onChange={(e) => setResult({ ...result, prompt: e.target.value })}
+              onChange={(e) => change(moment, { prompt: e.target.value })}
             />
           </label>
           <label>
@@ -224,7 +236,7 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
               style={{ minHeight: "2.6rem", fontFamily: "inherit" }}
               maxLength={LIMITS.picturePrompt}
               value={result.negative}
-              onChange={(e) => setResult({ ...result, negative: e.target.value })}
+              onChange={(e) => change(moment, { negative: e.target.value })}
             />
           </label>
           <div className="row" style={{ flexWrap: "wrap" }}>

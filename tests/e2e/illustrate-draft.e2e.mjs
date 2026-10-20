@@ -40,15 +40,31 @@ try {
   await promptBox.fill("a lighthouse at dusk, “gulls” – wide");
   await negativeBox.fill("blurry, text");
   await showBox.fill("the keeper at the lamp");
+  ok(await until(async () => (await saved(first))?.start.direction === "the keeper at the lamp", "the boxes to be saved"), "the boxes are saved on the server a moment after typing stops");
+  let d = await saved(first);
+  ok(d.moment === "start" && d.start.prompt === "a lighthouse at dusk, “gulls” – wide" && d.start.negative === "blurry, text", "…the prompt, negative prompt and What to show, quotes and dashes intact, for Chapter start");
+
+  // ---- each moment has its own prompt ----
   await momentMenu.selectOption("end");
-  ok(await until(async () => (await saved(first))?.moment === "end", "the boxes to be saved"), "the boxes are saved on the server a moment after typing stops");
-  const d = await saved(first);
-  ok(d.prompt === "a lighthouse at dusk, “gulls” – wide" && d.negative === "blurry, text" && d.direction === "the keeper at the lamp", "…the prompt, negative prompt and What to show, quotes and dashes intact");
+  ok((await promptBox.inputValue()) === "" && (await negativeBox.inputValue()) === "" && (await showBox.inputValue()) === "", "switching to Chapter end shows its own, empty, boxes");
+  await promptBox.fill("the lamp goes out");
+  await showBox.fill("the dark tower");
+  await momentMenu.selectOption("start");
+  ok((await promptBox.inputValue()) === "a lighthouse at dusk, “gulls” – wide" && (await negativeBox.inputValue()) === "blurry, text" && (await showBox.inputValue()) === "the keeper at the lamp", "switching back to Chapter start brings back its prompt");
+  await momentMenu.selectOption("end");
+  ok((await promptBox.inputValue()) === "the lamp goes out" && (await showBox.inputValue()) === "the dark tower", "…and back again, Chapter end's");
+  ok(await until(async () => (await saved(first))?.moment === "end", "Chapter end to be saved"), "the moment shown last is saved as the current one");
+  d = await saved(first);
+  ok(d.end.prompt === "the lamp goes out" && d.start.prompt === "a lighthouse at dusk, “gulls” – wide", "…with both moments' prompts kept, the change made just before switching included");
 
   // ---- back on the page ----
   await open(first);
-  ok((await promptBox.inputValue()) === "a lighthouse at dusk, “gulls” – wide" && (await negativeBox.inputValue()) === "blurry, text", "reopening the page brings back the prompt and negative prompt");
-  ok((await showBox.inputValue()) === "the keeper at the lamp" && (await momentMenu.inputValue()) === "end", "…What to show, and the moment");
+  ok((await momentMenu.inputValue()) === "end" && (await promptBox.inputValue()) === "the lamp goes out" && (await showBox.inputValue()) === "the dark tower", "reopening the page brings back the moment shown last, with its prompt and What to show");
+  await momentMenu.selectOption("start");
+  ok((await promptBox.inputValue()) === "a lighthouse at dusk, “gulls” – wide" && (await negativeBox.inputValue()) === "blurry, text", "…and the other moment's prompt and negative prompt");
+  ok(await until(async () => (await saved(first))?.moment === "start", "the moment to be saved"), "choosing a moment without typing still makes it the one the page opens on");
+  await open(first);
+  ok((await momentMenu.inputValue()) === "start" && (await showBox.inputValue()) === "the keeper at the lamp", "…as reopening shows");
   const fresh = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const phone = await fresh.newPage();
   await phone.goto(`${BASE}/c/${first}/illustrate`);
@@ -64,13 +80,13 @@ try {
   await promptBox.fill("changed just before a reload");
   await page.reload();
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
-  ok(await until(async () => (await saved(first))?.prompt === "changed just before a reload", "the change to be sent as the page went away"), "a change made just before reloading is still saved");
+  ok(await until(async () => (await saved(first))?.start.prompt === "changed just before a reload", "the change to be sent as the page went away"), "a change made just before reloading is still saved");
   await open(first);
   ok((await promptBox.inputValue()) === "changed just before a reload", "…and shows when the page opens again");
   await promptBox.fill("changed just before leaving");
   await page.getByRole("link", { name: "← Back to “First”" }).click();
   await page.waitForURL(`${BASE}/c/${first}`);
-  ok(await until(async () => (await saved(first))?.prompt === "changed just before leaving", "the change to be sent on leaving"), "…and so is one made just before going back to the chapter");
+  ok(await until(async () => (await saved(first))?.start.prompt === "changed just before leaving", "the change to be sent on leaving"), "…and so is one made just before going back to the chapter");
 
   // ---- a save that fails says so ----
   await open(first);
@@ -81,7 +97,7 @@ try {
   await page.unroute("**/picture-draft");
   await promptBox.fill("this one will");
   await page.getByText("Couldn't keep the prompt for next time").waitFor({ state: "detached" });
-  ok((await saved(first)).prompt === "this one will", "…and the message goes once a later save works");
+  ok((await saved(first)).start.prompt === "this one will", "…and the message goes once a later save works");
 } finally {
   await browser.close();
 }

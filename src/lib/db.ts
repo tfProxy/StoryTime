@@ -240,6 +240,23 @@ export const MIGRATIONS: string[] = [
     PRIMARY KEY (job_id, image_index)
   );
   `,
+  // 14: the prompt boxes are kept per moment (chapter start, chapter end), so switching between them
+  // brings each one's prompt back. The moment shown on return is the one saved last.
+  `
+  CREATE TABLE picture_prompts (
+    chapter_id TEXT NOT NULL REFERENCES chapters(id),
+    moment     TEXT NOT NULL CHECK (moment IN ('start', 'end')),
+    prompt     TEXT NOT NULL DEFAULT '',
+    negative   TEXT NOT NULL DEFAULT '',
+    scene      TEXT NOT NULL DEFAULT '',
+    direction  TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (chapter_id, moment)
+  );
+  INSERT INTO picture_prompts (chapter_id, moment, prompt, negative, scene, direction, updated_at)
+    SELECT chapter_id, moment, prompt, negative, scene, direction, updated_at FROM picture_drafts;
+  DROP TABLE picture_drafts;
+  `,
 ];
 
 function open(): Database.Database {

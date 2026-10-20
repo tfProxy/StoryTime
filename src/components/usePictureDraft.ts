@@ -1,53 +1,67 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { PictureDraft } from "@/lib/pictureDrafts";
+import type { PictureBoxes, PictureDraft, PictureDraftInput } from "@/lib/pictureDrafts";
 
 // How long typing has to pause before the prompt boxes are saved.
 const PAUSE_MS = 700;
 
-const EMPTY: PictureDraft = { prompt: "", negative: "", scene: "", direction: "", moment: "start" };
-const keyOf = (d: PictureDraft) => JSON.stringify([d.prompt, d.negative, d.scene, d.direction, d.moment]);
+export const EMPTY_BOXES: PictureBoxes = { prompt: "", negative: "", scene: "", direction: "" };
 
-function put(url: string, draft: PictureDraft, keepalive = false) {
+const keyOf = (d: PictureDraftInput) => JSON.stringify([d.prompt, d.negative, d.scene, d.direction, d.moment]);
+
+function put(url: string, draft: PictureDraftInput, keepalive = false) {
   return fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft), keepalive });
 }
 
 /**
- * Keeps the chapter's prompt boxes saved on the server: a moment after each change, and straight away when
- * the page is left (closed, reloaded, or another page opened in the app). `saved` is what the page opened
- * with. Returns why the last save failed, or null.
+ * Keeps the chapter's prompt boxes saved on the server, for the moment being shown: a moment after each
+ * change, and straight away when the page is left (closed, reloaded, or another page opened in the app) or
+ * another moment is chosen. Choosing a moment saves it too, so the page opens on it next time. `saved` is
+ * what the page opened with. Returns why the last save failed, or null.
  */
-export function usePictureDraft(chapterId: string, current: PictureDraft, saved: PictureDraft | null): string | null {
+export function usePictureDraft(chapterId: string, current: PictureDraftInput, saved: PictureDraft | null): string | null {
   const url = `/api/chapters/${chapterId}/picture-draft`;
   const [error, setError] = useState<string | null>(null);
-  // What the server has, and a change not sent yet.
-  const stored = useRef(keyOf(saved ?? EMPTY));
-  const pending = useRef<PictureDraft | null>(null);
+  // What the server has as the current moment's boxes, and a change not sent yet.
+  const stored = useRef(keyOf(saved ? { moment: saved.moment, ...saved[saved.moment] } : { moment: "start", ...EMPTY_BOXES }));
+  const pending = useRef<PictureDraftInput | null>(null);
+  // Saves go one after another: the one saved last decides the moment the page opens on.
+  const queue = useRef<Promise<void>>(Promise.resolve());
   const key = keyOf(current);
 
   useEffect(() => {
-    if (key === stored.current) {
-      pending.current = null;
-      return;
-    }
-    const draft: PictureDraft = JSON.parse(JSON.stringify(current));
-    pending.current = draft;
-    const timer = setTimeout(() => {
-      pending.current = null;
-      put(url, draft).then(
-        async (res) => {
-          if (res.ok) {
-            stored.current = keyOf(draft);
-            setError(null);
-          } else {
-            const data = await res.json().catch(() => ({}));
-            setError(data.error ?? `the server answered ${res.status}`);
-          }
-        },
-        () => setError("StoryTime couldn't be reached"),
+    const send = (draft: PictureDraftInput) => {
+      queue.current = queue.current.then(() =>
+        put(url, draft).then(
+          async (res) => {
+            if (res.ok) {
+              stored.current = keyOf(draft);
+              setError(null);
+            } else {
+              const data = await res.json().catch(() => ({}));
+              setError(data.error ?? `the server answered ${res.status}`);
+            }
+          },
+          () => setError("StoryTime couldn't be reached"),
+        ),
       );
-    }, PAUSE_MS);
+    };
+    const draft: PictureDraftInput = { ...current };
+    // A change to the other moment's boxes still waiting is sent now, before this moment's.
+    const waiting = pending.current;
+    pending.current = null;
+    const switched = waiting !== null && waiting.moment !== draft.moment;
+    if (switched) send(waiting);
+    if (key === stored.current && !switched) return;
+    pending.current = draft;
+    const timer = setTimeout(
+      () => {
+        pending.current = null;
+        send(draft);
+      },
+      switched ? 0 : PAUSE_MS,
+    );
     return () => clearTimeout(timer);
     // `current` is fully described by `key`
     // eslint-disable-next-line react-hooks/exhaustive-deps

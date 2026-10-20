@@ -375,8 +375,8 @@ try {
   // ---- the WebSocket refused: the page finds the pictures by polling ----
   comfy.setMode({ ws: false, steps: 2, stepDelay: 100, startDelay: 200, fail: null });
   await openIllustrate();
-  await promptBox.fill("a lighthouse in fog");
   await page.getByLabel("Moment to show").selectOption("end");
+  await promptBox.fill("a lighthouse in fog");
   const pollMark = comfy.calls.length;
   await makeButton.click();
   await page.locator(".candidates li").first().waitFor({ timeout: 15000 });
