@@ -67,25 +67,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
         />
       </div>
       <div className="illustrate-gallery">
-        {comfy.url && (
-          <NewPictures
-            chapterId={chapterId}
-            comfyUrl={comfy.url}
-            candidates={candidates}
-            onClear={() => setCandidates([])}
-            queueRef={setQueueSlot}
-            onStart={(image) => startFrom(fromComfyImage(comfy.url, image))}
-            onLoadPrompt={(c) =>
-              load({
-                prompt: c.prompt,
-                negative: c.negative,
-                seed: c.seed,
-                settings: { checkpoint: c.checkpoint, width: c.width, height: c.height, denoise: c.denoise },
-                moment: c.moment,
-              })
-            }
-          />
-        )}
+        {/* The chosen pictures first, to compare the new ones with. */}
         <div className="image-editors">
           {IMAGE_SLOTS.map((slot) => (
             <ChapterImageEditor
@@ -106,6 +88,25 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
             />
           ))}
         </div>
+        {comfy.url && (
+          <NewPictures
+            chapterId={chapterId}
+            comfyUrl={comfy.url}
+            candidates={candidates}
+            onClear={() => setCandidates([])}
+            queueRef={setQueueSlot}
+            onStart={(image) => startFrom(fromComfyImage(comfy.url, image))}
+            onLoadPrompt={(c) =>
+              load({
+                prompt: c.prompt,
+                negative: c.negative,
+                seed: c.seed,
+                settings: { checkpoint: c.checkpoint, width: c.width, height: c.height, denoise: c.denoise },
+                moment: c.moment,
+              })
+            }
+          />
+        )}
         <PastPictures chapterId={chapterId} storyId={story.id} titles={titles} onLoadPrompt={load} onStart={(image) => startFrom(fromComfyImage(comfy.url, image))} />
       </div>
     </div>

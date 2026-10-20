@@ -198,6 +198,9 @@ try {
   await preview.waitFor();
   await page.waitForFunction(() => { const i = document.querySelector(".image-editor img.image-editor-preview"); return !!i && i.complete && i.naturalWidth > 0; });
   ok(await preview.evaluate((i) => i.naturalWidth > 0), "…and the Header picture card shows it");
+  const headerCardBox = await card("Header picture").boundingBox();
+  const newBox = await page.locator(".new-pictures").boundingBox();
+  ok(headerCardBox.y + headerCardBox.height <= newBox.y + 1, "the chosen header and footer cards are above New pictures, to compare with");
   ok((await fetch(`${BASE}/api/chapters/${chapterId}/images/footer`)).status === 404, "…the footer is untouched");
   ok(await items.count() === 2, "the candidates are still there after the page refreshed");
   const savedWith = async () => (await get(`/api/stories/${storyId}/export?format=json`)).images;
