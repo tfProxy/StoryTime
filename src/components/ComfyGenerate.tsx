@@ -45,7 +45,15 @@ function progressText(p: JobProgress): string {
 }
 
 /** A job being made, as listed under the Make pictures button. */
-type Queued = { key: string; prompt: string; count: number; progress: JobProgress };
+type Queued = {
+  key: string;
+  prompt: string;
+  count: number;
+  progress: JobProgress;
+  /** The pictures' size, for their placeholders: the size setting, or the starting picture's once it is read. */
+  width: number;
+  height: number;
+};
 
 /** Everything a job is made with, as it was when it was asked for. */
 type JobInput = {
@@ -194,7 +202,7 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
     jobs.current.set(key, { promptId: null, ctl: new AbortController() });
     const next: Gathering = { key, input, count: 1, timer: setTimeout(() => send(next), GATHER_MS) };
     gathering.current = next;
-    setQueue((prev) => [...prev, { key, prompt: input.prompt, count: 1, progress: { stage: "gathering" } }]);
+    setQueue((prev) => [...prev, { key, prompt: input.prompt, count: 1, progress: { stage: "gathering" }, width: comfy.width, height: comfy.height }]);
   }
 
   /** Sends a gathered job: no more clicks join it. */
@@ -243,6 +251,7 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
       // From a picture the pictures are its size.
       const width = from?.width ?? comfy.width;
       const height = from?.height ?? comfy.height;
+      if (from) setQueue((prev) => prev.map((q) => (q.key === key ? { ...q, width, height } : q)));
       const workflow = fillWorkflow(base, {
         prompt,
         negative,
@@ -439,10 +448,18 @@ export default function ComfyGenerate({ chapterId, storyId, moment, prompt, nega
                   Stop
                 </button>
               </div>
-              <span className="meta" role="status">
-                {progressText(q.progress)}
-              </span>
-              {q.progress.stage === "running" && <progress value={q.progress.value} max={q.progress.max} aria-label="Progress" />}
+              {/* The pictures' places, kept for them at their size, with the job's progress over them. */}
+              {/* The pictures of a job are made together, so each shows the job's progress; only the first is read out. */}
+              <div className="comfy-pending-tiles">
+                {Array.from({ length: q.count }, (_, i) => (
+                  <div key={i} className="comfy-pending-tile" style={{ aspectRatio: `${q.width} / ${q.height}` }}>
+                    <div className="comfy-pending-progress" aria-hidden={i > 0 || undefined}>
+                      <span role={i === 0 ? "status" : undefined}>{progressText(q.progress)}</span>
+                      {q.progress.stage === "running" && <progress value={q.progress.value} max={q.progress.max} aria-label={i === 0 ? "Progress" : undefined} />}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </li>
           ))}
         </ul>,

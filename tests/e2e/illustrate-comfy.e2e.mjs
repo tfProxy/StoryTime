@@ -150,6 +150,7 @@ try {
   ok(await until(async () => (await gatherRow.innerText()).includes("a lighthouse at dawn, gulls ×1") && (await gatherRow.innerText()).includes("Click again for more pictures in this job"), "the gathering job"), "a click lists a job of one picture that a moment more can still add to");
   await makeButton.click();
   ok(await until(async () => (await gatherRow.innerText()).includes("×2"), "×2") && await page.locator(".comfy-queue li").count() === 1, "…and a second quick click adds a picture to it rather than a job");
+  ok(await gatherRow.locator(".comfy-pending-tile").count() === 2, "…and a place for its picture straight away");
   await until(() => promptCalls(mark).length === 1, "the job to be sent");
   ok(Object.values(promptCalls(mark)[0].body.prompt).find((n) => n.class_type === "EmptyLatentImage").inputs.batch_size === 2, "…which goes to ComfyUI as one job of two pictures once the clicks stop");
   await live.filter({ hasText: /Step \d+ of 8/ }).waitFor();
@@ -158,6 +159,10 @@ try {
   ok((await page.locator(".comfy-queue li").innerText()).includes("a lighthouse at dawn, gulls ×2"), "…the job is listed with its prompt and how many pictures it makes");
   ok(await page.locator(".chapter-pictures .comfy-queue").count() === 1, "…at the top of the Pictures panel, where its pictures will arrive");
   ok(await page.locator('progress[aria-label="Progress"]').isVisible(), "…with a progress bar");
+  const pending = page.locator(".comfy-pending-tile");
+  const pendingBoxes = await pending.evaluateAll((ts) => ts.map((t) => { const r = t.getBoundingClientRect(); return { w: r.width, h: r.height }; }));
+  ok(pendingBoxes.length === 2 && pendingBoxes.every((b) => Math.abs(b.w / b.h - 1344 / 768) < 0.02 && b.w > 300), "a place is kept for each of the job's two pictures, at their shape (1344 × 768)");
+  ok(await pending.nth(1).locator("progress").isVisible() && await live.count() === 1, "…each with the job's progress over it (read out once)");
   await items.first().waitFor();
   await picturesLoaded(2);
   ok(await items.count() === 2, "two pictures appear");
@@ -167,6 +172,7 @@ try {
   ok((await page.locator(".picture-caption").first().innerText()).startsWith("fake_sdxl_b · 1344 × 768 · seed "), "each picture says its checkpoint, size and seed");
   const boxes = await page.locator(".candidates img").evaluateAll((imgs) => imgs.map((i) => { const r = i.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }));
   ok(boxes.length === 2 && boxes[1].x > boxes[0].x + boxes[0].w - 1 && Math.abs(boxes[0].y - boxes[1].y) < 2 && boxes[0].w > 300, "at 1000px wide the pictures sit two side by side");
+  ok(Math.abs(boxes[0].w - pendingBoxes[0].w) < 2, "…as wide as the places kept for them");
   const clearBox = await page.getByRole("button", { name: "Clear unpinned" }).boundingBox();
   ok(clearBox.y < boxes[0].y, "Clear unpinned is above the pictures");
   const srcs = await page.locator(".candidates img").evaluateAll((imgs) => imgs.map((i) => i.src));
