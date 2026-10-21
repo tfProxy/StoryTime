@@ -2,6 +2,8 @@ services:
   storytime:
     # Builds straight from GitHub when the stack is started; there is no registry or prebuilt image.
     # To build from this folder instead, replace the line below with `build: .`
+    # Faster: pull the image GitHub Actions builds and tests on each push to main, by replacing the
+    # line below with `image: ghcr.io/tfproxy/storytime:latest` (update with `docker compose pull`).
     build: https://github.com/tfProxy/StoryTime.git#main
     container_name: storytime
     ports:
