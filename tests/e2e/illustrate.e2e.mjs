@@ -86,8 +86,8 @@ await footer.waitFor();
 await page.waitForFunction(() => [...document.querySelectorAll("img.chapter-image")].every((i) => i.complete && i.naturalWidth > 0));
 ok((await loaded(header)) && (await loaded(footer)), "both pictures load on the chapter page");
 const hb = await header.boundingBox(), h1 = await page.locator("h1").boundingBox();
-ok(hb.y + hb.height <= h1.y + 1, "the header picture sits above the title");
 const prose = await page.locator(".prose").boundingBox(), fb = await footer.boundingBox(), choices = await page.locator("section.choices").boundingBox();
+ok(h1.y + h1.height <= hb.y + 1 && hb.y + hb.height <= prose.y + 1, "the header picture sits after the title, before the text");
 ok(prose.y + prose.height <= fb.y + 1 && fb.y + fb.height <= choices.y + 1, "the footer picture sits between the text and the choices");
 
 // ---- the path page shows the pictures of the chapters on the way ----
@@ -98,7 +98,7 @@ await rootSection.locator("img.chapter-image-footer").waitFor();
 await page.waitForFunction(() => [...document.querySelectorAll("img.chapter-image")].every((i) => i.complete && i.naturalWidth > 0));
 const sh = await rootSection.locator("img.chapter-image-header").boundingBox(), st = await rootSection.locator("h2").boundingBox();
 const sp = await rootSection.locator(".prose").boundingBox(), sf = await rootSection.locator("img.chapter-image-footer").boundingBox();
-ok(sh.y + sh.height <= st.y + 1 && sp.y + sp.height <= sf.y + 1, "the path page shows the earlier chapter's pictures around its text");
+ok(st.y + st.height <= sh.y + 1 && sh.y + sh.height <= sp.y + 1 && sp.y + sp.height <= sf.y + 1, "the path page shows the earlier chapter's header after its title and its footer after its text");
 ok((await childSection.locator("img").count()) === 0, "…and none for a chapter without any");
 
 // ---- a file that isn't a picture is turned down ----

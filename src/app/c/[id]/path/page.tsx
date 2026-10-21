@@ -28,10 +28,10 @@ export default async function PathPage({ params }: { params: Promise<{ id: strin
       <h1>{story.title}</h1>
       {path.map((p, i) => (
         <section key={p.id} id={`c-${p.id}`}>
-          <ChapterImage chapterId={p.id} slot="header" version={images.get(p.id)!.header} />
           <h2>
             {i + 1}. <Link href={`/c/${p.id}`}>{p.title}</Link>
           </h2>
+          <ChapterImage chapterId={p.id} slot="header" version={images.get(p.id)!.header} />
           <Prose text={p.body} />
           <ChapterImage chapterId={p.id} slot="footer" version={images.get(p.id)!.footer} />
         </section>

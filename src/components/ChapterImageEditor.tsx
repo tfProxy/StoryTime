@@ -11,7 +11,7 @@ import type { StartMode } from "./pictures";
 const MAX_SIDE = 1600;
 
 const LABELS: Record<ImageSlot, { title: string; where: string }> = {
-  header: { title: "Header picture", where: "Shown above the chapter's title." },
+  header: { title: "Header picture", where: "Shown after the chapter's title, before its text." },
   footer: { title: "Footer picture", where: "Shown after the chapter's text, before the choices." },
 };
 

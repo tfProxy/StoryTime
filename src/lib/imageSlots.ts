@@ -1,5 +1,5 @@
 // A chapter's illustration slots. Pure code: used by the server and the browser.
-// The header sits above the chapter's title and the footer after its text.
+// The header sits after the chapter's title, before its text, and the footer after its text.
 
 export const IMAGE_SLOTS = ["header", "footer"] as const;
 export type ImageSlot = (typeof IMAGE_SLOTS)[number];

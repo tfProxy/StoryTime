@@ -49,13 +49,13 @@ export default async function ChapterPage({
         ))}
       </nav>
 
-      <ChapterImage chapterId={chapter.id} slot="header" version={images.header} />
       <h1>{chapter.title}</h1>
       {chapter.edited_at && (
         <p className="meta">
           <Link href={`/c/${chapter.id}/history`}>edited {new Date(chapter.edited_at).toISOString().slice(0, 10)}</Link>
         </p>
       )}
+      <ChapterImage chapterId={chapter.id} slot="header" version={images.header} />
       <Prose text={chapter.body} />
       <ChapterImage chapterId={chapter.id} slot="footer" version={images.footer} />
 
