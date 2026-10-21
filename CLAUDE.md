@@ -37,7 +37,8 @@ Match the checks to the size of the change. GitHub Actions runs everything (type
 ## Git
 
 - One logical change per commit. Do not fold unrequested cleanup (fixture changes, column drops, refactors) into a requested change; ask first.
-- Commit or push only when asked. Before pushing, list any other unpushed commits (`git log origin/main..HEAD --oneline`) and flag any that contain a migration or a destructive change.
+- **"Ship it"** means: run the checks for the size of the change (see Verification), commit, and get the work onto `main`. On `main` already (the owner's PC), `git pull` and push. On another branch (a cloud session gets its own), `git fetch origin main`, merge `origin/main` into the branch, push the branch, then `git push origin HEAD:main`. Then wait for the CI run on that commit (GitHub tools or `gh run watch`; about 5 minutes); if it fails, read the log, fix, and push again until it passes. Report the result in a line or two and say the NAS can be updated. If you can't see CI from where you are, say so and ask the owner to check the Actions tab.
+- Otherwise, commit or push only when asked. Before pushing, list any other unpushed commits (`git log origin/main..HEAD --oneline`) and flag any that contain a migration or a destructive change.
 - If git has no author identity configured, stop and tell the user; do not leave files staged.
 - On PowerShell, write multi-line commit messages to a temp file and use `git commit -F`, or use a single-quoted here-string. Git Bash heredocs work too.
 
