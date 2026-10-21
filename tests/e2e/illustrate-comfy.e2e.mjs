@@ -667,7 +667,7 @@ try {
 
   // ---- pictures per click ----
   const perClick = page.getByLabel("Pictures per click");
-  ok((await perClick.locator("option").allInnerTexts()).join("|") === "1 picture|2 pictures|4 pictures|5 pictures|8 pictures" && await perClick.inputValue() === "1", "beside Queue, a menu offers 1, 2, 4, 5 or 8 pictures per click, and starts at 1");
+  ok((await perClick.locator("option").allInnerTexts()).join("|") === "1|2|4|5|8" && await perClick.inputValue() === "1", "beside Queue, a menu offers 1, 2, 4, 5 or 8 pictures per click, and starts at 1");
   await promptBox.fill("a kettle on a stove");
   await perClick.selectOption("4");
   ok(await until(async () => (await settingsNow()).comfy.queueCount === 4, "the choice to be saved"), "choosing 4 saves it in Settings");

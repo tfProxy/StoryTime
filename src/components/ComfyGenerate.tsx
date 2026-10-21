@@ -684,7 +684,7 @@ export default function ComfyGenerate({
         >
           {QUEUE_COUNTS.map((n) => (
             <option key={n} value={n}>
-              {n === 1 ? "1 picture" : `${n} pictures`}
+              {n}
             </option>
           ))}
         </select>
