@@ -92,6 +92,11 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
   // The viewer goes through the pictures in the order they are shown.
   const ordered = groups.flatMap((g) => g.pictures);
   const viewed = ordered.find((p) => p.key === viewing) ?? null;
+  /** Shows a picture full size; a new one is no longer marked new. */
+  function show(key: string | null) {
+    setViewing(key);
+    if (key && pictures.some((p) => p.key === key && p.isNew)) onChange(key, { isNew: false });
+  }
 
   /** A mark changed in the viewer: when it takes the picture out of this view, the viewer moves on to the next one. */
   function markInViewer(p: Picture, next: PictureMark | null) {
@@ -213,8 +218,10 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
                   onMark={(next) => void mark(p, next)}
                   onOpen={() => {
                     setStatus(null);
-                    setViewing(p.key);
+                    show(p.key);
                   }}
+                  isNew={p.isNew}
+                  onTouched={p.isNew ? () => onChange(p.key, { isNew: false }) : undefined}
                   onLoadPrompt={() => loadFrom(p)}
                   onInfo={() => setInfo(p)}
                 />
@@ -245,7 +252,7 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
           list={ordered}
           current={viewed}
           inUse={inUse(viewed)}
-          onShow={setViewing}
+          onShow={show}
           onClose={() => setViewing(null)}
           onMark={markInViewer}
           onLoadPrompt={(p) => {

@@ -66,12 +66,17 @@ try {
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   ok(await until(async () => (await tiles.count()) === 1, "the picture on the chapter's page"), "Open goes to the chapter, where the picture shows with the new ones");
   ok(await until(async () => (await badge.count()) === 0, "the header to clear"), "…and the header no longer lists it");
+  ok((await tiles.first().locator(".picture-new").count()) === 1, "…marked New, as it finished while the page wasn't open");
+  await tiles.first().locator("img").click();
+  await page.keyboard.press("Escape");
+  ok(await until(async () => (await tiles.first().locator(".picture-new").count()) === 0, "the New badge to go"), "opening the picture takes its New badge off");
 
   // ---- made while the chapter's page is open: never \"ready\" in the header ----
   await page.getByRole("button", { name: "Queue", exact: true }).click();
   await until(() => posted() === 2, "the second job to be sent", 60);
   ok(await until(async () => (await tiles.count()) === 2, "the second picture", 100), "a job finishing on its own chapter's page shows there");
   ok((await badge.count()) === 0, "…and isn't listed as ready in the header");
+  ok((await page.locator(".candidates .picture-new").count()) === 0, "…or marked New");
 
   // ---- left with a full page load, so only ComfyUI and the server know of the job ----
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("gulls over the harbour");
@@ -87,11 +92,14 @@ try {
   await page.waitForURL(`${BASE}/c/${chapterId}/illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   ok(await until(async () => (await tiles.count()) === 1, "the new picture"), "its chapter's page shows it with the new ones");
+  ok(await until(async () => (await tiles.first().locator(".picture-new").count()) === 1, "the New badge"), "…marked New");
+  await tiles.first().getByRole("button", { name: /pin/i }).first().click();
+  ok(await until(async () => (await tiles.first().locator(".picture-new").count()) === 0, "the New badge to go"), "pinning it takes its New badge off");
   ok(await until(async () => (await call("GET", "/api/picture-jobs?unseen=1")).jobs.length === 0, "the job to be marked seen"), "…and it is marked seen");
   await page.reload();
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   await new Promise((r) => setTimeout(r, 800));
-  ok((await tiles.count()) === 0 && (await badge.count()) === 0, "once seen, it is no longer new on the page or ready in the header");
+  ok((await tiles.count()) === 1 && (await page.locator(".candidates .picture-new").count()) === 0 && (await badge.count()) === 0, "once seen, it shows only because it is pinned: not New on the page or ready in the header");
 
   // ---- Stop from the list ----
   await page.getByRole("button", { name: "Queue", exact: true }).click();

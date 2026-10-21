@@ -292,7 +292,8 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
       if (waiting.length) {
         update((prev) => prev.filter((j) => !waiting.includes(j)));
         for (const j of waiting) {
-          if (j.pictures) listener.onPictures(j.pictures);
+          // They finished while the page wasn't open, so they are marked new there.
+          if (j.pictures) listener.onPictures(j.pictures.map((p) => ({ ...p, isNew: true })));
           if (j.message) listener.onStatus({ ok: false, text: j.message });
         }
         markJobsSeen(waiting.filter((j) => j.unseen).flatMap((j) => jobIdsOf(j.pictures)));

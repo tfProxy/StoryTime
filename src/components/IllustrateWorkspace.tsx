@@ -143,9 +143,10 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
           // recorded); it is new all the same.
           onPictures={(made) =>
             setPictures((prev) => {
-              const keys = new Set(made.map((m) => m.key));
-              const listed = new Set(prev.filter((p) => keys.has(p.key)).map((p) => p.key));
-              return [...made.filter((m) => !listed.has(m.key)), ...prev.map((p) => (keys.has(p.key) ? { ...p, fresh: true } : p))];
+              const byKey = new Map(made.map((m) => [m.key, m]));
+              const listed = new Set(prev.filter((p) => byKey.has(p.key)).map((p) => p.key));
+              const again = (p: Picture) => ({ ...p, fresh: true, isNew: p.isNew || byKey.get(p.key)!.isNew });
+              return [...made.filter((m) => !listed.has(m.key)), ...prev.map((p) => (byKey.has(p.key) ? again(p) : p))];
             })
           }
           onQueue={setPending}
@@ -195,7 +196,8 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
             titles={titles}
             comfyUrl={comfy.url}
             pictures={pictures}
-            onChange={(key, patch) => setPictures((prev) => prev.map((p) => (p.key === key ? { ...p, ...patch } : p)))}
+            // Any change to a picture (pinning, trashing…) means it has been looked at, so it is no longer marked new.
+            onChange={(key, patch) => setPictures((prev) => prev.map((p) => (p.key === key ? { ...p, isNew: false, ...patch } : p)))}
             onClear={() => setPictures((prev) => prev.map((p) => (p.fresh ? { ...p, fresh: false } : p)))}
             pending={pending}
             onStart={(image, mode) => startFrom(fromComfyImage(comfy.url, image), mode)}

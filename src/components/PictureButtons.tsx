@@ -14,10 +14,15 @@ const SLOT_TITLES: Record<ImageSlot, string> = { header: "Header", footer: "Foot
 const SLOT_ICONS: Record<ImageSlot, () => React.JSX.Element> = { header: HeaderIcon, footer: FooterIcon };
 
 /** On the picture's top left corner: which of the chapter's slots it is saved in now, if any, and whether it is the picture being edited or redrawn. */
-export function InUseBadge({ inUse, editing = false }: { inUse: ImageSlot[]; editing?: boolean }) {
-  if (inUse.length === 0 && !editing) return null;
+export function InUseBadge({ inUse, editing = false, isNew = false }: { inUse: ImageSlot[]; editing?: boolean; isNew?: boolean }) {
+  if (inUse.length === 0 && !editing && !isNew) return null;
   return (
     <div className="picture-in-use">
+      {isNew && (
+        <span className="picture-new" title="Finished while you were away">
+          ✦ New
+        </span>
+      )}
       {editing && (
         <span title="New pictures are being made from this one">
           <PencilIcon /> Editing

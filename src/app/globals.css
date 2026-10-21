@@ -1989,6 +1989,12 @@ dialog.picture-viewer::backdrop {
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
 }
 
+/* A picture that finished while the page wasn't open, until it is touched. */
+.picture-in-use .picture-new {
+  background: #2e7d4f;
+  color: #ffffff;
+}
+
 
 .picture-tile.pinned img,
 .picture-tile.pinned .picture-missing {

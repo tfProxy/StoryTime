@@ -52,6 +52,8 @@ export type Picture = {
   batch: number;
   mark: PictureMark | null;
   fresh: boolean;
+  /** Its job finished while the chapter's page wasn't open, and the picture hasn't been touched since this page opened: it has a New badge. */
+  isNew?: boolean;
 };
 
 /** A chapter's recorded jobs (newest first) as pictures; those not seen yet (finished while the page wasn't open) are fresh. */
@@ -78,6 +80,7 @@ export function picturesOf(jobs: PictureJob[]): Picture[] {
       batch: job.images.length,
       mark: job.marks[index] ?? null,
       fresh: job.seen_at === null,
+      isNew: job.seen_at === null,
     })),
   );
 }

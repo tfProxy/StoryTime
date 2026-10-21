@@ -37,6 +37,10 @@ type Props = {
   onOpen?: () => void;
   /** Shows everything the picture was made with (the Info popup). */
   onInfo?: () => void;
+  /** It finished while the page wasn't open, and hasn't been touched since: it has a New badge. */
+  isNew?: boolean;
+  /** Called when the picture or one of its buttons is clicked or tapped. */
+  onTouched?: () => void;
 };
 
 /**
@@ -44,11 +48,12 @@ type Props = {
  * when it is the chapter's header or footer now, a badge saying so. A picture ComfyUI no longer has (or
  * can't be reached for) says so, and can't be used.
  */
-export default function PictureTile({ comfyUrl, image, tileKey, jobId, index, saver, inUse = [], editing = false, onStart, editBlocked = null, caption, onLoadPrompt, mark = null, onMark, onOpen, onInfo }: Props) {
+export default function PictureTile({ comfyUrl, image, tileKey, jobId, index, saver, inUse = [], editing = false, onStart, editBlocked = null, caption, onLoadPrompt, mark = null, onMark, onOpen, onInfo, isNew = false, onTouched }: Props) {
   const [missing, setMissing] = useState(false);
   const src = imageUrl(comfyUrl, image);
   return (
-    <li className={`picture-tile${mark ? ` ${mark}` : ""}${inUse.length ? " in-use" : ""}${editing ? " editing" : ""}`}>
+    // Any click or tap on the picture or its buttons counts as having looked at it (not a scroll that starts on it).
+    <li className={`picture-tile${mark ? ` ${mark}` : ""}${inUse.length ? " in-use" : ""}${editing ? " editing" : ""}`} onClickCapture={onTouched}>
       <div className="picture-frame">
         {missing ? (
           <p className="meta picture-missing" role="status">
@@ -70,7 +75,7 @@ export default function PictureTile({ comfyUrl, image, tileKey, jobId, index, sa
             <img src={src} alt={`Picture ${image.filename}`} loading="lazy" onError={() => setMissing(true)} />
           </a>
         )}
-        <InUseBadge inUse={inUse} editing={editing} />
+        <InUseBadge inUse={inUse} editing={editing} isNew={isNew} />
         <PictureButtons
           image={image}
           tileKey={tileKey}
