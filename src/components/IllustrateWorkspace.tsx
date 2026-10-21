@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ComponentProps, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type CSSProperties } from "react";
 import { IMAGE_SLOTS, type ImageMade, type ImageSlot, type ImageVersions } from "@/lib/imageSlots";
 import type { ContextChapter, ContextCodexEntry } from "@/lib/ai/prompts";
 import ChapterImageEditor from "./ChapterImageEditor";
@@ -13,6 +13,7 @@ import { useSettings } from "@/lib/settings";
 import type { PictureDraft } from "@/lib/pictureDrafts";
 import type { PictureJob } from "@/lib/pictureJobs";
 import { fromComfyImage, fromSaved, type StartPicture } from "@/lib/comfy/startPicture";
+import { readStart, writeStart } from "@/lib/comfy/editingState";
 
 /** The narrowest the controls column can be dragged to, the widest as a share of the page, and the handle's width (see .column-resizer). */
 const MIN_CONTROLS = 320;
@@ -54,6 +55,22 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
   const [pictures, setPictures] = useState<Picture[]>(() => picturesOf(jobs));
   // The jobs being made, newest first, shown among the pictures.
   const [pending, setPending] = useState<PendingJob[]>([]);
+  // The starting picture and mode are kept in this browser, so a refresh brings them back. They are read once
+  // ComfyUI's address is known (the settings load after the page), and written only after that.
+  const [restored, setRestored] = useState(false);
+  /* eslint-disable react-hooks/set-state-in-effect -- browser storage can only be read after the page is shown, so the server and browser draw the same first page */
+  useEffect(() => {
+    if (restored || !comfy.url) return;
+    const saved = readStart(chapterId);
+    if (saved?.image) setStart(fromComfyImage(comfy.url, saved.image));
+    else if (saved?.slot && versions[saved.slot]) setStart(fromSaved(chapterId, saved.slot, versions[saved.slot]!));
+    if (saved && (saved.image || (saved.slot && versions[saved.slot]))) setStartMode(saved.mode);
+    setRestored(true);
+  }, [restored, comfy.url, chapterId, versions]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (restored) writeStart(chapterId, start && (start.image || start.slot) ? { mode: startMode, image: start.image, slot: start.slot } : null);
+  }, [restored, chapterId, start, startMode]);
   const [dock, setDock] = useState<HTMLElement | null>(null);
   const [codexSlot, setCodexSlot] = useState<HTMLElement | null>(null);
   function load(p: PromptToLoad) {

@@ -11,12 +11,15 @@ export type StartPicture = {
   source: string;
   /** Fetches the picture itself. */
   blob: () => Promise<Blob>;
+  /** Which one it is, so the choice can be remembered across a refresh: ComfyUI's picture, or the saved slot. */
+  image?: ComfyImage;
+  slot?: ImageSlot;
 };
 
 /** One of ComfyUI's own pictures (a new or a past one). */
 export function fromComfyImage(comfyUrl: string, image: ComfyImage): StartPicture {
   const source = `comfy:${image.subfolder ? `${image.subfolder}/` : ""}${image.filename}`;
-  return { key: source, thumb: imageUrl(comfyUrl, image), source, blob: () => fetchImage(comfyUrl, image) };
+  return { key: source, thumb: imageUrl(comfyUrl, image), source, blob: () => fetchImage(comfyUrl, image), image };
 }
 
 /** A chapter's saved header or footer picture; `version` is its current version. */
@@ -26,6 +29,7 @@ export function fromSaved(chapterId: string, slot: ImageSlot, version: number): 
     key: `saved:${chapterId}:${slot}:${version}`,
     thumb,
     source: `saved:${chapterId}:${slot}`,
+    slot,
     blob: async () => {
       const res = await fetch(thumb);
       if (!res.ok) throw new Error(`Couldn't read the saved ${slot} picture (${res.status}).`);

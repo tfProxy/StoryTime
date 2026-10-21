@@ -14,6 +14,7 @@ import { LIMITS } from "@/lib/limits";
 import { editSize, type EditCheck } from "@/lib/comfy/editModels";
 import { uploadStart, type StartPicture, type Uploaded } from "@/lib/comfy/startPicture";
 import { describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
+import { readEdit, writeEdit } from "@/lib/comfy/editingState";
 import { cancelPrompt, listCheckpoints, queuePrompt, waitForPictures, type Progress } from "@/lib/comfy/client";
 
 /** Sizes that suit SDXL (about one megapixel). */
@@ -131,6 +132,21 @@ export default function ComfyGenerate({
   const [instruction, setInstruction] = useState("");
   // How closely an edit follows the starting picture: 1 lets the model change it freely, lower keeps it closer.
   const [editStrength, setEditStrength] = useState(1);
+  // Both are kept in this browser, so a refresh brings them back.
+  const [editKept, setEditKept] = useState(false);
+  /* eslint-disable react-hooks/set-state-in-effect -- browser storage can only be read after the page is shown, so the server and browser draw the same first page */
+  useEffect(() => {
+    const saved = readEdit(chapterId);
+    if (saved) {
+      setInstruction(saved.instruction);
+      setEditStrength(saved.strength);
+    }
+    setEditKept(true);
+  }, [chapterId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (editKept) writeEdit(chapterId, { instruction, strength: editStrength });
+  }, [editKept, chapterId, instruction, editStrength]);
   const editing = start !== null && startMode === "edit";
   const blocked = editBlocked(editModels);
   const ready = editModels.state === "done" ? editModels.ready : [];
