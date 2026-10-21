@@ -363,6 +363,8 @@ try {
   ok(headerCardBox.y + headerCardBox.height <= newBox.y + 1, "the chosen header and footer cards are above the Pictures panel, to compare with");
   ok((await fetch(`${BASE}/api/chapters/${chapterId}/images/footer`)).status === 404, "…the footer is untouched");
   ok(await items.count() === 2, "the candidates are still there after the page refreshed");
+  ok(await items.first().getByRole("button", { name: "Unpin" }).count() === 1 && await items.nth(1).getByRole("button", { name: "Pin" }).count() === 1, "the picture saved as the header is pinned, and the other is not");
+  ok((await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs[0].marks[0] === "pinned", "…as the server has it too");
   const savedWith = async () => (await get(`/api/stories/${storyId}/export?format=json`)).images;
   const headerMade = (await savedWith()).find((i) => i.slot === "header");
   ok(headerMade.prompt === "a lighthouse at dawn, gulls" && headerMade.negative === "blurry, text", "the saved header remembers the prompt and negative prompt that made it");
@@ -398,6 +400,10 @@ try {
   ok(await menu.count() === 0, "…and so does a click elsewhere");
 
   // ---- bringing a saved picture's prompt back ----
+  // The picture saved as the footer was pinned too, and the footer is about to be replaced; unpin it, so that what
+  // follows starts with the header's picture alone.
+  const madeJob = (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs[0];
+  await fetch(`${BASE}/api/picture-jobs/${madeJob.id}/mark`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ index: 1, mark: null }) });
   await fetch(`${BASE}/api/chapters/${chapterId}/images/footer`, { method: "PUT", headers: { "Content-Type": "image/jpeg" }, body: headerBytes });
   await openIllustrate();
   ok((await promptBox.inputValue()) === "a lighthouse at dawn, gulls", "after a reload the prompt box still has the last prompt (it is kept for the chapter)");
@@ -422,8 +428,8 @@ try {
   ok(await reuse.isVisible() && !(await reuse.isChecked()), "…and offers Reuse seed with the picture's seed, unticked");
   await promptBox.fill("a lighthouse at dusk, gulls");
   const seedOf = (call) => Object.values(call.body.prompt).find((n) => n.class_type === "KSampler").inputs.seed;
-  // The header was made by an earlier job, and the header shows in Pinned & new as if pinned, so one older picture is there before any are made.
-  ok(await items.count() === 1 && (await badge(0).innerText()).trim() === "Header", "after a reload the picture used as the header is in Pinned & new although it isn't pinned");
+  // The header was made by an earlier job and was pinned when it was chosen, so one older picture is there before any are made.
+  ok(await items.count() === 1 && (await badge(0).innerText()).trim() === "Header" && await items.first().getByRole("button", { name: "Unpin" }).count() === 1, "after a reload the picture used as the header is in Pinned & new, pinned");
   let from = comfy.calls.length;
   await makeTwo();
   await picturesLoaded(3);
@@ -637,13 +643,16 @@ try {
   await items.nth(2).getByRole("button", { name: "Pin" }).click();
   await until(async () => (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs.some((j) => j.marks.includes("pinned")), "the pin to be saved");
   await page.getByRole("button", { name: "Clear unpinned" }).click();
-  ok(await items.count() === 1 && await makeButton.innerText() === "Queue", "Clear unpinned leaves only the picture pinned on this visit");
+  // Pictures chosen as the header or footer earlier were pinned then, so they stay too.
+  const pinnedCount = async () => (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs.reduce((n, j) => n + j.marks.filter((m) => m === "pinned").length, 0);
+  const stay = await pinnedCount();
+  ok(stay >= 2 && await items.count() === stay && await makeButton.innerText() === "Queue", "Clear unpinned leaves only the pinned pictures: the one pinned now, and those pinned when they were chosen as header or footer");
   ok(await page.getByRole("button", { name: "Clear unpinned" }).count() === 0, "…and goes away");
   await openIllustrate();
   // The job that couldn't be recorded is still in (the fake) ComfyUI, tagged, so coming back records it now.
   await until(async () => (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs.length === 10, "the unrecorded job to be recorded when coming back");
-  await until(async () => (await items.count()) === 3, "its pictures");
-  ok(await items.count() === 3 && await items.getByRole("button", { name: "Unpin" }).count() === 1, "coming back, the pinned picture is still there, and the pictures whose job couldn't be recorded are recorded and listed");
+  await until(async () => (await items.count()) === stay + 2, "its pictures");
+  ok(await items.count() === stay + 2 && await items.getByRole("button", { name: "Unpin" }).count() === stay, "coming back, the pinned pictures are still there, and the pictures whose job couldn't be recorded are recorded and listed");
 } finally {
   await putSettings(before ?? {});
   await browser.close();

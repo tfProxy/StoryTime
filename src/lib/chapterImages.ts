@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { jobPrompts } from "./pictureJobs";
+import { jobPrompts, setPictureMark } from "./pictureJobs";
 import { checkImage, PostError } from "./stories";
 import type { ImageMade, ImageSlot, ImageVersions } from "./imageSlots";
 
@@ -12,7 +12,7 @@ function requireChapter(chapterId: string) {
 /**
  * Sets a slot's picture. `jobId` names the picture job (see ./pictureJobs) that made it: its prompt and
  * negative prompt are kept with the picture, which is left without them when the job is unknown. `index`
- * is which of the job's pictures it is, when given.
+ * is which of the job's pictures it is, when given; that picture is pinned.
  */
 export function setChapterImage(chapterId: string, slot: ImageSlot, bytes: Buffer, jobId?: string | null, index?: number | null): { version: number } {
   const type = checkImage(bytes, "picture");
@@ -31,6 +31,8 @@ export function setChapterImage(chapterId: string, slot: ImageSlot, bytes: Buffe
          job_id = excluded.job_id, prompt = excluded.prompt, negative = excluded.negative, image_index = excluded.image_index`,
     )
     .run(chapterId, slot, bytes, type, version, made ? jobId : null, made?.prompt ?? null, made?.negative ?? null, at);
+  // A picture chosen as a header or footer is worth keeping, so it is pinned (also when it was trashed before).
+  if (jobId && at !== null) setPictureMark(jobId, at, "pinned");
   return { version };
 }
 

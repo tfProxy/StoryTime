@@ -67,7 +67,11 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
   const [viewing, setViewing] = useState<string | null>(null);
   // The picture whose Info popup is open, if any.
   const [info, setInfo] = useState<Picture | null>(null);
-  const saver = usePictureSaver(chapterId, comfyUrl, setStatus);
+  // The server pins a picture saved as the header or footer; the page's copy of its mark follows.
+  const saver = usePictureSaver(chapterId, comfyUrl, setStatus, (jobId, index) => {
+    const p = pictures.find((q) => q.jobId === jobId && q.index === index);
+    if (p && p.mark !== "pinned") onChange(p.key, { mark: "pinned" });
+  });
 
   const count = (v: PictureView) => pictures.filter((p) => inView(p, v, kept(p))).length;
   const shown = view === "other" ? [] : pictures.filter((p) => inView(p, view, kept(p)));

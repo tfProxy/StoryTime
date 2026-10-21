@@ -179,7 +179,12 @@ try {
   // ---- the first chapter: its own pictures, and the other chapter's a page at a time ----
   await open(first);
   await gallery.getByRole("heading", { name: "Pictures" }).waitFor();
-  ok(await tiles.count() === 0 && await gallery.getByText("No pinned pictures. The ones made earlier are under All (2).").isVisible(), "a chapter with no pinned pictures says where the earlier ones are");
+  // The picture made here that was saved as the other chapter's footer was pinned when it was chosen.
+  await tiles.first().waitFor();
+  ok(await tiles.count() === 1 && await viewButton("Pinned & new (1)").count() === 1, "a picture of this chapter used as another chapter's footer is pinned here");
+  await tiles.first().getByRole("button", { name: "Unpin" }).click();
+  await gallery.getByText("No pinned pictures. The ones made earlier are under All (2).").waitFor();
+  ok(await tiles.count() === 0, "a chapter with no pinned pictures says where the earlier ones are");
   await showView("Other chapters");
   await other.locator(".past-job").first().waitFor();
   ok(await other.locator(".past-job").count() === 12, "Other chapters shows 12 jobs at first");

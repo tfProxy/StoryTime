@@ -22,7 +22,13 @@ export type PictureSaver = {
  * StoryTime, which lets it keep the prompt with the picture, and `index` which of the job's pictures it is,
  * so the page can mark it as in use. Progress and errors go to `report`.
  */
-export function usePictureSaver(chapterId: string, comfyUrl: string, report: (status: { ok: boolean; text: string } | null) => void): PictureSaver {
+export function usePictureSaver(
+  chapterId: string,
+  comfyUrl: string,
+  report: (status: { ok: boolean; text: string } | null) => void,
+  /** A saved picture is pinned by the server; this is told which one, so the page can show it. */
+  onPinned?: (jobId: string, index: number) => void,
+): PictureSaver {
   const router = useRouter();
   const [saving, setSaving] = useState<string | null>(null);
 
@@ -35,6 +41,7 @@ export function usePictureSaver(chapterId: string, comfyUrl: string, report: (st
       const res = await fetch(`/api/chapters/${chapterId}/images/${slot}${made}`, { method: "PUT", headers: { "Content-Type": "image/jpeg" }, body: blob });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Couldn't save the picture (${res.status})`);
+      if (jobId) onPinned?.(jobId, index);
       report({ ok: true, text: `Saved as the ${SLOT_NAMES[slot]}.` });
       router.refresh();
     } catch (e) {

@@ -112,6 +112,22 @@ await put(one, "footer");
 pics = await imagesOf();
 ok(pics.find((i) => i.slot === "footer").prompt === null && pics.find((i) => i.slot === "footer").negative === null, "replacing a picture with an upload clears the old prompt");
 
+// ---- a picture saved as the header or footer is pinned ----
+const marksOf = async (id) => (await call("GET", `/api/picture-jobs?chapter=${one}`)).json.jobs.find((j) => j.id === id).marks;
+const mark = (id, index, m) => call("PUT", `/api/picture-jobs/${id}/mark`, { index, mark: m });
+await mark(mine.id, 0, null);
+await put(one, "header", `?job=${mine.id}`);
+ok((await marksOf(mine.id))[0] === null, "saving a picture without saying which of the job's pictures it is pins nothing");
+await put(one, "header", `?job=${mine.id}&index=0`);
+ok((await marksOf(mine.id))[0] === "pinned", "saving a picture as the header pins it");
+await mark(mine.id, 0, "rejected");
+await put(one, "footer", `?job=${mine.id}&index=0`);
+ok((await marksOf(mine.id))[0] === "pinned", "…also one that was trashed, and as the footer");
+await put(one, "header");
+ok((await marksOf(mine.id))[0] === "pinned", "replacing it with an upload doesn't unpin it");
+await put(one, "footer");
+await mark(mine.id, 0, null);
+
 // ---- export and import ----
 await put(two, "header", `?job=${mine.id}`);
 const data = await exportOf(story);
