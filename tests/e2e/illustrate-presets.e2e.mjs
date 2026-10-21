@@ -20,7 +20,12 @@ const until = async (fn, what, tries = 150) => {
 const story = await call("POST", "/api/stories", { title: "Presets", chapter: { title: "The harbour", body: "Boats rocked in the harbour.", choices: [] } });
 const { story_id: storyId, chapter_id: chapterId } = story;
 const before = (await call("GET", "/api/settings")).settings;
-const comfy = await startFakeComfy({ port: COMFY_PORT, steps: 2, stepDelay: 50, startDelay: 80, files: { ...EDIT_FILES, loras: ["styles/ink.safetensors", "hero.safetensors"] } });
+const AIO = "Qwen-Rapid-AIO-NSFW-v19.safetensors";
+const comfy = await startFakeComfy({
+  port: COMFY_PORT, steps: 2, stepDelay: 50, startDelay: 80,
+  checkpoints: ["fake_sdxl_a.safetensors", "fake_sdxl_b.safetensors", AIO],
+  files: { ...EDIT_FILES, loras: ["styles/ink.safetensors", "hero.safetensors"] },
+});
 const ink = { id: "ink", name: "Ink", checkpoint: "fake_sdxl_a.safetensors", workflow: "", loras: [{ name: "styles/ink.safetensors", strength: 0.8, on: true }], sampler: { steps: 12 }, denoise: 0.4 };
 const plain = { id: "plain", name: "Plain", checkpoint: "fake_sdxl_b.safetensors", workflow: "", loras: [], sampler: {}, denoise: 0.55 };
 const base = comfySettings({ url: comfy.url, count: 1 });
@@ -29,7 +34,12 @@ await putSettings({
   comfy: {
     ...base,
     drawPresets: [ink, plain],
-    editPresets: [...base.editPresets, { id: "night", name: "Night", model: "qwen-image-edit", fast: true, loras: [{ name: "hero.safetensors", strength: 0.5, on: true }], tuning: { strength: 0.6 } }],
+    editPresets: [
+      ...base.editPresets,
+      { id: "night", name: "Night", model: "qwen-image-edit", fast: true, loras: [{ name: "hero.safetensors", strength: 0.5, on: true }], tuning: { strength: 0.6 } },
+      // Its chosen model isn't in ComfyUI, so it can't be used.
+      { id: "gone", name: "Gone", model: "qwen-image-edit", files: { model: "deleted.safetensors" } },
+    ],
   },
 });
 
@@ -123,7 +133,8 @@ try {
   await items.first().getByRole("menuitem", { name: "Edit this" }).click();
   const editMenu = page.getByLabel("Edit preset");
   await editMenu.waitFor();
-  ok((await editMenu.locator("option").allInnerTexts()).join("|") === "Default|Night|Default", "the Edit tab offers each model's presets");
+  ok((await editMenu.locator("option").allInnerTexts()).join("|") === "Default|Night|Gone (files missing)|Default", "the Edit tab offers each model's presets");
+  ok(await editMenu.locator("option", { hasText: "Gone" }).evaluate((o) => o.disabled), "…but not one whose chosen model file ComfyUI doesn't list");
   await editMenu.selectOption("night");
   ok(await until(async () => (await strength.inputValue()) === "0.6", "the Night preset's strength"), "a preset's strength is where the Edit tab starts");
   ok((await page.getByRole("group", { name: "LoRAs" }).innerText()).includes("hero (0.5)"), "…and its LoRAs are listed");
@@ -139,17 +150,45 @@ try {
   await night.waitFor();
   ok(await page.getByRole("tab", { name: "Qwen edit" }).getAttribute("aria-selected") === "true" && await night.evaluate((d) => d.open), "a preset's address opens its tab, with its card open");
   const qwenCards = page.locator("#panel-edit-qwen-image-edit details.preset-card");
-  ok((await qwenCards.count()) === 2 && (await night.locator(":scope > summary").innerText()).includes("fast · 1 LoRA · strength 0.60"), "the Qwen edit tab has a card per Qwen preset, each summing it up");
+  ok((await qwenCards.count()) === 3 && (await night.locator(":scope > summary").innerText()).includes("fast · 1 LoRA · strength 0.60"), "the Qwen edit tab has a card per Qwen preset, each summing it up");
   ok(await page.locator("#panel-edit-flux-kontext details.preset-card").count() === 1, "…and the Flux edit tab its own");
   await page.getByRole("button", { name: "New Qwen-Image-Edit preset" }).click();
-  await until(async () => (await qwenCards.count()) === 3, "a third Qwen preset");
-  const fresh = qwenCards.nth(2);
+  await until(async () => (await qwenCards.count()) === 4, "a fourth Qwen preset");
+  const fresh = qwenCards.nth(3);
   await fresh.getByLabel("Preset name").fill("Portrait");
   ok(await until(async () => (await settingsNow()).editPresets.some((p) => p.name === "Portrait" && p.model === "qwen-image-edit"), "the new preset to be saved"), "New Qwen-Image-Edit preset adds one for that model, which can be named");
   page.once("dialog", (d) => d.accept());
   await fresh.getByRole("button", { name: "Delete" }).click();
   ok(await until(async () => !(await settingsNow()).editPresets.some((p) => p.name === "Portrait"), "the preset to be deleted"), "…and deleted again");
   ok(await page.locator("#panel-edit-flux-kontext details.preset-card").getByRole("button", { name: "Delete", includeHidden: true }).isDisabled(), "a model's last preset can't be deleted");
+
+  // ---- an edit preset's own model files ----
+  const gone = page.locator("#preset-gone");
+  await gone.locator(":scope > summary").click();
+  const goneFiles = gone.locator("details.advanced", { hasText: "Model files" });
+  ok(await goneFiles.evaluate((d) => d.open) && (await goneFiles.innerText()).includes("ComfyUI doesn't list deleted.safetensors"), "a preset that chose its own files shows them open, and says which ComfyUI doesn't list");
+  const nightFiles = night.locator("details.advanced", { hasText: "Model files" });
+  ok(!(await nightFiles.evaluate((d) => d.open)) && (await nightFiles.locator("summary").innerText()).includes("found by their names"), "one that didn't keeps them folded away");
+  await nightFiles.locator("summary").click();
+  const modelMenu = night.getByLabel("Model for Night");
+  await until(async () => (await modelMenu.locator("option", { hasText: AIO }).count()) === 1, "the checkpoints to be listed");
+  ok((await modelMenu.locator("option").first().innerText()).includes("qwen_image_edit_2509_fp8_e4m3fn.safetensors"), "the Model menu says which file it finds by name");
+  await modelMenu.selectOption(`checkpoint:${AIO}`);
+  ok(
+    await until(async () => (await settingsNow()).editPresets.find((p) => p.id === "night")?.checkpoint === AIO, "the checkpoint to be saved"),
+    "choosing an all-in-one checkpoint saves it in the preset",
+  );
+  ok((await nightFiles.innerText()).includes("The checkpoint's own") && (await nightFiles.innerText()).includes("ComfyUI has every file this preset uses"), "…the text encoder and VAE then come from it");
+  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await editMenu.waitFor();
+  await editMenu.selectOption("night");
+  await page.getByRole("textbox", { name: "What to change" }).fill("make it night");
+  wf = await makeOne();
+  ok(
+    nodes(wf, "CheckpointLoaderSimple")[0]?.inputs.ckpt_name === AIO && nodes(wf, "UNETLoader").length === 0 && nodes(wf, "CLIPLoader").length === 0 && nodes(wf, "VAELoader").length === 0,
+    "an edit with that preset loads the checkpoint instead of the model, text encoder and VAE",
+  );
+  ok((await jobs())[0].checkpoint.startsWith(AIO), "…and the job log names it");
 
   if (process.env.E2E_SCREENSHOT_DIR) {
     fs.mkdirSync(process.env.E2E_SCREENSHOT_DIR, { recursive: true });

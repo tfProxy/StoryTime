@@ -86,7 +86,7 @@ ok(r.json.settings.imagePromptModel === null, "…or when it isn't a model");
 
 // ---- ComfyUI (picture making), with presets ----
 const draw = (id, extra = {}) => ({ id, name: `Drawing ${id}`, checkpoint: "sdxl.safetensors", workflow: "", loras: [], sampler: {}, denoise: 0.55, ...extra });
-const edit = (id, model, extra = {}) => ({ id, name: `Edit ${id}`, model, fast: true, loras: [], tuning: {}, ...extra });
+const edit = (id, model, extra = {}) => ({ id, name: `Edit ${id}`, model, checkpoint: "", files: {}, fast: true, loras: [], tuning: {}, ...extra });
 const comfyIn = {
   url: "http://comfy.local:8188",
   width: 1024,
@@ -98,7 +98,7 @@ const comfyIn = {
   ],
   editPresets: [
     edit("qwen-a", "qwen-image-edit", { fast: false, loras: [ink], tuning: { steps: 30, cfg: 3, strength: 0.8, shift: 2.5 } }),
-    edit("qwen-b", "qwen-image-edit"),
+    edit("qwen-b", "qwen-image-edit", { checkpoint: "Qwen-Rapid-AIO-NSFW-v19.safetensors", files: { textEncoder: "qwen25vl-abliterated.safetensors" } }),
     edit("kontext-a", "flux-kontext", { tuning: { scheduler: "beta", guidance: 3.5 } }),
   ],
   editPreset: "kontext-a",
@@ -158,6 +158,11 @@ let qa = r.json.settings.comfy.editPresets[0];
 ok(qa.fast === true && JSON.stringify(qa.tuning) === '{"shift":3}' && qa.loras.length === 1, "an edit preset's bad Fast or settings fall back on their own");
 r = await call("PUT", "/api/settings", { ...conns, comfy: withEdit({ tuning: [1] }) });
 ok(JSON.stringify(r.json.settings.comfy.editPresets[0].tuning) === "{}", "edit settings that aren't an object fall back to none");
+r = await call("PUT", "/api/settings", { ...conns, comfy: withEdit({ checkpoint: 7, files: { model: "mine.safetensors", vae: 3, t5: "", spare: "x.safetensors", clipL: "y".repeat(501) } }) });
+qa = r.json.settings.comfy.editPresets[0];
+ok(qa.checkpoint === "" && JSON.stringify(qa.files) === '{"model":"mine.safetensors"}' && qa.loras.length === 1, "an edit preset's bad checkpoint falls back to none, and only named files of parts edit models have are kept");
+r = await call("PUT", "/api/settings", { ...conns, comfy: withEdit({ files: ["a"] }) });
+ok(JSON.stringify(r.json.settings.comfy.editPresets[0].files) === "{}", "files that aren't an object fall back to none");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, editPresets: [...comfyIn.editPresets, edit("x", "sdxl-edit")] } });
 ok(r.json.settings.comfy.editPresets.length === 3, "an edit preset for a model StoryTime doesn't know is dropped");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, editPreset: undefined } });

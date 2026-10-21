@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { PROVIDER_KINDS, providerInfo, type ProviderKind } from "./ai/providers";
-import { EDIT_MODEL_IDS } from "./comfy/editModels";
+import { EDIT_MODEL_IDS, EDIT_MODELS } from "./comfy/editModels";
 import {
   DEFAULT_DENOISE,
   DEFAULT_DRAW_PRESETS,
@@ -146,6 +146,7 @@ const listOf = <T>(item: z.ZodType<T>) =>
 
 const loraList = listOf(loraSchema).transform((xs) => xs.slice(0, MAX_LORAS));
 const presetIdSchema = z.string().trim().min(1).max(100);
+const PART_KEYS = new Set(EDIT_MODELS.flatMap((m) => m.parts.map((p) => p.key)));
 const presetNameSchema = z.string().max(100).catch("");
 
 const drawPresetSchema = z.object({
@@ -161,6 +162,16 @@ const editPresetSchema = z.object({
   id: presetIdSchema,
   name: presetNameSchema,
   model: z.enum(EDIT_MODEL_IDS),
+  checkpoint: z.string().max(500).catch(""),
+  // Only the parts edit models have, each with a file name.
+  files: z
+    .record(z.string(), z.unknown())
+    .transform((r) =>
+      Object.fromEntries(
+        Object.entries(r).filter((e): e is [string, string] => PART_KEYS.has(e[0]) && typeof e[1] === "string" && e[1] !== "" && e[1].length <= 500),
+      ),
+    )
+    .catch({}),
   fast: z.boolean().catch(true),
   loras: loraList,
   tuning: editTuningSchema.transform(setOnly).catch({}),

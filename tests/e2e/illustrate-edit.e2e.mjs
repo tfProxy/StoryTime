@@ -84,8 +84,8 @@ try {
   const kontextCard = page.locator("#preset-flux-kontext");
   const qwenPanel = page.locator("#panel-edit-qwen-image-edit");
   const kontextPanel = page.locator("#panel-edit-flux-kontext");
-  await qwenPanel.getByText("Qwen-Image-Edit isn't installed in ComfyUI, so Edit this doesn't offer it.").waitFor();
-  ok(((await kontextPanel.textContent()) ?? "").includes("FLUX.1 Kontext isn't installed in ComfyUI, so Edit this doesn't offer it."), "each edit model's tab says when it isn't installed");
+  await qwenPanel.getByText("ComfyUI doesn't have Qwen-Image-Edit's usual files.").waitFor();
+  ok(((await kontextPanel.textContent()) ?? "").includes("ComfyUI doesn't have FLUX.1 Kontext's usual files."), "each edit model's tab says when it isn't installed");
   ok(await qwenCard.evaluate((d) => d.open) && (await qwenCard.locator(":scope > summary").innerText()).startsWith("Default"), "…and has a card for each of its presets: at first a Default, open");
   await checkSetup();
   await report.waitFor();
@@ -304,11 +304,11 @@ try {
   await qwenCard.getByLabel("Default strength").fill("0.7");
   await until(async () => (await tuningNow()).strength === 0.7, "the default strength to be saved");
   ok(true, "the preset sets the Edit tab's default strength");
-  const qAdvanced = qwenCard.locator("details.advanced");
+  const qAdvanced = qwenCard.locator("details.advanced", { hasText: "Advanced: steps" });
   await qAdvanced.getByText("Advanced: steps, CFG, sampler, shift").click();
   ok((await qAdvanced.getByLabel(/^Steps/).inputValue()) === "20" && (await qAdvanced.getByLabel(/^CFG/).inputValue()) === "2.5" && (await qAdvanced.getByLabel(/^Shift/).inputValue()) === "3", "Advanced shows Qwen's steps, CFG and shift (20, 2.5, 3)");
   ok((await qAdvanced.innerText()).includes("Fast is on, so edits use 4 steps at CFG 1"), "…and says Fast replaces the steps and CFG");
-  ok((await kontextCard.locator("details.advanced summary").textContent()) === "Advanced: steps, CFG, sampler, guidance", "Kontext's Advanced has guidance instead of shift");
+  ok((await kontextCard.locator("details.advanced", { hasText: "Advanced: steps" }).locator("summary").textContent()) === "Advanced: steps, CFG, sampler, guidance", "Kontext's Advanced has guidance instead of shift");
   await qAdvanced.getByLabel(/^Shift/).fill("2.5");
   await qAdvanced.getByLabel(/^Scheduler/).selectOption("beta");
   const sorted = (o) => JSON.stringify(Object.fromEntries(Object.entries(o).sort()));

@@ -21,6 +21,11 @@ export type ModelPart = {
   recommended: string;
   /** Other names the same kind of file goes by (another precision, a newer release), used when the recommended one isn't there. */
   match: RegExp;
+  /**
+   * Which of an all-in-one checkpoint's outputs stands in for it (0 the model, 1 the text encoder, 2 the
+   * VAE). It is also the workflow's loader node for it, less one: the model is node "1", the text encoder "2", the VAE "3".
+   */
+  output: 0 | 1 | 2;
 };
 
 /** A choice another node must offer, such as a text encoder type that only newer ComfyUIs know. */
@@ -229,20 +234,20 @@ export const EDIT_MODELS: EditModel[] = [
     parts: [
       {
         key: "model", label: "Qwen-Image-Edit 2509 model", folder: "diffusion_models", loader: "UNETLoader", input: "unet_name",
-        recommended: "qwen_image_edit_2509_fp8_e4m3fn.safetensors", match: /qwen[-_ ]?image[-_ ]?edit/i,
+        recommended: "qwen_image_edit_2509_fp8_e4m3fn.safetensors", match: /qwen[-_ ]?image[-_ ]?edit/i, output: 0,
       },
       {
         key: "textEncoder", label: "Qwen 2.5 VL text encoder", folder: "text_encoders", loader: "CLIPLoader", input: "clip_name",
-        recommended: "qwen_2.5_vl_7b_fp8_scaled.safetensors", match: /qwen[-_]?2\.5[-_]?vl[-_]?7b/i,
+        recommended: "qwen_2.5_vl_7b_fp8_scaled.safetensors", match: /qwen[-_]?2\.5[-_]?vl[-_]?7b/i, output: 1,
       },
       {
         key: "vae", label: "Qwen-Image VAE", folder: "vae", loader: "VAELoader", input: "vae_name",
-        recommended: "qwen_image_vae.safetensors", match: /qwen[-_]?image[-_]?vae/i,
+        recommended: "qwen_image_vae.safetensors", match: /qwen[-_]?image[-_]?vae/i, output: 2,
       },
     ],
     speedUp: {
       key: "speedUp", name: "Lightning", label: "Lightning LoRA (optional, for fast edits)", folder: "loras", loader: "LoraLoaderModelOnly",
-      input: "lora_name", recommended: "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors", match: /qwen[-_ ]?image[-_ ]?edit.*lightning/i,
+      input: "lora_name", recommended: "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors", match: /qwen[-_ ]?image[-_ ]?edit.*lightning/i, output: 0,
     },
     defaults: QWEN_DEFAULTS,
     nodes: nodesOf(qwenWorkflow({}, SAMPLE)),
@@ -256,19 +261,19 @@ export const EDIT_MODELS: EditModel[] = [
     parts: [
       {
         key: "model", label: "FLUX.1 Kontext dev model", folder: "diffusion_models", loader: "UNETLoader", input: "unet_name",
-        recommended: "flux1-dev-kontext_fp8_scaled.safetensors", match: /kontext/i,
+        recommended: "flux1-dev-kontext_fp8_scaled.safetensors", match: /kontext/i, output: 0,
       },
       {
         key: "clipL", label: "CLIP-L text encoder", folder: "text_encoders", loader: "DualCLIPLoader", input: "clip_name1",
-        recommended: "clip_l.safetensors", match: /(^|[\\/])clip_l[^\\/]*\.safetensors$/i,
+        recommended: "clip_l.safetensors", match: /(^|[\\/])clip_l[^\\/]*\.safetensors$/i, output: 1,
       },
       {
         key: "t5", label: "T5-XXL text encoder", folder: "text_encoders", loader: "DualCLIPLoader", input: "clip_name2",
-        recommended: "t5xxl_fp8_e4m3fn_scaled.safetensors", match: /t5xxl/i,
+        recommended: "t5xxl_fp8_e4m3fn_scaled.safetensors", match: /t5xxl/i, output: 1,
       },
       {
         key: "vae", label: "FLUX VAE", folder: "vae", loader: "VAELoader", input: "vae_name",
-        recommended: "ae.safetensors", match: /(^|[\\/])(ae|flux[-_]?ae|flux[-_]?vae|flux1[-_]?ae)\.(safetensors|sft)$/i,
+        recommended: "ae.safetensors", match: /(^|[\\/])(ae|flux[-_]?ae|flux[-_]?vae|flux1[-_]?ae)\.(safetensors|sft)$/i, output: 2,
       },
     ],
     defaults: KONTEXT_DEFAULTS,
@@ -309,8 +314,27 @@ export function comboOptions(info: NodeInfo, input: string): string[] {
   return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string") : [];
 }
 
-/** One part of a model and the file found for it, or null when ComfyUI has none. */
-export type PartCheck = { part: ModelPart; file: string | null };
+/**
+ * One part of a model and the file used for it: the one a preset chose, else the one found by its name;
+ * null when there is none (or, with `fromCheckpoint`, when the all-in-one checkpoint's own is used).
+ */
+export type PartCheck = {
+  part: ModelPart;
+  file: string | null;
+  /** Every file its loader lists, for choosing one in Settings. */
+  choices: string[];
+  /** The file a preset chose for it, whether or not ComfyUI lists it. */
+  chosen?: string;
+  /** The preset's all-in-one checkpoint supplies it. */
+  fromCheckpoint?: boolean;
+};
+
+/**
+ * The files an edit preset chose instead of the ones found by their names: an all-in-one checkpoint (the
+ * model, text encoder and VAE in one file, from ComfyUI's `checkpoints` folder) or "", and by part key a
+ * file for any part. With a checkpoint, a part not chosen uses the checkpoint's own.
+ */
+export type FileChoice = { checkpoint: string; files: Partial<Record<string, string>> };
 
 export type EditCheck = {
   model: EditModel;
@@ -319,8 +343,15 @@ export type EditCheck = {
   /** Choices a node should offer but doesn't, as "Node input: value". */
   missingOptions: string[];
   parts: PartCheck[];
-  /** The files to use, by part key, when every part was found; with `speedUp` when that was found too. */
+  /**
+   * The files to use, by part key, when every part was found; with `speedUp` when that was found too, and
+   * `checkpoint` when a preset chose an all-in-one checkpoint (see presetCheck).
+   */
   files: Record<string, string>;
+  /** The preset's all-in-one checkpoint, and whether ComfyUI lists it; null without one. */
+  checkpoint: { file: string; found: boolean } | null;
+  /** Every all-in-one checkpoint ComfyUI lists (its `checkpoints` folder), for choosing one in Settings. */
+  checkpoints: string[];
   /** Whether everything is there, so the model can be used. */
   ready: boolean;
   /** The optional speed-up and the file found for it (null when it isn't installed), for models that have one. */
@@ -335,10 +366,14 @@ export type EditCheck = {
 /** The node that loads a LoRA onto a model, for the speed-up and the author's stack. */
 const LORA_LOADER = "LoraLoaderModelOnly";
 
+/** The node that loads an all-in-one checkpoint. */
+const CHECKPOINT_LOADER = "CheckpointLoaderSimple";
+
 /** Every node the checks below need to ask ComfyUI about. */
 export const EDIT_NODES = [
   ...new Set([
     LORA_LOADER,
+    CHECKPOINT_LOADER,
     ...EDIT_MODELS.flatMap((m) => [...m.nodes, ...m.parts.map((p) => p.loader), ...m.options.map((o) => o.node), ...(m.speedUp ? [m.speedUp.loader] : [])]),
   ]),
 ].sort();
@@ -362,7 +397,7 @@ const releaseOf = (file: string | undefined) => (file ? /(?:^|[^\d])(2\d{3})(?:[
  * file, and " + " the speed-up's when it is used.
  */
 export const editFilesText = (check: EditCheck, fast: boolean, loras: EditLora[] = []) =>
-  [check.files.model, ...(fast && check.files.speedUp ? [check.files.speedUp] : []), ...loras.map((l) => `${l.name} (${l.strength})`)].join(" + ");
+  [check.files.checkpoint ?? check.files.model, ...(fast && check.files.speedUp ? [check.files.speedUp] : []), ...loras.map((l) => `${l.name} (${l.strength})`)].join(" + ");
 
 /** What an edit's files (see editFilesText) say beyond the model: whether it was fast, and how many LoRAs of the author's it used. */
 export function editFilesExtras(modelId: string, text: string): { fast: boolean; loras: number } {
@@ -385,25 +420,88 @@ export function usableLoras(stack: { name: string; strength: number; on: boolean
   };
 }
 
-/** Whether each edit model can be used, from what ComfyUI says about the nodes in EDIT_NODES. */
+/** Whether each edit model can be used with the files found by their names, from what ComfyUI says about the nodes in EDIT_NODES. */
 export function checkEditModels(info: Record<string, NodeInfo>): EditCheck[] {
   return EDIT_MODELS.map((model) => {
     const missingNodes = model.nodes.filter((n) => !info[n]);
     const missingOptions = model.options
       .filter((o) => info[o.node] && !comboOptions(info[o.node], o.input).includes(o.value))
       .map((o) => `${o.node} ${o.input}: ${o.value}`);
-    const parts = model.parts.map((part) => ({ part, file: findFile(part, comboOptions(info[part.loader], part.input)) }));
-    const ready = missingNodes.length === 0 && missingOptions.length === 0 && parts.every((p) => p.file !== null);
-    const files: Record<string, string> = ready ? Object.fromEntries(parts.map((p) => [p.part.key, p.file!])) : {};
-    // A speed-up made for the model's release (the 2509 LoRA for the 2509 model) is preferred.
     const s = model.speedUp;
-    const speedUp = s ? { part: s, file: findFile(s, comboOptions(info[s.loader], s.input), releaseOf(files.model)) } : null;
-    if (ready && speedUp?.file) files.speedUp = speedUp.file;
-    return {
-      model, missingNodes, missingOptions, parts, files, ready, speedUp,
+    const found: EditCheck = {
+      model, missingNodes, missingOptions,
+      parts: model.parts.map((part) => ({ part, file: null, choices: comboOptions(info[part.loader], part.input) })),
+      files: {}, ready: false, checkpoint: null,
+      checkpoints: comboOptions(info[CHECKPOINT_LOADER], "ckpt_name"),
+      speedUp: s ? { part: s, file: null, choices: comboOptions(info[s.loader], s.input) } : null,
       loras: comboOptions(info[LORA_LOADER], "lora_name"),
       samplers: comboOptions(info.KSampler, "sampler_name"),
       schedulers: comboOptions(info.KSampler, "scheduler"),
     };
+    return presetCheck(found, { checkpoint: "", files: {} });
   });
+}
+
+/**
+ * Whether a model can be used with the files an edit preset chose (`choice`), and the files it uses: each
+ * part's chosen file, else with an all-in-one checkpoint the checkpoint's own, else the one found by its
+ * name. A part shares its loader with others (Flux's two text encoders), so when one of them is chosen
+ * the others use files of their own too, not the checkpoint's.
+ */
+export function presetCheck(check: EditCheck, choice: FileChoice): EditCheck {
+  const checkpoint = choice.checkpoint ? { file: choice.checkpoint, found: check.checkpoints.includes(choice.checkpoint) } : null;
+  const chosen = (key: string) => choice.files[key] || undefined;
+  // The model is always the checkpoint's; the others when nothing on their loader was chosen.
+  const ownLoader = (part: ModelPart) =>
+    part.output !== 0 && check.model.parts.some((q) => q.output === part.output && chosen(q.key));
+  const parts: PartCheck[] = check.parts.map(({ part, choices }) => {
+    const pick = checkpoint && part.output === 0 ? undefined : chosen(part.key);
+    if (pick) return { part, choices, chosen: pick, file: choices.includes(pick) ? pick : null };
+    if (checkpoint && !ownLoader(part)) return { part, choices, file: null, fromCheckpoint: true };
+    return { part, choices, file: findFile(part, choices) };
+  });
+  const ready =
+    check.missingNodes.length === 0 &&
+    check.missingOptions.length === 0 &&
+    (!checkpoint || checkpoint.found) &&
+    parts.every((p) => p.file !== null || p.fromCheckpoint);
+  const files: Record<string, string> = ready
+    ? Object.fromEntries(parts.filter((p) => p.file !== null).map((p) => [p.part.key, p.file!]))
+    : {};
+  if (ready && checkpoint) files.checkpoint = checkpoint.file;
+  // A speed-up made for the model's release (the 2509 LoRA for the 2509 model) is preferred.
+  const s = check.speedUp;
+  const speedUp = s ? { ...s, file: findFile(s.part, s.choices, releaseOf(files.model ?? files.checkpoint)) } : null;
+  if (ready && speedUp?.file) files.speedUp = speedUp.file;
+  return { ...check, parts, files, ready, checkpoint, speedUp };
+}
+
+/** An edit preset's check: its model's, with the files it chose. Null when ComfyUI's answer has no such model. */
+export function editPresetCheck(checks: EditCheck[], preset: FileChoice & { model: string }): EditCheck | null {
+  const check = checks.find((c) => c.model.id === preset.model);
+  return check ? presetCheck(check, preset) : null;
+}
+
+/**
+ * The workflow for an edit, with the files of `check` (see presetCheck). With an all-in-one checkpoint,
+ * node "1" loads it instead of the model, and the text encoder's and VAE's loaders give way to its
+ * outputs unless the preset chose files for them.
+ */
+export function buildEdit(check: EditCheck, p: EditParams, fast?: boolean): Workflow {
+  const wf = check.model.build(check.files, p, fast);
+  const ckpt = check.files.checkpoint;
+  if (!ckpt) return wf;
+  wf["1"] = { class_type: CHECKPOINT_LOADER, inputs: { ckpt_name: ckpt } };
+  for (const output of [1, 2] as const) {
+    const own = check.model.parts.some((q) => q.output === output && check.files[q.key]);
+    if (own) continue;
+    const loader = String(output + 1);
+    delete wf[loader];
+    for (const node of Object.values(wf)) {
+      for (const [k, v] of Object.entries(node.inputs)) {
+        if (Array.isArray(v) && v[0] === loader && v[1] === 0) node.inputs[k] = ["1", output];
+      }
+    }
+  }
+  return wf;
 }

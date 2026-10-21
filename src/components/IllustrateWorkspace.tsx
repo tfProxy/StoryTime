@@ -52,7 +52,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
   const [startMode, setStartMode] = useState<StartMode>("redraw");
   const comfy = useSettings().comfy;
   const editModels = useEditModels(comfy.url);
-  const blocked = editBlocked(editModels);
+  const blocked = editBlocked(editModels, comfy.editPresets);
   // The chapter's pictures, newest first.
   const [pictures, setPictures] = useState<Picture[]>(() => picturesOf(jobs));
   const [recorded] = useState(() => jobs.map((j) => j.prompt_id));

@@ -238,7 +238,9 @@ Each edit model's tab also says whether the model is installed. A model's preset
 the Illustrate page only when everything it needs is there. The check looks
 for the files above by name, and also accepts other versions of the same file, such as a bf16
 model, another fp8 version, `t5xxl_fp16`, or a newer Qwen-Image-Edit release. If several match, the
-one listed above is used. GGUF versions are not supported, because they need a custom loader node.
+one listed above is used. A preset can also choose its own files (see
+[Your own edit models](#your-own-edit-models)). GGUF versions are not supported, because they need a
+custom loader node.
 
 ### Your own LoRAs
 
@@ -265,6 +267,42 @@ a workflow of your own gets its LoRAs after the workflow's Load Checkpoint node,
 Diffusion Model node (model only) when it has no checkpoint loader. A LoRA that ComfyUI no longer
 lists is marked "missing" on the Illustrate page, and pictures go ahead without it. A picture's
 caption says how many LoRAs made it, and **Info** lists each one with its strength.
+
+### Your own edit models
+
+An edit preset can use other model files than the ones found by their names, such as an uncensored
+fine-tune. LoRAs alone often can't make an edit model follow instructions it was trained to ignore;
+a fine-tuned model can. Open the preset's card in Settings (Qwen edit or Flux edit tab) and its
+**Model files**:
+
+- **Model:** a model in `ComfyUI/models/diffusion_models`, or an **all-in-one checkpoint** in
+  `ComfyUI/models/checkpoints` (the model, text encoder and VAE in one file, loaded with ComfyUI's
+  Load Checkpoint).
+- **Text encoder(s)** and **VAE:** another file from their folders. With an all-in-one checkpoint
+  they are the checkpoint's own unless you choose one.
+
+Leave a choice on "Found by its name" to keep using the usual file. If ComfyUI no longer lists a chosen
+file, the card says so and the Edit tab greys the preset out. The job log and a picture's Info name
+the model or checkpoint used.
+
+Some fine-tunes to try:
+
+- **Qwen-Image-Edit Rapid AIO, NSFW** by Phr00t
+  ([Hugging Face](https://huggingface.co/Phr00t/Qwen-Image-Edit-Rapid-AIO), marked not for all
+  audiences): an all-in-one checkpoint, about 28 GB, with NSFW LoRAs and Lightning merged in. Pick a
+  version folder (`vNN/Qwen-Rapid-AIO-NSFW-vNN.safetensors`) and put the file in
+  `models/checkpoints`. Reportedly, earlier versions such as v19 keep a picture more consistent, and
+  later ones (v22, v23, made from Qwen-Image-Edit 2511) follow the instruction better. Lightning is
+  already in it, so untick **Fast**, and under **Advanced** set 4 steps, CFG 1 and the sampler and
+  scheduler its page gives for that version (for example lcm / beta).
+- **An abliterated Qwen 2.5 VL text encoder**, such as
+  [Qwen2.5-VL-7B-Huihui-Abliterated-ComfyUI](https://huggingface.co/ethanfel/Qwen2.5-VL-7B-Huihui-Abliterated-ComfyUI-ConvRot-INT8),
+  in `models/text_encoders`: choose it as the preset's text encoder. It is an experiment. The text
+  encoder only turns the instruction into numbers and doesn't refuse anything, so the model does more
+  than the encoder, and a report found that an abliterated encoder alone changed nothing.
+- **FLUX.1 Kontext:** no uncensored Kontext fine-tune was found (as of October 2026). The NSFW Flux
+  models, such as Chroma, are built on FLUX.1 dev or schnell and can't edit by instruction. Flux's T5
+  text encoder doesn't refuse, so changing it doesn't help.
 
 ### Each preset's settings
 

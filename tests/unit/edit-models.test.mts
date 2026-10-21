@@ -1,4 +1,4 @@
-import { checkEditModels, comboOptions, EDIT_MODELS, EDIT_NODES, editFilesExtras, editFilesText, editKnobs, editModel, editSize, editTuning, lightningSteps, usableLoras, type NodeInfo } from "../../src/lib/comfy/editModels.ts";
+import { buildEdit, checkEditModels, comboOptions, EDIT_MODELS, EDIT_NODES, editFilesExtras, editFilesText, editKnobs, editModel, editPresetCheck, editSize, editTuning, lightningSteps, presetCheck, usableLoras, type NodeInfo } from "../../src/lib/comfy/editModels.ts";
 import type { Workflow } from "../../src/lib/comfy/workflow.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
@@ -21,13 +21,14 @@ ok(comboOptions(null, "a").length === 0 && comboOptions({ input: { required: { a
 
 // ---- checkEditModels ----
 /** What ComfyUI would say about every node the check asks about, with these files installed. */
-function info(files: { unet?: string[]; clip?: string[]; vae?: string[]; lora?: string[] }, missing: string[] = [], clipTypes = ["qwen_image"], dualTypes = ["flux"]): Record<string, NodeInfo> {
+function info(files: { unet?: string[]; clip?: string[]; vae?: string[]; lora?: string[]; ckpt?: string[] }, missing: string[] = [], clipTypes = ["qwen_image"], dualTypes = ["flux"]): Record<string, NodeInfo> {
   const loaders: Record<string, Record<string, unknown>> = {
     LoraLoaderModelOnly: { lora_name: [files.lora ?? [], {}], strength_model: ["FLOAT", {}] },
     UNETLoader: { unet_name: [files.unet ?? [], {}] },
     CLIPLoader: { clip_name: [files.clip ?? [], {}], type: [clipTypes, {}] },
     DualCLIPLoader: { clip_name1: ["COMBO", { options: files.clip ?? [] }], clip_name2: ["COMBO", { options: files.clip ?? [] }], type: ["COMBO", { options: dualTypes }] },
     VAELoader: { vae_name: [files.vae ?? [], {}] },
+    CheckpointLoaderSimple: { ckpt_name: [files.ckpt ?? [], {}] },
   };
   return Object.fromEntries(EDIT_NODES.map((n) => [n, missing.includes(n) ? null : { input: { required: loaders[n] ?? {} } }]));
 }
@@ -197,3 +198,45 @@ const withSamplers = { ...info(all), KSampler: { input: { required: { sampler_na
 const sc = checkEditModels(withSamplers)[0];
 ok(sc.samplers.join() === "euler,dpmpp_2m" && sc.schedulers.join() === "simple,karras", "the check lists the samplers and schedulers ComfyUI's KSampler offers, for Settings");
 ok(EDIT_NODES.includes("KSampler"), "…which it asks about anyway");
+
+// ---- presetCheck and buildEdit: files a preset chooses ----
+{
+  const aio = "Qwen-Rapid-AIO-NSFW-v19.safetensors";
+  const tuned = "my-uncensored-edit.safetensors";
+  const abl = "qwen25vl-abliterated.safetensors";
+  const base = byId(checkEditModels(info({ ...all, unet: [...all.unet, tuned], clip: [...all.clip, abl], ckpt: [aio], lora: [lightning4] })), "qwen-image-edit");
+  ok(base.checkpoints.join() === aio && base.parts[0].choices.includes(tuned), "the check lists every checkpoint and every file of each part's folder, for Settings");
+  ok(EDIT_NODES.includes("CheckpointLoaderSimple"), "…asking ComfyUI about the checkpoint loader too");
+
+  const own = presetCheck(base, { checkpoint: "", files: { model: tuned, textEncoder: abl } });
+  ok(own.ready && own.files.model === tuned && own.files.textEncoder === abl && own.files.vae === "qwen_image_vae.safetensors", "a preset's chosen files replace the ones found by name; the rest are still found");
+  const ownWf = buildEdit(own, params);
+  ok(nodes(ownWf, "UNETLoader")[0].inputs.unet_name === tuned && nodes(ownWf, "CLIPLoader")[0].inputs.clip_name === abl, "…and its workflow loads them");
+  ok(editFilesText(own, false) === tuned, "…and the log records the chosen model");
+
+  const gone = presetCheck(base, { checkpoint: "", files: { model: "deleted.safetensors" } });
+  ok(!gone.ready && gone.parts[0].chosen === "deleted.safetensors" && gone.parts[0].file === null, "a chosen file ComfyUI doesn't list makes the preset not ready, and says which");
+
+  const ck = presetCheck(base, { checkpoint: aio, files: { model: tuned } });
+  ok(ck.ready && ck.files.checkpoint === aio && !("model" in ck.files) && !("textEncoder" in ck.files) && !("vae" in ck.files), "with an all-in-one checkpoint, the model, text encoder and VAE are the checkpoint's");
+  ok(ck.parts.every((p) => p.fromCheckpoint), "…which the check says");
+  const ckWf = buildEdit(ck, params, true);
+  const loader = Object.entries(ckWf).find(([, n]) => n.class_type === "CheckpointLoaderSimple")!;
+  ok(loader[0] === "1" && loader[1].inputs.ckpt_name === aio && nodes(ckWf, "UNETLoader").length === 0 && nodes(ckWf, "CLIPLoader").length === 0 && nodes(ckWf, "VAELoader").length === 0, "…and the workflow loads the checkpoint instead of the three files");
+  const refs = Object.values(ckWf).flatMap((n) => Object.values(n.inputs).filter((v): v is [string, number] => Array.isArray(v)));
+  ok(refs.every(([id]) => id in ckWf), "…with every link pointing at a node that exists");
+  ok(nodes(ckWf, "TextEncodeQwenImageEditPlus").every((n) => JSON.stringify(n.inputs.clip) === '["1",1]' && JSON.stringify(n.inputs.vae) === '["1",2]'), "…the text encoder and VAE being the checkpoint's outputs");
+  ok(nodes(ckWf, "LoraLoaderModelOnly")[0].inputs.model[0] === "1", "…and Fast's LoRA still goes on its model");
+  ok(editFilesText(ck, true).startsWith(aio + " + "), "the log records the checkpoint");
+
+  const ckEnc = presetCheck(base, { checkpoint: aio, files: { textEncoder: abl } });
+  const ckEncWf = buildEdit(ckEnc, params);
+  ok(ckEnc.ready && nodes(ckEncWf, "CLIPLoader")[0].inputs.clip_name === abl && nodes(ckEncWf, "TextEncodeQwenImageEditPlus")[0].inputs.vae[0] === "1", "a checkpoint can be used with a text encoder of its own; the VAE stays the checkpoint's");
+  ok(!presetCheck(base, { checkpoint: "missing.safetensors", files: {} }).ready, "a checkpoint ComfyUI doesn't list makes the preset not ready");
+
+  const kbase = byId(checkEditModels(info({ ...all, ckpt: [aio] })), "flux-kontext");
+  const kck = presetCheck(kbase, { checkpoint: aio, files: { t5: "t5xxl_fp8_e4m3fn_scaled.safetensors" } });
+  const kwf2 = buildEdit(kck, params);
+  ok(kck.ready && kck.files.clipL === "clip_l.safetensors" && nodes(kwf2, "DualCLIPLoader").length === 1 && nodes(kwf2, "VAELoader").length === 0, "Flux: choosing one text encoder keeps both on their own loader (the other found by name); the VAE is the checkpoint's");
+  ok(editPresetCheck(checkEditModels(info(all)), { model: "flux-kontext", checkpoint: "", files: {} })?.ready === true, "editPresetCheck finds the preset's model");
+}

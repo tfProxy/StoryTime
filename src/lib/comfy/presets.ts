@@ -37,6 +37,13 @@ export type EditPreset = {
   id: string;
   name: string;
   model: EditModelId;
+  /**
+   * An all-in-one checkpoint (model, text encoder and VAE in one file, in ComfyUI's `checkpoints` folder)
+   * to use instead of the model's own files, such as an uncensored fine-tune; "" for none.
+   */
+  checkpoint: string;
+  /** Files chosen for the model's parts, by part key (see editModels.ts); a part not here uses the one found by its name. */
+  files: Record<string, string>;
   /** Uses the model's speed-up (Qwen's Lightning LoRA) when ComfyUI has it. */
   fast: boolean;
   /** Applied in order, after the speed-up. */
@@ -49,7 +56,9 @@ export const newDrawPreset = (id: string, name: string, checkpoint = ""): DrawPr
   id, name, checkpoint, workflow: "", loras: [], sampler: {}, denoise: DEFAULT_DENOISE,
 });
 
-export const newEditPreset = (id: string, name: string, model: EditModelId): EditPreset => ({ id, name, model, fast: true, loras: [], tuning: {} });
+export const newEditPreset = (id: string, name: string, model: EditModelId): EditPreset => ({
+  id, name, model, checkpoint: "", files: {}, fast: true, loras: [], tuning: {},
+});
 
 /** The presets a fresh setup starts with: one for drawing, and one for each edit model (its id is the model's). */
 export const DEFAULT_DRAW_PRESETS: DrawPreset[] = [newDrawPreset("default", "Default")];

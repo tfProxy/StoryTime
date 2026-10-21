@@ -8,10 +8,10 @@ import type { ComfySettings } from "@/lib/settingsSchema";
 import type { ImageMoment } from "@/lib/ai/imagePrompt";
 import type { LoadedPrompt } from "./ImagePromptPanel";
 import type { JobProgress, MadeWith, PendingJob, Picture, StartMode } from "./pictures";
-import { editBlocked, type EditModels } from "./useEditModels";
+import { editBlocked, usableEditPresets, type EditModels } from "./useEditModels";
 import AutoTextarea from "./AutoTextarea";
 import { LIMITS } from "@/lib/limits";
-import { EDIT_MODELS, editFilesText, editSize, editTuning, lightningSteps, usableLoras, type EditCheck, type EditLora, type EditTuning } from "@/lib/comfy/editModels";
+import { buildEdit, EDIT_MODELS, editFilesText, editSize, editTuning, lightningSteps, usableLoras, type EditCheck, type EditLora, type EditTuning } from "@/lib/comfy/editModels";
 import { drawFilesText, drawPresetFor, drawPresetSummary, presetName, type DrawPreset, type EditPreset, type LoraSetting } from "@/lib/comfy/presets";
 import { uploadStart, type StartPicture, type Uploaded } from "@/lib/comfy/startPicture";
 import { builtinSampler, describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
@@ -211,12 +211,13 @@ export default function ComfyGenerate({
   const drawUsable = usableLoras(draw.loras, loraFiles ?? draw.loras.map((l) => l.name));
 
   const editing = start !== null && startMode === "edit";
-  const blocked = editBlocked(editModels);
-  const ready = editModels.state === "done" ? editModels.ready : [];
-  // The edit preset: the one last chosen, if its model is ready, else the first of a ready model.
-  const usablePresets = comfy.editPresets.filter((p) => ready.some((c) => c.model.id === p.model));
-  const editPreset = usablePresets.find((p) => p.id === comfy.editPreset) ?? usablePresets[0] ?? null;
-  const chosen = editPreset ? (ready.find((c) => c.model.id === editPreset.model) ?? null) : null;
+  const blocked = editBlocked(editModels, comfy.editPresets);
+  // The edit preset: the one last chosen, if ComfyUI has its files, else the first that it has them for.
+  const usablePresets = usableEditPresets(editModels, comfy.editPresets);
+  const usable = usablePresets.find((u) => u.preset.id === comfy.editPreset) ?? usablePresets[0] ?? null;
+  const editPreset = usable?.preset ?? null;
+  // Its model, with the files it uses.
+  const chosen = usable?.check ?? null;
   // The edit preset's settings, with the model's defaults for the rest.
   const tuning = chosen && editPreset ? editTuning(chosen.model, editPreset.tuning) : null;
   const editStrength = editPreset && strengthFor?.model === editPreset.id ? strengthFor.value : (tuning?.strength ?? 1);
@@ -433,8 +434,8 @@ export default function ComfyGenerate({
       const prefix = filenamePrefix(storyId, chapterId);
       const workflow =
         edit && from
-          ? edit.check.model.build(
-              edit.check.files,
+          ? buildEdit(
+              edit.check,
               { image: from.name, instruction: edit.instruction, seed, count, width, height, prefix, denoise: edit.strength, loras: edit.loras, tuning: edit.tuning },
               edit.fast,
             )
@@ -706,16 +707,19 @@ export default function ComfyGenerate({
                     Preset
                     <select aria-label="Edit preset" value={editPreset.id} onChange={(e) => set({ editPreset: e.target.value })} style={{ width: "auto", minWidth: 0, flex: 1 }}>
                       {EDIT_MODELS.map((m) => {
-                        const installed = ready.some((c) => c.model.id === m.id);
+                        const mine = comfy.editPresets.filter((p) => p.model === m.id);
+                        const installed = mine.some((p) => usablePresets.some((u) => u.preset.id === p.id));
                         return (
                           <optgroup key={m.id} label={installed ? m.name : `${m.name} (not installed)`}>
-                            {comfy.editPresets
-                              .filter((p) => p.model === m.id)
-                              .map((p) => (
-                                <option key={p.id} value={p.id} disabled={!installed}>
+                            {mine.map((p) => {
+                              const ok = usablePresets.some((u) => u.preset.id === p.id);
+                              return (
+                                <option key={p.id} value={p.id} disabled={!ok}>
                                   {presetName(p)}
+                                  {installed && !ok ? " (files missing)" : ""}
                                 </option>
-                              ))}
+                              );
+                            })}
                           </optgroup>
                         );
                       })}

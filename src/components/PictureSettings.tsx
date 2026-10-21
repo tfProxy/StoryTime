@@ -5,7 +5,7 @@ import { TUNING_LIMITS, type ComfySettings as Comfy } from "@/lib/settingsSchema
 import { BUILTIN_SAMPLER, builtinSampler, describeWorkflow, parseWorkflow, WorkflowError, type WorkflowFit } from "@/lib/comfy/workflow";
 import { checkComfy, type ComfyCheck } from "@/lib/comfy/check";
 import { listCheckpoints } from "@/lib/comfy/client";
-import { editModel, editTuning, lightningSteps, type EditModel } from "@/lib/comfy/editModels";
+import { editModel, editPresetCheck, editTuning, lightningSteps, presetCheck, type EditModel } from "@/lib/comfy/editModels";
 import {
   drawPresetSummary,
   fileLabel,
@@ -493,11 +493,120 @@ export function DrawingSettings({
   );
 }
 
-/** An edit preset in a few words: Fast, its LoRAs, and its strength. */
+/** An edit preset in a few words: its own model file if it chose one, Fast, its LoRAs, and its strength. */
 function editPresetSummary(p: EditPreset, model: EditModel): string {
   const on = p.loras.filter((l) => l.on && l.name).length;
   const strength = editTuning(model, p.tuning).strength;
-  return [model.speedUp && p.fast && "fast", on > 0 && `${on} LoRA${on === 1 ? "" : "s"}`, `strength ${strength.toFixed(2)}`].filter(Boolean).join(" · ");
+  const own = p.checkpoint || p.files.model;
+  return [own && fileLabel(own), model.speedUp && p.fast && "fast", on > 0 && `${on} LoRA${on === 1 ? "" : "s"}`, `strength ${strength.toFixed(2)}`]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** The value of the Model select: "" for the file found by its name, else which folder and file. */
+const modelValue = (p: EditPreset) => (p.checkpoint ? `checkpoint:${p.checkpoint}` : p.files.model ? `model:${p.files.model}` : "");
+
+/** Options for files, with the chosen one added (marked) when ComfyUI doesn't list it. */
+function FileOptions({ files, chosen, prefix = "" }: { files: string[]; chosen?: string; prefix?: string }) {
+  return (
+    <>
+      {chosen && !files.includes(chosen) && <option value={prefix + chosen}>{chosen} (not in ComfyUI)</option>}
+      {files.map((f) => (
+        <option key={f} value={prefix + f}>
+          {f}
+        </option>
+      ))}
+    </>
+  );
+}
+
+/**
+ * An edit preset's model files: the model (one in `diffusion_models`, or an all-in-one checkpoint that has
+ * the text encoder and VAE in it too), and the text encoders and VAE. Each can be left to the file found
+ * by its name, so uncensored or other fine-tuned models can be used by some presets and not others.
+ */
+function ModelFiles({ preset, model, setup, onChange }: { preset: EditPreset; model: EditModel; setup: PictureSetup; onChange: (patch: Partial<EditPreset>) => void }) {
+  const base = setup.models.state === "done" ? setup.models.checks.find((c) => c.model.id === model.id) : undefined;
+  const check = base ? presetCheck(base, preset) : undefined;
+  const [modelPart, ...others] = model.parts;
+  const listed = (key: string) => base?.parts.find((p) => p.part.key === key);
+  const found = (key: string) => listed(key)?.file;
+  const setFile = (key: string, file: string) => {
+    const files = { ...preset.files };
+    if (file) files[key] = file;
+    else delete files[key];
+    onChange({ files });
+  };
+  function setModel(value: string) {
+    const [kind, ...rest] = value.split(":");
+    const file = rest.join(":");
+    const files = { ...preset.files };
+    delete files[modelPart.key];
+    if (kind === "model") files[modelPart.key] = file;
+    onChange({ checkpoint: kind === "checkpoint" ? file : "", files });
+  }
+  const chosenAny = preset.checkpoint !== "" || Object.keys(preset.files).length > 0;
+  // Open to start with when the preset chose files of its own.
+  const [open] = useState(chosenAny);
+  const problems = check
+    ? [
+        ...(check.checkpoint && !check.checkpoint.found ? [`ComfyUI doesn't list the checkpoint ${check.checkpoint.file}.`] : []),
+        ...check.parts
+          .filter((p) => p.file === null && !p.fromCheckpoint)
+          .map((p) => (p.chosen ? `ComfyUI doesn't list ${p.chosen} (${p.part.label}).` : `No ${p.part.label} found in ComfyUI/models/${p.part.folder}.`)),
+      ]
+    : [];
+  return (
+    <details className="advanced" open={open || undefined}>
+      <summary>Model files: {preset.checkpoint ? `checkpoint ${fileLabel(preset.checkpoint)}` : chosenAny ? "chosen here" : "found by their names"}</summary>
+      <div className="preset-body">
+        <p className="meta" style={{ margin: 0 }}>
+          To use a fine-tuned or uncensored {model.name}, choose its file here. An all-in-one checkpoint (in{" "}
+          <code>ComfyUI/models/checkpoints</code>) has the text encoder and VAE in it too.
+        </p>
+        <label>
+          Model
+          <select aria-label={`Model for ${presetName(preset)}`} value={modelValue(preset)} onChange={(e) => setModel(e.target.value)}>
+            <option value="">Found by its name{found(modelPart.key) ? ` (${found(modelPart.key)})` : " (none found)"}</option>
+            <optgroup label={`Models (models/${modelPart.folder})`}>
+              <FileOptions files={listed(modelPart.key)?.choices ?? []} chosen={preset.checkpoint ? undefined : preset.files[modelPart.key]} prefix="model:" />
+            </optgroup>
+            <optgroup label="All-in-one checkpoints (models/checkpoints)">
+              <FileOptions files={base?.checkpoints ?? []} chosen={preset.checkpoint || undefined} prefix="checkpoint:" />
+            </optgroup>
+          </select>
+        </label>
+        {others.map((part) => (
+          <label key={part.key}>
+            {part.label}
+            <select value={preset.files[part.key] ?? ""} onChange={(e) => setFile(part.key, e.target.value)}>
+              <option value="">
+                {preset.checkpoint ? "The checkpoint's own" : `Found by its name${found(part.key) ? ` (${found(part.key)})` : " (none found)"}`}
+              </option>
+              <FileOptions files={listed(part.key)?.choices ?? []} chosen={preset.files[part.key]} />
+            </select>
+          </label>
+        ))}
+        {preset.checkpoint && (
+          <p className="meta" style={{ margin: 0 }}>
+            Some all-in-one checkpoints have a speed-up merged in (Phr00t&apos;s Rapid AIO has Lightning). Then untick Fast,
+            and set the steps, CFG and sampler under Advanced as the checkpoint&apos;s page says.
+          </p>
+        )}
+        {check &&
+          (problems.length === 0 ? (
+            <p className="ok" style={{ margin: 0 }}>
+              ComfyUI has every file this preset uses.
+            </p>
+          ) : (
+            <p className="error" style={{ margin: 0 }}>
+              {problems.join(" ")} Edit this doesn&apos;t offer this preset until it does.
+            </p>
+          ))}
+        {setup.models.state !== "done" && <p className="meta" style={{ margin: 0 }}>The files are listed once ComfyUI answers.</p>}
+      </div>
+    </details>
+  );
 }
 
 /** One edit preset's settings: name, Fast, default strength, LoRAs and the model's sampler settings. */
@@ -508,13 +617,14 @@ function EditPresetFields({ preset, model, setup, onChange }: { preset: EditPres
   const setTuning = (patch: Partial<typeof changed> | null) =>
     onChange({ tuning: patch ? { ...changed, ...patch } : changed.strength !== undefined ? { strength: changed.strength } : {} });
   const { loras, samplers, schedulers } = lists(setup.models);
-  const check = setup.models.state === "done" ? setup.models.ready.find((c) => c.model.id === model.id) : undefined;
-  const speedUp = check?.files.speedUp ?? null;
+  const check = setup.models.state === "done" ? editPresetCheck(setup.models.checks, preset) : null;
+  const speedUp = check?.speedUp?.file ?? null;
   const { strength, ...sampler } = tuning;
   const samplerChanged = Object.keys(changed).some((k) => k !== "strength");
   return (
     <>
       <NameField value={preset.name} onChange={(name) => onChange({ name })} />
+      <ModelFiles preset={preset} model={model} setup={setup} onChange={onChange} />
       {model.speedUp && (
         <label className="inline-label" style={{ alignItems: "flex-start" }}>
           <input type="checkbox" checked={preset.fast} disabled={!speedUp} onChange={(e) => onChange({ fast: e.target.checked })} />
@@ -590,7 +700,9 @@ export function EditSettings({
         </p>
         {installed !== null && (
           <p className={installed ? "ok" : "error"} style={{ margin: 0 }}>
-            {installed ? `${model.name} is installed in ComfyUI.` : `${model.name} isn't installed in ComfyUI, so Edit this doesn't offer it. Check setup says what is missing.`}
+            {installed
+              ? `${model.name} is installed in ComfyUI.`
+              : `ComfyUI doesn't have ${model.name}'s usual files. Check setup says what is missing; or choose a preset's own under Model files.`}
           </p>
         )}
         {mine.map((p) => (
