@@ -11,7 +11,8 @@ import { cancelPrompt, listTaggedJobs, waitForPictures, type ComfyImage, type Pr
 import type { JobRecord } from "@/lib/comfy/jobTag";
 import { queueJob, sameJob, type JobInput, type UploadCache } from "@/lib/comfy/makeJob";
 import { randomSeed } from "@/lib/comfy/workflow";
-import type { PendingJob, Picture } from "./pictures";
+import type { PictureJob } from "@/lib/pictureJobs";
+import { picturesOf, type PendingJob, type Picture } from "./pictures";
 
 /** How long after the last click a job is sent, so quick clicks with the same settings make one job. */
 export const GATHER_MS = 800;
@@ -32,7 +33,12 @@ export type QueueJob = Queued & {
   message?: string;
   /** When it finished or failed (ms since 1970). */
   endedAt?: number;
+  /** Recorded as not seen yet, so it is marked seen once shown or dismissed. */
+  unseen?: boolean;
 };
+
+/** What a job's end hands on. */
+type Ended = { pictures: Picture[]; warning?: string; unseen?: boolean } | { error: string } | { stopped: true };
 
 /** What a chapter's open page is told: each finished job's pictures, and how a job ended when there is something to say. */
 export type ChapterListener = {
@@ -74,6 +80,21 @@ async function recordJob(job: Record<string, unknown>): Promise<string> {
   if (!res.ok || typeof data.id !== "string") throw new Error(data.error ?? `Couldn't record the job (${res.status})`);
   return data.id;
 }
+
+/** Jobs marked seen in this tab, which the server may not have heard of yet: not listed as ready again. */
+const seenHere = new Set<string>();
+
+/** Marks recorded jobs' pictures as seen, so they are no longer new on their chapter's page or ready in the header. */
+export function markJobsSeen(ids: string[]): void {
+  if (ids.length === 0) return;
+  for (const id of ids) seenHere.add(id);
+  void fetch("/api/picture-jobs/seen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) }).catch(() => {
+    // still new next time; nothing is lost
+  });
+}
+
+/** The ids of the recorded jobs a finished job's pictures belong to. */
+const jobIdsOf = (pictures: Picture[] = []) => [...new Set(pictures.map((p) => p.jobId).filter((id): id is string => id !== null))];
 
 /** Which of these ComfyUI jobs StoryTime has already recorded. */
 async function knownJobs(promptIds: string[]): Promise<Set<string>> {
@@ -137,7 +158,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
 
   /** A job has ended: its chapter's page is told now, or the job is kept until the page is opened. */
   const ended = useCallback(
-    (key: string, result: { pictures: Picture[]; warning?: string } | { error: string } | { stopped: true }) => {
+    (key: string, result: Ended) => {
       controls.current.delete(key);
       const job = jobsRef.current.find((j) => j.key === key);
       if (!job) return;
@@ -147,16 +168,25 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
         return update((prev) => prev.filter((j) => j.key !== key));
       }
       if (listener) {
-        if ("pictures" in result) listener.onPictures(result.pictures);
+        if ("pictures" in result) {
+          listener.onPictures(result.pictures);
+          if (result.unseen) markJobsSeen(jobIdsOf(result.pictures));
+        }
         const text = "error" in result ? result.error : result.warning;
         if (text) listener.onStatus({ ok: false, text });
         return update((prev) => prev.filter((j) => j.key !== key));
       }
       patch(key, "error" in result
         ? { state: "failed", message: result.error, endedAt: Date.now() }
-        : { state: "done", pictures: result.pictures, message: result.warning, endedAt: Date.now() });
+        : { state: "done", pictures: result.pictures, message: result.warning, unseen: result.unseen, endedAt: Date.now() });
     },
     [patch, update],
+  );
+
+  /** Records a finished job: as not seen yet when its chapter's page isn't open. */
+  const record = useCallback(
+    (chapterId: string, promptId: string, job: JobRecord, images: ComfyImage[]) => recordPictures(chapterId, promptId, job, images, !listeners.current.has(chapterId)),
+    [],
   );
 
   /** Waits for a job ComfyUI has queued, records it and hands on its pictures. */
@@ -164,9 +194,9 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
     async (key: string, job: { chapterId: string; url: string; promptId: string; clientId: string; record: JobRecord; signal: AbortSignal }) => {
       const images = await waitForPictures(job.url, job.promptId, job.clientId, (progress: Progress) => patch(key, { progress }), job.signal);
       if (images.length === 0) throw new Error("ComfyUI finished but sent back no pictures. Does the workflow end in a Save Image node?");
-      return recordPictures(job.chapterId, job.promptId, job.record, images);
+      return record(job.chapterId, job.promptId, job.record, images);
     },
-    [patch],
+    [patch, record],
   );
 
   /** What went wrong, as the end of a job. */
@@ -245,7 +275,15 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
     [ended],
   );
 
-  const dismiss = useCallback((key: string) => update((prev) => prev.filter((j) => j.key !== key || j.state === "making")), [update]);
+  const dismiss = useCallback(
+    (key: string) => {
+      const job = jobsRef.current.find((j) => j.key === key && j.state !== "making");
+      if (!job) return;
+      if (job.unseen) markJobsSeen(jobIdsOf(job.pictures));
+      update((prev) => prev.filter((j) => j !== job));
+    },
+    [update],
+  );
 
   const listen = useCallback(
     (chapterId: string, listener: ChapterListener) => {
@@ -257,6 +295,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
           if (j.pictures) listener.onPictures(j.pictures);
           if (j.message) listener.onStatus({ ok: false, text: j.message });
         }
+        markJobsSeen(waiting.filter((j) => j.unseen).flatMap((j) => jobIdsOf(j.pictures)));
       }
       return () => {
         if (listeners.current.get(chapterId) === listener) listeners.current.delete(chapterId);
@@ -301,24 +340,55 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
     [ended, failed, finish, update],
   );
 
-  /** A job ComfyUI finished that was never recorded (the page that asked for it was gone): records it and keeps it as new. */
-  const adopt = useCallback(
-    async (found: TaggedJob & { state: "done" }) => {
-      const { job, chapterId, storyId } = found.tag;
+  /** A finished job that wasn't made in this tab: handed to its chapter's page if it is open, else kept. */
+  const keep = useCallback(
+    (job: Omit<Queued, "key" | "progress"> & { chapterId: string; storyId: string }, result: Ended) => {
       const key = `job-${randomSeed().toString(36)}`;
-      const result = await recordPictures(chapterId, found.promptId, job, found.images);
-      update((prev) => [
-        ...prev,
-        {
-          key, chapterId, storyId, state: "making", count: job.count, progress: { stage: "loading" },
-          prompt: job.prompt, negative: job.negative, checkpoint: job.checkpoint, width: job.width, height: job.height,
-          denoise: job.denoise ?? null, source: job.source ?? null, instruction: job.instruction ?? null, editModel: job.edit_model ?? null, moment: job.moment,
-        },
-      ]);
+      update((prev) => [...prev, { ...job, key, progress: { stage: "loading" }, state: "making" }]);
       ended(key, result);
     },
     [ended, update],
   );
+
+  /** A job ComfyUI finished that was never recorded (the page that asked for it was gone): records it and keeps it as new. */
+  const adopt = useCallback(
+    async (found: TaggedJob & { state: "done" }) => {
+      const { job, chapterId, storyId } = found.tag;
+      const result = await record(chapterId, found.promptId, job, found.images);
+      keep(
+        {
+          chapterId, storyId, count: job.count, prompt: job.prompt, negative: job.negative, checkpoint: job.checkpoint, width: job.width, height: job.height,
+          denoise: job.denoise ?? null, source: job.source ?? null, instruction: job.instruction ?? null, editModel: job.edit_model ?? null, moment: job.moment,
+        },
+        result,
+      );
+    },
+    [keep, record],
+  );
+
+  // Jobs recorded but not seen yet, from the server: finished while their chapter's page wasn't open, in
+  // this browser or another. Those not in the list already are added as ready.
+  const loadUnseen = useCallback(async () => {
+    try {
+      const res = await fetch("/api/picture-jobs?unseen=1", { cache: "no-store" });
+      if (!res.ok) return;
+      const { jobs: found } = (await res.json()) as { jobs: PictureJob[] };
+      const listed = new Set(jobsRef.current.flatMap((j) => jobIdsOf(j.pictures)));
+      for (const j of [...found].reverse()) {
+        if (listed.has(j.id) || seenHere.has(j.id)) continue;
+        listed.add(j.id);
+        keep(
+          {
+            chapterId: j.chapter_id, storyId: j.story_id, count: j.images.length, prompt: j.prompt, negative: j.negative, checkpoint: j.checkpoint,
+            width: j.width, height: j.height, denoise: j.denoise, source: j.source, instruction: j.instruction, editModel: j.edit_model, moment: j.moment,
+          },
+          { pictures: picturesOf([j]), unseen: true },
+        );
+      }
+    } catch {
+      // asked again when the app next comes into view
+    }
+  }, [keep]);
 
   // On opening the app, and when it comes back into view, ComfyUI is asked for StoryTime's jobs it is making
   // or has made lately that this app hasn't picked up: those being made are shown again, and those finished
@@ -329,7 +399,6 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
     async (url: string) => {
       if (scanning.current) return;
       scanning.current = true;
-      lastScan.current = Date.now();
       try {
         const found = (await listTaggedJobs(url)).filter((j) => !picked.current.has(j.promptId));
         const done = found.filter((j): j is TaggedJob & { state: "done" } => j.state === "done");
@@ -348,25 +417,30 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
     },
     [adopt, resume],
   );
+  // The new jobs the server has come first, so a job found in ComfyUI and recorded meanwhile isn't listed twice.
   useEffect(() => {
-    if (!comfyUrl) return;
-    void scan(comfyUrl);
+    const look = async () => {
+      lastScan.current = Date.now();
+      await loadUnseen();
+      if (comfyUrl) await scan(comfyUrl);
+    };
+    void look();
     const again = () => {
-      if (document.visibilityState === "visible" && Date.now() - lastScan.current > RESCAN_MS) void scan(comfyUrl);
+      if (document.visibilityState === "visible" && Date.now() - lastScan.current > RESCAN_MS) void look();
     };
     document.addEventListener("visibilitychange", again);
     return () => document.removeEventListener("visibilitychange", again);
-  }, [comfyUrl, scan]);
+  }, [comfyUrl, scan, loadUnseen]);
 
   const api = useMemo(() => ({ jobs, ask, stop, dismiss, listen }), [jobs, ask, stop, dismiss, listen]);
   return <QueueContext.Provider value={api}>{children}</QueueContext.Provider>;
 }
 
 /** Records a finished job in the log and makes its pictures. The pictures are usable even if recording fails. */
-async function recordPictures(chapterId: string, promptId: string, record: JobRecord, images: ComfyImage[]): Promise<{ pictures: Picture[]; warning?: string }> {
+async function recordPictures(chapterId: string, promptId: string, record: JobRecord, images: ComfyImage[], unseen: boolean): Promise<{ pictures: Picture[]; warning?: string; unseen?: boolean }> {
   try {
-    const jobId = await recordJob({ chapter_id: chapterId, prompt_id: promptId, ...record, images });
-    return { pictures: picturesOfJob(chapterId, jobId, promptId, record, images) };
+    const jobId = await recordJob({ chapter_id: chapterId, prompt_id: promptId, ...record, images, unseen });
+    return { pictures: picturesOfJob(chapterId, jobId, promptId, record, images), unseen };
   } catch (e) {
     return {
       pictures: picturesOfJob(chapterId, null, promptId, record, images),

@@ -203,3 +203,20 @@ ok(r.json.jobs.length > 0 && r.json.jobs.every((j) => j.chapter_id === two), "no
   const bad = await call("POST", "/api/picture-jobs/known", { prompt_ids: "p1" });
   ok(bad.status === 400, "…and refuses ids that aren't a list");
 }
+
+// ---- new until seen (jobs that finished while their chapter's Illustrate page wasn't open) ----
+{
+  const unseenIds = async () => (await call("GET", "/api/picture-jobs?unseen=1")).json.jobs.map((j) => j.id);
+  const plain = (await call("POST", "/api/picture-jobs", job(one, 40))).json;
+  ok(plain.seen_at !== null && !(await unseenIds()).includes(plain.id), "a job recorded as usual counts as seen");
+  const fresh = (await call("POST", "/api/picture-jobs", job(two, 41, { unseen: true }))).json;
+  ok(fresh.seen_at === null && (await unseenIds())[0] === fresh.id, "a job recorded as unseen is listed as new, in every story, newest first");
+  const listed = (await call("GET", "/api/picture-jobs?unseen=1")).json.jobs[0];
+  ok(listed.story_id === story && listed.chapter_id === two && listed.images.length === 2 && Array.isArray(listed.marks), "…with its chapter, story, pictures and marks");
+  const s = await call("POST", "/api/picture-jobs/seen", { ids: [fresh.id, plain.id] });
+  ok(s.status === 200 && s.json.seen === 1, "marking seen counts only the jobs that were new");
+  ok(!(await unseenIds()).includes(fresh.id), "…and a seen job is no longer listed as new");
+  const again = (await call("GET", `/api/picture-jobs?chapter=${two}`)).json.jobs.find((j) => j.id === fresh.id);
+  ok(typeof again.seen_at === "number", "…and keeps when it was seen");
+  ok((await call("POST", "/api/picture-jobs/seen", { ids: "x" })).status === 400, "seen refuses ids that aren't a list");
+}

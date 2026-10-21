@@ -1,5 +1,5 @@
 import { handlePost } from "@/lib/api";
-import { listPictureJobs, NewJobSchema, recordPictureJob } from "@/lib/pictureJobs";
+import { listPictureJobs, NewJobSchema, recordPictureJob, unseenPictureJobs } from "@/lib/pictureJobs";
 
 export const dynamic = "force-dynamic";
 
@@ -8,8 +8,10 @@ const bad = (error: string) => Response.json({ error }, { status: 400 });
 // The pictures made so far, newest first: ?story=<id> for a whole story (&not_chapter=<id> to leave one
 // chapter out) or ?chapter=<id> for one chapter. Each job lists its pictures' marks (pinned, rejected or null).
 // Page through with ?before=<next from the last page> and ?limit= (1 to 200, default 50).
+// ?unseen=1 instead lists the jobs whose pictures haven't been seen yet, in every story (the latest 50).
 export async function GET(request: Request) {
   const q = new URL(request.url).searchParams;
+  if (q.get("unseen") === "1") return Response.json({ jobs: unseenPictureJobs(), next: null });
   const story = q.get("story");
   const chapter = q.get("chapter");
   if (!story === !chapter) return bad("Give either story or chapter");

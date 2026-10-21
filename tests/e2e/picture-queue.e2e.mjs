@@ -73,16 +73,36 @@ try {
   ok(await until(async () => (await tiles.count()) === 2, "the second picture", 100), "a job finishing on its own chapter's page shows there");
   ok((await badge.count()) === 0, "…and isn't listed as ready in the header");
 
-  // ---- Stop from the list ----
+  // ---- left with a full page load, so only ComfyUI and the server know of the job ----
+  await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("gulls over the harbour");
   await page.getByRole("button", { name: "Queue", exact: true }).click();
   await until(() => posted() === 3, "the third job to be sent", 60);
+  await page.goto(`${BASE}/settings`);
+  ok(await until(async () => (await badge.getAttribute("aria-label")) === "Pictures: 1 being made", "the job to be found again", 60), "after a full page load the header finds the job in ComfyUI");
+  ok(await until(async () => (await badge.getAttribute("aria-label")) === "Pictures: 1 ready", "the job to finish", 100), "…and says when it is ready");
+  await page.reload();
+  ok(await until(async () => (await badge.getAttribute("aria-label")) === "Pictures: 1 ready", "the ready job after a reload", 60), "it is still ready after another reload (the server keeps it as new)");
+  await badge.click();
+  await panel.getByRole("listitem", { name: "The harbour: ready" }).getByRole("link", { name: "Open", exact: true }).click();
+  await page.waitForURL(`${BASE}/c/${chapterId}/illustrate`);
+  await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
+  ok(await until(async () => (await tiles.count()) === 1, "the new picture"), "its chapter's page shows it with the new ones");
+  ok(await until(async () => (await call("GET", "/api/picture-jobs?unseen=1")).jobs.length === 0, "the job to be marked seen"), "…and it is marked seen");
+  await page.reload();
+  await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
+  await new Promise((r) => setTimeout(r, 800));
+  ok((await tiles.count()) === 0 && (await badge.count()) === 0, "once seen, it is no longer new on the page or ready in the header");
+
+  // ---- Stop from the list ----
+  await page.getByRole("button", { name: "Queue", exact: true }).click();
+  await until(() => posted() === 4, "the fourth job to be sent", 60);
   await toStoryList();
   await badge.click();
   await panel.getByRole("button", { name: "Stop" }).click();
   ok(await until(async () => (await badge.count()) === 0, "the stopped job to go"), "Stop in the list stops the job and takes it off");
   ok(comfy.calls.some((c) => c.path === "/interrupt" || (c.path === "/queue" && c.method === "POST")), "…and tells ComfyUI");
   await new Promise((r) => setTimeout(r, 2500));
-  ok((await call("GET", `/api/picture-jobs?chapter=${chapterId}`)).jobs.length === 2, "…and nothing is recorded for it");
+  ok((await call("GET", `/api/picture-jobs?chapter=${chapterId}`)).jobs.length === 3, "…and nothing is recorded for it");
 } finally {
   await putSettings(before ?? {});
   await browser.close();

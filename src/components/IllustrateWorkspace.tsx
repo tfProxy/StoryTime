@@ -7,6 +7,7 @@ import ChapterImageEditor from "./ChapterImageEditor";
 import IllustrateChapter from "./IllustrateChapter";
 import ImagePromptPanel, { type IllustratedStory, type LoadedPrompt } from "./ImagePromptPanel";
 import ChapterPictures from "./ChapterPictures";
+import { markJobsSeen } from "./PictureQueue";
 import { picturesOf, type PendingJob, type Picture, type PromptToLoad, type StartMode } from "./pictures";
 import { editBlocked, useEditModels } from "./useEditModels";
 import { useSettings } from "@/lib/settings";
@@ -55,6 +56,8 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
   const blocked = editBlocked(editModels, comfy.editPresets);
   // The chapter's pictures, newest first.
   const [pictures, setPictures] = useState<Picture[]>(() => picturesOf(jobs));
+  // Jobs that finished while the page wasn't open show as new (fresh) this once.
+  useEffect(() => markJobsSeen(jobs.filter((j) => j.seen_at === null).map((j) => j.id)), [jobs]);
   // The jobs being made, newest first, shown among the pictures.
   const [pending, setPending] = useState<PendingJob[]>([]);
   // The starting picture and mode are kept in this browser, so a refresh brings them back. They are read once

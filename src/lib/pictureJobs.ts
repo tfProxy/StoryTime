@@ -28,6 +28,8 @@ export const NewJobSchema = z
     instruction: text(LIMITS.picturePrompt).min(1).nullish(),
     edit_model: text(100).min(1).nullish(),
     images: z.array(JobImage).min(1).max(64),
+    /** Finished while its chapter's Illustrate page wasn't open, so its pictures are new until they are seen. */
+    unseen: z.boolean().optional(),
   })
   .refine((j) => !j.instruction === !j.edit_model, { message: "an edit needs both its instruction and its model", path: ["instruction"] })
   .refine((j) => j.prompt.length > 0 || !!j.instruction, { message: "a prompt is needed (or, for an edit, an instruction)", path: ["prompt"] })
@@ -55,6 +57,8 @@ export type PictureJob = {
   /** Each picture's mark, in the order of `images`: pinned, rejected, or null. */
   marks: (PictureMark | null)[];
   created_at: number;
+  /** When its pictures were first shown on the chapter's Illustrate page, or dismissed from the header's queue; null while they are new. */
+  seen_at: number | null;
 };
 
 export const PICTURE_MARKS = ["pinned", "rejected"] as const;
@@ -81,7 +85,7 @@ function toJobs(rows: Row[]): PictureJob[] {
 const toJob = (row: Row) => toJobs([row])[0];
 
 const COLUMNS = `rowid AS seq, id, story_id, chapter_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
-                 moment, source, denoise, instruction, edit_model, images, created_at`;
+                 moment, source, denoise, instruction, edit_model, images, created_at, seen_at`;
 
 /** Records a finished job for a chapter. Recording the same ComfyUI job again returns the first record. */
 export function recordPictureJob(input: NewJob): PictureJob {
@@ -92,16 +96,18 @@ export function recordPictureJob(input: NewJob): PictureJob {
     .get(input.chapter_id, input.prompt_id) as Row | undefined;
   if (seen) return toJob(seen);
   const id = newId();
+  const now = Date.now();
   db()
     .prepare(
       `INSERT INTO picture_jobs (id, story_id, chapter_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
-                                 moment, source, denoise, instruction, edit_model, images, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                 moment, source, denoise, instruction, edit_model, images, created_at, seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id, chapter.story_id, input.chapter_id, input.prompt_id, input.prompt, input.negative, input.checkpoint,
       input.width, input.height, input.seed, input.count, input.moment ?? null, input.source ?? null,
-      input.denoise ?? null, input.instruction ?? null, input.edit_model ?? null, JSON.stringify(input.images), Date.now(),
+      input.denoise ?? null, input.instruction ?? null, input.edit_model ?? null, JSON.stringify(input.images), now,
+      input.unseen ? null : now,
     );
   return toJob(db().prepare(`SELECT ${COLUMNS} FROM picture_jobs WHERE id = ?`).get(id) as Row);
 }
@@ -133,6 +139,28 @@ const CHAPTER_JOBS = 1000;
 /** A chapter's jobs, newest first (the most recent 1000), with their marks: what its Illustrate page shows. */
 export function chapterPictureJobs(chapterId: string): PictureJob[] {
   return listPictureJobs({ chapter: chapterId }, { limit: CHAPTER_JOBS }).jobs;
+}
+
+// How many new jobs the picture queue in the header is given.
+const UNSEEN_JOBS = 50;
+
+/** The jobs whose pictures haven't been seen yet, in every story, newest first (the latest 50). */
+export function unseenPictureJobs(): PictureJob[] {
+  const rows = db()
+    .prepare(`SELECT ${COLUMNS} FROM picture_jobs WHERE seen_at IS NULL ORDER BY created_at DESC, rowid DESC LIMIT ?`)
+    .all(UNSEEN_JOBS) as Row[];
+  return toJobs(rows);
+}
+
+export const SeenJobsSchema = z.object({ ids: z.array(z.string().min(1).max(100)).max(1000) });
+
+/** Marks these jobs' pictures as seen (those already seen keep their time). */
+export function markPictureJobsSeen({ ids }: z.infer<typeof SeenJobsSchema>): { seen: number } {
+  if (ids.length === 0) return { seen: 0 };
+  const done = db()
+    .prepare(`UPDATE picture_jobs SET seen_at = ? WHERE seen_at IS NULL AND id IN (${ids.map(() => "?").join(",")})`)
+    .run(Date.now(), ...ids);
+  return { seen: done.changes };
 }
 
 export const KnownJobsSchema = z.object({ prompt_ids: z.array(text(200).min(1)).max(500) });

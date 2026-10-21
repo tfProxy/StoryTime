@@ -54,7 +54,7 @@ export type Picture = {
   fresh: boolean;
 };
 
-/** A chapter's recorded jobs (newest first) as pictures, none of them fresh. */
+/** A chapter's recorded jobs (newest first) as pictures; those not seen yet (finished while the page wasn't open) are fresh. */
 export function picturesOf(jobs: PictureJob[]): Picture[] {
   return jobs.flatMap((job) =>
     job.images.map((image, index) => ({
@@ -77,7 +77,7 @@ export function picturesOf(jobs: PictureJob[]): Picture[] {
       madeAt: job.created_at,
       batch: job.images.length,
       mark: job.marks[index] ?? null,
-      fresh: false,
+      fresh: job.seen_at === null,
     })),
   );
 }

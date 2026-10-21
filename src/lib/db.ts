@@ -283,6 +283,14 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE stories ADD COLUMN draw_preset TEXT;
   ALTER TABLE chapters ADD COLUMN draw_preset TEXT;
   `,
+  // 19: when a job's pictures were first shown on their chapter's Illustrate page (or dismissed from the
+  // picture queue in the header); null until then, so a job finished while the page wasn't open shows as
+  // new there and as ready in the header, on any device. Jobs from before this count as seen.
+  `
+  ALTER TABLE picture_jobs ADD COLUMN seen_at INTEGER;
+  UPDATE picture_jobs SET seen_at = created_at;
+  CREATE INDEX picture_jobs_unseen ON picture_jobs(created_at) WHERE seen_at IS NULL;
+  `,
 ];
 
 function open(): Database.Database {
