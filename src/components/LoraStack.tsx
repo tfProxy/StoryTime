@@ -1,36 +1,41 @@
 "use client";
 
-import type { EditModel } from "@/lib/comfy/editModels";
-import { MAX_EDIT_LORAS, type EditLoraSetting } from "@/lib/settingsSchema";
+import { MAX_LORAS, type LoraSetting } from "@/lib/comfy/presets";
 
 const base = (f: string) => f.split(/[\\/]/).pop()!;
 
 /**
- * One edit model's LoRA stack, in its card in Settings: LoRAs from ComfyUI's `loras` folder (`available`),
- * each with a strength and an on/off box (also on the Illustrate page's Edit tab). They apply in order,
- * after Qwen's Lightning LoRA when Fast is on.
+ * A preset's LoRA stack, in its card in Settings: LoRAs from ComfyUI's `loras` folder (`available`), each
+ * with a strength and an on/off box (also on the Illustrate page). They apply in order. `label` names the
+ * preset, for the group; `madeFor` says what the LoRAs must be made for (a model, or the checkpoint).
  */
-export default function EditLoraStack({
-  model,
+export default function LoraStack({
+  label,
+  madeFor,
   stack,
   available,
   onChange,
+  children,
 }: {
-  model: EditModel;
-  stack: EditLoraSetting[];
+  label: string;
+  madeFor: string;
+  stack: LoraSetting[];
   available: string[];
-  onChange: (stack: EditLoraSetting[]) => void;
+  onChange: (stack: LoraSetting[]) => void;
+  /** A note under the explanation, such as where the speed-up goes. */
+  children?: React.ReactNode;
 }) {
-  const change = (i: number, patch: Partial<EditLoraSetting>) => onChange(stack.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  const change = (i: number, patch: Partial<LoraSetting>) => onChange(stack.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   return (
-    <div className="edit-lora-model" role="group" aria-label={`LoRAs for ${model.name}`}>
+    <div className="edit-lora-model" role="group" aria-label={`LoRAs for ${label}`}>
       <p style={{ margin: 0 }}>
         <strong>LoRAs</strong> {stack.length === 0 && <span className="meta">· none</span>}
       </p>
       <p className="meta" style={{ margin: 0 }}>
-        Such as a character or a style made for {model.name}, from ComfyUI&apos;s <code>models/loras</code> folder. They
-        apply in this order, each at its strength (1 is full; lower is weaker, and below 0 works against it).
+        Such as a character or a style made for {madeFor}, from ComfyUI&apos;s <code>models/loras</code> folder. They apply in
+        this order, each at its strength (1 is full; lower is weaker, and below 0 works against it).
       </p>
+      {children}
       {stack.map((l, i) => {
         const known = available.includes(l.name);
         return (
@@ -83,11 +88,11 @@ export default function EditLoraStack({
         <button
           type="button"
           className="secondary"
-          disabled={available.length === 0 || stack.length >= MAX_EDIT_LORAS}
-          title={available.length === 0 ? "ComfyUI lists no LoRAs" : stack.length >= MAX_EDIT_LORAS ? `At most ${MAX_EDIT_LORAS} LoRAs` : undefined}
+          disabled={available.length === 0 || stack.length >= MAX_LORAS}
+          title={available.length === 0 ? "ComfyUI lists no LoRAs" : stack.length >= MAX_LORAS ? `At most ${MAX_LORAS} LoRAs` : undefined}
           onClick={() => onChange([...stack, { name: available[0], strength: 1, on: true }])}
         >
-          Add LoRA for {model.name}
+          Add LoRA to {label}
         </button>
       </div>
     </div>

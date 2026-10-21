@@ -27,6 +27,8 @@ type Props = {
   /** Every chapter's title in the story, by chapter id. */
   titles: Record<string, string>;
   story: IllustratedStory;
+  /** The chapter's own drawing preset, or null to use the story's. */
+  chapterPreset: string | null;
   path: ContextChapter[];
   codex: ContextCodexEntry[];
   versions: ImageVersions;
@@ -43,7 +45,7 @@ type Props = {
  * carries a number, so loading the same prompt twice still counts as a new request), the starting picture,
  * and the chapter's pictures (those made earlier, then those made on this visit).
  */
-export default function IllustrateWorkspace({ chapterId, chapter, titles, story, path, codex, versions, made, draft, jobs }: Props) {
+export default function IllustrateWorkspace({ chapterId, chapter, titles, story, chapterPreset, path, codex, versions, made, draft, jobs }: Props) {
   const [loaded, setLoaded] = useState<LoadedPrompt | null>(null);
   // The picture new pictures start from, when one is chosen, and whether it is redrawn or edited.
   const [start, setStart] = useState<StartPicture | null>(null);
@@ -126,6 +128,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
         <ImagePromptPanel
           chapterId={chapterId}
           story={story}
+          chapterPreset={chapterPreset}
           path={path}
           codex={codex}
           loaded={loaded}

@@ -11,10 +11,11 @@ import type { JobProgress, MadeWith, PendingJob, Picture, StartMode } from "./pi
 import { editBlocked, type EditModels } from "./useEditModels";
 import AutoTextarea from "./AutoTextarea";
 import { LIMITS } from "@/lib/limits";
-import { editFilesText, editSize, editTuning, lightningSteps, usableLoras, type EditCheck, type EditLora, type EditTuning } from "@/lib/comfy/editModels";
+import { EDIT_MODELS, editFilesText, editSize, editTuning, lightningSteps, usableLoras, type EditCheck, type EditLora, type EditTuning } from "@/lib/comfy/editModels";
+import { drawFilesText, drawPresetFor, drawPresetSummary, presetName, type DrawPreset, type EditPreset, type LoraSetting } from "@/lib/comfy/presets";
 import { uploadStart, type StartPicture, type Uploaded } from "@/lib/comfy/startPicture";
 import { builtinSampler, describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
-import { readEdit, writeEdit } from "@/lib/comfy/editingState";
+import { readEdit, readRedraw, writeEdit, writeRedraw } from "@/lib/comfy/editingState";
 import { cancelPrompt, listCheckpoints, listTaggedJobs, queuePrompt, waitForPictures, type ComfyImage, type Progress, type TaggedJob } from "@/lib/comfy/client";
 import type { JobRecord, JobTag } from "@/lib/comfy/jobTag";
 
@@ -51,6 +52,10 @@ type JobInput = {
   negative: string;
   moment: ImageMoment;
   comfy: ComfySettings;
+  /** The drawing preset, its LoRAs that are switched on and in ComfyUI, and the Redraw strength (for new pictures and Redraw). */
+  draw: DrawPreset;
+  drawLoras: EditLora[];
+  redraw: number;
   start: StartPicture | null;
   /** An edit of the starting picture by instruction, with the model to make it; null to redraw it or make new pictures. */
   edit: {
@@ -69,7 +74,7 @@ type JobInput = {
 };
 
 /** The strength a job's pictures are recorded with: a redraw's, an edit's when it is less than full, else null. */
-const denoiseOf = (i: JobInput) => (i.edit ? (i.edit.strength < 1 ? i.edit.strength : null) : i.start ? i.comfy.denoise : null);
+const denoiseOf = (i: JobInput) => (i.edit ? (i.edit.strength < 1 ? i.edit.strength : null) : i.start ? i.redraw : null);
 
 /** A job not sent yet, which more clicks can still add pictures to. */
 type Gathering = { key: string; input: JobInput; count: number; timer: ReturnType<typeof setTimeout> };
@@ -77,8 +82,9 @@ type Gathering = { key: string; input: JobInput; count: number; timer: ReturnTyp
 /** What has to match for a click to join the job being gathered. */
 const sameJob = (a: JobInput) =>
   JSON.stringify([
-    a.prompt, a.negative, a.moment, a.comfy.url, a.comfy.workflow, a.comfy.checkpoint, a.comfy.width, a.comfy.height, a.start?.key ?? null,
-    a.start && !a.edit ? a.comfy.denoise : null, a.edit ? null : a.comfy.redraw, a.edit?.check.model.id ?? null, a.edit?.instruction ?? null,
+    a.prompt, a.negative, a.moment, a.comfy.url, a.comfy.width, a.comfy.height, a.start?.key ?? null,
+    a.edit ? null : [a.draw.checkpoint, a.draw.workflow, a.draw.sampler, a.drawLoras], a.start && !a.edit ? a.redraw : null,
+    a.edit?.check.model.id ?? null, a.edit?.instruction ?? null,
     a.edit?.strength ?? null, a.edit?.fast ?? null, a.edit?.loras ?? null, a.edit?.tuning ?? null, a.seed,
   ]);
 
@@ -86,29 +92,60 @@ const sameJob = (a: JobInput) =>
  * Where the settings a loaded picture was made with differ from the current ones: the change to make and
  * how to describe it, or null when they match. The size is shared by every story, so it changes only when
  * the author asks. A picture made from a starting picture took that picture's size, so only its strength is
- * offered. (The checkpoint is the story's, set on its details page, so it isn't offered here.)
+ * offered. (The checkpoint and LoRAs are the drawing preset's, so they aren't offered here.)
  */
-function otherSettings(made: MadeWith | null, now: ComfySettings): { patch: Partial<ComfySettings>; text: string } | null {
+function otherSettings(made: MadeWith | null, now: ComfySettings, redraw: number): { size: Partial<ComfySettings>; strength: number | null; text: string } | null {
   if (!made) return null;
-  const patch: Partial<ComfySettings> = {};
+  const size: Partial<ComfySettings> = {};
+  let strength: number | null = null;
   const text: string[] = [];
   if (made.denoise === null && (made.width !== now.width || made.height !== now.height)) {
-    patch.width = made.width;
-    patch.height = made.height;
+    size.width = made.width;
+    size.height = made.height;
     text.push(`${made.width} × ${made.height}`);
   }
-  if (made.denoise !== null && made.denoise !== now.denoise) {
-    patch.denoise = made.denoise;
+  if (made.denoise !== null && made.denoise !== redraw) {
+    strength = made.denoise;
     text.push(`strength ${made.denoise}`);
   }
-  return text.length ? { patch, text: text.join(", ") } : null;
+  return text.length ? { size, strength, text: text.join(", ") } : null;
+}
+
+/**
+ * The on/off boxes of a preset's LoRAs, on the Illustrate page (switching one changes the preset in
+ * Settings). `available` is what ComfyUI lists, or null when that isn't known yet.
+ */
+function LoraToggles({ stack, available, href, onChange }: { stack: LoraSetting[]; available: string[] | null; href?: string; onChange: (stack: LoraSetting[]) => void }) {
+  return (
+    <div className="edit-lora-toggles" role="group" aria-label="LoRAs">
+      <span className="meta">LoRAs:</span>
+      {stack.map((l, i) => {
+        const name = l.name.split(/[\\/]/).pop()!;
+        const gone = available !== null && !available.includes(l.name);
+        return (
+          <label key={i} className="inline-label" title={gone ? `ComfyUI doesn't list ${l.name}, so it isn't used` : `${l.name} at strength ${l.strength}`}>
+            <input type="checkbox" checked={l.on} onChange={(e) => onChange(stack.map((x, j) => (j === i ? { ...x, on: e.target.checked } : x)))} />
+            <span className={gone ? "error" : undefined}>
+              {name.replace(/\.safetensors$/i, "")} ({l.strength}){gone && " – missing"}
+            </span>
+          </label>
+        );
+      })}
+      {href && (
+        <Link href={href} className="meta">
+          Change
+        </Link>
+      )}
+    </div>
+  );
 }
 
 type Props = {
   chapterId: string;
   storyId: string;
-  /** The story's checkpoint (set on its details page); "" when none is chosen. */
-  checkpoint: string;
+  /** The story's drawing preset (set on its details page), and the chapter's own (chosen here); null for none. */
+  storyPreset: string | null;
+  chapterPreset: string | null;
   moment: ImageMoment;
   prompt: string;
   negative: string;
@@ -137,7 +174,7 @@ type Props = {
  * prompt at a strength, or edited by an instruction with an edit model. The pictures go to `onPictures`.
  */
 export default function ComfyGenerate({
-  chapterId, storyId, checkpoint, moment, prompt, negative, loaded = null, start = null, onClearStart,
+  chapterId, storyId, storyPreset, chapterPreset: savedPreset, moment, prompt, negative, loaded = null, start = null, onClearStart,
   startMode = "redraw", onStartMode, editModels = { state: "checking" }, onPictures, onQueue, dock = null, recorded = [],
 }: Props) {
   const settings = useSettings();
@@ -145,9 +182,11 @@ export default function ComfyGenerate({
   // What to change, when editing the starting picture by instruction.
   const [instruction, setInstruction] = useState("");
   // How closely an edit follows the starting picture: 1 lets the model change it freely, lower keeps it closer.
-  // It starts at the model's default strength (Settings); a change here is for that model, until another is chosen.
+  // It starts at the edit preset's default strength (Settings); a change here is for that preset, until another is chosen.
   const [strengthFor, setStrengthFor] = useState<{ model: string; value: number } | null>(null);
-  // The instruction and a changed strength are kept in this browser, so a refresh brings them back.
+  // The same for Redraw, from the drawing preset's default.
+  const [redrawFor, setRedrawFor] = useState<{ preset: string; value: number } | null>(null);
+  // The instruction and changed strengths are kept in this browser, so a refresh brings them back.
   const [editKept, setEditKept] = useState(false);
   /* eslint-disable react-hooks/set-state-in-effect -- browser storage can only be read after the page is shown, so the server and browser draw the same first page */
   useEffect(() => {
@@ -156,25 +195,42 @@ export default function ComfyGenerate({
       setInstruction(saved.instruction);
       setStrengthFor(saved.model ? { model: saved.model, value: saved.strength } : null);
     }
+    const redraw = readRedraw(chapterId);
+    setRedrawFor(redraw && { preset: redraw.preset, value: redraw.strength });
     setEditKept(true);
   }, [chapterId]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  // The drawing preset: the chapter's own (chosen here), else the story's, else the first.
+  const [chapterPreset, setChapterPreset] = useState(savedPreset);
+  const storyDraw = drawPresetFor(comfy.drawPresets, storyPreset);
+  const draw = drawPresetFor(comfy.drawPresets, chapterPreset, storyPreset);
+  const redrawStrength = redrawFor?.preset === draw.id ? redrawFor.value : draw.denoise;
+  // The drawing preset's LoRAs switched on, and those of them ComfyUI doesn't list (when it is known what it lists).
+  const loraFiles = editModels.state === "done" ? editModels.loras : null;
+  const drawUsable = usableLoras(draw.loras, loraFiles ?? draw.loras.map((l) => l.name));
+
   const editing = start !== null && startMode === "edit";
   const blocked = editBlocked(editModels);
   const ready = editModels.state === "done" ? editModels.ready : [];
-  const chosen = ready.find((c) => c.model.id === comfy.editModel) ?? ready[0] ?? null;
-  // The chosen model's settings from Settings.
-  const tuning = chosen ? editTuning(chosen.model, comfy.editTuning[chosen.model.id]) : null;
-  const editStrength = chosen && strengthFor?.model === chosen.model.id ? strengthFor.value : (tuning?.strength ?? 1);
-  const setEditStrength = (value: number) => chosen && setStrengthFor({ model: chosen.model.id, value });
+  // The edit preset: the one last chosen, if its model is ready, else the first of a ready model.
+  const usablePresets = comfy.editPresets.filter((p) => ready.some((c) => c.model.id === p.model));
+  const editPreset = usablePresets.find((p) => p.id === comfy.editPreset) ?? usablePresets[0] ?? null;
+  const chosen = editPreset ? (ready.find((c) => c.model.id === editPreset.model) ?? null) : null;
+  // The edit preset's settings, with the model's defaults for the rest.
+  const tuning = chosen && editPreset ? editTuning(chosen.model, editPreset.tuning) : null;
+  const editStrength = editPreset && strengthFor?.model === editPreset.id ? strengthFor.value : (tuning?.strength ?? 1);
+  const setEditStrength = (value: number) => editPreset && setStrengthFor({ model: editPreset.id, value });
   useEffect(() => {
-    if (editKept) writeEdit(chapterId, { instruction, strength: strengthFor?.value ?? 1, model: strengthFor?.model });
-  }, [editKept, chapterId, instruction, strengthFor]);
+    if (!editKept) return;
+    writeEdit(chapterId, { instruction, strength: strengthFor?.value ?? 1, model: strengthFor?.model });
+    writeRedraw(chapterId, redrawFor && { preset: redrawFor.preset, strength: redrawFor.value });
+  }, [editKept, chapterId, instruction, strengthFor, redrawFor]);
   // The chosen model's speed-up file, when ComfyUI has one, and whether edits use it.
   const speedUp = chosen?.files.speedUp ?? null;
-  const fast = speedUp !== null && comfy.editFast;
-  // The chosen model's LoRA stack (set in Settings), and the LoRAs of it an edit uses now.
-  const loraStack = chosen ? (comfy.editLoras[chosen.model.id] ?? []) : [];
+  const fast = speedUp !== null && !!editPreset?.fast;
+  // The edit preset's LoRA stack, and the LoRAs of it an edit uses now.
+  const loraStack = editPreset?.loras ?? [];
   const { loras: editLoras, missing: missingLoras } = usableLoras(loraStack, chosen?.loras ?? []);
   // The jobs being made, oldest first; `jobs` holds what Stop needs for each.
   const [queue, setQueue] = useState<Queued[]>([]);
@@ -220,14 +276,16 @@ export default function ComfyGenerate({
   const loadedSeed = loaded?.seed ?? null;
 
   // Asking ComfyUI for its checkpoints says early whether it can be reached, and whether it still has the
-  // story's checkpoint.
+  // drawing preset's checkpoint.
+  const checkpoint = draw.checkpoint;
+  const drawName = presetName(draw);
   useEffect(() => {
     if (!comfy.url) return;
     let live = true;
     listCheckpoints(comfy.url).then(
       (list) => {
         if (live && checkpoint && !list.includes(checkpoint)) {
-          setStatus({ ok: false, text: `ComfyUI doesn't list this story's checkpoint (${checkpoint}). Choose another in Story details.` });
+          setStatus({ ok: false, text: `ComfyUI doesn't list the checkpoint of the preset “${drawName}” (${checkpoint}). Choose another in Settings.` });
         }
       },
       (e) => live && setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) }),
@@ -235,13 +293,29 @@ export default function ComfyGenerate({
     return () => {
       live = false;
     };
-  }, [comfy.url, checkpoint]);
+  }, [comfy.url, checkpoint, drawName]);
+
+  /** Chooses the chapter's drawing preset; the story's own goes back to following the story. */
+  function chooseDraw(id: string) {
+    const next = id === storyDraw.id ? null : id;
+    setChapterPreset(next);
+    fetch(`/api/chapters/${chapterId}/picture-preset`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draw_preset: next }) })
+      .then((res) => {
+        if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      })
+      .catch((e) => setStatus({ ok: false, text: `Couldn't keep the chapter's preset: ${e instanceof Error ? e.message : String(e)}` }));
+  }
+
+  const set = (patch: Partial<ComfySettings>) => void saveSettings({ ...settings, comfy: { ...comfy, ...patch } });
+  /** Changes a drawing or edit preset in Settings (switching a LoRA, Fast). */
+  const changeDraw = (patch: Partial<DrawPreset>) => set({ drawPresets: comfy.drawPresets.map((p) => (p.id === draw.id ? { ...p, ...patch } : p)) });
+  const changeEdit = (patch: Partial<EditPreset>) =>
+    editPreset && set({ editPresets: comfy.editPresets.map((p) => (p.id === editPreset.id ? { ...p, ...patch } : p)) });
 
   // Jobs found in ComfyUI's queue that this page has already picked up (see the effect after `resume`).
   const picked = useRef(new Set<string>());
 
-  const set = (patch: Partial<ComfySettings>) => void saveSettings({ ...settings, comfy: { ...comfy, ...patch } });
-  const other = otherSettings(loaded?.settings ?? null, comfy);
+  const other = otherSettings(loaded?.settings ?? null, comfy, redrawStrength);
   const size = SIZES.find((s) => s.width === comfy.width && s.height === comfy.height);
 
   /**
@@ -257,8 +331,10 @@ export default function ComfyGenerate({
       // Edits follow the instruction alone.
       negative: editing ? "" : negative.trim(),
       moment,
-      // The checkpoint is the story's, not the shared setting.
-      comfy: { ...comfy, checkpoint },
+      comfy,
+      draw,
+      drawLoras: drawUsable.loras,
+      redraw: redrawStrength,
       start,
       edit: editing && chosen && tuning ? { check: chosen, instruction: instruction.trim(), strength: editStrength, fast, loras: editLoras, tuning } : null,
       seed: reuseSeed && loadedSeed !== null ? loadedSeed : null,
@@ -288,7 +364,7 @@ export default function ComfyGenerate({
         progress: { stage: "gathering" },
         prompt: input.prompt,
         negative: input.negative,
-        checkpoint: input.edit ? editFilesText(input.edit.check, input.edit.fast, input.edit.loras) : checkpoint,
+        checkpoint: input.edit ? editFilesText(input.edit.check, input.edit.fast, input.edit.loras) : drawFilesText(draw.checkpoint, input.drawLoras),
         width: comfy.width,
         height: comfy.height,
         denoise: denoiseOf(input),
@@ -314,7 +390,7 @@ export default function ComfyGenerate({
     const job = jobs.current.get(key);
     if (!job) return;
     const { ctl } = job;
-    const { prompt, negative, moment, comfy, start, edit } = input;
+    const { prompt, negative, moment, comfy, draw, drawLoras, start, edit } = input;
     const setProgress = (progress: Progress) => {
       setQueue((prev) => prev.map((q) => (q.key === key ? { ...q, progress } : q)));
     };
@@ -323,14 +399,16 @@ export default function ComfyGenerate({
     // Names this job's WebSocket connection, so ComfyUI sends its progress there.
     const clientId = `storytime-${randomSeed().toString(36)}`;
     try {
-      // An edit uses its own workflow, so the picture workflow and the story's checkpoint don't matter.
-      const base = edit ? null : parseWorkflow(comfy.workflow);
+      // An edit uses its own workflow, so the drawing preset doesn't matter.
+      const base = edit ? null : parseWorkflow(draw.workflow);
       if (edit) {
         if (!start) throw new Error("Choose a picture to edit first.");
         if (!edit.instruction) throw new Error("Say what to change first.");
       } else {
         if (!prompt) throw new Error("Write or type a prompt first.");
-        if (describeWorkflow(base!).checkpoint && !comfy.checkpoint) throw new Error("This story has no checkpoint chosen. Choose one in Story details.");
+        if (describeWorkflow(base!).checkpoint && !draw.checkpoint) {
+          throw new Error(`The drawing preset “${presetName(draw)}” has no checkpoint. Choose one in Settings › Drawing.`);
+        }
         if (start && !describeWorkflow(base!).image) {
           throw new Error("Your workflow can't start from a picture. Clear the starting picture, or see Settings for how to allow it.");
         }
@@ -363,17 +441,18 @@ export default function ComfyGenerate({
           : fillWorkflow(base!, {
               prompt,
               negative,
-              checkpoint: comfy.checkpoint,
+              checkpoint: draw.checkpoint,
               width,
               height,
               count,
               seed,
               prefix,
-              sampler: builtinSampler(comfy.redraw),
-              ...(from && { image: from.name, denoise: comfy.denoise }),
+              sampler: builtinSampler(draw.sampler),
+              loras: drawLoras,
+              ...(from && { image: from.name, denoise: input.redraw }),
             });
-      // What the pictures were made with: the edit model's file, or the story's checkpoint.
-      const madeWith = edit ? editFilesText(edit.check, edit.fast, edit.loras) : comfy.checkpoint;
+      // What the pictures were made with: the edit model's files, or the drawing preset's checkpoint and LoRAs.
+      const madeWith = edit ? editFilesText(edit.check, edit.fast, edit.loras) : drawFilesText(draw.checkpoint, drawLoras);
       const denoise = from ? denoiseOf(input) : null;
       // Everything the log records about the job. It goes to ComfyUI with the job too, so a page refreshed
       // while the job is being made can find it again (see `resumeJobs`).
@@ -621,57 +700,43 @@ export default function ComfyGenerate({
               </button>
             </div>
             {editing ? (
-              chosen ? (
+              chosen && editPreset ? (
                 <>
                   <label className="row" style={{ gap: "0.4rem" }}>
-                    Model
-                    <select aria-label="Edit model" value={chosen.model.id} onChange={(e) => set({ editModel: e.target.value })} style={{ width: "auto" }}>
-                      {ready.map((c) => (
-                        <option key={c.model.id} value={c.model.id}>
-                          {c.model.name}
-                        </option>
-                      ))}
+                    Preset
+                    <select aria-label="Edit preset" value={editPreset.id} onChange={(e) => set({ editPreset: e.target.value })} style={{ width: "auto", minWidth: 0, flex: 1 }}>
+                      {EDIT_MODELS.map((m) => {
+                        const installed = ready.some((c) => c.model.id === m.id);
+                        return (
+                          <optgroup key={m.id} label={installed ? m.name : `${m.name} (not installed)`}>
+                            {comfy.editPresets
+                              .filter((p) => p.model === m.id)
+                              .map((p) => (
+                                <option key={p.id} value={p.id} disabled={!installed}>
+                                  {presetName(p)}
+                                </option>
+                              ))}
+                          </optgroup>
+                        );
+                      })}
                     </select>
                   </label>
-                  <p className="meta" style={{ margin: 0 }}>{chosen.model.blurb}</p>
+                  <p className="meta" style={{ margin: 0 }}>
+                    {chosen.model.name}: {chosen.model.blurb}
+                  </p>
                   {speedUp && (
                     <label className="inline-label" title={`Uses ${speedUp}: ${lightningSteps(speedUp)} steps instead of ${tuning?.steps}, with a little less detail`}>
-                      <input type="checkbox" checked={comfy.editFast} onChange={(e) => set({ editFast: e.target.checked })} />
+                      <input type="checkbox" checked={editPreset.fast} onChange={(e) => changeEdit({ fast: e.target.checked })} />
                       Fast ({chosen.model.speedUp?.name ?? "speed-up"}, {lightningSteps(speedUp)} steps)
                     </label>
                   )}
-                  <div className="edit-lora-toggles" role="group" aria-label="LoRAs">
-                    {loraStack.length === 0 ? (
-                      <span className="meta">
-                        No LoRAs for {chosen.model.name}. <Link href={`/settings#edit-${chosen.model.id}`}>Add some in Settings</Link>
-                      </span>
-                    ) : (
-                      <>
-                        <span className="meta">LoRAs:</span>
-                        {loraStack.map((l, i) => {
-                          const name = l.name.split(/[\\/]/).pop()!;
-                          const gone = !chosen.loras.includes(l.name);
-                          return (
-                            <label key={i} className="inline-label" title={gone ? `ComfyUI doesn't list ${l.name}, so it isn't used` : `${l.name} at strength ${l.strength}`}>
-                              <input
-                                type="checkbox"
-                                checked={l.on}
-                                onChange={(e) =>
-                                  set({ editLoras: { ...comfy.editLoras, [chosen.model.id]: loraStack.map((x, j) => (j === i ? { ...x, on: e.target.checked } : x)) } })
-                                }
-                              />
-                              <span className={gone ? "error" : undefined}>
-                                {name.replace(/\.safetensors$/i, "")} ({l.strength}){gone && " – missing"}
-                              </span>
-                            </label>
-                          );
-                        })}
-                        <Link href={`/settings#edit-${chosen.model.id}`} className="meta">
-                          Change
-                        </Link>
-                      </>
-                    )}
-                  </div>
+                  {loraStack.length === 0 ? (
+                    <p className="meta" style={{ margin: 0 }}>
+                      No LoRAs in this preset. <Link href={`/settings#preset-${editPreset.id}`}>Add some in Settings</Link>
+                    </p>
+                  ) : (
+                    <LoraToggles stack={loraStack} available={chosen.loras} href={`/settings#preset-${editPreset.id}`} onChange={(loras) => changeEdit({ loras })} />
+                  )}
                   {missingLoras.length > 0 && (
                     <p className="error" style={{ margin: 0 }}>
                       ComfyUI doesn&apos;t list {missingLoras.join(", ")}, so edits go ahead without {missingLoras.length === 1 ? "it" : "them"}.
@@ -690,27 +755,61 @@ export default function ComfyGenerate({
                   </label>
                   {strength(editStrength, setEditStrength)}
                   <p className="meta" style={{ margin: 0 }}>
-                    It starts at {chosen.model.name}&apos;s default ({(tuning?.strength ?? 1).toFixed(2)}),{" "}
-                    <Link href={`/settings#edit-${chosen.model.id}`}>set in Settings</Link>.
+                    It starts at the preset&apos;s default ({(tuning?.strength ?? 1).toFixed(2)}),{" "}
+                    <Link href={`/settings#preset-${editPreset.id}`}>set in Settings</Link>.
                   </p>
                 </>
               ) : (
                 <p className="error" style={{ margin: 0 }}>
-                  {blocked ?? "No edit model is ready."} <Link href="/settings#pictures">Settings</Link>
+                  {blocked ?? "No edit model is ready."} <Link href="/settings#setup-qwen-image-edit">Settings</Link>
                 </p>
               )
             ) : (
               <>
-                <p className="meta" style={{ margin: 0 }}>The new pictures are its size.</p>
-                {strength(comfy.denoise, (v) => set({ denoise: v }))}
+                <p className="meta" style={{ margin: 0 }}>The new pictures are its size, drawn with the preset below.</p>
+                {strength(redrawStrength, (value) => setRedrawFor({ preset: draw.id, value }))}
+                <p className="meta" style={{ margin: 0 }}>
+                  It starts at the preset&apos;s default ({draw.denoise.toFixed(2)}), <Link href={`/settings#preset-${draw.id}`}>set in Settings</Link>.
+                </p>
               </>
             )}
           </div>
         </div>
       )}
+      {!editing && (
+        <div className="draw-preset">
+          <label className="row" style={{ gap: "0.4rem" }}>
+            Preset
+            <select aria-label="Drawing preset" value={draw.id} onChange={(e) => chooseDraw(e.target.value)} style={{ width: "auto", minWidth: 0, flex: 1 }}>
+              {comfy.drawPresets.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {presetName(p)}
+                  {p.id === storyDraw.id ? " (the story's)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="meta" style={{ margin: 0 }}>
+            {drawPresetSummary(draw)} · <Link href={`/settings#preset-${draw.id}`}>Change</Link>
+          </p>
+          {draw.loras.length > 0 && <LoraToggles stack={draw.loras} available={loraFiles} onChange={(loras) => changeDraw({ loras })} />}
+          {drawUsable.missing.length > 0 && (
+            <p className="error" style={{ margin: 0 }}>
+              ComfyUI doesn&apos;t list {drawUsable.missing.join(", ")}, so pictures are drawn without {drawUsable.missing.length === 1 ? "it" : "them"}.
+            </p>
+          )}
+        </div>
+      )}
       {other && (
         <div className="row" style={{ flexWrap: "wrap" }}>
-          <button type="button" className="secondary" onClick={() => set(other.patch)}>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              if (Object.keys(other.size).length > 0) set(other.size);
+              if (other.strength !== null) setRedrawFor({ preset: draw.id, value: other.strength });
+            }}
+          >
             Use its settings
           </button>
           <span className="meta">The loaded picture was made with {other.text}.</span>

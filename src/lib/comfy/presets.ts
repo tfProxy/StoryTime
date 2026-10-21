@@ -1,0 +1,94 @@
+// Named picture presets, set in Settings: drawing presets (new pictures and Redraw) and edit presets
+// (one set for each edit model). Each has its own LoRAs and settings. A story chooses its default
+// drawing preset on its details page, and a chapter can choose another on the Illustrate page. Pure code.
+import { EDIT_MODEL_IDS, type EditModelId, type EditTuning } from "./editModels";
+import type { SamplerTuning } from "./workflow";
+
+/** A LoRA in a preset's stack: its file in ComfyUI's `loras` folder, its strength, and whether it is used. */
+export type LoraSetting = { name: string; strength: number; on: boolean };
+
+/** The most LoRAs one preset's stack can hold. */
+export const MAX_LORAS = 8;
+
+/** The most presets of each kind. */
+export const MAX_PRESETS = 40;
+
+/** The Redraw strength a new drawing preset starts with. */
+export const DEFAULT_DENOISE = 0.55;
+
+/** How new pictures are drawn, and redrawn from a picture. */
+export type DrawPreset = {
+  id: string;
+  name: string;
+  /** The checkpoint file; "" until chosen. */
+  checkpoint: string;
+  /** A workflow exported from ComfyUI in API format, as JSON; "" uses the built-in SDXL workflow. */
+  workflow: string;
+  /** Applied in order after the checkpoint (or the workflow's model loader). */
+  loras: LoraSetting[];
+  /** The built-in workflow's sampler settings that were changed; the rest are BUILTIN_SAMPLER's. */
+  sampler: Partial<SamplerTuning>;
+  /** The strength the Redraw tab starts at: how far a redraw may change the picture, 0.05 to 1. */
+  denoise: number;
+};
+
+/** How a picture is edited by instruction with one edit model. */
+export type EditPreset = {
+  id: string;
+  name: string;
+  model: EditModelId;
+  /** Uses the model's speed-up (Qwen's Lightning LoRA) when ComfyUI has it. */
+  fast: boolean;
+  /** Applied in order, after the speed-up. */
+  loras: LoraSetting[];
+  /** The model's settings that were changed, including the Edit tab's starting strength; the rest are the model's defaults. */
+  tuning: Partial<EditTuning>;
+};
+
+export const newDrawPreset = (id: string, name: string, checkpoint = ""): DrawPreset => ({
+  id, name, checkpoint, workflow: "", loras: [], sampler: {}, denoise: DEFAULT_DENOISE,
+});
+
+export const newEditPreset = (id: string, name: string, model: EditModelId): EditPreset => ({ id, name, model, fast: true, loras: [], tuning: {} });
+
+/** The presets a fresh setup starts with: one for drawing, and one for each edit model (its id is the model's). */
+export const DEFAULT_DRAW_PRESETS: DrawPreset[] = [newDrawPreset("default", "Default")];
+export const DEFAULT_EDIT_PRESETS: EditPreset[] = EDIT_MODEL_IDS.map((m) => newEditPreset(m, "Default", m));
+
+/** A new preset id. (crypto.randomUUID needs a secure context, which a LAN address over http isn't.) */
+export const presetId = (kind: string) => `${kind}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+
+/** `name`, or "name 2", "name 3"… when another preset already has it. */
+export function freeName(name: string, taken: string[]): string {
+  const used = new Set(taken.map((t) => t.trim().toLowerCase()));
+  if (!used.has(name.trim().toLowerCase())) return name;
+  for (let n = 2; ; n++) if (!used.has(`${name} ${n}`.toLowerCase())) return `${name} ${n}`;
+}
+
+/** A preset's name as shown, with a stand-in when it has none. */
+export const presetName = (p: { name: string }) => p.name.trim() || "Untitled preset";
+
+/** The drawing preset to use: the first of `ids` that names one (a chapter's, then its story's), else the first preset. */
+export function drawPresetFor(presets: DrawPreset[], ...ids: (string | null | undefined)[]): DrawPreset {
+  for (const id of ids) {
+    const found = id ? presets.find((p) => p.id === id) : undefined;
+    if (found) return found;
+  }
+  return presets[0];
+}
+
+/** A checkpoint or LoRA file's name without its folder or extension, for short labels. */
+export const fileLabel = (file: string) => file.split(/[\\/]/).pop()!.replace(/\.(safetensors|ckpt|pt|sft)$/i, "");
+
+/**
+ * The files pictures are drawn with, as the job log keeps them (in its checkpoint column): the checkpoint,
+ * then " + " each LoRA with its strength, the way edits are kept (see editFilesText).
+ */
+export const drawFilesText = (checkpoint: string, loras: { name: string; strength: number }[]) =>
+  [checkpoint, ...loras.map((l) => `${l.name} (${l.strength})`)].join(" + ");
+
+/** A drawing preset in a few words: its checkpoint and how many LoRAs it uses. */
+export function drawPresetSummary(p: DrawPreset): string {
+  const on = p.loras.filter((l) => l.on && l.name).length;
+  return [p.checkpoint ? fileLabel(p.checkpoint) : "no checkpoint", on > 0 && `${on} LoRA${on === 1 ? "" : "s"}`].filter(Boolean).join(" · ");
+}

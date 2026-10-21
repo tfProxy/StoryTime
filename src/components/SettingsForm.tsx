@@ -5,7 +5,8 @@ import { PROVIDERS, providerInfo, type ProviderKind } from "@/lib/ai/providers";
 import { AiError, listModels, streamChat } from "@/lib/ai/client";
 import PromptButton from "./PromptButton";
 import ComfyConnection from "./ComfyConnection";
-import PictureSettings from "./PictureSettings";
+import { DrawingSettings, EditSettings, usePictureSetup } from "./PictureSettings";
+import { EDIT_MODEL_IDS } from "@/lib/comfy/editModels";
 import {
   exportSettingsJson,
   findConnection,
@@ -34,20 +35,30 @@ const SHOW_MODELS = 60;
 
 type Status = { kind: "ok" | "error"; text: string };
 
-/** The Settings tabs. Each is at /settings#<id>; a link to something inside one (#models) opens it too. */
+/**
+ * The Settings tabs. Each is at /settings#<id>; a link to something inside one (#models, a preset's
+ * #preset-<id>) opens it too. `holds` also keeps links from before presets working.
+ */
 const TABS = [
   { id: "connections", label: "Connections", holds: ["comfyui"] },
   { id: "writing", label: "Writing", holds: ["models"] },
-  // Pictures also holds each edit model's card (#edit-qwen-image-edit) and the old #edit-loras.
-  { id: "pictures", label: "Pictures", holds: ["picture-setup", "redraw"] },
+  { id: "drawing", label: "Drawing", holds: ["setup-drawing", "drawing-presets", "pictures", "picture-setup", "redraw"] },
+  { id: "edit-qwen-image-edit", label: "Qwen edit", holds: ["setup-qwen-image-edit", "qwen-image-edit-presets", "edit-loras"] },
+  { id: "edit-flux-kontext", label: "Flux edit", holds: ["setup-flux-kontext", "flux-kontext-presets"] },
   { id: "backup", label: "Backup", holds: [] },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
-function tabFor(hash: string): TabId {
+function tabFor(hash: string, comfy: Settings["comfy"]): TabId {
   const tab = TABS.find((t) => t.id === hash || (t.holds as readonly string[]).includes(hash));
   if (tab) return tab.id;
-  return hash.startsWith("edit-") ? "pictures" : "connections";
+  if (hash.startsWith("preset-")) {
+    const id = hash.slice("preset-".length);
+    const edit = comfy.editPresets.find((p) => p.id === id);
+    if (edit) return `edit-${edit.model}`;
+    if (comfy.drawPresets.some((p) => p.id === id)) return "drawing";
+  }
+  return "connections";
 }
 
 const onHashChange = (cb: () => void) => {
@@ -256,18 +267,22 @@ export default function SettingsForm() {
   const abortRef = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const hash = useHash();
-  const tab = tabFor(hash);
+  const tab = tabFor(hash, settings.comfy);
   const tabRefs = useRef(new Map<TabId, HTMLButtonElement>());
+  const pictureSetup = usePictureSetup(settings.comfy);
 
-  // A link to something inside a tab (#models, #edit-flux-kontext) scrolls to it once its tab shows.
+  // A link to something inside a tab (#models, #preset-<id>) scrolls to it once its tab shows, and opens a preset's card.
   useEffect(() => {
-    if (hash) document.getElementById(hash)?.scrollIntoView({ block: "start" });
+    const el = hash ? document.getElementById(hash) : null;
+    if (el instanceof HTMLDetailsElement) el.open = true;
+    el?.scrollIntoView({ block: "start" });
   }, [hash, tab]);
 
   function save(next: Settings) {
     void saveSettings(next).then((saved) => setSaveFailed(!saved));
   }
   const update = (patch: Partial<Settings>) => save({ ...settings, ...patch });
+  const updateComfy = (patch: Partial<Settings["comfy"]>) => update({ comfy: { ...settings.comfy, ...patch } });
 
   function updateConnection(id: string, patch: Partial<Connection>) {
     update({ connections: settings.connections.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
@@ -560,13 +575,14 @@ export default function SettingsForm() {
         </section>
       </div>
 
-      <div {...panel("pictures")}>
-        <PictureSettings
-          comfy={settings.comfy}
-          onChange={(patch) => update({ comfy: { ...settings.comfy, ...patch } })}
-          onConnections={() => openTab("connections")}
-        />
+      <div {...panel("drawing")}>
+        <DrawingSettings comfy={settings.comfy} setup={pictureSetup} onChange={updateComfy} onConnections={() => openTab("connections")} />
       </div>
+      {EDIT_MODEL_IDS.map((m) => (
+        <div key={m} {...panel(`edit-${m}`)}>
+          <EditSettings modelId={m} comfy={settings.comfy} setup={pictureSetup} onChange={updateComfy} onConnections={() => openTab("connections")} />
+        </div>
+      ))}
 
       <section {...panel("backup")}>
         <h2>Back up or move your settings</h2>

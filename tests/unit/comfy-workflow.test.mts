@@ -239,6 +239,37 @@ const own = parseWorkflow(JSON.stringify({ ...BUILTIN_WORKFLOW, "3": { ...BUILTI
 ok(sampled(fillWorkflow(own, { ...params, sampler: builtinSampler({ steps: 40 }) })).steps === 9, "a workflow of your own keeps its own steps");
 ok(BUILTIN_WORKFLOW["3"].inputs.steps === 30, "…and the built-in workflow itself is left as it was");
 
+// ---- a drawing preset's LoRAs ----
+const loras = [{ name: "styles/ink.safetensors", strength: 0.8 }, { name: "hero.safetensors", strength: -0.5 }];
+const withLoras = fillWorkflow(BUILTIN_WORKFLOW, { ...params, loras });
+const l1 = withLoras.storytime_lora_1, l2 = withLoras.storytime_lora_2;
+ok(
+  l1?.class_type === "LoraLoader" && JSON.stringify(l1.inputs.model) === '["4",0]' && JSON.stringify(l1.inputs.clip) === '["4",1]' &&
+    l1.inputs.lora_name === "styles/ink.safetensors" && l1.inputs.strength_model === 0.8 && l1.inputs.strength_clip === 0.8,
+  "the first LoRA loads after the checkpoint, on its model and CLIP, at its strength",
+);
+ok(JSON.stringify(l2.inputs.model) === '["storytime_lora_1",0]' && JSON.stringify(l2.inputs.clip) === '["storytime_lora_1",1]' && l2.inputs.strength_model === -0.5, "…and the next one after it, in order");
+ok(
+  JSON.stringify(withLoras["3"].inputs.model) === '["storytime_lora_2",0]' && JSON.stringify(withLoras["6"].inputs.clip) === '["storytime_lora_2",1]' &&
+    JSON.stringify(withLoras["7"].inputs.clip) === '["storytime_lora_2",1]',
+  "the sampler and both prompts use the last LoRA's model and CLIP",
+);
+ok(JSON.stringify(withLoras["8"].inputs.vae) === '["4",2]', "…while the VAE still comes from the checkpoint");
+const imgLoras = fillWorkflow(BUILTIN_WORKFLOW, { ...params, image: "start.png", denoise: 0.4, loras });
+ok(JSON.stringify(imgLoras["3"].inputs.model) === '["storytime_lora_2",0]' && JSON.stringify(imgLoras["11"].inputs.vae) === '["4",2]', "…also when it starts from a picture");
+ok(!("storytime_lora_1" in fillWorkflow(BUILTIN_WORKFLOW, params)) && !("storytime_lora_1" in BUILTIN_WORKFLOW), "without LoRAs nothing is added, and the built-in workflow itself is left as it was");
+const fluxLoras = fillWorkflow(flux, { ...params, loras: [loras[0]] });
+const fl = fluxLoras.storytime_lora_1;
+const unetId = Object.entries(flux).find(([, n]) => n.class_type === "UNETLoader")![0];
+ok(fl?.class_type === "LoraLoaderModelOnly" && JSON.stringify(fl.inputs.model) === `["${unetId}",0]` && !("clip" in fl.inputs), "a workflow that loads a diffusion model alone (Flux) gets model-only LoRAs");
+ok(Object.entries(fluxLoras).every(([id, n]) => id === "storytime_lora_1" || Object.values(n.inputs).every((v) => JSON.stringify(v) !== `["${unetId}",0]`)), "…and nothing else uses the model loader directly any more");
+const promptOnly: Workflow = {
+  "1": { class_type: "CLIPTextEncode", inputs: { text: "{{prompt}}" } },
+  "2": { class_type: "SaveImage", inputs: { filename_prefix: "x", images: ["1", 0] } },
+};
+const noLoader = throwsWorkflowError(() => fillWorkflow(promptOnly, { ...params, loras }));
+ok(noLoader !== null && noLoader.includes("LoRAs"), "a workflow with neither loader can't take LoRAs, and says so");
+
 // ---- randomSeed ----
 const seeds = Array.from({ length: 50 }, randomSeed);
 ok(seeds.every((s) => Number.isInteger(s) && s >= 0 && s < 2 ** 48), "random seeds are whole numbers below 2^48");

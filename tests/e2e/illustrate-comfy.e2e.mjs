@@ -3,7 +3,7 @@
 // (own prompt, checkpoint list, progress, candidates, using one as the header or footer picture, refused
 // workflows, Stop, and the polling path when the WebSocket is refused).
 import fs from "node:fs";
-import { launch } from "./browser.mjs";
+import { comfySettings, launch } from "./browser.mjs";
 import { startFakeComfy } from "./fakeComfy.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
@@ -28,8 +28,7 @@ const storyId = created.story_id;
 
 // Settings live on the server: remember what is there and put it back at the end.
 const before = await settingsNow();
-const baseComfy = { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4 };
-await putSettings({ ...(before ?? {}), comfy: baseComfy });
+await putSettings({ ...(before ?? {}), comfy: comfySettings({ url: "", count: 4 }) });
 
 const comfy = await startFakeComfy({ port: COMFY_PORT, steps: 8, stepDelay: 250 });
 const browser = await launch();
@@ -96,16 +95,18 @@ try {
   await page.waitForURL("**/settings#comfyui");
   await page.locator("#comfyui").waitFor();
   ok(await page.getByRole("tab", { name: "Connections" }).getAttribute("aria-selected") === "true", "the link opens Settings on its Connections tab");
-  ok(await page.getByRole("tab", { name: "Pictures" }).getAttribute("aria-selected") === "false" && !(await page.locator("#redraw").isVisible()), "…with the other tabs hidden");
+  ok(await page.getByRole("tab", { name: "Drawing" }).getAttribute("aria-selected") === "false" && !(await page.locator("#preset-test").isVisible()), "…with the other tabs hidden");
   await openSettings();
-  ok((await page.getByRole("tab").allInnerTexts()).join() === "Connections,Writing,Pictures,Backup", "Settings has Connections, Writing, Pictures and Backup tabs");
+  ok((await page.getByRole("tab").allInnerTexts()).join() === "Connections,Writing,Drawing,Qwen edit,Flux edit,Backup", "Settings has Connections, Writing, Drawing, Qwen edit, Flux edit and Backup tabs");
   ok(await page.getByRole("tab", { name: "Connections" }).getAttribute("aria-selected") === "true", "…and opens on Connections");
-  await page.getByRole("tab", { name: "Pictures" }).click();
-  ok(page.url().endsWith("/settings#pictures") && (await page.getByRole("tabpanel").getAttribute("id")) === "panel-pictures", "a tab shows its panel alone, and puts its name in the address");
+  await page.getByRole("tab", { name: "Drawing" }).click();
+  ok(page.url().endsWith("/settings#drawing") && (await page.getByRole("tabpanel").getAttribute("id")) === "panel-drawing", "a tab shows its panel alone, and puts its name in the address");
+  await page.goto(`${BASE}/settings#drawing`);
+  await page.locator("#panel-drawing").waitFor();
+  ok(await page.getByRole("tab", { name: "Drawing" }).isVisible() && (await page.evaluate(() => scrollY)) === 0, "a tab's address opens it with the tabs still in view");
+  ok((await page.getByRole("tabpanel").innerText()).includes("Add the ComfyUI address on the"), "…the Drawing tab, with no ComfyUI address, says to add it first");
   await page.goto(`${BASE}/settings#pictures`);
-  await page.locator("#panel-pictures").waitFor();
-  ok(await page.getByRole("tab", { name: "Pictures" }).isVisible() && (await page.evaluate(() => scrollY)) === 0, "a tab's address opens it with the tabs still in view");
-  ok((await page.getByRole("tabpanel").innerText()).includes("Add the ComfyUI address on the"), "…the Pictures tab, with no ComfyUI address, says to add it first");
+  ok(await page.getByRole("tab", { name: "Drawing" }).getAttribute("aria-selected") === "true", "the old #pictures address opens the Drawing tab");
   await page.getByRole("tabpanel").getByRole("button", { name: "Connections tab" }).click();
   ok(await page.getByRole("tab", { name: "Connections" }).getAttribute("aria-selected") === "true", "…and its link goes to the Connections tab");
   await page.getByRole("tab", { name: "Connections" }).focus();
@@ -131,12 +132,14 @@ try {
   ok(true, "Test connection reports the version and the number of checkpoints");
   ok(comfy.calls.some((c) => c.path === "/system_stats") && comfy.calls.some((c) => c.path === "/models/checkpoints"), "…by asking /system_stats and /models/checkpoints");
 
-  // ---- Settings: what the workflow box says ----
-  await page.getByRole("tab", { name: "Pictures" }).click();
-  const redraw = page.locator("#redraw");
+  // ---- Settings: a drawing preset's workflow box ----
+  await page.getByRole("tab", { name: "Drawing" }).click();
+  const redraw = page.locator("#preset-test");
   await redraw.waitFor();
-  ok(await redraw.getByRole("heading", { name: "New pictures and Redraw" }).isVisible(), "the Pictures tab has a card for new pictures and Redraw");
-  const workflow = redraw.locator("textarea");
+  ok(await redraw.evaluate((d) => d.open) && (await redraw.locator(":scope > summary").innerText()).startsWith("Test drawing"), "the Drawing tab has a card for each drawing preset, open when there is only one");
+  ok((await redraw.locator(":scope > summary").innerText()).includes("no checkpoint · top: for stories that choose none"), "…whose summary says its checkpoint, and that the top one is for stories that choose none");
+  await redraw.getByText("Workflow: built-in SDXL").click();
+  const workflow = redraw.getByLabel("Workflow", { exact: true });
   const summaryText = async () => (await redraw.locator("label:has(textarea) + p").innerText());
   ok((await summaryText()).startsWith("Using the built-in SDXL workflow"), "an empty workflow box says the built-in SDXL workflow is used");
 
@@ -150,7 +153,7 @@ try {
   await workflow.fill(JSON.stringify({ "1": { class_type: "CLIPTextEncode", inputs: { text: "{{prompt}}, {{checkpoint}}" } }, "2": { class_type: "EmptyLatentImage", inputs: { width: "{{width}}", height: "{{height}}", batch_size: "{{count}}" } } }));
   await page.getByText(/^Placeholders found: StoryTime sets the prompt, checkpoint, size, how many\./).waitFor();
   ok((await summaryText()).includes("keeps its own negative prompt, seed"), "a placeholder workflow lists what it sets and what it keeps");
-  ok(await until(async () => (await settingsNow()).comfy.workflow.includes("{{prompt}}"), "the workflow to be saved"), "…and the workflow is saved on the server");
+  ok(await until(async () => (await settingsNow()).comfy.drawPresets[0].workflow.includes("{{prompt}}"), "the workflow to be saved"), "…and the workflow is saved with the preset on the server");
 
   await workflow.fill(JSON.stringify({ "3": { class_type: "KSampler", inputs: { seed: 1, positive: ["6", 0], negative: ["7", 0] } }, "6": { class_type: "CLIPTextEncode", inputs: { text: "a" } }, "7": { class_type: "CLIPTextEncode", inputs: { text: "b" } } }));
   await page.getByText(/^Found automatically: StoryTime sets the prompt, negative prompt, seed\./).waitFor();
@@ -159,35 +162,61 @@ try {
   await workflow.fill(JSON.stringify({ "1": { class_type: "SaveImage", inputs: {} } }));
   await redraw.locator("p.error", { hasText: "nothing for the prompt" }).waitFor();
   ok(true, "a workflow with nowhere for the prompt is flagged");
+  const advanced = redraw.locator("details.advanced", { hasText: "Advanced: steps, CFG, sampler" });
   await redraw.getByText("Advanced: steps, CFG, sampler").click();
-  ok((await redraw.locator("details.advanced").innerText()).includes("Your own workflow keeps its own steps, CFG and sampler"), "with a workflow of your own, Advanced says its steps and sampler are the workflow's");
+  ok((await advanced.innerText()).includes("Your own workflow keeps its own steps, CFG and sampler"), "with a workflow of your own, Advanced says its steps and sampler are the workflow's");
 
   await workflow.fill("");
   await page.getByText(/^Using the built-in SDXL workflow/).waitFor();
-  ok(await until(async () => (await settingsNow()).comfy.workflow === "", "the workflow to be cleared"), "clearing the box goes back to the built-in workflow");
+  ok(await until(async () => (await settingsNow()).comfy.drawPresets[0].workflow === "", "the workflow to be cleared"), "clearing the box goes back to the built-in workflow");
 
   // ---- Settings: the built-in workflow's sampler settings ----
-  const advanced = redraw.locator("details.advanced");
   ok((await advanced.getByLabel(/^Steps/).inputValue()) === "30" && (await advanced.getByLabel(/^Sampler/).inputValue()) === "dpmpp_2m", "with the built-in workflow, Advanced shows its steps and sampler (30, dpmpp_2m)");
   ok(await advanced.getByRole("button", { name: "Reset to defaults" }).isDisabled(), "…with nothing to reset yet");
   ok((await advanced.getByLabel(/^Sampler/).locator("option").allInnerTexts()).includes("fake_sampler"), "the samplers offered are the ones ComfyUI lists");
   await advanced.getByLabel(/^Steps/).fill("22");
   await advanced.getByLabel(/^Sampler/).selectOption("euler_ancestral");
-  ok(await until(async () => JSON.stringify((await settingsNow()).comfy.redraw) === '{"steps":22,"sampler":"euler_ancestral"}', "the sampler settings to be saved"), "a changed step count and sampler are saved, and only those");
+  const testPreset = async () => (await settingsNow()).comfy.drawPresets.find((p) => p.id === "test");
+  ok(await until(async () => JSON.stringify((await testPreset()).sampler) === '{"steps":22,"sampler":"euler_ancestral"}', "the sampler settings to be saved"), "a changed step count and sampler are saved with the preset, and only those");
   ok((await summaryText()).includes("22 steps of euler_ancestral karras, CFG 6"), "…and the workflow summary shows them");
   await advanced.getByLabel(/^Steps/).fill("500");
-  ok(await until(async () => (await settingsNow()).comfy.redraw.steps === 150, "the steps to be capped"), "a step count over 150 is kept at 150");
+  ok(await until(async () => (await testPreset()).sampler.steps === 150, "the steps to be capped"), "a step count over 150 is kept at 150");
   await advanced.getByLabel(/^Steps/).fill("22");
-  await until(async () => (await settingsNow()).comfy.redraw.steps === 22, "the steps to be 22 again");
+  await until(async () => (await testPreset()).sampler.steps === 22, "the steps to be 22 again");
   await redraw.getByLabel("Redraw strength").fill("0.4");
-  ok(await until(async () => (await settingsNow()).comfy.denoise === 0.4, "the redraw strength to be saved"), "the Redraw strength can be set here too");
+  ok(await until(async () => (await testPreset()).denoise === 0.4, "the redraw strength to be saved"), "the preset's Redraw strength (where the Redraw tab starts) is set here");
+
+  // ---- Settings: more drawing presets ----
+  await redraw.getByLabel("Preset name").fill("Ink");
+  ok(await until(async () => (await testPreset()).name === "Ink", "the name to be saved"), "a preset can be renamed");
+  await redraw.getByRole("button", { name: "Duplicate" }).click();
+  const presetCards = page.locator("#panel-drawing details.preset-card");
+  await until(async () => (await presetCards.count()) === 2, "a second preset card");
+  const copy = presetCards.nth(1);
+  ok((await copy.locator(":scope > summary").innerText()).startsWith("Ink copy") && await copy.evaluate((d) => d.open), "Duplicate adds a copy below it, open, named “… copy”");
+  ok(await until(async () => (await settingsNow()).comfy.drawPresets.length === 2, "the copy to be saved"), "…and saves it");
+  const copied = (await settingsNow()).comfy.drawPresets[1];
+  ok(copied.id !== "test" && JSON.stringify(copied.sampler) === '{"steps":22,"sampler":"euler_ancestral"}' && copied.denoise === 0.4, "…with the same settings and an id of its own");
+  await copy.getByRole("button", { name: "Move to top" }).click();
+  ok(await until(async () => (await settingsNow()).comfy.drawPresets[0].id === copied.id, "the copy to move up"), "Move to top makes it the preset for stories that choose none");
+  await page.getByRole("button", { name: "New drawing preset" }).click();
+  await until(async () => (await presetCards.count()) === 3, "a third preset card");
+  ok(await until(async () => (await settingsNow()).comfy.drawPresets[2]?.name === "New preset" && (await settingsNow()).comfy.drawPresets[2].checkpoint === "", "the new preset"), "New drawing preset adds an empty one at the end");
+  page.once("dialog", (d) => d.accept());
+  await presetCards.nth(2).getByRole("button", { name: "Delete" }).click();
+  page.once("dialog", (d) => d.accept());
+  await presetCards.nth(0).getByRole("button", { name: "Delete" }).click();
+  ok(await until(async () => JSON.stringify((await settingsNow()).comfy.drawPresets.map((p) => p.id)) === '["test"]', "two presets to be deleted"), "Delete takes a preset out, after asking");
+  ok(await presetCards.first().getByRole("button", { name: "Delete" }).isDisabled(), "…but the last drawing preset can't be deleted");
 
   // ---- the Illustrate page with an address ----
   await openIllustrate();
   await page.getByRole("heading", { name: "Make pictures" }).waitFor();
   ok(await page.locator("section.ai-panel.comfy-generate").count() === 1 && await page.locator(".image-prompt .comfy-generate").count() === 0, "Make pictures is a panel of its own, not inside the Picture prompt");
-  ok(await page.getByLabel("Checkpoint").count() === 0, "there is no Checkpoint menu on the Illustrate page: the checkpoint is the story's");
-  ok((await page.locator(".story-pictures").innerText()).includes("no checkpoint") && await page.getByRole("link", { name: "Choose them in Story details" }).isVisible(), "a story with no checkpoint says so, with a link to its details page");
+  ok(await page.getByLabel("Checkpoint").count() === 0, "there is no Checkpoint menu on the Illustrate page: the checkpoint is the drawing preset's");
+  const drawPreset = page.getByLabel("Drawing preset");
+  ok(await drawPreset.inputValue() === "test" && (await drawPreset.locator("option").allInnerTexts()).join() === "Ink (the story's)", "the Make pictures panel offers the drawing presets, marking the story's");
+  ok((await page.locator(".draw-preset").innerText()).includes("no checkpoint") && (await page.locator(".story-pictures").innerText()).includes("Ink"), "…says the preset has no checkpoint, and the story's picture settings name its preset");
   ok(await makeButton.isDisabled(), "Make pictures is off while the prompt is empty");
 
   await promptBox.fill("a lighthouse at dawn, gulls");
@@ -195,24 +224,22 @@ try {
   ok(await makeButton.isEnabled(), "typing your own prompt turns Make pictures on");
 
   await makeButton.click();
-  await page.getByText("This story has no checkpoint chosen. Choose one in Story details.").waitFor();
+  await page.getByText("The drawing preset “Ink” has no checkpoint. Choose one in Settings › Drawing.").waitFor();
   ok(promptCalls().length === 0, "making pictures with no checkpoint chosen says so, and sends nothing to ComfyUI");
 
-  // ---- the checkpoint is chosen on the story's details page ----
-  await page.getByRole("link", { name: "Choose them in Story details" }).click();
-  await page.waitForURL(`**/s/${storyId}/details#pictures`);
-  const checkpoint = page.locator("#pictures").getByLabel("Checkpoint");
+  // ---- the checkpoint is chosen in the preset, in Settings ----
+  await page.locator(".draw-preset").getByRole("link", { name: "Change" }).click();
+  await page.waitForURL("**/settings#preset-test");
+  const checkpoint = page.locator("#preset-test").getByLabel("Checkpoint");
   await checkpoint.locator("option", { hasText: "fake_sdxl_b.safetensors" }).waitFor({ state: "attached" });
   const options = await checkpoint.locator("option").allInnerTexts();
-  ok(options.includes("fake_sdxl_a.safetensors") && options.includes("fake_sdxl_b.safetensors"), "its Checkpoint list shows the checkpoints from ComfyUI");
+  ok(options.includes("fake_sdxl_a.safetensors") && options.includes("fake_sdxl_b.safetensors"), "Change opens the preset in Settings, whose Checkpoint list shows the checkpoints from ComfyUI");
   await checkpoint.selectOption("fake_sdxl_b.safetensors");
-  await page.getByRole("button", { name: "Save picture settings" }).click();
-  await page.getByText("Picture settings saved.").waitFor();
-  ok((await get(`/api/stories/${storyId}`)).checkpoint === "fake_sdxl_b.safetensors", "choosing a checkpoint there saves it with the story");
+  ok(await until(async () => (await testPreset()).checkpoint === "fake_sdxl_b.safetensors", "the checkpoint to be saved"), "choosing a checkpoint there saves it with the preset");
   await openIllustrate();
   await promptBox.fill("a lighthouse at dawn, gulls");
   await negativeBox.fill("blurry, text");
-  ok((await page.locator(".story-pictures").innerText()).includes("fake_sdxl_b.safetensors"), "the Illustrate page shows the story's checkpoint");
+  ok((await page.locator(".draw-preset").innerText()).includes("fake_sdxl_b"), "the Illustrate page shows the preset's checkpoint");
   ok(await page.getByLabel("How many").count() === 0 && await page.getByText("One picture per click.").count() === 0, "there is no How many menu, and no line saying each click makes one picture");
   const queueStatus = page.getByLabel("Queue", { exact: true });
   ok((await makeButton.innerText()) === "Queue" && (await queueStatus.innerText()).trim() === "In progress: 0 · Queued: 0", "the button is just Queue, with the queue's status under it (nothing yet)");
@@ -471,17 +498,21 @@ try {
   comfy.setMode({ fail: null });
 
   // a checkpoint ComfyUI doesn't have (the saved name outlived the file)
-  await call("PATCH", `/api/stories/${storyId}`, { checkpoint: "gone.safetensors" });
+  const setCheckpoint = async (c) => {
+    const s = await settingsNow();
+    await putSettings({ ...s, comfy: { ...s.comfy, drawPresets: s.comfy.drawPresets.map((p) => ({ ...p, checkpoint: c })) } });
+  };
+  await setCheckpoint("gone.safetensors");
   await openIllustrate();
   await promptBox.fill("a lighthouse");
-  await page.getByText("ComfyUI doesn't list this story's checkpoint (gone.safetensors). Choose another in Story details.").waitFor();
-  ok(true, "a story checkpoint that ComfyUI no longer lists is reported when the page opens");
+  await page.getByText("ComfyUI doesn't list the checkpoint of the preset “Ink” (gone.safetensors). Choose another in Settings.").waitFor();
+  ok(true, "a preset's checkpoint that ComfyUI no longer lists is reported when the page opens");
   await makeButton.click();
   const gone = page.locator(".comfy-generate p.error", { hasText: "Value not in list" });
   await gone.waitFor();
   const goneText = await gone.innerText();
   ok(goneText.includes("CheckpointLoaderSimple") && goneText.includes("gone.safetensors"), `…and trying it shows ComfyUI's node error: "${goneText}"`);
-  await call("PATCH", `/api/stories/${storyId}`, { checkpoint: "fake_sdxl_a.safetensors" });
+  await setCheckpoint("fake_sdxl_a.safetensors");
   await openIllustrate();
   ok(await page.locator(".comfy-generate p.error").count() === 0, "choosing a listed checkpoint again fixes it");
 

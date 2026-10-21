@@ -1,7 +1,7 @@
 // Image to image on the Illustrate page: "Redraw from this" on a new picture, a saved header and a past picture,
 // the Strength slider, the starting picture uploaded to (the fake) ComfyUI, the workflow that is queued, what the
 // job log keeps, Clear, and the errors. The fake ComfyUI refuses a LoadImage for a picture that wasn't uploaded.
-import { launch } from "./browser.mjs";
+import { comfySettings, launch } from "./browser.mjs";
 import { startFakeComfy } from "./fakeComfy.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
@@ -18,11 +18,9 @@ const until = async (fn, what, tries = 100) => {
 
 const story = await call("POST", "/api/stories", { title: "Variations", chapter: { title: "The lamp", body: "The keeper lit the lamp.", choices: [] } });
 const chapterId = story.chapter_id;
-await call("PATCH", `/api/stories/${story.story_id}`, { checkpoint: "fake_sdxl_a.safetensors" });
 const before = (await call("GET", "/api/settings")).settings;
 const comfy = await startFakeComfy({ port: COMFY_PORT, steps: 2, stepDelay: 60, startDelay: 100 });
-const baseComfy = { url: comfy.url, workflow: "", checkpoint: "fake_sdxl_a.safetensors", width: 1344, height: 768, count: 2, denoise: 0.55 };
-await putSettings({ ...(before ?? {}), comfy: baseComfy });
+await putSettings({ ...(before ?? {}), comfy: comfySettings({ url: comfy.url, checkpoint: "fake_sdxl_a.safetensors" }) });
 
 const browser = await launch();
 const context = await browser.newContext({ viewport: { width: 1000, height: 1300 } });
@@ -83,7 +81,9 @@ try {
   ok(await page.getByText(/The prompt above isn't used/).count() === 0, "…without the long note about the prompt");
 
   await strength.fill("0.3");
-  ok(await until(async () => (await settingsNow()).denoise === 0.3, "the strength to be saved"), "moving the slider saves the strength in the settings");
+  const keptRedraw = () => page.evaluate((id) => localStorage.getItem(`storytime.illustrate.redraw.${id}`), chapterId);
+  ok(await until(async () => JSON.parse((await keptRedraw()) ?? "null")?.strength === 0.3, "the strength to be kept"), "moving the slider keeps the strength for this chapter, in this browser");
+  ok(JSON.parse(await keptRedraw()).preset === "test" && (await settingsNow()).drawPresets[0].denoise === 0.55, "…for the drawing preset, whose own default in Settings stays as it was");
   const mark = comfy.calls.length;
   await make(4);
   ok(uploads(mark).length === 1, "making pictures uploads the starting picture to ComfyUI once");
@@ -156,7 +156,9 @@ try {
   ok(prompts(failMark).length === 0 && await makeButton.isEnabled(), "when ComfyUI won't take the picture, the page says so, queues nothing and is ready again");
   comfy.setMode({ fail: null });
 
-  await putSettings({ ...(await call("GET", "/api/settings")).settings, comfy: { ...(await settingsNow()), workflow: JSON.stringify({ "1": { class_type: "CLIPTextEncode", inputs: { text: "{{prompt}}" } }, "2": { class_type: "KSampler", inputs: { seed: "{{seed}}", positive: ["1", 0] } }, "9": { class_type: "SaveImage", inputs: { images: ["2", 0], filename_prefix: "StoryTime" } } }) } });
+  const noStart = JSON.stringify({ "1": { class_type: "CLIPTextEncode", inputs: { text: "{{prompt}}" } }, "2": { class_type: "KSampler", inputs: { seed: "{{seed}}", positive: ["1", 0] } }, "9": { class_type: "SaveImage", inputs: { images: ["2", 0], filename_prefix: "StoryTime" } } });
+  const now = await settingsNow();
+  await putSettings({ ...(await call("GET", "/api/settings")).settings, comfy: { ...now, drawPresets: now.drawPresets.map((p) => ({ ...p, workflow: noStart })) } });
   await page.reload();
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("a keeper beside a lamp");
   await showAll();
@@ -168,11 +170,12 @@ try {
   ok(prompts(refusedMark).length === 0, "a workflow that can't start from a picture says so, without being sent to ComfyUI");
 
   // ---- Settings says whether the workflow can ----
-  await page.goto(`${BASE}/settings#pictures`);
-  await page.locator("#redraw").waitFor();
+  await page.goto(`${BASE}/settings#preset-test`);
+  const presetCard = page.locator("#preset-test");
+  await presetCard.waitFor();
   await page.getByText("It can't start from a picture.").waitFor();
-  ok(true, "Settings says that workflow can't start from a picture");
-  await page.locator("#redraw textarea").fill("");
+  ok(true, "Settings says that preset's workflow can't start from a picture");
+  await presetCard.getByLabel("Workflow", { exact: true }).fill("");
   await page.getByText(/It can also start from a picture\./).waitFor();
   ok(true, "…and that the built-in workflow can");
 

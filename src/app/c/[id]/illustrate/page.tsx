@@ -6,7 +6,7 @@ import { foldCodex } from "@/lib/codex";
 import { getCodexOps } from "@/lib/codexDb";
 import { chapterPictureJobs, storyChapterTitles } from "@/lib/pictureJobs";
 import { getPictureDraft } from "@/lib/pictureDrafts";
-import { getPath, getStory } from "@/lib/stories";
+import { getChapterPreset, getPath, getStory } from "@/lib/stories";
 
 export const dynamic = "force-dynamic";
 
@@ -52,8 +52,9 @@ export default async function IllustratePage({ params }: { params: Promise<{ id:
           premise: story.premise,
           art_style: story.art_style,
           image_prompt_style: story.image_prompt_style,
-          checkpoint: story.checkpoint,
+          draw_preset: story.draw_preset,
         }}
+        chapterPreset={getChapterPreset(chapter.id)}
         path={path.map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary }))}
         codex={codex}
         versions={versions}

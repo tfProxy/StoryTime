@@ -1,7 +1,7 @@
 // Leaving or refreshing the Illustrate page while ComfyUI is making pictures: the page finds the job again in
 // ComfyUI's queue, shows it being made, and records it; a job that finished while the page was away is
 // recorded when the page comes back, and none is listed twice.
-import { launch } from "./browser.mjs";
+import { comfySettings, launch } from "./browser.mjs";
 import { startFakeComfy } from "./fakeComfy.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
@@ -18,11 +18,10 @@ const until = async (fn, what, tries = 100) => {
 
 const story = await call("POST", "/api/stories", { title: "Away", chapter: { title: "The lamp", body: "The keeper lit the lamp.", choices: [] } });
 const chapterId = story.chapter_id;
-await call("PATCH", `/api/stories/${story.story_id}`, { checkpoint: "fake_sdxl_a.safetensors" });
 const before = (await call("GET", "/api/settings")).settings;
 // Slow enough that a job is still running when the page is refreshed.
 const comfy = await startFakeComfy({ port: COMFY_PORT, steps: 8, stepDelay: 150, startDelay: 200 });
-await putSettings({ ...(before ?? {}), comfy: { url: comfy.url, workflow: "", checkpoint: "fake_sdxl_a.safetensors", width: 1344, height: 768, count: 1, denoise: 0.55 } });
+await putSettings({ ...(before ?? {}), comfy: comfySettings({ url: comfy.url, checkpoint: "fake_sdxl_a.safetensors", count: 1 }) });
 
 const browser = await launch();
 const context = await browser.newContext({ viewport: { width: 1000, height: 1300 } });

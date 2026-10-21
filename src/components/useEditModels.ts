@@ -19,20 +19,22 @@ export type EditModels =
   | { state: "error"; message: string };
 
 /**
- * Which edit models the ComfyUI machine can run, asked once per address. With `fresh`, ComfyUI is asked
- * again rather than remembering an earlier answer, as Settings does, so files added since then show up.
+ * Which edit models the ComfyUI machine can run, asked once per address. With `fresh` (a number), ComfyUI
+ * is asked again rather than remembering an earlier answer, and again each time the number changes, as
+ * Settings does after each setup check, so files added since then show up.
  */
-export function useEditModels(url: string, fresh = false): EditModels {
-  const [found, setFound] = useState<{ url: string; result: EditModels } | null>(null);
+export function useEditModels(url: string, fresh?: number): EditModels {
+  const [found, setFound] = useState<{ url: string; fresh?: number; result: EditModels } | null>(null);
   useEffect(() => {
     if (!url) return;
     let live = true;
-    if (fresh) forgetEditModels();
+    if (fresh !== undefined) forgetEditModels();
     editModelsFor(url).then(
       (checks) =>
         live &&
         setFound({
           url,
+          fresh,
           result: {
             state: "done",
             ready: checks.filter((c) => c.ready),
@@ -41,12 +43,13 @@ export function useEditModels(url: string, fresh = false): EditModels {
             schedulers: checks[0]?.schedulers ?? [],
           },
         }),
-      (e) => live && setFound({ url, result: { state: "error", message: e instanceof Error ? e.message : String(e) } }),
+      (e) => live && setFound({ url, fresh, result: { state: "error", message: e instanceof Error ? e.message : String(e) } }),
     );
     return () => {
       live = false;
     };
   }, [url, fresh]);
+  // An earlier answer stays shown while ComfyUI is asked again.
   return found?.url === url ? found.result : { state: "checking" };
 }
 
@@ -54,6 +57,6 @@ export function useEditModels(url: string, fresh = false): EditModels {
 export function editBlocked(models: EditModels): string | null {
   if (models.state === "checking") return "Checking which edit models ComfyUI has…";
   if (models.state === "error") return `Couldn't check ComfyUI's edit models: ${models.message}`;
-  if (models.ready.length === 0) return "No edit model is installed in ComfyUI. Check setup on the Pictures tab of Settings says what is missing.";
+  if (models.ready.length === 0) return "No edit model is installed in ComfyUI. Check setup in Settings (Qwen edit or Flux edit tab) says what is missing.";
   return null;
 }

@@ -84,11 +84,12 @@ export function picturesOf(jobs: PictureJob[]): Picture[] {
 
 /** What tells pictures from the same prompt apart: the settings, and the seed when `withSeed` (the list under the pictures leaves it out; Info has it). */
 export function pictureCaption(c: { seed: number; checkpoint: string; width: number; height: number; denoise: number | null; editModel?: string | null }, withSeed = false): string {
+  // The files come after the model's or checkpoint's, joined by " + ": an edit's speed-up, and the LoRAs (each with its strength).
+  const [main, ...extras] = c.checkpoint.split(" + ");
   return [
-    (c.editModel && editModel(c.editModel)?.name) || c.checkpoint.replace(/\.(safetensors|ckpt)$/i, ""),
-    // An edit keeps its speed-up's and LoRAs' files after the model's, joined by " + ".
+    (c.editModel && editModel(c.editModel)?.name) || main.replace(/\.(safetensors|ckpt)$/i, ""),
     c.editModel && editFilesExtras(c.editModel, c.checkpoint).fast && "fast",
-    c.editModel && loraCount(editFilesExtras(c.editModel, c.checkpoint).loras),
+    loraCount(c.editModel ? editFilesExtras(c.editModel, c.checkpoint).loras : extras.filter((e) => /\(-?[\d.]+\)$/.test(e)).length),
     `${c.width} × ${c.height}`,
     withSeed && `seed ${c.seed}`,
     c.denoise !== null && `strength ${c.denoise}`,

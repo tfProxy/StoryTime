@@ -94,7 +94,7 @@ export const EDIT_FILES = {
 const NODES = [
   "CheckpointLoaderSimple", "KSampler", "EmptyLatentImage", "CLIPTextEncode", "VAEDecode", "VAEEncode", "SaveImage", "LoadImage",
   "RepeatLatentBatch", "ImageScale", "UNETLoader", "CLIPLoader", "DualCLIPLoader", "VAELoader", "TextEncodeQwenImageEditPlus",
-  "ModelSamplingAuraFlow", "CFGNorm", "ReferenceLatent", "FluxGuidance", "ConditioningZeroOut", "LoraLoaderModelOnly",
+  "ModelSamplingAuraFlow", "CFGNorm", "ReferenceLatent", "FluxGuidance", "ConditioningZeroOut", "LoraLoaderModelOnly", "LoraLoader",
 ];
 
 /** The samplers and schedulers the fake's KSampler offers. */
@@ -122,6 +122,7 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
       },
       VAELoader: { vae_name: combo(folder("vae")) },
       LoraLoaderModelOnly: { lora_name: combo(folder("loras")), strength_model: ["FLOAT", { default: 1 }] },
+      LoraLoader: { lora_name: combo(folder("loras")), strength_model: ["FLOAT", { default: 1 }], strength_clip: ["FLOAT", { default: 1 }] },
       KSampler: { sampler_name: combo(SAMPLERS), scheduler: combo(SCHEDULERS) },
     }[name] ?? {};
     return { input: { required }, name };

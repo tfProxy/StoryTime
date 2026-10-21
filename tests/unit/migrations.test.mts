@@ -60,6 +60,9 @@ ok(["job_id", "prompt", "negative", "image_index"].every((c) => cols("chapter_im
 ok(["art_style", "image_prompt_style", "checkpoint"].every((c) => cols("stories").includes(c)), "stories keep their picture settings");
 const keptStory = d.prepare(`SELECT image_prompt_style, checkpoint FROM stories WHERE id = 'keep'`).get() as Record<string, unknown>;
 ok(keptStory.image_prompt_style === null && keptStory.checkpoint === "", "an existing story starts with no prompt style or checkpoint chosen");
+ok(cols("stories").includes("draw_preset") && cols("chapters").includes("draw_preset"), "stories and chapters can choose a drawing preset");
+const presets = d.prepare(`SELECT (SELECT draw_preset FROM stories WHERE id = 'keep') AS story, (SELECT draw_preset FROM chapters WHERE id = 'a') AS chapter`).get() as Record<string, unknown>;
+ok(presets.story === null && presets.chapter === null, "…and existing ones start with none, so they follow the top preset");
 const job = (id: string, promptId: string, chapterId = "a", moment: string | null = null) =>
   d.prepare(`INSERT INTO picture_jobs (id, story_id, chapter_id, prompt_id, prompt, width, height, seed, count, moment, images, created_at) VALUES (?, 'keep', ?, ?, 'p', 1, 1, 1, 1, ?, '[]', 1)`).run(id, chapterId, promptId, moment);
 job("j1", "x");

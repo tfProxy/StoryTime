@@ -12,8 +12,10 @@ export type Story = {
   art_style: string;
   /** How its picture prompts are written: tags (SDXL and the like) or sentences (Flux, SD3); null until chosen. */
   image_prompt_style: "tags" | "natural" | null;
-  /** The ComfyUI checkpoint its pictures are made with; "" until chosen. */
+  /** The checkpoint chosen before drawing presets (only read to turn it into a preset); "" when none was. */
   checkpoint: string;
+  /** The drawing preset (an id from Settings) its chapters' pictures use unless a chapter chooses another; null for the first preset. */
+  draw_preset: string | null;
   root_chapter_id: string | null;
   created_at: number;
   /** When the cover image was last set (it changes with every upload); null when there is no cover. */
@@ -116,7 +118,22 @@ export const EditStorySchema = z.object({
   art_style: text(LIMITS.artStyle).optional(),
   image_prompt_style: z.enum(["tags", "natural"]).nullable().optional(),
   checkpoint: text(LIMITS.label).optional(),
+  draw_preset: z.string().trim().min(1).max(100).nullable().optional(),
 });
+
+/** A chapter's own drawing preset (an id from Settings), or null to use its story's. */
+export const ChapterPresetSchema = z.object({ draw_preset: z.string().trim().min(1).max(100).nullable() });
+
+export function getChapterPreset(chapterId: string): string | null {
+  const row = db().prepare(`SELECT draw_preset FROM chapters WHERE id = ?`).get(chapterId) as { draw_preset: string | null } | undefined;
+  return row?.draw_preset ?? null;
+}
+
+export function setChapterPreset(chapterId: string, input: z.infer<typeof ChapterPresetSchema>): { draw_preset: string | null } {
+  const { changes } = db().prepare(`UPDATE chapters SET draw_preset = ? WHERE id = ?`).run(input.draw_preset, chapterId);
+  if (changes === 0) throw new PostError("That chapter does not exist", 404);
+  return { draw_preset: input.draw_preset };
+}
 
 export class PostError extends Error {
   constructor(
@@ -132,7 +149,7 @@ const now = () => Date.now();
 export function listStories(): (Story & { chapter_count: number })[] {
   return db()
     .prepare(
-      `SELECT s.id, s.title, s.premise, s.style, s.art_style, s.image_prompt_style, s.checkpoint, s.root_chapter_id, s.created_at, s.cover_updated_at AS cover_version,
+      `SELECT s.id, s.title, s.premise, s.style, s.art_style, s.image_prompt_style, s.checkpoint, s.draw_preset, s.root_chapter_id, s.created_at, s.cover_updated_at AS cover_version,
               (SELECT COUNT(*) FROM chapters c WHERE c.story_id = s.id) AS chapter_count
          FROM stories s ORDER BY s.created_at DESC`,
     )
@@ -142,7 +159,7 @@ export function listStories(): (Story & { chapter_count: number })[] {
 export function getStory(id: string): Story | undefined {
   return db()
     .prepare(
-      `SELECT id, title, premise, style, art_style, image_prompt_style, checkpoint, root_chapter_id, created_at, cover_updated_at AS cover_version
+      `SELECT id, title, premise, style, art_style, image_prompt_style, checkpoint, draw_preset, root_chapter_id, created_at, cover_updated_at AS cover_version
          FROM stories WHERE id = ?`,
     )
     .get(id) as Story | undefined;
@@ -461,12 +478,13 @@ export function editStory(storyId: string, input: z.infer<typeof EditStorySchema
     const story = getStory(storyId);
     if (!story) throw new PostError("That story does not exist", 404);
     db()
-      .prepare(`UPDATE stories SET title = ?, premise = ?, style = ?, art_style = ?, image_prompt_style = ?, checkpoint = ? WHERE id = ?`)
+      .prepare(`UPDATE stories SET title = ?, premise = ?, style = ?, art_style = ?, image_prompt_style = ?, checkpoint = ?, draw_preset = ? WHERE id = ?`)
       .run(
         input.title ?? story.title, input.premise ?? story.premise, input.style ?? story.style,
         input.art_style ?? story.art_style,
         input.image_prompt_style === undefined ? story.image_prompt_style : input.image_prompt_style,
-        input.checkpoint ?? story.checkpoint, storyId,
+        input.checkpoint ?? story.checkpoint,
+        input.draw_preset === undefined ? story.draw_preset : input.draw_preset, storyId,
       );
     return { ok: true as const };
   })();

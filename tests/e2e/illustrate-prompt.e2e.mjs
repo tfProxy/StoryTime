@@ -77,7 +77,7 @@ try {
   // ---- the prompt style and art style are the story's, set on its details page ----
   ok(await page.getByLabel(/Art style/).count() === 0 && await page.getByLabel("Prompt style").count() === 0, "the Illustrate page has no art style or prompt style fields");
   const pictureLine = page.locator(".story-pictures");
-  ok((await pictureLine.innerText()).includes("no prompt style") && (await pictureLine.innerText()).includes("Not chosen yet for this story: prompt style, art style, checkpoint."), "a new story says which picture settings aren't chosen yet");
+  ok((await pictureLine.innerText()).includes("no prompt style") && (await pictureLine.innerText()).includes("Not chosen yet for this story: prompt style, art style."), "a new story says which picture settings aren't chosen yet");
   await page.waitForTimeout(1000); // (the typed prompt is kept)
   await page.getByRole("link", { name: "Choose them in Story details" }).click();
   await page.waitForURL(`**/s/${storyId}/details#pictures`);
@@ -91,7 +91,7 @@ try {
   ok(pictured.image_prompt_style === "natural" && pictured.art_style === "watercolor storybook, soft light", "saving there keeps the prompt style and art style with the story");
   ok((await settingsNow()).imagePromptStyle === "tags", "…not in the shared settings");
   await page.goto(`${BASE}/c/${chapter}/illustrate`);
-  ok((await pictureLine.locator("li").allInnerTexts()).slice(0, 2).join("|") === "Sentences (Flux, SD3)|watercolor storybook, soft light" &&(await pictureLine.innerText()).includes("Not chosen yet for this story: checkpoint."), "the Illustrate page shows them, and that only the checkpoint is left");
+  ok((await pictureLine.locator("li").allInnerTexts()).slice(0, 2).join("|") === "Sentences (Flux, SD3)|watercolor storybook, soft light" && !(await pictureLine.innerText()).includes("Not chosen yet"), "the Illustrate page shows them, and that nothing is left to choose");
 
   // ---- write a prompt for the chapter's end ----
   ok(await page.getByText(/^For$/).count() === 0 && await page.getByRole("option", { name: "Footer picture" }).count() === 0, "there is no For header/footer choice");

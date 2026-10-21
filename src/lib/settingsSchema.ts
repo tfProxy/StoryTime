@@ -1,9 +1,21 @@
 import { z } from "zod";
 import { PROVIDER_KINDS, providerInfo, type ProviderKind } from "./ai/providers";
-import type { SamplerTuning } from "./comfy/workflow";
-import type { EditTuning } from "./comfy/editModels";
+import { EDIT_MODEL_IDS } from "./comfy/editModels";
+import {
+  DEFAULT_DENOISE,
+  DEFAULT_DRAW_PRESETS,
+  DEFAULT_EDIT_PRESETS,
+  fileLabel,
+  MAX_LORAS,
+  MAX_PRESETS,
+  newEditPreset,
+  type DrawPreset,
+  type EditPreset,
+} from "./comfy/presets";
 
 // Types, defaults and parsing, shared by the browser and the server (which stores the settings).
+
+export type { DrawPreset, EditPreset, LoraSetting } from "./comfy/presets";
 
 /** One server to talk to. There can be several of the same kind (say, two Ollama machines). */
 export type Connection = {
@@ -58,35 +70,17 @@ export type ImagePromptStyle = "tags" | "natural";
 export type ComfySettings = {
   /** Where ComfyUI is, e.g. https://comfy.example.ts.net; "" when there is none. */
   url: string;
-  /** A workflow exported from ComfyUI in API format, as JSON; "" uses the built-in SDXL workflow. */
-  workflow: string;
-  checkpoint: string;
   width: number;
   height: number;
   /** How many pictures to make at once. No longer used by the Illustrate page, which makes one per click. */
   count: number;
-  /** Image to image: how far a picture may change from the one it starts from, 0.05 (barely) to 1 (completely). */
-  denoise: number;
-  /** The model last used to edit a picture by instruction (an id from EDIT_MODELS). */
-  editModel: string;
-  /** Edits use a model's speed-up (Qwen's Lightning LoRA) when ComfyUI has it. */
-  editFast: boolean;
-  /**
-   * The author's LoRA stack for each edit model (by its id in EDIT_MODELS), applied in order. `on` is
-   * switched from the Edit tab; a LoRA switched off stays in the stack.
-   */
-  editLoras: Record<string, EditLoraSetting[]>;
-  /** The built-in workflow's sampler settings changed in Settings; the rest are BUILTIN_SAMPLER's. */
-  redraw: Partial<SamplerTuning>;
-  /** Each edit model's settings changed in Settings (by its id in EDIT_MODELS); the rest are the model's defaults. */
-  editTuning: Record<string, Partial<EditTuning>>;
+  /** Drawing presets (new pictures and Redraw); never empty. The first is the default for stories that choose none. */
+  drawPresets: DrawPreset[];
+  /** Edit presets, each for one edit model; every edit model has at least one. */
+  editPresets: EditPreset[];
+  /** The edit preset last used on the Illustrate page's Edit tab (an id from `editPresets`). */
+  editPreset: string;
 };
-
-/** A LoRA in an edit model's stack: its file in ComfyUI's `loras` folder, its strength, and whether it is used. */
-export type EditLoraSetting = { name: string; strength: number; on: boolean };
-
-/** The most LoRAs one edit model's stack can hold. */
-export const MAX_EDIT_LORAS = 8;
 
 export const DEFAULT_SETTINGS: Settings = {
   connections: [],
@@ -98,7 +92,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoSuggestChoices: false,
   imagePromptStyle: "tags",
   imagePromptModel: null,
-  comfy: { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4, denoise: 0.55, editModel: "qwen-image-edit", editFast: true, editLoras: {}, redraw: {}, editTuning: {} },
+  comfy: { url: "", width: 1344, height: 768, count: 4, drawPresets: DEFAULT_DRAW_PRESETS, editPresets: DEFAULT_EDIT_PRESETS, editPreset: "qwen-image-edit" },
 };
 
 // Each field falls back to its default when missing or invalid, so partial files still
@@ -114,7 +108,7 @@ const connectionSchema = z.object({
 const refSchema = z.object({ connectionId: z.string().min(1), model: z.string().trim().min(1) });
 const favoriteSchema = refSchema.extend({ label: z.string().catch("") });
 
-const editLoraSchema = z.object({
+const loraSchema = z.object({
   name: z.string().max(500),
   strength: z.number().min(-4).max(4).catch(1),
   on: z.boolean().catch(true),
@@ -150,6 +144,62 @@ const listOf = <T>(item: z.ZodType<T>) =>
       return r.success ? [r.data] : [];
     }));
 
+const loraList = listOf(loraSchema).transform((xs) => xs.slice(0, MAX_LORAS));
+const presetIdSchema = z.string().trim().min(1).max(100);
+const presetNameSchema = z.string().max(100).catch("");
+
+const drawPresetSchema = z.object({
+  id: presetIdSchema,
+  name: presetNameSchema,
+  checkpoint: z.string().max(500).catch(""),
+  workflow: z.string().max(500_000).catch(""),
+  loras: loraList,
+  sampler: samplerSchema.transform(setOnly).catch({}),
+  denoise: z.number().min(0.05).max(1).catch(DEFAULT_DENOISE),
+});
+const editPresetSchema = z.object({
+  id: presetIdSchema,
+  name: presetNameSchema,
+  model: z.enum(EDIT_MODEL_IDS),
+  fast: z.boolean().catch(true),
+  loras: loraList,
+  tuning: editTuningSchema.transform(setOnly).catch({}),
+});
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * Picture settings from before presets (one workflow, one Redraw strength, one LoRA stack per edit model)
+ * as presets: the same settings in a drawing preset for each of `checkpoints` (the ones stories used,
+ * most used first; one "Default" without a checkpoint when there are none), and a "Default" edit preset
+ * for each edit model, whose id is the model's. Settings that already have presets are returned as they are.
+ */
+export function upgradeComfy(comfy: unknown, checkpoints: string[] = []): unknown {
+  if (!isRecord(comfy) || Array.isArray(comfy.drawPresets)) return comfy;
+  const per = (key: string, model: string) => (isRecord(comfy[key]) ? (comfy[key] as Record<string, unknown>)[model] : undefined);
+  const shared = { workflow: comfy.workflow, loras: [], sampler: comfy.redraw, denoise: comfy.denoise };
+  const named = checkpoints.length > 0 ? checkpoints : [""];
+  return {
+    ...comfy,
+    drawPresets: named.map((checkpoint, i) => ({
+      id: drawPresetIdFor(i),
+      name: named.length === 1 ? "Default" : fileLabel(checkpoint),
+      checkpoint,
+      ...shared,
+    })),
+    editPresets: EDIT_MODEL_IDS.map((model) => ({
+      ...newEditPreset(model, "Default", model),
+      fast: comfy.editFast,
+      loras: per("editLoras", model),
+      tuning: per("editTuning", model),
+    })),
+    editPreset: comfy.editModel,
+  };
+}
+
+/** The id `upgradeComfy` gives its i-th drawing preset. */
+export const drawPresetIdFor = (i: number) => (i === 0 ? "default" : `draw-${i + 1}`);
+
 const settingsSchema = z.object({
   connections: listOf(connectionSchema),
   favorites: listOf(favoriteSchema),
@@ -163,24 +213,41 @@ const settingsSchema = z.object({
   imagePromptStyle: z.enum(["tags", "natural"]).catch("tags"),
   imagePromptModel: refSchema.nullable().catch(null),
   comfy: z
-    .object({
-      url: z.string().catch(""),
-      workflow: z.string().max(500_000).catch(""),
-      checkpoint: z.string().catch(""),
-      width: z.number().int().min(64).max(4096).catch(DEFAULT_SETTINGS.comfy.width),
-      height: z.number().int().min(64).max(4096).catch(DEFAULT_SETTINGS.comfy.height),
-      count: z.number().int().min(1).max(8).catch(DEFAULT_SETTINGS.comfy.count),
-      denoise: z.number().min(0.05).max(1).catch(DEFAULT_SETTINGS.comfy.denoise),
-      editModel: z.string().max(100).catch(DEFAULT_SETTINGS.comfy.editModel),
-      editFast: z.boolean().catch(DEFAULT_SETTINGS.comfy.editFast),
-      editLoras: z
-        .record(z.string().max(100), listOf(editLoraSchema).transform((xs) => xs.slice(0, MAX_EDIT_LORAS)))
-        .catch({}),
-      redraw: samplerSchema.transform(setOnly).catch({}),
-      editTuning: z.record(z.string().max(100), editTuningSchema.transform(setOnly).catch({})).catch({}),
-    })
+    .preprocess(
+      (v) => upgradeComfy(v),
+      z.object({
+        url: z.string().catch(""),
+        width: z.number().int().min(64).max(4096).catch(DEFAULT_SETTINGS.comfy.width),
+        height: z.number().int().min(64).max(4096).catch(DEFAULT_SETTINGS.comfy.height),
+        count: z.number().int().min(1).max(8).catch(DEFAULT_SETTINGS.comfy.count),
+        drawPresets: listOf(drawPresetSchema),
+        editPresets: listOf(editPresetSchema),
+        editPreset: z.string().max(100).catch(DEFAULT_SETTINGS.comfy.editPreset),
+      }),
+    )
     .catch(DEFAULT_SETTINGS.comfy),
 });
+
+/** At most MAX_PRESETS of a kind, each id once. */
+function distinctPresets<P extends { id: string }>(presets: P[]): P[] {
+  const seen = new Set<string>();
+  return presets.filter((p) => !seen.has(p.id) && seen.add(p.id)).slice(0, MAX_PRESETS);
+}
+
+/** The presets made sound: never no drawing preset, and at least one edit preset for every edit model. */
+function soundPresets(comfy: ComfySettings): ComfySettings {
+  const draw = distinctPresets(comfy.drawPresets);
+  const edit = distinctPresets(comfy.editPresets);
+  const ids = new Set(edit.map((p) => p.id));
+  for (const model of EDIT_MODEL_IDS) {
+    if (edit.some((p) => p.model === model)) continue;
+    let id = model as string;
+    for (let n = 2; ids.has(id); n++) id = `${model}-${n}`;
+    ids.add(id);
+    edit.push(newEditPreset(id, "Default", model));
+  }
+  return { ...comfy, drawPresets: draw.length > 0 ? draw : DEFAULT_DRAW_PRESETS, editPresets: edit };
+}
 
 export function parseSettings(raw: unknown): Settings {
   const parsed = settingsSchema.safeParse(raw && typeof raw === "object" ? raw : {});
@@ -198,6 +265,7 @@ export function parseSettings(raw: unknown): Settings {
     favorites,
     defaults: { main: live(s.defaults.main), cheap: live(s.defaults.cheap) },
     imagePromptModel: live(s.imagePromptModel),
+    comfy: soundPresets(s.comfy),
   };
 }
 

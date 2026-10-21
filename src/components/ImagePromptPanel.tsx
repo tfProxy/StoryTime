@@ -19,6 +19,7 @@ import type { EditModels } from "./useEditModels";
 import type { PictureBoxes, PictureDraft } from "@/lib/pictureDrafts";
 import { EMPTY_BOXES, usePictureDraft } from "./usePictureDraft";
 import { PROMPT_STYLE_NAMES, unsetPictureSettings, type StoryPictures } from "./StoryPictureSettings";
+import { drawPresetFor, presetName } from "@/lib/comfy/presets";
 
 const MOMENT_NAMES: Record<ImageMoment, string> = { start: "Chapter start", end: "Chapter end" };
 
@@ -47,6 +48,8 @@ type Props = {
   onQueue?: (jobs: PendingJob[]) => void;
   chapterId: string;
   story: IllustratedStory;
+  /** The chapter's own drawing preset (chosen on this page), or null to use the story's. */
+  chapterPreset?: string | null;
   /** The story from its first chapter down to the chapter being illustrated. */
   path: ContextChapter[];
   codex: ContextCodexEntry[];
@@ -65,7 +68,7 @@ type Props = {
  * (chapter start, chapter end) has its own boxes, so switching between them brings each one's prompt back;
  * they are kept for the chapter on the server, so they are there again next time.
  */
-export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null, start = null, onClearStart, startMode = "redraw", onStartMode, editModels, onPictures, onQueue, draft = null, dock = null, codexSlot = null, recorded }: Props) {
+export default function ImagePromptPanel({ chapterId, story, chapterPreset = null, path, codex, loaded = null, start = null, onClearStart, startMode = "redraw", onStartMode, editModels, onPictures, onQueue, draft = null, dock = null, codexSlot = null, recorded }: Props) {
   const settings = useSettings();
   const chapter = path[path.length - 1];
   const [moment, setMoment] = useState<ImageMoment>(draft?.moment ?? "start");
@@ -134,7 +137,7 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
           <ul className="story-pictures-list" aria-label="This story's picture settings">
             <li>{story.image_prompt_style ? PROMPT_STYLE_NAMES[story.image_prompt_style] : "no prompt style"}</li>
             <li>{story.art_style.trim() ? <span title={story.art_style}>{short(story.art_style.trim(), 80)}</span> : "no art style"}</li>
-            <li>{story.checkpoint || "no checkpoint"}</li>
+            <li title="The story's drawing preset">{presetName(drawPresetFor(settings.comfy.drawPresets, story.draw_preset))}</li>
           </ul>
           <Link href={settingsHref}>Change</Link>
         </div>
@@ -248,7 +251,8 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
       <ComfyGenerate
         chapterId={chapterId}
         storyId={story.id}
-        checkpoint={story.checkpoint}
+        storyPreset={story.draw_preset}
+        chapterPreset={chapterPreset}
         moment={moment}
         prompt={result.prompt}
         negative={result.negative}

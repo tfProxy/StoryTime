@@ -33,8 +33,10 @@ export type PictureParams = {
   image?: string;
   /** Image to image: how far the pictures may drift from the starting one, 0 to 1 (default 1). */
   denoise?: number;
-  /** The built-in workflow's sampler settings (from Settings); other workflows keep their own. */
+  /** The built-in workflow's sampler settings (from the preset); other workflows keep their own. */
   sampler?: SamplerTuning;
+  /** The preset's LoRAs, applied in order after the checkpoint (see `addLoras`). */
+  loras?: { name: string; strength: number }[];
 };
 
 /** What a sampler runs with: its steps, CFG, sampler and scheduler (names as ComfyUI's KSampler lists them). */
@@ -221,8 +223,45 @@ export function fillWorkflow(wf: Workflow, p: PictureParams): Workflow {
     const { steps, cfg, sampler, scheduler } = p.sampler;
     Object.assign(out["3"].inputs, { steps, cfg, sampler_name: sampler, scheduler });
   }
+  addLoras(out, p.loras ?? []);
   setPrefix(out, p.prefix ?? DEFAULT_PREFIX);
   return out;
+}
+
+/** Loaders a workflow's model can come from, for `addLoras`: a checkpoint (model and CLIP), or a diffusion model alone. */
+const MODEL_LOADERS = /^(UNETLoader|UnetLoaderGGUF)$/;
+
+/**
+ * Puts LoRA loaders, in order, between the workflow's checkpoint loader and everything that used its model
+ * and CLIP (LoraLoader). A workflow that loads a diffusion model on its own (Flux, say) gets them on the
+ * model alone (LoraLoaderModelOnly). Throws WorkflowError when it has neither loader.
+ */
+export function addLoras(wf: Workflow, loras: { name: string; strength: number }[]) {
+  if (loras.length === 0) return;
+  const find = (test: (n: WorkflowNode) => boolean) => Object.entries(wf).find(([, n]) => test(n))?.[0];
+  const ckpt = find((n) => n.class_type === "CheckpointLoaderSimple");
+  const from = ckpt ?? find((n) => MODEL_LOADERS.test(n.class_type));
+  if (!from) {
+    throw new WorkflowError("Couldn't add the preset's LoRAs: the workflow has no Load Checkpoint or Load Diffusion Model node. Take them out of the preset, or add them in ComfyUI.");
+  }
+  const ids = loras.map((_, i) => `storytime_lora_${i + 1}`);
+  const last = ids[ids.length - 1];
+  for (const node of Object.values(wf)) {
+    for (const [k, v] of Object.entries(node.inputs)) {
+      if (!isLink(v) || v[0] !== from) continue;
+      if (v[1] === 0) node.inputs[k] = [last, 0];
+      else if (ckpt && v[1] === 1) node.inputs[k] = [last, 1];
+    }
+  }
+  let model: [string, number] = [from, 0];
+  let clip: [string, number] = [from, 1];
+  loras.forEach((l, i) => {
+    wf[ids[i]] = ckpt
+      ? { class_type: "LoraLoader", inputs: { model, clip, lora_name: l.name, strength_model: l.strength, strength_clip: l.strength } }
+      : { class_type: "LoraLoaderModelOnly", inputs: { model, lora_name: l.name, strength_model: l.strength } };
+    model = [ids[i], 0];
+    clip = [ids[i], 1];
+  });
 }
 
 /** Replaces the empty latent image with the starting picture, and sets how far the samplers may change it. */

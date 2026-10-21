@@ -94,6 +94,39 @@ Notes:
   their browser (use the PC's or server's LAN address, not `localhost`, unless Ollama runs on the
   same machine as the browser).
 
+## Picture presets
+
+Pictures are made with named presets, set in **Settings**, one tab for each kind:
+
+- **Drawing**: how new pictures are drawn, and redrawn from a picture. Each drawing preset has its
+  own checkpoint, LoRAs (see [Your own LoRAs](#your-own-loras)), Redraw strength, sampler settings and,
+  optionally, a workflow of your own.
+- **Qwen edit** and **Flux edit**: how pictures are edited by instruction with each edit model. Each
+  edit preset has its own LoRAs, Fast box, default strength and the model's settings.
+
+Each preset is a card: its name and a summary line, opened to change it. **Duplicate** copies one to
+try a variation, **New … preset** adds an empty one, and **Delete** asks first (the last preset of
+a kind can't be deleted). Each tab also has **Check setup**, which asks ComfyUI what it has (see
+[step 5](#5-restart-comfyui-and-check)).
+
+Which drawing preset a picture uses:
+
+1. Each story chooses one on its details page, under **Pictures** (with its prompt style and art
+   style). A story that hasn't chosen one uses the top preset; **Move to top** on a card changes
+   which that is.
+2. On a chapter's Illustrate page, **Make pictures** has a **Preset** menu, which starts on the
+   story's (marked "the story's"). Choosing another is saved for that chapter only; choosing the
+   story's again makes the chapter follow the story.
+
+The edit presets are chosen on the Illustrate page's Edit tab, from one menu that lists each model's
+presets under its name; the last one used is remembered.
+
+Upgrading from a version without presets: the first time StoryTime starts, your picture settings
+become presets. Each checkpoint your stories used becomes a drawing preset named after it (one named
+"Default" when they all used the same one), with your workflow, Redraw strength and sampler settings,
+and each story uses the one with its checkpoint. Each edit model gets a "Default" preset with its
+LoRA stack, Fast box and settings.
+
 ## Edit models in ComfyUI
 
 On a chapter's Illustrate page, a picture's ☰ menu has two ways to start from it:
@@ -163,13 +196,13 @@ edit is several times faster. It gives up a little fine detail; the 8-step versi
 - StoryTime reads the number of steps from the file name (`4steps`, `8steps`). If you put several
   in `loras`, it uses one whose name has the same release number as the model (such as 2509), and
   otherwise the 4-step one above.
-- Once the LoRA is installed, the Edit tab shows a **Fast (Lightning, 4 steps)** box under the model
-  menu when Qwen-Image-Edit is chosen, and Qwen-Image-Edit's card in **Settings › Pictures** has the
-  same box. It starts ticked; untick it for the full steps when you want the most detail. The choice
-  is remembered. Pictures made fast say "fast" in their caption, and Info lists the LoRA beside the
-  model file.
+- Once the LoRA is installed, the Edit tab shows a **Fast (Lightning, 4 steps)** box under the preset
+  menu when a Qwen-Image-Edit preset is chosen, and each Qwen preset in **Settings › Qwen edit** has
+  the same box. It starts ticked; untick it for the full steps when you want the most detail. The
+  choice is kept with the preset. Pictures made fast say "fast" in their caption, and Info lists the
+  LoRA beside the model file.
 - FLUX.1 Kontext has no Lightning LoRA here; it always runs its full steps (20 unless you change
-  them, see [Each model's settings](#each-models-settings)).
+  them, see [Each preset's settings](#each-presets-settings)).
 
 ### 4. Download FLUX.1 Kontext dev
 
@@ -190,56 +223,58 @@ command line can resume a broken download, for example `curl -L -C - -O <link>` 
 
 ### 5. Restart ComfyUI and check
 
-Restart ComfyUI so it lists the new files. Then, in StoryTime, open the **Pictures** tab of
-**Settings** and press **Check setup**. (The ComfyUI address is on the **Connections** tab.) It
-reports:
+Restart ComfyUI so it lists the new files. Then, in StoryTime, open the **Qwen edit** (or **Flux
+edit**) tab of **Settings** and press **Check setup**. (The ComfyUI address is on the
+**Connections** tab.) Each tab shows what the check found for it:
 
-- the checkpoints and the nodes your picture workflow uses;
-- for each edit model, whether ComfyUI has each file and the nodes it needs. A missing file is named
-  with the folder it goes in. Missing nodes, or a text encoder type ComfyUI doesn't know, mean
-  ComfyUI needs updating (step 1).
-- for Qwen-Image-Edit, the Lightning LoRA it found and its steps, or that it isn't installed. It is
-  optional: Qwen is ready without it.
+- **Drawing**: the checkpoints, and for each drawing preset whether ComfyUI has its checkpoint, its
+  LoRAs and the nodes its workflow uses;
+- **Qwen edit** and **Flux edit**: whether ComfyUI has each file and the nodes the model needs. A
+  missing file is named with the folder it goes in. Missing nodes, or a text encoder type ComfyUI
+  doesn't know, mean ComfyUI needs updating (step 1). For Qwen-Image-Edit, also the Lightning LoRA it
+  found and its steps, or that it isn't installed. It is optional: Qwen is ready without it.
 
-Each edit model's card below the check also says whether the model is installed. A model is
-offered on the Illustrate page only when everything it needs is there. The check looks
+Each edit model's tab also says whether the model is installed. A model's presets can be chosen on
+the Illustrate page only when everything it needs is there. The check looks
 for the files above by name, and also accepts other versions of the same file, such as a bf16
 model, another fp8 version, `t5xxl_fp16`, or a newer Qwen-Image-Edit release. If several match, the
 one listed above is used. GGUF versions are not supported, because they need a custom loader node.
 
-### Your own LoRAs (a LoRA stack per edit model)
+### Your own LoRAs
 
-Each edit model can also apply LoRAs of your own, such as one for a story's main character or for an
-art style, so edits keep that look.
+Every preset, drawing or edit, has a LoRA stack of its own, such as one for a story's main character
+or for an art style, so its pictures keep that look.
 
 1. Put the LoRA files in `ComfyUI/models/loras` (a subfolder is fine) and restart ComfyUI. Use LoRAs
-   made for that model: a Qwen-Image or Qwen-Image-Edit LoRA for Qwen-Image-Edit, a FLUX.1 LoRA for
-   FLUX.1 Kontext. A LoRA made for SDXL or another model has no effect: ComfyUI skips the parts that don't fit and
-   says so in its console.
-2. In **Settings › Pictures**, in the model's card under **LoRAs**, press **Add LoRA for …**,
-   choose the file from ComfyUI's list and set its strength: 1 is full strength, 0.5 half, and below
-   0 works against the LoRA. ↑ moves a LoRA earlier; ✕ takes it out. A stack holds up to 8 LoRAs.
-   Settings asks ComfyUI for its files each time it opens, so a LoRA added since shows up there.
-3. On the Illustrate page, the Edit tab lists the chosen model's LoRAs under the model menu, each with
-   a box to switch it on or off for the next edits. The boxes are saved, and **Change** goes back to
-   the model's card in Settings.
+   made for the model they go with: for a drawing preset, one made for its checkpoint's kind of model
+   (SDXL, Pony, SD 1.5…); for an edit preset, a Qwen-Image or Qwen-Image-Edit LoRA for
+   Qwen-Image-Edit, a FLUX.1 LoRA for FLUX.1 Kontext. A LoRA made for another kind of model has no
+   effect: ComfyUI skips the parts that don't fit and says so in its console.
+2. In **Settings**, open the preset's card and, under **LoRAs**, press **Add LoRA to …**, choose
+   the file from ComfyUI's list and set its strength: 1 is full strength, 0.5 half, and below 0 works
+   against the LoRA. ↑ moves a LoRA earlier; ✕ takes it out. A stack holds up to 8 LoRAs. Settings
+   asks ComfyUI for its files each time it opens, so a LoRA added since shows up there.
+3. On the Illustrate page, the chosen preset's LoRAs are listed under its menu, each with a box to
+   switch it on or off for the next pictures. The boxes are saved with the preset.
 
-The LoRAs apply in the order listed, after the Lightning LoRA when **Fast** is on. Every story uses
-the same stacks. A LoRA that ComfyUI no longer lists is marked "missing" on the Edit tab, and edits
-go ahead without it. A picture's caption says how many LoRAs made it, and **Info** lists each one
-with its strength. StoryTime loads them with ComfyUI's **LoraLoaderModelOnly** node, so a LoRA
-changes the model but not the text encoder; a trigger word still works if you put it in the
-instruction.
+The LoRAs apply in the order listed: in a drawing preset, after the checkpoint (with ComfyUI's
+**LoraLoader**, so they change the model and the text encoder); in an edit preset, after the
+Lightning LoRA when **Fast** is on (with **LoraLoaderModelOnly**, so they change the model but not
+the text encoder; a trigger word still works if you put it in the instruction). A drawing preset with
+a workflow of your own gets its LoRAs after the workflow's Load Checkpoint node, or after its Load
+Diffusion Model node (model only) when it has no checkpoint loader. A LoRA that ComfyUI no longer
+lists is marked "missing" on the Illustrate page, and pictures go ahead without it. A picture's
+caption says how many LoRAs made it, and **Info** lists each one with its strength.
 
-### Each model's settings
+### Each preset's settings
 
-Each edit model's card in **Settings › Pictures** also has:
+Each edit preset also has:
 
-- **Default strength:** where the Edit tab's Strength slider starts for that model. At 1 the model
+- **Default strength:** where the Edit tab's Strength slider starts for that preset. At 1 the model
   follows the instruction freely. Lower, it starts from the picture with less noise on it, so more of
   the picture stays as it was, but too low and the change may not happen at all. You can still move
-  the slider on the Edit tab for the edits at hand; it goes back to the default when you choose
-  another model or reload the page.
+  the slider on the Edit tab for the edits at hand; it is kept for that chapter, in that browser,
+  until you choose another preset.
 - **Advanced**, folded away: steps, CFG, sampler and scheduler, plus **Shift** for Qwen-Image-Edit
   and **Guidance** for FLUX.1 Kontext. Each shows its default next to it. The sampler and scheduler
   lists come from your ComfyUI. **Reset to defaults** puts them back (the default strength stays as
@@ -256,11 +291,11 @@ Each edit model's card in **Settings › Pictures** also has:
 With **Fast** on, Qwen edits use the Lightning LoRA's steps (4 or 8) at CFG 1 instead of the steps and
 CFG above; the sampler, scheduler and shift still apply.
 
-The **New pictures and Redraw** card works the same way for pictures made from a prompt: the
-**Redraw strength** (the same one the Redraw tab's slider sets) and, under Advanced, the built-in
-SDXL workflow's steps (30), CFG (6), sampler (dpmpp_2m) and scheduler (karras). A workflow of your
-own pasted into that card keeps its own sampler settings; change them in ComfyUI and export it
-again.
+Drawing presets work the same way for pictures made from a prompt: the **Redraw strength** (where
+the Redraw tab's slider starts; moving the slider there is kept for that chapter, in that browser)
+and, under Advanced, the built-in SDXL workflow's steps (30), CFG (6), sampler (dpmpp_2m) and
+scheduler (karras). A workflow of your own, pasted under **Workflow** in the preset's card, keeps its
+own sampler settings; change them in ComfyUI and export it again.
 
 ### Tips for instructions
 
@@ -270,7 +305,7 @@ again.
   softens the picture a little, so a long chain of edits slowly loses detail.
 - Edits keep the picture's shape at about one megapixel (a 1344 × 768 picture comes back at
   1360 × 768).
-- An edit doesn't use the story's checkpoint or art style, so a strong style change can drift from
+- An edit doesn't use the drawing preset's checkpoint or the story's art style, so a strong style change can drift from
   the rest of the story. Redraw at a low strength brings it back.
 
 ## Maintenance

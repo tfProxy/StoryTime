@@ -275,6 +275,14 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE picture_jobs ADD COLUMN instruction TEXT;
   ALTER TABLE picture_jobs ADD COLUMN edit_model TEXT;
   `,
+  // 18: pictures are drawn with named presets from Settings (checkpoint, LoRAs, sampler). A story has a
+  // default one and a chapter can choose another: ids of drawing presets, null to follow the story's
+  // (or, for a story, the first preset). `stories.checkpoint` is only read once, to turn the checkpoints
+  // stories used into presets.
+  `
+  ALTER TABLE stories ADD COLUMN draw_preset TEXT;
+  ALTER TABLE chapters ADD COLUMN draw_preset TEXT;
+  `,
 ];
 
 function open(): Database.Database {

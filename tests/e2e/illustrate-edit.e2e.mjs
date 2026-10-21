@@ -2,7 +2,7 @@
 // ComfyUI has an edit model), the Settings "Check setup" report, the Redraw and Edit tabs sharing one
 // starting picture, the workflows queued for Qwen-Image-Edit and FLUX.1 Kontext, what the job log keeps,
 // editing an edit, and a ComfyUI missing a node. The fake ComfyUI lists the model files it is given.
-import { launch } from "./browser.mjs";
+import { comfySettings, launch } from "./browser.mjs";
 import { EDIT_FILES, LIGHTNING_LORA, startFakeComfy } from "./fakeComfy.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
@@ -19,10 +19,9 @@ const until = async (fn, what, tries = 150) => {
 
 const story = await call("POST", "/api/stories", { title: "Edits", chapter: { title: "The forge", body: "The smith wore a shirt with a logo.", choices: [] } });
 const chapterId = story.chapter_id;
-await call("PATCH", `/api/stories/${story.story_id}`, { checkpoint: "fake_sdxl_a.safetensors" });
 const before = (await call("GET", "/api/settings")).settings;
 const comfy = await startFakeComfy({ port: COMFY_PORT, steps: 2, stepDelay: 60, startDelay: 100 });
-await putSettings({ ...(before ?? {}), comfy: { url: comfy.url, workflow: "", checkpoint: "fake_sdxl_a.safetensors", width: 1344, height: 768, count: 2, denoise: 0.55, editModel: "qwen-image-edit" } });
+await putSettings({ ...(before ?? {}), comfy: comfySettings({ url: comfy.url, checkpoint: "fake_sdxl_a.safetensors" }) });
 
 const browser = await launch();
 const context = await browser.newContext({ viewport: { width: 1000, height: 1300 } });
@@ -34,7 +33,13 @@ const thumb = page.getByRole("img", { name: "Starting picture" });
 const strength = page.getByRole("slider", { name: "Strength" });
 const redrawTab = page.getByRole("tab", { name: "Redraw" });
 const editTab = page.getByRole("tab", { name: "Edit" });
-const modelMenu = page.getByLabel("Edit model");
+const modelMenu = page.getByLabel("Edit preset");
+// The presets the Edit tab offers (each model's Default has the model's id), and those that can be chosen.
+const offered = () => modelMenu.locator("option").evaluateAll((os) => os.map((o) => o.value).join("|"));
+const choosable = () => modelMenu.locator("option:not([disabled])").evaluateAll((os) => os.map((o) => o.value).join("|"));
+// Settings: the tab shown, its setup check, and an edit preset in the saved settings.
+const shown = page.locator("[role=tabpanel]:not([hidden])");
+const editPresetNow = async (id) => (await call("GET", "/api/settings")).settings.comfy.editPresets.find((p) => p.id === id);
 const instruction = page.getByRole("textbox", { name: "What to change" });
 const makeEdit = page.getByRole("button", { name: "Queue", exact: true });
 const prompts = (from = 0) => comfy.calls.slice(from).filter((c) => c.method === "POST" && c.path === "/prompt").map((c) => c.body.prompt);
@@ -70,42 +75,55 @@ try {
   await page.keyboard.press("Escape");
 
   // ---- Settings: Check setup ----
-  await page.goto(`${BASE}/settings#pictures`);
-  const report = page.locator(".comfy-check");
-  const qwenCard = page.getByRole("region", { name: "Edit: Qwen-Image-Edit" });
-  const kontextCard = page.getByRole("region", { name: "Edit: FLUX.1 Kontext" });
-  await qwenCard.getByText("Not installed in ComfyUI").waitFor();
-  ok((await kontextCard.innerText()).includes("Not installed in ComfyUI, so Edit this doesn't offer it"), "the Pictures tab has a card per edit model, saying it isn't installed");
-  await page.getByRole("button", { name: "Check setup" }).click();
+  await page.goto(`${BASE}/settings#edit-qwen-image-edit`);
+  const report = shown.locator(".comfy-check");
+  const checkSetup = () => shown.getByRole("button", { name: "Check setup" }).click();
+  const tab = (name) => page.getByRole("tab", { name, exact: true }).click();
+  // Each model's Default preset has the model's id.
+  const qwenCard = page.locator("#preset-qwen-image-edit");
+  const kontextCard = page.locator("#preset-flux-kontext");
+  const qwenPanel = page.locator("#panel-edit-qwen-image-edit");
+  const kontextPanel = page.locator("#panel-edit-flux-kontext");
+  await qwenPanel.getByText("Qwen-Image-Edit isn't installed in ComfyUI, so Edit this doesn't offer it.").waitFor();
+  ok(((await kontextPanel.textContent()) ?? "").includes("FLUX.1 Kontext isn't installed in ComfyUI, so Edit this doesn't offer it."), "each edit model's tab says when it isn't installed");
+  ok(await qwenCard.evaluate((d) => d.open) && (await qwenCard.locator(":scope > summary").innerText()).startsWith("Default"), "…and has a card for each of its presets: at first a Default, open");
+  await checkSetup();
   await report.waitFor();
-  const text = await report.innerText();
-  ok(text.includes("Connected to ComfyUI 0.3.99") && text.includes("2 checkpoints in models/checkpoints") && text.includes("ComfyUI has every node the picture workflow uses"), "Check setup says ComfyUI's version, the checkpoints and that the picture workflow's nodes are there");
-  ok(text.includes("Qwen-Image-Edit: not ready") && text.includes("FLUX.1 Kontext: not ready"), "…and that neither edit model is ready");
-  ok(text.includes("qwen_image_edit_2509_fp8_e4m3fn.safetensors in ComfyUI/models/diffusion_models") && text.includes("ae.safetensors in ComfyUI/models/vae"), "…naming each missing file and the folder it goes in");
+  let text = await report.innerText();
+  ok(text.includes("Connected to ComfyUI 0.3.99") && text.includes("Qwen-Image-Edit: not ready") && !text.includes("FLUX.1 Kontext"), "Check setup on the Qwen tab says ComfyUI's version, and that Qwen isn't ready (and nothing about Kontext)");
+  ok(text.includes("qwen_image_edit_2509_fp8_e4m3fn.safetensors in ComfyUI/models/diffusion_models"), "…naming each missing file and the folder it goes in");
   ok(await report.getByRole("link", { name: "Step-by-step setup" }).getAttribute("href") === "https://github.com/tfProxy/StoryTime#edit-models-in-comfyui", "…with a link to the setup steps");
+  await tab("Flux edit");
+  text = await report.innerText();
+  ok(text.includes("FLUX.1 Kontext: not ready") && text.includes("ae.safetensors in ComfyUI/models/vae"), "the Flux edit tab shows the same check's findings for Kontext");
+  await tab("Drawing");
+  text = await report.innerText();
+  ok(text.includes("2 checkpoints in models/checkpoints") && text.includes("ComfyUI has every node its workflow uses") && text.includes("Checkpoint: fake_sdxl_a.safetensors"), "…and the Drawing tab its findings for each drawing preset: the checkpoints, its checkpoint and its workflow's nodes");
+  await tab("Qwen edit");
 
   comfy.setMode({ files: { ...EDIT_FILES, diffusion_models: ["qwen_image_edit_2509_fp8_e4m3fn.safetensors"] } });
-  await page.getByRole("button", { name: "Check setup" }).click();
+  await checkSetup();
   await until(async () => (await report.innerText()).includes("Qwen-Image-Edit: ready"), "the second check");
+  await tab("Flux edit");
   ok((await report.innerText()).includes("FLUX.1 Kontext: not ready") && (await report.innerText()).includes("flux1-dev-kontext_fp8_scaled.safetensors in ComfyUI/models/diffusion_models"), "with only Qwen's model added, Qwen is ready and Kontext still misses its model");
 
   comfy.setMode({ files: EDIT_FILES });
-  await page.getByRole("button", { name: "Check setup" }).click();
+  await checkSetup();
   await until(async () => (await report.innerText()).includes("FLUX.1 Kontext: ready"), "the third check");
-  ok((await report.innerText()).includes("Qwen-Image-Edit: ready"), "with every file there, both are ready");
-  await kontextCard.getByText("Installed in ComfyUI.").waitFor();
-  ok(await qwenCard.getByText("Installed in ComfyUI.").isVisible(), "…and after the check the cards say so too");
-  ok((await qwenCard.innerText()).includes(`Fast with the Lightning LoRA (not installed: put ${LIGHTNING_LORA} in ComfyUI/models/loras)`) && await qwenCard.getByRole("checkbox", { name: /^Fast with the Lightning LoRA/ }).isDisabled(), "Qwen's card offers Fast, off while its LoRA isn't installed");
-  ok(await kontextCard.getByRole("checkbox", { name: /^Fast/ }).count() === 0, "…and Kontext, which has no speed-up, doesn't");
+  await kontextPanel.getByText("FLUX.1 Kontext is installed in ComfyUI.").waitFor();
+  await tab("Qwen edit");
+  ok((await report.innerText()).includes("Qwen-Image-Edit: ready") && await qwenPanel.getByText("Qwen-Image-Edit is installed in ComfyUI.").isVisible(), "with every file there, both are ready, and their tabs say so");
+  ok((await qwenCard.innerText()).includes(`Fast with the Lightning LoRA (not installed: put ${LIGHTNING_LORA} in ComfyUI/models/loras)`) && await qwenCard.getByRole("checkbox", { name: /^Fast with the Lightning LoRA/ }).isDisabled(), "Qwen's preset offers Fast, off while its LoRA isn't installed");
+  ok(await kontextCard.locator("input[type=checkbox]").count() === 0, "…and Kontext's, which has no speed-up, doesn't");
   ok((await report.innerText()).includes(`Lightning LoRA (optional, for fast edits): not installed. For edits several times faster, put ${LIGHTNING_LORA} in ComfyUI/models/loras.`), "…and the optional Lightning LoRA is said to be missing, with where it goes");
   comfy.setMode({ files: { ...EDIT_FILES, loras: [LIGHTNING_LORA] } });
-  await page.getByRole("button", { name: "Check setup" }).click();
+  await checkSetup();
   await until(async () => (await report.innerText()).includes(`Lightning LoRA (optional, for fast edits): ${LIGHTNING_LORA} (4 steps)`), "the check with the LoRA");
   ok(true, "with the LoRA installed, the check names it and its steps");
   comfy.setMode({ files: EDIT_FILES });
 
   comfy.setMode({ missingNodes: ["TextEncodeQwenImageEditPlus"] });
-  await page.getByRole("button", { name: "Check setup" }).click();
+  await checkSetup();
   await until(async () => (await report.innerText()).includes("Qwen-Image-Edit: not ready"), "the check with a missing node");
   ok((await report.innerText()).includes("ComfyUI doesn't have the nodes TextEncodeQwenImageEditPlus. Update ComfyUI."), "a missing node makes its model not ready, and says to update ComfyUI");
   comfy.setMode({ missingNodes: [] });
@@ -118,7 +136,8 @@ try {
   await menu.getByRole("menuitem", { name: "Edit this" }).click();
   await thumb.waitFor();
   ok(await editTab.getAttribute("aria-selected") === "true" && await strength.inputValue() === "1", "Edit this shows the picture with the Edit tab chosen and a Strength slider at full strength");
-  ok((await modelMenu.locator("option").allInnerTexts()).join("|") === "Qwen-Image-Edit|FLUX.1 Kontext" && await modelMenu.inputValue() === "qwen-image-edit", "…both models are offered, Qwen first as last used");
+  const groups = await modelMenu.locator("optgroup").evaluateAll((gs) => gs.map((g) => g.label).join("|"));
+  ok(groups === "Qwen-Image-Edit|FLUX.1 Kontext" && (await offered()) === "qwen-image-edit|flux-kontext" && await modelMenu.inputValue() === "qwen-image-edit", "…the edit presets are offered under their models, Qwen's first as last used");
   ok(await makeEdit.isDisabled(), "…and Queue waits for an instruction");
   const startSrc = await thumb.getAttribute("src");
 
@@ -154,8 +173,8 @@ try {
 
   // ---- the other model ----
   await modelMenu.selectOption("flux-kontext");
-  await until(async () => (await call("GET", "/api/settings")).settings.comfy.editModel === "flux-kontext", "the model choice to be saved");
-  ok(true, "choosing another edit model saves it in the settings");
+  await until(async () => (await call("GET", "/api/settings")).settings.comfy.editPreset === "flux-kontext", "the preset choice to be saved");
+  ok(true, "choosing another model's preset saves it in the settings");
   await strength.fill("0.6");
   mark = comfy.calls.length;
   await makeEdit.click();
@@ -233,8 +252,8 @@ try {
   ok(log.checkpoint === `qwen_image_edit_2509_fp8_e4m3fn.safetensors + ${LIGHTNING_LORA}`, "…the job log keeps both files");
   ok((await page.locator(".chapter-pictures").innerText()).includes("Qwen-Image-Edit · fast · 1296 × 816"), "…and its caption says it was fast");
   await fastBox.uncheck();
-  await until(async () => (await call("GET", "/api/settings")).settings.comfy.editFast === false, "the Fast box to be saved");
-  ok(true, "turning Fast off is saved in the settings");
+  await until(async () => (await editPresetNow("qwen-image-edit")).fast === false, "the Fast box to be saved");
+  ok(true, "turning Fast off is saved in the preset");
   mark = comfy.calls.length;
   before = await items.count();
   await makeEdit.click();
@@ -250,29 +269,29 @@ try {
 
   // ---- the author's LoRA stack ----
   const toggles = page.getByRole("group", { name: "LoRAs" });
-  ok((await toggles.innerText()).includes("No LoRAs for Qwen-Image-Edit") && await toggles.getByRole("link", { name: "Add some in Settings" }).getAttribute("href") === "/settings#edit-qwen-image-edit", "with no stack, the Edit tab says so and links to the model's card in Settings");
+  const noLoras = page.locator(".comfy-generate").getByText("No LoRAs in this preset.");
+  ok(await noLoras.isVisible() && await page.locator(".comfy-generate").getByRole("link", { name: "Add some in Settings" }).getAttribute("href") === "/settings#preset-qwen-image-edit", "with no stack, the Edit tab says so and links to the preset in Settings");
   const userLoras = ["styles/ink.safetensors", "hero.safetensors"];
   comfy.setMode({ files: { ...EDIT_FILES, loras: [LIGHTNING_LORA, ...userLoras] } });
-  await toggles.getByRole("link", { name: "Add some in Settings" }).click();
-  await page.waitForURL("**/settings#edit-qwen-image-edit");
+  await page.locator(".comfy-generate").getByRole("link", { name: "Add some in Settings" }).click();
+  await page.waitForURL("**/settings#preset-qwen-image-edit");
   await qwenCard.waitFor();
-  ok(await page.getByRole("tab", { name: "Pictures" }).getAttribute("aria-selected") === "true", "…which opens the Pictures tab");
-  // The card is near the end of the page, so it can't always reach the top: it is enough that the page scrolled down to it.
-  await until(async () => (await page.evaluate(() => scrollY)) > 0 && (await qwenCard.boundingBox())?.y > -5 && (await qwenCard.boundingBox())?.y < 600, "the card to be scrolled to");
-  ok(true, "…scrolled to Qwen-Image-Edit's card");
-  const qwenStack = page.getByRole("group", { name: "LoRAs for Qwen-Image-Edit" });
-  await qwenStack.getByRole("button", { name: "Add LoRA for Qwen-Image-Edit" }).waitFor();
-  await until(async () => qwenStack.getByRole("button", { name: "Add LoRA for Qwen-Image-Edit" }).isEnabled(), "ComfyUI's LoRAs to be listed");
-  ok((await page.getByRole("group", { name: "LoRAs for FLUX.1 Kontext" }).innerText()).includes("none"), "Settings lists a LoRA stack for each edit model, empty at first");
-  await qwenStack.getByRole("button", { name: "Add LoRA for Qwen-Image-Edit" }).click();
-  await qwenStack.getByRole("button", { name: "Add LoRA for Qwen-Image-Edit" }).click();
+  ok(await page.getByRole("tab", { name: "Qwen edit" }).getAttribute("aria-selected") === "true" && await qwenCard.evaluate((d) => d.open), "…which opens the Qwen edit tab, with the preset's card open");
+  await until(async () => (await qwenCard.boundingBox())?.y > -5 && (await qwenCard.boundingBox())?.y < 600, "the card to be scrolled to");
+  ok(true, "…scrolled to it");
+  const addLora = qwenCard.getByRole("button", { name: "Add LoRA to Default" });
+  await until(async () => addLora.isEnabled(), "ComfyUI's LoRAs to be listed");
+  ok(((await kontextCard.textContent()) ?? "").includes("LoRAs · none"), "each edit preset has its own LoRA stack, empty at first");
+  await addLora.click();
+  await addLora.click();
+  const qwenStack = qwenCard.getByRole("group", { name: "LoRAs for Default" });
   const files = qwenStack.getByLabel("LoRA file");
   ok((await files.first().locator("option").allInnerTexts()).join("|") === [LIGHTNING_LORA, ...userLoras].join("|"), "a LoRA is chosen from the files ComfyUI lists");
   await files.nth(0).selectOption("styles/ink.safetensors");
   await files.nth(1).selectOption("hero.safetensors");
   await qwenStack.getByLabel("Strength of ink.safetensors").fill("0.8");
   await qwenStack.getByLabel("Strength of hero.safetensors").fill("-0.5");
-  const savedStack = async () => (await call("GET", "/api/settings")).settings.comfy.editLoras["qwen-image-edit"] ?? [];
+  const savedStack = async () => (await editPresetNow("qwen-image-edit")).loras;
   await until(async () => JSON.stringify(await savedStack()) === JSON.stringify([{ name: "styles/ink.safetensors", strength: 0.8, on: true }, { name: "hero.safetensors", strength: -0.5, on: true }]), "the stack to be saved");
   ok(true, "the stack is saved with each LoRA's file and strength, switched on");
   await qwenStack.getByRole("button", { name: "Move hero.safetensors up" }).click();
@@ -280,16 +299,16 @@ try {
   ok(true, "↑ moves a LoRA earlier in the stack");
 
   // ---- the model's settings: default strength, and Advanced ----
-  const tuningNow = async () => (await call("GET", "/api/settings")).settings.comfy.editTuning["qwen-image-edit"] ?? {};
-  ok((await qwenCard.innerText()).includes("Fast with the Lightning LoRA (4 steps at CFG 1") && await qwenCard.getByRole("checkbox", { name: /^Fast/ }).isChecked(), "with the LoRA installed, the card's Fast box is on and says its steps");
-  await qwenCard.getByLabel("Default strength for Qwen-Image-Edit").fill("0.7");
+  const tuningNow = async () => (await editPresetNow("qwen-image-edit")).tuning;
+  ok((await qwenCard.innerText()).includes("Fast with the Lightning LoRA (4 steps at CFG 1") && await qwenCard.getByRole("checkbox", { name: /^Fast/ }).isChecked(), "with the LoRA installed, the preset's Fast box is on and says its steps");
+  await qwenCard.getByLabel("Default strength").fill("0.7");
   await until(async () => (await tuningNow()).strength === 0.7, "the default strength to be saved");
-  ok(true, "the card sets the model's default strength");
+  ok(true, "the preset sets the Edit tab's default strength");
   const qAdvanced = qwenCard.locator("details.advanced");
   await qAdvanced.getByText("Advanced: steps, CFG, sampler, shift").click();
   ok((await qAdvanced.getByLabel(/^Steps/).inputValue()) === "20" && (await qAdvanced.getByLabel(/^CFG/).inputValue()) === "2.5" && (await qAdvanced.getByLabel(/^Shift/).inputValue()) === "3", "Advanced shows Qwen's steps, CFG and shift (20, 2.5, 3)");
   ok((await qAdvanced.innerText()).includes("Fast is on, so edits use 4 steps at CFG 1"), "…and says Fast replaces the steps and CFG");
-  ok(await kontextCard.locator("details.advanced summary").innerText() === "Advanced: steps, CFG, sampler, guidance", "Kontext's Advanced has guidance instead of shift");
+  ok((await kontextCard.locator("details.advanced summary").textContent()) === "Advanced: steps, CFG, sampler, guidance", "Kontext's Advanced has guidance instead of shift");
   await qAdvanced.getByLabel(/^Shift/).fill("2.5");
   await qAdvanced.getByLabel(/^Scheduler/).selectOption("beta");
   const sorted = (o) => JSON.stringify(Object.fromEntries(Object.entries(o).sort()));
@@ -369,7 +388,8 @@ try {
   ok(await page.getByRole("list", { name: /^Pictures from “Edit: / }).count() >= 1, "after coming back, the pictures made by editing are listed under All");
   await choose(items.first(), "Edit this");
   await thumb.waitFor();
-  ok((await modelMenu.locator("option").allInnerTexts()).join("|") === "FLUX.1 Kontext", "a model whose node ComfyUI lacks isn't offered");
+  ok((await choosable()) === "flux-kontext" && await modelMenu.inputValue() === "flux-kontext", "the presets of a model whose node ComfyUI lacks can't be chosen");
+  ok((await modelMenu.locator("optgroup").first().getAttribute("label")) === "Qwen-Image-Edit (not installed)", "…and its group says it isn't installed");
 
   if (process.env.E2E_SCREENSHOT_DIR) {
     await instruction.fill("remove the logo on his shirt");
@@ -383,14 +403,14 @@ try {
     await page.locator(".comfy-generate").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-edit-390.png` });
     ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "at phone width the Illustrate page does not scroll sideways");
     comfy.setMode({ missingNodes: [], files: { ...EDIT_FILES, diffusion_models: ["qwen_image_edit_2509_fp8_e4m3fn.safetensors"] } });
-    await page.goto(`${BASE}/settings#pictures`);
-    await page.getByRole("button", { name: "Check setup" }).click();
+    await page.goto(`${BASE}/settings#edit-qwen-image-edit`);
+    await checkSetup();
     await report.waitFor();
-    await page.locator("#picture-setup").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/settings-check-390.png` });
+    await page.locator("#setup-qwen-image-edit").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/settings-check-390.png` });
     ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "at phone width the Settings check does not scroll sideways");
     await page.setViewportSize({ width: 1000, height: 1300 });
     await page.waitForTimeout(300);
-    await page.locator("#picture-setup").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/settings-check-1000.png` });
+    await page.locator("#setup-qwen-image-edit").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/settings-check-1000.png` });
   }
 } finally {
   await putSettings(before ?? {});

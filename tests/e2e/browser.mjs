@@ -4,6 +4,23 @@ import { chromium } from "playwright-core";
 // channel (for example "chrome"), or to "bundled" to use a Playwright-managed Chromium
 // (install it first with: npx playwright-core install chromium). E2E_EXECUTABLE points at a
 // browser binary directly instead.
+/**
+ * ComfyUI settings in the preset format: one drawing preset ("Test drawing", id "test") with the
+ * checkpoint, changed by `draw`, and each edit model's Default preset (whose id is the model's), changed
+ * by `edit[model]`.
+ */
+export function comfySettings({ url, checkpoint = "", width = 1344, height = 768, count = 2, draw = {}, edit = {}, editPreset = "qwen-image-edit" }) {
+  return {
+    url,
+    width,
+    height,
+    count,
+    drawPresets: [{ id: "test", name: "Test drawing", checkpoint, workflow: "", loras: [], sampler: {}, denoise: 0.55, ...draw }],
+    editPresets: ["qwen-image-edit", "flux-kontext"].map((m) => ({ id: m, name: "Default", model: m, fast: true, loras: [], tuning: {}, ...(edit[m] ?? {}) })),
+    editPreset,
+  };
+}
+
 export function launch() {
   if (process.env.E2E_EXECUTABLE) return chromium.launch({ headless: true, executablePath: process.env.E2E_EXECUTABLE });
   const channel = process.env.E2E_CHANNEL ?? "msedge";

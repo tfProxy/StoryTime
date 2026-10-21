@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LIMITS } from "@/lib/limits";
 import { useSettings } from "@/lib/settings";
 import type { ImagePromptStyle } from "@/lib/settingsSchema";
-import { listCheckpoints } from "@/lib/comfy/client";
+import { drawPresetFor, drawPresetSummary, presetName } from "@/lib/comfy/presets";
 import AutoTextarea from "./AutoTextarea";
 
 export const PROMPT_STYLE_NAMES: Record<ImagePromptStyle, string> = {
@@ -14,50 +14,38 @@ export const PROMPT_STYLE_NAMES: Record<ImagePromptStyle, string> = {
   natural: "Sentences (Flux, SD3)",
 };
 
-/** A story's picture settings, kept the same for all its pictures so they match. */
-export type StoryPictures = { image_prompt_style: ImagePromptStyle | null; art_style: string; checkpoint: string };
+/**
+ * A story's picture settings, kept the same for all its pictures so they match. `draw_preset` is its
+ * drawing preset (an id from Settings), null for the first one.
+ */
+export type StoryPictures = { image_prompt_style: ImagePromptStyle | null; art_style: string; draw_preset: string | null };
 
 /** Which of a story's picture settings are still to be chosen, by name. */
 export function unsetPictureSettings(s: StoryPictures): string[] {
-  return [!s.image_prompt_style && "prompt style", !s.art_style.trim() && "art style", !s.checkpoint && "checkpoint"].filter(
-    (x): x is string => Boolean(x),
-  );
+  return [!s.image_prompt_style && "prompt style", !s.art_style.trim() && "art style"].filter((x): x is string => Boolean(x));
 }
 
 /**
  * The story's picture settings, on its details page: how picture prompts are written, the art style added
- * to every one, and the ComfyUI checkpoint (listed from ComfyUI when its address is set in Settings).
+ * to every one, and the drawing preset (from Settings) its chapters use unless one chooses another.
  */
 export default function StoryPictureSettings({ story }: { story: StoryPictures & { id: string } }) {
   const router = useRouter();
-  const comfyUrl = useSettings().comfy.url;
+  const presets = useSettings().comfy.drawPresets;
   const [saved, setSaved] = useState<StoryPictures>(story);
   const [style, setStyle] = useState<ImagePromptStyle | null>(story.image_prompt_style);
   const [art, setArt] = useState(story.art_style);
-  const [checkpoint, setCheckpoint] = useState(story.checkpoint);
-  const [checkpoints, setCheckpoints] = useState<{ url: string; list: string[] | null; error: string | null } | null>(null);
+  // The preset shown is the one used: a deleted one shows as the first, which is what the story then uses.
+  const [preset, setPreset] = useState<string | null>(story.draw_preset);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const changed = style !== saved.image_prompt_style || art.trim() !== saved.art_style || checkpoint !== saved.checkpoint;
-  const listed = checkpoints?.url === comfyUrl ? checkpoints : null;
-
-  // The checkpoint list comes from ComfyUI whenever its address changes.
-  useEffect(() => {
-    if (!comfyUrl) return;
-    let live = true;
-    listCheckpoints(comfyUrl).then(
-      (list) => live && setCheckpoints({ url: comfyUrl, list, error: null }),
-      (e) => live && setCheckpoints({ url: comfyUrl, list: null, error: e instanceof Error ? e.message : String(e) }),
-    );
-    return () => {
-      live = false;
-    };
-  }, [comfyUrl]);
+  const shown = drawPresetFor(presets, preset);
+  const changed = style !== saved.image_prompt_style || art.trim() !== saved.art_style || preset !== saved.draw_preset;
 
   async function save() {
     setBusy(true);
     setStatus(null);
-    const next: StoryPictures = { image_prompt_style: style, art_style: art.trim(), checkpoint };
+    const next: StoryPictures = { image_prompt_style: style, art_style: art.trim(), draw_preset: preset };
     try {
       const res = await fetch(`/api/stories/${story.id}`, {
         method: "PATCH",
@@ -76,7 +64,7 @@ export default function StoryPictureSettings({ story }: { story: StoryPictures &
     }
   }
 
-  const unset = unsetPictureSettings({ image_prompt_style: style, art_style: art, checkpoint });
+  const unset = unsetPictureSettings({ image_prompt_style: style, art_style: art, draw_preset: preset });
   return (
     <section className="ai-panel" id="pictures">
       <h2>Pictures</h2>
@@ -115,32 +103,28 @@ export default function StoryPictureSettings({ story }: { story: StoryPictures &
         />
         <span className="meta">Added to the end of every picture prompt in this story.</span>
       </label>
-      {comfyUrl ? (
-        <label className="row" style={{ gap: "0.4rem", flexWrap: "wrap" }}>
-          Checkpoint
-          <select
-            value={checkpoint}
-            onChange={(e) => {
-              setStatus(null);
-              setCheckpoint(e.target.value);
-            }}
-            style={{ width: "auto", maxWidth: "min(24rem, 100%)" }}
-          >
-            {!checkpoint && <option value="">{listed?.list ? "Choose one…" : listed?.error ? "Couldn't list them" : "Loading…"}</option>}
-            {checkpoint && !listed?.list?.includes(checkpoint) && <option value={checkpoint}>{checkpoint}</option>}
-            {(listed?.list ?? []).map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : (
-        <p className="meta" style={{ margin: 0 }}>
-          Checkpoint: {checkpoint || "not chosen"}. To choose one, add your ComfyUI machine in <Link href="/settings#comfyui">Settings</Link>.
-        </p>
-      )}
-      {listed?.error && <p className="error" style={{ margin: 0 }}>Couldn&apos;t list ComfyUI&apos;s checkpoints: {listed.error}</p>}
+      <label className="row" style={{ gap: "0.4rem", flexWrap: "wrap" }}>
+        Drawing preset
+        <select
+          aria-label="Drawing preset"
+          value={shown.id}
+          onChange={(e) => {
+            setStatus(null);
+            setPreset(e.target.value);
+          }}
+          style={{ width: "auto", maxWidth: "min(24rem, 100%)" }}
+        >
+          {presets.map((p) => (
+            <option key={p.id} value={p.id}>
+              {presetName(p)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="meta" style={{ margin: 0 }}>
+        {drawPresetSummary(shown)}. A chapter can choose another on its Illustrate page.{" "}
+        <Link href={`/settings#preset-${shown.id}`}>Change presets in Settings</Link>
+      </p>
       <div className="row" style={{ flexWrap: "wrap" }}>
         <button type="button" onClick={save} disabled={busy || !changed}>
           {busy ? "Saving…" : "Save picture settings"}

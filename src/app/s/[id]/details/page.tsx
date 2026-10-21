@@ -42,7 +42,7 @@ export default async function StoryDetailsPage({ params }: { params: Promise<{ i
       </div>
       <StoryDetailsForm heading="Title, summary and style" story={{ id: story.id, title: story.title, premise: story.premise, style: story.style }} />
       <StoryPictureSettings
-        story={{ id: story.id, image_prompt_style: story.image_prompt_style, art_style: story.art_style, checkpoint: story.checkpoint }}
+        story={{ id: story.id, image_prompt_style: story.image_prompt_style, art_style: story.art_style, draw_preset: story.draw_preset }}
       />
       <CoverEditor story={{ id: story.id, title: story.title, cover_version: story.cover_version }} />
       <section className="ai-panel">

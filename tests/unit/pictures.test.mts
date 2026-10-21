@@ -1,4 +1,4 @@
-import { pictureDetails, pictureMarkdown, sourceText, timeline, type Picture } from "../../src/components/pictures.ts";
+import { pictureCaption, pictureDetails, pictureMarkdown, sourceText, timeline, type Picture } from "../../src/components/pictures.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 
@@ -48,3 +48,9 @@ ok(pictureMarkdown({ ...base, negative: "" }, titles).includes("## Negative prom
 const p = (key: string, prompt: string): Picture => ({ ...base, key, prompt });
 const runs = timeline([], [p("c", "B"), p("b", "A"), p("a", "A")]);
 ok(runs.length === 2 && runs[1].pictures.length === 2, "neighbours with the same settings share a run");
+
+// ---- captions ----
+const caption = (checkpoint: string, editModel: string | null = null) => pictureCaption({ seed: 1, checkpoint, width: 1344, height: 768, denoise: null, editModel });
+ok(caption("sdxl/juggernaut.safetensors") === "sdxl/juggernaut · 1344 × 768", "a picture's caption names its checkpoint and size");
+ok(caption("juggernaut.safetensors + styles/ink.safetensors (0.8) + hero.safetensors (-0.5)") === "juggernaut · 2 LoRAs · 1344 × 768", "…and counts a drawing preset's LoRAs");
+ok(caption("qwen.safetensors + a.safetensors (1)", "qwen-image-edit") === "Qwen-Image-Edit · 1 LoRA · 1344 × 768", "…as it does an edit's");

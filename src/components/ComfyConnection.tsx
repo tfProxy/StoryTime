@@ -34,8 +34,8 @@ export default function ComfyConnection({ comfy, onChange }: { comfy: Comfy; onC
       <p className="meta" style={{ margin: 0 }}>
         Make chapter pictures on a ComfyUI machine from the Illustrate chapter page. Your browser talks to ComfyUI
         directly, so start ComfyUI with <code>--enable-cors-header {origin || "<this site's address>"}</code>
-        {origin.startsWith("https:") && ", and serve it over https, since this page is on https"}. Its models and
-        workflows are on the Pictures tab.
+        {origin.startsWith("https:") && ", and serve it over https, since this page is on https"}. Its presets
+        (checkpoints, LoRAs, workflows) are on the Drawing, Qwen edit and Flux edit tabs.
       </p>
       <label>
         ComfyUI address
