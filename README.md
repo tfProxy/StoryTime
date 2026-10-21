@@ -391,6 +391,7 @@ npm run test:unit   # pure-logic tests only
 npm run test:api    # HTTP API tests
 npm run test:e2e    # browser tests with Playwright (uses Microsoft Edge by default)
 npm run test:all    # everything
+node tests/run.mjs e2e illustrate-resume   # only the files whose name contains the word(s) given
 ```
 
 The API and browser suites build the app if needed and run it on port 3111 with a temporary

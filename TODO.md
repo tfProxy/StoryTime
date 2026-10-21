@@ -31,7 +31,6 @@ The tests use a fake. Before building more on this, try once on the real machine
 ## Next steps, roughly in order of usefulness
 
 1. **The rest of the Illustrate plan** (agreed with the owner; the layout, prompt grouping, Load prompt from any picture, the job queue, remembered prompts, pin / reject and the full-size viewer are done):
-   - Maybe: jobs still running carry on after a reload, found again through ComfyUI's `/history`.
    - Maybe: the viewer for Other chapters' pictures and the saved header and footer (now they open in a new tab).
    - Left out of pin / reject: marking pictures in Other chapters.
 2. **Forget lost pictures.** Rejecting hides a picture ComfyUI has lost; removing the record (a `DELETE /api/picture-jobs/:id`) and pruning old rows aren't built.

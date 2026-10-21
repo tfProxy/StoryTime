@@ -3,6 +3,8 @@
 //   node tests/run.mjs api           HTTP API tests against a throwaway server + database
 //   node tests/run.mjs e2e           browser tests (needs Edge, or set E2E_CHANNEL)
 //   node tests/run.mjs unit api e2e  any combination
+//   node tests/run.mjs e2e illustrate-resume chapters
+//                                    only the files whose name contains one of the extra words
 //
 // The api and e2e suites start `next start` on PORT (default 3111) with a temporary SQLite
 // file, and build the app first if there is no build yet (or if --build is given).
@@ -16,12 +18,15 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
 const wantBuild = args.includes("--build");
-const suites = args.filter((a) => !a.startsWith("--"));
+const SUITE_NAMES = ["unit", "api", "e2e"];
+const suites = args.filter((a) => SUITE_NAMES.includes(a));
+// Any other word is a filter: only the test files whose name contains it are run.
+const filters = args.filter((a) => !a.startsWith("--") && !SUITE_NAMES.includes(a));
 const PORT = Number(process.env.PORT ?? 3111);
 
 
 if (suites.length === 0) {
-  console.error("Usage: node tests/run.mjs [--build] <unit|api|e2e>...");
+  console.error("Usage: node tests/run.mjs [--build] <unit|api|e2e>... [file-name-part...]");
   process.exit(2);
 }
 
@@ -32,7 +37,7 @@ const nextBin = path.join(root, "node_modules", "next", "dist", "bin", "next");
 const filesFor = (dir, pattern) =>
   fs
     .readdirSync(path.join(root, "tests", dir))
-    .filter((f) => pattern.test(f))
+    .filter((f) => pattern.test(f) && (filters.length === 0 || filters.some((x) => f.includes(x))))
     .sort()
     .map((f) => path.join(root, "tests", dir, f));
 
@@ -111,6 +116,10 @@ if (needsServer) {
   });
 }
 
+if (filters.length && results.length === 0) {
+  console.error(`No test file matches: ${filters.join(", ")}`);
+  process.exit(2);
+}
 const bad = results.filter((r) => !r.ok);
 console.log(`\n${results.length - bad.length}/${results.length} test files passed, ${results.reduce((n, r) => n + r.passes, 0)} checks`);
 if (bad.length) {
