@@ -39,7 +39,7 @@ page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true
 
 const promptBox = page.getByRole("textbox", { name: "Prompt", exact: true });
 const negativeBox = page.getByRole("textbox", { name: "Negative prompt", exact: true });
-const makeButton = page.getByRole("button", { name: /^(Make pictures|Queue more)$/ });
+const makeButton = page.getByRole("button", { name: "Queue", exact: true });
 // Longer than the page waits for more clicks before sending a job (GATHER_MS).
 const GATHER_WAIT = 1000;
 // Two quick clicks: one job of two pictures.
@@ -88,7 +88,7 @@ try {
   await openIllustrate();
   await page.getByText("To make pictures here, add your ComfyUI machine in").waitFor();
   ok(await page.getByRole("link", { name: "Settings", exact: true }).getAttribute("href") === "/settings#pictures", "with no ComfyUI address, the page says to add it in Settings (linking to the Pictures section)");
-  ok(await page.getByRole("heading", { name: "Make pictures" }).count() === 0 && await makeButton.count() === 0, "…and offers no Make pictures button");
+  ok(await page.getByRole("heading", { name: "Make pictures" }).count() === 0 && await makeButton.count() === 0, "…and offers no Queue button");
   ok(await promptBox.isVisible() && await negativeBox.isVisible(), "…but the prompt fields are there, to type in and copy");
 
   // ---- Settings: the address, the connection test and the CORS hint ----
@@ -171,7 +171,13 @@ try {
   await promptBox.fill("a lighthouse at dawn, gulls");
   await negativeBox.fill("blurry, text");
   ok((await page.locator(".story-pictures").innerText()).includes("fake_sdxl_b.safetensors"), "the Illustrate page shows the story's checkpoint");
-  ok(await page.getByLabel("How many").count() === 0 && await page.getByText("One picture per click.").isVisible(), "there is no How many menu: each click makes one picture");
+  ok(await page.getByLabel("How many").count() === 0 && await page.getByText("One picture per click.").count() === 0, "there is no How many menu, and no line saying each click makes one picture");
+  const queueStatus = page.getByLabel("Queue", { exact: true });
+  ok((await makeButton.innerText()) === "Queue" && (await queueStatus.innerText()).trim() === "In progress: 0 · Queued: 0", "the button is just Queue, with the queue's status under it (nothing yet)");
+  const [queueBox, dockBox] = [await makeButton.boundingBox(), await page.locator(".generate-bar").boundingBox()];
+  ok(queueBox.width > dockBox.width - 40, "…the button takes the whole line");
+  const sizeBox = await page.getByLabel("Size").boundingBox();
+  ok(sizeBox.y + sizeBox.height <= queueBox.y + 1, "…with the Size menu just above it");
 
   // ---- quick clicks with nothing changed are one job ----
   const mark = comfy.calls.length;
@@ -185,7 +191,8 @@ try {
   ok(Object.values(promptCalls(mark)[0].body.prompt).find((n) => n.class_type === "EmptyLatentImage").inputs.batch_size === 2, "…which goes to ComfyUI as one job of two pictures once the clicks stop");
   await live.filter({ hasText: /Step \d+ of 8/ }).waitFor();
   ok(true, "while ComfyUI works, the page shows its progress (Step X of 8)");
-  ok(await page.getByRole("button", { name: "Queue more" }).isEnabled() && await page.getByRole("button", { name: "Stop", exact: true }).isVisible(), "…the button says Queue more and stays on, and the job has a Stop button");
+  ok(await makeButton.isEnabled() && await page.getByRole("button", { name: "Stop", exact: true }).isVisible(), "…the Queue button stays on, and the job has a Stop button");
+  ok(/^In progress: 2 \(step \d+ of 8\) · Queued: 0$/.test((await queueStatus.innerText()).trim()), "…and the status under it counts the pictures in progress, with the step");
   ok((await headTexts())[0] === "a lighthouse at dawn, gulls · 2 being made", "…the job shows a place for each picture it makes");
   ok(await page.locator(".chapter-pictures .picture-group").first().locator(".candidates li").first().evaluate((li) => li.classList.contains("comfy-pending-tile")), "…in the picture grid at the top of the Pictures panel, where its pictures will arrive");
   ok(await page.locator('progress[aria-label="Progress"]').isVisible(), "…with a progress bar");
@@ -209,7 +216,7 @@ try {
   const info = page.getByRole("dialog", { name: "Picture info" });
   await info.waitFor();
   const infoText = await info.innerText();
-  const firstSeed = (await page.locator(".picture-caption").first().innerText()).match(/seed (\d+)/)[1];
+  const firstSeed = infoText.match(/Seed\D*(\d+)/)[1];
   ok(infoText.includes("a lighthouse at dawn, gulls") && infoText.includes("blurry, text"), "Info in the ☰ menu shows the prompt and the negative prompt");
   ok(["“The lamp”, chapter start", "fake_sdxl_b.safetensors", "1344 × 768", firstSeed, "picture 1 of 2 (batch size 2, batch index 0)", "(ComfyUI output)"].every((t) => infoText.includes(t)), `…the chapter and moment, checkpoint, size, seed, its place in the batch and its file (${infoText.replace(/\n/g, " | ")})`);
   await info.getByRole("button", { name: "Copy prompt" }).click();
@@ -230,7 +237,7 @@ try {
   ok(await page.evaluate(() => window.__readClipboard()) === "blurry, text" && await info.getByRole("button", { name: "Copied ✓" }).isVisible(), "without the clipboard API (plain http) copying still works, and the button says Copied");
   await page.keyboard.press("Escape");
   ok(await until(async () => (await info.count()) === 0, "Info to close") && await firstTile.getByRole("button", { name: "More" }).evaluate((b) => b === document.activeElement), "Esc closes it, back on the picture's ☰");
-  ok((await page.locator(".picture-caption").first().innerText()).startsWith("fake_sdxl_b · 1344 × 768 · seed "), "each picture says its checkpoint, size and seed");
+  ok((await page.locator(".picture-caption").first().innerText()) === "fake_sdxl_b · 1344 × 768", "each picture says its checkpoint and size, but not its seed (Info has that)");
   const boxes = await page.locator(".candidates img").evaluateAll((imgs) => imgs.map((i) => { const r = i.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }));
   ok(boxes.length === 2 && boxes[1].x > boxes[0].x + boxes[0].w - 1 && Math.abs(boxes[0].y - boxes[1].y) < 2 && boxes[0].w > 300, "at 1000px wide the pictures sit two side by side");
   ok(Math.abs(boxes[0].w - pendingBoxes[0].w) < 2, "…as wide as the places kept for them");
@@ -240,7 +247,7 @@ try {
   ok(srcs[0] !== srcs[1] && srcs.every((s) => s.startsWith(`${comfy.url}/view?`) && s.includes("StoryTime_")), "…which come from ComfyUI's /view, each a different picture");
   const [a, b] = await Promise.all(srcs.map(async (s) => Buffer.from(await (await fetch(s)).arrayBuffer())));
   ok(!a.equals(b) && a.subarray(1, 4).toString() === "PNG", "…and are different PNG images");
-  ok(await makeButton.innerText() === "Make pictures" && await makeButton.isEnabled(), "the button is ready again");
+  ok(await makeButton.isEnabled() && (await queueStatus.innerText()).trim() === "In progress: 0 · Queued: 0", "the button is ready again, and the status is back to nothing queued");
 
   // what was sent to ComfyUI
   const sent = promptCalls(mark);
@@ -371,7 +378,8 @@ try {
   ok(await until(async () => (await settingsNow()).comfy.width === 1024, "the size to be saved"), "(the size is changed to square)");
   await page.getByLabel("Moment to show").selectOption("end");
   const nightTile = page.locator(".picture-group").first().locator(".picture-tile").first();
-  const nightSeed = /seed (\d+)/.exec(await nightTile.locator(".picture-caption").innerText())[1];
+  // The newest job is the night one; its pictures show no seed, so it comes from the log.
+  const nightSeed = String((await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs[0].seed);
   await nightTile.getByRole("button", { name: "More" }).click();
   await nightTile.getByRole("menuitem", { name: "Load prompt" }).click();
   ok((await promptBox.inputValue()) === "a lighthouse at night" && (await negativeBox.inputValue()) === "blurry, text", "every new picture has Load prompt, which fills in its prompt and negative prompt");
@@ -395,6 +403,10 @@ try {
   const overflow = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth, wide: [...document.querySelectorAll(".candidates img, .comfy-generate select, .comfy-generate button")].filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1).length }));
   ok(overflow.scroll <= overflow.inner, `no sideways scrolling at 390px wide with pictures showing (page ${overflow.scroll}px, window ${overflow.inner}px)`);
   ok(overflow.wide === 0, "…and no picture, menu or button sticks out past the right edge");
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  await page.waitForFunction(() => window.scrollY === 0);
+  const stuck = await makeButton.boundingBox();
+  ok(stuck.y + stuck.height <= 844 && stuck.y > 400, `scrolled to the top, Size, Queue and the status are still at the bottom of the screen (Queue at ${Math.round(stuck.y)}px of 844)`);
   if (process.env.E2E_SCREENSHOT_DIR) {
     fs.mkdirSync(process.env.E2E_SCREENSHOT_DIR, { recursive: true });
     await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-comfy-390.png`, fullPage: true });
@@ -549,7 +561,7 @@ try {
   await items.nth(2).getByRole("button", { name: "Pin" }).click();
   await page.getByText("Pinned.").waitFor();
   await page.getByRole("button", { name: "Clear unpinned" }).click();
-  ok(await items.count() === 1 && await makeButton.innerText() === "Make pictures", "Clear unpinned leaves only the picture pinned on this visit");
+  ok(await items.count() === 1 && await makeButton.innerText() === "Queue", "Clear unpinned leaves only the picture pinned on this visit");
   ok(await page.getByRole("button", { name: "Clear unpinned" }).count() === 0, "…and goes away");
   await openIllustrate();
   ok(await items.count() === 1 && await items.first().getByRole("button", { name: "Unpin" }).count() === 1, "coming back, the pinned picture is still there, and nothing else");

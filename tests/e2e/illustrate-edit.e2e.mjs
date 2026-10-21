@@ -36,7 +36,7 @@ const redrawTab = page.getByRole("tab", { name: "Redraw" });
 const editTab = page.getByRole("tab", { name: "Edit" });
 const modelMenu = page.getByLabel("Edit model");
 const instruction = page.getByRole("textbox", { name: "What to change" });
-const makeEdit = page.getByRole("button", { name: /^(Make edit|Queue more)$/ });
+const makeEdit = page.getByRole("button", { name: "Queue", exact: true });
 const prompts = (from = 0) => comfy.calls.slice(from).filter((c) => c.method === "POST" && c.path === "/prompt").map((c) => c.body.prompt);
 const nodes = (wf, type) => Object.values(wf).filter((n) => n.class_type === type);
 const jobs = async () => (await call("GET", `/api/picture-jobs?chapter=${chapterId}`)).jobs;
@@ -58,7 +58,7 @@ try {
   // ---- no edit model installed ----
   await page.goto(`${BASE}/c/${chapterId}/illustrate`);
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("a smith at the forge");
-  await page.getByRole("button", { name: "Make pictures" }).click();
+  await makeEdit.click();
   await until(async () => (await items.count()) === 1 && (await ready()), "a picture");
   let menu = await openMenu(items.first());
   const editItem = menu.getByRole("menuitem", { name: "Edit this" });
@@ -103,14 +103,14 @@ try {
   await until(async () => (await menu.getByRole("menuitem", { name: "Edit this" }).getAttribute("aria-disabled")) === null, "Edit this to be offered");
   await menu.getByRole("menuitem", { name: "Edit this" }).click();
   await thumb.waitFor();
-  ok(await editTab.getAttribute("aria-selected") === "true" && await strength.count() === 0, "Edit this shows the picture with the Edit tab chosen and no Strength slider");
+  ok(await editTab.getAttribute("aria-selected") === "true" && await strength.inputValue() === "1", "Edit this shows the picture with the Edit tab chosen and a Strength slider at full strength");
   ok((await modelMenu.locator("option").allInnerTexts()).join("|") === "Qwen-Image-Edit|FLUX.1 Kontext" && await modelMenu.inputValue() === "qwen-image-edit", "…both models are offered, Qwen first as last used");
-  ok(await makeEdit.isDisabled(), "…and Make edit waits for an instruction");
+  ok(await makeEdit.isDisabled(), "…and Queue waits for an instruction");
   const startSrc = await thumb.getAttribute("src");
 
   // the tabs share the starting picture
   await redrawTab.click();
-  ok(await strength.isVisible() && await thumb.getAttribute("src") === startSrc && await page.getByRole("button", { name: "Make pictures" }).isVisible(), "the Redraw tab shows the Strength slider for the same picture");
+  ok(await strength.isVisible() && await thumb.getAttribute("src") === startSrc && await makeEdit.isVisible(), "the Redraw tab shows the Strength slider for the same picture");
   await editTab.click();
   await instruction.fill("remove the logo on his shirt");
   await redrawTab.click();
@@ -121,11 +121,12 @@ try {
   await makeEdit.click();
   await until(async () => (await items.count()) === 2 && (await ready()), "the edit");
   let wf = prompts(mark)[0];
-  ok(nodes(wf, "UNETLoader")[0]?.inputs.unet_name === "qwen_image_edit_2509_fp8_e4m3fn.safetensors" && nodes(wf, "CLIPLoader")[0]?.inputs.clip_name === "qwen_2.5_vl_7b_fp8_scaled.safetensors", "Make edit queues the Qwen workflow with the files ComfyUI has");
+  ok(nodes(wf, "UNETLoader")[0]?.inputs.unet_name === "qwen_image_edit_2509_fp8_e4m3fn.safetensors" && nodes(wf, "CLIPLoader")[0]?.inputs.clip_name === "qwen_2.5_vl_7b_fp8_scaled.safetensors", "Queue in the Edit tab queues the Qwen workflow with the files ComfyUI has");
   ok(nodes(wf, "TextEncodeQwenImageEditPlus").some((n) => n.inputs.prompt === "remove the logo on his shirt") && nodes(wf, "CheckpointLoaderSimple").length === 0, "…with the instruction, and no checkpoint");
   ok(/^storytime-start-/.test(nodes(wf, "LoadImage")[0].inputs.image) && nodes(wf, "ImageScale")[0].inputs.width === 1296 && nodes(wf, "ImageScale")[0].inputs.height === 816, "…starting from the uploaded picture, scaled to about a megapixel (96 × 60 → 1296 × 816)");
   let log = (await jobs())[0];
-  ok(log.instruction === "remove the logo on his shirt" && log.edit_model === "qwen-image-edit" && log.denoise === null && log.source === "comfy:StoryTime_1_0.png", "the job log keeps the instruction, the model and the source, with no strength");
+  ok(nodes(wf, "KSampler")[0].inputs.denoise === 1, "…at full strength the sampler's denoise is 1");
+  ok(log.instruction === "remove the logo on his shirt" && log.edit_model === "qwen-image-edit" && log.denoise === null && log.source === "comfy:StoryTime_1_0.png", "the job log keeps the instruction, the model and the source, with no strength (full strength isn't recorded)");
   ok(log.width === 1296 && log.height === 816 && log.checkpoint === "qwen_image_edit_2509_fp8_e4m3fn.safetensors" && log.prompt === "a smith at the forge" && log.negative === "", "…the edit's size and model file, and the prompt beside it");
   const panel = await page.locator(".chapter-pictures").innerText();
   ok(await page.getByRole("list", { name: "Pictures from “Edit: remove the logo on his shirt”" }).count() === 1 && panel.includes("Qwen-Image-Edit · 1296 × 816"), "the new picture's run says it is an edit, and its caption which model made it");
@@ -141,10 +142,13 @@ try {
   await modelMenu.selectOption("flux-kontext");
   await until(async () => (await call("GET", "/api/settings")).settings.comfy.editModel === "flux-kontext", "the model choice to be saved");
   ok(true, "choosing another edit model saves it in the settings");
+  await strength.fill("0.6");
   mark = comfy.calls.length;
   await makeEdit.click();
   await until(async () => (await items.count()) === 3 && (await ready()), "the Kontext edit");
   wf = prompts(mark)[0];
+  ok(nodes(wf, "KSampler")[0].inputs.denoise === 0.6 && (await jobs())[0].denoise === 0.6, "a lower Strength is the edit's sampler denoise, and the log keeps it");
+  ok((await page.locator(".chapter-pictures").innerText()).includes("strength 0.6"), "…and the picture's caption says so");
   ok(nodes(wf, "ReferenceLatent").length === 1 && nodes(wf, "DualCLIPLoader")[0].inputs.clip_name2 === "t5xxl_fp8_e4m3fn_scaled.safetensors" && nodes(wf, "CLIPTextEncode")[0].inputs.text === "remove the logo on his shirt", "with FLUX.1 Kontext, its workflow is queued with its files and the instruction");
   ok((await jobs())[0].edit_model === "flux-kontext", "…and the log says so");
 

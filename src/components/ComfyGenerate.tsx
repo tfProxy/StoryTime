@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { saveSettings, useSettings } from "@/lib/settings";
 import type { ComfySettings } from "@/lib/settingsSchema";
 import type { ImageMoment } from "@/lib/ai/imagePrompt";
 import type { LoadedPrompt } from "./ImagePromptPanel";
-import type { MadeWith, PendingJob, Picture, StartMode } from "./pictures";
+import type { JobProgress, MadeWith, PendingJob, Picture, StartMode } from "./pictures";
 import { editBlocked, type EditModels } from "./useEditModels";
 import AutoTextarea from "./AutoTextarea";
 import { LIMITS } from "@/lib/limits";
@@ -50,10 +51,13 @@ type JobInput = {
   comfy: ComfySettings;
   start: StartPicture | null;
   /** An edit of the starting picture by instruction, with the model to make it; null to redraw it or make new pictures. */
-  edit: { check: EditCheck; instruction: string } | null;
+  edit: { check: EditCheck; instruction: string; strength: number } | null;
   /** The seed to use, or null for a random one. */
   seed: number | null;
 };
+
+/** The strength a job's pictures are recorded with: a redraw's, an edit's when it is less than full, else null. */
+const denoiseOf = (i: JobInput) => (i.edit ? (i.edit.strength < 1 ? i.edit.strength : null) : i.start ? i.comfy.denoise : null);
 
 /** A job not sent yet, which more clicks can still add pictures to. */
 type Gathering = { key: string; input: JobInput; count: number; timer: ReturnType<typeof setTimeout> };
@@ -62,7 +66,7 @@ type Gathering = { key: string; input: JobInput; count: number; timer: ReturnTyp
 const sameJob = (a: JobInput) =>
   JSON.stringify([
     a.prompt, a.negative, a.moment, a.comfy.url, a.comfy.workflow, a.comfy.checkpoint, a.comfy.width, a.comfy.height, a.start?.key ?? null,
-    a.start && !a.edit ? a.comfy.denoise : null, a.edit?.check.model.id ?? null, a.edit?.instruction ?? null, a.seed,
+    a.start && !a.edit ? a.comfy.denoise : null, a.edit?.check.model.id ?? null, a.edit?.instruction ?? null, a.edit?.strength ?? null, a.seed,
   ]);
 
 /**
@@ -109,6 +113,8 @@ type Props = {
   onPictures?: (pictures: Picture[]) => void;
   /** Called with the jobs being made, newest first, whenever they change; the Pictures panel shows them. */
   onQueue?: (jobs: PendingJob[]) => void;
+  /** An element at the bottom of the page's column to put Size, Queue and the queue's status in, so they stay in view; without it they sit at the end of this panel. */
+  dock?: HTMLElement | null;
 };
 
 /**
@@ -117,12 +123,14 @@ type Props = {
  */
 export default function ComfyGenerate({
   chapterId, storyId, checkpoint, moment, prompt, negative, loaded = null, start = null, onClearStart,
-  startMode = "redraw", onStartMode, editModels = { state: "checking" }, onPictures, onQueue,
+  startMode = "redraw", onStartMode, editModels = { state: "checking" }, onPictures, onQueue, dock = null,
 }: Props) {
   const settings = useSettings();
   const comfy = settings.comfy;
   // What to change, when editing the starting picture by instruction.
   const [instruction, setInstruction] = useState("");
+  // How closely an edit follows the starting picture: 1 lets the model change it freely, lower keeps it closer.
+  const [editStrength, setEditStrength] = useState(1);
   const editing = start !== null && startMode === "edit";
   const blocked = editBlocked(editModels);
   const ready = editModels.state === "done" ? editModels.ready : [];
@@ -198,7 +206,6 @@ export default function ComfyGenerate({
 
   const set = (patch: Partial<ComfySettings>) => void saveSettings({ ...settings, comfy: { ...comfy, ...patch } });
   const other = otherSettings(loaded?.settings ?? null, comfy);
-  const busy = queue.length > 0;
   const size = SIZES.find((s) => s.width === comfy.width && s.height === comfy.height);
 
   /**
@@ -217,7 +224,7 @@ export default function ComfyGenerate({
       // The checkpoint is the story's, not the shared setting.
       comfy: { ...comfy, checkpoint },
       start,
-      edit: editing && chosen ? { check: chosen, instruction: instruction.trim() } : null,
+      edit: editing && chosen ? { check: chosen, instruction: instruction.trim(), strength: editStrength } : null,
       seed: reuseSeed && loadedSeed !== null ? loadedSeed : null,
     };
     const g = gathering.current;
@@ -248,7 +255,7 @@ export default function ComfyGenerate({
         checkpoint: input.edit ? input.edit.check.files.model : checkpoint,
         width: comfy.width,
         height: comfy.height,
-        denoise: start && !input.edit ? comfy.denoise : null,
+        denoise: denoiseOf(input),
         source: start?.source ?? null,
         instruction: input.edit?.instruction ?? null,
         editModel: input.edit?.check.model.id ?? null,
@@ -312,7 +319,7 @@ export default function ComfyGenerate({
       const prefix = filenamePrefix(storyId, chapterId);
       const workflow =
         edit && from
-          ? edit.check.model.build(edit.check.files, { image: from.name, instruction: edit.instruction, seed, count, width, height, prefix })
+          ? edit.check.model.build(edit.check.files, { image: from.name, instruction: edit.instruction, seed, count, width, height, prefix, denoise: edit.strength })
           : fillWorkflow(base!, {
               prompt,
               negative,
@@ -326,7 +333,7 @@ export default function ComfyGenerate({
             });
       // What the pictures were made with: the edit model's file, or the story's checkpoint.
       const madeWith = edit ? edit.check.files.model : comfy.checkpoint;
-      const denoise = from && !edit ? comfy.denoise : null;
+      const denoise = from ? denoiseOf(input) : null;
       if (ctl.signal.aborted) throw new DOMException("Stopped", "AbortError");
       const promptId = await queuePrompt(comfy.url, workflow, clientId, { storytime: { chapterId, storyId } });
       job.promptId = promptId;
@@ -391,32 +398,54 @@ export default function ComfyGenerate({
     }
   }
 
+  // Size, Queue and what is being made: kept at the bottom of the column (see `dock`), so they can be used from anywhere on the page.
+  const head = queue[0];
+  const waiting = queue.slice(1).reduce((n, q) => n + q.count, 0);
+  const bar = (
+    <div className="generate-bar">
+      <label className="row" style={{ gap: "0.4rem" }}>
+        Size
+        <select
+          aria-label="Size"
+          value={`${comfy.width}x${comfy.height}`}
+          onChange={(e) => {
+            const [width, height] = e.target.value.split("x").map(Number);
+            set({ width, height });
+          }}
+          disabled={start !== null}
+          title={start ? "Pictures made from a starting picture are its size" : undefined}
+          style={{ width: "auto", flex: 1 }}
+        >
+          {!size && <option value={`${comfy.width}x${comfy.height}`}>{`${comfy.width} × ${comfy.height}`}</option>}
+          {SIZES.map((s) => (
+            <option key={s.label} value={`${s.width}x${s.height}`}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button
+        type="button"
+        className="queue-button"
+        onClick={ask}
+        disabled={editing ? !chosen || !instruction.trim() : !prompt.trim()}
+        title="Each click queues one picture. Quick clicks with nothing changed in between go to ComfyUI as one job."
+      >
+        Queue
+      </button>
+      <div className="queue-status" aria-label="Queue">
+        <span>
+          In progress: {head ? head.count : 0}
+          {head && ` (${briefProgress(head.progress)})`} · Queued: {waiting}
+        </span>
+        {head?.progress.stage === "running" && <progress value={head.progress.value} max={head.progress.max} aria-hidden="true" />}
+      </div>
+    </div>
+  );
+
   return (
     <div className="comfy-generate">
       <h3>Make pictures</h3>
-      <div className="row" style={{ flexWrap: "wrap" }}>
-        <label className="row" style={{ gap: "0.4rem" }}>
-          Size
-          <select
-            aria-label="Size"
-            value={`${comfy.width}x${comfy.height}`}
-            onChange={(e) => {
-              const [width, height] = e.target.value.split("x").map(Number);
-              set({ width, height });
-            }}
-            disabled={start !== null}
-            title={start ? "Pictures made from a starting picture are its size" : undefined}
-            style={{ width: "auto" }}
-          >
-            {!size && <option value={`${comfy.width}x${comfy.height}`}>{`${comfy.width} × ${comfy.height}`}</option>}
-            {SIZES.map((s) => (
-              <option key={s.label} value={`${s.width}x${s.height}`}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
       {start && (
         <div className="start-picture">
           {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
@@ -473,6 +502,19 @@ export default function ComfyGenerate({
                       onChange={(e) => setInstruction(e.target.value)}
                     />
                   </label>
+                  <label className="strength">
+                    Strength {editStrength.toFixed(2)}
+                    <input
+                      type="range"
+                      aria-label="Strength"
+                      min={0.05}
+                      max={1}
+                      step={0.05}
+                      value={editStrength}
+                      onChange={(e) => setEditStrength(Number(e.target.value))}
+                    />
+                  </label>
+                  <p className="meta" style={{ margin: 0 }}>Low keeps the picture close; 1.00 lets the model change it freely.</p>
                   <p className="meta" style={{ margin: 0 }}>The prompt above isn&apos;t used. Edits keep the picture&apos;s shape, at about one megapixel.</p>
                 </>
               ) : (
@@ -514,24 +556,23 @@ export default function ComfyGenerate({
           <span className="meta">The loaded picture was made with {other.text}.</span>
         </div>
       )}
-      <div className="row" style={{ flexWrap: "wrap" }}>
-        <button
-          type="button"
-          onClick={ask}
-          disabled={editing ? !chosen || !instruction.trim() : !prompt.trim()}
-          title="Each click makes one picture. Quick clicks with nothing changed in between go to ComfyUI as one job."
-        >
-          {busy ? "Queue more" : editing ? "Make edit" : "Make pictures"}
-        </button>
-        <span className="meta">One picture per click.</span>
-        {loadedSeed !== null && (
-          <label className="inline-label" title="The same seed with a slightly changed prompt gives a close variation">
-            <input type="checkbox" checked={reuseSeed} onChange={(e) => setReuseSeed(e.target.checked)} />
-            Reuse seed {loadedSeed}
-          </label>
-        )}
-      </div>
+      {loadedSeed !== null && (
+        <label className="inline-label" title="The same seed with a slightly changed prompt gives a close variation">
+          <input type="checkbox" checked={reuseSeed} onChange={(e) => setReuseSeed(e.target.checked)} />
+          Reuse seed {loadedSeed}
+        </label>
+      )}
       {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
+      {dock ? createPortal(bar, dock) : bar}
     </div>
   );
+}
+
+/** A job's progress in a few words, for the small status line under Queue. */
+function briefProgress(p: JobProgress): string {
+  if (p.stage === "running") return `step ${p.value} of ${p.max}`;
+  if (p.stage === "queued") return p.ahead ? `waiting, ${p.ahead} ahead` : "starting";
+  if (p.stage === "uploading") return "sending the picture";
+  if (p.stage === "gathering") return "about to send";
+  return "loading the pictures";
 }

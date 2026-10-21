@@ -11,6 +11,7 @@ import AutoTextarea from "./AutoTextarea";
 import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
 import ComfyGenerate from "./ComfyGenerate";
+import { CopyIcon } from "./PictureIcons";
 import type { StartPicture } from "@/lib/comfy/startPicture";
 import type { PendingJob, Picture, PromptToLoad, StartMode } from "./pictures";
 import type { EditModels } from "./useEditModels";
@@ -50,6 +51,8 @@ type Props = {
   codex: ContextCodexEntry[];
   /** The prompt boxes as last left for this chapter, to start from. */
   draft?: PictureDraft | null;
+  /** Where Size, Queue and the queue's status go, to stay in view at the bottom of the column. */
+  dock?: HTMLElement | null;
 };
 
 /**
@@ -57,7 +60,7 @@ type Props = {
  * (chapter start, chapter end) has its own boxes, so switching between them brings each one's prompt back;
  * they are kept for the chapter on the server, so they are there again next time.
  */
-export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null, start = null, onClearStart, startMode = "redraw", onStartMode, editModels, onPictures, onQueue, draft = null }: Props) {
+export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null, start = null, onClearStart, startMode = "redraw", onStartMode, editModels, onPictures, onQueue, draft = null, dock = null }: Props) {
   const settings = useSettings();
   const chapter = path[path.length - 1];
   const [moment, setMoment] = useState<ImageMoment>(draft?.moment ?? "start");
@@ -195,34 +198,38 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
 
       <div className="image-prompt-result">
         {result.scene && <p className="meta" style={{ margin: 0 }}>Scene: {result.scene}</p>}
-          <label>
-            Prompt
-            <AutoTextarea
-              aria-label="Prompt"
-              style={{ minHeight: "5rem", fontFamily: "inherit" }}
-              maxLength={LIMITS.picturePrompt}
-              value={result.prompt}
-              onChange={(e) => change(moment, { prompt: e.target.value })}
-            />
-          </label>
-          <label>
-            Negative prompt
-            <AutoTextarea
-              aria-label="Negative prompt"
-              style={{ minHeight: "2.6rem", fontFamily: "inherit" }}
-              maxLength={LIMITS.picturePrompt}
-              value={result.negative}
-              onChange={(e) => change(moment, { negative: e.target.value })}
-            />
-          </label>
-          <div className="row" style={{ flexWrap: "wrap" }}>
-            <button type="button" className="secondary" onClick={() => void copy(result.prompt, "Prompt")} disabled={!result.prompt}>
-              Copy prompt
-            </button>
-            <button type="button" className="secondary" onClick={() => void copy(result.negative, "Negative prompt")} disabled={!result.negative}>
-              Copy negative
+        <div className="prompt-field">
+          <div className="field-head">
+            <label htmlFor="picture-prompt-text">Prompt</label>
+            <button type="button" className="secondary icon-button" aria-label="Copy prompt" title="Copy the prompt" onClick={() => void copy(result.prompt, "Prompt")} disabled={!result.prompt}>
+              <CopyIcon />
             </button>
           </div>
+          <AutoTextarea
+            id="picture-prompt-text"
+            aria-label="Prompt"
+            style={{ minHeight: "5rem", fontFamily: "inherit" }}
+            maxLength={LIMITS.picturePrompt}
+            value={result.prompt}
+            onChange={(e) => change(moment, { prompt: e.target.value })}
+          />
+        </div>
+        <div className="prompt-field">
+          <div className="field-head">
+            <label htmlFor="picture-negative-text">Negative prompt</label>
+            <button type="button" className="secondary icon-button" aria-label="Copy negative prompt" title="Copy the negative prompt" onClick={() => void copy(result.negative, "Negative prompt")} disabled={!result.negative}>
+              <CopyIcon />
+            </button>
+          </div>
+          <AutoTextarea
+            id="picture-negative-text"
+            aria-label="Negative prompt"
+            style={{ minHeight: "2.6rem", fontFamily: "inherit" }}
+            maxLength={LIMITS.picturePrompt}
+            value={result.negative}
+            onChange={(e) => change(moment, { negative: e.target.value })}
+          />
+        </div>
       </div>
       {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
       {saveError && <p className="error" style={{ margin: 0 }}>Couldn&apos;t keep the prompt for next time: {saveError}</p>}
@@ -241,6 +248,7 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
         editModels={editModels}
         onPictures={onPictures}
         onQueue={onQueue}
+        dock={dock}
         onClearStart={onClearStart}
       />
     </section>

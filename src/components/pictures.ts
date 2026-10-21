@@ -79,12 +79,12 @@ export function picturesOf(jobs: PictureJob[]): Picture[] {
   );
 }
 
-/** What tells pictures from the same prompt apart: the seed and the settings. */
-export function pictureCaption(c: { seed: number; checkpoint: string; width: number; height: number; denoise: number | null; editModel?: string | null }): string {
+/** What tells pictures from the same prompt apart: the settings, and the seed when `withSeed` (the list under the pictures leaves it out; Info has it). */
+export function pictureCaption(c: { seed: number; checkpoint: string; width: number; height: number; denoise: number | null; editModel?: string | null }, withSeed = false): string {
   return [
     (c.editModel && editModel(c.editModel)?.name) || c.checkpoint.replace(/\.(safetensors|ckpt)$/i, ""),
     `${c.width} × ${c.height}`,
-    `seed ${c.seed}`,
+    withSeed && `seed ${c.seed}`,
     c.denoise !== null && `strength ${c.denoise}`,
   ]
     .filter(Boolean)

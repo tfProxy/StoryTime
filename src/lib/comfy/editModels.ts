@@ -36,6 +36,12 @@ export type EditParams = {
   width: number;
   height: number;
   prefix: string;
+  /**
+   * How far the sampler may move from the starting picture, 0 to 1. At 1 it starts from pure noise and
+   * follows the instruction freely; lower, it starts from the picture with some noise on it, so the result
+   * stays closer to it.
+   */
+  denoise: number;
 };
 
 export type EditModel = {
@@ -95,7 +101,7 @@ function qwenWorkflow(files: Record<string, string>, p: EditParams): Workflow {
     "8": {
       class_type: "KSampler",
       inputs: {
-        seed: p.seed, steps: 20, cfg: 2.5, sampler_name: "euler", scheduler: "simple", denoise: 1,
+        seed: p.seed, steps: 20, cfg: 2.5, sampler_name: "euler", scheduler: "simple", denoise: p.denoise,
         model: ["5", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["13", 0],
       },
     },
@@ -116,7 +122,7 @@ function kontextWorkflow(files: Record<string, string>, p: EditParams): Workflow
     "8": {
       class_type: "KSampler",
       inputs: {
-        seed: p.seed, steps: 20, cfg: 1, sampler_name: "euler", scheduler: "simple", denoise: 1,
+        seed: p.seed, steps: 20, cfg: 1, sampler_name: "euler", scheduler: "simple", denoise: p.denoise,
         model: ["1", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["13", 0],
       },
     },
@@ -124,7 +130,7 @@ function kontextWorkflow(files: Record<string, string>, p: EditParams): Workflow
   };
 }
 
-const SAMPLE: EditParams = { image: "x.png", instruction: "x", seed: 1, count: 1, width: 1024, height: 1024, prefix: "StoryTime" };
+const SAMPLE: EditParams = { image: "x.png", instruction: "x", seed: 1, count: 1, width: 1024, height: 1024, prefix: "StoryTime", denoise: 1 };
 
 export const EDIT_MODELS: EditModel[] = [
   {

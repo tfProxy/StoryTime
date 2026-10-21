@@ -85,7 +85,7 @@ try {
   const all = await heads();
   ok(all.length === 13 && all[0] === "a picture ComfyUI has lost" && all[1] === "lantern glow number 13" && !all.includes("lantern glow number 6"), "All lists the 13 pictures not rejected, each under its prompt, newest first");
   ok(!all.includes("a cellar stair, dim light"), "…only this chapter's");
-  ok((await tileFor("lantern glow number 13").locator(".picture-caption").innerText()) === `fake_sdxl_a · 1344 × 768 · seed ${1000 + 14}`, "each picture shows its checkpoint, size and seed");
+  ok((await tileFor("lantern glow number 13").locator(".picture-caption").innerText()) === "fake_sdxl_a · 1344 × 768", "each picture shows its checkpoint and size, not its seed");
 
   // ---- a picture ComfyUI no longer has ----
   const gone = tileFor("a picture ComfyUI has lost");

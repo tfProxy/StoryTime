@@ -1031,6 +1031,23 @@ main:has(.library) {
   gap: 0.75rem;
 }
 
+/* A prompt box's label with its copy icon at the right. */
+.prompt-field {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.field-head button.icon-button {
+  padding: 0.2rem 0.4rem;
+}
+
 /* Making pictures with ComfyUI, under the prompt; candidates in a grid with a button under each. */
 .comfy-generate {
   display: grid;
@@ -1234,6 +1251,12 @@ main:has(.library) {
   align-content: start;
 }
 
+/* In one column, a column of its own, so the dock at its end can stick to the bottom of the screen the whole way down. */
+.illustrate-grid {
+  display: flex;
+  flex-direction: column;
+}
+
 /* Wider than the reading pages even in one column, so a tablet fits two pictures side by side. */
 main:has(.illustrate-grid) {
   max-width: 64rem;
@@ -1273,18 +1296,80 @@ main:has(.illustrate-grid) {
   }
 
   .illustrate-grid {
+    display: grid;
     grid-template-columns: minmax(22rem, 28rem) minmax(0, 1fr);
     align-items: start;
   }
 
   .illustrate-controls {
+    grid-column: 1;
+    grid-row: 1;
     position: sticky;
     top: 1rem;
     max-height: calc(100vh - 2rem);
     overflow-y: auto;
-    /* room for the panels' borders inside the scrolling column */
-    padding: 1px;
+    /* room for the panels' borders inside the scrolling column, and under the dock at its bottom */
+    padding: 1px 1px var(--dock-space);
   }
+
+  .illustrate-gallery {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  /* In the controls' cell, which is as tall as the page, at its bottom. */
+  .generate-dock {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: end;
+  }
+}
+
+/*
+ * Size, Queue and what is being made stay at the bottom of the screen, in the controls' column, however far
+ * the page is scrolled. They are put in this element (see ComfyGenerate), which is a child of the page's grid
+ * so that its room to stick in is the whole page.
+ */
+.illustrate-grid {
+  /* about the dock's height, kept free at the bottom of the controls so the dock doesn't hide the last of them */
+  --dock-space: 10rem;
+}
+
+.generate-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  order: 99;
+}
+
+.generate-dock:empty {
+  display: none;
+}
+
+.generate-bar {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: 0 -2px 8px rgb(0 0 0 / 0.12);
+}
+
+.generate-bar .queue-button {
+  width: 100%;
+}
+
+.queue-status {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.queue-status progress {
+  width: 100%;
+  height: 0.4rem;
 }
 
 /* The chapter's pictures: the title, Clear and the views stay at the top of the panel while it is scrolled through. */

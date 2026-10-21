@@ -119,7 +119,8 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
       prompt: p.prompt,
       negative: p.negative,
       seed: p.seed,
-      settings: { checkpoint: p.checkpoint, width: p.width, height: p.height, denoise: p.denoise },
+      // An edit's strength is not the Redraw strength, so it isn't offered back.
+      settings: { checkpoint: p.checkpoint, width: p.width, height: p.height, denoise: p.editModel ? null : p.denoise },
       moment: p.moment,
     });
   }

@@ -48,6 +48,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
   const [pictures, setPictures] = useState<Picture[]>(() => picturesOf(jobs));
   // The jobs being made, newest first, shown among the pictures.
   const [pending, setPending] = useState<PendingJob[]>([]);
+  const [dock, setDock] = useState<HTMLElement | null>(null);
   function load(p: PromptToLoad) {
     setLoaded({ ...p, nonce: (loaded?.nonce ?? 0) + 1 });
     // On a phone the prompt box is far above the pictures.
@@ -78,6 +79,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
           onPictures={(made) => setPictures((prev) => [...made, ...prev])}
           onQueue={setPending}
           draft={draft}
+          dock={dock}
         />
       </div>
       <div className="illustrate-gallery">
@@ -120,6 +122,8 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
           />
         )}
       </div>
+      {/* Size, Queue and the queue's status are put here (see ComfyGenerate), so they stay at the bottom of the screen. */}
+      <div className="generate-dock" ref={setDock} />
     </div>
   );
 }

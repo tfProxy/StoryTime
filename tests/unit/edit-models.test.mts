@@ -64,7 +64,7 @@ ok(!byId(checks, "flux-kontext").files.clipL?.includes("t5"), "…and the CLIP-L
 
 // ---- the workflows ----
 const nodes = (wf: Workflow, type: string) => Object.values(wf).filter((n) => n.class_type === type);
-const params = { image: "storytime-start-1.png", instruction: "remove the logo on his shirt", seed: 99, count: 2, width: 1280, height: 816, prefix: "StoryTime/s/c" };
+const params = { image: "storytime-start-1.png", instruction: "remove the logo on his shirt", seed: 99, count: 2, width: 1280, height: 816, prefix: "StoryTime/s/c", denoise: 1 };
 const ready = checkEditModels(info(all));
 for (const check of ready) {
   const wf = check.model.build(check.files, params);
@@ -78,6 +78,10 @@ for (const check of ready) {
   ok(nodes(wf, "SaveImage")[0].inputs.filename_prefix === "StoryTime/s/c", `${check.model.name}: the pictures are filed under the chapter`);
   ok(nodes(wf, "UNETLoader")[0].inputs.unet_name === check.files.model, `${check.model.name}: it loads the model file that was found`);
   ok(JSON.stringify(wf).includes(params.instruction), `${check.model.name}: the instruction is in it`);
+}
+for (const check of ready) {
+  const part = check.model.build(check.files, { ...params, denoise: 0.6 });
+  ok(nodes(part, "KSampler")[0].inputs.denoise === 0.6, `${check.model.name}: a lower strength is the sampler's denoise`);
 }
 const qwen = byId(ready, "qwen-image-edit").model.build(byId(ready, "qwen-image-edit").files, params);
 const encoders = nodes(qwen, "TextEncodeQwenImageEditPlus");

@@ -163,7 +163,7 @@ export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, 
       </div>
       <div className="viewer-bottom">
         <p className="viewer-caption">
-          {pictureCaption(current)}
+          {pictureCaption(current, true)}
           <span className="viewer-keys"> · ← → move · P pin · X reject · Esc close</span>
         </p>
         {status && (

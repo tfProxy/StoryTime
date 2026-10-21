@@ -29,7 +29,7 @@ const context = await browser.newContext({ viewport: { width: 1000, height: 1300
 const page = await context.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 
-const makeButton = page.getByRole("button", { name: /^(Make pictures|Queue more)$/ });
+const makeButton = page.getByRole("button", { name: "Queue", exact: true });
 const items = page.locator(".candidates li.picture-tile");
 const thumb = page.getByRole("img", { name: "Starting picture" });
 const strength = page.getByRole("slider", { name: "Strength" });
