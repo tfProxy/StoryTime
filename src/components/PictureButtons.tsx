@@ -5,7 +5,7 @@ import { IMAGE_SLOTS, type ImageSlot } from "@/lib/imageSlots";
 import type { ComfyImage } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
 import { SLOT_NAMES, type PictureSaver } from "./usePictureSaver";
-import { FooterIcon, HeaderIcon, MenuIcon, PinIcon } from "./PictureIcons";
+import { FooterIcon, HeaderIcon, MenuIcon, PencilIcon, PinIcon } from "./PictureIcons";
 import type { StartMode } from "./pictures";
 
 // The buttons and badge on a picture, the same on a tile in the Pictures panel and in the full-size viewer.
@@ -13,11 +13,16 @@ import type { StartMode } from "./pictures";
 const SLOT_TITLES: Record<ImageSlot, string> = { header: "Header", footer: "Footer" };
 const SLOT_ICONS: Record<ImageSlot, () => React.JSX.Element> = { header: HeaderIcon, footer: FooterIcon };
 
-/** On the picture's top left corner: which of the chapter's slots it is saved in now, if any. */
-export function InUseBadge({ inUse }: { inUse: ImageSlot[] }) {
-  if (inUse.length === 0) return null;
+/** On the picture's top left corner: which of the chapter's slots it is saved in now, if any, and whether it is the picture being edited or redrawn. */
+export function InUseBadge({ inUse, editing = false }: { inUse: ImageSlot[]; editing?: boolean }) {
+  if (inUse.length === 0 && !editing) return null;
   return (
     <div className="picture-in-use">
+      {editing && (
+        <span title="New pictures are being made from this one">
+          <PencilIcon /> Editing
+        </span>
+      )}
       {inUse.map((slot) => {
         const Icon = SLOT_ICONS[slot];
         return (

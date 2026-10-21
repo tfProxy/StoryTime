@@ -443,13 +443,29 @@ export default function ComfyGenerate({
     </div>
   );
 
+  // The Strength slider and its one-line explanation, the same for Redraw and Edit.
+  const strength = (value: number, onChange: (v: number) => void) => (
+    <>
+      <label className="strength">
+        Strength {value.toFixed(2)}
+        <input type="range" aria-label="Strength" min={0.05} max={1} step={0.05} value={value} onChange={(e) => onChange(Number(e.target.value))} />
+      </label>
+      <p className="meta" style={{ margin: 0 }}>Low stays close to the picture; 1.00 changes it freely.</p>
+    </>
+  );
+
   return (
     <section className="ai-panel comfy-generate">
       <h2>Make pictures</h2>
       {start && (
         <div className="start-picture">
-          {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
-          <img src={start.thumb} alt="Starting picture" />
+          <div className="start-picture-thumb">
+            {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
+            <img src={start.thumb} alt="Starting picture" />
+            <button type="button" className="secondary" onClick={onClearStart}>
+              Clear starting picture
+            </button>
+          </div>
           <div className="start-picture-controls">
             <p style={{ margin: 0 }}>
               <strong>Starting from this picture.</strong>
@@ -502,20 +518,7 @@ export default function ComfyGenerate({
                       onChange={(e) => setInstruction(e.target.value)}
                     />
                   </label>
-                  <label className="strength">
-                    Strength {editStrength.toFixed(2)}
-                    <input
-                      type="range"
-                      aria-label="Strength"
-                      min={0.05}
-                      max={1}
-                      step={0.05}
-                      value={editStrength}
-                      onChange={(e) => setEditStrength(Number(e.target.value))}
-                    />
-                  </label>
-                  <p className="meta" style={{ margin: 0 }}>Low keeps the picture close; 1.00 lets the model change it freely.</p>
-                  <p className="meta" style={{ margin: 0 }}>The prompt above isn&apos;t used. Edits keep the picture&apos;s shape, at about one megapixel.</p>
+                  {strength(editStrength, setEditStrength)}
                 </>
               ) : (
                 <p className="error" style={{ margin: 0 }}>
@@ -525,26 +528,9 @@ export default function ComfyGenerate({
             ) : (
               <>
                 <p className="meta" style={{ margin: 0 }}>The new pictures are its size.</p>
-                <label className="strength">
-                  Strength {comfy.denoise.toFixed(2)}
-                  <input
-                    type="range"
-                    aria-label="Strength"
-                    min={0.05}
-                    max={1}
-                    step={0.05}
-                    value={comfy.denoise}
-                    onChange={(e) => set({ denoise: Number(e.target.value) })}
-                  />
-                </label>
-                <p className="meta" style={{ margin: 0 }}>Low keeps the picture close; high changes more.</p>
+                {strength(comfy.denoise, (v) => set({ denoise: v }))}
               </>
             )}
-            <div>
-              <button type="button" className="secondary" onClick={onClearStart}>
-                Clear starting picture
-              </button>
-            </div>
           </div>
         </div>
       )}

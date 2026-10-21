@@ -178,6 +178,7 @@ try {
   comfy.setMode({ missingNodes: ["TextEncodeQwenImageEditPlus"] });
   await page.reload();
   await showAll();
+  ok(await page.getByRole("list", { name: /^Pictures from “Edit: / }).count() >= 1, "after coming back, the pictures made by editing are listed under All");
   await choose(items.first(), "Edit this");
   await thumb.waitFor();
   ok((await modelMenu.locator("option").allInnerTexts()).join("|") === "FLUX.1 Kontext", "a model whose node ComfyUI lacks isn't offered");

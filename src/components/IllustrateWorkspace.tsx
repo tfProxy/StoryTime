@@ -170,6 +170,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
             onStart={(image, mode) => startFrom(fromComfyImage(comfy.url, image), mode)}
             editBlocked={blocked}
             onLoadPrompt={load}
+            starting={start?.source ?? null}
             used={{ header: made.header?.from ?? null, footer: made.footer?.from ?? null }}
           />
         )}

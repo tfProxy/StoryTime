@@ -13,6 +13,9 @@ import { inView, pictureCaption, progressText, timeline, type PendingJob, type P
 
 const SHOWN_PROMPT = 80;
 
+/** A picture's source as a starting picture records it (see fromComfyImage). */
+const comfySource = (image: ComfyImage) => `comfy:${image.subfolder ? `${image.subfolder}/` : ""}${image.filename}`;
+
 const short = (text: string, max: number) => (text.length > max ? `${text.slice(0, max).trimEnd()}…` : text);
 
 type View = PictureView | "other";
@@ -48,6 +51,8 @@ type Props = {
   onLoadPrompt: (p: PromptToLoad) => void;
   /** Which picture is the chapter's header and footer now, when known. */
   used?: Record<ImageSlot, { jobId: string; index: number } | null>;
+  /** The starting picture's source (`comfy:…`, see StartPicture), when new pictures are being made from one. */
+  starting?: string | null;
 };
 
 /**
@@ -56,9 +61,13 @@ type Props = {
  * and footer (as if pinned) and those made on this visit, so coming back shows only the pinned ones; "All" every one but the rejected; and "Rejected"
  * those, to restore one. "Other chapters" lists what was made for the rest of the story.
  */
-export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, pictures, onChange, onClear, pending = [], onStart, editBlocked = null, onLoadPrompt, used }: Props) {
+export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, pictures, onChange, onClear, pending = [], onStart, editBlocked = null, onLoadPrompt, used, starting = null }: Props) {
   /** The slots a picture is saved in now. */
   const inUse = (p: Picture): ImageSlot[] => IMAGE_SLOTS.filter((slot) => used?.[slot] && used[slot].jobId === p.jobId && used[slot].index === p.index);
+  /** The picture being edited or redrawn. */
+  const isStarting = (p: Picture) => starting !== null && starting === comfySource(p.image);
+  /** The pictures the first view always shows, as if pinned: the chapter's header and footer, and the starting picture. */
+  const kept = (p: Picture) => inUse(p).length > 0 || isStarting(p);
   const [view, setView] = useState<View>("shortlist");
   const [status, setStatus] = useState<Status | null>(null);
   // The picture shown full size, if any.
@@ -67,8 +76,8 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
   const [info, setInfo] = useState<Picture | null>(null);
   const saver = usePictureSaver(chapterId, comfyUrl, setStatus);
 
-  const count = (v: PictureView) => pictures.filter((p) => inView(p, v, inUse(p).length > 0)).length;
-  const shown = view === "other" ? [] : pictures.filter((p) => inView(p, view, inUse(p).length > 0));
+  const count = (v: PictureView) => pictures.filter((p) => inView(p, v, kept(p))).length;
+  const shown = view === "other" ? [] : pictures.filter((p) => inView(p, view, kept(p)));
   // New pictures arrive in Pinned & new and All, so there the jobs being made join the run they continue;
   // elsewhere they show on their own at the top.
   const joined = view === "shortlist" || view === "all";
@@ -79,15 +88,15 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
 
   /** A mark changed in the viewer: when it takes the picture out of this view, the viewer moves on to the next one. */
   function markInViewer(p: Picture, next: PictureMark | null) {
-    if (view !== "other" && !inView({ ...p, mark: next }, view, inUse(p).length > 0)) {
+    if (view !== "other" && !inView({ ...p, mark: next }, view, kept(p))) {
       const at = ordered.findIndex((q) => q.key === p.key);
       const after = ordered[at + 1] ?? ordered[at - 1] ?? null;
       setViewing(after?.key ?? null);
     }
     void mark(p, next);
   }
-  // The header and footer stay in this view, so clearing doesn't hide them.
-  const clearable = pictures.some((p) => p.fresh && p.mark === null && inUse(p).length === 0);
+  // The header, footer and starting picture stay in this view, so clearing doesn't hide them.
+  const clearable = pictures.some((p) => p.fresh && p.mark === null && !kept(p));
   const VIEWS: { view: View; label: string }[] = [
     { view: "shortlist", label: `Pinned & new (${count("shortlist")})` },
     { view: "all", label: `All (${count("all")})` },
@@ -184,6 +193,7 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
                   jobId={p.jobId}
                   index={p.index}
                   inUse={inUse(p)}
+                  editing={isStarting(p)}
                   saver={saver}
                   caption={pictureCaption(p)}
                   onStart={onStart}

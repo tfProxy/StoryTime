@@ -207,7 +207,7 @@ export function timeline(pending: PendingJob[], pictures: Picture[]): PictureRun
 /** The gallery's views: pinned and new pictures, every picture but the rejected ones, and the rejected ones. */
 export type PictureView = "shortlist" | "all" | "rejected";
 
-/** `inUse`: the picture is the chapter's header or footer now, so the first view shows it as if it were pinned. */
+/** `inUse`: the picture is the chapter's header or footer now, or the one being edited, so the first view shows it as if it were pinned. */
 export function inView(p: Picture, view: PictureView, inUse = false): boolean {
   if (view === "rejected") return p.mark === "rejected";
   if (view === "all") return p.mark !== "rejected";

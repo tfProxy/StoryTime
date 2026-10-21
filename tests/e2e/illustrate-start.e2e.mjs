@@ -72,10 +72,15 @@ try {
   await startFrom(items.first());
   await thumb.waitFor();
   ok(await strength.isVisible() && await strength.inputValue() === "0.55", "Redraw from this shows the picture and a Strength slider at 0.55");
-  ok(await page.getByText("Low keeps the picture close; high changes more.").isVisible(), "…with a line saying what Strength does");
+  ok(await page.getByText("Low stays close to the picture; 1.00 changes it freely.").isVisible(), "…with a line saying what Strength does");
   ok(await sizeMenu.isDisabled(), "…and the Size menu is off, as the size comes from the picture");
   const clickedSrc = await items.first().locator("img").getAttribute("src");
   ok(await thumb.getAttribute("src") === clickedSrc, "…and the thumbnail is the picture that was chosen");
+  ok(await items.first().getByText("Editing", { exact: true }).isVisible() && await page.locator(".picture-tile.editing").count() === 1, "…and that picture in the list is tagged Editing");
+  const thumbBox = await thumb.boundingBox();
+  const clearBox = await page.getByRole("button", { name: "Clear starting picture" }).boundingBox();
+  ok(clearBox.y >= thumbBox.y + thumbBox.height - 1 && clearBox.x < thumbBox.x + thumbBox.width, "…and Clear starting picture is just below the thumbnail");
+  ok(await page.getByText(/The prompt above isn't used/).count() === 0, "…without the long note about the prompt");
 
   await strength.fill("0.3");
   ok(await until(async () => (await settingsNow()).denoise === 0.3, "the strength to be saved"), "moving the slider saves the strength in the settings");
@@ -139,6 +144,8 @@ try {
   await startFrom(pastTiles.nth(1));
   await thumb.waitFor();
   ok(((await thumb.getAttribute("src")) ?? "").includes("/view?"), "Redraw from this on a past picture makes it the starting picture");
+  await page.getByRole("group", { name: "Show" }).getByRole("button", { name: /^Pinned & new/ }).click();
+  ok(await page.locator(".picture-tile.editing").count() === 1, "a past picture being edited shows in Pinned & new, tagged Editing, though it isn't pinned");
 
   // ---- errors ----
   comfy.setMode({ fail: "upload" });
