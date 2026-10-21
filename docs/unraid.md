@@ -1,30 +1,38 @@
 # Running on Unraid (or any Docker host)
 
-The app is one container with one data folder. There is no registry or prebuilt image: Docker
-downloads the source from GitHub and builds it when you start the stack (the first build takes a few
-minutes). Use the Compose Manager plugin on Unraid, or any machine with Docker Compose:
+The app is one container with one data folder. GitHub Actions builds and tests the image on every
+push to `main` and publishes it as `ghcr.io/tfproxy/storytime` (public, no login needed), so the NAS
+only downloads it. Use the Compose Manager plugin on Unraid, or any machine with Docker Compose:
 
 ```
 # docker-compose.yml (the one in this repo works as is)
 services:
   storytime:
-    build: https://github.com/tfProxy/StoryTime.git#main
+    image: ghcr.io/tfproxy/storytime:latest
     ports: ["3737:3737"]
     volumes: ["/mnt/user/appdata/storytime:/data"]
-    environment:
     restart: unless-stopped
 ```
 
-Then `docker compose up -d --build`. The site is on port 3737. Settings can come from environment
-variables or a `.env` file next to the compose file: `STORYTIME_PORT` (published port) and
-`STORYTIME_DATA` (data folder, default `./data`).
+Then `docker compose up -d` (on Unraid: Compose Pull, then Compose Up). The site is on port 3737.
+Settings can come from environment variables or a `.env` file next to the compose file:
+`STORYTIME_PORT` (published port) and `STORYTIME_DATA` (data folder, default `./data`).
 
-**Updating:** Compose doesn't notice new commits by itself. To get the latest code run
-`docker compose build --pull --no-cache && docker compose up -d`. Database upgrades happen
-automatically on start. The repository must be public (or put an access token in the URL).
+**Updating:** after a push to `main`, wait for its CI run to pass (the Actions tab on GitHub; the
+image is published at the end of it), then `docker compose pull && docker compose up -d` (on
+Unraid: Compose Pull, then Compose Up). Database upgrades happen automatically on start.
 
-**Without Compose:** `docker build -t storytime https://github.com/tfProxy/StoryTime.git` and then
-`docker run -d -p 3737:3737 -v /mnt/user/appdata/storytime:/data storytime`.
+**Going back to an earlier version:** each image is also tagged with its commit, for example
+`ghcr.io/tfproxy/storytime:sha-4afc91f`. Put that tag in place of `latest`, pull and start. Database
+upgrades are not undone, so an older version may not open a database a newer one has upgraded; take a
+backup (below) before updating if that matters.
+
+**Building from source instead:** replace the `image:` line with
+`build: https://github.com/tfProxy/StoryTime.git#main` and update with
+`docker compose build --pull --no-cache && docker compose up -d` (slow: it compiles on the NAS).
+
+**Without Compose:** `docker run -d --name storytime -p 3737:3737 -v /mnt/user/appdata/storytime:/data ghcr.io/tfproxy/storytime:latest`;
+to update, `docker pull ghcr.io/tfproxy/storytime:latest`, then remove the container and run it again.
 
 Notes:
 
