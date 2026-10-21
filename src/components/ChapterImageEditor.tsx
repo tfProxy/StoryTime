@@ -10,9 +10,9 @@ import type { StartMode } from "./pictures";
 // The longest side an uploaded illustration keeps. Bigger pictures are scaled down in the browser first.
 const MAX_SIDE = 1600;
 
-const LABELS: Record<ImageSlot, { title: string; where: string }> = {
-  header: { title: "Header picture", where: "Shown after the chapter's title, before its text." },
-  footer: { title: "Footer picture", where: "Shown after the chapter's text, before the choices." },
+const LABELS: Record<ImageSlot, { title: string }> = {
+  header: { title: "Header picture" },
+  footer: { title: "Footer picture" },
 };
 
 type Props = {
@@ -45,7 +45,7 @@ export default function ChapterImageEditor({ chapterId, slot, version: initial, 
   }
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
-  const { title, where } = LABELS[slot];
+  const { title } = LABELS[slot];
 
   async function run(action: () => Promise<{ version: number | null; text: string }>) {
     setBusy(true);
@@ -74,7 +74,6 @@ export default function ChapterImageEditor({ chapterId, slot, version: initial, 
   return (
     <section className="ai-panel image-editor">
       <h2>{title}</h2>
-      <p className="meta" style={{ margin: 0 }}>{where}</p>
       <div className="picture-frame">
         {url ? (
           <a href={url} target="_blank" rel="noreferrer" title="Open full size">
