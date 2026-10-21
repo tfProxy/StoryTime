@@ -115,12 +115,17 @@ const comfyIn = {
     edit("kontext-a", "flux-kontext", { tuning: { scheduler: "beta", guidance: 3.5 } }),
   ],
   editPreset: "kontext-a",
+  picturesOldestFirst: false,
 };
 /** comfyIn with the first drawing preset (or the one at `i`) changed. */
 const withDraw = (patch, i = 0) => ({ ...comfyIn, drawPresets: comfyIn.drawPresets.map((p, j) => (j === i ? { ...p, ...patch } : p)) });
 const withEdit = (patch, i = 0) => ({ ...comfyIn, editPresets: comfyIn.editPresets.map((p, j) => (j === i ? { ...p, ...patch } : p)) });
 r = await call("PUT", "/api/settings", { ...conns, comfy: comfyIn });
 ok(JSON.stringify(r.json.settings.comfy) === JSON.stringify(comfyIn) && JSON.stringify((await call("GET", "/api/settings")).json.settings.comfy) === JSON.stringify(comfyIn), "ComfyUI settings and presets are saved and read back");
+r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, picturesOldestFirst: true } });
+ok(r.json.settings.comfy.picturesOldestFirst === true && (await call("GET", "/api/settings")).json.settings.comfy.picturesOldestFirst === true, "the Pictures panel's oldest-first order is kept");
+r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, picturesOldestFirst: "yes" } });
+ok(r.json.settings.comfy.picturesOldestFirst === false, "…and anything but true or false means newest first");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, drawPresets: [], editPresets: [] } });
 let c = r.json.settings.comfy;
 ok(

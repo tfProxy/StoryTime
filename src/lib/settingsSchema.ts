@@ -118,6 +118,8 @@ export type ComfySettings = {
   editPresets: EditPreset[];
   /** The edit preset last used on the Illustrate page's Edit tab (an id from `editPresets`). */
   editPreset: string;
+  /** The Pictures panel lists the oldest first (the newest at the bottom) instead of the newest first. */
+  picturesOldestFirst: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -130,7 +132,7 @@ export const DEFAULT_SETTINGS: Settings = {
   outline: DEFAULT_OUTLINE,
   imagePromptStyle: "tags",
   imagePromptModel: null,
-  comfy: { url: "", width: 1344, height: 768, count: 4, drawPresets: DEFAULT_DRAW_PRESETS, editPresets: DEFAULT_EDIT_PRESETS, editPreset: "qwen-image-edit" },
+  comfy: { url: "", width: 1344, height: 768, count: 4, drawPresets: DEFAULT_DRAW_PRESETS, editPresets: DEFAULT_EDIT_PRESETS, editPreset: "qwen-image-edit", picturesOldestFirst: false },
 };
 
 // Each field falls back to its default when missing or invalid, so partial files still
@@ -289,6 +291,7 @@ const settingsSchema = z.object({
         drawPresets: listOf(drawPresetSchema),
         editPresets: listOf(editPresetSchema),
         editPreset: z.string().max(100).catch(DEFAULT_SETTINGS.comfy.editPreset),
+        picturesOldestFirst: z.boolean().catch(false),
       }),
     )
     .catch(DEFAULT_SETTINGS.comfy),

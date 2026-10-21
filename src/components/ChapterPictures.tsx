@@ -9,6 +9,7 @@ import OtherChapterPictures from "./OtherChapterPictures";
 import PictureViewer from "./PictureViewer";
 import PictureInfo from "./PictureInfo";
 import { usePictureSaver } from "./usePictureSaver";
+import { saveSettings, useSettings } from "@/lib/settings";
 import { inView, pictureCaption, progressText, timeline, type PendingJob, type Picture, type PictureView, type PromptToLoad, type StartMode } from "./pictures";
 
 const SHOWN_PROMPT = 80;
@@ -73,12 +74,21 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
     if (p && p.mark !== "pinned") onChange(p.key, { mark: "pinned" });
   });
 
+  const settings = useSettings();
+  // The order is the person's choice, kept in Settings so it is the same on every device. Other chapters is always newest first.
+  const oldestFirst = settings.comfy.picturesOldestFirst && view !== "other";
+
   const count = (v: PictureView) => pictures.filter((p) => inView(p, v, kept(p))).length;
   const shown = view === "other" ? [] : pictures.filter((p) => inView(p, view, kept(p)));
   // New pictures arrive in Pinned & new and All, so there the jobs being made join the run they continue;
   // elsewhere they show on their own at the top.
   const joined = view === "shortlist" || view === "all";
-  const groups = joined ? timeline(pending, shown) : [...timeline(pending, []), ...timeline([], shown)];
+  const newestFirst = joined ? timeline(pending, shown) : [...timeline(pending, []), ...timeline([], shown)];
+  // Oldest first is the same list turned over: the runs, and in each the pictures and the jobs being made (the
+  // one running now comes first among those, next to the newest pictures, which come just before).
+  const groups = oldestFirst
+    ? newestFirst.map((g) => ({ ...g, pending: [...g.pending].reverse(), pictures: [...g.pictures].reverse() })).reverse()
+    : newestFirst;
   // The viewer goes through the pictures in the order they are shown.
   const ordered = groups.flatMap((g) => g.pictures);
   const viewed = ordered.find((p) => p.key === viewing) ?? null;
@@ -145,11 +155,24 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
       <div className="chapter-pictures-bar">
         <div className="chapter-pictures-top">
           <h2 id="chapter-pictures-title">Pictures</h2>
-          {view === "shortlist" && clearable && (
-            <button type="button" className="secondary" onClick={() => { onClear(); setStatus(null); }} title="Hides the new pictures you haven't pinned. They stay under All.">
-              Clear unpinned
-            </button>
-          )}
+          <div className="row chapter-pictures-actions">
+            {view !== "other" && (
+              <button
+                type="button"
+                className="secondary picture-order"
+                aria-label={oldestFirst ? "Order: oldest first. Switch to newest first" : "Order: newest first. Switch to oldest first"}
+                title={oldestFirst ? "Oldest first: the newest pictures are at the bottom. Click for newest first." : "Newest first: the newest pictures are at the top. Click for oldest first."}
+                onClick={() => void saveSettings({ ...settings, comfy: { ...settings.comfy, picturesOldestFirst: !oldestFirst } })}
+              >
+                {oldestFirst ? "↑ Oldest first" : "↓ Newest first"}
+              </button>
+            )}
+            {view === "shortlist" && clearable && (
+              <button type="button" className="secondary" onClick={() => { onClear(); setStatus(null); }} title="Hides the new pictures you haven't pinned. They stay under All.">
+                Clear unpinned
+              </button>
+            )}
+          </div>
         </div>
         <div className="row picture-views" role="group" aria-label="Show">
           {VIEWS.map((v) => (
@@ -167,12 +190,11 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
       {groups.map((group) => {
         // No heading: a line between runs says the settings changed, and Info on a picture says what they were.
         const first = group.pending[0] ?? group.pictures[0];
+        const making = group.pending.map((job) => <PendingTiles key={job.key} job={job} />);
         return (
           <div key={group.key} className="picture-group">
             <ul className="candidates" aria-label={`Pictures from “${first.instruction ? `Edit: ${short(first.instruction, SHOWN_PROMPT)}` : short(first.prompt, SHOWN_PROMPT)}”`}>
-              {group.pending.map((job) => (
-                <PendingTiles key={job.key} job={job} />
-              ))}
+              {!oldestFirst && making}
               {group.pictures.map((p) => (
                 <PictureTile
                   key={p.key}
@@ -197,6 +219,7 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
                   onInfo={() => setInfo(p)}
                 />
               ))}
+              {oldestFirst && making}
             </ul>
           </div>
         );

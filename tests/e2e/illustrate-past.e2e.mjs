@@ -87,6 +87,22 @@ try {
   ok(!all.includes("a cellar stair, dim light"), "…only this chapter's");
   ok((await tileFor("lantern glow number 13").locator(".picture-caption").innerText()) === "fake_sdxl_a · 1344 × 768", "each picture shows its checkpoint and size, not its seed");
 
+  // ---- the order: newest first, or oldest first ----
+  const order = gallery.locator(".picture-order");
+  ok((await order.innerText()).includes("Newest first") && await order.getAttribute("aria-label") === "Order: newest first. Switch to oldest first", "the order button says the pictures are newest first");
+  await order.click();
+  ok(await until(async () => (await heads())[0] === "lantern glow number 1", "the order to change"), "Oldest first puts the oldest run at the top…");
+  const oldest = await heads();
+  ok(oldest.length === 13 && oldest[12] === "a picture ComfyUI has lost" && (await order.innerText()).includes("Oldest first"), "…and the newest at the bottom, and the button says so");
+  ok((await call("GET", "/api/settings")).settings.comfy.picturesOldestFirst === true, "…the choice is kept in Settings, so it is the same on every device");
+  await page.reload();
+  await gallery.getByRole("heading", { name: "Pictures" }).waitFor();
+  await showView(/^All/);
+  await tiles.nth(12).waitFor();
+  ok((await heads())[0] === "lantern glow number 1", "…and is still oldest first after a reload");
+  await gallery.locator(".picture-order").click();
+  ok(await until(async () => (await heads())[0] === "a picture ComfyUI has lost", "newest first again"), "Clicking again goes back to newest first");
+
   // ---- a picture ComfyUI no longer has ----
   const gone = tileFor("a picture ComfyUI has lost");
   await gone.getByText("ComfyUI no longer has this picture").waitFor();
