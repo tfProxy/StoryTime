@@ -32,18 +32,27 @@ export function usePictureDraft(chapterId: string, current: PictureDraftInput, s
 
   useEffect(() => {
     const send = (draft: PictureDraftInput) => {
+      // What the server will have once the queue is through, set now rather than when this save finishes:
+      // otherwise switching back to a moment while an earlier save is still on its way compares against a
+      // save that is about to be overtaken, and the moment switched back to is never saved.
+      const sent = keyOf(draft);
+      stored.current = sent;
       queue.current = queue.current.then(() =>
         put(url, draft).then(
           async (res) => {
             if (res.ok) {
-              stored.current = keyOf(draft);
               setError(null);
             } else {
+              // Not kept: the next change (even back to these same boxes) is sent again.
+              if (stored.current === sent) stored.current = "";
               const data = await res.json().catch(() => ({}));
               setError(data.error ?? `the server answered ${res.status}`);
             }
           },
-          () => setError("StoryTime couldn't be reached"),
+          () => {
+            if (stored.current === sent) stored.current = "";
+            setError("StoryTime couldn't be reached");
+          },
         ),
       );
     };
