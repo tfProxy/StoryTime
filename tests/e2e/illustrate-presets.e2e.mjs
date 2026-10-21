@@ -83,7 +83,7 @@ try {
   await page.goto(`${BASE}/c/${chapterId}/illustrate`);
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("boats in a harbour");
   await drawMenu.waitFor();
-  ok(await drawMenu.inputValue() === "plain" && (await drawMenu.locator("option").allInnerTexts()).join() === "Ink,Plain (the story's)", "the chapter uses the story's preset, marked as the story's");
+  ok(await drawMenu.inputValue() === "plain" && (await drawMenu.locator("option").allInnerTexts()).join() === "Ink,Plain (default)", "the chapter uses the story's preset, marked as the default");
   ok((await page.locator(".story-pictures").innerText()).includes("Plain"), "…which the story's picture settings name");
   let wf = await makeOne();
   ok(nodes(wf, "CheckpointLoaderSimple")[0].inputs.ckpt_name === "fake_sdxl_b.safetensors" && nodes(wf, "LoraLoader").length === 0 && nodes(wf, "KSampler")[0].inputs.steps === 30, "its pictures are drawn with its checkpoint and sampler, and no LoRAs");

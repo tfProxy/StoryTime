@@ -215,7 +215,7 @@ try {
   ok(await page.locator("section.ai-panel.comfy-generate").count() === 1 && await page.locator(".image-prompt .comfy-generate").count() === 0, "Make pictures is a panel of its own, not inside the Picture prompt");
   ok(await page.getByLabel("Checkpoint").count() === 0, "there is no Checkpoint menu on the Illustrate page: the checkpoint is the drawing preset's");
   const drawPreset = page.getByLabel("Drawing preset");
-  ok(await drawPreset.inputValue() === "test" && (await drawPreset.locator("option").allInnerTexts()).join() === "Ink (the story's)", "the Make pictures panel offers the drawing presets, marking the story's");
+  ok(await drawPreset.inputValue() === "test" && (await drawPreset.locator("option").allInnerTexts()).join() === "Ink (default)", "the Make pictures panel offers the drawing presets, marking the story's as the default");
   ok((await page.locator(".draw-preset").innerText()).includes("no checkpoint") && (await page.locator(".story-pictures").innerText()).includes("Ink"), "…says the preset has no checkpoint, and the story's picture settings name its preset");
   ok(await makeButton.isDisabled(), "Make pictures is off while the prompt is empty");
 

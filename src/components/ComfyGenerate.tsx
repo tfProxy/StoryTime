@@ -788,7 +788,7 @@ export default function ComfyGenerate({
               {comfy.drawPresets.map((p) => (
                 <option key={p.id} value={p.id}>
                   {presetName(p)}
-                  {p.id === storyDraw.id ? " (the story's)" : ""}
+                  {p.id === storyDraw.id ? " (default)" : ""}
                 </option>
               ))}
             </select>
