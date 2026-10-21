@@ -1022,10 +1022,6 @@ main:has(.library) {
   border-radius: 6px;
 }
 
-.image-prompt {
-  margin-bottom: 1rem;
-}
-
 .image-prompt-result {
   display: grid;
   gap: 0.75rem;
@@ -1048,19 +1044,7 @@ main:has(.library) {
   padding: 0.2rem 0.4rem;
 }
 
-/* Making pictures with ComfyUI, under the prompt; candidates in a grid with a button under each. */
-.comfy-generate {
-  display: grid;
-  gap: 0.75rem;
-  border-top: 1px solid var(--line);
-  padding-top: 0.75rem;
-}
-
-.comfy-generate h3 {
-  margin: 0;
-  font-size: 1rem;
-}
-
+/* Making pictures with ComfyUI: a panel of its own, under the prompt's. */
 .comfy-generate progress {
   width: 100%;
 }
@@ -1834,6 +1818,23 @@ dialog.picture-info::backdrop {
   display: grid;
   gap: 0.4rem;
   overflow-wrap: anywhere;
+}
+
+/* The three settings one under the other, with Change at the right. */
+.story-pictures-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.story-pictures-list {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  list-style: none;
 }
 
 /*

@@ -56,7 +56,7 @@ try {
   // ---- the codex entries that would be used ----
   const used = page.getByText(/^Codex entries used:|^No codex entries/);
   ok((await used.innerText()) === "Codex entries used: Jim", "the codex entry the chapter mentions is listed, the other is not");
-  const direction = page.getByLabel("What to show (optional)");
+  ok(await page.locator(".illustrate-chapter").getByText(/^Codex entries used:/).count() === 1 && await page.locator(".image-prompt").getByText(/^Codex entries used:/).count() === 0, "…in the Chapter panel, not the Picture prompt");  const direction = page.getByLabel("What to show (optional)");
   await direction.fill("Zed bursts in");
   ok((await used.innerText()) === "Codex entries used: Jim, Zed", "…and an entry named in what to show is added");
   await direction.fill("");
@@ -91,7 +91,7 @@ try {
   ok(pictured.image_prompt_style === "natural" && pictured.art_style === "watercolor storybook, soft light", "saving there keeps the prompt style and art style with the story");
   ok((await settingsNow()).imagePromptStyle === "tags", "…not in the shared settings");
   await page.goto(`${BASE}/c/${chapter}/illustrate`);
-  ok((await pictureLine.innerText()).includes("Sentences (Flux, SD3) · watercolor storybook, soft light") && (await pictureLine.innerText()).includes("Not chosen yet for this story: checkpoint."), "the Illustrate page shows them, and that only the checkpoint is left");
+  ok((await pictureLine.locator("li").allInnerTexts()).slice(0, 2).join("|") === "Sentences (Flux, SD3)|watercolor storybook, soft light" &&(await pictureLine.innerText()).includes("Not chosen yet for this story: checkpoint."), "the Illustrate page shows them, and that only the checkpoint is left");
 
   // ---- write a prompt for the chapter's end ----
   ok(await page.getByText(/^For$/).count() === 0 && await page.getByRole("option", { name: "Footer picture" }).count() === 0, "there is no For header/footer choice");
@@ -110,7 +110,7 @@ try {
   reply = 'Here you go:\n```json\n{"scene":"Jim eats.","prompt":"a man with blonde hair eating a sandwich in a kitchen","negative":"text, watermark"}\n```';
   const callsBefore = calls.length;
   await page.getByRole("button", { name: "Write prompt", exact: true }).click();
-  await page.getByText("Scene: Jim eats.").waitFor();
+  await page.getByRole("button", { name: "Write again" }).waitFor();
   ok(calls.length === callsBefore + 1, "one request was sent to the model");
   const sent = calls.at(-1);
   ok(sent.model === "cheap", "…to the cheaper model");
@@ -126,7 +126,7 @@ try {
   ok((await page.locator(".image-prompt-result label").nth(0).innerText()).startsWith("Prompt") && (await page.locator(".image-prompt-result label").nth(1).innerText()).startsWith("Negative prompt"), "the result has a Prompt and a Negative prompt field");
   ok((await promptBox.inputValue()) === "a man with blonde hair eating a sandwich in a kitchen. watercolor storybook, soft light.", "the prompt has the art style added as a sentence (replacing what was typed before)");
   ok((await negativeBox.inputValue()) === "text, watermark", "the negative prompt is shown");
-  ok(await page.getByText("Scene: Jim eats.").isVisible() && await page.getByRole("button", { name: "Write again" }).isVisible(), "the scene is shown and the button now says Write again");
+  ok(await page.getByText("Scene: Jim eats.").count() === 0 && await page.getByRole("button", { name: "Write again" }).isVisible(), "the scene isn't shown (the Chapter panel covers it) and the button now says Write again");
   ok((await get(`/api/stories/${storyId}`)).art_style === "watercolor storybook, soft light", "the art style on the story is unchanged");
 
   // ---- copying ----
@@ -190,7 +190,7 @@ try {
   ok(await until(async () => (await settingsNow()).imagePromptModel?.model === "artist", "the model to be saved"), "choosing a model saves imagePromptModel on the server");
   reply = '{"scene":"s","prompt":"p","negative":""}';
   await page.getByRole("button", { name: "Write again" }).click();
-  await page.getByText("Scene: s", { exact: true }).waitFor();
+  await page.waitForFunction(() => document.querySelector(".image-prompt-result textarea")?.value.startsWith("p"));
   ok(calls.at(-1).model === "artist", "…and prompts are written with it");
   await page.goto(`${BASE}/c/${created.chapter_id}/illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import IllustrateChapter from "@/components/IllustrateChapter";
 import IllustrateWorkspace from "@/components/IllustrateWorkspace";
 import { chapterImageMade, chapterImageVersions } from "@/lib/chapterImages";
 import { foldCodex } from "@/lib/codex";
@@ -39,15 +38,13 @@ export default async function IllustratePage({ params }: { params: Promise<{ id:
       <h1>Illustrate chapter</h1>
       <IllustrateWorkspace
         chapterId={chapter.id}
-        chapter={
-          <IllustrateChapter
-            chapterId={chapter.id}
-            title={chapter.title}
-            body={chapter.body}
-            summary={chapter.summary}
-            earlier={before ? before.path_summary || before.summary || null : null}
-          />
-        }
+        chapter={{
+          chapterId: chapter.id,
+          title: chapter.title,
+          body: chapter.body,
+          summary: chapter.summary,
+          earlier: before ? before.path_summary || before.summary || null : null,
+        }}
         titles={storyChapterTitles(story.id)}
         story={{
           id: story.id,

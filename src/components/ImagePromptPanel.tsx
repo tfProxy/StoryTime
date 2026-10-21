@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { saveSettings, useSettings } from "@/lib/settings";
 import { LIMITS } from "@/lib/limits";
@@ -53,6 +54,8 @@ type Props = {
   draft?: PictureDraft | null;
   /** Where Size, Queue and the queue's status go, to stay in view at the bottom of the column. */
   dock?: HTMLElement | null;
+  /** Where the "Codex entries used" line goes: the bottom of the chapter panel. */
+  codexSlot?: HTMLElement | null;
 };
 
 /**
@@ -60,7 +63,7 @@ type Props = {
  * (chapter start, chapter end) has its own boxes, so switching between them brings each one's prompt back;
  * they are kept for the chapter on the server, so they are there again next time.
  */
-export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null, start = null, onClearStart, startMode = "redraw", onStartMode, editModels, onPictures, onQueue, draft = null, dock = null }: Props) {
+export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null, start = null, onClearStart, startMode = "redraw", onStartMode, editModels, onPictures, onQueue, draft = null, dock = null, codexSlot = null }: Props) {
   const settings = useSettings();
   const chapter = path[path.length - 1];
   const [moment, setMoment] = useState<ImageMoment>(draft?.moment ?? "start");
@@ -120,21 +123,19 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
     setStatus(done ? { ok: true, text: `${what} copied.` } : { ok: false, text: "Couldn't copy; select the text and copy it yourself." });
   }
 
-  return (
+  const promptPanel = (
     <section className="ai-panel image-prompt" id="picture-prompt">
       <h2>Picture prompt</h2>
-      <p className="meta" style={{ margin: 0 }}>
-        Writes a prompt for your image generator from this chapter and the codex entries it mentions (or type your
-        own). Make the pictures with ComfyUI here, or elsewhere and upload them below.
-      </p>
-
       {/* The story's picture settings, the same for all its chapters, are set on its details page. */}
       <div className="story-pictures">
-        <p style={{ margin: 0 }}>
-          <span className="meta">This story&apos;s pictures:</span> {story.image_prompt_style ? PROMPT_STYLE_NAMES[story.image_prompt_style] : "no prompt style"} ·{" "}
-          {story.art_style.trim() ? <span title={story.art_style}>{short(story.art_style.trim(), 80)}</span> : "no art style"} ·{" "}
-          {story.checkpoint || "no checkpoint"} · <Link href={settingsHref}>Change</Link>
-        </p>
+        <div className="story-pictures-row">
+          <ul className="story-pictures-list" aria-label="This story's picture settings">
+            <li>{story.image_prompt_style ? PROMPT_STYLE_NAMES[story.image_prompt_style] : "no prompt style"}</li>
+            <li>{story.art_style.trim() ? <span title={story.art_style}>{short(story.art_style.trim(), 80)}</span> : "no art style"}</li>
+            <li>{story.checkpoint || "no checkpoint"}</li>
+          </ul>
+          <Link href={settingsHref}>Change</Link>
+        </div>
         {unset.length > 0 && (
           <p className="notice" style={{ margin: 0 }}>
             Not chosen yet for this story: {unset.join(", ")}.{" "}
@@ -174,10 +175,6 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
         />
       </label>
 
-      <p className="meta" style={{ margin: 0 }}>
-        {used.length ? `Codex entries used: ${used.join(", ")}` : "No codex entries are mentioned in this chapter."}
-      </p>
-
       <div className="row" style={{ flexWrap: "wrap" }}>
         <ModelPicker
           label="Model for picture prompts"
@@ -197,7 +194,6 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
       </div>
 
       <div className="image-prompt-result">
-        {result.scene && <p className="meta" style={{ margin: 0 }}>Scene: {result.scene}</p>}
         <div className="prompt-field">
           <div className="field-head">
             <label htmlFor="picture-prompt-text">Prompt</label>
@@ -233,7 +229,20 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
       </div>
       {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
       {saveError && <p className="error" style={{ margin: 0 }}>Couldn&apos;t keep the prompt for next time: {saveError}</p>}
+    </section>
+  );
 
+  // Under the chapter (see IllustrateChapter) it reads as part of what the picture is made from.
+  const codexLine = (
+    <p className="meta" style={{ margin: 0 }}>
+      {used.length ? `Codex entries used: ${used.join(", ")}` : "No codex entries are mentioned in this chapter."}
+    </p>
+  );
+
+  return (
+    <>
+      {codexSlot && createPortal(codexLine, codexSlot)}
+      {promptPanel}
       <ComfyGenerate
         chapterId={chapterId}
         storyId={story.id}
@@ -251,6 +260,6 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
         dock={dock}
         onClearStart={onClearStart}
       />
-    </section>
+    </>
   );
 }

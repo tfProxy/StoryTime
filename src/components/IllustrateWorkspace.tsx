@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useRef, useState, type ComponentProps, type CSSProperties } from "react";
 import { IMAGE_SLOTS, type ImageMade, type ImageSlot, type ImageVersions } from "@/lib/imageSlots";
 import type { ContextChapter, ContextCodexEntry } from "@/lib/ai/prompts";
 import ChapterImageEditor from "./ChapterImageEditor";
+import IllustrateChapter from "./IllustrateChapter";
 import ImagePromptPanel, { type IllustratedStory, type LoadedPrompt } from "./ImagePromptPanel";
 import ChapterPictures from "./ChapterPictures";
 import { picturesOf, type PendingJob, type Picture, type PromptToLoad, type StartMode } from "./pictures";
@@ -20,8 +21,8 @@ const HANDLE_PX = 16;
 
 type Props = {
   chapterId: string;
-  /** The chapter panel, shown above the prompt. */
-  chapter: ReactNode;
+  /** The chapter panel's text, shown above the prompt. */
+  chapter: Omit<ComponentProps<typeof IllustrateChapter>, "slotRef">;
   /** Every chapter's title in the story, by chapter id. */
   titles: Record<string, string>;
   story: IllustratedStory;
@@ -54,6 +55,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
   // The jobs being made, newest first, shown among the pictures.
   const [pending, setPending] = useState<PendingJob[]>([]);
   const [dock, setDock] = useState<HTMLElement | null>(null);
+  const [codexSlot, setCodexSlot] = useState<HTMLElement | null>(null);
   function load(p: PromptToLoad) {
     setLoaded({ ...p, nonce: (loaded?.nonce ?? 0) + 1 });
     // On a phone the prompt box is far above the pictures.
@@ -102,7 +104,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
   return (
     <div className="illustrate-grid" ref={gridRef} style={controlsWidth ? ({ "--controls-width": `${controlsWidth}px` } as CSSProperties) : undefined}>
       <div className="illustrate-controls">
-        {chapter}
+        <IllustrateChapter {...chapter} slotRef={setCodexSlot} />
         <ImagePromptPanel
           chapterId={chapterId}
           story={story}
@@ -118,6 +120,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
           onQueue={setPending}
           draft={draft}
           dock={dock}
+          codexSlot={codexSlot}
         />
       </div>
       <div

@@ -444,8 +444,8 @@ export default function ComfyGenerate({
   );
 
   return (
-    <div className="comfy-generate">
-      <h3>Make pictures</h3>
+    <section className="ai-panel comfy-generate">
+      <h2>Make pictures</h2>
       {start && (
         <div className="start-picture">
           {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
@@ -564,7 +564,7 @@ export default function ComfyGenerate({
       )}
       {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
       {dock ? createPortal(bar, dock) : bar}
-    </div>
+    </section>
   );
 }
 

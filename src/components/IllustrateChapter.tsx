@@ -31,10 +31,12 @@ type Props = {
   summary: string | null;
   /** What the story was before this chapter: the same text the picture prompt is written from. */
   earlier: string | null;
+  /** Gets the element at the bottom of the panel that the picture prompt puts its "Codex entries used" line in. */
+  slotRef?: (el: HTMLElement | null) => void;
 };
 
 /** The chapter being illustrated, to check a picture against: its summary, with the full text and the story so far folded away. */
-export default function IllustrateChapter({ chapterId, title, body, summary, earlier }: Props) {
+export default function IllustrateChapter({ chapterId, title, body, summary, earlier, slotRef }: Props) {
   const box = useRef<HTMLElement>(null);
   // The folds are plain <details>; the saved state is applied after the first render so the server and browser agree on what to draw.
   useEffect(() => {
@@ -73,6 +75,7 @@ export default function IllustrateChapter({ chapterId, title, body, summary, ear
           <p className="illustrate-summary">{earlier}</p>
         </details>
       )}
+      <div className="illustrate-codex-slot" ref={slotRef} />
     </aside>
   );
 }

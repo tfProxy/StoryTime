@@ -144,6 +144,7 @@ try {
   // ---- the Illustrate page with an address ----
   await openIllustrate();
   await page.getByRole("heading", { name: "Make pictures" }).waitFor();
+  ok(await page.locator("section.ai-panel.comfy-generate").count() === 1 && await page.locator(".image-prompt .comfy-generate").count() === 0, "Make pictures is a panel of its own, not inside the Picture prompt");
   ok(await page.getByLabel("Checkpoint").count() === 0, "there is no Checkpoint menu on the Illustrate page: the checkpoint is the story's");
   ok((await page.locator(".story-pictures").innerText()).includes("no checkpoint") && await page.getByRole("link", { name: "Choose them in Story details" }).isVisible(), "a story with no checkpoint says so, with a link to its details page");
   ok(await makeButton.isDisabled(), "Make pictures is off while the prompt is empty");
@@ -400,7 +401,7 @@ try {
   // ---- the page on a phone ----
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator(".candidates").first().scrollIntoViewIfNeeded();
-  const overflow = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth, wide: [...document.querySelectorAll(".candidates img, .comfy-generate select, .comfy-generate button")].filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1).length }));
+  const overflow = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth, wide: [...document.querySelectorAll(".candidates img, .comfy-generate select, .comfy-generate button, .generate-bar select, .generate-bar button")].filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1).length }));
   ok(overflow.scroll <= overflow.inner, `no sideways scrolling at 390px wide with pictures showing (page ${overflow.scroll}px, window ${overflow.inner}px)`);
   ok(overflow.wide === 0, "…and no picture, menu or button sticks out past the right edge");
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
