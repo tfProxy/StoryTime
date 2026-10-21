@@ -135,6 +135,20 @@ export function chapterPictureJobs(chapterId: string): PictureJob[] {
   return listPictureJobs({ chapter: chapterId }, { limit: CHAPTER_JOBS }).jobs;
 }
 
+export const KnownJobsSchema = z.object({ prompt_ids: z.array(text(200).min(1)).max(500) });
+
+/**
+ * Which of these ComfyUI jobs are already in the log, so the picture queue only records those that a page
+ * left before they finished.
+ */
+export function knownPromptIds({ prompt_ids }: z.infer<typeof KnownJobsSchema>): { known: string[] } {
+  if (prompt_ids.length === 0) return { known: [] };
+  const rows = db()
+    .prepare(`SELECT DISTINCT prompt_id FROM picture_jobs WHERE prompt_id IN (${prompt_ids.map(() => "?").join(",")})`)
+    .all(...prompt_ids) as { prompt_id: string }[];
+  return { known: rows.map((r) => r.prompt_id) };
+}
+
 /** Pins or rejects one of a job's pictures (by its place in the job's `images`), or clears its mark with null. */
 export function setPictureMark(jobId: string, index: number, mark: PictureMark | null): { mark: PictureMark | null } {
   const row = db().prepare(`SELECT images FROM picture_jobs WHERE id = ?`).get(jobId) as { images: string } | undefined;

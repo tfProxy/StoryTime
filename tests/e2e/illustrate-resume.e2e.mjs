@@ -58,12 +58,14 @@ try {
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("a lamp in the rain");
   await queueButton.click();
   await until(() => posted() === 2, "the second job to be sent", 60);
-  await page.goto(`${BASE}/settings`);
-  await new Promise((r) => setTimeout(r, 2500));
-  ok((await jobs()).length === 1, "a job that finished while the page was away isn't recorded yet");
-  await open();
-  ok(await until(async () => (await jobs()).length === 2, "the finished job to be recorded", 40), "coming back records the job that finished meanwhile");
-  ok(await until(async () => (await tiles.count()) === 1, "its picture", 40), "…and shows its picture with the new ones");
+  // Moving to another page within the app: the app's picture queue keeps the job going.
+  await page.locator("summary[aria-label=Menu]").click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.waitForURL(/\/settings$/);
+  ok(await until(async () => (await jobs()).length === 2, "the job to be recorded while away", 60), "a job that finishes while another page is open is recorded");
+  await page.goBack();
+  await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
+  ok(await until(async () => (await tiles.count()) === 1, "its picture", 40), "…and coming back shows its picture with the new ones");
   ok((await jobs())[0].prompt === "a lamp in the rain", "…with the prompt it was made from");
 
   // ---- nothing is listed twice ----

@@ -128,7 +128,7 @@ async function finished(url: string, promptId: string): Promise<ComfyImage[] | n
   return saved.length ? saved : images;
 }
 
-/** A job of this chapter that ComfyUI still knows of, found by the tag StoryTime put on it (see jobTag). Oldest first. */
+/** A StoryTime job that ComfyUI still knows of, found by the tag StoryTime put on it (see jobTag). Oldest first. */
 export type TaggedJob = { promptId: string; tag: JobTag } & ({ state: "waiting" | "running" } | { state: "done"; images: ComfyImage[] });
 type JobState = { state: "waiting" | "running" } | { state: "done"; images: ComfyImage[] };
 
@@ -136,11 +136,11 @@ type JobState = { state: "waiting" | "running" } | { state: "done"; images: Comf
 type JobEntry = [number, string, unknown, unknown, unknown];
 
 /**
- * The chapter's jobs that ComfyUI is still running or waiting to run, and those it finished lately, so a
- * page that was refreshed meanwhile can pick them up again. Jobs without a full tag (made before this) are
- * not listed: there is not enough to record them with.
+ * StoryTime's jobs that ComfyUI is still running or waiting to run, and those it finished lately, so the
+ * app can pick them up again after a refresh. Only one chapter's, given `chapterId`. Jobs without a full tag
+ * (made before this) are not listed: there is not enough to record them with.
  */
-export async function listTaggedJobs(url: string, chapterId: string, limit = 200): Promise<TaggedJob[]> {
+export async function listTaggedJobs(url: string, chapterId: string | null = null, limit = 200): Promise<TaggedJob[]> {
   const [queue, history] = await Promise.all([
     json<{ queue_running?: JobEntry[]; queue_pending?: JobEntry[] }>(url, "/queue"),
     json<Record<string, HistoryEntry & { prompt?: JobEntry }>>(url, `/history?max_items=${limit}`),
@@ -148,7 +148,7 @@ export async function listTaggedJobs(url: string, chapterId: string, limit = 200
   const found: (TaggedJob & { no: number })[] = [];
   const add = (entry: JobEntry | undefined, state: JobState | null) => {
     const tag = entry && readTag(entry[3]);
-    if (!entry || !tag || !state || tag.chapterId !== chapterId) return;
+    if (!entry || !tag || !state || (chapterId !== null && tag.chapterId !== chapterId)) return;
     found.push({ promptId: entry[1], tag, no: Number(entry[0]) || 0, ...state });
   };
   for (const e of queue.queue_running ?? []) add(e, { state: "running" });

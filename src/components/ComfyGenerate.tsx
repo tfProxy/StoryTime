@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { saveSettings, useSettings } from "@/lib/settings";
@@ -10,14 +10,14 @@ import type { LoadedPrompt } from "./ImagePromptPanel";
 import type { JobProgress, MadeWith, PendingJob, Picture, StartMode } from "./pictures";
 import { editBlocked, usableEditPresets, type EditModels } from "./useEditModels";
 import AutoTextarea from "./AutoTextarea";
+import { usePictureQueue } from "./PictureQueue";
 import { LIMITS } from "@/lib/limits";
-import { buildEdit, EDIT_MODELS, editFilesText, editSize, editTuning, lightningSteps, usableLoras, type EditCheck, type EditLora, type EditTuning } from "@/lib/comfy/editModels";
-import { drawFilesText, drawPresetFor, drawPresetSummary, presetName, type DrawPreset, type EditPreset, type LoraSetting } from "@/lib/comfy/presets";
-import { uploadStart, type StartPicture, type Uploaded } from "@/lib/comfy/startPicture";
-import { builtinSampler, describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
+import { EDIT_MODELS, editTuning, lightningSteps, usableLoras } from "@/lib/comfy/editModels";
+import { drawPresetFor, drawPresetSummary, presetName, type DrawPreset, type EditPreset, type LoraSetting } from "@/lib/comfy/presets";
+import type { StartPicture } from "@/lib/comfy/startPicture";
 import { readEdit, readRedraw, writeEdit, writeRedraw } from "@/lib/comfy/editingState";
-import { cancelPrompt, listCheckpoints, listTaggedJobs, queuePrompt, waitForPictures, type ComfyImage, type Progress, type TaggedJob } from "@/lib/comfy/client";
-import type { JobRecord, JobTag } from "@/lib/comfy/jobTag";
+import { listCheckpoints } from "@/lib/comfy/client";
+import { denoiseOf, madeWithText, type JobInput } from "@/lib/comfy/makeJob";
 
 /** Sizes that suit SDXL (about one megapixel). */
 const SIZES: { label: string; width: number; height: number }[] = [
@@ -53,67 +53,6 @@ function SizeIcon({ width, height }: { width: number; height: number }) {
     </svg>
   );
 }
-
-/** Records a finished job in StoryTime's log; returns the record's id. */
-async function recordJob(job: Record<string, unknown>): Promise<string> {
-  const res = await fetch("/api/picture-jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(job) });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || typeof data.id !== "string") throw new Error(data.error ?? `Couldn't record the job (${res.status})`);
-  return data.id;
-}
-
-/** How long after the last click a job is sent, so quick clicks with the same settings make one job. */
-export const GATHER_MS = 800;
-/** The most pictures one job makes; a click beyond it starts another job. */
-export const MAX_BATCH = 8;
-
-/**
- * A job being made, as the Pictures panel shows it (a PendingJob without its Stop). The size is the size
- * setting, or the starting picture's once it is read.
- */
-type Queued = Omit<PendingJob, "stop">;
-
-/** Everything a job is made with, as it was when it was asked for. */
-type JobInput = {
-  prompt: string;
-  negative: string;
-  moment: ImageMoment;
-  comfy: ComfySettings;
-  /** The drawing preset, its LoRAs that are switched on and in ComfyUI, and the Redraw strength (for new pictures and Redraw). */
-  draw: DrawPreset;
-  drawLoras: EditLora[];
-  redraw: number;
-  start: StartPicture | null;
-  /** An edit of the starting picture by instruction, with the model to make it; null to redraw it or make new pictures. */
-  edit: {
-    check: EditCheck;
-    instruction: string;
-    strength: number;
-    /** With the model's speed-up (Qwen's Lightning LoRA). */
-    fast: boolean;
-    /** The author's LoRAs for the model that are switched on and in ComfyUI. */
-    loras: EditLora[];
-    /** The model's settings from Settings (steps, CFG, sampler…). */
-    tuning: EditTuning;
-  } | null;
-  /** The seed to use, or null for a random one. */
-  seed: number | null;
-};
-
-/** The strength a job's pictures are recorded with: a redraw's, an edit's when it is less than full, else null. */
-const denoiseOf = (i: JobInput) => (i.edit ? (i.edit.strength < 1 ? i.edit.strength : null) : i.start ? i.redraw : null);
-
-/** A job not sent yet, which more clicks can still add pictures to. */
-type Gathering = { key: string; input: JobInput; count: number; timer: ReturnType<typeof setTimeout> };
-
-/** What has to match for a click to join the job being gathered. */
-const sameJob = (a: JobInput) =>
-  JSON.stringify([
-    a.prompt, a.negative, a.moment, a.comfy.url, a.comfy.width, a.comfy.height, a.start?.key ?? null,
-    a.edit ? null : [a.draw.checkpoint, a.draw.workflow, a.draw.sampler, a.drawLoras], a.start && !a.edit ? a.redraw : null,
-    a.edit?.check.model.id ?? null, a.edit?.instruction ?? null,
-    a.edit?.strength ?? null, a.edit?.fast ?? null, a.edit?.loras ?? null, a.edit?.tuning ?? null, a.seed,
-  ]);
 
 /**
  * Where the settings a loaded picture was made with differ from the current ones: the change to make and
@@ -192,17 +131,16 @@ type Props = {
   onQueue?: (jobs: PendingJob[]) => void;
   /** An element at the bottom of the page's column to put Size, Queue and the queue's status in, so they stay in view; without it they sit at the end of this panel. */
   dock?: HTMLElement | null;
-  /** ComfyUI's ids of the jobs already in StoryTime's log, as the page opened. */
-  recorded?: string[];
 };
 
 /**
  * Makes pictures from the prompt on the ComfyUI machine, or from a starting picture: redrawn from the
- * prompt at a strength, or edited by an instruction with an edit model. The pictures go to `onPictures`.
+ * prompt at a strength, or edited by an instruction with an edit model. The jobs go to the app's picture
+ * queue (`PictureQueue`), so they go on when the page is left; the chapter's pictures go to `onPictures`.
  */
 export default function ComfyGenerate({
   chapterId, storyId, storyPreset, chapterPreset: savedPreset, moment, prompt, negative, loaded = null, start = null, onClearStart,
-  startMode = "redraw", onStartMode, editModels = { state: "checking" }, onPictures, onQueue, dock = null, recorded = [],
+  startMode = "redraw", onStartMode, editModels = { state: "checking" }, onPictures, onQueue, dock = null,
 }: Props) {
   const settings = useSettings();
   const comfy = settings.comfy;
@@ -261,40 +199,23 @@ export default function ComfyGenerate({
   // The edit preset's LoRA stack, and the LoRAs of it an edit uses now.
   const loraStack = editPreset?.loras ?? [];
   const { loras: editLoras, missing: missingLoras } = usableLoras(loraStack, chosen?.loras ?? []);
-  // The jobs being made, oldest first; `jobs` holds what Stop needs for each.
-  const [queue, setQueue] = useState<Queued[]>([]);
-  const jobs = useRef(new Map<string, { promptId: string | null; ctl: AbortController; url: string }>());
-  // The newest job, while clicks can still add pictures to it.
-  const gathering = useRef<Gathering | null>(null);
-  // A job still gathering when the page is left is not sent.
-  useEffect(() => () => clearTimeout(gathering.current?.timer), []);
+  // This chapter's jobs being made, oldest first. The app's picture queue holds them, so they go on when the page is left.
+  const pictureQueue = usePictureQueue();
+  const { stop, listen } = pictureQueue;
+  const queue = useMemo(() => pictureQueue.jobs.filter((j) => j.chapterId === chapterId && j.state === "making"), [pictureQueue.jobs, chapterId]);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
-
-  function stop(key: string) {
-    const g = gathering.current;
-    if (g?.key === key) {
-      // Not sent yet: just drop it.
-      clearTimeout(g.timer);
-      gathering.current = null;
-      jobs.current.delete(key);
-      setQueue((prev) => prev.filter((q) => q.key !== key));
-      setStatus({ ok: true, text: "Stopped." });
-      return;
-    }
-    const j = jobs.current.get(key);
-    if (!j) return;
-    if (j.promptId) void cancelPrompt(j.url, j.promptId);
-    j.ctl.abort();
-  }
 
   // The Pictures panel shows the jobs, newest first, among the pictures.
   useEffect(() => {
-    // `stop` only uses refs and state setters, so any render's one will do.
     onQueue?.(queue.map((q) => ({ ...q, stop: () => stop(q.key) })).reverse());
-  }, [queue, onQueue]);
+  }, [queue, onQueue, stop]);
   useEffect(() => () => onQueue?.([]), [onQueue]);
-  // The starting picture's upload to ComfyUI, kept so the next job from it doesn't send it again.
-  const uploaded = useRef<{ key: string; upload: Promise<Uploaded> } | null>(null);
+  // The chapter's finished jobs come here: those that ended while the page was away first, then each as it ends.
+  const picturesTo = useRef(onPictures);
+  useEffect(() => {
+    picturesTo.current = onPictures;
+  }, [onPictures]);
+  useEffect(() => listen(chapterId, { onPictures: (p) => picturesTo.current?.(p), onStatus: setStatus }), [listen, chapterId]);
   // Each prompt loaded from a saved picture starts with a new seed again, until the author ticks the box.
   const [reuseSeed, setReuseSeed] = useState(false);
   const [seenLoad, setSeenLoad] = useState(0);
@@ -341,16 +262,12 @@ export default function ComfyGenerate({
   const changeEdit = (patch: Partial<EditPreset>) =>
     editPreset && set({ editPresets: comfy.editPresets.map((p) => (p.id === editPreset.id ? { ...p, ...patch } : p)) });
 
-  // Jobs found in ComfyUI's queue that this page has already picked up (see the effect after `resume`).
-  const picked = useRef(new Set<string>());
-
   const other = otherSettings(loaded?.settings ?? null, comfy, redrawStrength);
   const size = SIZES.find((s) => s.width === comfy.width && s.height === comfy.height);
 
   /**
-   * One click asks for one picture. Clicks with the same prompt and settings, each within GATHER_MS of the
-   * last, are gathered into one job (up to MAX_BATCH pictures); a click with anything changed sends the
-   * job being gathered at once and starts another.
+   * One click asks for one picture. The picture queue gathers quick clicks with the same prompt and
+   * settings into one job (see `PictureQueue`).
    */
   function ask() {
     setStatus(null);
@@ -368,32 +285,14 @@ export default function ComfyGenerate({
       edit: editing && chosen && tuning ? { check: chosen, instruction: instruction.trim(), strength: editStrength, fast, loras: editLoras, tuning } : null,
       seed: reuseSeed && loadedSeed !== null ? loadedSeed : null,
     };
-    const g = gathering.current;
-    if (g && sameJob(g.input) === sameJob(input) && g.count < MAX_BATCH) {
-      g.count += 1;
-      clearTimeout(g.timer);
-      g.timer = setTimeout(() => send(g), GATHER_MS);
-      const count = g.count;
-      setQueue((prev) => prev.map((q) => (q.key === g.key ? { ...q, count } : q)));
-      return;
-    }
-    if (g) {
-      clearTimeout(g.timer);
-      send(g);
-    }
-    const key = `job-${randomSeed().toString(36)}`;
-    jobs.current.set(key, { promptId: null, ctl: new AbortController(), url: comfy.url });
-    const next: Gathering = { key, input, count: 1, timer: setTimeout(() => send(next), GATHER_MS) };
-    gathering.current = next;
-    setQueue((prev) => [
-      ...prev,
-      {
-        key,
-        count: 1,
-        progress: { stage: "gathering" },
+    pictureQueue.ask({
+      chapterId,
+      storyId,
+      input,
+      view: {
         prompt: input.prompt,
         negative: input.negative,
-        checkpoint: input.edit ? editFilesText(input.edit.check, input.edit.fast, input.edit.loras) : drawFilesText(draw.checkpoint, input.drawLoras),
+        checkpoint: madeWithText(input),
         width: comfy.width,
         height: comfy.height,
         denoise: denoiseOf(input),
@@ -402,227 +301,8 @@ export default function ComfyGenerate({
         editModel: input.edit?.check.model.id ?? null,
         moment,
       },
-    ]);
+    });
   }
-
-  /** Sends a gathered job: no more clicks join it. */
-  function send(g: Gathering) {
-    if (gathering.current === g) gathering.current = null;
-    void generate(g.key, g.input, g.count);
-  }
-
-  /**
-   * Queues one job with the prompt and settings it was asked with, and waits for its pictures. Several can
-   * run at once: ComfyUI makes them one after another, and each shows its own progress and Stop.
-   */
-  async function generate(key: string, input: JobInput, count: number) {
-    const job = jobs.current.get(key);
-    if (!job) return;
-    const { ctl } = job;
-    const { prompt, negative, moment, comfy, draw, drawLoras, start, edit } = input;
-    const setProgress = (progress: Progress) => {
-      setQueue((prev) => prev.map((q) => (q.key === key ? { ...q, progress } : q)));
-    };
-    setProgress({ stage: "queued", ahead: null });
-    const seed = input.seed ?? randomSeed();
-    // Names this job's WebSocket connection, so ComfyUI sends its progress there.
-    const clientId = `storytime-${randomSeed().toString(36)}`;
-    try {
-      // An edit uses its own workflow, so the drawing preset doesn't matter.
-      const base = edit ? null : parseWorkflow(draw.workflow);
-      if (edit) {
-        if (!start) throw new Error("Choose a picture to edit first.");
-        if (!edit.instruction) throw new Error("Say what to change first.");
-      } else {
-        if (!prompt) throw new Error("Write or type a prompt first.");
-        if (describeWorkflow(base!).checkpoint && !draw.checkpoint) {
-          throw new Error(`The drawing preset “${presetName(draw)}” has no checkpoint. Choose one in Settings › Drawing.`);
-        }
-        if (start && !describeWorkflow(base!).image) {
-          throw new Error("Your workflow can't start from a picture. Clear the starting picture, or see Settings for how to allow it.");
-        }
-      }
-      let from: Uploaded | null = null;
-      if (start) {
-        setProgress({ stage: "uploading" });
-        if (uploaded.current?.key !== start.key) uploaded.current = { key: start.key, upload: uploadStart(comfy.url, start) };
-        const upload = uploaded.current;
-        try {
-          from = await upload.upload;
-        } catch (e) {
-          // the next job tries the upload again
-          if (uploaded.current === upload) uploaded.current = null;
-          throw e;
-        }
-        setProgress({ stage: "queued", ahead: null });
-      }
-      // From a picture the pictures are its size; an edit is its shape at about one megapixel.
-      const { width, height } = from && edit ? editSize(from.width, from.height) : { width: from?.width ?? comfy.width, height: from?.height ?? comfy.height };
-      if (from) setQueue((prev) => prev.map((q) => (q.key === key ? { ...q, width, height } : q)));
-      const prefix = filenamePrefix(storyId, chapterId);
-      const workflow =
-        edit && from
-          ? buildEdit(
-              edit.check,
-              { image: from.name, instruction: edit.instruction, seed, count, width, height, prefix, denoise: edit.strength, loras: edit.loras, tuning: edit.tuning },
-              edit.fast,
-            )
-          : fillWorkflow(base!, {
-              prompt,
-              negative,
-              checkpoint: draw.checkpoint,
-              width,
-              height,
-              count,
-              seed,
-              prefix,
-              sampler: builtinSampler(draw.sampler),
-              loras: drawLoras,
-              ...(from && { image: from.name, denoise: input.redraw }),
-            });
-      // What the pictures were made with: the edit model's files, or the drawing preset's checkpoint and LoRAs.
-      const madeWith = edit ? editFilesText(edit.check, edit.fast, edit.loras) : drawFilesText(draw.checkpoint, drawLoras);
-      const denoise = from ? denoiseOf(input) : null;
-      // Everything the log records about the job. It goes to ComfyUI with the job too, so a page refreshed
-      // while the job is being made can find it again (see `resumeJobs`).
-      const record: JobRecord = {
-        prompt,
-        negative,
-        checkpoint: madeWith,
-        width,
-        height,
-        seed,
-        count,
-        moment,
-        ...(from && { source: start!.source, denoise }),
-        ...(edit && { instruction: edit.instruction, edit_model: edit.check.model.id }),
-      };
-      if (ctl.signal.aborted) throw new DOMException("Stopped", "AbortError");
-      const promptId = await queuePrompt(comfy.url, workflow, clientId, { storytime: { chapterId, storyId, clientId, job: record } satisfies JobTag });
-      job.promptId = promptId;
-      // Stopped while it was being queued: take it off ComfyUI's queue again.
-      if (ctl.signal.aborted) {
-        void cancelPrompt(comfy.url, promptId);
-        throw new DOMException("Stopped", "AbortError");
-      }
-      await finish(key, comfy.url, ctl.signal, promptId, clientId, record);
-    } catch (e) {
-      failed(e);
-    } finally {
-      jobs.current.delete(key);
-      setQueue((prev) => prev.filter((q) => q.key !== key));
-    }
-  }
-
-  /** Says why a job stopped before its pictures were shown. */
-  function failed(e: unknown) {
-    if (e instanceof DOMException && e.name === "AbortError") setStatus({ ok: true, text: "Stopped." });
-    else setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
-  }
-
-  /** Waits for a job ComfyUI has queued, records it and hands on its pictures. */
-  async function finish(key: string, url: string, signal: AbortSignal, promptId: string, clientId: string, record: JobRecord) {
-    const setProgress = (progress: Progress) => {
-      setQueue((prev) => prev.map((q) => (q.key === key ? { ...q, progress } : q)));
-    };
-    const images = await waitForPictures(url, promptId, clientId, setProgress, signal);
-    if (images.length === 0) throw new Error("ComfyUI finished but sent back no pictures. Does the workflow end in a Save Image node?");
-    await recordAndShow(promptId, record, images);
-  }
-
-  /** Records a finished job in the log and hands on its pictures. */
-  async function recordAndShow(promptId: string, record: JobRecord, images: ComfyImage[]) {
-    // The pictures are usable even if this fails; they just won't be listed later or keep their prompt.
-    let jobId: string | null = null;
-    try {
-      jobId = await recordJob({ chapter_id: chapterId, prompt_id: promptId, ...record, images });
-    } catch (e) {
-      setStatus({ ok: false, text: `The pictures are ready, but StoryTime couldn't record how they were made: ${e instanceof Error ? e.message : String(e)}` });
-    }
-    onPictures?.(
-      images.map((image, i) => ({
-        key: `${jobId ?? promptId}-${i}`,
-        index: i,
-        mark: null,
-        fresh: true,
-        image,
-        jobId,
-        prompt: record.prompt,
-        negative: record.negative,
-        seed: record.seed,
-        checkpoint: record.checkpoint,
-        width: record.width,
-        height: record.height,
-        denoise: record.denoise ?? null,
-        source: record.source ?? null,
-        instruction: record.instruction ?? null,
-        editModel: record.edit_model ?? null,
-        moment: record.moment,
-        chapterId,
-        madeAt: Date.now(),
-        batch: images.length,
-      })),
-    );
-  }
-
-  /** Shows a job found in ComfyUI's queue like one asked for here, and records it when it finishes. */
-  function resume(url: string, found: TaggedJob) {
-    const { job } = found.tag;
-    const key = `job-${randomSeed().toString(36)}`;
-    const ctl = new AbortController();
-    jobs.current.set(key, { promptId: found.promptId, ctl, url });
-    setQueue((prev) => [
-      ...prev,
-      {
-        key,
-        count: job.count,
-        progress: { stage: "queued", ahead: null },
-        prompt: job.prompt,
-        negative: job.negative,
-        checkpoint: job.checkpoint,
-        width: job.width,
-        height: job.height,
-        denoise: job.denoise ?? null,
-        source: job.source ?? null,
-        instruction: job.instruction ?? null,
-        editModel: job.edit_model ?? null,
-        moment: job.moment,
-      },
-    ]);
-    finish(key, url, ctl.signal, found.promptId, found.tag.clientId, job)
-      .catch(failed)
-      .finally(() => {
-        jobs.current.delete(key);
-        setQueue((prev) => prev.filter((q) => q.key !== key));
-      });
-  }
-
-  // A page opened (or refreshed) while ComfyUI is still making this chapter's pictures, or finished some that
-  // were never recorded because the page that asked for them was gone, picks them up: the unfinished jobs
-  // show as being made again, and the finished ones are recorded. `recorded` are the jobs already in the log.
-  // It comes after `recordAndShow` and `resume`, which it calls.
-  useEffect(() => {
-    if (!comfy.url) return;
-    const url = comfy.url;
-    let live = true;
-    listTaggedJobs(url, chapterId).then(
-      (found) => {
-        if (!live) return;
-        for (const j of found) {
-          const mine = [...jobs.current.values()].some((m) => m.promptId === j.promptId);
-          if (mine || recorded.includes(j.promptId) || picked.current.has(j.promptId)) continue;
-          picked.current.add(j.promptId);
-          if (j.state === "done") void recordAndShow(j.promptId, j.tag.job, j.images);
-          else resume(url, j);
-        }
-      },
-      () => {}, // ComfyUI not reachable: the checkpoint check above says so
-    );
-    return () => {
-      live = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per chapter and address; the functions only use refs and setters
-  }, [comfy.url, chapterId]);
 
   // Every hook is above this.
   if (!comfy.url) {

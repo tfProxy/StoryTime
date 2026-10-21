@@ -192,3 +192,14 @@ ok(r.json.jobs.length > 0 && r.json.jobs.every((j) => j.chapter_id === two), "no
   await no("no prompt and no instruction", { instruction: undefined, edit_model: undefined });
   ok((await call("GET", `/api/picture-jobs?chapter=${ch}`)).json.jobs.length === 2, "…and nothing was recorded by those");
 }
+
+// ---- which ComfyUI jobs are already recorded (the picture queue checks before recording jobs it finds in ComfyUI) ----
+{
+  const unknown = `never-${Date.now()}`;
+  const k = await call("POST", "/api/picture-jobs/known", { prompt_ids: ["p1", "p12", unknown] });
+  ok(k.status === 200 && k.json.known.sort().join() === "p1,p12", "the known list names the recorded jobs, once each, and not the others");
+  const none = await call("POST", "/api/picture-jobs/known", { prompt_ids: [] });
+  ok(none.status === 200 && none.json.known.length === 0, "…and nothing for no ids");
+  const bad = await call("POST", "/api/picture-jobs/known", { prompt_ids: "p1" });
+  ok(bad.status === 400, "…and refuses ids that aren't a list");
+}
