@@ -46,8 +46,156 @@ a {
   border-bottom: 1px solid var(--line);
 }
 
+/* The picture queue's list opens from here, so it lines up with the header's right edge on a phone. */
+.header-tools {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .site-menu {
   position: relative;
+}
+
+/* The picture queue in the header (PictureQueueStatus). */
+.picture-queue-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.2rem 0.6rem;
+  min-height: 2.2rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.picture-queue-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.picture-queue-spinner {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: picture-queue-spin 1s linear infinite;
+}
+
+@keyframes picture-queue-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .picture-queue-spinner {
+    animation: none;
+    border-color: var(--accent);
+  }
+}
+
+.picture-queue-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.picture-queue-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.3rem);
+  z-index: 50;
+  width: min(22rem, calc(100vw - 2rem));
+  max-height: min(32rem, calc(100vh - 5rem));
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+
+.picture-queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.picture-queue-job {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.6rem 0.8rem;
+}
+
+.picture-queue-job + .picture-queue-job {
+  border-top: 1px solid var(--line);
+}
+
+.picture-queue-head {
+  display: grid;
+}
+
+.picture-queue-job .meta {
+  margin: 0;
+}
+
+.picture-queue-head .meta {
+  font-size: 0.85rem;
+}
+
+.picture-queue-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.picture-queue-job progress {
+  width: 100%;
+}
+
+.picture-queue-thumbs {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.picture-queue-thumbs img {
+  height: 3.5rem;
+  width: auto;
+  max-width: 6rem;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--line);
+}
+
+.picture-queue-message {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.picture-queue-text-button {
+  background: none;
+  border: 0;
+  padding: 0.2rem 0;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.picture-queue-clear {
+  display: block;
+  width: 100%;
+  padding: 0.55rem 0.8rem;
+  border-top: 1px solid var(--line);
+  text-align: left;
 }
 
 .site-menu > summary {

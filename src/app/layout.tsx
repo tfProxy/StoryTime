@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import PictureQueueProvider from "@/components/PictureQueue";
+import PictureQueueStatus from "@/components/PictureQueueStatus";
 import SiteMenu from "@/components/SiteMenu";
 import "./globals.css";
 
@@ -19,7 +20,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <Link href="/" className="brand">
               StoryTime
             </Link>
-            <SiteMenu />
+            <div className="header-tools">
+              <PictureQueueStatus />
+              <SiteMenu />
+            </div>
           </header>
           <main>{children}</main>
         </PictureQueueProvider>

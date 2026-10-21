@@ -174,6 +174,18 @@ export function getChapter(id: string): Chapter | undefined {
     .get(id) as Chapter | undefined;
 }
 
+/** The titles of these chapters and of their stories, by chapter id (unknown ids are left out): what the picture queue's list shows. */
+export function chapterLabels(ids: string[]): Record<string, { title: string; story_title: string }> {
+  if (ids.length === 0) return {};
+  const rows = db()
+    .prepare(
+      `SELECT c.id, c.title, s.title AS story_title FROM chapters c JOIN stories s ON s.id = c.story_id
+        WHERE c.id IN (${ids.map(() => "?").join(",")})`,
+    )
+    .all(...ids) as { id: string; title: string; story_title: string }[];
+  return Object.fromEntries(rows.map((r) => [r.id, { title: r.title, story_title: r.story_title }]));
+}
+
 export function getChoices(chapterId: string): Choice[] {
   return db()
     .prepare(
