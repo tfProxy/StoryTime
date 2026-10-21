@@ -9,10 +9,14 @@ import { DrawingSettings, EditSettings, usePictureSetup } from "./PictureSetting
 import { EDIT_MODEL_IDS } from "@/lib/comfy/editModels";
 import {
   exportSettingsJson,
+  favoriteFor,
+  favoritesFor,
   findConnection,
   importSettingsJson,
+  MODEL_USES,
   modelLabel,
   newConnection,
+  newFavorite,
   parseRefKey,
   refKey,
   removeConnection,
@@ -20,7 +24,9 @@ import {
   saveSettings,
   useSettings,
   type Connection,
+  type Favorite,
   type ModelRef,
+  type ModelUse,
   type Settings,
 } from "@/lib/settings";
 
@@ -229,24 +235,79 @@ function ConnectionCard({
   );
 }
 
-/** A default-model dropdown over the starred models. */
+/** One starred model's settings: nickname, thinking, and the jobs it is offered for. */
+function ModelCard({
+  fav,
+  settings,
+  onChange,
+  onRemove,
+}: {
+  fav: Favorite;
+  settings: Settings;
+  onChange: (patch: Partial<Favorite>) => void;
+  onRemove: () => void;
+}) {
+  const conn = findConnection(settings, fav.connectionId);
+  const offered = (u: ModelUse) => !fav.hiddenFrom.includes(u);
+  const setOffered = (u: ModelUse, on: boolean) =>
+    onChange({ hiddenFrom: on ? fav.hiddenFrom.filter((x) => x !== u) : [...fav.hiddenFrom, u] });
+  return (
+    <fieldset className="card model-card" aria-label={fav.label.trim() || fav.model}>
+      <legend>
+        <span style={{ overflowWrap: "anywhere" }}>{fav.model}</span>
+        <span className="meta"> · {conn?.name || (conn ? providerInfo(conn.kind).label : "")}</span>
+      </legend>
+      <label>
+        Nickname <small>(optional)</small>
+        <input aria-label={`Nickname for ${fav.model}`} value={fav.label} onChange={(e) => onChange({ label: e.target.value })} />
+      </label>
+      <label className="inline-label">
+        <input type="checkbox" checked={fav.disableThinking} onChange={(e) => onChange({ disableThinking: e.target.checked })} />
+        Disable thinking
+      </label>
+      <fieldset className="model-uses">
+        <legend>Offer this model for</legend>
+        {MODEL_USES.map((u) => (
+          <label key={u.id} className="inline-label">
+            <input type="checkbox" checked={offered(u.id)} onChange={(e) => setOffered(u.id, e.target.checked)} />
+            <span>
+              {u.label} <small>({u.hint})</small>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      <div className="row">
+        <button type="button" className="secondary" onClick={onRemove} aria-label={`Unstar ${fav.model}`}>
+          Remove
+        </button>
+      </div>
+    </fieldset>
+  );
+}
+
+/** A default-model dropdown over the starred models offered for its job. */
 function DefaultSelect({
   settings,
   value,
+  use,
   blankLabel,
   onChange,
 }: {
   settings: Settings;
   value: ModelRef | null;
+  use: ModelUse;
   blankLabel: string;
   onChange: (ref: ModelRef | null) => void;
 }) {
-  const starred = !value || settings.favorites.some((f) => sameRef(f, value));
+  const offered = favoritesFor(settings, use);
+  const listed = !value || offered.some((f) => sameRef(f, value));
+  // Still the default, but no longer offered for this job: say so rather than hide it.
+  const why = value && favoriteFor(settings, value) ? " (not offered for this)" : "";
   return (
     <select value={value ? refKey(value) : ""} onChange={(e) => onChange(e.target.value ? parseRefKey(e.target.value) : null)}>
       <option value="">{blankLabel}</option>
-      {value && !starred && <option value={refKey(value)}>{modelLabel(settings, value)}</option>}
-      {settings.favorites.map((f) => (
+      {value && !listed && <option value={refKey(value)}>{modelLabel(settings, value) + why}</option>}
+      {offered.map((f) => (
         <option key={refKey(f)} value={refKey(f)}>
           {modelLabel(settings, f)}
         </option>
@@ -309,14 +370,14 @@ export default function SettingsForm() {
     } else {
       // The first model starred becomes the default, so a fresh setup works straight away.
       update({
-        favorites: [...settings.favorites, { ...ref, label: "" }],
+        favorites: [...settings.favorites, newFavorite(ref)],
         defaults: settings.defaults.main ? settings.defaults : { ...settings.defaults, main: ref },
       });
     }
   }
 
-  function renameFavorite(ref: ModelRef, label: string) {
-    update({ favorites: settings.favorites.map((f) => (sameRef(f, ref) ? { ...f, label } : f)) });
+  function updateFavorite(ref: ModelRef, patch: Partial<Favorite>) {
+    update({ favorites: settings.favorites.map((f) => (sameRef(f, ref) ? { ...f, ...patch } : f)) });
   }
 
   async function tryIt() {
@@ -454,30 +515,24 @@ export default function SettingsForm() {
             </p>
           ) : (
             <>
-              <p className="meta">These are the models you can switch between while writing. A nickname is optional.</p>
-              <ul className="codex-picks">
-                {settings.favorites.map((f) => {
-                  const conn = findConnection(settings, f.connectionId);
-                  return (
-                    <li key={refKey(f)} className="codex-pick" style={{ flexWrap: "wrap" }}>
-                      <span style={{ flex: "1 1 12rem", overflowWrap: "anywhere" }}>
-                        {f.model}
-                        <span className="meta"> · {conn?.name || (conn ? providerInfo(conn.kind).label : "")}</span>
-                      </span>
-                      <input
-                        aria-label={`Nickname for ${f.model}`}
-                        placeholder="Nickname"
-                        value={f.label}
-                        onChange={(e) => renameFavorite(f, e.target.value)}
-                        style={{ flex: "1 1 8rem", width: "auto" }}
-                      />
-                      <button type="button" className="secondary" onClick={() => toggleFavorite(f)} aria-label={`Unstar ${f.model}`}>
-                        Remove
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+              <p className="meta">
+                These are the models you can switch between while writing. Each is offered for every job unless you
+                untick it, so a big model can be kept for chapters and out of the summary and suggestion pickers.
+                Disable thinking asks a model to skip extended thinking, for faster and cheaper replies (sent as
+                thinking: disabled to Anthropic, reasoning: {"{"}effort: none{"}"} to OpenRouter and reasoning_effort: none
+                to others); leave it off for models that only work with thinking or reject it.
+              </p>
+              <div className="model-cards">
+                {settings.favorites.map((f) => (
+                  <ModelCard
+                    key={refKey(f)}
+                    fav={f}
+                    settings={settings}
+                    onChange={(patch) => updateFavorite(f, patch)}
+                    onRemove={() => toggleFavorite(f)}
+                  />
+                ))}
+              </div>
             </>
           )}
 
@@ -486,6 +541,7 @@ export default function SettingsForm() {
             <DefaultSelect
               settings={settings}
               value={settings.defaults.main}
+              use="write"
               blankLabel="Choose a starred model…"
               onChange={(r) => update({ defaults: { ...settings.defaults, main: r } })}
             />
@@ -495,6 +551,7 @@ export default function SettingsForm() {
             <DefaultSelect
               settings={settings}
               value={settings.defaults.cheap}
+              use="summary"
               blankLabel="Same as the default model"
               onChange={(r) => update({ defaults: { ...settings.defaults, cheap: r } })}
             />
@@ -524,23 +581,6 @@ export default function SettingsForm() {
               value={settings.contextTokens}
               onChange={(e) => update({ contextTokens: Math.max(1000, Number(e.target.value) || 1000) })}
             />
-          </label>
-
-          <label className="row" style={{ alignItems: "flex-start" }}>
-            <input
-              type="checkbox"
-              style={{ width: "auto" }}
-              checked={settings.disableThinking}
-              onChange={(e) => update({ disableThinking: e.target.checked })}
-            />
-            <span>
-              Disable thinking{" "}
-              <small>
-                (asks the model to skip extended thinking, for faster and cheaper replies. Sent as thinking: disabled to
-                Anthropic, reasoning: {"{"}effort: none{"}"} to OpenRouter and reasoning_effort: none to others; turn it
-                off if your model rejects that.)
-              </small>
-            </span>
           </label>
 
           <label className="row" style={{ alignItems: "flex-start" }}>

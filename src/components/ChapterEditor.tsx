@@ -324,10 +324,10 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const setModel = (job: "write" | "suggest", ref: ModelRef | null) =>
     setDraft((d) => (d ? { ...d, models: { ...d.models, [job]: ref ?? undefined } } : d));
   const writePicker = (
-    <ModelPicker label="Model for writing" role="main" value={writeModel} onChange={(r) => setModel("write", r)} />
+    <ModelPicker label="Model for writing" role="main" use="write" value={writeModel} onChange={(r) => setModel("write", r)} />
   );
   const suggestPicker = (
-    <ModelPicker label="Model for suggestions" role="cheap" value={suggestModel} onChange={(r) => setModel("suggest", r)} />
+    <ModelPicker label="Model for suggestions" role="cheap" use="suggest" value={suggestModel} onChange={(r) => setModel("suggest", r)} />
   );
   // Ideas already added as choices, by the text they were added with.
   const promoted = draft.promoted ?? {};

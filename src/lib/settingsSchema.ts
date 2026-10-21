@@ -34,10 +34,24 @@ export type Connection = {
 /** A model on a particular connection. */
 export type ModelRef = { connectionId: string; model: string };
 
+/** The jobs a starred model can be offered for; each is a model picker (and, for some, a default) in the app. */
+export const MODEL_USES = [
+  { id: "write", label: "Writing chapters", hint: "the writing picker and the default model" },
+  { id: "suggest", label: "Suggestions", hint: "ideas, choices and button text" },
+  { id: "summary", label: "Summaries and small jobs", hint: "the cheaper model: summaries and codex scans" },
+  { id: "picture", label: "Picture prompts", hint: "the Illustrate page" },
+] as const;
+export type ModelUse = (typeof MODEL_USES)[number]["id"];
+const MODEL_USE_IDS = MODEL_USES.map((u) => u.id) as [ModelUse, ...ModelUse[]];
+
 /** A model starred in Settings; these are what the pickers on the writing page offer. */
 export type Favorite = ModelRef & {
   /** Optional nickname shown instead of the model id. */
   label: string;
+  /** Ask this model not to use extended thinking / reasoning. Off for models that only work with it. */
+  disableThinking: boolean;
+  /** Jobs this model is not offered for. Empty (the default) means it is offered everywhere, including jobs added later. */
+  hiddenFrom: ModelUse[];
 };
 
 export type Settings = {
@@ -53,8 +67,6 @@ export type Settings = {
   temperature: number | null;
   /** Rough budget for the prompt context, so small local models aren't overflowed. */
   contextTokens: number;
-  /** Ask the model not to use extended thinking / reasoning. */
-  disableThinking: boolean;
   /** After the AI writes a chapter, also suggest choices for its ending (one more call to the cheaper model). */
   autoSuggestChoices: boolean;
   /** How picture prompts are written: comma-separated tags (SDXL, Pony, SD 1.5) or plain sentences (Flux, SD3). */
@@ -88,7 +100,6 @@ export const DEFAULT_SETTINGS: Settings = {
   defaults: { main: null, cheap: null },
   temperature: null,
   contextTokens: 8000,
-  disableThinking: false,
   autoSuggestChoices: false,
   imagePromptStyle: "tags",
   imagePromptModel: null,
@@ -106,7 +117,15 @@ const connectionSchema = z.object({
   freeComfy: z.boolean().catch(false),
 });
 const refSchema = z.object({ connectionId: z.string().min(1), model: z.string().trim().min(1) });
-const favoriteSchema = refSchema.extend({ label: z.string().catch("") });
+const favoriteSchema = refSchema.extend({
+  label: z.string().catch(""),
+  // Missing in settings from before it was per model; parseSettings fills it in from the old global switch.
+  disableThinking: z.boolean().optional().catch(undefined),
+  hiddenFrom: z
+    .array(z.unknown())
+    .catch([])
+    .transform((xs) => MODEL_USE_IDS.filter((u) => xs.includes(u))),
+});
 
 const loraSchema = z.object({
   name: z.string().max(500),
@@ -219,7 +238,6 @@ const settingsSchema = z.object({
     .catch(DEFAULT_SETTINGS.defaults),
   temperature: z.number().min(0).max(2).nullable().catch(null),
   contextTokens: z.number().int().min(1000).max(2_000_000).catch(DEFAULT_SETTINGS.contextTokens),
-  disableThinking: z.boolean().catch(false),
   autoSuggestChoices: z.boolean().catch(false),
   imagePromptStyle: z.enum(["tags", "natural"]).catch("tags"),
   imagePromptModel: refSchema.nullable().catch(null),
@@ -264,11 +282,21 @@ export function parseSettings(raw: unknown): Settings {
   const parsed = settingsSchema.safeParse(raw && typeof raw === "object" ? raw : {});
   if (!parsed.success) return DEFAULT_SETTINGS;
   const s = parsed.data;
+  // "Disable thinking" used to be one switch for every model; settings from then keep it on each starred model.
+  const legacyThinking = isRecord(raw) && raw.disableThinking === true;
   // Drop duplicates, and anything pointing at a connection that no longer exists.
   const seen = new Set<string>();
   const connections = s.connections.filter((c) => !seen.has(c.id) && seen.add(c.id));
   const favs = new Set<string>();
-  const favorites = s.favorites.filter((f) => seen.has(f.connectionId) && !favs.has(refKey(f)) && favs.add(refKey(f)));
+  const favorites: Favorite[] = s.favorites
+    .filter((f) => seen.has(f.connectionId) && !favs.has(refKey(f)) && favs.add(refKey(f)))
+    .map((f) => ({
+      connectionId: f.connectionId,
+      model: f.model,
+      label: f.label,
+      disableThinking: f.disableThinking ?? legacyThinking,
+      hiddenFrom: f.hiddenFrom,
+    }));
   const live = (r: ModelRef | null) => (r && seen.has(r.connectionId) ? { connectionId: r.connectionId, model: r.model } : null);
   return {
     ...s,
@@ -307,6 +335,19 @@ export function findConnection(s: Settings, id: string): Connection | undefined 
 export function usableRef(s: Settings, r: ModelRef | null | undefined): ModelRef | null {
   return r && findConnection(s, r.connectionId) ? r : null;
 }
+
+/** The starred model's settings, if it is starred. */
+export function favoriteFor(s: Settings, r: ModelRef): Favorite | undefined {
+  return s.favorites.find((f) => sameRef(f, r));
+}
+
+/** The starred models offered for a job (all of them unless a model opted out of it). */
+export function favoritesFor(s: Settings, use: ModelUse): Favorite[] {
+  return s.favorites.filter((f) => !f.hiddenFrom.includes(use));
+}
+
+/** A newly starred model: offered for every job, with thinking left as the model does it. */
+export const newFavorite = (r: ModelRef): Favorite => ({ connectionId: r.connectionId, model: r.model, label: "", disableThinking: false, hiddenFrom: [] });
 
 /** The default model for a kind of job. */
 export function defaultRef(s: Settings, role: "main" | "cheap"): ModelRef | null {

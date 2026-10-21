@@ -184,6 +184,7 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
         <ModelPicker
           label="Model for picture prompts"
           role="cheap"
+          use="picture"
           value={model}
           onChange={(ref) => void saveSettings({ ...settings, imagePromptModel: ref })}
         />
