@@ -1476,8 +1476,7 @@ main:has(.illustrate-grid) {
   gap: 0.4rem;
 }
 
-.picture-views button,
-button.undo {
+.picture-views button {
   padding: 0.3rem 0.65rem;
   font-size: 0.9rem;
 }
@@ -1646,7 +1645,7 @@ dialog.picture-viewer::backdrop {
 
 
 /*
- * A picture's buttons sit on its top right corner: pin and reject, then the ☰ menu (which has use as
+ * A picture's buttons sit on its top right corner: pin and trash, then the ☰ menu (which has use as
  * header and footer). A pinned picture has an accent outline; one in use has a badge on its top left corner.
  */
 .picture-frame {

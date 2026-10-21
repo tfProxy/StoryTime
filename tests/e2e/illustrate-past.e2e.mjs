@@ -1,5 +1,5 @@
 // The Illustrate page's Pictures panel with pictures made earlier (from the job log): the views (Pinned & new,
-// All, Rejected, Other chapters), pinning, rejecting, restoring and Undo, what shows on return, a picture
+// All, Trashed, Other chapters), pinning, trashing and restoring, what shows on return, a picture
 // ComfyUI has lost, and using and loading pictures from it. Jobs are put in the log through the API; the
 // pictures come from a fake ComfyUI.
 import { launch } from "./browser.mjs";
@@ -76,7 +76,7 @@ try {
   ok(await viewButton(/^Pinned & new/).getAttribute("aria-pressed") === "true", "the Pictures panel opens on Pinned & new");
   ok(await tiles.count() === 1 && (await heads())[0] === "lantern glow number 4", "…which, on coming back, shows only the pinned picture");
   ok(await tiles.first().getByRole("button", { name: "Unpin" }).getAttribute("aria-pressed") === "true" && (await tiles.first().getAttribute("class")).includes("pinned"), "…marked as pinned");
-  ok(await viewButton("Pinned & new (1)").count() === 1 && await viewButton("All (13)").count() === 1 && await viewButton("Rejected (1)").count() === 1, "the views count their pictures: 1 pinned, 13 not rejected, 1 rejected");
+  ok(await viewButton("Pinned & new (1)").count() === 1 && await viewButton("All (13)").count() === 1 && await viewButton("Trashed (1)").count() === 1, "the views count their pictures: 1 pinned, 13 not trashed, 1 trashed");
   ok(await gallery.getByRole("button", { name: "Clear unpinned" }).count() === 0, "there is nothing to clear on return");
 
   // ---- All: every picture but the rejected, grouped by prompt, newest first ----
@@ -91,33 +91,33 @@ try {
   const gone = tileFor("a picture ComfyUI has lost");
   await gone.getByText("ComfyUI no longer has this picture").waitFor();
   await gone.getByRole("button", { name: "More" }).click();
-  ok((await gone.getByRole("menuitem").allInnerTexts()).join("|") === "Load prompt|Info" && await gone.getByRole("button", { name: "Reject" }).isEnabled(), "a picture ComfyUI has lost says so and can't be used (its menu only has Load prompt and Info), but can be rejected");
+  ok((await gone.getByRole("menuitem").allInnerTexts()).join("|") === "Load prompt|Info" && await gone.getByRole("button", { name: "Trash" }).isEnabled(), "a picture ComfyUI has lost says so and can't be used (its menu only has Load prompt and Info), but can be trashed");
   await page.keyboard.press("Escape");
 
   // ---- pin ----
   const thirteen = tileFor("lantern glow number 13");
   await thirteen.getByRole("button", { name: "Pin" }).click();
-  await gallery.getByText("Pinned.").waitFor();
   ok(await until(async () => (await marksOf()).includes("#13:pinned"), "the pin to be saved"), "Pin saves the mark");
   ok(await viewButton("Pinned & new (2)").count() === 1, "…and Pinned & new counts it");
+  ok(await gallery.locator("p.ok").count() === 0 && await gallery.getByRole("button", { name: "Undo" }).count() === 0, "…without a message or an Undo button");
 
-  // ---- reject, and Undo ----
-  await gone.getByRole("button", { name: "Reject" }).click();
-  await gallery.getByText("Rejected: it is under Rejected now.").waitFor();
-  ok(await tileFor("a picture ComfyUI has lost").count() === 0 && await viewButton("All (12)").count() === 1 && await viewButton("Rejected (2)").count() === 1, "Reject hides the picture from All and counts it under Rejected");
-  await gallery.getByRole("button", { name: "Undo" }).click();
-  await gallery.getByText("Undone.").waitFor();
-  ok(await tileFor("a picture ComfyUI has lost").count() === 1 && await viewButton("Rejected (1)").count() === 1, "Undo brings it back");
-  ok(await until(async () => (await marksOf())[0] === "a picture ComfyUI has lost:-", "the undo to be saved"), "…and clears the saved mark");
+  // ---- trash ----
+  ok((await gone.getByRole("button", { name: "Trash" }).innerHTML()).includes("<svg"), "the Trash button shows a trash can");
+  await gone.getByRole("button", { name: "Trash" }).click();
+  ok(await until(async () => (await marksOf())[0] === "a picture ComfyUI has lost:rejected", "the trash to be saved"), "Trash saves the mark");
+  ok(await tileFor("a picture ComfyUI has lost").count() === 0 && await viewButton("All (12)").count() === 1 && await viewButton("Trashed (2)").count() === 1, "…hides the picture from All and counts it under Trashed");
+  ok(await gallery.locator("p.ok").count() === 0, "…without a message");
 
-  // ---- Rejected: restore ----
-  await showView(/^Rejected/);
-  ok(await tiles.count() === 1 && (await heads())[0] === "lantern glow number 6", "Rejected shows the rejected picture");
+  // ---- Trashed: restore ----
+  await showView(/^Trashed/);
+  ok(await tiles.count() === 2 && (await heads()).includes("lantern glow number 6"), "Trashed shows the trashed pictures");
   ok((await tiles.first().getAttribute("class")).includes("rejected"), "…dimmed");
-  await tiles.first().getByRole("button", { name: "Restore" }).click();
-  await gallery.getByText("Restored.").waitFor();
-  ok(await tiles.count() === 0 && await gallery.getByText("No rejected pictures.").isVisible(), "Restore takes it out of Rejected");
-  ok(await until(async () => (await marksOf()).includes("#6:-"), "the restore to be saved"), "…and clears its mark");
+  await tileFor("a picture ComfyUI has lost").getByRole("button", { name: "Restore" }).click();
+  await until(async () => (await tiles.count()) === 1, "the first restore");
+  await tileFor("lantern glow number 6").getByRole("button", { name: "Restore" }).click();
+  await gallery.getByText("No trashed pictures.").waitFor();
+  ok(await tiles.count() === 0, "Restore takes them out of Trashed");
+  ok(await until(async () => (await marksOf()).includes("#6:-") && (await marksOf())[0] === "a picture ComfyUI has lost:-", "the restores to be saved"), "…and clears their marks");
   await showView(/^All/);
   ok(await viewButton("All (14)").count() === 1 && await tileFor("lantern glow number 6").count() === 1, "…and it is back under All");
 
@@ -142,15 +142,16 @@ try {
   await tiles.nth(1).waitFor();
   ok(JSON.stringify(await heads()) === JSON.stringify(["lantern glow number 13", "lantern glow number 4"]), "coming back shows the two pinned pictures");
   await tileFor("lantern glow number 4").getByRole("button", { name: "Unpin" }).click();
-  await gallery.getByText("Unpinned.").waitFor();
+  await until(async () => (await tiles.count()) === 1, "the picture to be unpinned");
   ok(await tiles.count() === 1 && await viewButton("Pinned & new (1)").count() === 1, "unpinning an earlier picture takes it out of Pinned & new (it is under All)");
-  await gallery.getByRole("button", { name: "Undo" }).click();
-  await gallery.getByText("Undone.").waitFor();
-  ok(await tiles.count() === 2, "…and Undo pins it again");
+  await showView(/^All/);
+  await tileFor("lantern glow number 4").getByRole("button", { name: "Pin" }).click();
+  await showView(/^Pinned/);
+  ok(await until(async () => (await tiles.count()) === 2, "the picture to be pinned again"), "…and pinning it under All brings it back");
 
   // ---- a mark that can't be saved ----
   await page.route("**/mark", (route) => route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "disk full" }) }));
-  await tileFor("lantern glow number 4").getByRole("button", { name: "Reject" }).click();
+  await tileFor("lantern glow number 4").getByRole("button", { name: "Trash" }).click();
   await gallery.getByText("Couldn't change the mark: disk full").waitFor();
   ok(await tiles.count() === 2 && await tileFor("lantern glow number 4").getByRole("button", { name: "Unpin" }).count() === 1, "a mark the server refuses is put back, and the page says why");
   await page.unroute("**/mark");

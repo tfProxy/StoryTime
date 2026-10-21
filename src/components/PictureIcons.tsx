@@ -18,6 +18,18 @@ export function PinIcon({ filled = false }: IconProps) {
   );
 }
 
+/** A trash can: move the picture to Trashed. */
+export function TrashIcon() {
+  return (
+    <svg {...svg}>
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
 /** A page with its top band filled: the header picture. */
 export function HeaderIcon() {
   return (

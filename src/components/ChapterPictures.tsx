@@ -20,14 +20,7 @@ const short = (text: string, max: number) => (text.length > max ? `${text.slice(
 
 type View = PictureView | "other";
 
-/** What a mark change says, by the mark before and after. */
-function markText(before: PictureMark | null, after: PictureMark | null): string {
-  if (after === "pinned") return "Pinned.";
-  if (after === "rejected") return "Rejected: it is under Rejected now.";
-  return before === "rejected" ? "Restored." : "Unpinned.";
-}
-
-type Status = { ok: boolean; text: string; undo?: () => void };
+type Status = { ok: boolean; text: string };
 
 type Props = {
   chapterId: string;
@@ -58,8 +51,8 @@ type Props = {
 /**
  * The chapter's pictures, newest first, in runs made one after another with the same prompt and settings,
  * under the jobs still being made. "Pinned & new" (the default) shows the pinned ones, the chapter's header
- * and footer (as if pinned) and those made on this visit, so coming back shows only the pinned ones; "All" every one but the rejected; and "Rejected"
- * those, to restore one. "Other chapters" lists what was made for the rest of the story.
+ * and footer (as if pinned) and those made on this visit, so coming back shows only the pinned ones; "All" every one but the trashed; and "Trashed"
+ * those, to restore one (they are stored with the mark "rejected"). "Other chapters" lists what was made for the rest of the story.
  */
 export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, pictures, onChange, onClear, pending = [], onStart, editBlocked = null, onLoadPrompt, used, starting = null }: Props) {
   /** The slots a picture is saved in now. */
@@ -100,11 +93,12 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
   const VIEWS: { view: View; label: string }[] = [
     { view: "shortlist", label: `Pinned & new (${count("shortlist")})` },
     { view: "all", label: `All (${count("all")})` },
-    { view: "rejected", label: `Rejected (${count("rejected")})` },
+    { view: "rejected", label: `Trashed (${count("rejected")})` },
     { view: "other", label: "Other chapters" },
   ];
 
-  async function mark(p: Picture, next: PictureMark | null, undoable = true) {
+  // A mark shows on the picture itself, so only a failure is reported.
+  async function mark(p: Picture, next: PictureMark | null) {
     const before = p.mark;
     onChange(p.key, { mark: next });
     setStatus(null);
@@ -116,7 +110,6 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `the server answered ${res.status}`);
-      setStatus(undoable ? { ok: true, text: markText(before, next), undo: () => void mark({ ...p, mark: next }, before, false) } : { ok: true, text: "Undone." });
     } catch (e) {
       onChange(p.key, { mark: before });
       setStatus({ ok: false, text: `Couldn't change the mark: ${e instanceof Error ? e.message : String(e)}` });
@@ -135,7 +128,7 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
   }
 
   function empty(): string {
-    if (view === "rejected") return "No rejected pictures.";
+    if (view === "rejected") return "No trashed pictures.";
     if (view === "all") return "No pictures yet.";
     if (pictures.length === 0) {
       return "Pictures you make appear here, grouped by prompt. Pin the ones worth keeping (the thumbtack): when you come back, only pinned pictures show, and the rest are under All.";
@@ -165,14 +158,6 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
       {status && (
         <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>
           {status.text}
-          {status.undo && (
-            <>
-              {" "}
-              <button type="button" className="secondary undo" onClick={status.undo}>
-                Undo
-              </button>
-            </>
-          )}
         </p>
       )}
       {groups.map((group) => {

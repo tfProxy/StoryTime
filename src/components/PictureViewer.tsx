@@ -31,12 +31,12 @@ type Props = {
   editBlocked?: string | null;
   saver: PictureSaver;
   /** The panel's last message (a mark, a save), repeated here because the panel is hidden behind. */
-  status: { ok: boolean; text: string; undo?: () => void } | null;
+  status: { ok: boolean; text: string } | null;
 };
 
 /**
  * One picture as large as the screen allows, with the view's others a key or a swipe away: ← and → move,
- * P pins, X rejects (or restores), Esc closes. A modal <dialog>, so the page behind can't be reached.
+ * P pins, X trashes (or restores), Esc closes. A modal <dialog>, so the page behind can't be reached.
  */
 export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, onClose, onMark, onLoadPrompt, onInfo, onStart, editBlocked = null, saver, status }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -62,14 +62,14 @@ export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, 
 
   const markable = current.jobId !== null;
   const pin = () => markable && onMark(current, current.mark === "pinned" ? null : "pinned");
-  const reject = () => markable && onMark(current, current.mark === "rejected" ? null : "rejected");
+  const trash = () => markable && onMark(current, current.mark === "rejected" ? null : "rejected");
 
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === "ArrowLeft" && prev) onShow(prev.key);
     else if (e.key === "ArrowRight" && next) onShow(next.key);
     else if (e.key === "p" || e.key === "P") pin();
-    else if (e.key === "x" || e.key === "X") reject();
+    else if (e.key === "x" || e.key === "X") trash();
     else return;
     e.preventDefault();
   }
@@ -141,7 +141,7 @@ export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, 
             mark={current.mark}
             onMark={(next) => onMark(current, next)}
             pinHint=" (P)"
-            rejectHint=" (X)"
+            trashHint=" (X)"
             menu={[
               ...(onStart && missing !== src ? startItems((mode) => onStart(current, mode), editBlocked) : []),
               loadPromptItem(() => onLoadPrompt(current)),
@@ -164,19 +164,11 @@ export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, 
       <div className="viewer-bottom">
         <p className="viewer-caption">
           {pictureCaption(current, true)}
-          <span className="viewer-keys"> · ← → move · P pin · X reject · Esc close</span>
+          <span className="viewer-keys"> · ← → move · P pin · X trash · Esc close</span>
         </p>
         {status && (
           <p className={status.ok ? "viewer-ok" : "viewer-error"}>
             {status.text}
-            {status.undo && (
-              <>
-                {" "}
-                <button type="button" className="viewer-undo" onClick={status.undo}>
-                  Undo
-                </button>
-              </>
-            )}
           </p>
         )}
       </div>

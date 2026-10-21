@@ -30,7 +30,7 @@ type Props = {
   caption?: string;
   /** Called to bring back the prompt this picture was made with. */
   onLoadPrompt?: () => void;
-  /** Whether the author pinned or rejected it, and how to change that (no buttons without it). */
+  /** Whether the author pinned or trashed it, and how to change that (no buttons without it). */
   mark?: PictureMark | null;
   onMark?: (mark: PictureMark | null) => void;
   /** Called to show the picture full size; without it (or with Ctrl, Cmd, Shift or the middle button) it opens in a new tab. */

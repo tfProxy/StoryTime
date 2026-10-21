@@ -1,5 +1,5 @@
 // The full-size picture viewer on the Illustrate page: opening a picture, moving with the arrow keys, the
-// buttons and a swipe, pinning (P) and rejecting (X) from it, using a picture and loading its prompt, and
+// buttons and a swipe, pinning (P) and trashing (X) from it, using a picture and loading its prompt, and
 // closing. Jobs are put in the log through the API; the pictures come from a fake ComfyUI.
 import fs from "node:fs";
 import { launch } from "./browser.mjs";
@@ -58,7 +58,7 @@ try {
   ok(await viewer.evaluate((d) => d.open && d.matches(":modal")), "clicking a picture opens the viewer, as a modal dialog");
   ok(await count() === "2 of 4" && await shownFile() === "StoryTime_2_1.png", "…on that picture, counted among the view's pictures in the order shown");
   ok((await viewer.locator(".viewer-prompt").innerText()) === "harbour at noon" && (await viewer.locator(".viewer-caption").innerText()).startsWith("fake_sdxl_a · 1344 × 768 · seed 502"), "…with its prompt and settings");
-  ok((await viewer.locator(".viewer-keys").innerText()).includes("P pin · X reject"), "…and, with a mouse, the keys to use");
+  ok((await viewer.locator(".viewer-keys").innerText()).includes("P pin · X trash"),"…and, with a mouse, the keys to use");
   const box = await viewer.locator(".viewer-stage img").boundingBox();
   ok(box.width > 1000, `…as large as the screen allows (${Math.round(box.width)} × ${Math.round(box.height)})`);
   ok(page.url().endsWith("/illustrate"), "…without leaving the page");
@@ -90,17 +90,26 @@ try {
   await swipe(stage.width * 0.3, stage.width * 0.7);
   ok(await count() === "3 of 4", "…and one to the right the previous");
 
-  // ---- pin and reject ----
+  // ---- pin and trash ----
   await page.keyboard.press("p");
   ok(await until(async () => (await marks()).dawn === "pinned,-", "the pin"), "P pins the picture shown");
-  ok(await viewer.getByRole("button", { name: "Unpin", exact: true }).getAttribute("aria-pressed") === "true" && (await viewer.innerText()).includes("Pinned."), "…the viewer shows it pinned, and says so");
+  ok(await viewer.getByRole("button", { name: "Unpin", exact: true }).getAttribute("aria-pressed") === "true" && !(await viewer.innerText()).includes("Pinned."), "…the viewer shows it pinned, without a message");
   await page.keyboard.press("P");
   ok(await until(async () => (await marks()).dawn === "-,-", "the unpin"), "P again unpins it");
   await page.keyboard.press("x");
-  ok(await until(async () => (await marks()).dawn === "rejected,-", "the reject"), "X rejects it");
+  ok(await until(async () => (await marks()).dawn === "rejected,-", "the trash"), "X trashes it");
   ok(await count() === "3 of 3" && await shownFile() === "StoryTime_1_1.png", "…it leaves All, and the viewer moves on to the next picture");
-  await viewer.getByRole("button", { name: "Undo" }).click();
-  ok(await until(async () => (await marks()).dawn === "-,-", "the undo"), "Undo in the viewer brings it back");
+  ok(await viewer.getByRole("button", { name: "Undo" }).count() === 0 && await viewer.locator(".viewer-ok").count() === 0, "…without a message or an Undo button");
+  // Bring it back from Trashed, and open the viewer where it was.
+  await page.keyboard.press("Escape");
+  await viewer.waitFor({ state: "detached" });
+  const showButton = (name) => gallery.getByRole("group", { name: "Show" }).getByRole("button", { name });
+  await showButton(/^Trashed/).click();
+  await tiles.first().getByRole("button", { name: "Restore" }).click();
+  ok(await until(async () => (await marks()).dawn === "-,-", "the restore"), "Restore under Trashed brings it back");
+  await showButton(/^All/).click();
+  await tiles.nth(3).locator("a").click();
+  await viewer.waitFor();
   ok(await count() === "4 of 4", "…into the list again");
   await viewer.getByRole("button", { name: "Pin", exact: true }).click();
   ok(await until(async () => (await marks()).dawn === "-,pinned", "the button pin"), "the Pin button pins too");
@@ -122,7 +131,7 @@ try {
   // the same buttons, in the same place, as on a tile
   const viewerButtons = await viewer.locator(".picture-marks > button, .picture-marks .tile-menu > button").evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label")));
   const tileButtons = await tiles.first().locator(".picture-marks > button, .picture-marks .tile-menu > button").evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label")));
-  ok(viewerButtons.join() === "Pin,Reject,More" && tileButtons.join() === viewerButtons.join(), `the viewer has the tile's buttons, in the same order (${viewerButtons.join()})`);
+  ok(viewerButtons.join() === "Pin,Trash,More" && tileButtons.join() === viewerButtons.join(), `the viewer has the tile's buttons, in the same order (${viewerButtons.join()})`);
   const frame = await viewer.locator(".viewer-frame").boundingBox();
   const marksBox = await viewer.locator(".picture-marks").boundingBox();
   const shown = await viewer.locator(".viewer-frame img").evaluate((i) => i.naturalWidth / i.naturalHeight);

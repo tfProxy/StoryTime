@@ -635,7 +635,7 @@ try {
   // ---- clearing ----
   ok(await items.first().getByRole("button", { name: "Pin" }).isDisabled(), "a picture whose job couldn't be recorded can't be pinned");
   await items.nth(2).getByRole("button", { name: "Pin" }).click();
-  await page.getByText("Pinned.").waitFor();
+  await until(async () => (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs.some((j) => j.marks.includes("pinned")), "the pin to be saved");
   await page.getByRole("button", { name: "Clear unpinned" }).click();
   ok(await items.count() === 1 && await makeButton.innerText() === "Queue", "Clear unpinned leaves only the picture pinned on this visit");
   ok(await page.getByRole("button", { name: "Clear unpinned" }).count() === 0, "…and goes away");

@@ -5,7 +5,7 @@ import { IMAGE_SLOTS, type ImageSlot } from "@/lib/imageSlots";
 import type { ComfyImage } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
 import { SLOT_NAMES, type PictureSaver } from "./usePictureSaver";
-import { FooterIcon, HeaderIcon, MenuIcon, PencilIcon, PinIcon } from "./PictureIcons";
+import { FooterIcon, HeaderIcon, MenuIcon, PencilIcon, PinIcon, TrashIcon } from "./PictureIcons";
 import type { StartMode } from "./pictures";
 
 // The buttons and badge on a picture, the same on a tile in the Pictures panel and in the full-size viewer.
@@ -72,23 +72,23 @@ type Props = {
   inUse: ImageSlot[];
   /** ComfyUI no longer has the picture, so it can't be used. */
   missing: boolean;
-  /** Whether the author pinned or rejected it, and how to change that (no pin and reject buttons without it). */
+  /** Whether the author pinned or trashed it ("rejected" as stored), and how to change that (no pin and trash buttons without it). */
   mark?: PictureMark | null;
   onMark?: (mark: PictureMark | null) => void;
-  /** Words added to the pin and reject buttons' tooltips, such as their keys. */
+  /** Words added to the pin and trash buttons' tooltips, such as their keys. */
   pinHint?: string;
-  rejectHint?: string;
+  trashHint?: string;
   /** What the ☰ menu offers; left out items are skipped. */
   menu: (MenuItem | false | undefined | null)[];
 };
 
 /**
- * On the picture's top right corner: pin and reject, and a ☰ menu with Use as header or footer picture
+ * On the picture's top right corner: pin and trash, and a ☰ menu with Use as header or footer picture
  * and the rest. Which slot the picture is in now shows as a badge on its other corner (InUseBadge).
  */
-export default function PictureButtons({ image, tileKey, jobId, index, saver, inUse, missing, mark = null, onMark, pinHint = "", rejectHint = "", menu }: Props) {
+export default function PictureButtons({ image, tileKey, jobId, index, saver, inUse, missing, mark = null, onMark, pinHint = "", trashHint = "", menu }: Props) {
   // A picture whose job couldn't be recorded has nothing to keep a mark on.
-  const unmarkable = jobId === null ? "StoryTime couldn't record this picture, so it can't be pinned or rejected" : undefined;
+  const unmarkable = jobId === null ? "StoryTime couldn't record this picture, so it can't be pinned or trashed" : undefined;
   // Use as header and footer come first in the menu; the one it is already is shown, but can't be chosen.
   const slotItems: MenuItem[] = missing
     ? []
@@ -119,12 +119,12 @@ export default function PictureButtons({ image, tileKey, jobId, index, saver, in
           </button>
           <button
             type="button"
-            aria-label={mark === "rejected" ? "Restore" : "Reject"}
-            title={unmarkable ?? (mark === "rejected" ? `Restore: bring it back from Rejected${rejectHint}` : `Reject: hide it (it stays under Rejected)${rejectHint}`)}
+            aria-label={mark === "rejected" ? "Restore" : "Trash"}
+            title={unmarkable ?? (mark === "rejected" ? `Restore: bring it back from Trashed${trashHint}` : `Trash: hide it (it stays under Trashed)${trashHint}`)}
             disabled={jobId === null}
             onClick={() => onMark(mark === "rejected" ? null : "rejected")}
           >
-            {mark === "rejected" ? "↺" : "✕"}
+            {mark === "rejected" ? "↺" : <TrashIcon />}
           </button>
           <span className="picture-marks-gap" />
         </>

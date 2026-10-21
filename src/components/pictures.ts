@@ -211,7 +211,7 @@ export function timeline(pending: PendingJob[], pictures: Picture[]): PictureRun
   return runs.map(({ pending, pictures }) => ({ key: pictures.at(-1)?.key ?? pending.at(-1)!.key, pending, pictures }));
 }
 
-/** The gallery's views: pinned and new pictures, every picture but the rejected ones, and the rejected ones. */
+/** The gallery's views: pinned and new pictures, every picture but the trashed ones, and the trashed ones (marked "rejected"). */
 export type PictureView = "shortlist" | "all" | "rejected";
 
 /** `inUse`: the picture is the chapter's header or footer now, or the one being edited, so the first view shows it as if it were pinned. */
