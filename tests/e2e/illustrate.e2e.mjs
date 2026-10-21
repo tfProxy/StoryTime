@@ -61,7 +61,7 @@ ok((await menuItems("Header picture")).join("|") === "Upload picture", "each sta
 // ---- header ----
 await page.getByLabel("Header picture file").setInputFiles({ name: "header.png", mimeType: "image/png", buffer: png });
 await card("Header picture").getByText("Picture saved.").waitFor();
-ok((await menuItems("Header picture")).join("|") === "Replace picture|Open in a new tab|Remove picture", "after uploading the header, the menu says Replace, and offers Open in a new tab and Remove");
+ok((await menuItems("Header picture")).join("|") === "Upload picture|Open in a new tab|Clear Header", "after uploading the header, the menu still says Upload, and offers Open in a new tab and Remove");
 ok((await menuItems("Footer picture")).join("|") === "Upload picture", "…and the footer is untouched");
 const headerLink = card("Header picture").locator(".picture-frame > a");
 ok(await headerLink.getAttribute("target") === "_blank" && (await headerLink.getAttribute("href")).includes(`/api/chapters/${root}/images/header`), "clicking the picture opens it in a new tab");
@@ -112,7 +112,7 @@ ok((await menuItems("Header picture")).includes("Upload picture"), "…the card 
 // ---- remove the header ----
 await page.goto(`${BASE}/c/${root}/illustrate`);
 await card("Header picture").locator("img.image-editor-preview").waitFor();
-await choose("Header picture", "Remove picture");
+await choose("Header picture", "Clear Header");
 await card("Header picture").getByText("Picture removed.").waitFor();
 ok((await menuItems("Header picture")).join("|") === "Upload picture", "removing the header brings back Upload");
 ok((await stored("header")).status === 404 && (await stored("footer")).status === 200, "only the header is gone");

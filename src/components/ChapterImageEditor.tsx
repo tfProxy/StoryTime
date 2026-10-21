@@ -86,12 +86,12 @@ export default function ChapterImageEditor({ chapterId, slot, version: initial, 
         <div className="picture-marks">
           <PictureMenu
             items={[
-              { label: busy ? "Saving…" : version === null ? "Upload picture" : "Replace picture", title: unavailable, disabled: busy, run: () => input.current?.click() },
+              { label: busy ? "Saving…" : "Upload picture", title: unavailable, disabled: busy, run: () => input.current?.click() },
               ...(version !== null && onStart ? startItems((mode) => onStart(version, mode), editBlocked) : []),
               version !== null && made && onLoadPrompt && loadPromptItem(() => onLoadPrompt(made)),
               url !== null && openItem(url),
               version !== null && {
-                label: "Remove picture",
+                label: slot === "header" ? "Clear Header" : "Clear Footer",
                 title: unavailable,
                 disabled: busy,
                 run: () => void run(async () => (await request({ method: "DELETE" }), { version: null, text: "Picture removed." })),
