@@ -4,6 +4,11 @@
 
 A single-writer branching-story app: Next.js (read `AGENTS.md` above first), React client components, SQLite through better-sqlite3, AI calls made from the browser.
 
+## Docs
+
+- Before changing the Illustrate page or anything in `src/lib/comfy/`, read `docs/illustrate.md` (how it works). Do not read the other files in `docs/` unless asked: `docs/pictures.md` and `docs/unraid.md` are setup guides for the owner. Planned work is in `TODO.md`.
+- When behaviour that `docs/illustrate.md` describes changes, update it in the same change.
+
 ## File editing
 
 - Change files with the Edit or Write tool. Do not use `sed`, shell heredocs, `echo` redirection, or Python/PowerShell scripts to edit source files: they have mangled `\n` escapes, backslashes and non-ASCII characters (☰, …, “ ”) in this repo, and batches of shell writes have failed silently.

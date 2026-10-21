@@ -57,7 +57,7 @@ function workflowSummary(text: string, changed: DrawPreset["sampler"]): { ok: bo
 }
 
 // Where the README explains how to install the edit models.
-const SETUP_HELP = "https://github.com/tfProxy/StoryTime#edit-models-in-comfyui";
+const SETUP_HELP = "https://github.com/tfProxy/StoryTime/blob/main/docs/pictures.md#edit-models-in-comfyui";
 
 /** One line of the setup check: a tick or a cross, and what it means. */
 function Line({ ok, children }: { ok: boolean; children: React.ReactNode }) {

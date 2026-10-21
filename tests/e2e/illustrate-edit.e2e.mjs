@@ -92,7 +92,7 @@ try {
   let text = await report.innerText();
   ok(text.includes("Connected to ComfyUI 0.3.99") && text.includes("Qwen-Image-Edit: not ready") && !text.includes("FLUX.1 Kontext"), "Check setup on the Qwen tab says ComfyUI's version, and that Qwen isn't ready (and nothing about Kontext)");
   ok(text.includes("qwen_image_edit_2509_fp8_e4m3fn.safetensors in ComfyUI/models/diffusion_models"), "…naming each missing file and the folder it goes in");
-  ok(await report.getByRole("link", { name: "Step-by-step setup" }).getAttribute("href") === "https://github.com/tfProxy/StoryTime#edit-models-in-comfyui", "…with a link to the setup steps");
+  ok(await report.getByRole("link", { name: "Step-by-step setup" }).getAttribute("href") === "https://github.com/tfProxy/StoryTime/blob/main/docs/pictures.md#edit-models-in-comfyui", "…with a link to the setup steps");
   await tab("Flux edit");
   text = await report.innerText();
   ok(text.includes("FLUX.1 Kontext: not ready") && text.includes("ae.safetensors in ComfyUI/models/vae"), "the Flux edit tab shows the same check's findings for Kontext");
