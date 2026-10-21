@@ -456,7 +456,7 @@ try {
   await page.getByLabel("Size").selectOption("1024x1024");
   ok(await until(async () => (await settingsNow()).comfy.width === 1024, "the size to be saved"), "(the size is changed to square)");
   const sizeOptions = await page.getByLabel("Size").locator("option").allInnerTexts();
-  ok(sizeOptions.join("|") === "▭ Landscape 1344 × 768 (7:4)|▬ Wide 1536 × 640 (12:5)|□ Square 1024 × 1024 (1:1)|▯ Portrait 768 × 1344 (4:7)", `each size shows its aspect ratio (${sizeOptions.join("|")})`);
+  ok(sizeOptions.join("|") === "▯ Portrait 768 × 1344 (4:7)|□ Square 1024 × 1024 (1:1)|▭ Landscape 1344 × 768 (7:4)|▭ Wide 1536 × 640 (12:5)", `each size shows its aspect ratio (${sizeOptions.join("|")})`);
   const iconRect = async () => page.locator(".generate-bar .size-icon rect").evaluate((r) => ({ w: Number(r.getAttribute("width")), h: Number(r.getAttribute("height")) }));
   const square = await iconRect();
   ok(square.w === square.h, "the icon beside Size is a square for a square size");

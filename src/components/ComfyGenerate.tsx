@@ -19,12 +19,12 @@ import { readEdit, readRedraw, writeEdit, writeRedraw } from "@/lib/comfy/editin
 import { listCheckpoints } from "@/lib/comfy/client";
 import { denoiseOf, madeWithText, type JobInput } from "@/lib/comfy/makeJob";
 
-/** Sizes that suit SDXL (about one megapixel). */
+/** Sizes that suit SDXL (about one megapixel), tallest to widest. */
 const SIZES: { label: string; width: number; height: number }[] = [
+  { label: "Portrait 768 × 1344", width: 768, height: 1344 },
+  { label: "Square 1024 × 1024", width: 1024, height: 1024 },
   { label: "Landscape 1344 × 768", width: 1344, height: 768 },
   { label: "Wide 1536 × 640", width: 1536, height: 640 },
-  { label: "Square 1024 × 1024", width: 1024, height: 1024 },
-  { label: "Portrait 768 × 1344", width: 768, height: 1344 },
 ];
 
 const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
@@ -39,8 +39,8 @@ function ratioText(width: number, height: number): string {
   return width >= height ? `${(width / height).toFixed(1)}:1` : `1:${(height / width).toFixed(1)}`;
 }
 
-/** A glyph for the shape, for the drop-down's options, which can't hold a picture. */
-const shapeGlyph = (width: number, height: number) => (width === height ? "□" : width / height >= 1.8 ? "▬" : width > height ? "▭" : "▯");
+/** A hollow glyph for the shape, for the drop-down's options, which can't hold a picture. */
+const shapeGlyph = (width: number, height: number) => (width === height ? "□" : width > height ? "▭" : "▯");
 
 /** A small rectangle drawn to the size's shape. */
 function SizeIcon({ width, height }: { width: number; height: number }) {
