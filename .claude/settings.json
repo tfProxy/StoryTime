@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test)",
+      "Bash(npm test:*)",
+      "Bash(npm run test:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run build)",
+      "Bash(npm run dev)",
+      "Bash(npm ci)",
+      "Bash(npx tsc:*)",
+      "Bash(npx next build)",
+      "Bash(npx next build:*)",
+      "Bash(npx eslint:*)",
+      "Bash(node tests/run.mjs:*)",
+      "Bash(node tests/shot.mjs:*)",
+      "Bash(E2E_EXECUTABLE=/opt/pw-browsers/chromium npm run test:*)",
+      "Bash(E2E_EXECUTABLE=/opt/pw-browsers/chromium node tests/run.mjs:*)",
+      "Bash(E2E_EXECUTABLE=/opt/pw-browsers/chromium node tests/shot.mjs:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git fetch:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
