@@ -116,6 +116,7 @@ const comfyIn = {
   ],
   editPreset: "kontext-a",
   picturesOldestFirst: false,
+  queueCount: 1,
 };
 /** comfyIn with the first drawing preset (or the one at `i`) changed. */
 const withDraw = (patch, i = 0) => ({ ...comfyIn, drawPresets: comfyIn.drawPresets.map((p, j) => (j === i ? { ...p, ...patch } : p)) });
@@ -126,6 +127,10 @@ r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, pictures
 ok(r.json.settings.comfy.picturesOldestFirst === true && (await call("GET", "/api/settings")).json.settings.comfy.picturesOldestFirst === true, "the Pictures panel's oldest-first order is kept");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, picturesOldestFirst: "yes" } });
 ok(r.json.settings.comfy.picturesOldestFirst === false, "…and anything but true or false means newest first");
+r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, queueCount: 5 } });
+ok(r.json.settings.comfy.queueCount === 5, "the number of pictures one Queue click asks for is kept");
+r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, queueCount: 3 } });
+ok(r.json.settings.comfy.queueCount === 1, "…and a number that is not on the menu (1, 2, 4, 5, 8) means 1");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, drawPresets: [], editPresets: [] } });
 let c = r.json.settings.comfy;
 ok(

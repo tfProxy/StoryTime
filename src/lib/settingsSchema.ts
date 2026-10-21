@@ -120,7 +120,12 @@ export type ComfySettings = {
   editPreset: string;
   /** The Pictures panel lists the oldest first (the newest at the bottom) instead of the newest first. */
   picturesOldestFirst: boolean;
+  /** How many pictures one click of Queue asks for (one of `QUEUE_COUNTS`). */
+  queueCount: number;
 };
+
+/** The numbers of pictures one click of Queue can ask for. */
+export const QUEUE_COUNTS = [1, 2, 4, 5, 8] as const;
 
 export const DEFAULT_SETTINGS: Settings = {
   connections: [],
@@ -132,7 +137,7 @@ export const DEFAULT_SETTINGS: Settings = {
   outline: DEFAULT_OUTLINE,
   imagePromptStyle: "tags",
   imagePromptModel: null,
-  comfy: { url: "", width: 1344, height: 768, count: 4, drawPresets: DEFAULT_DRAW_PRESETS, editPresets: DEFAULT_EDIT_PRESETS, editPreset: "qwen-image-edit", picturesOldestFirst: false },
+  comfy: { url: "", width: 1344, height: 768, count: 4, drawPresets: DEFAULT_DRAW_PRESETS, editPresets: DEFAULT_EDIT_PRESETS, editPreset: "qwen-image-edit", picturesOldestFirst: false, queueCount: 1 },
 };
 
 // Each field falls back to its default when missing or invalid, so partial files still
@@ -292,6 +297,10 @@ const settingsSchema = z.object({
         editPresets: listOf(editPresetSchema),
         editPreset: z.string().max(100).catch(DEFAULT_SETTINGS.comfy.editPreset),
         picturesOldestFirst: z.boolean().catch(false),
+        queueCount: z
+          .number()
+          .refine((n) => (QUEUE_COUNTS as readonly number[]).includes(n))
+          .catch(1),
       }),
     )
     .catch(DEFAULT_SETTINGS.comfy),

@@ -1494,6 +1494,16 @@ main:has(.illustrate-grid) {
   box-shadow: 0 -2px 8px rgb(0 0 0 / 0.12);
 }
 
+.queue-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.queue-row .queue-button {
+  flex: 1;
+  width: auto;
+}
+
 .generate-bar .queue-button {
   width: 100%;
 }

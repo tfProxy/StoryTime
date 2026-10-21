@@ -244,7 +244,8 @@ try {
   const queueStatus = page.getByLabel("Queue", { exact: true });
   ok((await makeButton.innerText()) === "Queue" && (await queueStatus.innerText()).trim() === "In progress: 0 · Queued: 0", "the button is just Queue, with the queue's status under it (nothing yet)");
   const [queueBox, dockBox] = [await makeButton.boundingBox(), await page.locator(".generate-bar").boundingBox()];
-  ok(queueBox.width > dockBox.width - 40, "…the button takes the whole line");
+  const perClickBox = await page.getByLabel("Pictures per click").boundingBox();
+  ok(queueBox.width > dockBox.width / 2 && perClickBox.x >= queueBox.x + queueBox.width - 1 && Math.abs(perClickBox.y - queueBox.y) < queueBox.height, "…the button takes most of the line, with the Pictures per click menu beside it");
   const sizeBox = await page.getByLabel("Size").boundingBox();
   ok(sizeBox.y + sizeBox.height <= queueBox.y + 1, "…with the Size menu just above it");
 
@@ -663,6 +664,21 @@ try {
   await until(async () => (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs.length === 10, "the unrecorded job to be recorded when coming back");
   await until(async () => (await items.count()) === stay + 2, "its pictures");
   ok(await items.count() === stay + 2 && await items.getByRole("button", { name: "Unpin" }).count() === stay, "coming back, the pinned pictures are still there, and the pictures whose job couldn't be recorded are recorded and listed");
+
+  // ---- pictures per click ----
+  const perClick = page.getByLabel("Pictures per click");
+  ok((await perClick.locator("option").allInnerTexts()).join("|") === "1 picture|2 pictures|4 pictures|5 pictures|8 pictures" && await perClick.inputValue() === "1", "beside Queue, a menu offers 1, 2, 4, 5 or 8 pictures per click, and starts at 1");
+  await promptBox.fill("a kettle on a stove");
+  await perClick.selectOption("4");
+  ok(await until(async () => (await settingsNow()).comfy.queueCount === 4, "the choice to be saved"), "choosing 4 saves it in Settings");
+  ok((await makeButton.getAttribute("title")).includes("4 pictures"), "…and the Queue button's hint says it queues 4");
+  const perClickMark = comfy.calls.length;
+  await makeButton.click();
+  await until(() => promptCalls(perClickMark).length === 1, "the job to be sent");
+  ok(promptCalls(perClickMark).length === 1 && Object.values(promptCalls(perClickMark)[0].body.prompt).find((n) => n.class_type === "EmptyLatentImage").inputs.batch_size === 4, "one click of Queue sends one job of 4 pictures");
+  ok(await until(async () => (await items.count()) === stay + 2 + 4, "the four pictures"), "…which arrive as 4 pictures");
+  await perClick.selectOption("1");
+  ok(await until(async () => (await settingsNow()).comfy.queueCount === 1, "the choice to be saved"), "…and choosing 1 again goes back to one picture per click");
 } finally {
   await putSettings(before ?? {});
   await browser.close();

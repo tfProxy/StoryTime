@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { saveSettings, useSettings } from "@/lib/settings";
-import type { ComfySettings } from "@/lib/settingsSchema";
+import { QUEUE_COUNTS, type ComfySettings } from "@/lib/settingsSchema";
 import type { ImageMoment } from "@/lib/ai/imagePrompt";
 import type { LoadedPrompt } from "./ImagePromptPanel";
 import type { JobProgress, MadeWith, PendingJob, Picture, StartMode } from "./pictures";
@@ -206,6 +206,7 @@ export default function ComfyGenerate({
 }: Props) {
   const settings = useSettings();
   const comfy = settings.comfy;
+  const queueCount = comfy.queueCount;
   // What to change, when editing the starting picture by instruction.
   const [instruction, setInstruction] = useState("");
   // How closely an edit follows the starting picture: 1 lets the model change it freely, lower keeps it closer.
@@ -661,15 +662,33 @@ export default function ComfyGenerate({
           ))}
         </select>
       </label>
-      <button
-        type="button"
-        className="queue-button"
-        onClick={ask}
-        disabled={editing ? !chosen || !instruction.trim() : !prompt.trim()}
-        title="Each click queues one picture. Quick clicks with nothing changed in between go to ComfyUI as one job."
-      >
-        Queue
-      </button>
+      <div className="queue-row">
+        <button
+          type="button"
+          className="queue-button"
+          onClick={() => {
+            // Each is one more picture for the job being gathered, as if clicked quickly.
+            for (let i = 0; i < queueCount; i++) ask();
+          }}
+          disabled={editing ? !chosen || !instruction.trim() : !prompt.trim()}
+          title={`Each click queues ${queueCount === 1 ? "one picture" : `${queueCount} pictures`}. Quick clicks with nothing changed in between go to ComfyUI as one job.`}
+        >
+          Queue
+        </button>
+        <select
+          aria-label="Pictures per click"
+          title="How many pictures one click of Queue asks for"
+          value={queueCount}
+          onChange={(e) => set({ queueCount: Number(e.target.value) })}
+          style={{ width: "auto" }}
+        >
+          {QUEUE_COUNTS.map((n) => (
+            <option key={n} value={n}>
+              {n === 1 ? "1 picture" : `${n} pictures`}
+            </option>
+          ))}
+        </select>
+      </div>
       <div className="queue-status" aria-label="Queue">
         <span>
           In progress: {head ? head.count : 0}
