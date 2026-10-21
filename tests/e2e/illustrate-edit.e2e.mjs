@@ -3,7 +3,7 @@
 // starting picture, the workflows queued for Qwen-Image-Edit and FLUX.1 Kontext, what the job log keeps,
 // editing an edit, and a ComfyUI missing a node. The fake ComfyUI lists the model files it is given.
 import { launch } from "./browser.mjs";
-import { EDIT_FILES, startFakeComfy } from "./fakeComfy.mjs";
+import { EDIT_FILES, LIGHTNING_LORA, startFakeComfy } from "./fakeComfy.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const COMFY_PORT = 3558;
@@ -89,6 +89,12 @@ try {
   await page.getByRole("button", { name: "Check setup" }).click();
   await until(async () => (await report.innerText()).includes("FLUX.1 Kontext: ready"), "the third check");
   ok((await report.innerText()).includes("Qwen-Image-Edit: ready"), "with every file there, both are ready");
+  ok((await report.innerText()).includes(`Lightning LoRA (optional, for fast edits): not installed. For edits several times faster, put ${LIGHTNING_LORA} in ComfyUI/models/loras.`), "…and the optional Lightning LoRA is said to be missing, with where it goes");
+  comfy.setMode({ files: { ...EDIT_FILES, loras: [LIGHTNING_LORA] } });
+  await page.getByRole("button", { name: "Check setup" }).click();
+  await until(async () => (await report.innerText()).includes(`Lightning LoRA (optional, for fast edits): ${LIGHTNING_LORA} (4 steps)`), "the check with the LoRA");
+  ok(true, "with the LoRA installed, the check names it and its steps");
+  comfy.setMode({ files: EDIT_FILES });
 
   comfy.setMode({ missingNodes: ["TextEncodeQwenImageEditPlus"] });
   await page.getByRole("button", { name: "Check setup" }).click();
@@ -173,6 +179,47 @@ try {
   await header.getByRole("menuitem", { name: "Edit this" }).click();
   await until(async () => ((await thumb.getAttribute("src")) ?? "").includes(`/api/chapters/${chapterId}/images/header`), "the header to become the starting picture");
   ok(await editTab.getAttribute("aria-selected") === "true", "the saved header's Edit this starts from it on the Edit tab");
+
+  // ---- Qwen's Lightning LoRA ----
+  const fastBox = page.getByRole("checkbox", { name: /^Fast/ });
+  ok(await fastBox.count() === 0, "without the Lightning LoRA there is no Fast box");
+  comfy.setMode({ files: { ...EDIT_FILES, loras: [LIGHTNING_LORA] } });
+  await page.reload();
+  await showAll();
+  await choose(items.first(), "Edit this");
+  await thumb.waitFor();
+  await modelMenu.selectOption("qwen-image-edit");
+  await fastBox.waitFor();
+  ok(await fastBox.isChecked() && (await fastBox.locator("..").innerText()).includes("Fast (Lightning, 4 steps)"), "with the LoRA installed, Qwen has a Fast box, on, saying its steps");
+  await modelMenu.selectOption("flux-kontext");
+  ok(await fastBox.count() === 0, "…which Kontext doesn't have");
+  await modelMenu.selectOption("qwen-image-edit");
+  await instruction.fill("make it night");
+  mark = comfy.calls.length;
+  let before = await items.count();
+  await makeEdit.click();
+  await until(async () => (await items.count()) === before + 1 && (await ready()), "the fast edit");
+  wf = prompts(mark)[0];
+  const loraNode = nodes(wf, "LoraLoaderModelOnly")[0];
+  ok(loraNode?.inputs.lora_name === LIGHTNING_LORA && nodes(wf, "KSampler")[0].inputs.steps === 4 && nodes(wf, "KSampler")[0].inputs.cfg === 1, "a fast edit loads the LoRA and runs 4 steps at CFG 1");
+  log = (await jobs())[0];
+  ok(log.checkpoint === `qwen_image_edit_2509_fp8_e4m3fn.safetensors + ${LIGHTNING_LORA}`, "…the job log keeps both files");
+  ok((await page.locator(".chapter-pictures").innerText()).includes("Qwen-Image-Edit · fast · 1296 × 816"), "…and its caption says it was fast");
+  await fastBox.uncheck();
+  await until(async () => (await call("GET", "/api/settings")).settings.comfy.editFast === false, "the Fast box to be saved");
+  ok(true, "turning Fast off is saved in the settings");
+  mark = comfy.calls.length;
+  before = await items.count();
+  await makeEdit.click();
+  await until(async () => (await items.count()) === before + 1 && (await ready()), "the slow edit");
+  wf = prompts(mark)[0];
+  ok(nodes(wf, "LoraLoaderModelOnly").length === 0 && nodes(wf, "KSampler")[0].inputs.steps === 20, "with Fast off, the edit runs the 20 steps without the LoRA");
+  ok((await jobs())[0].checkpoint === "qwen_image_edit_2509_fp8_e4m3fn.safetensors", "…and the log keeps only the model's file");
+  await fastBox.check();
+  if (process.env.E2E_SCREENSHOT_DIR) {
+    await page.waitForTimeout(300);
+    await page.locator(".comfy-generate").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-edit-fast-1000.png` });
+  }
 
   // ---- an old ComfyUI ----
   comfy.setMode({ missingNodes: ["TextEncodeQwenImageEditPlus"] });

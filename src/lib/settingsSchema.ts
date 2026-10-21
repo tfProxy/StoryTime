@@ -67,6 +67,8 @@ export type ComfySettings = {
   denoise: number;
   /** The model last used to edit a picture by instruction (an id from EDIT_MODELS). */
   editModel: string;
+  /** Edits use a model's speed-up (Qwen's Lightning LoRA) when ComfyUI has it. */
+  editFast: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -79,7 +81,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoSuggestChoices: false,
   imagePromptStyle: "tags",
   imagePromptModel: null,
-  comfy: { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4, denoise: 0.55, editModel: "qwen-image-edit" },
+  comfy: { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4, denoise: 0.55, editModel: "qwen-image-edit", editFast: true },
 };
 
 // Each field falls back to its default when missing or invalid, so partial files still
@@ -126,6 +128,7 @@ const settingsSchema = z.object({
       count: z.number().int().min(1).max(8).catch(DEFAULT_SETTINGS.comfy.count),
       denoise: z.number().min(0.05).max(1).catch(DEFAULT_SETTINGS.comfy.denoise),
       editModel: z.string().max(100).catch(DEFAULT_SETTINGS.comfy.editModel),
+      editFast: z.boolean().catch(DEFAULT_SETTINGS.comfy.editFast),
     })
     .catch(DEFAULT_SETTINGS.comfy),
 });

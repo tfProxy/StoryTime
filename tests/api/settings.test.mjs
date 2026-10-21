@@ -37,10 +37,10 @@ r = await call("PUT", "/api/settings", { ...conns, imagePromptModel: "pics" });
 ok(r.json.settings.imagePromptModel === null, "…or when it isn't a model");
 
 // ---- ComfyUI (picture making) ----
-const comfyDefaults = { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4, denoise: 0.55, editModel: "qwen-image-edit" };
+const comfyDefaults = { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4, denoise: 0.55, editModel: "qwen-image-edit", editFast: true };
 r = await call("PUT", "/api/settings", conns);
 ok(JSON.stringify(r.json.settings.comfy) === JSON.stringify(comfyDefaults), "ComfyUI settings default to no address, the built-in workflow, 1344 x 768 and 4 pictures");
-const comfyIn = { url: "http://comfy.local:8188", workflow: '{"1":{"class_type":"X","inputs":{}}}', checkpoint: "sdxl.safetensors", width: 1024, height: 1024, count: 2, denoise: 0.3, editModel: "flux-kontext" };
+const comfyIn = { url: "http://comfy.local:8188", workflow: '{"1":{"class_type":"X","inputs":{}}}', checkpoint: "sdxl.safetensors", width: 1024, height: 1024, count: 2, denoise: 0.3, editModel: "flux-kontext", editFast: false };
 r = await call("PUT", "/api/settings", { ...conns, comfy: comfyIn });
 ok(JSON.stringify(r.json.settings.comfy) === JSON.stringify(comfyIn) && JSON.stringify((await call("GET", "/api/settings")).json.settings.comfy) === JSON.stringify(comfyIn), "ComfyUI settings are saved and read back");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, count: 20, width: 10, height: 99999 } });
@@ -61,6 +61,10 @@ r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, denoise:
 ok(r.json.settings.comfy.denoise === 0.55, "settings saved before the strength existed get 0.55");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, editModel: undefined } });
 ok(r.json.settings.comfy.editModel === "qwen-image-edit" && r.json.settings.comfy.denoise === 0.3, "settings saved before edit models existed get Qwen-Image-Edit");
+r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, editFast: undefined } });
+ok(r.json.settings.comfy.editFast === true && r.json.settings.comfy.editModel === "flux-kontext", "settings saved before the Fast box existed have it on");
+r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, editFast: "yes" } });
+ok(r.json.settings.comfy.editFast === true, "…as does one that isn't true or false");
 r = await call("PUT", "/api/settings", { ...conns, comfy: "yes" });
 ok(JSON.stringify(r.json.settings.comfy) === JSON.stringify(comfyDefaults), "a ComfyUI setting that isn't an object falls back to the defaults");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, workflow: "x".repeat(500_001) } });

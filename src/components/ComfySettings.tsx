@@ -5,6 +5,7 @@ import type { ComfySettings as Comfy } from "@/lib/settingsSchema";
 import { comfyVersion, listCheckpoints } from "@/lib/comfy/client";
 import { describeWorkflow, parseWorkflow, WorkflowError, type WorkflowFit } from "@/lib/comfy/workflow";
 import { checkComfy, type ComfyCheck } from "@/lib/comfy/check";
+import { lightningSteps } from "@/lib/comfy/editModels";
 import AutoTextarea from "./AutoTextarea";
 
 const noop = () => () => {};
@@ -98,6 +99,18 @@ function CheckReport({ check }: { check: ComfyCheck }) {
               <Line ok={false}>ComfyUI doesn&apos;t have the nodes {e.missingNodes.join(", ")}. Update ComfyUI.</Line>
             )}
             {e.missingOptions.length > 0 && <Line ok={false}>ComfyUI is too old ({e.missingOptions.join("; ")}). Update ComfyUI.</Line>}
+            {e.speedUp &&
+              (e.speedUp.file ? (
+                <Line ok>
+                  {e.speedUp.part.label}: <code>{e.speedUp.file}</code> ({lightningSteps(e.speedUp.file)} steps)
+                </Line>
+              ) : (
+                <li className="meta">
+                  <span aria-hidden="true">– </span>
+                  {e.speedUp.part.label}: not installed. For edits several times faster, put <code>{e.speedUp.part.recommended}</code> in{" "}
+                  <code>ComfyUI/models/{e.speedUp.part.folder}</code>.
+                </li>
+              ))}
           </ul>
         </div>
       ))}

@@ -83,6 +83,8 @@ export function picturesOf(jobs: PictureJob[]): Picture[] {
 export function pictureCaption(c: { seed: number; checkpoint: string; width: number; height: number; denoise: number | null; editModel?: string | null }, withSeed = false): string {
   return [
     (c.editModel && editModel(c.editModel)?.name) || c.checkpoint.replace(/\.(safetensors|ckpt)$/i, ""),
+    // An edit made with the model's speed-up keeps both files, joined by " + ".
+    c.editModel && c.checkpoint.includes(" + ") && "fast",
     `${c.width} × ${c.height}`,
     withSeed && `seed ${c.seed}`,
     c.denoise !== null && `strength ${c.denoise}`,

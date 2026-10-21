@@ -44,6 +44,15 @@ export type EditParams = {
   denoise: number;
 };
 
+/**
+ * An optional file that makes a model faster, such as a Lightning LoRA: fewer steps at CFG 1. The model
+ * works without it; with it, the Illustrate page offers a Fast box.
+ */
+export type SpeedUp = ModelPart & {
+  /** What the setup check and the Fast box call it. */
+  name: string;
+};
+
 export type EditModel = {
   id: EditModelId;
   name: string;
@@ -53,9 +62,23 @@ export type EditModel = {
   /** Every node the workflow uses. */
   nodes: string[];
   options: NeededOption[];
-  /** The workflow, with the files found for each part (by part key). */
-  build: (files: Record<string, string>, p: EditParams) => Workflow;
+  /** An optional file that makes it faster, if the model has one. */
+  speedUp?: SpeedUp;
+  /**
+   * The workflow, with the files found for each part (by part key). With `fast`, the file of the
+   * speed-up (`files.speedUp`) is used too.
+   */
+  build: (files: Record<string, string>, p: EditParams, fast?: boolean) => Workflow;
 };
+
+/**
+ * How many steps a Lightning LoRA is made for, from its file name ("…-Lightning-4steps-…" is 4), or 8
+ * when the name doesn't say.
+ */
+export function lightningSteps(file: string): number {
+  const n = Number(/(\d+)[-_ ]?steps?/i.exec(file)?.[1]);
+  return Number.isInteger(n) && n > 0 && n <= 50 ? n : 8;
+}
 
 export const EDIT_MODEL_IDS = ["qwen-image-edit", "flux-kontext"] as const;
 export type EditModelId = (typeof EDIT_MODEL_IDS)[number];
@@ -84,8 +107,12 @@ function shared(p: EditParams, vae: [string, number], sampler: string): Workflow
   };
 }
 
-/** Qwen-Image-Edit 2509: 20 steps of Euler at CFG 2.5, as in ComfyUI's own template. */
-function qwenWorkflow(files: Record<string, string>, p: EditParams): Workflow {
+/**
+ * Qwen-Image-Edit 2509: 20 steps of Euler at CFG 2.5, as in ComfyUI's own template. Fast, with the
+ * Lightning LoRA (`files.speedUp`): the steps it was made for (4 or 8) at CFG 1.
+ */
+function qwenWorkflow(files: Record<string, string>, p: EditParams, fast = false): Workflow {
+  const lightning = fast && files.speedUp ? files.speedUp : null;
   const encode = (prompt: string) => ({
     class_type: "TextEncodeQwenImageEditPlus",
     inputs: { clip: ["2", 0], vae: ["3", 0], image1: ["11", 0], prompt },
@@ -94,14 +121,15 @@ function qwenWorkflow(files: Record<string, string>, p: EditParams): Workflow {
     "1": { class_type: "UNETLoader", inputs: { unet_name: files.model, weight_dtype: "default" } },
     "2": { class_type: "CLIPLoader", inputs: { clip_name: files.textEncoder, type: "qwen_image", device: "default" } },
     "3": { class_type: "VAELoader", inputs: { vae_name: files.vae } },
-    "4": { class_type: "ModelSamplingAuraFlow", inputs: { model: ["1", 0], shift: 3 } },
+    ...(lightning && { "9": { class_type: "LoraLoaderModelOnly", inputs: { model: ["1", 0], lora_name: lightning, strength_model: 1 } } }),
+    "4": { class_type: "ModelSamplingAuraFlow", inputs: { model: [lightning ? "9" : "1", 0], shift: 3 } },
     "5": { class_type: "CFGNorm", inputs: { model: ["4", 0], strength: 1 } },
     "6": encode(p.instruction),
     "7": encode(""),
     "8": {
       class_type: "KSampler",
       inputs: {
-        seed: p.seed, steps: 20, cfg: 2.5, sampler_name: "euler", scheduler: "simple", denoise: p.denoise,
+        seed: p.seed, steps: lightning ? lightningSteps(lightning) : 20, cfg: lightning ? 1 : 2.5, sampler_name: "euler", scheduler: "simple", denoise: p.denoise,
         model: ["5", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["13", 0],
       },
     },
@@ -151,6 +179,10 @@ export const EDIT_MODELS: EditModel[] = [
         recommended: "qwen_image_vae.safetensors", match: /qwen[-_]?image[-_]?vae/i,
       },
     ],
+    speedUp: {
+      key: "speedUp", name: "Lightning", label: "Lightning LoRA (optional, for fast edits)", folder: "loras", loader: "LoraLoaderModelOnly",
+      input: "lora_name", recommended: "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors", match: /qwen[-_ ]?image[-_ ]?edit.*lightning/i,
+    },
     nodes: nodesOf(qwenWorkflow({}, SAMPLE)),
     options: [{ node: "CLIPLoader", input: "type", value: "qwen_image" }],
     build: qwenWorkflow,
@@ -209,20 +241,39 @@ export type EditCheck = {
   /** Choices a node should offer but doesn't, as "Node input: value". */
   missingOptions: string[];
   parts: PartCheck[];
-  /** The files to use, by part key, when every part was found. */
+  /** The files to use, by part key, when every part was found; with `speedUp` when that was found too. */
   files: Record<string, string>;
   /** Whether everything is there, so the model can be used. */
   ready: boolean;
+  /** The optional speed-up and the file found for it (null when it isn't installed), for models that have one. */
+  speedUp: PartCheck | null;
 };
 
 /** Every node the checks below need to ask ComfyUI about. */
-export const EDIT_NODES = [...new Set(EDIT_MODELS.flatMap((m) => [...m.nodes, ...m.parts.map((p) => p.loader), ...m.options.map((o) => o.node)]))].sort();
+export const EDIT_NODES = [
+  ...new Set(EDIT_MODELS.flatMap((m) => [...m.nodes, ...m.parts.map((p) => p.loader), ...m.options.map((o) => o.node), ...(m.speedUp ? [m.speedUp.loader] : [])])),
+].sort();
 
-/** The file for a part among the ones a loader lists: the recommended one, else the first that looks like it. */
-function findFile(part: ModelPart, choices: string[]): string | null {
-  const base = (f: string) => f.split(/[\\/]/).pop()!;
-  return choices.find((c) => base(c) === part.recommended) ?? choices.find((c) => part.match.test(c)) ?? null;
+const base = (f: string) => f.split(/[\\/]/).pop()!;
+
+/**
+ * The file for a part among the ones a loader lists: one of the same release (such as 2509) as `release`
+ * when given, else the recommended one, else the first that looks like it.
+ */
+function findFile(part: ModelPart, choices: string[], release?: string): string | null {
+  const like = choices.filter((c) => part.match.test(c));
+  return (release && like.find((c) => base(c).includes(release))) || choices.find((c) => base(c) === part.recommended) || like[0] || null;
 }
+
+/** The release number in a model's file name, such as "2509" in qwen_image_edit_2509_fp8.safetensors. */
+const releaseOf = (file: string | undefined) => (file ? /(?:^|[^\d])(2\d{3})(?:[^\d]|$)/.exec(base(file))?.[1] : undefined);
+
+/**
+ * The files an edit is made with, as the job log keeps them (in its checkpoint column): the model's
+ * file, and " + " the speed-up's when it is used.
+ */
+export const editFilesText = (check: EditCheck, fast: boolean) =>
+  fast && check.files.speedUp ? `${check.files.model} + ${check.files.speedUp}` : check.files.model;
 
 /** Whether each edit model can be used, from what ComfyUI says about the nodes in EDIT_NODES. */
 export function checkEditModels(info: Record<string, NodeInfo>): EditCheck[] {
@@ -233,7 +284,11 @@ export function checkEditModels(info: Record<string, NodeInfo>): EditCheck[] {
       .map((o) => `${o.node} ${o.input}: ${o.value}`);
     const parts = model.parts.map((part) => ({ part, file: findFile(part, comboOptions(info[part.loader], part.input)) }));
     const ready = missingNodes.length === 0 && missingOptions.length === 0 && parts.every((p) => p.file !== null);
-    const files = ready ? Object.fromEntries(parts.map((p) => [p.part.key, p.file!])) : {};
-    return { model, missingNodes, missingOptions, parts, files, ready };
+    const files: Record<string, string> = ready ? Object.fromEntries(parts.map((p) => [p.part.key, p.file!])) : {};
+    // A speed-up made for the model's release (the 2509 LoRA for the 2509 model) is preferred.
+    const s = model.speedUp;
+    const speedUp = s ? { part: s, file: findFile(s, comboOptions(info[s.loader], s.input), releaseOf(files.model)) } : null;
+    if (ready && speedUp?.file) files.speedUp = speedUp.file;
+    return { model, missingNodes, missingOptions, parts, files, ready, speedUp };
   });
 }
