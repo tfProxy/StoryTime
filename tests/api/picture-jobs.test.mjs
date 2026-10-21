@@ -199,7 +199,11 @@ ok(r.json.jobs.length > 0 && r.json.jobs.every((j) => j.chapter_id === two), "no
   const k = await call("POST", "/api/picture-jobs/known", { prompt_ids: ["p1", "p12", unknown] });
   ok(k.status === 200 && k.json.known.sort().join() === "p1,p12", "the known list names the recorded jobs, once each, and not the others");
   const none = await call("POST", "/api/picture-jobs/known", { prompt_ids: [] });
-  ok(none.status === 200 && none.json.known.length === 0, "…and nothing for no ids");
+  ok(none.status === 200 && none.json.known.length === 0 && none.json.chapters.length === 0, "…and nothing for no ids");
+  const ch = await call("POST", "/api/picture-jobs/known", { prompt_ids: [], chapter_ids: [one, two, "no-such-chapter"] });
+  ok(ch.status === 200 && ch.json.chapters.sort().join() === [one, two].sort().join(), "it also says which of the given chapters exist here");
+  const id = (await call("GET", "/api/instance")).json.id;
+  ok(typeof id === "string" && id.length >= 8 && (await call("GET", "/api/instance")).json.id === id, "this StoryTime has an id of its own, which stays the same");
   const bad = await call("POST", "/api/picture-jobs/known", { prompt_ids: "p1" });
   ok(bad.status === 400, "…and refuses ids that aren't a list");
 }

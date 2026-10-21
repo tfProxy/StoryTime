@@ -8,6 +8,7 @@
 //   comfy.url        "http://localhost:3555"
 //   comfy.calls      every request received: { method, path, query, body } (body parsed when it is JSON)
 //   comfy.setMode({ steps, stepDelay, startDelay, ws, fail, checkpoints })
+//   comfy.addJob({ extra, state, count })   a job somebody else made (another StoryTime, a tool); see below
 //   await comfy.close()
 //
 // Options (also changeable later with setMode):
@@ -336,6 +337,20 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
     calls,
     /** Changes how the fake behaves from now on. */
     setMode: (patch) => Object.assign(mode, patch),
+    /**
+     * Puts a job that somebody else made in ComfyUI: another StoryTime or a tool, with the `extra_data` they
+     * gave it. `state` "done" puts it in the history; "running" or "queued" leaves it in the queue, never
+     * finishing. Returns its prompt id.
+     */
+    addJob({ extra = {}, state = "done", count = 1 } = {}) {
+      const job = { id: crypto.randomUUID(), no: ++jobNo, clientId: "", count, state, cancelled: false, extra };
+      jobs.set(job.id, job);
+      if (state === "done") {
+        const images = Array.from({ length: count }, (_, i) => ({ filename: `StoryTime_${job.no}_${i}.png`, subfolder: "", type: "output" }));
+        history[job.id] = { prompt: [job.no, job.id, {}, extra, []], outputs: { "9": { images } }, status: { status_str: "success", completed: true, messages: [] } };
+      }
+      return job.id;
+    },
     async close() {
       closed = true;
       for (const c of conns) c.destroy();
