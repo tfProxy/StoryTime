@@ -37,10 +37,10 @@ r = await call("PUT", "/api/settings", { ...conns, imagePromptModel: "pics" });
 ok(r.json.settings.imagePromptModel === null, "…or when it isn't a model");
 
 // ---- ComfyUI (picture making) ----
-const comfyDefaults = { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4, denoise: 0.55, editModel: "qwen-image-edit", editFast: true, editLoras: {} };
+const comfyDefaults = { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4, denoise: 0.55, editModel: "qwen-image-edit", editFast: true, editLoras: {}, redraw: {}, editTuning: {} };
 r = await call("PUT", "/api/settings", conns);
 ok(JSON.stringify(r.json.settings.comfy) === JSON.stringify(comfyDefaults), "ComfyUI settings default to no address, the built-in workflow, 1344 x 768 and 4 pictures");
-const comfyIn = { url: "http://comfy.local:8188", workflow: '{"1":{"class_type":"X","inputs":{}}}', checkpoint: "sdxl.safetensors", width: 1024, height: 1024, count: 2, denoise: 0.3, editModel: "flux-kontext", editFast: false, editLoras: { "qwen-image-edit": [{ name: "styles/ink.safetensors", strength: 0.8, on: true }, { name: "hero.safetensors", strength: -0.5, on: false }] } };
+const comfyIn = { url: "http://comfy.local:8188", workflow: '{"1":{"class_type":"X","inputs":{}}}', checkpoint: "sdxl.safetensors", width: 1024, height: 1024, count: 2, denoise: 0.3, editModel: "flux-kontext", editFast: false, editLoras: { "qwen-image-edit": [{ name: "styles/ink.safetensors", strength: 0.8, on: true }, { name: "hero.safetensors", strength: -0.5, on: false }] }, redraw: { steps: 25, sampler: "euler_ancestral" }, editTuning: { "qwen-image-edit": { steps: 30, cfg: 3, strength: 0.8, shift: 2.5 }, "flux-kontext": { scheduler: "beta", guidance: 3.5 } } };
 r = await call("PUT", "/api/settings", { ...conns, comfy: comfyIn });
 ok(JSON.stringify(r.json.settings.comfy) === JSON.stringify(comfyIn) && JSON.stringify((await call("GET", "/api/settings")).json.settings.comfy) === JSON.stringify(comfyIn), "ComfyUI settings are saved and read back");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, count: 20, width: 10, height: 99999 } });
@@ -77,6 +77,16 @@ r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, editLora
 ok(r.json.settings.comfy.editLoras["qwen-image-edit"].length === 8, "a stack keeps at most 8 LoRAs");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, editLoras: [1, 2] } });
 ok(JSON.stringify(r.json.settings.comfy.editLoras) === "{}" && r.json.settings.comfy.editModel === "flux-kontext", "stacks that aren't an object fall back to none, keeping the other fields");
+r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, redraw: undefined, editTuning: undefined } });
+ok(JSON.stringify(r.json.settings.comfy.redraw) === "{}" && JSON.stringify(r.json.settings.comfy.editTuning) === "{}", "settings saved before the Advanced settings existed change nothing, so the defaults apply");
+r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, redraw: { steps: 0, cfg: 99, sampler: "", scheduler: 5, extra: 1 } } });
+ok(JSON.stringify(r.json.settings.comfy.redraw) === "{}", "out-of-range or wrong values (and unknown keys) are dropped, so each falls back to its default");
+r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, redraw: { steps: 2.5, cfg: 7 } } });
+ok(JSON.stringify(r.json.settings.comfy.redraw) === '{"cfg":7}', "…a fractional step count too, keeping the other changes");
+r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, editTuning: { "qwen-image-edit": { strength: 0, shift: 3 }, "flux-kontext": "x" } } });
+ok(JSON.stringify(r.json.settings.comfy.editTuning) === '{"qwen-image-edit":{"shift":3},"flux-kontext":{}}', "an edit model's bad settings are dropped on their own");
+r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, editTuning: [1] } });
+ok(JSON.stringify(r.json.settings.comfy.editTuning) === "{}" && r.json.settings.comfy.redraw.steps === 25, "edit settings that aren't an object fall back to none, keeping the rest");
 r = await call("PUT", "/api/settings", { ...conns, comfy: "yes" });
 ok(JSON.stringify(r.json.settings.comfy) === JSON.stringify(comfyDefaults), "a ComfyUI setting that isn't an object falls back to the defaults");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, workflow: "x".repeat(500_001) } });

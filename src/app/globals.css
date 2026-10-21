@@ -2040,3 +2040,103 @@ fieldset.connection legend {
 .settings-section h2 {
   margin-bottom: 0;
 }
+
+/* Settings: tabs along the top, each over its own panel. On a phone the row scrolls sideways if it must. */
+.settings-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.settings-tabs button {
+  flex: 0 0 auto;
+  background: none;
+  color: var(--muted);
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  padding: 0.5rem 0.75rem;
+  white-space: nowrap;
+}
+
+.settings-tabs button[aria-selected="true"] {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+@media (max-width: 520px) {
+  .settings-tabs button {
+    padding-inline: 0.5rem;
+  }
+}
+
+.settings-panel {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.settings-panel[hidden] {
+  display: none;
+}
+
+/* Settings › Pictures: a card per kind of picture (new pictures, and each edit model). */
+.picture-card {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.picture-card h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.picture-card .strength {
+  display: grid;
+  gap: 0.2rem;
+}
+
+details.advanced {
+  border-top: 1px solid var(--line);
+  padding-top: 0.5rem;
+}
+
+details.advanced > summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+details.advanced[open] > summary {
+  margin-bottom: 0.6rem;
+}
+
+.tuning {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.tuning-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: 0.6rem 0.75rem;
+}
+
+.tuning-field {
+  display: grid;
+  gap: 0.2rem;
+}
+
+/* A button that reads as a link, inside a sentence. */
+button.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  font: inherit;
+  cursor: pointer;
+}

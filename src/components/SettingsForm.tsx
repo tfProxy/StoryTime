@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { PROVIDERS, providerInfo, type ProviderKind } from "@/lib/ai/providers";
 import { AiError, listModels, streamChat } from "@/lib/ai/client";
 import PromptButton from "./PromptButton";
-import ComfySettings from "./ComfySettings";
+import ComfyConnection from "./ComfyConnection";
+import PictureSettings from "./PictureSettings";
 import {
   exportSettingsJson,
   findConnection,
@@ -32,6 +33,35 @@ const SAMPLE_REQUEST = {
 const SHOW_MODELS = 60;
 
 type Status = { kind: "ok" | "error"; text: string };
+
+/** The Settings tabs. Each is at /settings#<id>; a link to something inside one (#models) opens it too. */
+const TABS = [
+  { id: "connections", label: "Connections", holds: ["comfyui"] },
+  { id: "writing", label: "Writing", holds: ["models"] },
+  // Pictures also holds each edit model's card (#edit-qwen-image-edit) and the old #edit-loras.
+  { id: "pictures", label: "Pictures", holds: ["picture-setup", "redraw"] },
+  { id: "backup", label: "Backup", holds: [] },
+] as const;
+type TabId = (typeof TABS)[number]["id"];
+
+function tabFor(hash: string): TabId {
+  const tab = TABS.find((t) => t.id === hash || (t.holds as readonly string[]).includes(hash));
+  if (tab) return tab.id;
+  return hash.startsWith("edit-") ? "pictures" : "connections";
+}
+
+const onHashChange = (cb: () => void) => {
+  window.addEventListener("hashchange", cb);
+  return () => window.removeEventListener("hashchange", cb);
+};
+/** The page's #hash without the #; "" while rendering on the server. */
+const useHash = () => useSyncExternalStore(onHashChange, () => decodeURIComponent(location.hash.slice(1)), () => "");
+
+/** Opens a tab: its #hash goes in the address (without a new history entry), so a reload or a link comes back to it. */
+function openTab(id: TabId) {
+  history.replaceState(null, "", `#${id}`);
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+}
 
 function ConnectionCard({
   conn,
@@ -119,7 +149,7 @@ function ConnectionCard({
       <small>
         For a model on the same machine as ComfyUI: ComfyUI unloads its models first, so this one has the
         graphics memory (pictures then take longer to start). Does nothing while no ComfyUI address is set
-        under Pictures.
+        below.
       </small>
       <div className="row" style={{ flexWrap: "wrap" }}>
         <button type="button" onClick={test} disabled={testing}>
@@ -217,16 +247,25 @@ function DefaultSelect({
 export default function SettingsForm() {
   const settings = useSettings();
   const [addKind, setAddKind] = useState<ProviderKind>("ollama");
+  // The sample reply's outcome (Writing tab), an import's (Backup tab), and a failed save (shown on every tab).
   const [status, setStatus] = useState<Status | null>(null);
+  const [importStatus, setImportStatus] = useState<Status | null>(null);
+  const [saveFailed, setSaveFailed] = useState(false);
   const [trying, setTrying] = useState(false);
   const [reply, setReply] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const hash = useHash();
+  const tab = tabFor(hash);
+  const tabRefs = useRef(new Map<TabId, HTMLButtonElement>());
+
+  // A link to something inside a tab (#models, #edit-flux-kontext) scrolls to it once its tab shows.
+  useEffect(() => {
+    if (hash) document.getElementById(hash)?.scrollIntoView({ block: "start" });
+  }, [hash, tab]);
 
   function save(next: Settings) {
-    void saveSettings(next).then((saved) => {
-      if (!saved) setStatus({ kind: "error", text: "The server couldn't save the settings. Your changes will be lost on reload." });
-    });
+    void saveSettings(next).then((saved) => setSaveFailed(!saved));
   }
   const update = (patch: Partial<Settings>) => save({ ...settings, ...patch });
 
@@ -307,23 +346,57 @@ export default function SettingsForm() {
       const text = await file.text();
       const next = importSettingsJson(text);
       const saved = await saveSettings(next);
-      setStatus(saved ? { kind: "ok", text: "Settings imported." } : { kind: "error", text: "The server couldn't save the imported settings." });
+      setImportStatus(saved ? { kind: "ok", text: "Settings imported." } : { kind: "error", text: "The server couldn't save the imported settings." });
     } catch (e) {
-      setStatus({ kind: "error", text: e instanceof Error ? e.message : "Couldn't read that file" });
+      setImportStatus({ kind: "error", text: e instanceof Error ? e.message : "Couldn't read that file" });
     }
   }
 
-  return (
-    <div style={{ display: "grid", gap: "1.5rem" }}>
-      <p className="notice">
-        These settings, including your API keys, are stored on the StoryTime server and shared by every browser that
-        uses it. AI requests still go directly from your browser to the provider you choose, so the key is sent to
-        your browser when a page loads. Only use StoryTime on a server and network you trust.
-      </p>
+  /** The tab bar's arrow keys move between tabs, as in other tab bars. */
+  function onTabKey(e: React.KeyboardEvent) {
+    const i = TABS.findIndex((t) => t.id === tab);
+    const next = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : null;
+    if (next === null) return;
+    e.preventDefault();
+    const t = TABS[(next + TABS.length) % TABS.length];
+    openTab(t.id);
+    tabRefs.current.get(t.id)?.focus();
+  }
 
-      <form onSubmit={(e) => e.preventDefault()}>
+  // A panel's id isn't its tab's #hash, so opening /settings#pictures doesn't scroll the tabs out of view.
+  const panel = (id: TabId) => ({ role: "tabpanel", id: `panel-${id}`, "aria-labelledby": `tab-${id}`, hidden: tab !== id, className: "settings-panel" });
+
+  return (
+    <div style={{ display: "grid", gap: "1rem" }}>
+      <div className="settings-tabs" role="tablist" aria-label="Settings" onKeyDown={onTabKey}>
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            ref={(el) => {
+              if (el) tabRefs.current.set(t.id, el);
+            }}
+            type="button"
+            role="tab"
+            id={`tab-${t.id}`}
+            aria-controls={`panel-${t.id}`}
+            aria-selected={tab === t.id}
+            tabIndex={tab === t.id ? 0 : -1}
+            onClick={() => openTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {saveFailed && <p className="error">The server couldn&apos;t save the settings. Your changes will be lost on reload.</p>}
+
+      <div {...panel("connections")}>
+        <p className="notice">
+          These settings, including your API keys, are stored on the StoryTime server and shared by every browser that
+          uses it. AI requests still go directly from your browser to the provider you choose, so the key is sent to
+          your browser when a page loads. Only use StoryTime on a server and network you trust.
+        </p>
         <section className="settings-section">
-          <h2>Connections</h2>
+          <h2>AI connections</h2>
           <p className="meta">
             Add each AI server you use. You can have several, even of the same kind (say, Ollama on two machines).
           </p>
@@ -350,12 +423,19 @@ export default function SettingsForm() {
             </button>
           </div>
         </section>
+        <ComfyConnection comfy={settings.comfy} onChange={(patch) => update({ comfy: { ...settings.comfy, ...patch } })} />
+      </div>
 
+      <div {...panel("writing")}>
         <section id="models" className="settings-section">
           <h2>Starred models</h2>
           {settings.favorites.length === 0 ? (
             <p className="meta">
-              None yet. Test a connection above and star the models you want; they become the choices on the writing page.
+              None yet. Test a connection on the{" "}
+              <button type="button" className="link-button" onClick={() => openTab("connections")}>
+                Connections tab
+              </button>{" "}
+              and star the models you want; they become the choices on the writing page.
             </p>
           ) : (
             <>
@@ -405,8 +485,6 @@ export default function SettingsForm() {
             />
           </label>
         </section>
-
-        <ComfySettings comfy={settings.comfy} onChange={(patch) => update({ comfy: { ...settings.comfy, ...patch } })} />
 
         <section className="settings-section">
           <h2>Options</h2>
@@ -480,9 +558,17 @@ export default function SettingsForm() {
           {status && <p className={status.kind}>{status.text}</p>}
           {reply && <blockquote className="sample">{reply}</blockquote>}
         </section>
-      </form>
+      </div>
 
-      <section>
+      <div {...panel("pictures")}>
+        <PictureSettings
+          comfy={settings.comfy}
+          onChange={(patch) => update({ comfy: { ...settings.comfy, ...patch } })}
+          onConnections={() => openTab("connections")}
+        />
+      </div>
+
+      <section {...panel("backup")}>
         <h2>Back up or move your settings</h2>
         <div className="row">
           <button type="button" className="secondary" onClick={exportFile}>
@@ -503,6 +589,7 @@ export default function SettingsForm() {
             }}
           />
         </div>
+        {importStatus && <p className={importStatus.kind}>{importStatus.text}</p>}
         <p className="meta">The exported file contains your API keys. Keep it private.</p>
       </section>
     </div>

@@ -70,8 +70,12 @@ try {
   await page.keyboard.press("Escape");
 
   // ---- Settings: Check setup ----
-  await page.goto(`${BASE}/settings`);
+  await page.goto(`${BASE}/settings#pictures`);
   const report = page.locator(".comfy-check");
+  const qwenCard = page.getByRole("region", { name: "Edit: Qwen-Image-Edit" });
+  const kontextCard = page.getByRole("region", { name: "Edit: FLUX.1 Kontext" });
+  await qwenCard.getByText("Not installed in ComfyUI").waitFor();
+  ok((await kontextCard.innerText()).includes("Not installed in ComfyUI, so Edit this doesn't offer it"), "the Pictures tab has a card per edit model, saying it isn't installed");
   await page.getByRole("button", { name: "Check setup" }).click();
   await report.waitFor();
   const text = await report.innerText();
@@ -89,6 +93,10 @@ try {
   await page.getByRole("button", { name: "Check setup" }).click();
   await until(async () => (await report.innerText()).includes("FLUX.1 Kontext: ready"), "the third check");
   ok((await report.innerText()).includes("Qwen-Image-Edit: ready"), "with every file there, both are ready");
+  await kontextCard.getByText("Installed in ComfyUI.").waitFor();
+  ok(await qwenCard.getByText("Installed in ComfyUI.").isVisible(), "…and after the check the cards say so too");
+  ok((await qwenCard.innerText()).includes(`Fast with the Lightning LoRA (not installed: put ${LIGHTNING_LORA} in ComfyUI/models/loras)`) && await qwenCard.getByRole("checkbox", { name: /^Fast with the Lightning LoRA/ }).isDisabled(), "Qwen's card offers Fast, off while its LoRA isn't installed");
+  ok(await kontextCard.getByRole("checkbox", { name: /^Fast/ }).count() === 0, "…and Kontext, which has no speed-up, doesn't");
   ok((await report.innerText()).includes(`Lightning LoRA (optional, for fast edits): not installed. For edits several times faster, put ${LIGHTNING_LORA} in ComfyUI/models/loras.`), "…and the optional Lightning LoRA is said to be missing, with where it goes");
   comfy.setMode({ files: { ...EDIT_FILES, loras: [LIGHTNING_LORA] } });
   await page.getByRole("button", { name: "Check setup" }).click();
@@ -223,10 +231,16 @@ try {
 
   // ---- the author's LoRA stack ----
   const toggles = page.getByRole("group", { name: "LoRAs" });
-  ok((await toggles.innerText()).includes("No LoRAs for Qwen-Image-Edit") && await toggles.getByRole("link", { name: "Add some in Settings" }).getAttribute("href") === "/settings#edit-loras", "with no stack, the Edit tab says so and links to Settings");
+  ok((await toggles.innerText()).includes("No LoRAs for Qwen-Image-Edit") && await toggles.getByRole("link", { name: "Add some in Settings" }).getAttribute("href") === "/settings#edit-qwen-image-edit", "with no stack, the Edit tab says so and links to the model's card in Settings");
   const userLoras = ["styles/ink.safetensors", "hero.safetensors"];
   comfy.setMode({ files: { ...EDIT_FILES, loras: [LIGHTNING_LORA, ...userLoras] } });
-  await page.goto(`${BASE}/settings`);
+  await toggles.getByRole("link", { name: "Add some in Settings" }).click();
+  await page.waitForURL("**/settings#edit-qwen-image-edit");
+  await qwenCard.waitFor();
+  ok(await page.getByRole("tab", { name: "Pictures" }).getAttribute("aria-selected") === "true", "…which opens the Pictures tab");
+  // The card is near the end of the page, so it can't always reach the top: it is enough that the page scrolled down to it.
+  await until(async () => (await page.evaluate(() => scrollY)) > 0 && (await qwenCard.boundingBox())?.y > -5 && (await qwenCard.boundingBox())?.y < 600, "the card to be scrolled to");
+  ok(true, "…scrolled to Qwen-Image-Edit's card");
   const qwenStack = page.getByRole("group", { name: "LoRAs for Qwen-Image-Edit" });
   await qwenStack.getByRole("button", { name: "Add LoRA for Qwen-Image-Edit" }).waitFor();
   await until(async () => qwenStack.getByRole("button", { name: "Add LoRA for Qwen-Image-Edit" }).isEnabled(), "ComfyUI's LoRAs to be listed");
@@ -245,12 +259,36 @@ try {
   await qwenStack.getByRole("button", { name: "Move hero.safetensors up" }).click();
   await until(async () => (await savedStack()).map((l) => l.name).join() === "hero.safetensors,styles/ink.safetensors", "the new order");
   ok(true, "↑ moves a LoRA earlier in the stack");
+
+  // ---- the model's settings: default strength, and Advanced ----
+  const tuningNow = async () => (await call("GET", "/api/settings")).settings.comfy.editTuning["qwen-image-edit"] ?? {};
+  ok((await qwenCard.innerText()).includes("Fast with the Lightning LoRA (4 steps at CFG 1") && await qwenCard.getByRole("checkbox", { name: /^Fast/ }).isChecked(), "with the LoRA installed, the card's Fast box is on and says its steps");
+  await qwenCard.getByLabel("Default strength for Qwen-Image-Edit").fill("0.7");
+  await until(async () => (await tuningNow()).strength === 0.7, "the default strength to be saved");
+  ok(true, "the card sets the model's default strength");
+  const qAdvanced = qwenCard.locator("details.advanced");
+  await qAdvanced.getByText("Advanced: steps, CFG, sampler, shift").click();
+  ok((await qAdvanced.getByLabel(/^Steps/).inputValue()) === "20" && (await qAdvanced.getByLabel(/^CFG/).inputValue()) === "2.5" && (await qAdvanced.getByLabel(/^Shift/).inputValue()) === "3", "Advanced shows Qwen's steps, CFG and shift (20, 2.5, 3)");
+  ok((await qAdvanced.innerText()).includes("Fast is on, so edits use 4 steps at CFG 1"), "…and says Fast replaces the steps and CFG");
+  ok(await kontextCard.locator("details.advanced summary").innerText() === "Advanced: steps, CFG, sampler, guidance", "Kontext's Advanced has guidance instead of shift");
+  await qAdvanced.getByLabel(/^Shift/).fill("2.5");
+  await qAdvanced.getByLabel(/^Scheduler/).selectOption("beta");
+  const sorted = (o) => JSON.stringify(Object.fromEntries(Object.entries(o).sort()));
+  await until(async () => sorted(await tuningNow()) === '{"scheduler":"beta","shift":2.5,"strength":0.7}', "the shift and scheduler to be saved");
+  ok(true, "a changed shift and scheduler are saved for the model, beside its strength");
+  await qAdvanced.getByLabel(/^Steps/).fill("31");
+  await until(async () => (await tuningNow()).steps === 31, "the steps to be saved");
+  await qAdvanced.getByRole("button", { name: "Reset to defaults" }).click();
+  await until(async () => JSON.stringify(await tuningNow()) === '{"strength":0.7}', "the reset");
+  ok((await qAdvanced.getByLabel(/^Steps/).inputValue()) === "20", "Reset to defaults clears Advanced, keeping the default strength");
+  await qAdvanced.getByLabel(/^Shift/).fill("2.5");
+  await until(async () => (await tuningNow()).shift === 2.5, "the shift to be saved again");
   if (process.env.E2E_SCREENSHOT_DIR) {
-    await page.locator("#edit-loras").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/settings-loras-1000.png` });
+    await qwenCard.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/settings-loras-1000.png` });
     await page.setViewportSize({ width: 390, height: 900 });
     await page.waitForTimeout(300);
-    await page.locator("#edit-loras").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/settings-loras-390.png` });
-    ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "at phone width the LoRA stacks do not scroll sideways");
+    await qwenCard.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/settings-loras-390.png` });
+    ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "at phone width the edit model cards do not scroll sideways");
     await page.setViewportSize({ width: 1000, height: 1300 });
   }
 
@@ -261,6 +299,7 @@ try {
   await modelMenu.selectOption("qwen-image-edit");
   await toggles.getByRole("checkbox").first().waitFor();
   ok((await toggles.innerText()).includes("hero (-0.5)") && (await toggles.innerText()).includes("ink (0.8)") && await toggles.getByRole("checkbox").count() === 2, "the Edit tab lists the model's LoRAs with their strengths, each with a box");
+  ok(await strength.inputValue() === "0.7", "the Edit tab's strength starts at the model's default from Settings");
   await instruction.fill("in his ink style");
   mark = comfy.calls.length;
   before = await items.count();
@@ -269,6 +308,7 @@ try {
   wf = prompts(mark)[0];
   const loraNodes = () => nodes(wf, "LoraLoaderModelOnly").map((n) => `${n.inputs.lora_name}@${n.inputs.strength_model}`).join();
   ok(loraNodes() === `${LIGHTNING_LORA}@1,hero.safetensors@-0.5,styles/ink.safetensors@0.8`, "the edit loads the Lightning LoRA, then the stack in order at each strength");
+  ok(nodes(wf, "ModelSamplingAuraFlow")[0].inputs.shift === 2.5 && nodes(wf, "KSampler")[0].inputs.denoise === 0.7 && nodes(wf, "KSampler")[0].inputs.steps === 4, "…with the shift and strength from Settings, and Fast's 4 steps");
   log = (await jobs())[0];
   ok(log.checkpoint.endsWith(" + hero.safetensors (-0.5) + styles/ink.safetensors (0.8)"), "the job log keeps each LoRA with its strength");
   ok((await page.locator(".chapter-pictures").innerText()).includes("Qwen-Image-Edit · fast · 2 LoRAs"), "…and the caption says how many LoRAs it used");
@@ -323,14 +363,14 @@ try {
     await page.locator(".comfy-generate").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-edit-390.png` });
     ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "at phone width the Illustrate page does not scroll sideways");
     comfy.setMode({ missingNodes: [], files: { ...EDIT_FILES, diffusion_models: ["qwen_image_edit_2509_fp8_e4m3fn.safetensors"] } });
-    await page.goto(`${BASE}/settings`);
+    await page.goto(`${BASE}/settings#pictures`);
     await page.getByRole("button", { name: "Check setup" }).click();
     await report.waitFor();
-    await page.locator("#pictures").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/settings-check-390.png` });
+    await page.locator("#picture-setup").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/settings-check-390.png` });
     ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "at phone width the Settings check does not scroll sideways");
     await page.setViewportSize({ width: 1000, height: 1300 });
     await page.waitForTimeout(300);
-    await page.locator("#pictures").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/settings-check-1000.png` });
+    await page.locator("#picture-setup").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/settings-check-1000.png` });
   }
 } finally {
   await putSettings(before ?? {});

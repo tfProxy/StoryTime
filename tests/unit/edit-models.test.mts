@@ -1,4 +1,4 @@
-import { checkEditModels, comboOptions, EDIT_MODELS, EDIT_NODES, editFilesExtras, editFilesText, editModel, editSize, lightningSteps, usableLoras, type NodeInfo } from "../../src/lib/comfy/editModels.ts";
+import { checkEditModels, comboOptions, EDIT_MODELS, EDIT_NODES, editFilesExtras, editFilesText, editKnobs, editModel, editSize, editTuning, lightningSteps, usableLoras, type NodeInfo } from "../../src/lib/comfy/editModels.ts";
 import type { Workflow } from "../../src/lib/comfy/workflow.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
@@ -174,3 +174,26 @@ const u = usableLoras(
   userLoras,
 );
 ok(JSON.stringify(u.loras) === '[{"name":"styles/ink.safetensors","strength":0.8}]' && u.missing.join() === "gone.safetensors", "an edit uses the LoRAs switched on that ComfyUI has, and names the missing ones");
+
+// ---- each model's settings (Settings › Pictures › Advanced) ----
+const qm = editModel("qwen-image-edit")!;
+const km = editModel("flux-kontext")!;
+ok(editKnobs(qm).join() === "shift" && editKnobs(km).join() === "guidance", "Qwen has a shift setting and Kontext a guidance one");
+ok(JSON.stringify(editTuning(qm)) === JSON.stringify(qm.defaults) && qm.defaults.steps === 20 && qm.defaults.cfg === 2.5 && qm.defaults.strength === 1, "with nothing changed, a model runs with its defaults");
+const qt = editTuning(qm, { steps: 28, cfg: 3, sampler: "res_multistep", shift: 2, guidance: 9 });
+ok(qt.steps === 28 && qt.cfg === 3 && qt.sampler === "res_multistep" && qt.scheduler === "simple" && qt.shift === 2 && qt.guidance === undefined, "changed settings replace the defaults, and one the model doesn't have is ignored");
+const qwf = qm.build(qs.files, { ...params, tuning: qt });
+const qk = nodes(qwf, "KSampler")[0].inputs;
+ok(qk.steps === 28 && qk.cfg === 3 && qk.sampler_name === "res_multistep" && qk.scheduler === "simple", "Qwen's workflow uses them");
+ok(nodes(qwf, "ModelSamplingAuraFlow")[0].inputs.shift === 2, "…including the shift");
+const qfast = nodes(qm.build(qs.files, { ...params, tuning: qt }, true), "KSampler")[0].inputs;
+ok(qfast.steps === 4 && qfast.cfg === 1 && qfast.sampler_name === "res_multistep", "Fast still uses the Lightning LoRA's steps at CFG 1, with the chosen sampler");
+ok(nodes(qm.build(qs.files, params), "KSampler")[0].inputs.steps === 20 && nodes(qm.build(qs.files, params), "ModelSamplingAuraFlow")[0].inputs.shift === 3, "without settings, Qwen's workflow is as before");
+const kwf = km.build(ks.files, { ...params, tuning: editTuning(km, { guidance: 4, steps: 24, scheduler: "beta" }) });
+ok(nodes(kwf, "FluxGuidance")[0].inputs.guidance === 4 && nodes(kwf, "KSampler")[0].inputs.steps === 24 && nodes(kwf, "KSampler")[0].inputs.scheduler === "beta", "Kontext's workflow uses its guidance and sampler settings");
+ok(nodes(km.build(ks.files, params), "FluxGuidance")[0].inputs.guidance === 2.5, "…and guidance 2.5 without them");
+
+const withSamplers = { ...info(all), KSampler: { input: { required: { sampler_name: [["euler", "dpmpp_2m"], {}], scheduler: ["COMBO", { options: ["simple", "karras"] }] } } } };
+const sc = checkEditModels(withSamplers)[0];
+ok(sc.samplers.join() === "euler,dpmpp_2m" && sc.schedulers.join() === "simple,karras", "the check lists the samplers and schedulers ComfyUI's KSampler offers, for Settings");
+ok(EDIT_NODES.includes("KSampler"), "…which it asks about anyway");

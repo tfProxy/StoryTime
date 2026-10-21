@@ -71,8 +71,11 @@ await router.getByRole("button", { name: "Test connection" }).click();
 await router.getByLabel("Filter models").fill("vendor/b");
 ok((await router.locator(".codex-pick").count()) === 1, "a long model list can be filtered");
 await router.getByRole("button", { name: "Star vendor/big" }).click();
+await page.getByRole("tab", { name: "Writing" }).click();
 await page.getByLabel("Nickname for vendor/big").fill("Big one");
 await until(async () => (await settingsNow())?.favorites.find((f) => f.model === "vendor/big")?.label === "Big one", "the nickname to be saved");
+ok(true, "starred models are on the Writing tab, where they can be given a nickname");
+await page.getByRole("tab", { name: "Connections" }).click();
 let s = await settingsNow();
 ok(s.connections.length === 2 && s.favorites.length === 2 && s.defaults.main.model === "alpha", "settings hold both connections and both starred models");
 
@@ -121,7 +124,7 @@ ok(calls.at(-1).model === "vendor/big", "suggestions use the model picked for th
 
 // ---- the default is chosen in Settings, not next to the picker ----
 ok((await page.getByRole("button", { name: "Make default" }).count()) === 0, "the picker has no “Make default” button");
-await page.goto(`${BASE}/settings`);
+await page.goto(`${BASE}/settings#writing`);
 await page.getByLabel(/^Default model/).selectOption({ index: 2 }); // after the blank entry and "alpha"
 await until(async () => (await settingsNow()).defaults.main?.model === "vendor/big", "the default to change");
 ok(true, "choosing the default model in Settings changes it");

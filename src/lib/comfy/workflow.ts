@@ -33,7 +33,18 @@ export type PictureParams = {
   image?: string;
   /** Image to image: how far the pictures may drift from the starting one, 0 to 1 (default 1). */
   denoise?: number;
+  /** The built-in workflow's sampler settings (from Settings); other workflows keep their own. */
+  sampler?: SamplerTuning;
 };
+
+/** What a sampler runs with: its steps, CFG, sampler and scheduler (names as ComfyUI's KSampler lists them). */
+export type SamplerTuning = { steps: number; cfg: number; sampler: string; scheduler: string };
+
+/** The built-in workflow's sampler settings, unless changed in Settings: 30 steps of DPM++ 2M Karras at CFG 6. */
+export const BUILTIN_SAMPLER: SamplerTuning = { steps: 30, cfg: 6, sampler: "dpmpp_2m", scheduler: "karras" };
+
+/** The built-in workflow's sampler settings with the ones changed in Settings. */
+export const builtinSampler = (changed: Partial<SamplerTuning> = {}): SamplerTuning => ({ ...BUILTIN_SAMPLER, ...changed });
 
 const DEFAULT_PREFIX = "StoryTime";
 
@@ -53,7 +64,7 @@ export type WorkflowFit = {
   image: boolean;
 };
 
-/** Text-to-image with an SDXL checkpoint: 30 steps of DPM++ 2M Karras at CFG 6. */
+/** Text-to-image with an SDXL checkpoint: 30 steps of DPM++ 2M Karras at CFG 6 (BUILTIN_SAMPLER; Settings can change them). */
 export const BUILTIN_WORKFLOW: Workflow = {
   "3": {
     class_type: "KSampler",
@@ -204,7 +215,12 @@ function setPrefix(wf: Workflow, prefix: string) {
 
 /** A copy of the workflow with the picture's settings filled in. Throws WorkflowError if the prompt has nowhere to go. */
 export function fillWorkflow(wf: Workflow, p: PictureParams): Workflow {
-  const out = fillSettings(p.image && wf === BUILTIN_WORKFLOW ? BUILTIN_IMG2IMG : wf, p);
+  const builtin = wf === BUILTIN_WORKFLOW;
+  const out = fillSettings(p.image && builtin ? BUILTIN_IMG2IMG : wf, p);
+  if (builtin && p.sampler) {
+    const { steps, cfg, sampler, scheduler } = p.sampler;
+    Object.assign(out["3"].inputs, { steps, cfg, sampler_name: sampler, scheduler });
+  }
   setPrefix(out, p.prefix ?? DEFAULT_PREFIX);
   return out;
 }

@@ -105,7 +105,7 @@ ok((await dialog.innerText()).includes("Suggest 3 distinct options"), "Suggest c
 await page.keyboard.press("Escape");
 
 // ---- the settings page ----
-await page.goto(`${BASE}/settings`);
+await page.goto(`${BASE}/settings#writing`);
 await viewPrompt("Try a sample reply").click();
 ok((await dialog.innerText()).includes("Write one sentence that opens a fantasy adventure story."), "the settings page shows the sample prompt");
 

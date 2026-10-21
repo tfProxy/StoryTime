@@ -42,6 +42,17 @@ npm run dev        # http://localhost:3737
 Data lives in `data/storytime.db` (SQLite). Override with `STORYTIME_DB=/path/to/file.db`.
 Each person opens **Settings** in the app to add connections to their AI servers (several are fine, such as two Ollama machines and OpenRouter), star the models they want, and pick the defaults. While writing, each draft can switch to any starred model for writing and for suggestions.
 
+Settings has four tabs:
+
+- **Connections:** the AI servers, and the address of the ComfyUI machine that makes pictures.
+- **Writing:** the starred models, the default models, and options such as temperature and the context budget.
+- **Pictures:** the ComfyUI setup check, then one card for new pictures and Redraw (the redraw strength, your own
+  workflow, and the built-in workflow's steps, CFG and sampler) and one card per edit model (see
+  [Edit models in ComfyUI](#edit-models-in-comfyui)).
+- **Backup:** export the settings to a file, or import them.
+
+Each tab has its own address (`/settings#pictures`), so a link or a reload comes back to it.
+
 ## Running on Unraid (or any Docker host)
 
 The app is one container with one data folder. There is no registry or prebuilt image: Docker
@@ -153,10 +164,12 @@ edit is several times faster. It gives up a little fine detail; the 8-step versi
   in `loras`, it uses one whose name has the same release number as the model (such as 2509), and
   otherwise the 4-step one above.
 - Once the LoRA is installed, the Edit tab shows a **Fast (Lightning, 4 steps)** box under the model
-  menu when Qwen-Image-Edit is chosen. It starts ticked; untick it for the full 20 steps when you
-  want the most detail. The choice is remembered. Pictures made fast say "fast" in their caption,
-  and Info lists the LoRA beside the model file.
-- FLUX.1 Kontext has no Lightning LoRA here; it always runs its 20 steps.
+  menu when Qwen-Image-Edit is chosen, and Qwen-Image-Edit's card in **Settings › Pictures** has the
+  same box. It starts ticked; untick it for the full steps when you want the most detail. The choice
+  is remembered. Pictures made fast say "fast" in their caption, and Info lists the LoRA beside the
+  model file.
+- FLUX.1 Kontext has no Lightning LoRA here; it always runs its full steps (20 unless you change
+  them, see [Each model's settings](#each-models-settings)).
 
 ### 4. Download FLUX.1 Kontext dev
 
@@ -177,8 +190,9 @@ command line can resume a broken download, for example `curl -L -C - -O <link>` 
 
 ### 5. Restart ComfyUI and check
 
-Restart ComfyUI so it lists the new files. Then, in StoryTime, open **Settings › Pictures (ComfyUI)**
-and press **Check setup**. It reports:
+Restart ComfyUI so it lists the new files. Then, in StoryTime, open the **Pictures** tab of
+**Settings** and press **Check setup**. (The ComfyUI address is on the **Connections** tab.) It
+reports:
 
 - the checkpoints and the nodes your picture workflow uses;
 - for each edit model, whether ComfyUI has each file and the nodes it needs. A missing file is named
@@ -187,7 +201,8 @@ and press **Check setup**. It reports:
 - for Qwen-Image-Edit, the Lightning LoRA it found and its steps, or that it isn't installed. It is
   optional: Qwen is ready without it.
 
-A model is offered on the Illustrate page only when everything it needs is there. The check looks
+Each edit model's card below the check also says whether the model is installed. A model is
+offered on the Illustrate page only when everything it needs is there. The check looks
 for the files above by name, and also accepts other versions of the same file, such as a bf16
 model, another fp8 version, `t5xxl_fp16`, or a newer Qwen-Image-Edit release. If several match, the
 one listed above is used. GGUF versions are not supported, because they need a custom loader node.
@@ -201,12 +216,13 @@ art style, so edits keep that look.
    made for that model: a Qwen-Image or Qwen-Image-Edit LoRA for Qwen-Image-Edit, a FLUX.1 LoRA for
    FLUX.1 Kontext. A LoRA made for SDXL or another model has no effect: ComfyUI skips the parts that don't fit and
    says so in its console.
-2. In **Settings › Pictures (ComfyUI) › LoRAs for edits**, press **Add LoRA for …** under the model,
+2. In **Settings › Pictures**, in the model's card under **LoRAs**, press **Add LoRA for …**,
    choose the file from ComfyUI's list and set its strength: 1 is full strength, 0.5 half, and below
    0 works against the LoRA. ↑ moves a LoRA earlier; ✕ takes it out. A stack holds up to 8 LoRAs.
+   Settings asks ComfyUI for its files each time it opens, so a LoRA added since shows up there.
 3. On the Illustrate page, the Edit tab lists the chosen model's LoRAs under the model menu, each with
    a box to switch it on or off for the next edits. The boxes are saved, and **Change** goes back to
-   Settings.
+   the model's card in Settings.
 
 The LoRAs apply in the order listed, after the Lightning LoRA when **Fast** is on. Every story uses
 the same stacks. A LoRA that ComfyUI no longer lists is marked "missing" on the Edit tab, and edits
@@ -214,6 +230,37 @@ go ahead without it. A picture's caption says how many LoRAs made it, and **Info
 with its strength. StoryTime loads them with ComfyUI's **LoraLoaderModelOnly** node, so a LoRA
 changes the model but not the text encoder; a trigger word still works if you put it in the
 instruction.
+
+### Each model's settings
+
+Each edit model's card in **Settings › Pictures** also has:
+
+- **Default strength:** where the Edit tab's Strength slider starts for that model. At 1 the model
+  follows the instruction freely. Lower, it starts from the picture with less noise on it, so more of
+  the picture stays as it was, but too low and the change may not happen at all. You can still move
+  the slider on the Edit tab for the edits at hand; it goes back to the default when you choose
+  another model or reload the page.
+- **Advanced**, folded away: steps, CFG, sampler and scheduler, plus **Shift** for Qwen-Image-Edit
+  and **Guidance** for FLUX.1 Kontext. Each shows its default next to it. The sampler and scheduler
+  lists come from your ComfyUI. **Reset to defaults** puts them back (the default strength stays as
+  it is).
+
+| Setting | Qwen-Image-Edit | FLUX.1 Kontext | What it does |
+| --- | --- | --- | --- |
+| Steps | 20 | 20 | More is slower and usually a little cleaner. |
+| CFG | 2.5 | 1 | How strongly the instruction is followed; too high looks burnt. Kontext uses Guidance instead, so leave its CFG at 1. |
+| Sampler / scheduler | euler / simple | euler / simple | How each step is taken. |
+| Shift | 3 | – | Higher spends more of the steps on the big shapes; lower on detail. |
+| Guidance | – | 2.5 | How closely Kontext follows the instruction; raise it a little when an edit is ignored. |
+
+With **Fast** on, Qwen edits use the Lightning LoRA's steps (4 or 8) at CFG 1 instead of the steps and
+CFG above; the sampler, scheduler and shift still apply.
+
+The **New pictures and Redraw** card works the same way for pictures made from a prompt: the
+**Redraw strength** (the same one the Redraw tab's slider sets) and, under Advanced, the built-in
+SDXL workflow's steps (30), CFG (6), sampler (dpmpp_2m) and scheduler (karras). A workflow of your
+own pasted into that card keeps its own sampler settings; change them in ComfyUI and export it
+again.
 
 ### Tips for instructions
 

@@ -161,11 +161,11 @@ try {
   ok(prompts(refusedMark).length === 0, "a workflow that can't start from a picture says so, without being sent to ComfyUI");
 
   // ---- Settings says whether the workflow can ----
-  await page.goto(`${BASE}/settings`);
-  await page.locator("#pictures").waitFor();
+  await page.goto(`${BASE}/settings#pictures`);
+  await page.locator("#redraw").waitFor();
   await page.getByText("It can't start from a picture.").waitFor();
   ok(true, "Settings says that workflow can't start from a picture");
-  await page.locator("#pictures textarea").fill("");
+  await page.locator("#redraw textarea").fill("");
   await page.getByText(/It can also start from a picture\./).waitFor();
   ok(true, "…and that the built-in workflow can");
 

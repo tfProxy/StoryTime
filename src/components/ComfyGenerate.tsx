@@ -11,9 +11,9 @@ import type { JobProgress, MadeWith, PendingJob, Picture, StartMode } from "./pi
 import { editBlocked, type EditModels } from "./useEditModels";
 import AutoTextarea from "./AutoTextarea";
 import { LIMITS } from "@/lib/limits";
-import { editFilesText, editSize, lightningSteps, usableLoras, type EditCheck, type EditLora } from "@/lib/comfy/editModels";
+import { editFilesText, editSize, editTuning, lightningSteps, usableLoras, type EditCheck, type EditLora, type EditTuning } from "@/lib/comfy/editModels";
 import { uploadStart, type StartPicture, type Uploaded } from "@/lib/comfy/startPicture";
-import { describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
+import { builtinSampler, describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
 import { cancelPrompt, listCheckpoints, queuePrompt, waitForPictures, type Progress } from "@/lib/comfy/client";
 
 /** Sizes that suit SDXL (about one megapixel). */
@@ -59,6 +59,8 @@ type JobInput = {
     fast: boolean;
     /** The author's LoRAs for the model that are switched on and in ComfyUI. */
     loras: EditLora[];
+    /** The model's settings from Settings (steps, CFG, sampler…). */
+    tuning: EditTuning;
   } | null;
   /** The seed to use, or null for a random one. */
   seed: number | null;
@@ -74,7 +76,8 @@ type Gathering = { key: string; input: JobInput; count: number; timer: ReturnTyp
 const sameJob = (a: JobInput) =>
   JSON.stringify([
     a.prompt, a.negative, a.moment, a.comfy.url, a.comfy.workflow, a.comfy.checkpoint, a.comfy.width, a.comfy.height, a.start?.key ?? null,
-    a.start && !a.edit ? a.comfy.denoise : null, a.edit?.check.model.id ?? null, a.edit?.instruction ?? null, a.edit?.strength ?? null, a.edit?.fast ?? null, a.edit?.loras ?? null, a.seed,
+    a.start && !a.edit ? a.comfy.denoise : null, a.edit ? null : a.comfy.redraw, a.edit?.check.model.id ?? null, a.edit?.instruction ?? null,
+    a.edit?.strength ?? null, a.edit?.fast ?? null, a.edit?.loras ?? null, a.edit?.tuning ?? null, a.seed,
   ]);
 
 /**
@@ -137,12 +140,17 @@ export default function ComfyGenerate({
   const comfy = settings.comfy;
   // What to change, when editing the starting picture by instruction.
   const [instruction, setInstruction] = useState("");
-  // How closely an edit follows the starting picture: 1 lets the model change it freely, lower keeps it closer.
-  const [editStrength, setEditStrength] = useState(1);
   const editing = start !== null && startMode === "edit";
   const blocked = editBlocked(editModels);
   const ready = editModels.state === "done" ? editModels.ready : [];
   const chosen = ready.find((c) => c.model.id === comfy.editModel) ?? ready[0] ?? null;
+  // The chosen model's settings from Settings.
+  const tuning = chosen ? editTuning(chosen.model, comfy.editTuning[chosen.model.id]) : null;
+  // How closely an edit follows the starting picture: 1 lets the model change it freely, lower keeps it closer.
+  // It starts at the model's default strength (Settings), and a change here lasts until another model is chosen.
+  const [strengthFor, setStrengthFor] = useState<{ model: string; value: number } | null>(null);
+  const editStrength = chosen && strengthFor?.model === chosen.model.id ? strengthFor.value : (tuning?.strength ?? 1);
+  const setEditStrength = (value: number) => chosen && setStrengthFor({ model: chosen.model.id, value });
   // The chosen model's speed-up file, when ComfyUI has one, and whether edits use it.
   const speedUp = chosen?.files.speedUp ?? null;
   const fast = speedUp !== null && comfy.editFast;
@@ -213,7 +221,7 @@ export default function ComfyGenerate({
   if (!comfy.url) {
     return (
       <p className="meta" style={{ margin: 0 }}>
-        To make pictures here, add your ComfyUI machine in <Link href="/settings#pictures">Settings</Link>.
+        To make pictures here, add your ComfyUI machine in <Link href="/settings#comfyui">Settings</Link>.
       </p>
     );
   }
@@ -238,7 +246,7 @@ export default function ComfyGenerate({
       // The checkpoint is the story's, not the shared setting.
       comfy: { ...comfy, checkpoint },
       start,
-      edit: editing && chosen ? { check: chosen, instruction: instruction.trim(), strength: editStrength, fast, loras: editLoras } : null,
+      edit: editing && chosen && tuning ? { check: chosen, instruction: instruction.trim(), strength: editStrength, fast, loras: editLoras, tuning } : null,
       seed: reuseSeed && loadedSeed !== null ? loadedSeed : null,
     };
     const g = gathering.current;
@@ -333,7 +341,11 @@ export default function ComfyGenerate({
       const prefix = filenamePrefix(storyId, chapterId);
       const workflow =
         edit && from
-          ? edit.check.model.build(edit.check.files, { image: from.name, instruction: edit.instruction, seed, count, width, height, prefix, denoise: edit.strength, loras: edit.loras }, edit.fast)
+          ? edit.check.model.build(
+              edit.check.files,
+              { image: from.name, instruction: edit.instruction, seed, count, width, height, prefix, denoise: edit.strength, loras: edit.loras, tuning: edit.tuning },
+              edit.fast,
+            )
           : fillWorkflow(base!, {
               prompt,
               negative,
@@ -343,6 +355,7 @@ export default function ComfyGenerate({
               count,
               seed,
               prefix,
+              sampler: builtinSampler(comfy.redraw),
               ...(from && { image: from.name, denoise: comfy.denoise }),
             });
       // What the pictures were made with: the edit model's file, or the story's checkpoint.
@@ -506,7 +519,7 @@ export default function ComfyGenerate({
                   </label>
                   <p className="meta" style={{ margin: 0 }}>{chosen.model.blurb}</p>
                   {speedUp && (
-                    <label className="inline-label" title={`Uses ${speedUp}: ${lightningSteps(speedUp)} steps instead of 20, with a little less detail`}>
+                    <label className="inline-label" title={`Uses ${speedUp}: ${lightningSteps(speedUp)} steps instead of ${tuning?.steps}, with a little less detail`}>
                       <input type="checkbox" checked={comfy.editFast} onChange={(e) => set({ editFast: e.target.checked })} />
                       Fast ({chosen.model.speedUp?.name ?? "speed-up"}, {lightningSteps(speedUp)} steps)
                     </label>
@@ -514,7 +527,7 @@ export default function ComfyGenerate({
                   <div className="edit-lora-toggles" role="group" aria-label="LoRAs">
                     {loraStack.length === 0 ? (
                       <span className="meta">
-                        No LoRAs for {chosen.model.name}. <Link href="/settings#edit-loras">Add some in Settings</Link>
+                        No LoRAs for {chosen.model.name}. <Link href={`/settings#edit-${chosen.model.id}`}>Add some in Settings</Link>
                       </span>
                     ) : (
                       <>
@@ -537,7 +550,7 @@ export default function ComfyGenerate({
                             </label>
                           );
                         })}
-                        <Link href="/settings#edit-loras" className="meta">
+                        <Link href={`/settings#edit-${chosen.model.id}`} className="meta">
                           Change
                         </Link>
                       </>
@@ -571,7 +584,10 @@ export default function ComfyGenerate({
                       onChange={(e) => setEditStrength(Number(e.target.value))}
                     />
                   </label>
-                  <p className="meta" style={{ margin: 0 }}>Low keeps the picture close; 1.00 lets the model change it freely.</p>
+                  <p className="meta" style={{ margin: 0 }}>
+                    Low keeps the picture close; 1.00 lets the model change it freely. It starts at {chosen.model.name}&apos;s default ({(tuning?.strength ?? 1).toFixed(2)}),{" "}
+                    <Link href={`/settings#edit-${chosen.model.id}`}>set in Settings</Link>.
+                  </p>
                   <p className="meta" style={{ margin: 0 }}>The prompt above isn&apos;t used. Edits keep the picture&apos;s shape, at about one megapixel.</p>
                 </>
               ) : (

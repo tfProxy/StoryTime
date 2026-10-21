@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { PROVIDER_KINDS, providerInfo, type ProviderKind } from "./ai/providers";
+import type { SamplerTuning } from "./comfy/workflow";
+import type { EditTuning } from "./comfy/editModels";
 
 // Types, defaults and parsing, shared by the browser and the server (which stores the settings).
 
@@ -74,6 +76,10 @@ export type ComfySettings = {
    * switched from the Edit tab; a LoRA switched off stays in the stack.
    */
   editLoras: Record<string, EditLoraSetting[]>;
+  /** The built-in workflow's sampler settings changed in Settings; the rest are BUILTIN_SAMPLER's. */
+  redraw: Partial<SamplerTuning>;
+  /** Each edit model's settings changed in Settings (by its id in EDIT_MODELS); the rest are the model's defaults. */
+  editTuning: Record<string, Partial<EditTuning>>;
 };
 
 /** A LoRA in an edit model's stack: its file in ComfyUI's `loras` folder, its strength, and whether it is used. */
@@ -92,7 +98,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoSuggestChoices: false,
   imagePromptStyle: "tags",
   imagePromptModel: null,
-  comfy: { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4, denoise: 0.55, editModel: "qwen-image-edit", editFast: true, editLoras: {} },
+  comfy: { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4, denoise: 0.55, editModel: "qwen-image-edit", editFast: true, editLoras: {}, redraw: {}, editTuning: {} },
 };
 
 // Each field falls back to its default when missing or invalid, so partial files still
@@ -113,6 +119,27 @@ const editLoraSchema = z.object({
   strength: z.number().min(-4).max(4).catch(1),
   on: z.boolean().catch(true),
 });
+
+/** The limits of each sampler setting in Settings. */
+export const TUNING_LIMITS = {
+  steps: { min: 1, max: 150, step: 1 },
+  cfg: { min: 0, max: 30, step: 0.1 },
+  shift: { min: 0, max: 20, step: 0.1 },
+  guidance: { min: 0, max: 30, step: 0.1 },
+  strength: { min: 0.05, max: 1, step: 0.05 },
+} as const;
+
+// A changed setting out of range, or of the wrong kind, is dropped, so the default applies again.
+const tuned = (k: keyof typeof TUNING_LIMITS) => {
+  const n = z.number().min(TUNING_LIMITS[k].min).max(TUNING_LIMITS[k].max);
+  return (k === "steps" ? n.int() : n).optional().catch(undefined);
+};
+const samplerName = z.string().trim().min(1).max(100).optional().catch(undefined);
+const samplerSchema = z.object({ steps: tuned("steps"), cfg: tuned("cfg"), sampler: samplerName, scheduler: samplerName });
+const editTuningSchema = samplerSchema.extend({ strength: tuned("strength"), shift: tuned("shift"), guidance: tuned("guidance") });
+
+/** Only the settings that are set, so a missing one isn't stored as `undefined`. */
+const setOnly = <T extends Record<string, unknown>>(o: T) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
 
 const listOf = <T>(item: z.ZodType<T>) =>
   z
@@ -149,6 +176,8 @@ const settingsSchema = z.object({
       editLoras: z
         .record(z.string().max(100), listOf(editLoraSchema).transform((xs) => xs.slice(0, MAX_EDIT_LORAS)))
         .catch({}),
+      redraw: samplerSchema.transform(setOnly).catch({}),
+      editTuning: z.record(z.string().max(100), editTuningSchema.transform(setOnly).catch({})).catch({}),
     })
     .catch(DEFAULT_SETTINGS.comfy),
 });

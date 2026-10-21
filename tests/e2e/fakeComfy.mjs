@@ -97,6 +97,10 @@ const NODES = [
   "ModelSamplingAuraFlow", "CFGNorm", "ReferenceLatent", "FluxGuidance", "ConditioningZeroOut", "LoraLoaderModelOnly",
 ];
 
+/** The samplers and schedulers the fake's KSampler offers. */
+export const SAMPLERS = ["euler", "euler_ancestral", "dpmpp_2m", "res_multistep", "fake_sampler"];
+export const SCHEDULERS = ["simple", "normal", "karras", "beta"];
+
 /** Qwen-Image-Edit's Lightning LoRA, for tests that install it (in `files.loras`). */
 export const LIGHTNING_LORA = "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors";
 
@@ -118,6 +122,7 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
       },
       VAELoader: { vae_name: combo(folder("vae")) },
       LoraLoaderModelOnly: { lora_name: combo(folder("loras")), strength_model: ["FLOAT", { default: 1 }] },
+      KSampler: { sampler_name: combo(SAMPLERS), scheduler: combo(SCHEDULERS) },
     }[name] ?? {};
     return { input: { required }, name };
   }

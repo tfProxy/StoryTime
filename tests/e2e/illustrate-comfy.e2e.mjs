@@ -79,7 +79,7 @@ const openIllustrate = async () => {
 };
 const openSettings = async () => {
   await page.goto(`${BASE}/settings`);
-  await page.locator("#pictures").waitFor();
+  await page.locator("#comfyui").waitFor();
   await page.waitForLoadState("networkidle");
 };
 
@@ -87,14 +87,33 @@ try {
   // ---- no ComfyUI address yet ----
   await openIllustrate();
   await page.getByText("To make pictures here, add your ComfyUI machine in").waitFor();
-  ok(await page.getByRole("link", { name: "Settings", exact: true }).getAttribute("href") === "/settings#pictures", "with no ComfyUI address, the page says to add it in Settings (linking to the Pictures section)");
+  ok(await page.getByRole("link", { name: "Settings", exact: true }).getAttribute("href") === "/settings#comfyui", "with no ComfyUI address, the page says to add it in Settings (linking to the ComfyUI address)");
   ok(await page.getByRole("heading", { name: "Make pictures" }).count() === 0 && await makeButton.count() === 0, "…and offers no Queue button");
   ok(await promptBox.isVisible() && await negativeBox.isVisible(), "…but the prompt fields are there, to type in and copy");
 
   // ---- Settings: the address, the connection test and the CORS hint ----
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.waitForURL("**/settings#comfyui");
+  await page.locator("#comfyui").waitFor();
+  ok(await page.getByRole("tab", { name: "Connections" }).getAttribute("aria-selected") === "true", "the link opens Settings on its Connections tab");
+  ok(await page.getByRole("tab", { name: "Pictures" }).getAttribute("aria-selected") === "false" && !(await page.locator("#redraw").isVisible()), "…with the other tabs hidden");
   await openSettings();
-  const section = page.locator("#pictures");
-  ok(await section.getByRole("heading", { name: "Pictures (ComfyUI)" }).isVisible(), "Settings has a Pictures (ComfyUI) section");
+  ok((await page.getByRole("tab").allInnerTexts()).join() === "Connections,Writing,Pictures,Backup", "Settings has Connections, Writing, Pictures and Backup tabs");
+  ok(await page.getByRole("tab", { name: "Connections" }).getAttribute("aria-selected") === "true", "…and opens on Connections");
+  await page.getByRole("tab", { name: "Pictures" }).click();
+  ok(page.url().endsWith("/settings#pictures") && (await page.getByRole("tabpanel").getAttribute("id")) === "panel-pictures", "a tab shows its panel alone, and puts its name in the address");
+  await page.goto(`${BASE}/settings#pictures`);
+  await page.locator("#panel-pictures").waitFor();
+  ok(await page.getByRole("tab", { name: "Pictures" }).isVisible() && (await page.evaluate(() => scrollY)) === 0, "a tab's address opens it with the tabs still in view");
+  ok((await page.getByRole("tabpanel").innerText()).includes("Add the ComfyUI address on the"), "…the Pictures tab, with no ComfyUI address, says to add it first");
+  await page.getByRole("tabpanel").getByRole("button", { name: "Connections tab" }).click();
+  ok(await page.getByRole("tab", { name: "Connections" }).getAttribute("aria-selected") === "true", "…and its link goes to the Connections tab");
+  await page.getByRole("tab", { name: "Connections" }).focus();
+  await page.keyboard.press("ArrowRight");
+  ok(await page.getByRole("tab", { name: "Writing" }).getAttribute("aria-selected") === "true" && (await page.evaluate(() => document.activeElement?.textContent)) === "Writing", "the arrow keys move between tabs");
+  await page.keyboard.press("ArrowLeft");
+  const section = page.locator("#comfyui");
+  ok(await section.getByRole("heading", { name: "ComfyUI (pictures)" }).isVisible(), "the Connections tab has the ComfyUI section");
   ok(await section.getByRole("button", { name: "Test connection" }).isDisabled(), "Test connection is off until there is an address");
   ok(await section.locator("code", { hasText: `--enable-cors-header ${BASE}` }).isVisible(), "the CORS hint shows this page's own address");
   const address = section.getByLabel("ComfyUI address");
@@ -113,15 +132,19 @@ try {
   ok(comfy.calls.some((c) => c.path === "/system_stats") && comfy.calls.some((c) => c.path === "/models/checkpoints"), "…by asking /system_stats and /models/checkpoints");
 
   // ---- Settings: what the workflow box says ----
-  const workflow = section.locator("textarea");
-  const summaryText = async () => (await section.locator("label:has(textarea) + p").innerText());
+  await page.getByRole("tab", { name: "Pictures" }).click();
+  const redraw = page.locator("#redraw");
+  await redraw.waitFor();
+  ok(await redraw.getByRole("heading", { name: "New pictures and Redraw" }).isVisible(), "the Pictures tab has a card for new pictures and Redraw");
+  const workflow = redraw.locator("textarea");
+  const summaryText = async () => (await redraw.locator("label:has(textarea) + p").innerText());
   ok((await summaryText()).startsWith("Using the built-in SDXL workflow"), "an empty workflow box says the built-in SDXL workflow is used");
 
   await workflow.fill(JSON.stringify({ last_node_id: 3, nodes: [{ id: 1, type: "KSampler" }], links: [[1, 1, 0, 2, 0, "LATENT"]], version: 0.4 }));
-  await section.locator("p.error", { hasText: "API format" }).waitFor();
+  await redraw.locator("p.error", { hasText: "API format" }).waitFor();
   ok(true, "pasting ComfyUI's regular (UI) workflow file shows an error pointing to Export (API)");
   await workflow.fill("{ not json");
-  await section.locator("p.error", { hasText: "isn't valid JSON" }).waitFor();
+  await redraw.locator("p.error", { hasText: "isn't valid JSON" }).waitFor();
   ok(true, "text that isn't JSON shows an error");
 
   await workflow.fill(JSON.stringify({ "1": { class_type: "CLIPTextEncode", inputs: { text: "{{prompt}}, {{checkpoint}}" } }, "2": { class_type: "EmptyLatentImage", inputs: { width: "{{width}}", height: "{{height}}", batch_size: "{{count}}" } } }));
@@ -134,12 +157,30 @@ try {
   ok(true, "a workflow without placeholders says what was found automatically");
 
   await workflow.fill(JSON.stringify({ "1": { class_type: "SaveImage", inputs: {} } }));
-  await section.locator("p.error", { hasText: "nothing for the prompt" }).waitFor();
+  await redraw.locator("p.error", { hasText: "nothing for the prompt" }).waitFor();
   ok(true, "a workflow with nowhere for the prompt is flagged");
+  await redraw.getByText("Advanced: steps, CFG, sampler").click();
+  ok((await redraw.locator("details.advanced").innerText()).includes("Your own workflow keeps its own steps, CFG and sampler"), "with a workflow of your own, Advanced says its steps and sampler are the workflow's");
 
   await workflow.fill("");
   await page.getByText(/^Using the built-in SDXL workflow/).waitFor();
   ok(await until(async () => (await settingsNow()).comfy.workflow === "", "the workflow to be cleared"), "clearing the box goes back to the built-in workflow");
+
+  // ---- Settings: the built-in workflow's sampler settings ----
+  const advanced = redraw.locator("details.advanced");
+  ok((await advanced.getByLabel(/^Steps/).inputValue()) === "30" && (await advanced.getByLabel(/^Sampler/).inputValue()) === "dpmpp_2m", "with the built-in workflow, Advanced shows its steps and sampler (30, dpmpp_2m)");
+  ok(await advanced.getByRole("button", { name: "Reset to defaults" }).isDisabled(), "…with nothing to reset yet");
+  ok((await advanced.getByLabel(/^Sampler/).locator("option").allInnerTexts()).includes("fake_sampler"), "the samplers offered are the ones ComfyUI lists");
+  await advanced.getByLabel(/^Steps/).fill("22");
+  await advanced.getByLabel(/^Sampler/).selectOption("euler_ancestral");
+  ok(await until(async () => JSON.stringify((await settingsNow()).comfy.redraw) === '{"steps":22,"sampler":"euler_ancestral"}', "the sampler settings to be saved"), "a changed step count and sampler are saved, and only those");
+  ok((await summaryText()).includes("22 steps of euler_ancestral karras, CFG 6"), "…and the workflow summary shows them");
+  await advanced.getByLabel(/^Steps/).fill("500");
+  ok(await until(async () => (await settingsNow()).comfy.redraw.steps === 150, "the steps to be capped"), "a step count over 150 is kept at 150");
+  await advanced.getByLabel(/^Steps/).fill("22");
+  await until(async () => (await settingsNow()).comfy.redraw.steps === 22, "the steps to be 22 again");
+  await redraw.getByLabel("Redraw strength").fill("0.4");
+  ok(await until(async () => (await settingsNow()).comfy.denoise === 0.4, "the redraw strength to be saved"), "the Redraw strength can be set here too");
 
   // ---- the Illustrate page with an address ----
   await openIllustrate();
@@ -262,6 +303,8 @@ try {
   ok(latent.batch_size === 2 && latent.width === 1344 && latent.height === 768, "…batch_size 2 and the chosen size, as numbers");
   const seed = nodesOf("KSampler")[0].inputs.seed;
   ok(typeof seed === "number" && Number.isInteger(seed) && seed >= 0, "…a numeric seed");
+  const sampler = nodesOf("KSampler")[0].inputs;
+  ok(sampler.steps === 22 && sampler.sampler_name === "euler_ancestral" && sampler.cfg === 6 && sampler.scheduler === "karras", "…and the sampler settings from Settings (22 steps of euler_ancestral)");
   ok(JSON.stringify(wf).includes("{{") === false, "…and no placeholder left over");
   const clientId = sent[0].body.client_id;
   ok(typeof clientId === "string" && clientId.length > 0 && comfy.calls.slice(mark).some((c) => c.method === "UPGRADE" && c.path === "/ws" && c.query.clientId === clientId), "…with a client id that the page's WebSocket connection also used");

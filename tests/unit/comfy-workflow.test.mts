@@ -1,4 +1,4 @@
-import { BUILTIN_IMG2IMG, BUILTIN_WORKFLOW, describeWorkflow, filenamePrefix, fillWorkflow, parseWorkflow, randomSeed, WorkflowError, type PictureParams, type Workflow } from "../../src/lib/comfy/workflow.ts";
+import { BUILTIN_IMG2IMG, BUILTIN_SAMPLER, BUILTIN_WORKFLOW, builtinSampler, describeWorkflow, filenamePrefix, fillWorkflow, parseWorkflow, randomSeed, WorkflowError, type PictureParams, type Workflow } from "../../src/lib/comfy/workflow.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const throwsWorkflowError = (fn: () => unknown) => {
@@ -225,6 +225,19 @@ const fluxImg = fillWorkflow(flux, imgParams);
 ok(fluxImg["17"].inputs.denoise === 0.4 && JSON.stringify(fluxImg["19"].inputs.latent_image) === '["storytime_repeat",0]' && JSON.stringify(fluxImg.storytime_encode.inputs.vae) === '["21",0]', "img2img detected (Flux): the scheduler's denoise is set and the VAE loader's VAE is used");
 const cantStart = throwsWorkflowError(() => fillWorkflow({ ...sdxl, "3": { class_type: "KSampler", inputs: { ...sdxl["3"].inputs, denoise: "x" } } }, imgParams));
 ok(cantStart !== null && cantStart.includes("{{image}}"), "img2img detected: a workflow with no numeric denoise is an error pointing to {{image}} and {{denoise}}");
+
+// ---- the built-in workflow's sampler settings ----
+const sampled = (wf: Workflow) => Object.values(wf).find((n) => n.class_type === "KSampler")!.inputs;
+let ks = sampled(fillWorkflow(BUILTIN_WORKFLOW, params));
+ok(ks.steps === 30 && ks.cfg === 6 && ks.sampler_name === "dpmpp_2m" && ks.scheduler === "karras", "the built-in workflow runs 30 steps of DPM++ 2M Karras at CFG 6");
+ok(JSON.stringify(builtinSampler()) === JSON.stringify(BUILTIN_SAMPLER) && builtinSampler({ cfg: 4 }).steps === 30, "builtinSampler fills in the defaults the settings don't change");
+ks = sampled(fillWorkflow(BUILTIN_WORKFLOW, { ...params, sampler: builtinSampler({ steps: 22, cfg: 4.5, sampler: "euler_ancestral", scheduler: "normal" }) }));
+ok(ks.steps === 22 && ks.cfg === 4.5 && ks.sampler_name === "euler_ancestral" && ks.scheduler === "normal" && ks.seed === params.seed, "Settings can change its steps, CFG, sampler and scheduler");
+ks = sampled(fillWorkflow(BUILTIN_WORKFLOW, { ...params, image: "start.png", denoise: 0.4, sampler: builtinSampler({ steps: 12 }) }));
+ok(ks.steps === 12 && ks.denoise === 0.4 && Array.isArray(ks.latent_image) && ks.latent_image[0] === "12", "…also when it starts from a picture");
+const own = parseWorkflow(JSON.stringify({ ...BUILTIN_WORKFLOW, "3": { ...BUILTIN_WORKFLOW["3"], inputs: { ...BUILTIN_WORKFLOW["3"].inputs, steps: 9 } } }));
+ok(sampled(fillWorkflow(own, { ...params, sampler: builtinSampler({ steps: 40 }) })).steps === 9, "a workflow of your own keeps its own steps");
+ok(BUILTIN_WORKFLOW["3"].inputs.steps === 30, "…and the built-in workflow itself is left as it was");
 
 // ---- randomSeed ----
 const seeds = Array.from({ length: 50 }, randomSeed);

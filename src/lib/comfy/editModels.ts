@@ -5,7 +5,7 @@
 // Each model needs some files in ComfyUI's models folder (the README says where to get them) and some
 // nodes, all of them part of ComfyUI itself in recent versions. A model can be used only when every node
 // is there and a file is found for every part.
-import type { Workflow } from "./workflow";
+import type { SamplerTuning, Workflow } from "./workflow";
 
 /** One file a model needs, and the loader node whose list of choices shows whether ComfyUI has it. */
 export type ModelPart = {
@@ -44,7 +44,25 @@ export type EditParams = {
   denoise: number;
   /** The author's LoRA stack for this model, applied in order after any speed-up. */
   loras?: EditLora[];
+  /** The model's settings (`editTuning`); its defaults when not given. */
+  tuning?: EditTuning;
 };
+
+/**
+ * What an edit model runs with: the sampler's settings, the default strength the Edit tab starts at, and
+ * the settings only some models have (Qwen's shift, Kontext's guidance).
+ */
+export type EditTuning = SamplerTuning & {
+  /** The Edit tab's strength to start with (see EditParams.denoise). */
+  strength: number;
+  /** Qwen: ModelSamplingAuraFlow's shift. Higher spends more of the steps on the big shapes. */
+  shift?: number;
+  /** Kontext: FluxGuidance, how closely it follows the instruction. */
+  guidance?: number;
+};
+
+/** The settings an edit model has beyond the sampler's. */
+export type EditKnob = "shift" | "guidance";
 
 /**
  * An optional file that makes a model faster, such as a Lightning LoRA: fewer steps at CFG 1. The model
@@ -66,6 +84,8 @@ export type EditModel = {
   options: NeededOption[];
   /** An optional file that makes it faster, if the model has one. */
   speedUp?: SpeedUp;
+  /** What it runs with unless changed in Settings, including its extra settings (`shift`, `guidance`). */
+  defaults: EditTuning;
   /**
    * The workflow, with the files found for each part (by part key). With `fast`, the file of the
    * speed-up (`files.speedUp`) is used too.
@@ -128,11 +148,27 @@ function shared(p: EditParams, vae: [string, number], sampler: string): Workflow
   };
 }
 
+/** Qwen-Image-Edit 2509's defaults, as in ComfyUI's own template: 20 steps of Euler at CFG 2.5, shift 3. */
+const QWEN_DEFAULTS: EditTuning = { steps: 20, cfg: 2.5, sampler: "euler", scheduler: "simple", strength: 1, shift: 3 };
+/** FLUX.1 Kontext dev's defaults: 20 steps of Euler at CFG 1, guidance 2.5. */
+const KONTEXT_DEFAULTS: EditTuning = { steps: 20, cfg: 1, sampler: "euler", scheduler: "simple", strength: 1, guidance: 2.5 };
+
+/** The sampler's inputs for an edit: the model's settings, or with a Lightning LoRA the steps it was made for at CFG 1. */
+function samplerInputs(t: EditTuning, lightning: string | null) {
+  return {
+    steps: lightning ? lightningSteps(lightning) : t.steps,
+    cfg: lightning ? 1 : t.cfg,
+    sampler_name: t.sampler,
+    scheduler: t.scheduler,
+  };
+}
+
 /**
- * Qwen-Image-Edit 2509: 20 steps of Euler at CFG 2.5, as in ComfyUI's own template. Fast, with the
- * Lightning LoRA (`files.speedUp`): the steps it was made for (4 or 8) at CFG 1.
+ * Qwen-Image-Edit 2509, with its settings (`p.tuning`). Fast, with the Lightning LoRA (`files.speedUp`):
+ * the steps it was made for (4 or 8) at CFG 1.
  */
 function qwenWorkflow(files: Record<string, string>, p: EditParams, fast = false): Workflow {
+  const t = p.tuning ?? QWEN_DEFAULTS;
   const lightning = fast && files.speedUp ? files.speedUp : null;
   const chain = loraChain(["1", 0], lightning, p.loras);
   const encode = (prompt: string) => ({
@@ -144,14 +180,14 @@ function qwenWorkflow(files: Record<string, string>, p: EditParams, fast = false
     "2": { class_type: "CLIPLoader", inputs: { clip_name: files.textEncoder, type: "qwen_image", device: "default" } },
     "3": { class_type: "VAELoader", inputs: { vae_name: files.vae } },
     ...chain.nodes,
-    "4": { class_type: "ModelSamplingAuraFlow", inputs: { model: chain.model, shift: 3 } },
+    "4": { class_type: "ModelSamplingAuraFlow", inputs: { model: chain.model, shift: t.shift ?? QWEN_DEFAULTS.shift } },
     "5": { class_type: "CFGNorm", inputs: { model: ["4", 0], strength: 1 } },
     "6": encode(p.instruction),
     "7": encode(""),
     "8": {
       class_type: "KSampler",
       inputs: {
-        seed: p.seed, steps: lightning ? lightningSteps(lightning) : 20, cfg: lightning ? 1 : 2.5, sampler_name: "euler", scheduler: "simple", denoise: p.denoise,
+        seed: p.seed, ...samplerInputs(t, lightning), denoise: p.denoise,
         model: ["5", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["13", 0],
       },
     },
@@ -159,8 +195,9 @@ function qwenWorkflow(files: Record<string, string>, p: EditParams, fast = false
   };
 }
 
-/** FLUX.1 Kontext dev: the picture as a reference latent, guidance 2.5, 20 steps of Euler at CFG 1. */
+/** FLUX.1 Kontext dev, with its settings (`p.tuning`): the picture as a reference latent, and the guidance. */
 function kontextWorkflow(files: Record<string, string>, p: EditParams): Workflow {
+  const t = p.tuning ?? KONTEXT_DEFAULTS;
   const chain = loraChain(["1", 0], null, p.loras);
   return {
     "1": { class_type: "UNETLoader", inputs: { unet_name: files.model, weight_dtype: "default" } },
@@ -169,12 +206,12 @@ function kontextWorkflow(files: Record<string, string>, p: EditParams): Workflow
     "3": { class_type: "VAELoader", inputs: { vae_name: files.vae } },
     "4": { class_type: "CLIPTextEncode", inputs: { clip: ["2", 0], text: p.instruction } },
     "5": { class_type: "ReferenceLatent", inputs: { conditioning: ["4", 0], latent: ["12", 0] } },
-    "6": { class_type: "FluxGuidance", inputs: { conditioning: ["5", 0], guidance: 2.5 } },
+    "6": { class_type: "FluxGuidance", inputs: { conditioning: ["5", 0], guidance: t.guidance ?? KONTEXT_DEFAULTS.guidance } },
     "7": { class_type: "ConditioningZeroOut", inputs: { conditioning: ["4", 0] } },
     "8": {
       class_type: "KSampler",
       inputs: {
-        seed: p.seed, steps: 20, cfg: 1, sampler_name: "euler", scheduler: "simple", denoise: p.denoise,
+        seed: p.seed, ...samplerInputs(t, null), denoise: p.denoise,
         model: chain.model, positive: ["6", 0], negative: ["7", 0], latent_image: ["13", 0],
       },
     },
@@ -207,6 +244,7 @@ export const EDIT_MODELS: EditModel[] = [
       key: "speedUp", name: "Lightning", label: "Lightning LoRA (optional, for fast edits)", folder: "loras", loader: "LoraLoaderModelOnly",
       input: "lora_name", recommended: "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors", match: /qwen[-_ ]?image[-_ ]?edit.*lightning/i,
     },
+    defaults: QWEN_DEFAULTS,
     nodes: nodesOf(qwenWorkflow({}, SAMPLE)),
     options: [{ node: "CLIPLoader", input: "type", value: "qwen_image" }],
     build: qwenWorkflow,
@@ -233,6 +271,7 @@ export const EDIT_MODELS: EditModel[] = [
         recommended: "ae.safetensors", match: /(^|[\\/])(ae|flux[-_]?ae|flux[-_]?vae|flux1[-_]?ae)\.(safetensors|sft)$/i,
       },
     ],
+    defaults: KONTEXT_DEFAULTS,
     nodes: nodesOf(kontextWorkflow({}, SAMPLE)),
     options: [{ node: "DualCLIPLoader", input: "type", value: "flux" }],
     build: kontextWorkflow,
@@ -240,6 +279,21 @@ export const EDIT_MODELS: EditModel[] = [
 ];
 
 export const editModel = (id: string): EditModel | undefined => EDIT_MODELS.find((m) => m.id === id);
+
+/** The settings a model has beyond the sampler's, from its defaults. */
+export const editKnobs = (model: EditModel): EditKnob[] => (["shift", "guidance"] as const).filter((k) => model.defaults[k] !== undefined);
+
+/**
+ * What a model runs with: its defaults with the settings changed in Settings (`changed`). Settings it
+ * doesn't have (Kontext's shift) are left out.
+ */
+export function editTuning(model: EditModel, changed: Partial<EditTuning> = {}): EditTuning {
+  const t: EditTuning = { ...model.defaults };
+  for (const [k, v] of Object.entries(changed) as [keyof EditTuning, EditTuning[keyof EditTuning]][]) {
+    if (v !== undefined && k in model.defaults) (t as Record<string, unknown>)[k] = v;
+  }
+  return t;
+}
 
 /** What ComfyUI's /object_info says about one node, or null when ComfyUI doesn't have it. */
 export type NodeInfo = { input?: { required?: Record<string, unknown>; optional?: Record<string, unknown> } } | null;
@@ -273,6 +327,9 @@ export type EditCheck = {
   speedUp: PartCheck | null;
   /** Every LoRA file ComfyUI lists (its `loras` folder), for the author's stack; empty when it has no LoRA loader. */
   loras: string[];
+  /** The samplers and schedulers ComfyUI's KSampler offers, for the choices in Settings. */
+  samplers: string[];
+  schedulers: string[];
 };
 
 /** The node that loads a LoRA onto a model, for the speed-up and the author's stack. */
@@ -342,6 +399,11 @@ export function checkEditModels(info: Record<string, NodeInfo>): EditCheck[] {
     const s = model.speedUp;
     const speedUp = s ? { part: s, file: findFile(s, comboOptions(info[s.loader], s.input), releaseOf(files.model)) } : null;
     if (ready && speedUp?.file) files.speedUp = speedUp.file;
-    return { model, missingNodes, missingOptions, parts, files, ready, speedUp, loras: comboOptions(info[LORA_LOADER], "lora_name") };
+    return {
+      model, missingNodes, missingOptions, parts, files, ready, speedUp,
+      loras: comboOptions(info[LORA_LOADER], "lora_name"),
+      samplers: comboOptions(info.KSampler, "sampler_name"),
+      schedulers: comboOptions(info.KSampler, "scheduler"),
+    };
   });
 }

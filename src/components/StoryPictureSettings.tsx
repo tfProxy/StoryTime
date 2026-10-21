@@ -137,7 +137,7 @@ export default function StoryPictureSettings({ story }: { story: StoryPictures &
         </label>
       ) : (
         <p className="meta" style={{ margin: 0 }}>
-          Checkpoint: {checkpoint || "not chosen"}. To choose one, add your ComfyUI machine in <Link href="/settings#pictures">Settings</Link>.
+          Checkpoint: {checkpoint || "not chosen"}. To choose one, add your ComfyUI machine in <Link href="/settings#comfyui">Settings</Link>.
         </p>
       )}
       {listed?.error && <p className="error" style={{ margin: 0 }}>Couldn&apos;t list ComfyUI&apos;s checkpoints: {listed.error}</p>}
