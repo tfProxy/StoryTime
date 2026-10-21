@@ -13,16 +13,26 @@ A single-writer branching-story app: Next.js (read `AGENTS.md` above first), Rea
 
 - Change files with the Edit or Write tool. Do not use `sed`, shell heredocs, `echo` redirection, or Python/PowerShell scripts to edit source files: they have mangled `\n` escapes, backslashes and non-ASCII characters (☰, …, “ ”) in this repo, and batches of shell writes have failed silently.
 - If an Edit fails on whitespace or indentation, Read the file again and retry with Edit.
-- Scratch scripts (for example a screenshot script) go in the scratchpad directory, not the repo.
+- Scratch scripts and their output go in the scratchpad directory, not the repo.
+
+## Working efficiently
+
+- Read only what the task needs: `grep -n` for the function or text, then Read with `offset`/`limit`. Don't read whole large components (`ChapterEditor.tsx`, `ComfyGenerate.tsx`, `PictureSettings.tsx`) to change one part.
+- Find the tests that cover a change with `grep -l` on the label or route in `tests/`, and run just those files.
 
 ## Verification before saying a change is done
 
-- After any TypeScript or TSX change run `npx tsc --noEmit`, then the suites that cover it (`npm test` for unit and API, `npm run test:e2e` for the browser). The API and browser suites run against the existing build, so run `npx next build` (or `node tests/run.mjs e2e --build`) first, or a stale build gives false failures.
-- For UI changes, look at the result: take a Playwright screenshot at desktop and phone width and describe what you see, rather than relying on tests alone.
+Match the checks to the size of the change. GitHub Actions runs everything (typecheck, lint, all three suites, the Docker build) on every push, so the full browser suite is not needed locally.
+
+- **Small UI tweak** (text, layout, one control): `npx tsc --noEmit`, `npx next build`, the browser files that cover it (`node tests/run.mjs e2e <name-part>`), and one phone-width screenshot.
+- **Feature or bug fix:** as above, plus `npm test` and the browser files for every page the change touches; screenshots at desktop and phone width.
+- **Shared code** (`src/lib/db.ts`, migrations, settings schema, `tests/e2e/browser.mjs`, the test runner): the whole browser suite before pushing.
+- Screenshots: `node tests/shot.mjs <path>... --out=<scratchpad>` with the app running takes each page at desktop and phone width and prints the PNG paths. Look at the result and describe what you see, rather than relying on tests alone.
+- The API and browser suites run against the existing build, so build first after changing app code, or a stale build gives false failures.
 - React: never put hooks or effects after an early `return`.
 - SQL: the number of `?` placeholders must match the parameters passed.
 - After adding a migration (`MIGRATIONS` in `src/lib/db.ts`), restart the dev server: it caches the database connection and will not pick up the new schema.
-- When finishing, say plainly what you could not verify (Docker, touch, mobile, the NAS) and give a one- or two-step manual check for it.
+- When finishing, say plainly what you could not verify (touch, a real phone, the NAS, a real ComfyUI) and give a one- or two-step manual check for it.
 
 ## Git
 
@@ -33,8 +43,8 @@ A single-writer branching-story app: Next.js (read `AGENTS.md` above first), Rea
 
 ## Environment
 
-- The dev machine is Windows (VS Code, PowerShell and Git Bash). Docker is not installed on it, so changes to `Dockerfile` or `docker-compose.yml` cannot be tested here. Say so explicitly.
-- The app is deployed to a NAS that builds the image from the GitHub repo. better-sqlite3 may need to compile from source, so the build stage needs `python3 make g++`; do not switch to a slim base image without keeping them.
+- The dev machine is Windows (VS Code, PowerShell and Git Bash). Docker is not installed on it; the CI `docker` job builds the image and checks `/api/health`, so after changing `Dockerfile` push and check that job. `docker-compose.yml` itself is only tested on the NAS; say so.
+- The app is deployed to a NAS that builds the image from the GitHub repo (or pulls `ghcr.io/tfproxy/storytime:latest`, which CI publishes from main). Deploying is: push to main, wait for CI to pass, then rebuild or pull on the NAS. better-sqlite3 may need to compile from source, so the build stage needs `python3 make g++`; do not switch to a slim base image without keeping them.
 
 ## Ambiguous instructions
 
