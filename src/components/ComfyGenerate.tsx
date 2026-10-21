@@ -11,7 +11,7 @@ import type { JobProgress, MadeWith, PendingJob, Picture, StartMode } from "./pi
 import { editBlocked, type EditModels } from "./useEditModels";
 import AutoTextarea from "./AutoTextarea";
 import { LIMITS } from "@/lib/limits";
-import { editFilesText, editSize, lightningSteps, type EditCheck } from "@/lib/comfy/editModels";
+import { editFilesText, editSize, lightningSteps, usableLoras, type EditCheck, type EditLora } from "@/lib/comfy/editModels";
 import { uploadStart, type StartPicture, type Uploaded } from "@/lib/comfy/startPicture";
 import { describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
 import { cancelPrompt, listCheckpoints, queuePrompt, waitForPictures, type Progress } from "@/lib/comfy/client";
@@ -51,7 +51,15 @@ type JobInput = {
   comfy: ComfySettings;
   start: StartPicture | null;
   /** An edit of the starting picture by instruction, with the model to make it; null to redraw it or make new pictures. */
-  edit: { check: EditCheck; instruction: string; strength: number; /** With the model's speed-up (Qwen's Lightning LoRA). */ fast: boolean } | null;
+  edit: {
+    check: EditCheck;
+    instruction: string;
+    strength: number;
+    /** With the model's speed-up (Qwen's Lightning LoRA). */
+    fast: boolean;
+    /** The author's LoRAs for the model that are switched on and in ComfyUI. */
+    loras: EditLora[];
+  } | null;
   /** The seed to use, or null for a random one. */
   seed: number | null;
 };
@@ -66,7 +74,7 @@ type Gathering = { key: string; input: JobInput; count: number; timer: ReturnTyp
 const sameJob = (a: JobInput) =>
   JSON.stringify([
     a.prompt, a.negative, a.moment, a.comfy.url, a.comfy.workflow, a.comfy.checkpoint, a.comfy.width, a.comfy.height, a.start?.key ?? null,
-    a.start && !a.edit ? a.comfy.denoise : null, a.edit?.check.model.id ?? null, a.edit?.instruction ?? null, a.edit?.strength ?? null, a.edit?.fast ?? null, a.seed,
+    a.start && !a.edit ? a.comfy.denoise : null, a.edit?.check.model.id ?? null, a.edit?.instruction ?? null, a.edit?.strength ?? null, a.edit?.fast ?? null, a.edit?.loras ?? null, a.seed,
   ]);
 
 /**
@@ -138,6 +146,9 @@ export default function ComfyGenerate({
   // The chosen model's speed-up file, when ComfyUI has one, and whether edits use it.
   const speedUp = chosen?.files.speedUp ?? null;
   const fast = speedUp !== null && comfy.editFast;
+  // The chosen model's LoRA stack (set in Settings), and the LoRAs of it an edit uses now.
+  const loraStack = chosen ? (comfy.editLoras[chosen.model.id] ?? []) : [];
+  const { loras: editLoras, missing: missingLoras } = usableLoras(loraStack, chosen?.loras ?? []);
   // The jobs being made, oldest first; `jobs` holds what Stop needs for each.
   const [queue, setQueue] = useState<Queued[]>([]);
   const jobs = useRef(new Map<string, { promptId: string | null; ctl: AbortController; url: string }>());
@@ -227,7 +238,7 @@ export default function ComfyGenerate({
       // The checkpoint is the story's, not the shared setting.
       comfy: { ...comfy, checkpoint },
       start,
-      edit: editing && chosen ? { check: chosen, instruction: instruction.trim(), strength: editStrength, fast } : null,
+      edit: editing && chosen ? { check: chosen, instruction: instruction.trim(), strength: editStrength, fast, loras: editLoras } : null,
       seed: reuseSeed && loadedSeed !== null ? loadedSeed : null,
     };
     const g = gathering.current;
@@ -255,7 +266,7 @@ export default function ComfyGenerate({
         progress: { stage: "gathering" },
         prompt: input.prompt,
         negative: input.negative,
-        checkpoint: input.edit ? editFilesText(input.edit.check, input.edit.fast) : checkpoint,
+        checkpoint: input.edit ? editFilesText(input.edit.check, input.edit.fast, input.edit.loras) : checkpoint,
         width: comfy.width,
         height: comfy.height,
         denoise: denoiseOf(input),
@@ -322,7 +333,7 @@ export default function ComfyGenerate({
       const prefix = filenamePrefix(storyId, chapterId);
       const workflow =
         edit && from
-          ? edit.check.model.build(edit.check.files, { image: from.name, instruction: edit.instruction, seed, count, width, height, prefix, denoise: edit.strength }, edit.fast)
+          ? edit.check.model.build(edit.check.files, { image: from.name, instruction: edit.instruction, seed, count, width, height, prefix, denoise: edit.strength, loras: edit.loras }, edit.fast)
           : fillWorkflow(base!, {
               prompt,
               negative,
@@ -335,7 +346,7 @@ export default function ComfyGenerate({
               ...(from && { image: from.name, denoise: comfy.denoise }),
             });
       // What the pictures were made with: the edit model's file, or the story's checkpoint.
-      const madeWith = edit ? editFilesText(edit.check, edit.fast) : comfy.checkpoint;
+      const madeWith = edit ? editFilesText(edit.check, edit.fast, edit.loras) : comfy.checkpoint;
       const denoise = from ? denoiseOf(input) : null;
       if (ctl.signal.aborted) throw new DOMException("Stopped", "AbortError");
       const promptId = await queuePrompt(comfy.url, workflow, clientId, { storytime: { chapterId, storyId } });
@@ -499,6 +510,43 @@ export default function ComfyGenerate({
                       <input type="checkbox" checked={comfy.editFast} onChange={(e) => set({ editFast: e.target.checked })} />
                       Fast ({chosen.model.speedUp?.name ?? "speed-up"}, {lightningSteps(speedUp)} steps)
                     </label>
+                  )}
+                  <div className="edit-lora-toggles" role="group" aria-label="LoRAs">
+                    {loraStack.length === 0 ? (
+                      <span className="meta">
+                        No LoRAs for {chosen.model.name}. <Link href="/settings#edit-loras">Add some in Settings</Link>
+                      </span>
+                    ) : (
+                      <>
+                        <span className="meta">LoRAs:</span>
+                        {loraStack.map((l, i) => {
+                          const name = l.name.split(/[\\/]/).pop()!;
+                          const gone = !chosen.loras.includes(l.name);
+                          return (
+                            <label key={i} className="inline-label" title={gone ? `ComfyUI doesn't list ${l.name}, so it isn't used` : `${l.name} at strength ${l.strength}`}>
+                              <input
+                                type="checkbox"
+                                checked={l.on}
+                                onChange={(e) =>
+                                  set({ editLoras: { ...comfy.editLoras, [chosen.model.id]: loraStack.map((x, j) => (j === i ? { ...x, on: e.target.checked } : x)) } })
+                                }
+                              />
+                              <span className={gone ? "error" : undefined}>
+                                {name.replace(/\.safetensors$/i, "")} ({l.strength}){gone && " – missing"}
+                              </span>
+                            </label>
+                          );
+                        })}
+                        <Link href="/settings#edit-loras" className="meta">
+                          Change
+                        </Link>
+                      </>
+                    )}
+                  </div>
+                  {missingLoras.length > 0 && (
+                    <p className="error" style={{ margin: 0 }}>
+                      ComfyUI doesn&apos;t list {missingLoras.join(", ")}, so edits go ahead without {missingLoras.length === 1 ? "it" : "them"}.
+                    </p>
                   )}
                   <label>
                     What to change

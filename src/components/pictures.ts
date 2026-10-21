@@ -3,7 +3,10 @@
 import type { ImageMoment } from "@/lib/ai/imagePrompt";
 import type { ComfyImage, Progress } from "@/lib/comfy/client";
 import type { PictureJob, PictureMark } from "@/lib/pictureJobs";
-import { editModel } from "@/lib/comfy/editModels";
+import { editFilesExtras, editModel } from "@/lib/comfy/editModels";
+
+/** "1 LoRA", "3 LoRAs", or nothing for none. */
+const loraCount = (n: number) => (n === 0 ? false : n === 1 ? "1 LoRA" : `${n} LoRAs`);
 
 /** How a starting picture is used: redrawn from the prompt at a strength, or edited by instruction. */
 export type StartMode = "redraw" | "edit";
@@ -83,8 +86,9 @@ export function picturesOf(jobs: PictureJob[]): Picture[] {
 export function pictureCaption(c: { seed: number; checkpoint: string; width: number; height: number; denoise: number | null; editModel?: string | null }, withSeed = false): string {
   return [
     (c.editModel && editModel(c.editModel)?.name) || c.checkpoint.replace(/\.(safetensors|ckpt)$/i, ""),
-    // An edit made with the model's speed-up keeps both files, joined by " + ".
-    c.editModel && c.checkpoint.includes(" + ") && "fast",
+    // An edit keeps its speed-up's and LoRAs' files after the model's, joined by " + ".
+    c.editModel && editFilesExtras(c.editModel, c.checkpoint).fast && "fast",
+    c.editModel && loraCount(editFilesExtras(c.editModel, c.checkpoint).loras),
     `${c.width} × ${c.height}`,
     withSeed && `seed ${c.seed}`,
     c.denoise !== null && `strength ${c.denoise}`,

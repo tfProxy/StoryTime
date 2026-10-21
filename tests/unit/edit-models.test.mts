@@ -1,4 +1,4 @@
-import { checkEditModels, comboOptions, EDIT_MODELS, EDIT_NODES, editFilesText, editModel, editSize, lightningSteps, type NodeInfo } from "../../src/lib/comfy/editModels.ts";
+import { checkEditModels, comboOptions, EDIT_MODELS, EDIT_NODES, editFilesExtras, editFilesText, editModel, editSize, lightningSteps, usableLoras, type NodeInfo } from "../../src/lib/comfy/editModels.ts";
 import type { Workflow } from "../../src/lib/comfy/workflow.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
@@ -128,3 +128,49 @@ const noLora = byId(checkEditModels(info(all)), "qwen-image-edit");
 ok(nodes(noLora.model.build(noLora.files, params, true), "LoraLoaderModelOnly").length === 0, "fast without the LoRA installed is the ordinary workflow");
 ok(editFilesText(q, true) === `qwen_image_edit_2509_fp8_e4m3fn.safetensors + ${lightning4}` && editFilesText(q, false) === "qwen_image_edit_2509_fp8_e4m3fn.safetensors" && editFilesText(noLora, true) === "qwen_image_edit_2509_fp8_e4m3fn.safetensors", "the job log keeps the LoRA's file beside the model's only when it is used");
 ok(EDIT_NODES.includes("LoraLoaderModelOnly") && !q.model.nodes.includes("LoraLoaderModelOnly"), "the check asks about the LoRA loader, but Qwen doesn't need it to be ready");
+
+// ---- the author's LoRA stack ----
+const userLoras = ["styles/ink.safetensors", "hero.safetensors"];
+checks = checkEditModels(info({ ...all, lora: [lightning4, ...userLoras] }));
+ok(checks.every((c) => c.loras.join() === [lightning4, ...userLoras].join()), "each check lists every LoRA ComfyUI has, for the stacks");
+ok(byId(checkEditModels(info({ ...all, lora: userLoras }, ["LoraLoaderModelOnly"])), "flux-kontext").loras.length === 0, "…and none when ComfyUI has no LoRA loader");
+const stack = [{ name: "styles/ink.safetensors", strength: 0.8 }, { name: "hero.safetensors", strength: -0.5 }];
+const chainOf = (wf: Workflow) => {
+  // From the sampler's model back to the model loader, through the LoRA loaders.
+  const out: string[] = [];
+  let link = (Object.values(wf).find((n) => n.class_type === "ModelSamplingAuraFlow") ?? nodes(wf, "KSampler")[0]).inputs.model as [string, number];
+  while (wf[link[0]].class_type === "LoraLoaderModelOnly") {
+    out.unshift(`${wf[link[0]].inputs.lora_name}@${wf[link[0]].inputs.strength_model}`);
+    link = wf[link[0]].inputs.model as [string, number];
+  }
+  return { loras: out, from: wf[link[0]].class_type };
+};
+const qs = byId(checks, "qwen-image-edit");
+let c = chainOf(qs.model.build(qs.files, { ...params, loras: stack }));
+ok(c.loras.join() === "styles/ink.safetensors@0.8,hero.safetensors@-0.5" && c.from === "UNETLoader", "Qwen applies the stack in order, at each strength, onto the model");
+c = chainOf(qs.model.build(qs.files, { ...params, loras: stack }, true));
+ok(c.loras.join() === `${lightning4}@1,styles/ink.safetensors@0.8,hero.safetensors@-0.5`, "…after the Lightning LoRA when fast");
+const fastStack = qs.model.build(qs.files, { ...params, loras: stack }, true);
+ok(nodes(fastStack, "KSampler")[0].inputs.steps === 4, "…which still sets the steps");
+const ks = byId(checks, "flux-kontext");
+const kStack = ks.model.build(ks.files, { ...params, loras: stack });
+c = chainOf(kStack);
+ok(c.loras.join() === "styles/ink.safetensors@0.8,hero.safetensors@-0.5" && c.from === "UNETLoader", "Kontext applies the stack too, before its sampler");
+const kLinks = Object.values(kStack).flatMap((n) => Object.values(n.inputs).filter((v): v is [string, number] => Array.isArray(v) && typeof v[0] === "string"));
+ok(kLinks.every(([id]) => id in kStack), "…and every link points at a node in the workflow");
+ok(nodes(ks.model.build(ks.files, { ...params, loras: [] }), "LoraLoaderModelOnly").length === 0, "an empty stack adds no nodes");
+
+ok(
+  editFilesText(qs, true, stack) === `qwen_image_edit_2509_fp8_e4m3fn.safetensors + ${lightning4} + styles/ink.safetensors (0.8) + hero.safetensors (-0.5)`,
+  "the job log keeps the model, the speed-up and each LoRA with its strength",
+);
+ok(JSON.stringify(editFilesExtras("qwen-image-edit", editFilesText(qs, true, stack))) === '{"fast":true,"loras":2}', "…from which the caption reads fast and 2 LoRAs");
+ok(JSON.stringify(editFilesExtras("qwen-image-edit", editFilesText(qs, false, stack))) === '{"fast":false,"loras":2}', "…not fast without the speed-up");
+ok(JSON.stringify(editFilesExtras("qwen-image-edit", `m.safetensors + ${lightning4}`)) === '{"fast":true,"loras":0}', "…and jobs logged before stacks still read as fast");
+ok(JSON.stringify(editFilesExtras("flux-kontext", "k.safetensors + a (1).safetensors (1)")) === '{"fast":false,"loras":1}', "…even with brackets in a LoRA's file name");
+
+const u = usableLoras(
+  [{ name: "styles/ink.safetensors", strength: 0.8, on: true }, { name: "gone.safetensors", strength: 1, on: true }, { name: "hero.safetensors", strength: 1, on: false }, { name: "", strength: 1, on: true }],
+  userLoras,
+);
+ok(JSON.stringify(u.loras) === '[{"name":"styles/ink.safetensors","strength":0.8}]' && u.missing.join() === "gone.safetensors", "an edit uses the LoRAs switched on that ComfyUI has, and names the missing ones");

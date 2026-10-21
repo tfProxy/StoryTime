@@ -221,6 +221,88 @@ try {
     await page.locator(".comfy-generate").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-edit-fast-1000.png` });
   }
 
+  // ---- the author's LoRA stack ----
+  const toggles = page.getByRole("group", { name: "LoRAs" });
+  ok((await toggles.innerText()).includes("No LoRAs for Qwen-Image-Edit") && await toggles.getByRole("link", { name: "Add some in Settings" }).getAttribute("href") === "/settings#edit-loras", "with no stack, the Edit tab says so and links to Settings");
+  const userLoras = ["styles/ink.safetensors", "hero.safetensors"];
+  comfy.setMode({ files: { ...EDIT_FILES, loras: [LIGHTNING_LORA, ...userLoras] } });
+  await page.goto(`${BASE}/settings`);
+  const qwenStack = page.getByRole("group", { name: "LoRAs for Qwen-Image-Edit" });
+  await qwenStack.getByRole("button", { name: "Add LoRA for Qwen-Image-Edit" }).waitFor();
+  await until(async () => qwenStack.getByRole("button", { name: "Add LoRA for Qwen-Image-Edit" }).isEnabled(), "ComfyUI's LoRAs to be listed");
+  ok((await page.getByRole("group", { name: "LoRAs for FLUX.1 Kontext" }).innerText()).includes("none"), "Settings lists a LoRA stack for each edit model, empty at first");
+  await qwenStack.getByRole("button", { name: "Add LoRA for Qwen-Image-Edit" }).click();
+  await qwenStack.getByRole("button", { name: "Add LoRA for Qwen-Image-Edit" }).click();
+  const files = qwenStack.getByLabel("LoRA file");
+  ok((await files.first().locator("option").allInnerTexts()).join("|") === [LIGHTNING_LORA, ...userLoras].join("|"), "a LoRA is chosen from the files ComfyUI lists");
+  await files.nth(0).selectOption("styles/ink.safetensors");
+  await files.nth(1).selectOption("hero.safetensors");
+  await qwenStack.getByLabel("Strength of ink.safetensors").fill("0.8");
+  await qwenStack.getByLabel("Strength of hero.safetensors").fill("-0.5");
+  const savedStack = async () => (await call("GET", "/api/settings")).settings.comfy.editLoras["qwen-image-edit"] ?? [];
+  await until(async () => JSON.stringify(await savedStack()) === JSON.stringify([{ name: "styles/ink.safetensors", strength: 0.8, on: true }, { name: "hero.safetensors", strength: -0.5, on: true }]), "the stack to be saved");
+  ok(true, "the stack is saved with each LoRA's file and strength, switched on");
+  await qwenStack.getByRole("button", { name: "Move hero.safetensors up" }).click();
+  await until(async () => (await savedStack()).map((l) => l.name).join() === "hero.safetensors,styles/ink.safetensors", "the new order");
+  ok(true, "↑ moves a LoRA earlier in the stack");
+  if (process.env.E2E_SCREENSHOT_DIR) {
+    await page.locator("#edit-loras").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/settings-loras-1000.png` });
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.waitForTimeout(300);
+    await page.locator("#edit-loras").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/settings-loras-390.png` });
+    ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "at phone width the LoRA stacks do not scroll sideways");
+    await page.setViewportSize({ width: 1000, height: 1300 });
+  }
+
+  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await showAll();
+  await choose(items.first(), "Edit this");
+  await thumb.waitFor();
+  await modelMenu.selectOption("qwen-image-edit");
+  await toggles.getByRole("checkbox").first().waitFor();
+  ok((await toggles.innerText()).includes("hero (-0.5)") && (await toggles.innerText()).includes("ink (0.8)") && await toggles.getByRole("checkbox").count() === 2, "the Edit tab lists the model's LoRAs with their strengths, each with a box");
+  await instruction.fill("in his ink style");
+  mark = comfy.calls.length;
+  before = await items.count();
+  await makeEdit.click();
+  await until(async () => (await items.count()) === before + 1 && (await ready()), "the edit with LoRAs");
+  wf = prompts(mark)[0];
+  const loraNodes = () => nodes(wf, "LoraLoaderModelOnly").map((n) => `${n.inputs.lora_name}@${n.inputs.strength_model}`).join();
+  ok(loraNodes() === `${LIGHTNING_LORA}@1,hero.safetensors@-0.5,styles/ink.safetensors@0.8`, "the edit loads the Lightning LoRA, then the stack in order at each strength");
+  log = (await jobs())[0];
+  ok(log.checkpoint.endsWith(" + hero.safetensors (-0.5) + styles/ink.safetensors (0.8)"), "the job log keeps each LoRA with its strength");
+  ok((await page.locator(".chapter-pictures").innerText()).includes("Qwen-Image-Edit · fast · 2 LoRAs"), "…and the caption says how many LoRAs it used");
+
+  await toggles.getByRole("checkbox", { name: /hero/ }).uncheck();
+  await until(async () => (await savedStack())[0].on === false, "the box to be saved");
+  ok(true, "switching a LoRA off on the Edit tab saves it");
+  mark = comfy.calls.length;
+  before = await items.count();
+  await makeEdit.click();
+  await until(async () => (await items.count()) === before + 1 && (await ready()), "the edit with one LoRA");
+  wf = prompts(mark)[0];
+  ok(loraNodes() === `${LIGHTNING_LORA}@1,styles/ink.safetensors@0.8`, "…and the next edit leaves it out");
+
+  comfy.setMode({ files: { ...EDIT_FILES, loras: [LIGHTNING_LORA, "hero.safetensors"] } });
+  await page.reload();
+  await showAll();
+  await choose(items.first(), "Edit this");
+  await thumb.waitFor();
+  await modelMenu.selectOption("qwen-image-edit");
+  await page.getByText("ComfyUI doesn't list styles/ink.safetensors, so edits go ahead without it.").waitFor();
+  ok((await toggles.innerText()).includes("ink (0.8) – missing"), "a LoRA ComfyUI no longer has is marked missing, with a warning");
+  await instruction.fill("night");
+  mark = comfy.calls.length;
+  before = await items.count();
+  await makeEdit.click();
+  await until(async () => (await items.count()) === before + 1 && (await ready()), "the edit without the missing LoRA");
+  wf = prompts(mark)[0];
+  ok(loraNodes() === `${LIGHTNING_LORA}@1`, "…and the edit goes ahead without it");
+  if (process.env.E2E_SCREENSHOT_DIR) {
+    await page.locator(".comfy-generate").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-edit-loras-1000.png` });
+  }
+  comfy.setMode({ files: EDIT_FILES });
+
   // ---- an old ComfyUI ----
   comfy.setMode({ missingNodes: ["TextEncodeQwenImageEditPlus"] });
   await page.reload();

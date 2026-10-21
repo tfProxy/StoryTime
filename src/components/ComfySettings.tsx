@@ -7,6 +7,7 @@ import { describeWorkflow, parseWorkflow, WorkflowError, type WorkflowFit } from
 import { checkComfy, type ComfyCheck } from "@/lib/comfy/check";
 import { lightningSteps } from "@/lib/comfy/editModels";
 import AutoTextarea from "./AutoTextarea";
+import EditLoraSettings from "./EditLoraSettings";
 
 const noop = () => () => {};
 /** This page's origin, which ComfyUI has to allow; "" while rendering on the server. */
@@ -184,6 +185,7 @@ export default function ComfySettings({ comfy, onChange }: { comfy: Comfy; onCha
         {status && <span className={status.ok ? "ok" : "error"}>{status.text}</span>}
       </div>
       {check && <CheckReport check={check} />}
+      <EditLoraSettings key={check ? "checked" : "unchecked"} comfy={comfy} onChange={onChange} />
       <label>
         Workflow <small>(optional: paste a workflow exported from ComfyUI with Workflow › Export (API); leave empty for the built-in SDXL one)</small>
         <AutoTextarea

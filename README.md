@@ -192,6 +192,29 @@ for the files above by name, and also accepts other versions of the same file, s
 model, another fp8 version, `t5xxl_fp16`, or a newer Qwen-Image-Edit release. If several match, the
 one listed above is used. GGUF versions are not supported, because they need a custom loader node.
 
+### Your own LoRAs (a LoRA stack per edit model)
+
+Each edit model can also apply LoRAs of your own, such as one for a story's main character or for an
+art style, so edits keep that look.
+
+1. Put the LoRA files in `ComfyUI/models/loras` (a subfolder is fine) and restart ComfyUI. Use LoRAs
+   made for that model: a Qwen-Image or Qwen-Image-Edit LoRA for Qwen-Image-Edit, a FLUX.1 LoRA for
+   FLUX.1 Kontext. A LoRA made for SDXL or another model has no effect: ComfyUI skips the parts that don't fit and
+   says so in its console.
+2. In **Settings › Pictures (ComfyUI) › LoRAs for edits**, press **Add LoRA for …** under the model,
+   choose the file from ComfyUI's list and set its strength: 1 is full strength, 0.5 half, and below
+   0 works against the LoRA. ↑ moves a LoRA earlier; ✕ takes it out. A stack holds up to 8 LoRAs.
+3. On the Illustrate page, the Edit tab lists the chosen model's LoRAs under the model menu, each with
+   a box to switch it on or off for the next edits. The boxes are saved, and **Change** goes back to
+   Settings.
+
+The LoRAs apply in the order listed, after the Lightning LoRA when **Fast** is on. Every story uses
+the same stacks. A LoRA that ComfyUI no longer lists is marked "missing" on the Edit tab, and edits
+go ahead without it. A picture's caption says how many LoRAs made it, and **Info** lists each one
+with its strength. StoryTime loads them with ComfyUI's **LoraLoaderModelOnly** node, so a LoRA
+changes the model but not the text encoder; a trigger word still works if you put it in the
+instruction.
+
 ### Tips for instructions
 
 - Say what to change, not the whole scene: "remove the logo on his shirt", "make it night",
