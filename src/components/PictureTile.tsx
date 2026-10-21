@@ -20,6 +20,8 @@ type Props = {
   saver: PictureSaver;
   /** The slots this picture is saved in now (the chapter's header, footer, or both). */
   inUse?: ImageSlot[];
+  /** It is the starting picture now (being edited or redrawn): it is highlighted and tagged. */
+  editing?: boolean;
   /** Called to make new pictures starting from this one: redrawn from the prompt, or edited by instruction. */
   onStart?: (image: ComfyImage, mode: StartMode) => void;
   /** Why it can't be edited by instruction now (no edit model installed), or null. */
@@ -42,11 +44,11 @@ type Props = {
  * when it is the chapter's header or footer now, a badge saying so. A picture ComfyUI no longer has (or
  * can't be reached for) says so, and can't be used.
  */
-export default function PictureTile({ comfyUrl, image, tileKey, jobId, index, saver, inUse = [], onStart, editBlocked = null, caption, onLoadPrompt, mark = null, onMark, onOpen, onInfo }: Props) {
+export default function PictureTile({ comfyUrl, image, tileKey, jobId, index, saver, inUse = [], editing = false, onStart, editBlocked = null, caption, onLoadPrompt, mark = null, onMark, onOpen, onInfo }: Props) {
   const [missing, setMissing] = useState(false);
   const src = imageUrl(comfyUrl, image);
   return (
-    <li className={`picture-tile${mark ? ` ${mark}` : ""}${inUse.length ? " in-use" : ""}`}>
+    <li className={`picture-tile${mark ? ` ${mark}` : ""}${inUse.length ? " in-use" : ""}${editing ? " editing" : ""}`}>
       <div className="picture-frame">
         {missing ? (
           <p className="meta picture-missing" role="status">
@@ -68,7 +70,7 @@ export default function PictureTile({ comfyUrl, image, tileKey, jobId, index, sa
             <img src={src} alt={`Picture ${image.filename}`} loading="lazy" onError={() => setMissing(true)} />
           </a>
         )}
-        <InUseBadge inUse={inUse} />
+        <InUseBadge inUse={inUse} editing={editing} />
         <PictureButtons
           image={image}
           tileKey={tileKey}

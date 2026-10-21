@@ -14,7 +14,9 @@ import { LIMITS } from "@/lib/limits";
 import { editFilesText, editSize, editTuning, lightningSteps, usableLoras, type EditCheck, type EditLora, type EditTuning } from "@/lib/comfy/editModels";
 import { uploadStart, type StartPicture, type Uploaded } from "@/lib/comfy/startPicture";
 import { builtinSampler, describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
-import { cancelPrompt, listCheckpoints, queuePrompt, waitForPictures, type Progress } from "@/lib/comfy/client";
+import { readEdit, writeEdit } from "@/lib/comfy/editingState";
+import { cancelPrompt, listCheckpoints, listTaggedJobs, queuePrompt, waitForPictures, type ComfyImage, type Progress, type TaggedJob } from "@/lib/comfy/client";
+import type { JobRecord, JobTag } from "@/lib/comfy/jobTag";
 
 /** Sizes that suit SDXL (about one megapixel). */
 const SIZES: { label: string; width: number; height: number }[] = [
@@ -126,6 +128,8 @@ type Props = {
   onQueue?: (jobs: PendingJob[]) => void;
   /** An element at the bottom of the page's column to put Size, Queue and the queue's status in, so they stay in view; without it they sit at the end of this panel. */
   dock?: HTMLElement | null;
+  /** ComfyUI's ids of the jobs already in StoryTime's log, as the page opened. */
+  recorded?: string[];
 };
 
 /**
@@ -134,23 +138,38 @@ type Props = {
  */
 export default function ComfyGenerate({
   chapterId, storyId, checkpoint, moment, prompt, negative, loaded = null, start = null, onClearStart,
-  startMode = "redraw", onStartMode, editModels = { state: "checking" }, onPictures, onQueue, dock = null,
+  startMode = "redraw", onStartMode, editModels = { state: "checking" }, onPictures, onQueue, dock = null, recorded = [],
 }: Props) {
   const settings = useSettings();
   const comfy = settings.comfy;
   // What to change, when editing the starting picture by instruction.
   const [instruction, setInstruction] = useState("");
+  // How closely an edit follows the starting picture: 1 lets the model change it freely, lower keeps it closer.
+  // It starts at the model's default strength (Settings); a change here is for that model, until another is chosen.
+  const [strengthFor, setStrengthFor] = useState<{ model: string; value: number } | null>(null);
+  // The instruction and a changed strength are kept in this browser, so a refresh brings them back.
+  const [editKept, setEditKept] = useState(false);
+  /* eslint-disable react-hooks/set-state-in-effect -- browser storage can only be read after the page is shown, so the server and browser draw the same first page */
+  useEffect(() => {
+    const saved = readEdit(chapterId);
+    if (saved) {
+      setInstruction(saved.instruction);
+      setStrengthFor(saved.model ? { model: saved.model, value: saved.strength } : null);
+    }
+    setEditKept(true);
+  }, [chapterId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   const editing = start !== null && startMode === "edit";
   const blocked = editBlocked(editModels);
   const ready = editModels.state === "done" ? editModels.ready : [];
   const chosen = ready.find((c) => c.model.id === comfy.editModel) ?? ready[0] ?? null;
   // The chosen model's settings from Settings.
   const tuning = chosen ? editTuning(chosen.model, comfy.editTuning[chosen.model.id]) : null;
-  // How closely an edit follows the starting picture: 1 lets the model change it freely, lower keeps it closer.
-  // It starts at the model's default strength (Settings), and a change here lasts until another model is chosen.
-  const [strengthFor, setStrengthFor] = useState<{ model: string; value: number } | null>(null);
   const editStrength = chosen && strengthFor?.model === chosen.model.id ? strengthFor.value : (tuning?.strength ?? 1);
   const setEditStrength = (value: number) => chosen && setStrengthFor({ model: chosen.model.id, value });
+  useEffect(() => {
+    if (editKept) writeEdit(chapterId, { instruction, strength: strengthFor?.value ?? 1, model: strengthFor?.model });
+  }, [editKept, chapterId, instruction, strengthFor]);
   // The chosen model's speed-up file, when ComfyUI has one, and whether edits use it.
   const speedUp = chosen?.files.speedUp ?? null;
   const fast = speedUp !== null && comfy.editFast;
@@ -217,6 +236,33 @@ export default function ComfyGenerate({
       live = false;
     };
   }, [comfy.url, checkpoint]);
+
+  // A page opened (or refreshed) while ComfyUI is still making this chapter's pictures, or finished some that
+  // were never recorded because the page that asked for them was gone, picks them up: the unfinished jobs
+  // show as being made again, and the finished ones are recorded. `recorded` are the jobs already in the log.
+  const picked = useRef(new Set<string>());
+  useEffect(() => {
+    if (!comfy.url) return;
+    const url = comfy.url;
+    let live = true;
+    listTaggedJobs(url, chapterId).then(
+      (found) => {
+        if (!live) return;
+        for (const j of found) {
+          const mine = [...jobs.current.values()].some((m) => m.promptId === j.promptId);
+          if (mine || recorded.includes(j.promptId) || picked.current.has(j.promptId)) continue;
+          picked.current.add(j.promptId);
+          if (j.state === "done") void recordAndShow(j.promptId, j.tag.job, j.images);
+          else resume(url, j);
+        }
+      },
+      () => {}, // ComfyUI not reachable: the checkpoint check above says so
+    );
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per chapter and address; the functions only use refs and setters
+  }, [comfy.url, chapterId]);
 
   if (!comfy.url) {
     return (
@@ -361,68 +407,118 @@ export default function ComfyGenerate({
       // What the pictures were made with: the edit model's file, or the story's checkpoint.
       const madeWith = edit ? editFilesText(edit.check, edit.fast, edit.loras) : comfy.checkpoint;
       const denoise = from ? denoiseOf(input) : null;
+      // Everything the log records about the job. It goes to ComfyUI with the job too, so a page refreshed
+      // while the job is being made can find it again (see `resumeJobs`).
+      const record: JobRecord = {
+        prompt,
+        negative,
+        checkpoint: madeWith,
+        width,
+        height,
+        seed,
+        count,
+        moment,
+        ...(from && { source: start!.source, denoise }),
+        ...(edit && { instruction: edit.instruction, edit_model: edit.check.model.id }),
+      };
       if (ctl.signal.aborted) throw new DOMException("Stopped", "AbortError");
-      const promptId = await queuePrompt(comfy.url, workflow, clientId, { storytime: { chapterId, storyId } });
+      const promptId = await queuePrompt(comfy.url, workflow, clientId, { storytime: { chapterId, storyId, clientId, job: record } satisfies JobTag });
       job.promptId = promptId;
       // Stopped while it was being queued: take it off ComfyUI's queue again.
       if (ctl.signal.aborted) {
         void cancelPrompt(comfy.url, promptId);
         throw new DOMException("Stopped", "AbortError");
       }
-      const images = await waitForPictures(comfy.url, promptId, clientId, setProgress, ctl.signal);
-      if (images.length === 0) throw new Error("ComfyUI finished but sent back no pictures. Does the workflow end in a Save Image node?");
-      // The pictures are usable even if this fails; they just won't be listed later or keep their prompt.
-      let jobId: string | null = null;
-      try {
-        jobId = await recordJob({
-          chapter_id: chapterId,
-          prompt_id: promptId,
-          prompt,
-          negative,
-          checkpoint: madeWith,
-          width,
-          height,
-          seed,
-          count,
-          moment,
-          ...(from && { source: start!.source, denoise }),
-          ...(edit && { instruction: edit.instruction, edit_model: edit.check.model.id }),
-          images,
-        });
-      } catch (e) {
-        setStatus({ ok: false, text: `The pictures are ready, but StoryTime couldn't record how they were made: ${e instanceof Error ? e.message : String(e)}` });
-      }
-      onPictures?.(
-        images.map((image, i) => ({
-          key: `${jobId ?? promptId}-${i}`,
-          index: i,
-          mark: null,
-          fresh: true,
-          image,
-          jobId,
-          prompt,
-          negative,
-          seed,
-          checkpoint: madeWith,
-          width,
-          height,
-          denoise,
-          source: from ? start!.source : null,
-          instruction: edit?.instruction ?? null,
-          editModel: edit?.check.model.id ?? null,
-          moment,
-          chapterId,
-          madeAt: Date.now(),
-          batch: images.length,
-        })),
-      );
+      await finish(key, comfy.url, ctl.signal, promptId, clientId, record);
     } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") setStatus({ ok: true, text: "Stopped." });
-      else setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
+      failed(e);
     } finally {
       jobs.current.delete(key);
       setQueue((prev) => prev.filter((q) => q.key !== key));
     }
+  }
+
+  /** Says why a job stopped before its pictures were shown. */
+  function failed(e: unknown) {
+    if (e instanceof DOMException && e.name === "AbortError") setStatus({ ok: true, text: "Stopped." });
+    else setStatus({ ok: false, text: e instanceof Error ? e.message : String(e) });
+  }
+
+  /** Waits for a job ComfyUI has queued, records it and hands on its pictures. */
+  async function finish(key: string, url: string, signal: AbortSignal, promptId: string, clientId: string, record: JobRecord) {
+    const setProgress = (progress: Progress) => {
+      setQueue((prev) => prev.map((q) => (q.key === key ? { ...q, progress } : q)));
+    };
+    const images = await waitForPictures(url, promptId, clientId, setProgress, signal);
+    if (images.length === 0) throw new Error("ComfyUI finished but sent back no pictures. Does the workflow end in a Save Image node?");
+    await recordAndShow(promptId, record, images);
+  }
+
+  /** Records a finished job in the log and hands on its pictures. */
+  async function recordAndShow(promptId: string, record: JobRecord, images: ComfyImage[]) {
+    // The pictures are usable even if this fails; they just won't be listed later or keep their prompt.
+    let jobId: string | null = null;
+    try {
+      jobId = await recordJob({ chapter_id: chapterId, prompt_id: promptId, ...record, images });
+    } catch (e) {
+      setStatus({ ok: false, text: `The pictures are ready, but StoryTime couldn't record how they were made: ${e instanceof Error ? e.message : String(e)}` });
+    }
+    onPictures?.(
+      images.map((image, i) => ({
+        key: `${jobId ?? promptId}-${i}`,
+        index: i,
+        mark: null,
+        fresh: true,
+        image,
+        jobId,
+        prompt: record.prompt,
+        negative: record.negative,
+        seed: record.seed,
+        checkpoint: record.checkpoint,
+        width: record.width,
+        height: record.height,
+        denoise: record.denoise ?? null,
+        source: record.source ?? null,
+        instruction: record.instruction ?? null,
+        editModel: record.edit_model ?? null,
+        moment: record.moment,
+        chapterId,
+        madeAt: Date.now(),
+        batch: images.length,
+      })),
+    );
+  }
+
+  /** Shows a job found in ComfyUI's queue like one asked for here, and records it when it finishes. */
+  function resume(url: string, found: TaggedJob) {
+    const { job } = found.tag;
+    const key = `job-${randomSeed().toString(36)}`;
+    const ctl = new AbortController();
+    jobs.current.set(key, { promptId: found.promptId, ctl, url });
+    setQueue((prev) => [
+      ...prev,
+      {
+        key,
+        count: job.count,
+        progress: { stage: "queued", ahead: null },
+        prompt: job.prompt,
+        negative: job.negative,
+        checkpoint: job.checkpoint,
+        width: job.width,
+        height: job.height,
+        denoise: job.denoise ?? null,
+        source: job.source ?? null,
+        instruction: job.instruction ?? null,
+        editModel: job.edit_model ?? null,
+        moment: job.moment,
+      },
+    ]);
+    finish(key, url, ctl.signal, found.promptId, found.tag.clientId, job)
+      .catch(failed)
+      .finally(() => {
+        jobs.current.delete(key);
+        setQueue((prev) => prev.filter((q) => q.key !== key));
+      });
   }
 
   // Size, Queue and what is being made: kept at the bottom of the column (see `dock`), so they can be used from anywhere on the page.
@@ -470,13 +566,29 @@ export default function ComfyGenerate({
     </div>
   );
 
+  // The Strength slider and its one-line explanation, the same for Redraw and Edit.
+  const strength = (value: number, onChange: (v: number) => void) => (
+    <>
+      <label className="strength">
+        Strength {value.toFixed(2)}
+        <input type="range" aria-label="Strength" min={0.05} max={1} step={0.05} value={value} onChange={(e) => onChange(Number(e.target.value))} />
+      </label>
+      <p className="meta" style={{ margin: 0 }}>Low stays close to the picture; 1.00 changes it freely.</p>
+    </>
+  );
+
   return (
     <section className="ai-panel comfy-generate">
       <h2>Make pictures</h2>
       {start && (
         <div className="start-picture">
-          {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
-          <img src={start.thumb} alt="Starting picture" />
+          <div className="start-picture-thumb">
+            {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
+            <img src={start.thumb} alt="Starting picture" />
+            <button type="button" className="secondary" onClick={onClearStart}>
+              Clear starting picture
+            </button>
+          </div>
           <div className="start-picture-controls">
             <p style={{ margin: 0 }}>
               <strong>Starting from this picture.</strong>
@@ -572,23 +684,11 @@ export default function ComfyGenerate({
                       onChange={(e) => setInstruction(e.target.value)}
                     />
                   </label>
-                  <label className="strength">
-                    Strength {editStrength.toFixed(2)}
-                    <input
-                      type="range"
-                      aria-label="Strength"
-                      min={0.05}
-                      max={1}
-                      step={0.05}
-                      value={editStrength}
-                      onChange={(e) => setEditStrength(Number(e.target.value))}
-                    />
-                  </label>
+                  {strength(editStrength, setEditStrength)}
                   <p className="meta" style={{ margin: 0 }}>
-                    Low keeps the picture close; 1.00 lets the model change it freely. It starts at {chosen.model.name}&apos;s default ({(tuning?.strength ?? 1).toFixed(2)}),{" "}
+                    It starts at {chosen.model.name}&apos;s default ({(tuning?.strength ?? 1).toFixed(2)}),{" "}
                     <Link href={`/settings#edit-${chosen.model.id}`}>set in Settings</Link>.
                   </p>
-                  <p className="meta" style={{ margin: 0 }}>The prompt above isn&apos;t used. Edits keep the picture&apos;s shape, at about one megapixel.</p>
                 </>
               ) : (
                 <p className="error" style={{ margin: 0 }}>
@@ -598,26 +698,9 @@ export default function ComfyGenerate({
             ) : (
               <>
                 <p className="meta" style={{ margin: 0 }}>The new pictures are its size.</p>
-                <label className="strength">
-                  Strength {comfy.denoise.toFixed(2)}
-                  <input
-                    type="range"
-                    aria-label="Strength"
-                    min={0.05}
-                    max={1}
-                    step={0.05}
-                    value={comfy.denoise}
-                    onChange={(e) => set({ denoise: Number(e.target.value) })}
-                  />
-                </label>
-                <p className="meta" style={{ margin: 0 }}>Low keeps the picture close; high changes more.</p>
+                {strength(comfy.denoise, (v) => set({ denoise: v }))}
               </>
             )}
-            <div>
-              <button type="button" className="secondary" onClick={onClearStart}>
-                Clear starting picture
-              </button>
-            </div>
           </div>
         </div>
       )}

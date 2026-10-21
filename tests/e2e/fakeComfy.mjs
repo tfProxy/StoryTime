@@ -161,7 +161,7 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
     if (job.cancelled || closed) return;
     job.state = "done";
     const images = Array.from({ length: job.count }, (_, i) => ({ filename: `StoryTime_${job.no}_${i}.png`, subfolder: "", type: "output" }));
-    history[job.id] = { prompt: [], outputs: { "9": { images } }, status: { status_str: "success", completed: true, messages: [] } };
+    history[job.id] = { prompt: [job.no, job.id, {}, job.extra, []], outputs: { "9": { images } }, status: { status_str: "success", completed: true, messages: [] } };
     send(job.clientId, { type: "executing", data: { node: null, prompt_id: job.id } });
   }
 
@@ -215,7 +215,7 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
       return { status: 400, body: { error: { type: "prompt_outputs_failed_validation", message: "Prompt outputs failed validation", details: "", extra_info: {} }, node_errors: nodeErrors } };
     }
     const batch = nodes.map(([, n]) => n?.inputs?.batch_size ?? n?.inputs?.amount).find((v) => typeof v === "number") ?? 1;
-    const job = { id: crypto.randomUUID(), no: ++jobNo, clientId: String(body.client_id ?? ""), count: batch, state: "queued", cancelled: false };
+    const job = { id: crypto.randomUUID(), no: ++jobNo, clientId: String(body.client_id ?? ""), count: batch, state: "queued", cancelled: false, extra: body.extra_data ?? {} };
     jobs.set(job.id, job);
     chain = chain.then(() => run(job)).catch(() => {});
     return { status: 200, body: { prompt_id: job.id, number: job.no, node_errors: {} } };
@@ -263,6 +263,11 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
         const r = queue(body && typeof body === "object" ? body : {});
         return json(r.status, r.body);
       }
+      if (p === "/history") {
+        // Like ComfyUI: every finished job, oldest first; ?max_items= keeps the newest.
+        const ids = Object.keys(history).slice(-Number(url.searchParams.get("max_items") || Infinity));
+        return json(200, Object.fromEntries(ids.map((id) => [id, history[id]])));
+      }
       if (p.startsWith("/history/")) {
         const id = decodeURIComponent(p.slice("/history/".length));
         return json(200, history[id] ? { [id]: history[id] } : {});
@@ -279,7 +284,7 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
         return json(200, {});
       }
       if (p === "/queue") {
-        const list = (state) => [...jobs.values()].filter((j) => j.state === state).map((j) => [j.no, j.id, {}, {}, []]);
+        const list = (state) => [...jobs.values()].filter((j) => j.state === state).map((j) => [j.no, j.id, {}, j.extra, []]);
         return json(200, { queue_running: list("running"), queue_pending: list("queued") });
       }
       if (p === "/interrupt") {

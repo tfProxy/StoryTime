@@ -1068,6 +1068,13 @@ main:has(.library) {
   background: var(--line);
 }
 
+.start-picture-thumb {
+  display: grid;
+  gap: 0.4rem;
+  justify-items: start;
+  min-width: 0;
+}
+
 .start-picture-controls {
   display: grid;
   gap: 0.4rem;
@@ -1728,6 +1735,13 @@ dialog.picture-viewer::backdrop {
 .picture-marks .tile-menu-list button:focus-visible,
 .tile-menu-list a:focus-visible {
   background: var(--line);
+}
+
+/* The picture new ones are being made from. */
+.picture-tile.editing .picture-frame {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
 .picture-in-use {

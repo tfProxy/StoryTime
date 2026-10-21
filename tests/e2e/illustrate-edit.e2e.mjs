@@ -188,6 +188,25 @@ try {
   await until(async () => ((await thumb.getAttribute("src")) ?? "").includes(`/api/chapters/${chapterId}/images/header`), "the header to become the starting picture");
   ok(await editTab.getAttribute("aria-selected") === "true", "the saved header's Edit this starts from it on the Edit tab");
 
+  // ---- a refresh keeps the editing ----
+  await instruction.fill("add a red scarf");
+  await strength.fill("0.4");
+  await page.reload();
+  await thumb.waitFor();
+  ok(((await thumb.getAttribute("src")) ?? "").includes(`/api/chapters/${chapterId}/images/header`), "after a refresh the starting picture is still the saved header");
+  await until(async () => (await editTab.getAttribute("aria-selected")) === "true" && (await instruction.inputValue()) === "add a red scarf", "the Edit tab and its text to come back");
+  ok(await strength.inputValue() === "0.4", "…with the same Strength");
+  await redrawTab.click();
+  await page.reload();
+  await thumb.waitFor();
+  await until(async () => (await redrawTab.getAttribute("aria-selected")) === "true", "the Redraw tab to come back");
+  ok(true, "…and a refresh in Redraw stays in Redraw");
+  await page.getByRole("button", { name: "Clear starting picture" }).click();
+  await page.reload();
+  await page.getByRole("heading", { name: "Make pictures" }).waitFor();
+  await page.waitForTimeout(500);
+  ok(await thumb.count() === 0, "after Clear starting picture a refresh starts with none");
+
   // ---- Qwen's Lightning LoRA ----
   const fastBox = page.getByRole("checkbox", { name: /^Fast/ });
   ok(await fastBox.count() === 0, "without the Lightning LoRA there is no Fast box");
@@ -347,6 +366,7 @@ try {
   comfy.setMode({ missingNodes: ["TextEncodeQwenImageEditPlus"] });
   await page.reload();
   await showAll();
+  ok(await page.getByRole("list", { name: /^Pictures from “Edit: / }).count() >= 1, "after coming back, the pictures made by editing are listed under All");
   await choose(items.first(), "Edit this");
   await thumb.waitFor();
   ok((await modelMenu.locator("option").allInnerTexts()).join("|") === "FLUX.1 Kontext", "a model whose node ComfyUI lacks isn't offered");
