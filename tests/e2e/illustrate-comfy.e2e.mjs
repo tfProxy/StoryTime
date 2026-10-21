@@ -454,6 +454,16 @@ try {
   // ---- bringing back the prompt of any new picture, with its settings ----
   await page.getByLabel("Size").selectOption("1024x1024");
   ok(await until(async () => (await settingsNow()).comfy.width === 1024, "the size to be saved"), "(the size is changed to square)");
+  const sizeOptions = await page.getByLabel("Size").locator("option").allInnerTexts();
+  ok(sizeOptions.join("|") === "▭ Landscape 1344 × 768 (7:4)|▬ Wide 1536 × 640 (12:5)|□ Square 1024 × 1024 (1:1)|▯ Portrait 768 × 1344 (4:7)", `each size shows its aspect ratio (${sizeOptions.join("|")})`);
+  const iconRect = async () => page.locator(".generate-bar .size-icon rect").evaluate((r) => ({ w: Number(r.getAttribute("width")), h: Number(r.getAttribute("height")) }));
+  const square = await iconRect();
+  ok(square.w === square.h, "the icon beside Size is a square for a square size");
+  await page.getByLabel("Size").selectOption("768x1344");
+  const tall = await iconRect();
+  ok(Math.abs(tall.w / tall.h - 768 / 1344) < 0.01 && tall.h > tall.w, "…and is drawn to the shape of the size chosen (tall for Portrait)");
+  await page.getByLabel("Size").selectOption("1024x1024");
+  await until(async () => (await settingsNow()).comfy.width === 1024, "the size to be saved again");
   await page.getByLabel("Moment to show").selectOption("end");
   const nightTile = page.locator(".picture-group").first().locator(".picture-tile").first();
   // The newest job is the night one; its pictures show no seed, so it comes from the log.

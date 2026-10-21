@@ -27,6 +27,33 @@ const SIZES: { label: string; width: number; height: number }[] = [
   { label: "Portrait 768 × 1344", width: 768, height: 1344 },
 ];
 
+const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+
+/** The aspect ratio as small whole numbers ("7:4"); sizes with no small ratio get one decimal ("1.8:1"). */
+function ratioText(width: number, height: number): string {
+  if (!(width > 0 && height > 0)) return "";
+  const d = gcd(width, height);
+  const w = width / d;
+  const h = height / d;
+  if (w <= 32 && h <= 32) return `${w}:${h}`;
+  return width >= height ? `${(width / height).toFixed(1)}:1` : `1:${(height / width).toFixed(1)}`;
+}
+
+/** A glyph for the shape, for the drop-down's options, which can't hold a picture. */
+const shapeGlyph = (width: number, height: number) => (width === height ? "□" : width / height >= 1.8 ? "▬" : width > height ? "▭" : "▯");
+
+/** A small rectangle drawn to the size's shape. */
+function SizeIcon({ width, height }: { width: number; height: number }) {
+  const longest = Math.max(width, height) || 1;
+  const w = Math.max(3, (18 * width) / longest);
+  const h = Math.max(3, (18 * height) / longest);
+  return (
+    <svg className="size-icon" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true" focusable="false">
+      <rect x={(22 - w) / 2} y={(22 - h) / 2} width={w} height={h} rx="1.5" fill="currentColor" fillOpacity="0.2" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
 /** Records a finished job in StoryTime's log; returns the record's id. */
 async function recordJob(job: Record<string, unknown>): Promise<string> {
   const res = await fetch("/api/picture-jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(job) });
@@ -612,6 +639,9 @@ export default function ComfyGenerate({
     <div className="generate-bar">
       <label className="row" style={{ gap: "0.4rem" }}>
         Size
+        <span title={`Shape of the pictures: ${ratioText(comfy.width, comfy.height)}`} style={{ display: "inline-flex" }}>
+          <SizeIcon width={comfy.width} height={comfy.height} />
+        </span>
         <select
           aria-label="Size"
           value={`${comfy.width}x${comfy.height}`}
@@ -623,10 +653,10 @@ export default function ComfyGenerate({
           title={start ? "Pictures made from a starting picture are its size" : undefined}
           style={{ width: "auto", flex: 1 }}
         >
-          {!size && <option value={`${comfy.width}x${comfy.height}`}>{`${comfy.width} × ${comfy.height}`}</option>}
+          {!size && <option value={`${comfy.width}x${comfy.height}`}>{`${shapeGlyph(comfy.width, comfy.height)} ${comfy.width} × ${comfy.height} (${ratioText(comfy.width, comfy.height)})`}</option>}
           {SIZES.map((s) => (
             <option key={s.label} value={`${s.width}x${s.height}`}>
-              {s.label}
+              {`${shapeGlyph(s.width, s.height)} ${s.label} (${ratioText(s.width, s.height)})`}
             </option>
           ))}
         </select>

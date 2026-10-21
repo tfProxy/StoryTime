@@ -1498,6 +1498,11 @@ main:has(.illustrate-grid) {
   width: 100%;
 }
 
+.generate-bar .size-icon {
+  flex: none;
+  color: var(--muted);
+}
+
 .queue-status {
   display: grid;
   gap: 0.25rem;
