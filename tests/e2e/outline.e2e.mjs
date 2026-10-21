@@ -37,6 +37,7 @@ await page.goto(BASE);
 await page.locator(".story-card", { hasText: "Outline story" }).getByRole("link", { name: /Outline of/ }).click();
 await page.waitForURL(/outline$/);
 ok(await page.getByText(/5 chapters · 1 choice still to write/).isVisible(), "totals shown");
+ok((await page.locator(".outline-page .crumbs").count()) === 0 && (await page.getByRole("link", { name: /← Outline story/ }).count()) === 0 && (await page.getByRole("heading", { level: 1 }).innerText()) === "Outline", "the outline has no back link to the story above its heading");
 
 // summaries: per chapter, and all at once
 ok((await page.locator(".outline-summary").count()) === 0, "summaries start hidden");

@@ -74,9 +74,6 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="outline-page">
-      <p className="crumbs">
-        <Link href={`/s/${story.id}`}>← {story.title}</Link>
-      </p>
       <h1>Outline</h1>
       <p className="meta">
         {totals.chapters} chapter{totals.chapters === 1 ? "" : "s"} · {totals.unwritten} choice
