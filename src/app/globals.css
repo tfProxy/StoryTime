@@ -1146,6 +1146,58 @@ main:has(.library) {
   gap: 0.2rem;
 }
 
+/* Settings: each edit model's LoRA stack, one row per LoRA. */
+.edit-loras {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.edit-loras h3 {
+  margin: 0.4rem 0 0;
+  font-size: 1rem;
+}
+
+.edit-lora-model {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.edit-lora-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 5.5rem auto auto;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.edit-lora-row input[type="checkbox"] {
+  width: auto;
+}
+
+/* On a phone the file gets the whole line, and its strength and buttons go under it. */
+@media (max-width: 520px) {
+  .edit-lora-row {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+  }
+
+  .edit-lora-row select {
+    grid-column: 2 / -1;
+  }
+
+  .edit-lora-row input[type="number"] {
+    grid-column: 2;
+  }
+}
+
+/* The Edit tab: the chosen model's LoRAs, each switched on or off. */
+.edit-lora-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: center;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
 .strength input[type="range"] {
   padding: 0;
   border: 0;

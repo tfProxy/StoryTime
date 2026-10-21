@@ -42,6 +42,17 @@ export type EditParams = {
    * stays closer to it.
    */
   denoise: number;
+  /** The author's LoRA stack for this model, applied in order after any speed-up. */
+  loras?: EditLora[];
+};
+
+/**
+ * An optional file that makes a model faster, such as a Lightning LoRA: fewer steps at CFG 1. The model
+ * works without it; with it, the Illustrate page offers a Fast box.
+ */
+export type SpeedUp = ModelPart & {
+  /** What the setup check and the Fast box call it. */
+  name: string;
 };
 
 export type EditModel = {
@@ -53,9 +64,23 @@ export type EditModel = {
   /** Every node the workflow uses. */
   nodes: string[];
   options: NeededOption[];
-  /** The workflow, with the files found for each part (by part key). */
-  build: (files: Record<string, string>, p: EditParams) => Workflow;
+  /** An optional file that makes it faster, if the model has one. */
+  speedUp?: SpeedUp;
+  /**
+   * The workflow, with the files found for each part (by part key). With `fast`, the file of the
+   * speed-up (`files.speedUp`) is used too.
+   */
+  build: (files: Record<string, string>, p: EditParams, fast?: boolean) => Workflow;
 };
+
+/**
+ * How many steps a Lightning LoRA is made for, from its file name ("…-Lightning-4steps-…" is 4), or 8
+ * when the name doesn't say.
+ */
+export function lightningSteps(file: string): number {
+  const n = Number(/(\d+)[-_ ]?steps?/i.exec(file)?.[1]);
+  return Number.isInteger(n) && n > 0 && n <= 50 ? n : 8;
+}
 
 export const EDIT_MODEL_IDS = ["qwen-image-edit", "flux-kontext"] as const;
 export type EditModelId = (typeof EDIT_MODEL_IDS)[number];
@@ -72,6 +97,25 @@ export function editSize(width: number, height: number): { width: number; height
   return { width: round(width), height: round(height) };
 }
 
+/** A LoRA in an edit model's stack: its file in ComfyUI's `loras` folder and how strongly it applies. */
+export type EditLora = { name: string; strength: number };
+
+/**
+ * The LoRA loaders between the model loader (`from`) and what uses the model: the speed-up first (when
+ * given), then the author's stack in order. Returns the nodes and the link to the last model.
+ */
+function loraChain(from: [string, number], speedUp: string | null, stack: EditLora[] = []): { nodes: Workflow; model: [string, number] } {
+  const nodes: Workflow = {};
+  let model = from;
+  const add = (id: string, name: string, strength: number) => {
+    nodes[id] = { class_type: "LoraLoaderModelOnly", inputs: { model, lora_name: name, strength_model: strength } };
+    model = [id, 0];
+  };
+  if (speedUp) add("9", speedUp, 1);
+  stack.forEach((l, i) => add(String(30 + i), l.name, l.strength));
+  return { nodes, model };
+}
+
 /** The nodes both workflows start and end with: the starting picture, scaled and encoded, and the saved result. */
 function shared(p: EditParams, vae: [string, number], sampler: string): Workflow {
   return {
@@ -84,8 +128,13 @@ function shared(p: EditParams, vae: [string, number], sampler: string): Workflow
   };
 }
 
-/** Qwen-Image-Edit 2509: 20 steps of Euler at CFG 2.5, as in ComfyUI's own template. */
-function qwenWorkflow(files: Record<string, string>, p: EditParams): Workflow {
+/**
+ * Qwen-Image-Edit 2509: 20 steps of Euler at CFG 2.5, as in ComfyUI's own template. Fast, with the
+ * Lightning LoRA (`files.speedUp`): the steps it was made for (4 or 8) at CFG 1.
+ */
+function qwenWorkflow(files: Record<string, string>, p: EditParams, fast = false): Workflow {
+  const lightning = fast && files.speedUp ? files.speedUp : null;
+  const chain = loraChain(["1", 0], lightning, p.loras);
   const encode = (prompt: string) => ({
     class_type: "TextEncodeQwenImageEditPlus",
     inputs: { clip: ["2", 0], vae: ["3", 0], image1: ["11", 0], prompt },
@@ -94,14 +143,15 @@ function qwenWorkflow(files: Record<string, string>, p: EditParams): Workflow {
     "1": { class_type: "UNETLoader", inputs: { unet_name: files.model, weight_dtype: "default" } },
     "2": { class_type: "CLIPLoader", inputs: { clip_name: files.textEncoder, type: "qwen_image", device: "default" } },
     "3": { class_type: "VAELoader", inputs: { vae_name: files.vae } },
-    "4": { class_type: "ModelSamplingAuraFlow", inputs: { model: ["1", 0], shift: 3 } },
+    ...chain.nodes,
+    "4": { class_type: "ModelSamplingAuraFlow", inputs: { model: chain.model, shift: 3 } },
     "5": { class_type: "CFGNorm", inputs: { model: ["4", 0], strength: 1 } },
     "6": encode(p.instruction),
     "7": encode(""),
     "8": {
       class_type: "KSampler",
       inputs: {
-        seed: p.seed, steps: 20, cfg: 2.5, sampler_name: "euler", scheduler: "simple", denoise: p.denoise,
+        seed: p.seed, steps: lightning ? lightningSteps(lightning) : 20, cfg: lightning ? 1 : 2.5, sampler_name: "euler", scheduler: "simple", denoise: p.denoise,
         model: ["5", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["13", 0],
       },
     },
@@ -111,8 +161,10 @@ function qwenWorkflow(files: Record<string, string>, p: EditParams): Workflow {
 
 /** FLUX.1 Kontext dev: the picture as a reference latent, guidance 2.5, 20 steps of Euler at CFG 1. */
 function kontextWorkflow(files: Record<string, string>, p: EditParams): Workflow {
+  const chain = loraChain(["1", 0], null, p.loras);
   return {
     "1": { class_type: "UNETLoader", inputs: { unet_name: files.model, weight_dtype: "default" } },
+    ...chain.nodes,
     "2": { class_type: "DualCLIPLoader", inputs: { clip_name1: files.clipL, clip_name2: files.t5, type: "flux", device: "default" } },
     "3": { class_type: "VAELoader", inputs: { vae_name: files.vae } },
     "4": { class_type: "CLIPTextEncode", inputs: { clip: ["2", 0], text: p.instruction } },
@@ -123,7 +175,7 @@ function kontextWorkflow(files: Record<string, string>, p: EditParams): Workflow
       class_type: "KSampler",
       inputs: {
         seed: p.seed, steps: 20, cfg: 1, sampler_name: "euler", scheduler: "simple", denoise: p.denoise,
-        model: ["1", 0], positive: ["6", 0], negative: ["7", 0], latent_image: ["13", 0],
+        model: chain.model, positive: ["6", 0], negative: ["7", 0], latent_image: ["13", 0],
       },
     },
     ...shared(p, ["3", 0], "8"),
@@ -151,6 +203,10 @@ export const EDIT_MODELS: EditModel[] = [
         recommended: "qwen_image_vae.safetensors", match: /qwen[-_]?image[-_]?vae/i,
       },
     ],
+    speedUp: {
+      key: "speedUp", name: "Lightning", label: "Lightning LoRA (optional, for fast edits)", folder: "loras", loader: "LoraLoaderModelOnly",
+      input: "lora_name", recommended: "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors", match: /qwen[-_ ]?image[-_ ]?edit.*lightning/i,
+    },
     nodes: nodesOf(qwenWorkflow({}, SAMPLE)),
     options: [{ node: "CLIPLoader", input: "type", value: "qwen_image" }],
     build: qwenWorkflow,
@@ -209,19 +265,67 @@ export type EditCheck = {
   /** Choices a node should offer but doesn't, as "Node input: value". */
   missingOptions: string[];
   parts: PartCheck[];
-  /** The files to use, by part key, when every part was found. */
+  /** The files to use, by part key, when every part was found; with `speedUp` when that was found too. */
   files: Record<string, string>;
   /** Whether everything is there, so the model can be used. */
   ready: boolean;
+  /** The optional speed-up and the file found for it (null when it isn't installed), for models that have one. */
+  speedUp: PartCheck | null;
+  /** Every LoRA file ComfyUI lists (its `loras` folder), for the author's stack; empty when it has no LoRA loader. */
+  loras: string[];
 };
 
-/** Every node the checks below need to ask ComfyUI about. */
-export const EDIT_NODES = [...new Set(EDIT_MODELS.flatMap((m) => [...m.nodes, ...m.parts.map((p) => p.loader), ...m.options.map((o) => o.node)]))].sort();
+/** The node that loads a LoRA onto a model, for the speed-up and the author's stack. */
+const LORA_LOADER = "LoraLoaderModelOnly";
 
-/** The file for a part among the ones a loader lists: the recommended one, else the first that looks like it. */
-function findFile(part: ModelPart, choices: string[]): string | null {
-  const base = (f: string) => f.split(/[\\/]/).pop()!;
-  return choices.find((c) => base(c) === part.recommended) ?? choices.find((c) => part.match.test(c)) ?? null;
+/** Every node the checks below need to ask ComfyUI about. */
+export const EDIT_NODES = [
+  ...new Set([
+    LORA_LOADER,
+    ...EDIT_MODELS.flatMap((m) => [...m.nodes, ...m.parts.map((p) => p.loader), ...m.options.map((o) => o.node), ...(m.speedUp ? [m.speedUp.loader] : [])]),
+  ]),
+].sort();
+
+const base = (f: string) => f.split(/[\\/]/).pop()!;
+
+/**
+ * The file for a part among the ones a loader lists: one of the same release (such as 2509) as `release`
+ * when given, else the recommended one, else the first that looks like it.
+ */
+function findFile(part: ModelPart, choices: string[], release?: string): string | null {
+  const like = choices.filter((c) => part.match.test(c));
+  return (release && like.find((c) => base(c).includes(release))) || choices.find((c) => base(c) === part.recommended) || like[0] || null;
+}
+
+/** The release number in a model's file name, such as "2509" in qwen_image_edit_2509_fp8.safetensors. */
+const releaseOf = (file: string | undefined) => (file ? /(?:^|[^\d])(2\d{3})(?:[^\d]|$)/.exec(base(file))?.[1] : undefined);
+
+/**
+ * The files an edit is made with, as the job log keeps them (in its checkpoint column): the model's
+ * file, and " + " the speed-up's when it is used.
+ */
+export const editFilesText = (check: EditCheck, fast: boolean, loras: EditLora[] = []) =>
+  [check.files.model, ...(fast && check.files.speedUp ? [check.files.speedUp] : []), ...loras.map((l) => `${l.name} (${l.strength})`)].join(" + ");
+
+/** What an edit's files (see editFilesText) say beyond the model: whether it was fast, and how many LoRAs of the author's it used. */
+export function editFilesExtras(modelId: string, text: string): { fast: boolean; loras: number } {
+  const [, ...extras] = text.split(" + ");
+  const speedUp = editModel(modelId)?.speedUp;
+  // The speed-up is added without a strength; the author's LoRAs always have one.
+  const fast = extras.some((e) => !/\(-?[\d.]+\)$/.test(e) && (!speedUp || speedUp.match.test(e)));
+  return { fast, loras: extras.filter((e) => /\(-?[\d.]+\)$/.test(e)).length };
+}
+
+/**
+ * The author's stack for a model as it can be used now: the LoRAs switched on whose files ComfyUI still
+ * lists. `missing` names the ones switched on that it doesn't.
+ */
+export function usableLoras(stack: { name: string; strength: number; on: boolean }[], available: string[]): { loras: EditLora[]; missing: string[] } {
+  const on = stack.filter((l) => l.on && l.name);
+  return {
+    loras: on.filter((l) => available.includes(l.name)).map(({ name, strength }) => ({ name, strength })),
+    missing: on.filter((l) => !available.includes(l.name)).map((l) => l.name),
+  };
 }
 
 /** Whether each edit model can be used, from what ComfyUI says about the nodes in EDIT_NODES. */
@@ -233,7 +337,11 @@ export function checkEditModels(info: Record<string, NodeInfo>): EditCheck[] {
       .map((o) => `${o.node} ${o.input}: ${o.value}`);
     const parts = model.parts.map((part) => ({ part, file: findFile(part, comboOptions(info[part.loader], part.input)) }));
     const ready = missingNodes.length === 0 && missingOptions.length === 0 && parts.every((p) => p.file !== null);
-    const files = ready ? Object.fromEntries(parts.map((p) => [p.part.key, p.file!])) : {};
-    return { model, missingNodes, missingOptions, parts, files, ready };
+    const files: Record<string, string> = ready ? Object.fromEntries(parts.map((p) => [p.part.key, p.file!])) : {};
+    // A speed-up made for the model's release (the 2509 LoRA for the 2509 model) is preferred.
+    const s = model.speedUp;
+    const speedUp = s ? { part: s, file: findFile(s, comboOptions(info[s.loader], s.input), releaseOf(files.model)) } : null;
+    if (ready && speedUp?.file) files.speedUp = speedUp.file;
+    return { model, missingNodes, missingOptions, parts, files, ready, speedUp, loras: comboOptions(info[LORA_LOADER], "lora_name") };
   });
 }

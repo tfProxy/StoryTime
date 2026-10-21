@@ -123,7 +123,7 @@ Every file below goes in a subfolder of ComfyUI's `models` folder:
 - git install: `ComfyUI/models`
 - ComfyUI Desktop: `Documents\ComfyUI\models` (or the folder you chose when installing)
 
-The subfolders (`diffusion_models`, `text_encoders`, `vae`) already exist; create any that don't. A
+The subfolders (`diffusion_models`, `text_encoders`, `vae`, `loras`) already exist; create any that don't. A
 file can also go in a subfolder of its own, such as `diffusion_models/qwen/`.
 
 ### 3. Download Qwen-Image-Edit
@@ -133,6 +133,30 @@ file can also go in a subfolder of its own, such as `diffusion_models/qwen/`.
 | [qwen_image_edit_2509_fp8_e4m3fn.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/resolve/main/split_files/diffusion_models/qwen_image_edit_2509_fp8_e4m3fn.safetensors) | `models/diffusion_models` | about 20 GB |
 | [qwen_2.5_vl_7b_fp8_scaled.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors) | `models/text_encoders` | about 9 GB |
 | [qwen_image_vae.safetensors](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors) | `models/vae` | about 250 MB |
+
+#### Optional: the Lightning LoRA, for fast Qwen edits
+
+Out of the box, a Qwen edit runs 20 steps at CFG 2.5, which can take a minute or more per picture.
+The Lightning LoRA from lightx2v is trained to do the same job in 4 (or 8) steps at CFG 1, so an
+edit is several times faster. It gives up a little fine detail; the 8-step version gives up less.
+
+| File | Put it in | Size |
+| --- | --- | --- |
+| [Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors](https://huggingface.co/lightx2v/Qwen-Image-Lightning/resolve/main/Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors) (fastest) | `models/loras` | under 1 GB |
+| or [Qwen-Image-Edit-2509-Lightning-8steps-V1.0-bf16.safetensors](https://huggingface.co/lightx2v/Qwen-Image-Lightning/resolve/main/Qwen-Image-Edit-2509/Qwen-Image-Edit-2509-Lightning-8steps-V1.0-bf16.safetensors) (a little better, half as fast) | `models/loras` | under 1 GB |
+
+- Take the LoRA made for your model's release: the **2509** LoRA for the 2509 model. The
+  [lightx2v/Qwen-Image-Lightning](https://huggingface.co/lightx2v/Qwen-Image-Lightning) page has
+  one folder per release. The ones named `Qwen-Image-Lightning-…` (without "Edit") are for
+  Qwen-Image, which makes pictures from a prompt, and don't work for edits.
+- StoryTime reads the number of steps from the file name (`4steps`, `8steps`). If you put several
+  in `loras`, it uses one whose name has the same release number as the model (such as 2509), and
+  otherwise the 4-step one above.
+- Once the LoRA is installed, the Edit tab shows a **Fast (Lightning, 4 steps)** box under the model
+  menu when Qwen-Image-Edit is chosen. It starts ticked; untick it for the full 20 steps when you
+  want the most detail. The choice is remembered. Pictures made fast say "fast" in their caption,
+  and Info lists the LoRA beside the model file.
+- FLUX.1 Kontext has no Lightning LoRA here; it always runs its 20 steps.
 
 ### 4. Download FLUX.1 Kontext dev
 
@@ -160,11 +184,36 @@ and press **Check setup**. It reports:
 - for each edit model, whether ComfyUI has each file and the nodes it needs. A missing file is named
   with the folder it goes in. Missing nodes, or a text encoder type ComfyUI doesn't know, mean
   ComfyUI needs updating (step 1).
+- for Qwen-Image-Edit, the Lightning LoRA it found and its steps, or that it isn't installed. It is
+  optional: Qwen is ready without it.
 
 A model is offered on the Illustrate page only when everything it needs is there. The check looks
 for the files above by name, and also accepts other versions of the same file, such as a bf16
 model, another fp8 version, `t5xxl_fp16`, or a newer Qwen-Image-Edit release. If several match, the
 one listed above is used. GGUF versions are not supported, because they need a custom loader node.
+
+### Your own LoRAs (a LoRA stack per edit model)
+
+Each edit model can also apply LoRAs of your own, such as one for a story's main character or for an
+art style, so edits keep that look.
+
+1. Put the LoRA files in `ComfyUI/models/loras` (a subfolder is fine) and restart ComfyUI. Use LoRAs
+   made for that model: a Qwen-Image or Qwen-Image-Edit LoRA for Qwen-Image-Edit, a FLUX.1 LoRA for
+   FLUX.1 Kontext. A LoRA made for SDXL or another model has no effect: ComfyUI skips the parts that don't fit and
+   says so in its console.
+2. In **Settings › Pictures (ComfyUI) › LoRAs for edits**, press **Add LoRA for …** under the model,
+   choose the file from ComfyUI's list and set its strength: 1 is full strength, 0.5 half, and below
+   0 works against the LoRA. ↑ moves a LoRA earlier; ✕ takes it out. A stack holds up to 8 LoRAs.
+3. On the Illustrate page, the Edit tab lists the chosen model's LoRAs under the model menu, each with
+   a box to switch it on or off for the next edits. The boxes are saved, and **Change** goes back to
+   Settings.
+
+The LoRAs apply in the order listed, after the Lightning LoRA when **Fast** is on. Every story uses
+the same stacks. A LoRA that ComfyUI no longer lists is marked "missing" on the Edit tab, and edits
+go ahead without it. A picture's caption says how many LoRAs made it, and **Info** lists each one
+with its strength. StoryTime loads them with ComfyUI's **LoraLoaderModelOnly** node, so a LoRA
+changes the model but not the text encoder; a trigger word still works if you put it in the
+instruction.
 
 ### Tips for instructions
 

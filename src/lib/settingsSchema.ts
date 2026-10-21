@@ -67,7 +67,20 @@ export type ComfySettings = {
   denoise: number;
   /** The model last used to edit a picture by instruction (an id from EDIT_MODELS). */
   editModel: string;
+  /** Edits use a model's speed-up (Qwen's Lightning LoRA) when ComfyUI has it. */
+  editFast: boolean;
+  /**
+   * The author's LoRA stack for each edit model (by its id in EDIT_MODELS), applied in order. `on` is
+   * switched from the Edit tab; a LoRA switched off stays in the stack.
+   */
+  editLoras: Record<string, EditLoraSetting[]>;
 };
+
+/** A LoRA in an edit model's stack: its file in ComfyUI's `loras` folder, its strength, and whether it is used. */
+export type EditLoraSetting = { name: string; strength: number; on: boolean };
+
+/** The most LoRAs one edit model's stack can hold. */
+export const MAX_EDIT_LORAS = 8;
 
 export const DEFAULT_SETTINGS: Settings = {
   connections: [],
@@ -79,7 +92,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoSuggestChoices: false,
   imagePromptStyle: "tags",
   imagePromptModel: null,
-  comfy: { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4, denoise: 0.55, editModel: "qwen-image-edit" },
+  comfy: { url: "", workflow: "", checkpoint: "", width: 1344, height: 768, count: 4, denoise: 0.55, editModel: "qwen-image-edit", editFast: true, editLoras: {} },
 };
 
 // Each field falls back to its default when missing or invalid, so partial files still
@@ -94,6 +107,12 @@ const connectionSchema = z.object({
 });
 const refSchema = z.object({ connectionId: z.string().min(1), model: z.string().trim().min(1) });
 const favoriteSchema = refSchema.extend({ label: z.string().catch("") });
+
+const editLoraSchema = z.object({
+  name: z.string().max(500),
+  strength: z.number().min(-4).max(4).catch(1),
+  on: z.boolean().catch(true),
+});
 
 const listOf = <T>(item: z.ZodType<T>) =>
   z
@@ -126,6 +145,10 @@ const settingsSchema = z.object({
       count: z.number().int().min(1).max(8).catch(DEFAULT_SETTINGS.comfy.count),
       denoise: z.number().min(0.05).max(1).catch(DEFAULT_SETTINGS.comfy.denoise),
       editModel: z.string().max(100).catch(DEFAULT_SETTINGS.comfy.editModel),
+      editFast: z.boolean().catch(DEFAULT_SETTINGS.comfy.editFast),
+      editLoras: z
+        .record(z.string().max(100), listOf(editLoraSchema).transform((xs) => xs.slice(0, MAX_EDIT_LORAS)))
+        .catch({}),
     })
     .catch(DEFAULT_SETTINGS.comfy),
 });

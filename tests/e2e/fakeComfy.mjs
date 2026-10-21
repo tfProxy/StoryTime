@@ -18,7 +18,7 @@
 //               rejects) | "error" (the job starts, then fails with an execution error) | "upload"
 //               (POST /upload/image answers 400)
 //   files       the model files the loaders list in /object_info, by folder: { diffusion_models,
-//               text_encoders, vae } (default none, so no edit model is ready)
+//               text_encoders, vae, loras } (default none, so no edit model is ready)
 //   missingNodes  node names /object_info answers {} for, like a ComfyUI too old to have them
 import crypto from "node:crypto";
 import http from "node:http";
@@ -94,8 +94,11 @@ export const EDIT_FILES = {
 const NODES = [
   "CheckpointLoaderSimple", "KSampler", "EmptyLatentImage", "CLIPTextEncode", "VAEDecode", "VAEEncode", "SaveImage", "LoadImage",
   "RepeatLatentBatch", "ImageScale", "UNETLoader", "CLIPLoader", "DualCLIPLoader", "VAELoader", "TextEncodeQwenImageEditPlus",
-  "ModelSamplingAuraFlow", "CFGNorm", "ReferenceLatent", "FluxGuidance", "ConditioningZeroOut",
+  "ModelSamplingAuraFlow", "CFGNorm", "ReferenceLatent", "FluxGuidance", "ConditioningZeroOut", "LoraLoaderModelOnly",
 ];
+
+/** Qwen-Image-Edit's Lightning LoRA, for tests that install it (in `files.loras`). */
+export const LIGHTNING_LORA = "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors";
 
 export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.safetensors", "fake_sdxl_b.safetensors"], ws = true, steps = 4, stepDelay = 120, startDelay = 300, fail = null, version = "0.3.99", files = {}, missingNodes = [] } = {}) {
   const mode = { checkpoints, ws, steps, stepDelay, startDelay, fail, version, files, missingNodes };
@@ -114,6 +117,7 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
         type: ["COMBO", { options: ["sdxl", "sd3", "flux"] }],
       },
       VAELoader: { vae_name: combo(folder("vae")) },
+      LoraLoaderModelOnly: { lora_name: combo(folder("loras")), strength_model: ["FLOAT", { default: 1 }] },
     }[name] ?? {};
     return { input: { required }, name };
   }
