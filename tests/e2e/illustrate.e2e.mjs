@@ -34,6 +34,17 @@ const png = Buffer.from(
 const loaded = (loc) => loc.evaluate((i) => i.complete && i.naturalWidth > 0);
 const stored = (slot, id = root) => fetch(`${BASE}/api/chapters/${id}/images/${slot}`);
 const card = (title) => page.locator(".image-editor", { has: page.getByRole("heading", { name: title }) });
+// A card's buttons are in its ☰ menu: the names of the items it offers now.
+const menuItems = async (title) => {
+  await card(title).getByRole("button", { name: "More" }).click();
+  const names = await card(title).getByRole("menuitem").allInnerTexts();
+  await page.keyboard.press("Escape");
+  return names.map((n) => n.trim());
+};
+const choose = async (title, name) => {
+  await card(title).getByRole("button", { name: "More" }).click();
+  await card(title).getByRole("menuitem", { name }).click();
+};
 
 // ---- a chapter starts with no pictures ----
 await page.goto(`${BASE}/c/${root}`);
@@ -45,13 +56,15 @@ await page.locator(".site-menu > summary").click();
 await page.getByRole("link", { name: "Illustrate chapter" }).click();
 await page.waitForURL(`**/c/${root}/illustrate`);
 ok(await page.getByRole("heading", { name: "Header picture" }).isVisible() && await page.getByRole("heading", { name: "Footer picture" }).isVisible(), "the chapter's menu leads to the illustrate page, with a header and a footer picture");
-ok(await card("Header picture").getByRole("button", { name: "Upload picture" }).isVisible() && (await card("Header picture").getByRole("button", { name: "Remove picture" }).count()) === 0, "each starts empty, offering Upload");
+ok((await menuItems("Header picture")).join("|") === "Upload picture", "each starts empty, with a ☰ menu that offers Upload only");
 
 // ---- header ----
 await page.getByLabel("Header picture file").setInputFiles({ name: "header.png", mimeType: "image/png", buffer: png });
 await card("Header picture").getByText("Picture saved.").waitFor();
-ok(await card("Header picture").getByRole("button", { name: "Replace picture" }).isVisible(), "after uploading the header, the button says Replace");
-ok(await card("Footer picture").getByRole("button", { name: "Upload picture" }).isVisible(), "…and the footer is untouched");
+ok((await menuItems("Header picture")).join("|") === "Replace picture|Open in a new tab|Remove picture", "after uploading the header, the menu says Replace, and offers Open in a new tab and Remove");
+ok((await menuItems("Footer picture")).join("|") === "Upload picture", "…and the footer is untouched");
+const headerLink = card("Header picture").locator(".picture-frame > a");
+ok(await headerLink.getAttribute("target") === "_blank" && (await headerLink.getAttribute("href")).includes(`/api/chapters/${root}/images/header`), "clicking the picture opens it in a new tab");
 await card("Header picture").locator("img.image-editor-preview").waitFor();
 await page.waitForFunction(() => { const i = document.querySelector(".image-editor img.image-editor-preview"); return !!i && i.complete && i.naturalWidth > 0; });
 ok(await loaded(card("Header picture").locator("img.image-editor-preview")), "the preview shows the picture");
@@ -94,14 +107,14 @@ await page.getByLabel("Header picture file").setInputFiles({ name: "notes.txt", 
 await card("Header picture").getByText(/isn't an image/).waitFor();
 ok(true, "a file that isn't an image is turned down");
 ok((await stored("header", child)).status === 404, "…and nothing is stored");
-ok(await card("Header picture").getByRole("button", { name: "Upload picture" }).isVisible(), "…the card still offers Upload");
+ok((await menuItems("Header picture")).includes("Upload picture"), "…the card still offers Upload");
 
 // ---- remove the header ----
 await page.goto(`${BASE}/c/${root}/illustrate`);
-await card("Header picture").getByRole("button", { name: "Replace picture" }).waitFor();
-await card("Header picture").getByRole("button", { name: "Remove picture" }).click();
+await card("Header picture").locator("img.image-editor-preview").waitFor();
+await choose("Header picture", "Remove picture");
 await card("Header picture").getByText("Picture removed.").waitFor();
-ok(await card("Header picture").getByRole("button", { name: "Upload picture" }).isVisible(), "removing the header brings back Upload");
+ok((await menuItems("Header picture")).join("|") === "Upload picture", "removing the header brings back Upload");
 ok((await stored("header")).status === 404 && (await stored("footer")).status === 200, "only the header is gone");
 await page.goto(`${BASE}/c/${root}`);
 await footer.waitFor();

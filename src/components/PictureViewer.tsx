@@ -6,7 +6,7 @@ import { imageUrl } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
 import type { PictureSaver } from "./usePictureSaver";
 import { pictureCaption, type Picture, type StartMode } from "./pictures";
-import PictureButtons, { InUseBadge, startItems } from "./PictureButtons";
+import PictureButtons, { InUseBadge, loadPromptItem, openItem, startItems } from "./PictureButtons";
 
 // How far a finger has to move sideways to count as a swipe.
 const SWIPE_PX = 50;
@@ -144,9 +144,9 @@ export default function PictureViewer({ comfyUrl, list, current, inUse, onShow, 
             rejectHint=" (X)"
             menu={[
               ...(onStart && missing !== src ? startItems((mode) => onStart(current, mode), editBlocked) : []),
-              { label: "Load prompt", title: "Put this picture's prompt back in the prompt boxes", run: () => onLoadPrompt(current) },
+              loadPromptItem(() => onLoadPrompt(current)),
               { label: "Info", title: "Everything this picture was made with, to copy", run: () => onInfo(current) },
-              missing !== src && { label: "Open in a new tab", href: src },
+              missing !== src && openItem(src),
             ]}
           />
         </div>

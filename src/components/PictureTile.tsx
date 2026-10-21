@@ -5,7 +5,7 @@ import type { ImageSlot } from "@/lib/imageSlots";
 import { imageUrl, type ComfyImage } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
 import type { PictureSaver } from "./usePictureSaver";
-import PictureButtons, { InUseBadge, startItems } from "./PictureButtons";
+import PictureButtons, { InUseBadge, loadPromptItem, openItem, startItems } from "./PictureButtons";
 import type { StartMode } from "./pictures";
 
 type Props = {
@@ -81,9 +81,9 @@ export default function PictureTile({ comfyUrl, image, tileKey, jobId, index, sa
           onMark={onMark}
           menu={[
             ...(onStart && !missing ? startItems((mode) => onStart(image, mode), editBlocked) : []),
-            onLoadPrompt && { label: "Load prompt", title: "Put this picture's prompt back in the prompt boxes", run: onLoadPrompt },
+            onLoadPrompt && loadPromptItem(onLoadPrompt),
             onInfo && { label: "Info", title: "Everything this picture was made with, to copy", run: onInfo },
-            !missing && { label: "Open in a new tab", href: src },
+            !missing && openItem(src),
           ]}
         />
       </div>

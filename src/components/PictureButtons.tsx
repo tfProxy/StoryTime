@@ -48,6 +48,12 @@ export function startItems(start: (mode: StartMode) => void, editBlocked: string
   ];
 }
 
+/** The ☰ menu's item that puts a picture's prompt back in the prompt boxes. */
+export const loadPromptItem = (run: () => void): MenuItem => ({ label: "Load prompt", title: "Put this picture's prompt back in the prompt boxes", run });
+
+/** The ☰ menu's item that opens a picture full size in a new tab. */
+export const openItem = (href: string): MenuItem => ({ label: "Open in a new tab", href });
+
 type Props = {
   image: ComfyImage;
   /** Tells this picture's save buttons apart from the others'. */
@@ -124,7 +130,7 @@ export default function PictureButtons({ image, tileKey, jobId, index, saver, in
 }
 
 /** The ☰ button and the menu it opens: closed by choosing an item, Esc, or a click elsewhere. */
-function PictureMenu({ items }: { items: (MenuItem | false | undefined | null)[] }) {
+export function PictureMenu({ items }: { items: (MenuItem | false | undefined | null)[] }) {
   const shown = items.filter((i): i is MenuItem => Boolean(i));
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);

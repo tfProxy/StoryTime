@@ -101,8 +101,9 @@ try {
   await items.first().getByRole("menuitem", { name: "Use as header picture" }).click();
   await page.getByText("Saved as the header picture.").waitFor();
   const header = page.locator(".image-editor", { has: page.getByRole("heading", { name: "Header picture" }) });
-  await header.getByRole("button", { name: "Redraw from this" }).waitFor();
-  await header.getByRole("button", { name: "Redraw from this" }).click();
+  await header.locator("img.image-editor-preview").waitFor();
+  await header.getByRole("button", { name: "More" }).click();
+  await header.getByRole("menuitem", { name: "Redraw from this" }).click();
   await until(async () => ((await thumb.getAttribute("src")) ?? "").includes(`/api/chapters/${chapterId}/images/header`), "the thumbnail to be the saved header");
   ok(true, "Redraw from this on the saved header makes it the starting picture");
   const savedMark = comfy.calls.length;
@@ -111,7 +112,10 @@ try {
   await until(() => prompts(savedMark).length === 1, "the first job to be sent");
   await make(10);
   ok(uploads(savedMark).length === 1 && prompts(savedMark).length === 2 && (await jobs())[0].source === `saved:${chapterId}:header`, "…two jobs from it upload it once, and the log says it came from the saved header");
-  ok(await page.locator(".image-editor", { has: page.getByRole("heading", { name: "Footer picture" }) }).getByRole("button", { name: "Redraw from this" }).count() === 0, "an empty slot has no Redraw from this");
+  const footerCard = page.locator(".image-editor", { has: page.getByRole("heading", { name: "Footer picture" }) });
+  await footerCard.getByRole("button", { name: "More" }).click();
+  ok(await footerCard.getByRole("menuitem", { name: "Upload picture" }).count() === 1 && await footerCard.getByRole("menuitem", { name: "Redraw from this" }).count() === 0, "an empty slot has no Redraw from this");
+  await page.keyboard.press("Escape");
 
   // ---- clear ----
   await page.getByRole("button", { name: "Clear starting picture" }).click();

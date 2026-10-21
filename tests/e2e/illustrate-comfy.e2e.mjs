@@ -324,13 +324,18 @@ try {
   ok((await promptBox.inputValue()) === "a lighthouse at dawn, gulls", "after a reload the prompt box still has the last prompt (it is kept for the chapter)");
   await promptBox.fill("");
   await negativeBox.fill("");
-  const madeFrom = card("Header picture").locator(".image-made");
-  await madeFrom.waitFor();
-  ok((await madeFrom.innerText()).includes("Made from: a lighthouse at dawn, gulls"), "the Header picture card says what it was made from");
-  ok((await madeFrom.innerText()).includes(`fake_sdxl_b.safetensors · 1344 × 768 · seed ${seed}`), "…with the checkpoint, size and seed");
-  ok((await card("Footer picture").locator(".image-made").count()) === 0 && (await card("Footer picture").locator("img.image-editor-preview").count()) === 1, "an uploaded picture shows no Made from");
+  const cardMenu = async (title) => {
+    await card(title).getByRole("button", { name: "More" }).click();
+    return card(title).getByRole("menuitem");
+  };
+  await card("Header picture").locator("img.image-editor-preview").waitFor();
+  ok((await card("Header picture").innerText()).includes("Made from") === false, "the Header picture card has no Made from blurb");
+  ok((await (await cardMenu("Header picture")).allInnerTexts()).join("|") === "Replace picture|Redraw from this|Edit this|Load prompt|Open in a new tab|Remove picture", "its ☰ menu has Replace, Redraw from this, Edit this, Load prompt, Open in a new tab and Remove");
+  await page.keyboard.press("Escape");
+  ok((await (await cardMenu("Footer picture")).allInnerTexts()).includes("Load prompt") === false, "an uploaded picture has no Load prompt");
+  await page.keyboard.press("Escape");
   ok((await page.getByRole("checkbox", { name: /Reuse seed/ }).count()) === 0, "there is no Reuse seed box before a prompt is loaded");
-  await madeFrom.getByRole("button", { name: "Load prompt" }).click();
+  await (await cardMenu("Header picture")).filter({ hasText: "Load prompt" }).click();
   await page.getByText("Prompt loaded from the picture.").waitFor();
   ok((await page.getByText("The loaded picture was made with").count()) === 0, "…which was made with the current checkpoint and size, so there is nothing else to offer");
   ok((await promptBox.inputValue()) === "a lighthouse at dawn, gulls" && (await negativeBox.inputValue()) === "blurry, text", "Load prompt fills in the Prompt and Negative prompt boxes");
@@ -358,7 +363,7 @@ try {
   await page.waitForFunction(() => document.querySelectorAll(".candidates li.picture-tile").length === 7 && !document.querySelector(".comfy-pending-tile"));
   heads = await headTexts();
   ok(heads.length === 3 && heads[0].startsWith("a lighthouse at night") && heads[1].startsWith("a lighthouse at dusk, gulls"),"…and a new prompt starts a new group, above the older one");
-  await card("Header picture").getByRole("button", { name: "Load prompt" }).click();
+  await (await cardMenu("Header picture")).filter({ hasText: "Load prompt" }).click();
   ok(!(await reuse.isChecked()), "loading a prompt again unticks Reuse seed");
 
   // ---- bringing back the prompt of any new picture, with its settings ----

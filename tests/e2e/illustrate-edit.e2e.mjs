@@ -164,7 +164,9 @@ try {
   await choose(items.first(), "Use as header picture");
   await page.getByText("Saved as the header picture.").waitFor();
   const header = page.locator(".image-editor", { has: page.getByRole("heading", { name: "Header picture" }) });
-  await header.getByRole("button", { name: "Edit this" }).click();
+  await header.locator("img.image-editor-preview").waitFor();
+  await header.getByRole("button", { name: "More" }).click();
+  await header.getByRole("menuitem", { name: "Edit this" }).click();
   await until(async () => ((await thumb.getAttribute("src")) ?? "").includes(`/api/chapters/${chapterId}/images/header`), "the header to become the starting picture");
   ok(await editTab.getAttribute("aria-selected") === "true", "the saved header's Edit this starts from it on the Edit tab");
 

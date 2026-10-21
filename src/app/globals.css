@@ -1776,13 +1776,6 @@ dialog.picture-info::backdrop {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
 }
 
-.image-made {
-  display: grid;
-  gap: 0.4rem;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
 .image-editor-preview,
 .image-editor-empty {
   display: block;
@@ -1798,9 +1791,8 @@ dialog.picture-info::backdrop {
   min-width: 0;
 }
 
-.image-editor button {
-  padding: 0.3rem 0.65rem;
-  font-size: 0.9rem;
+.image-editor .picture-frame > a {
+  display: block;
 }
 
 .image-editor-preview {
