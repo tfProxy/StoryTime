@@ -237,40 +237,8 @@ export default function ComfyGenerate({
     };
   }, [comfy.url, checkpoint]);
 
-  // A page opened (or refreshed) while ComfyUI is still making this chapter's pictures, or finished some that
-  // were never recorded because the page that asked for them was gone, picks them up: the unfinished jobs
-  // show as being made again, and the finished ones are recorded. `recorded` are the jobs already in the log.
+  // Jobs found in ComfyUI's queue that this page has already picked up (see the effect after `resume`).
   const picked = useRef(new Set<string>());
-  useEffect(() => {
-    if (!comfy.url) return;
-    const url = comfy.url;
-    let live = true;
-    listTaggedJobs(url, chapterId).then(
-      (found) => {
-        if (!live) return;
-        for (const j of found) {
-          const mine = [...jobs.current.values()].some((m) => m.promptId === j.promptId);
-          if (mine || recorded.includes(j.promptId) || picked.current.has(j.promptId)) continue;
-          picked.current.add(j.promptId);
-          if (j.state === "done") void recordAndShow(j.promptId, j.tag.job, j.images);
-          else resume(url, j);
-        }
-      },
-      () => {}, // ComfyUI not reachable: the checkpoint check above says so
-    );
-    return () => {
-      live = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per chapter and address; the functions only use refs and setters
-  }, [comfy.url, chapterId]);
-
-  if (!comfy.url) {
-    return (
-      <p className="meta" style={{ margin: 0 }}>
-        To make pictures here, add your ComfyUI machine in <Link href="/settings#comfyui">Settings</Link>.
-      </p>
-    );
-  }
 
   const set = (patch: Partial<ComfySettings>) => void saveSettings({ ...settings, comfy: { ...comfy, ...patch } });
   const other = otherSettings(loaded?.settings ?? null, comfy);
@@ -519,6 +487,42 @@ export default function ComfyGenerate({
         jobs.current.delete(key);
         setQueue((prev) => prev.filter((q) => q.key !== key));
       });
+  }
+
+  // A page opened (or refreshed) while ComfyUI is still making this chapter's pictures, or finished some that
+  // were never recorded because the page that asked for them was gone, picks them up: the unfinished jobs
+  // show as being made again, and the finished ones are recorded. `recorded` are the jobs already in the log.
+  // It comes after `recordAndShow` and `resume`, which it calls.
+  useEffect(() => {
+    if (!comfy.url) return;
+    const url = comfy.url;
+    let live = true;
+    listTaggedJobs(url, chapterId).then(
+      (found) => {
+        if (!live) return;
+        for (const j of found) {
+          const mine = [...jobs.current.values()].some((m) => m.promptId === j.promptId);
+          if (mine || recorded.includes(j.promptId) || picked.current.has(j.promptId)) continue;
+          picked.current.add(j.promptId);
+          if (j.state === "done") void recordAndShow(j.promptId, j.tag.job, j.images);
+          else resume(url, j);
+        }
+      },
+      () => {}, // ComfyUI not reachable: the checkpoint check above says so
+    );
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per chapter and address; the functions only use refs and setters
+  }, [comfy.url, chapterId]);
+
+  // Every hook is above this.
+  if (!comfy.url) {
+    return (
+      <p className="meta" style={{ margin: 0 }}>
+        To make pictures here, add your ComfyUI machine in <Link href="/settings#comfyui">Settings</Link>.
+      </p>
+    );
   }
 
   // Size, Queue and what is being made: kept at the bottom of the column (see `dock`), so they can be used from anywhere on the page.
