@@ -6,7 +6,11 @@ import { DEFAULT_SETTINGS, parseSettings, type Settings } from "./settingsSchema
 export {
   defaultRef,
   exportSettingsJson,
+  favoriteFor,
+  favoritesFor,
   findConnection,
+  MODEL_USES,
+  newFavorite,
   importSettingsJson,
   DEFAULT_SETTINGS,
   modelLabel,
@@ -18,7 +22,7 @@ export {
   sameRef,
   usableRef,
 } from "./settingsSchema";
-export type { Connection, Favorite, ModelRef, Settings } from "./settingsSchema";
+export type { Connection, Favorite, ModelRef, ModelUse, Settings } from "./settingsSchema";
 
 // The settings live on the StoryTime server (GET/PUT /api/settings), so every browser and
 // session sees the same ones. This module keeps a copy in memory for the hooks to read.

@@ -18,7 +18,7 @@ const mock = http.createServer((req, res) => {
   req.on("end", () => {
     const body = JSON.parse(data || "{}");
     const system = body.messages[0].content;
-    calls.push({ url: req.url, model: body.model, auth: req.headers.authorization, system });
+    calls.push({ url: req.url, model: body.model, auth: req.headers.authorization, system, reasoning: body.reasoning ?? body.reasoning_effort });
     let text = "# Generated\n\nGenerated text here.";
     if (system.includes("running summary")) text = JSON.stringify({ summary: "S", story_so_far: "SF" });
     else if (system.includes("button text and nothing else")) text = "Carry on";
@@ -75,6 +75,24 @@ await page.getByRole("tab", { name: "Writing" }).click();
 await page.getByLabel("Nickname for vendor/big").fill("Big one");
 await until(async () => (await settingsNow())?.favorites.find((f) => f.model === "vendor/big")?.label === "Big one", "the nickname to be saved");
 ok(true, "starred models are on the Writing tab, where they can be given a nickname");
+
+// ---- each starred model has its own card: thinking, and the jobs it is offered for ----
+const bigCard = page.locator("fieldset.model-card", { hasText: "vendor/big" });
+const alphaCard = page.locator("fieldset.model-card", { hasText: "alpha" });
+ok((await page.locator("fieldset.model-card").count()) === 2, "one card per starred model");
+const usesOf = (card) => card.locator("fieldset.model-uses input[type=checkbox]");
+ok((await usesOf(bigCard).count()) === 4 && (await usesOf(bigCard).evaluateAll((xs) => xs.every((x) => x.checked))), "a starred model is offered for every job at first");
+ok(!(await bigCard.getByLabel("Disable thinking").isChecked()), "…with thinking left on");
+await bigCard.getByLabel("Disable thinking").check();
+await until(async () => (await settingsNow()).favorites.find((f) => f.model === "vendor/big")?.disableThinking === true, "thinking to be turned off for vendor/big");
+await bigCard.getByRole("checkbox", { name: /Summaries and small jobs/ }).uncheck();
+await until(async () => (await settingsNow()).favorites.find((f) => f.model === "vendor/big")?.hiddenFrom.includes("summary"), "vendor/big to opt out of summaries");
+const alphaFav = (await settingsNow()).favorites.find((f) => f.model === "alpha");
+ok(alphaFav.disableThinking === false && alphaFav.hiddenFrom.length === 0, "the other model's card is untouched");
+const cheapOptions = await page.getByLabel(/^Cheaper model/).locator("option").allTextContents();
+const mainOptions = await page.getByLabel(/^Default model/).locator("option").allTextContents();
+ok(!cheapOptions.some((t) => t.includes("Big one")) && mainOptions.some((t) => t.includes("Big one")), "a model opted out of summaries isn't offered as the cheaper model, but still is for writing");
+ok((await page.getByRole("checkbox", { name: "Disable thinking", exact: true }).count()) === 2 && (await alphaCard.getByLabel("Disable thinking").count()) === 1, "Disable thinking is on each card, no longer one switch for all");
 await page.getByRole("tab", { name: "Connections" }).click();
 let s = await settingsNow();
 ok(s.connections.length === 2 && s.favorites.length === 2 && s.defaults.main.model === "alpha", "settings hold both connections and both starred models");
@@ -97,12 +115,14 @@ await page.getByRole("button", { name: "Generate chapter" }).click();
 await page.getByRole("button", { name: "Edit text" }).waitFor();
 let gen = calls.filter((c) => c.system.includes("Output format")).at(-1);
 ok(gen.url === "/a/v1/chat/completions" && gen.model === "alpha", "generating uses the default model");
+ok(gen.reasoning === undefined, "…which is left to think");
 
 await writePicker.selectOption({ label: "Big one" });
 await page.getByRole("button", { name: "Generate a new draft" }).click();
 await until(() => calls.filter((c) => c.system.includes("Output format")).length === 2, "the second generate call");
 gen = calls.filter((c) => c.system.includes("Output format")).at(-1);
 ok(gen.url === "/b/v1/chat/completions" && gen.model === "vendor/big" && gen.auth === "Bearer rk", "after picking another model, generating uses it, on its own connection");
+ok(gen.reasoning?.effort === "none", "…and is asked not to think, as set on its card");
 
 await until(async () => (await json("GET", draftUrl)).draft?.models?.write?.model === "vendor/big", "the pick to be saved with the draft");
 await page.reload();

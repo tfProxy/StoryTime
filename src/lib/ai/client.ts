@@ -1,7 +1,7 @@
 // Browser-side LLM client. Requests go directly from the user's browser to the provider,
 // so API keys never touch the StoryTime server.
 import { providerInfo, type ProviderKind } from "./providers";
-import { defaultRef, findConnection, type Connection, type ModelRef, type Settings } from "../settingsSchema";
+import { defaultRef, favoriteFor, findConnection, type Connection, type ModelRef, type Settings } from "../settingsSchema";
 import { freeComfyMemory } from "../comfy/client";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -52,7 +52,8 @@ function resolve(settings: Settings, req: Pick<ChatRequest, "role" | "model">): 
     apiKey: conn.apiKey.trim(),
     model: ref.model.trim(),
     temperature: settings.temperature,
-    disableThinking: settings.disableThinking,
+    // Set per starred model; a model that isn't starred is left to think as it does by default.
+    disableThinking: favoriteFor(settings, ref)?.disableThinking ?? false,
     freeComfy: conn.freeComfy,
   };
 }

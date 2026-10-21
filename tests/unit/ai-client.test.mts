@@ -1,6 +1,6 @@
 import http from "node:http";
 import { streamChat, listModels, completeChat, AiError } from "../../src/lib/ai/client.ts";
-import { DEFAULT_SETTINGS, parseSettings, exportSettingsJson, importSettingsJson } from "../../src/lib/settingsSchema.ts";
+import { DEFAULT_SETTINGS, favoritesFor, parseSettings, exportSettingsJson, importSettingsJson } from "../../src/lib/settingsSchema.ts";
 
 const seen: { url?: string; headers?: http.IncomingHttpHeaders; body?: any }[] = [];
 const server = http.createServer((req, res) => {
@@ -84,11 +84,17 @@ await completeChat({ ...two, defaults: { main: two.defaults.main, cheap: null } 
 assert(seen.at(-1)!.body.model === "m", "no cheaper default falls back to the main one");
 try { await completeChat(two as any, { messages: [], model: { connectionId: "gone", model: "x" } }); assert(false, "gone"); }
 catch (e) { assert(/has been removed/.test((e as Error).message), "a model on a removed connection is reported"); }
-// Disable thinking: OpenRouter gets its own reasoning object.
-await completeChat({ ...two, disableThinking: true } as any, { messages: [{ role: "user", content: "x" }], model: { connectionId: "c2", model: "vendor/big" } });
+// Disable thinking is set per starred model. OpenRouter gets its own reasoning object.
+const fav = (connectionId: string, model: string, disableThinking: boolean) => ({ connectionId, model, label: "", disableThinking, hiddenFrom: [] });
+const thinking = { ...two, favorites: [fav("c2", "vendor/big", true), fav("c1", "m", true), fav("c1", "sm", false)] };
+await completeChat(thinking as any, { messages: [{ role: "user", content: "x" }], model: { connectionId: "c2", model: "vendor/big" } });
 assert(seen.at(-1)!.body.reasoning?.effort === "none" && !("reasoning_effort" in seen.at(-1)!.body), "openrouter: reasoning effort none");
-await completeChat({ ...two, disableThinking: true } as any, { messages: [{ role: "user", content: "x" }] });
+await completeChat(thinking as any, { messages: [{ role: "user", content: "x" }] });
 assert(seen.at(-1)!.body.reasoning_effort === "none" && !("reasoning" in seen.at(-1)!.body), "others: reasoning_effort none");
+await completeChat(thinking as any, { messages: [{ role: "user", content: "x" }], role: "cheap" });
+assert(seen.at(-1)!.body.model === "sm" && !("reasoning_effort" in seen.at(-1)!.body) && !("reasoning" in seen.at(-1)!.body), "a model with thinking left on is asked nothing about it, though another model has it off");
+await completeChat({ ...two, favorites: [] } as any, { messages: [{ role: "user", content: "x" }] });
+assert(!("reasoning_effort" in seen.at(-1)!.body), "a model that isn't starred is left to think");
 const ctl = new AbortController(); ctl.abort();
 try { await completeChat(mk("custom", base + "/o") as any, { messages: [{ role: "user", content: "x" }], signal: ctl.signal }); assert(false, "abort"); }
 catch (e) { assert((e as any).name === "AbortError", "abort propagates"); }
@@ -134,6 +140,18 @@ const messy = parseSettings({
 assert(messy.temperature === null && messy.connections.length === 2 && messy.connections[0].kind === "custom" && messy.connections[0].apiKey === "" && messy.connections[1].kind === "openrouter", "tolerant parse: connections");
 assert(messy.favorites.length === 1 && messy.favorites[0].label === "", "tolerant parse: favorites deduped, dangling ones dropped");
 assert(messy.defaults.main === null && messy.defaults.cheap?.model === "x", "tolerant parse: defaults pointing at missing connections are cleared");
+
+// Per-model thinking and jobs. The old global "Disable thinking" carries over to every starred model.
+const conns = [{ id: "a", kind: "ollama" }];
+const old = parseSettings({ connections: conns, disableThinking: true, favorites: [{ connectionId: "a", model: "x" }, { connectionId: "a", model: "y", disableThinking: false }] });
+assert(old.favorites[0].disableThinking === true && old.favorites[1].disableThinking === false && !("disableThinking" in old), "the old global switch is moved onto starred models that have no setting of their own");
+const fresh = parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "x" }] });
+assert(fresh.favorites[0].disableThinking === false && fresh.favorites[0].hiddenFrom.length === 0, "a starred model starts thinking as usual and offered for every job");
+const hidden = parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "x", hiddenFrom: ["summary", "summary", "nope", 3, "write"] }] });
+assert(JSON.stringify(hidden.favorites[0].hiddenFrom) === '["write","summary"]', "jobs opted out of are kept once each, unknown ones dropped: " + JSON.stringify(hidden.favorites[0].hiddenFrom));
+const picks = parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "big", hiddenFrom: ["summary", "suggest"] }, { connectionId: "a", model: "small" }] });
+assert(favoritesFor(picks, "summary").map((f) => f.model).join() === "small" && favoritesFor(picks, "write").length === 2, "favoritesFor leaves out models opted out of the job");
+assert(JSON.stringify(importSettingsJson(exportSettingsJson(picks)).favorites) === JSON.stringify(picks.favorites), "per-model settings survive export and import");
 assert(!("activeProvider" in messy), "old fields are dropped");
 const rt = importSettingsJson(exportSettingsJson({ ...DEFAULT_SETTINGS, contextTokens: 1234 }));
 assert(rt.contextTokens === 1234, "export/import round-trip");
