@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { IMAGE_SLOTS, type ImageMade, type ImageSlot, type ImageVersions } from "@/lib/imageSlots";
 import type { ContextChapter, ContextCodexEntry } from "@/lib/ai/prompts";
 import ChapterImageEditor from "./ChapterImageEditor";
@@ -12,6 +12,11 @@ import { useSettings } from "@/lib/settings";
 import type { PictureDraft } from "@/lib/pictureDrafts";
 import type { PictureJob } from "@/lib/pictureJobs";
 import { fromComfyImage, fromSaved, type StartPicture } from "@/lib/comfy/startPicture";
+
+/** The narrowest the controls column can be dragged to, the widest as a share of the page, and the handle's width (see .column-resizer). */
+const MIN_CONTROLS = 320;
+const MAX_CONTROLS_SHARE = 0.6;
+const HANDLE_PX = 16;
 
 type Props = {
   chapterId: string;
@@ -61,8 +66,41 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
     document.getElementById("picture-prompt")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  // EXPERIMENT: the width the author dragged the controls column to (px), or null for the default; wide screens only.
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [controlsWidth, setControlsWidth] = useState<number | null>(null);
+  const fit = (px: number) => Math.round(Math.min(Math.max(px, MIN_CONTROLS), (gridRef.current?.clientWidth ?? 1600) * MAX_CONTROLS_SHARE));
+
+  function drag(e: React.PointerEvent<HTMLDivElement>) {
+    const grid = gridRef.current;
+    if (!grid || e.button !== 0) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    const left = grid.getBoundingClientRect().left;
+    const move = (ev: PointerEvent) => setControlsWidth(fit(ev.clientX - left - HANDLE_PX / 2));
+    const end = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  }
+
+  function nudge(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      const now = controlsWidth ?? gridRef.current?.querySelector<HTMLElement>(".illustrate-controls")?.offsetWidth ?? MIN_CONTROLS;
+      setControlsWidth(fit(now + (e.key === "ArrowRight" ? 24 : -24)));
+    } else if (e.key === "Home" || e.key === "Escape") {
+      setControlsWidth(null);
+    }
+  }
+
   return (
-    <div className="illustrate-grid">
+    <div className="illustrate-grid" ref={gridRef} style={controlsWidth ? ({ "--controls-width": `${controlsWidth}px` } as CSSProperties) : undefined}>
       <div className="illustrate-controls">
         {chapter}
         <ImagePromptPanel
@@ -82,6 +120,17 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
           dock={dock}
         />
       </div>
+      <div
+        className="column-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Column divider"
+        title="Drag to resize the columns; double-click to reset"
+        tabIndex={0}
+        onPointerDown={drag}
+        onDoubleClick={() => setControlsWidth(null)}
+        onKeyDown={nudge}
+      />
       <div className="illustrate-gallery">
         {/* The chosen pictures first, to compare the new ones with. */}
         <div className="image-editors">

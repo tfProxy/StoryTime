@@ -1251,6 +1251,11 @@ main:has(.library) {
   align-content: start;
 }
 
+/* The resize handle between the two columns is only for wide screens. */
+.column-resizer {
+  display: none;
+}
+
 /* In one column, a column of its own, so the dock at its end can stick to the bottom of the screen the whole way down. */
 .illustrate-grid {
   display: flex;
@@ -1295,10 +1300,40 @@ main:has(.illustrate-grid) {
     padding-bottom: 1rem;
   }
 
+  /* The middle column is the handle for resizing the first (see .column-resizer); --controls-width is set while it is dragged. */
   .illustrate-grid {
     display: grid;
-    grid-template-columns: minmax(22rem, 28rem) minmax(0, 1fr);
+    grid-template-columns: var(--controls-width, minmax(22rem, 28rem)) 1rem minmax(0, 1fr);
+    column-gap: 0;
     align-items: start;
+  }
+
+  .column-resizer {
+    display: block;
+    grid-column: 2;
+    grid-row: 1;
+    align-self: stretch;
+    position: relative;
+    cursor: col-resize;
+    touch-action: none;
+  }
+
+  /* A thin line in the middle of the handle, lit while it is hovered, focused or dragged. */
+  .column-resizer::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(50% - 1px);
+    width: 2px;
+    border-radius: 1px;
+    background: transparent;
+  }
+
+  .column-resizer:hover::after,
+  .column-resizer:focus-visible::after,
+  .column-resizer:active::after {
+    background: var(--accent);
   }
 
   .illustrate-controls {
@@ -1313,7 +1348,7 @@ main:has(.illustrate-grid) {
   }
 
   .illustrate-gallery {
-    grid-column: 2;
+    grid-column: 3;
     grid-row: 1;
   }
 
