@@ -23,7 +23,10 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Typecheck
-        run: npx tsc --noEmit
+        # typegen writes the route types (LayoutProps, PageProps) into .next/ first; a fresh checkout has none.
+        run: |
+          npx next typegen
+          npx tsc --noEmit
       - name: Lint
         # One known error (set-state-in-effect in OutlineSummaries.tsx); shown, but doesn't fail the run.
         continue-on-error: true
