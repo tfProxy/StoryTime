@@ -338,24 +338,26 @@ try {
   ok(await reuse.isVisible() && !(await reuse.isChecked()), "…and offers Reuse seed with the picture's seed, unticked");
   await promptBox.fill("a lighthouse at dusk, gulls");
   const seedOf = (call) => Object.values(call.body.prompt).find((n) => n.class_type === "KSampler").inputs.seed;
+  // The header was made by an earlier job, and the header shows in Pinned & new as if pinned, so one older picture is there before any are made.
+  ok(await items.count() === 1 && (await badge(0).innerText()).trim() === "Header", "after a reload the picture used as the header is in Pinned & new although it isn't pinned");
   let from = comfy.calls.length;
   await makeTwo();
-  await picturesLoaded(2);
+  await picturesLoaded(3);
   ok(seedOf(promptCalls(from)[0]) !== seed, "making pictures without the box ticked uses a new seed");
   await reuse.check();
   from = comfy.calls.length;
   await makeTwo();
-  await page.waitForFunction(() => document.querySelectorAll(".candidates li.picture-tile").length === 4 && !document.querySelector(".comfy-pending-tile"));
+  await page.waitForFunction(() => document.querySelectorAll(".candidates li.picture-tile").length === 5 && !document.querySelector(".comfy-pending-tile"));
   ok(seedOf(promptCalls(from)[0]) === seed, "with Reuse seed ticked, the queued workflow has the picture's seed");
   const reused = (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs[0];
   ok(reused.seed === seed && reused.prompt === "a lighthouse at dusk, gulls", "…and the log records that seed with the changed prompt");
   let heads = await headTexts();
-  ok(heads.length === 1 && heads[0].startsWith("a lighthouse at dusk, gulls") && heads[0].includes("4 pictures"), "two jobs in a row with the same prompt and settings show as one group, whatever their seed");
+  ok(heads.length === 2 && heads[0].startsWith("a lighthouse at dusk, gulls") && heads[0].includes("4 pictures"), "two jobs in a row with the same prompt and settings show as one group, whatever their seed");
   await promptBox.fill("a lighthouse at night");
   await makeTwo();
-  await page.waitForFunction(() => document.querySelectorAll(".candidates li.picture-tile").length === 6 && !document.querySelector(".comfy-pending-tile"));
+  await page.waitForFunction(() => document.querySelectorAll(".candidates li.picture-tile").length === 7 && !document.querySelector(".comfy-pending-tile"));
   heads = await headTexts();
-  ok(heads.length === 2 && heads[0].startsWith("a lighthouse at night") && heads[1].startsWith("a lighthouse at dusk, gulls"), "…and a new prompt starts a new group, above the older one");
+  ok(heads.length === 3 && heads[0].startsWith("a lighthouse at night") && heads[1].startsWith("a lighthouse at dusk, gulls"),"…and a new prompt starts a new group, above the older one");
   await card("Header picture").getByRole("button", { name: "Load prompt" }).click();
   ok(!(await reuse.isChecked()), "loading a prompt again unticks Reuse seed");
 
@@ -403,7 +405,7 @@ try {
   await refused.waitFor();
   const refusedText = await refused.innerText();
   ok(refusedText.includes("Prompt outputs failed validation") && refusedText.includes("KSampler 3: Required input is missing (positive)"), `a workflow ComfyUI refuses shows its reason: "${refusedText}"`);
-  ok(await makeButton.isEnabled() && await items.count() === 6, "…the button is usable again and the earlier pictures are kept");
+  ok(await makeButton.isEnabled() && await items.count() === 7, "…the button is usable again and the earlier pictures are kept");
   comfy.setMode({ fail: null });
 
   // a checkpoint ComfyUI doesn't have (the saved name outlived the file)
@@ -515,9 +517,9 @@ try {
   await promptBox.fill("a lighthouse in fog");
   const pollMark = comfy.calls.length;
   await makeTwo();
-  await items.first().waitFor({ timeout: 15000 });
-  await picturesLoaded(await items.count());
-  ok(await items.count() === 2, "with no WebSocket, the pictures still arrive");
+  // The header's picture is already there, so wait for the two new ones.
+  await picturesLoaded(3);
+  ok(await items.count() === 3, "with no WebSocket, the pictures still arrive (and the header's picture is there too)");
   const pollCalls = comfy.calls.slice(pollMark);
   ok(pollCalls.some((c) => c.method === "UPGRADE") && pollCalls.filter((c) => c.path.startsWith("/history/")).length >= 1, "…found by asking /history after the WebSocket was refused");
   const log = (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs;
@@ -528,8 +530,8 @@ try {
   await page.getByLabel("Moment to show").selectOption("start");
   await makeTwo();
   await page.getByText(/couldn't record how they were made: disk full/).waitFor({ timeout: 15000 });
-  await picturesLoaded(4);
-  ok(await items.count() === 4, "when the job can't be recorded, the page says so and still shows the new pictures");
+  await picturesLoaded(5);
+  ok(await items.count() === 5, "when the job can't be recorded, the page says so and still shows the new pictures");
   await page.unroute("**/api/picture-jobs");
   await useAs(items.first(), "header");
   await page.getByText("Saved as the header picture.").waitFor();

@@ -174,10 +174,12 @@ try {
   await gallery.getByRole("group", { name: "Show" }).getByRole("button", { name: /^Pinned & new/ }).click();
   await tiles.first().locator("a").click();
   await viewer.waitFor();
-  ok(await count() === "1 of 1", "in Pinned & new the viewer goes through the pinned picture only");
+  ok(await count() === "1 of 1", "in Pinned & new the viewer goes through the pinned picture only (which is also the header)");
   await page.keyboard.press("p");
+  ok(await until(async () => (await marks()).dawn === "-,-", "the unpin"), "P unpins it");
+  ok(await viewer.isVisible() && await count() === "1 of 1", "…it is the header, so it stays in Pinned & new as if pinned, and the viewer stays on it");
+  await page.keyboard.press("Escape");
   await viewer.waitFor({ state: "detached" });
-  ok(await until(async () => (await marks()).dawn === "-,-", "the unpin"), "unpinning the only one there closes the viewer");
 
   // ---- phone ----
   await page.setViewportSize({ width: 390, height: 844 });

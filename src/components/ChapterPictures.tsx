@@ -52,8 +52,8 @@ type Props = {
 
 /**
  * The chapter's pictures, newest first, in runs made one after another with the same prompt and settings,
- * under the jobs still being made. "Pinned & new" (the default) shows the pinned ones and those made on
- * this visit, so coming back shows only the pinned ones; "All" every one but the rejected; and "Rejected"
+ * under the jobs still being made. "Pinned & new" (the default) shows the pinned ones, the chapter's header
+ * and footer (as if pinned) and those made on this visit, so coming back shows only the pinned ones; "All" every one but the rejected; and "Rejected"
  * those, to restore one. "Other chapters" lists what was made for the rest of the story.
  */
 export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, pictures, onChange, onClear, pending = [], onStart, editBlocked = null, onLoadPrompt, used }: Props) {
@@ -67,8 +67,8 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
   const [info, setInfo] = useState<Picture | null>(null);
   const saver = usePictureSaver(chapterId, comfyUrl, setStatus);
 
-  const count = (v: PictureView) => pictures.filter((p) => inView(p, v)).length;
-  const shown = view === "other" ? [] : pictures.filter((p) => inView(p, view));
+  const count = (v: PictureView) => pictures.filter((p) => inView(p, v, inUse(p).length > 0)).length;
+  const shown = view === "other" ? [] : pictures.filter((p) => inView(p, view, inUse(p).length > 0));
   // New pictures arrive in Pinned & new and All, so there the jobs being made join the run they continue;
   // elsewhere they show on their own at the top.
   const joined = view === "shortlist" || view === "all";
@@ -79,14 +79,15 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
 
   /** A mark changed in the viewer: when it takes the picture out of this view, the viewer moves on to the next one. */
   function markInViewer(p: Picture, next: PictureMark | null) {
-    if (view !== "other" && !inView({ ...p, mark: next }, view)) {
+    if (view !== "other" && !inView({ ...p, mark: next }, view, inUse(p).length > 0)) {
       const at = ordered.findIndex((q) => q.key === p.key);
       const after = ordered[at + 1] ?? ordered[at - 1] ?? null;
       setViewing(after?.key ?? null);
     }
     void mark(p, next);
   }
-  const clearable = pictures.some((p) => p.fresh && p.mark === null);
+  // The header and footer stay in this view, so clearing doesn't hide them.
+  const clearable = pictures.some((p) => p.fresh && p.mark === null && inUse(p).length === 0);
   const VIEWS: { view: View; label: string }[] = [
     { view: "shortlist", label: `Pinned & new (${count("shortlist")})` },
     { view: "all", label: `All (${count("all")})` },
