@@ -53,6 +53,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
   const blocked = editBlocked(editModels);
   // The chapter's pictures, newest first.
   const [pictures, setPictures] = useState<Picture[]>(() => picturesOf(jobs));
+  const [recorded] = useState(() => jobs.map((j) => j.prompt_id));
   // The jobs being made, newest first, shown among the pictures.
   const [pending, setPending] = useState<PendingJob[]>([]);
   // The starting picture and mode are kept in this browser, so a refresh brings them back. They are read once
@@ -133,7 +134,9 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
           onStartMode={setStartMode}
           editModels={editModels}
           onClearStart={() => setStart(null)}
-          onPictures={(made) => setPictures((prev) => [...made, ...prev])}
+          // A job found again in ComfyUI after a refresh may already be listed.
+          onPictures={(made) => setPictures((prev) => [...made.filter((m) => !prev.some((p) => p.key === m.key)), ...prev])}
+          recorded={recorded}
           onQueue={setPending}
           draft={draft}
           dock={dock}

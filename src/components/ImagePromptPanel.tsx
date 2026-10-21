@@ -56,6 +56,8 @@ type Props = {
   dock?: HTMLElement | null;
   /** Where the "Codex entries used" line goes: the bottom of the chapter panel. */
   codexSlot?: HTMLElement | null;
+  /** ComfyUI's ids of the chapter's jobs already in the log, so the pictures found in ComfyUI that aren't there yet can be recorded. */
+  recorded?: string[];
 };
 
 /**
@@ -63,7 +65,7 @@ type Props = {
  * (chapter start, chapter end) has its own boxes, so switching between them brings each one's prompt back;
  * they are kept for the chapter on the server, so they are there again next time.
  */
-export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null, start = null, onClearStart, startMode = "redraw", onStartMode, editModels, onPictures, onQueue, draft = null, dock = null, codexSlot = null }: Props) {
+export default function ImagePromptPanel({ chapterId, story, path, codex, loaded = null, start = null, onClearStart, startMode = "redraw", onStartMode, editModels, onPictures, onQueue, draft = null, dock = null, codexSlot = null, recorded }: Props) {
   const settings = useSettings();
   const chapter = path[path.length - 1];
   const [moment, setMoment] = useState<ImageMoment>(draft?.moment ?? "start");
@@ -258,6 +260,7 @@ export default function ImagePromptPanel({ chapterId, story, path, codex, loaded
         onPictures={onPictures}
         onQueue={onQueue}
         dock={dock}
+        recorded={recorded}
         onClearStart={onClearStart}
       />
     </>

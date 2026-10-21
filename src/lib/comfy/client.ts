@@ -3,6 +3,7 @@
 // and, when StoryTime is served over https, be on https too.
 import type { Workflow } from "./workflow";
 import type { NodeInfo } from "./editModels";
+import { readTag, type JobTag } from "./jobTag";
 
 export class ComfyError extends Error {}
 
@@ -125,6 +126,40 @@ async function finished(url: string, promptId: string): Promise<ComfyImage[] | n
   // Saved pictures if there are any, otherwise previews.
   const saved = images.filter((i) => i.type === "output");
   return saved.length ? saved : images;
+}
+
+/** A job of this chapter that ComfyUI still knows of, found by the tag StoryTime put on it (see jobTag). Oldest first. */
+export type TaggedJob = { promptId: string; tag: JobTag } & ({ state: "waiting" | "running" } | { state: "done"; images: ComfyImage[] });
+type JobState = { state: "waiting" | "running" } | { state: "done"; images: ComfyImage[] };
+
+/** ComfyUI's own entries for a job are `[number, prompt_id, workflow, extra_data, outputs]`. */
+type JobEntry = [number, string, unknown, unknown, unknown];
+
+/**
+ * The chapter's jobs that ComfyUI is still running or waiting to run, and those it finished lately, so a
+ * page that was refreshed meanwhile can pick them up again. Jobs without a full tag (made before this) are
+ * not listed: there is not enough to record them with.
+ */
+export async function listTaggedJobs(url: string, chapterId: string, limit = 200): Promise<TaggedJob[]> {
+  const [queue, history] = await Promise.all([
+    json<{ queue_running?: JobEntry[]; queue_pending?: JobEntry[] }>(url, "/queue"),
+    json<Record<string, HistoryEntry & { prompt?: JobEntry }>>(url, `/history?max_items=${limit}`),
+  ]);
+  const found: (TaggedJob & { no: number })[] = [];
+  const add = (entry: JobEntry | undefined, state: JobState | null) => {
+    const tag = entry && readTag(entry[3]);
+    if (!entry || !tag || !state || tag.chapterId !== chapterId) return;
+    found.push({ promptId: entry[1], tag, no: Number(entry[0]) || 0, ...state });
+  };
+  for (const e of queue.queue_running ?? []) add(e, { state: "running" });
+  for (const e of queue.queue_pending ?? []) add(e, { state: "waiting" });
+  for (const h of Object.values(history)) {
+    if (h.status?.status_str === "error" || (h.status && !h.status.completed)) continue;
+    const images = Object.values(h.outputs ?? {}).flatMap((o) => o.images ?? []);
+    const saved = images.filter((i) => i.type === "output");
+    add(h.prompt, images.length ? { state: "done", images: saved.length ? saved : images } : null);
+  }
+  return found.sort((a, b) => a.no - b.no).map(({ no, ...job }) => (void no, job));
 }
 
 /**

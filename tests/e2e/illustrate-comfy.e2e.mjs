@@ -265,7 +265,8 @@ try {
   ok(JSON.stringify(wf).includes("{{") === false, "…and no placeholder left over");
   const clientId = sent[0].body.client_id;
   ok(typeof clientId === "string" && clientId.length > 0 && comfy.calls.slice(mark).some((c) => c.method === "UPGRADE" && c.path === "/ws" && c.query.clientId === clientId), "…with a client id that the page's WebSocket connection also used");
-  ok(JSON.stringify(sent[0].body.extra_data) === JSON.stringify({ storytime: { chapterId, storyId } }), "…tagged with the chapter and story, in extra_data");
+  const tag = sent[0].body.extra_data?.storytime;
+  ok(tag?.chapterId === chapterId && tag?.storyId === storyId && tag?.clientId === clientId && tag?.job?.prompt === sent[0].body.prompt["6"].inputs.text && tag?.job?.count === 2, "…tagged in extra_data with the chapter, the story, the client id and how the job was made, so a refreshed page can find it");
   ok(nodesOf("SaveImage")[0].inputs.filename_prefix === `StoryTime/${storyId}/${chapterId}`, "…and the pictures are filed under StoryTime/<story>/<chapter>");
 
   // ---- the job log ----
@@ -565,7 +566,10 @@ try {
   ok(await items.count() === 1 && await makeButton.innerText() === "Queue", "Clear unpinned leaves only the picture pinned on this visit");
   ok(await page.getByRole("button", { name: "Clear unpinned" }).count() === 0, "…and goes away");
   await openIllustrate();
-  ok(await items.count() === 1 && await items.first().getByRole("button", { name: "Unpin" }).count() === 1, "coming back, the pinned picture is still there, and nothing else");
+  // The job that couldn't be recorded is still in (the fake) ComfyUI, tagged, so coming back records it now.
+  await until(async () => (await get(`/api/picture-jobs?chapter=${chapterId}`)).jobs.length === 10, "the unrecorded job to be recorded when coming back");
+  await until(async () => (await items.count()) === 3, "its pictures");
+  ok(await items.count() === 3 && await items.getByRole("button", { name: "Unpin" }).count() === 1, "coming back, the pinned picture is still there, and the pictures whose job couldn't be recorded are recorded and listed");
 } finally {
   await putSettings(before ?? {});
   await browser.close();
