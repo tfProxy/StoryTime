@@ -4,6 +4,8 @@ import { getStory } from "@/lib/stories";
 import { getStoryTree, type TreeNode } from "@/lib/tree";
 import { PageMenu } from "@/components/SiteMenu";
 import { NodeSummary, SummaryProvider, ToggleAllSummaries } from "@/components/OutlineSummaries";
+import { chapterImageVersions } from "@/lib/chapterImages";
+import type { ImageVersions } from "@/lib/imageSlots";
 
 export const dynamic = "force-dynamic";
 
@@ -19,14 +21,19 @@ function count(node: TreeNode, t: Totals) {
   }
 }
 
-function Node({ node, via }: { node: TreeNode; via: string | null }) {
+/** The id of every chapter in the tree. */
+function idsOf(node: TreeNode): string[] {
+  return [node.id, ...node.choices.flatMap((c) => (c.child ? idsOf(c.child) : []))];
+}
+
+function Node({ node, via, images }: { node: TreeNode; via: string | null; images: Map<string, ImageVersions> }) {
   // Only written chapters are listed; unwritten choices are left to the story page.
   const written = node.choices.filter((c) => c.child);
   const summary = (
     <>
       <Link href={`/c/${node.id}`}>{node.title}</Link>
       {" "}
-      <NodeSummary summary={node.summary} via={via}>
+      <NodeSummary chapterId={node.id} title={node.title} images={images.get(node.id)!} summary={node.summary} via={via}>
         <Link className="outline-action" href={`/c/${node.id}/path`} title="Read every chapter from the first one to this one on a single page">
           read to here
         </Link>
@@ -41,7 +48,7 @@ function Node({ node, via }: { node: TreeNode; via: string | null }) {
         <summary>{summary}</summary>
         <ul className="outline">
           {written.map((c) => (
-            <Node key={c.id} node={c.child!} via={c.label} />
+            <Node key={c.id} node={c.child!} via={c.label} images={images} />
           ))}
         </ul>
       </details>
@@ -57,6 +64,7 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
 
   const totals: Totals = { chapters: 0, unwritten: 0, ends: 0, deepest: 0 };
   count(tree, totals);
+  const images = chapterImageVersions(idsOf(tree));
 
   return (
     <div className="outline-page">
@@ -74,7 +82,7 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
           <ToggleAllSummaries />
         </p>
         <ul className="outline outline-root">
-          <Node node={tree} via={null} />
+          <Node node={tree} via={null} images={images} />
         </ul>
       </SummaryProvider>
       <PageMenu>

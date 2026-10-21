@@ -10,9 +10,18 @@ const getJson = async (url) => (await fetch(BASE + url)).json();
 // A story deep enough that the outline collapses its far branches.
 const s = await post("/api/stories", { title: "Outline story", chapter: { title: "Level 0", body: "zero", choices: ["a", "open one"] } });
 let prev = s.chapter_id;
+const ids = [prev];
 for (let i = 1; i <= 4; i++) {
   const choice = (await getJson(`/api/chapters/${prev}`)).choices[0];
   prev = (await post("/api/chapters", { choice_id: choice.id, title: `Level ${i}`, body: `level ${i}`, choices: i < 4 ? ["next"] : [] })).chapter_id;
+  ids.push(prev);
+}
+// Pictures: Level 1 has a header, Level 2 a footer, Level 3 both; the others none.
+const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==", "base64");
+const savePicture = (id, slot) => fetch(`${BASE}/api/chapters/${id}/images/${slot}`, { method: "PUT", headers: { "Content-Type": "image/png" }, body: png });
+for (const [i, slot] of [[1, "header"], [2, "footer"], [3, "header"], [3, "footer"]]) {
+  const r = await savePicture(ids[i], slot);
+  if (!r.ok) { console.log("FAIL could not save a picture for the test", r.status, await r.text()); process.exit(1); }
 }
 
 const browser = await launch();
@@ -55,6 +64,47 @@ await page.goBack();
 ok((await page.getByText("branch ends here").count()) === 0, "dead ends are not tagged");
 ok((await page.getByText("not written yet").count()) === 0, "unwritten choices are not listed in the outline");
 ok((await page.getByRole("link", { name: "write it" }).count()) === 0, "no write links in the outline");
+
+// pictures: icons in each chapter's [...] section
+const rowOf = (title) => page.locator("summary", { hasText: title }).first();
+const headerBtn = (title) => rowOf(title).getByRole("button", { name: "Show the header picture" });
+const footerBtn = (title) => rowOf(title).getByRole("button", { name: "Show the footer picture" });
+ok((await page.getByRole("button", { name: "Show the header picture" }).count()) === 2 && (await page.getByRole("button", { name: "Show the footer picture" }).count()) === 2, "only chapters with a header or footer get its icon (two of each here)");
+ok((await headerBtn("Level 1").count()) === 1 && (await footerBtn("Level 1").count()) === 0 && (await footerBtn("Level 2").count()) === 1 && (await headerBtn("Level 2").count()) === 0 && (await headerBtn("Level 3").count()) === 1 && (await footerBtn("Level 3").count()) === 1 && (await headerBtn("Level 0").count()) === 0, "…each on the right chapter, and a chapter with both shows both");
+const hbox = await headerBtn("Level 3").boundingBox(), fbox = await footerBtn("Level 3").boundingBox();
+ok(Math.abs(hbox.y - fbox.y) < 4 && hbox.x < fbox.x, "the header icon comes before the footer icon, on the chapter's line");
+ok((await headerBtn("Level 3").innerHTML()).includes("<svg") && (await headerBtn("Level 3").innerHTML()) !== (await footerBtn("Level 3").innerHTML()), "the two icons are drawn differently");
+const brushes = page.getByRole("link", { name: "Illustrate this chapter" });
+ok((await brushes.count()) === 5 && (await brushes.nth(2).getAttribute("href")) === `/c/${ids[2]}/illustrate` && (await brushes.nth(2).innerHTML()).includes("<svg"), "every chapter has a paintbrush linking to its Illustrate page");
+const dlg = page.getByRole("dialog");
+ok((await dlg.count()) === 0, "no picture is open at first");
+await headerBtn("Level 1").click();
+await dlg.waitFor();
+ok((await dlg.getAttribute("aria-label")) === "Header picture of “Level 1”" && (await dlg.locator("img").getAttribute("src")).startsWith(`/api/chapters/${ids[1]}/images/header?v=`), "the header icon opens a popup with that chapter's header picture");
+await page.waitForFunction(() => { const i = document.querySelector("dialog.outline-picture img"); return !!i && i.complete && i.naturalWidth > 0; });
+ok(await page.getByRole("link", { name: "Level 2" }).isVisible() && (await page.locator("summary", { hasText: "Level 1" }).first().locator("xpath=..").getAttribute("open")) !== null, "…and opening it did not fold the branch");
+await dlg.locator("img").click();
+ok((await dlg.count()) === 1 && (await page.locator("summary", { hasText: "Level 1" }).first().locator("xpath=..").getAttribute("open")) !== null, "clicking the picture does not close the popup or fold the branch");
+await page.keyboard.press("Escape");
+await dlg.waitFor({ state: "detached" });
+ok(true, "Esc closes the popup");
+ok(await headerBtn("Level 1").evaluate((b) => b === document.activeElement), "…and puts the keyboard back on the icon");
+await footerBtn("Level 2").click();
+await dlg.waitFor();
+ok((await dlg.getAttribute("aria-label")) === "Footer picture of “Level 2”" && (await dlg.locator("img").getAttribute("src")).includes(`/${ids[2]}/images/footer`), "the footer icon opens that chapter's footer picture");
+await dlg.getByRole("button", { name: "Close" }).click();
+await dlg.waitFor({ state: "detached" });
+ok(true, "the Close button closes it");
+await footerBtn("Level 3").click();
+await dlg.waitFor();
+await page.mouse.click(5, 5);
+await dlg.waitFor({ state: "detached" });
+ok(true, "a click outside the picture closes it");
+await brushes.nth(1).click();
+await page.waitForURL(new RegExp(`/c/${ids[1]}/illustrate$`));
+ok(await page.getByRole("heading", { name: "Picture prompt" }).isVisible(), "the paintbrush opens that chapter's Illustrate page");
+await page.goBack();
+await page.getByText(/5 chapters/).waitFor();
 
 // from a chapter page
 await page.goto(`${BASE}/c/${prev}`);
