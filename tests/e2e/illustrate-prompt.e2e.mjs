@@ -74,29 +74,33 @@ try {
   ok(await page.getByRole("button", { name: "Copy prompt", exact: true }).isEnabled(), "typing a prompt turns Copy prompt on");
   ok(await page.getByRole("button", { name: "Write prompt", exact: true }).isVisible(), "…and the button still says Write prompt, since none was written");
 
-  // ---- the prompt style and art style are the story's, set on its details page ----
+  // ---- the art style is the story's (details page); the prompt style belongs to the drawing preset (Settings) ----
   ok(await page.getByLabel(/Art style/).count() === 0 && await page.getByLabel("Prompt style").count() === 0, "the Illustrate page has no art style or prompt style fields");
   const pictureLine = page.locator(".story-pictures");
-  ok((await pictureLine.innerText()).includes("no prompt style") && (await pictureLine.innerText()).includes("Not chosen yet for this story: prompt style, art style."), "a new story says which picture settings aren't chosen yet");
+  ok((await pictureLine.innerText()).includes("no art style") && !(await pictureLine.innerText()).includes("Tags"), "a new story says it has no art style, and the line doesn't mention a prompt style");
   await page.waitForTimeout(1000); // (the typed prompt is kept)
-  await page.getByRole("link", { name: "Choose them in Story details" }).click();
+  await page.getByRole("link", { name: "Choose in Story details" }).click();
   await page.waitForURL(`**/s/${storyId}/details#pictures`);
   const pics = page.locator("#pictures");
-  ok(await pics.getByLabel("Prompt style").inputValue() === "", "…and links to the story's details page, where they are chosen");
-  await pics.getByLabel("Prompt style").selectOption({ label: "Sentences (Flux, SD3)" });
+  ok(await pics.getByLabel("Prompt style").count() === 0, "…which links to the story's details page, where the prompt style is no longer a story setting");
   await pics.getByLabel("Art style").fill("watercolor storybook, soft light");
   await pics.getByRole("button", { name: "Save picture settings" }).click();
   await pics.getByText("Picture settings saved.").waitFor();
-  const pictured = await get(`/api/stories/${storyId}`);
-  ok(pictured.image_prompt_style === "natural" && pictured.art_style === "watercolor storybook, soft light", "saving there keeps the prompt style and art style with the story");
-  ok((await settingsNow()).imagePromptStyle === "tags", "…not in the shared settings");
+  ok((await get(`/api/stories/${storyId}`)).art_style === "watercolor storybook, soft light", "saving there keeps the art style with the story");
+  // The prompt style is set on the drawing preset, as it is in Settings › Drawing.
+  await page.goto(`${BASE}/settings`);
+  await page.getByRole("tab", { name: "Drawing" }).click();
+  const styleMenu = page.getByLabel("Prompt style").first();
+  ok(await styleMenu.inputValue() === "tags", "a drawing preset's Prompt style starts on tags");
+  await styleMenu.selectOption({ label: "Sentences (Flux, SD3)" });
+  ok(await until(async () => (await settingsNow()).comfy.drawPresets[0].promptStyle === "natural", "the prompt style to be saved"), "choosing sentences saves it with the preset");
   await page.goto(`${BASE}/c/${chapter}/illustrate`);
-  ok((await pictureLine.locator("li").allInnerTexts()).slice(0, 2).join("|") === "Sentences (Flux, SD3)|watercolor storybook, soft light" && !(await pictureLine.innerText()).includes("Not chosen yet"), "the Illustrate page shows them, and that nothing is left to choose");
+  ok((await pictureLine.locator("li").allInnerTexts()).join("|").startsWith("watercolor storybook, soft light|"), "the Illustrate page shows the art style and the preset");
 
   // ---- write a prompt for the chapter's end ----
   ok(await page.getByText(/^For$/).count() === 0 && await page.getByRole("option", { name: "Footer picture" }).count() === 0, "there is no For header/footer choice");
   const moment = page.getByLabel("Moment to show");
-  ok((await moment.inputValue()) === "start" && (await moment.locator("option").allInnerTexts()).join("|") === "Chapter start|Chapter end", "the moment menu offers Chapter start and Chapter end, starting on Chapter start");
+  ok((await moment.inputValue()) === "start" && (await moment.locator("option").allInnerTexts()).join("|") === "Chapter Start|Chapter End", "the moment menu offers Chapter Start and Chapter End, starting on Chapter Start");
   const order = await page.evaluate(() => {
     const menu = document.querySelector('[aria-label="Moment to show"]');
     const model = document.querySelector('[aria-label="Model for picture prompts"]');
@@ -105,7 +109,7 @@ try {
     return before(menu, show) && before(menu, model);
   });
   ok(order, "…and comes before What to show and the model picker");
-  await moment.selectOption({ label: "Chapter end" });
+  await moment.selectOption({ label: "Chapter End" });
   await direction.fill("Jim taking the first bite [close-up]");
   reply = 'Here you go:\n```json\n{"scene":"Jim eats.","prompt":"a man with blonde hair eating a sandwich in a kitchen","negative":"text, watermark"}\n```';
   const callsBefore = calls.length;
@@ -143,11 +147,14 @@ try {
   ok((await page.evaluate(() => navigator.clipboard.readText())) === "edited by hand", "an edited prompt is what gets copied");
 
   // ---- back to tags, written again for the chapter's start ----
-  await fetch(`${BASE}/api/stories/${storyId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image_prompt_style: "tags" }) });
+  const withStyle = async (promptStyle) => {
+    const s = await settingsNow();
+    await fetch(`${BASE}/api/settings`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...s, comfy: { ...s.comfy, drawPresets: s.comfy.drawPresets.map((p) => ({ ...p, promptStyle })) } }) });
+  };
+  await withStyle("tags");
   await page.waitForTimeout(1000); // (the edited prompt is kept)
   await page.reload();
-  ok((await pictureLine.innerText()).includes("Tags (SDXL, Pony, SD 1.5)"), "(the story's prompt style is changed to tags)");
-  await moment.selectOption({ label: "Chapter start" });
+  await moment.selectOption({ label: "Chapter Start" });
   ok((await promptBox.inputValue()) === "my own prompt" && (await direction.inputValue()) === "", `Chapter start has its own boxes, with the prompt typed there earlier (${await promptBox.inputValue()})`);
   await page.getByRole("button", { name: "Write prompt", exact: true }).click();
   await page.waitForFunction(() => document.querySelector(".image-prompt-result textarea")?.value.endsWith(", watercolor storybook, soft light"));
@@ -204,5 +211,5 @@ try {
   await browser.close();
   mock.close();
 }
-ok((await settingsNow())?.imagePromptStyle !== "natural", "the prompt style is not left on sentences");
+ok((await settingsNow())?.comfy?.drawPresets?.every((p) => p.promptStyle !== "natural"), "the prompt style is not left on sentences");
 process.exit(failed ? 1 : 0);

@@ -205,6 +205,7 @@ const presetNameSchema = z.string().max(100).catch("");
 const drawPresetSchema = z.object({
   id: presetIdSchema,
   name: presetNameSchema,
+  promptStyle: z.enum(["tags", "natural"]).catch("tags"),
   checkpoint: z.string().max(500).catch(""),
   workflow: z.string().max(500_000).catch(""),
   loras: loraList,

@@ -98,7 +98,7 @@ r = await call("PUT", "/api/settings", { ...conns, imagePromptModel: "pics" });
 ok(r.json.settings.imagePromptModel === null, "…or when it isn't a model");
 
 // ---- ComfyUI (picture making), with presets ----
-const draw = (id, extra = {}) => ({ id, name: `Drawing ${id}`, checkpoint: "sdxl.safetensors", workflow: "", loras: [], sampler: {}, denoise: 0.55, ...extra });
+const draw = (id, extra = {}) => ({ id, name: `Drawing ${id}`, promptStyle: "tags", checkpoint: "sdxl.safetensors", workflow: "", loras: [], sampler: {}, denoise: 0.55, ...extra });
 const edit = (id, model, extra = {}) => ({ id, name: `Edit ${id}`, model, checkpoint: "", files: {}, fast: true, loras: [], tuning: {}, ...extra });
 const comfyIn = {
   url: "http://comfy.local:8188",
@@ -123,6 +123,11 @@ const withDraw = (patch, i = 0) => ({ ...comfyIn, drawPresets: comfyIn.drawPrese
 const withEdit = (patch, i = 0) => ({ ...comfyIn, editPresets: comfyIn.editPresets.map((p, j) => (j === i ? { ...p, ...patch } : p)) });
 r = await call("PUT", "/api/settings", { ...conns, comfy: comfyIn });
 ok(JSON.stringify(r.json.settings.comfy) === JSON.stringify(comfyIn) && JSON.stringify((await call("GET", "/api/settings")).json.settings.comfy) === JSON.stringify(comfyIn), "ComfyUI settings and presets are saved and read back");
+r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ promptStyle: "natural" }) });
+ok(r.json.settings.comfy.drawPresets[0].promptStyle === "natural", "a drawing preset keeps its prompt style");
+r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ promptStyle: "poetry" }) });
+ok(r.json.settings.comfy.drawPresets[0].promptStyle === "tags", "an unknown prompt style on a preset falls back to tags");
+await call("PUT", "/api/settings", { ...conns, comfy: comfyIn });
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, picturesOldestFirst: true } });
 ok(r.json.settings.comfy.picturesOldestFirst === true && (await call("GET", "/api/settings")).json.settings.comfy.picturesOldestFirst === true, "the Pictures panel's oldest-first order is kept");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, picturesOldestFirst: "yes" } });

@@ -222,7 +222,7 @@ try {
   ok(true, "…and a refresh in Redraw stays in Redraw");
   await page.getByRole("button", { name: "Clear starting picture" }).click();
   await page.reload();
-  await page.getByRole("heading", { name: "Make pictures" }).waitFor();
+  await page.getByRole("heading", { name: "Model Settings" }).waitFor();
   await page.waitForTimeout(500);
   ok(await thumb.count() === 0, "after Clear starting picture a refresh starts with none");
 

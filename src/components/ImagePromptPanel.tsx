@@ -12,16 +12,16 @@ import AutoTextarea from "./AutoTextarea";
 import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
 import ComfyGenerate from "./ComfyGenerate";
-import { CopyIcon } from "./PictureIcons";
+import { CopyIcon, RedoIcon, SparkleIcon } from "./PictureIcons";
 import type { StartPicture } from "@/lib/comfy/startPicture";
 import type { PendingJob, Picture, PromptToLoad, StartMode } from "./pictures";
 import type { EditModels } from "./useEditModels";
 import type { PictureBoxes, PictureDraft } from "@/lib/pictureDrafts";
 import { EMPTY_BOXES, usePictureDraft } from "./usePictureDraft";
-import { PROMPT_STYLE_NAMES, unsetPictureSettings, type StoryPictures } from "./StoryPictureSettings";
+import { unsetPictureSettings, type StoryPictures } from "./StoryPictureSettings";
 import { drawPresetFor, presetName } from "@/lib/comfy/presets";
 
-const MOMENT_NAMES: Record<ImageMoment, string> = { start: "Chapter start", end: "Chapter end" };
+const MOMENT_NAMES: Record<ImageMoment, string> = { start: "Chapter Start", end: "Chapter End" };
 
 const short = (text: string, max: number) => (text.length > max ? `${text.slice(0, max).trimEnd()}…` : text);
 
@@ -90,8 +90,9 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
     setMoment(into);
     setStatus({ ok: true, text: "Prompt loaded from the picture." });
   }
-  // Tags until the story's prompt style is chosen.
-  const style = story.image_prompt_style ?? "tags";
+  // Prompts are written in the style of the model that will draw them: the chapter's drawing preset, else the story's.
+  const [presetNow, setPresetNow] = useState(chapterPreset);
+  const style = drawPresetFor(settings.comfy.drawPresets, presetNow, story.draw_preset).promptStyle;
   const model = settings.imagePromptModel;
   const unset = unsetPictureSettings(story);
   const settingsHref = `/s/${story.id}/details#pictures`;
@@ -133,27 +134,21 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
       <div className="story-pictures">
         <div className="story-pictures-row">
           <ul className="story-pictures-list" aria-label="This story's picture settings">
-            <li>{story.image_prompt_style ? PROMPT_STYLE_NAMES[story.image_prompt_style] : "no prompt style"}</li>
             <li>{story.art_style.trim() ? <span title={story.art_style}>{short(story.art_style.trim(), 80)}</span> : "no art style"}</li>
             <li title="The story's drawing preset">{presetName(drawPresetFor(settings.comfy.drawPresets, story.draw_preset))}</li>
           </ul>
-          <Link href={settingsHref}>Change</Link>
+          <Link href={settingsHref} title={unset.length > 0 ? `Not chosen yet for this story: ${unset.join(", ")}` : undefined}>
+            {unset.length > 0 ? "Choose in Story details" : "Change"}
+          </Link>
         </div>
-        {unset.length > 0 && (
-          <p className="notice" style={{ margin: 0 }}>
-            Not chosen yet for this story: {unset.join(", ")}.{" "}
-            {!story.image_prompt_style && "Prompts are written as tags until a prompt style is chosen. "}
-            <Link href={settingsHref}>Choose them in Story details</Link>
-          </p>
-        )}
       </div>
 
       <div className="row">
         <label className="row" style={{ gap: "0.4rem" }}>
-          Picture for
+          Generate Prompt From
           <select
             aria-label="Moment to show"
-            title="Which part of the chapter the picture shows. Each has its own prompt."
+            title="Which part of the chapter the prompt is written from. Each has its own prompt."
             value={moment}
             onChange={(e) => setMoment(e.target.value as ImageMoment)}
             style={{ width: "auto" }}
@@ -186,15 +181,25 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
           value={model}
           onChange={(ref) => void saveSettings({ ...settings, imagePromptModel: ref })}
         />
-        <button type="button" onClick={() => void write()} disabled={busy}>
-          {busy ? "Writing…" : written[moment] ? "Write again" : "Write prompt"}
-        </button>
-        <PromptButton label="Write prompt" build={() => imagePromptRequest(settings.contextTokens, options())} />
-        {busy && (
-          <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
-            Stop
+        {/* The write button and the eye that shows its prompt stay together on one line. */}
+        <span className="row" style={{ flexWrap: "nowrap", gap: "0.4rem" }}>
+          <button
+            type="button"
+            className="icon-button"
+            onClick={() => void write()}
+            disabled={busy}
+            aria-label={busy ? "Writing…" : written[moment] ? "Write again" : "Write prompt"}
+            title={busy ? "Writing the prompt…" : written[moment] ? "Write the prompt again" : "Write the prompt from the chapter"}
+          >
+            {written[moment] ? <RedoIcon /> : <SparkleIcon />}
           </button>
-        )}
+          <PromptButton label="Write prompt" build={() => imagePromptRequest(settings.contextTokens, options())} />
+          {busy && (
+            <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
+              Stop
+            </button>
+          )}
+        </span>
       </div>
 
       <div className="image-prompt-result">
@@ -252,6 +257,7 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
         storyId={story.id}
         storyPreset={story.draw_preset}
         chapterPreset={chapterPreset}
+        onChapterPreset={setPresetNow}
         moment={moment}
         prompt={result.prompt}
         negative={result.negative}

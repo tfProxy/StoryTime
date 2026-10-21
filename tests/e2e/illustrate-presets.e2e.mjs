@@ -92,7 +92,7 @@ try {
   ok(await until(async () => (await chapterPreset()) === "ink", "the chapter's preset to be saved"), "choosing another preset saves it for the chapter");
   ok((await call("GET", `/api/stories/${storyId}`)).draw_preset === "plain", "…leaving the story's as it was");
   const loraBoxes = page.locator(".draw-preset").getByRole("group", { name: "LoRAs" });
-  ok((await page.locator(".draw-preset").innerText()).includes("fake_sdxl_a · 1 LoRA") && (await loraBoxes.innerText()).includes("ink (0.8)"), "the panel says what the preset draws with, and lists its LoRAs with a box each");
+  ok((await page.locator(".draw-preset").getByRole("link", { name: "Change preset in Settings" }).getAttribute("title")).includes("fake_sdxl_a · 1 LoRA") && (await loraBoxes.innerText()).includes("ink (0.8)"), "the panel says what the preset draws with, and lists its LoRAs with a box each");
   wf = await makeOne();
   const lora = nodes(wf, "LoraLoader")[0];
   ok(nodes(wf, "CheckpointLoaderSimple")[0].inputs.ckpt_name === "fake_sdxl_a.safetensors" && lora?.inputs.lora_name === "styles/ink.safetensors" && lora.inputs.strength_model === 0.8 && lora.inputs.strength_clip === 0.8, "its pictures are drawn with its checkpoint and its LoRA, at its strength");
@@ -205,7 +205,7 @@ try {
       await page.waitForTimeout(400);
       await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/settings-qwen-${width}.png`, fullPage: true });
       await page.goto(`${BASE}/c/${chapterId}/illustrate`);
-      await page.getByRole("heading", { name: "Make pictures" }).waitFor();
+      await page.getByRole("heading", { name: "Model Settings" }).waitFor();
       await page.waitForTimeout(500);
       // A refresh brings back the picture being edited; the drawing preset shows without one.
       const clear = page.getByRole("button", { name: "Clear starting picture" });

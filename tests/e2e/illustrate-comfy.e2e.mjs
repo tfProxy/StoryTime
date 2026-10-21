@@ -87,7 +87,7 @@ try {
   await openIllustrate();
   await page.getByText("To make pictures here, add your ComfyUI machine in").waitFor();
   ok(await page.getByRole("link", { name: "Settings", exact: true }).getAttribute("href") === "/settings#comfyui", "with no ComfyUI address, the page says to add it in Settings (linking to the ComfyUI address)");
-  ok(await page.getByRole("heading", { name: "Make pictures" }).count() === 0 && await makeButton.count() === 0, "…and offers no Queue button");
+  ok(await page.getByRole("heading", { name: "Model Settings" }).count() === 0 && await makeButton.count() === 0, "…and offers no Queue button");
   ok(await promptBox.isVisible() && await negativeBox.isVisible(), "…but the prompt fields are there, to type in and copy");
 
   // ---- Settings: the address, the connection test and the CORS hint ----
@@ -211,12 +211,12 @@ try {
 
   // ---- the Illustrate page with an address ----
   await openIllustrate();
-  await page.getByRole("heading", { name: "Make pictures" }).waitFor();
+  await page.getByRole("heading", { name: "Model Settings" }).waitFor();
   ok(await page.locator("section.ai-panel.comfy-generate").count() === 1 && await page.locator(".image-prompt .comfy-generate").count() === 0, "Make pictures is a panel of its own, not inside the Picture prompt");
   ok(await page.getByLabel("Checkpoint").count() === 0, "there is no Checkpoint menu on the Illustrate page: the checkpoint is the drawing preset's");
   const drawPreset = page.getByLabel("Drawing preset");
   ok(await drawPreset.inputValue() === "test" && (await drawPreset.locator("option").allInnerTexts()).join() === "Ink (default)", "the Make pictures panel offers the drawing presets, marking the story's as the default");
-  ok((await page.locator(".draw-preset").innerText()).includes("no checkpoint") && (await page.locator(".story-pictures").innerText()).includes("Ink"), "…says the preset has no checkpoint, and the story's picture settings name its preset");
+  ok((await page.locator(".draw-preset").innerText()).includes("no checkpoint") === false && (await page.locator(".story-pictures").innerText()).includes("Ink"), "…lists no model summary under it, and the story's picture settings name its preset");
   ok(await makeButton.isDisabled(), "Make pictures is off while the prompt is empty");
 
   await promptBox.fill("a lighthouse at dawn, gulls");
@@ -228,7 +228,7 @@ try {
   ok(promptCalls().length === 0, "making pictures with no checkpoint chosen says so, and sends nothing to ComfyUI");
 
   // ---- the checkpoint is chosen in the preset, in Settings ----
-  await page.locator(".draw-preset").getByRole("link", { name: "Change" }).click();
+  await page.locator(".draw-preset").getByRole("link", { name: "Change preset in Settings" }).click();
   await page.waitForURL("**/settings#preset-test");
   const checkpoint = page.locator("#preset-test").getByLabel("Checkpoint");
   await checkpoint.locator("option", { hasText: "fake_sdxl_b.safetensors" }).waitFor({ state: "attached" });
@@ -239,7 +239,7 @@ try {
   await openIllustrate();
   await promptBox.fill("a lighthouse at dawn, gulls");
   await negativeBox.fill("blurry, text");
-  ok((await page.locator(".draw-preset").innerText()).includes("fake_sdxl_b"), "the Illustrate page shows the preset's checkpoint");
+  ok((await page.locator(".draw-preset").getByRole("link", { name: "Change preset in Settings" }).getAttribute("title")).includes("fake_sdxl_b"), "the preset's settings link says which checkpoint it has");
   ok(await page.getByLabel("How many").count() === 0 && await page.getByText("One picture per click.").count() === 0, "there is no How many menu, and no line saying each click makes one picture");
   const queueStatus = page.getByLabel("Queue", { exact: true });
   ok((await makeButton.innerText()) === "Queue" && (await queueStatus.innerText()).trim() === "In progress: 0 · Queued: 0", "the button is just Queue, with the queue's status under it (nothing yet)");
@@ -397,7 +397,7 @@ try {
   await page.keyboard.press("Escape");
   ok(await menu.count() === 0 && await more.evaluate((e) => e === document.activeElement), "Esc closes it, back on the ☰ button");
   await more.click();
-  await page.locator(".chapter-pictures h2").click();
+  await page.locator(".chapter-pictures-top").click({ position: { x: 4, y: 4 } });
   ok(await menu.count() === 0, "…and so does a click elsewhere");
 
   // ---- bringing a saved picture's prompt back ----
@@ -416,7 +416,7 @@ try {
   };
   await card("Header picture").locator("img.image-editor-preview").waitFor();
   ok((await card("Header picture").innerText()).includes("Made from") === false, "the Header picture card has no Made from blurb");
-  ok((await (await cardMenu("Header picture")).allInnerTexts()).join("|") === "Replace picture|Redraw from this|Edit this|Load prompt|Open in a new tab|Remove picture", "its ☰ menu has Replace, Redraw from this, Edit this, Load prompt, Open in a new tab and Remove");
+  ok((await (await cardMenu("Header picture")).allInnerTexts()).join("|") === "Upload picture|Redraw from this|Edit this|Load prompt|Open in a new tab|Clear Header", "its ☰ menu has Replace, Redraw from this, Edit this, Load prompt, Open in a new tab and Remove");
   await page.keyboard.press("Escape");
   ok((await (await cardMenu("Footer picture")).allInnerTexts()).includes("Load prompt") === false, "an uploaded picture has no Load prompt");
   await page.keyboard.press("Escape");

@@ -1690,8 +1690,19 @@ main:has(.illustrate-grid) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: 0.5rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .picture-views {
@@ -2114,21 +2125,44 @@ dialog.picture-info::backdrop {
   overflow-wrap: anywhere;
 }
 
-/* The three settings one under the other, with Change at the right. */
+/* The story's settings as one small, quiet line, with Change at the end. */
+.story-pictures {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 .story-pictures-row {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.6rem;
 }
 
 .story-pictures-list {
-  display: grid;
-  gap: 0.15rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
   margin: 0;
   padding: 0;
   min-width: 0;
   list-style: none;
+}
+
+.story-pictures-list li + li::before {
+  content: "·";
+  margin-right: 0.5rem;
+}
+
+/* A link that is just an icon, beside a field. */
+a.icon-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 0.35rem;
+  border-radius: 0.4rem;
+  color: inherit;
+  border: 1px solid var(--line);
 }
 
 /*

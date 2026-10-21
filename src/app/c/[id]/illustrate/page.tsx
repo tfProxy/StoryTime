@@ -51,7 +51,6 @@ export default async function IllustratePage({ params }: { params: Promise<{ id:
           title: story.title,
           premise: story.premise,
           art_style: story.art_style,
-          image_prompt_style: story.image_prompt_style,
           draw_preset: story.draw_preset,
         }}
         chapterPreset={getChapterPreset(chapter.id)}

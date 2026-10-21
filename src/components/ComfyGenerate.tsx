@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { SettingsIcon } from "./PictureIcons";
 import { saveSettings, useSettings } from "@/lib/settings";
 import { QUEUE_COUNTS, type ComfySettings } from "@/lib/settingsSchema";
 import type { ImageMoment } from "@/lib/ai/imagePrompt";
@@ -112,6 +113,8 @@ type Props = {
   /** The story's drawing preset (set on its details page), and the chapter's own (chosen here); null for none. */
   storyPreset: string | null;
   chapterPreset: string | null;
+  /** Called when the chapter's drawing preset is changed here (null: follows the story's). */
+  onChapterPreset?: (id: string | null) => void;
   moment: ImageMoment;
   prompt: string;
   negative: string;
@@ -140,7 +143,7 @@ type Props = {
  */
 export default function ComfyGenerate({
   chapterId, storyId, storyPreset, chapterPreset: savedPreset, moment, prompt, negative, loaded = null, start = null, onClearStart,
-  startMode = "redraw", onStartMode, editModels = { state: "checking" }, onPictures, onQueue, dock = null,
+  startMode = "redraw", onStartMode, editModels = { state: "checking" }, onPictures, onQueue, onChapterPreset, dock = null,
 }: Props) {
   const settings = useSettings();
   const comfy = settings.comfy;
@@ -249,6 +252,7 @@ export default function ComfyGenerate({
   function chooseDraw(id: string) {
     const next = id === storyDraw.id ? null : id;
     setChapterPreset(next);
+    onChapterPreset?.(next);
     fetch(`/api/chapters/${chapterId}/picture-preset`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draw_preset: next }) })
       .then((res) => {
         if (!res.ok) throw new Error(`Request failed (${res.status})`);
@@ -392,7 +396,7 @@ export default function ComfyGenerate({
 
   return (
     <section className="ai-panel comfy-generate">
-      <h2>Make pictures</h2>
+      <h2>Model Settings</h2>
       {start && (
         <div className="start-picture">
           <div className="start-picture-thumb">
@@ -511,20 +515,22 @@ export default function ComfyGenerate({
       )}
       {!editing && (
         <div className="draw-preset">
-          <label className="row" style={{ gap: "0.4rem" }}>
-            Preset
-            <select aria-label="Drawing preset" value={draw.id} onChange={(e) => chooseDraw(e.target.value)} style={{ width: "auto", minWidth: 0, flex: 1 }}>
-              {comfy.drawPresets.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {presetName(p)}
-                  {p.id === storyDraw.id ? " (default)" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p className="meta" style={{ margin: 0 }}>
-            {drawPresetSummary(draw)} · <Link href={`/settings#preset-${draw.id}`}>Change</Link>
-          </p>
+          <div className="row" style={{ gap: "0.4rem", flexWrap: "nowrap" }}>
+            <label className="row" style={{ gap: "0.4rem", flex: 1, minWidth: 0 }}>
+              Preset
+              <select aria-label="Drawing preset" value={draw.id} onChange={(e) => chooseDraw(e.target.value)} style={{ width: "auto", minWidth: 0, flex: 1 }}>
+                {comfy.drawPresets.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {presetName(p)}
+                    {p.id === storyDraw.id ? " (default)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Link className="icon-link" href={`/settings#preset-${draw.id}`} aria-label="Change preset in Settings" title={`Change this preset in Settings (${drawPresetSummary(draw)})`}>
+              <SettingsIcon />
+            </Link>
+          </div>
           {draw.loras.length > 0 && <LoraToggles stack={draw.loras} available={loraFiles} onChange={(loras) => changeDraw({ loras })} />}
           {drawUsable.missing.length > 0 && (
             <p className="error" style={{ margin: 0 }}>
