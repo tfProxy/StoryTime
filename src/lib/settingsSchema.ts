@@ -69,6 +69,8 @@ export type Settings = {
   contextTokens: number;
   /** After the AI writes a chapter, also suggest choices for its ending (one more call to the cheaper model). */
   autoSuggestChoices: boolean;
+  /** What the outline shows after each chapter's name. */
+  outline: OutlineOptions;
   /** How picture prompts are written: comma-separated tags (SDXL, Pony, SD 1.5) or plain sentences (Flux, SD3). */
   imagePromptStyle: ImagePromptStyle;
   /** Model that writes picture prompts on the Illustrate page; null uses the cheaper default. */
@@ -78,6 +80,30 @@ export type Settings = {
 };
 
 export type ImagePromptStyle = "tags" | "natural";
+
+/** The parts of the [...] section after each chapter's name in the outline; each is shown unless turned off. */
+export type OutlineOptions = {
+  /** The summary button on each chapter, and Show all summaries above the outline. */
+  summary: boolean;
+  /** The link to read the story down to this chapter. */
+  readToHere: boolean;
+  /** An icon, for a chapter with a header picture, that shows it. */
+  headerPicture: boolean;
+  /** The same for the footer picture. */
+  footerPicture: boolean;
+  /** A paintbrush that opens the chapter's Illustrate page. */
+  illustrate: boolean;
+};
+
+export const OUTLINE_PARTS = [
+  { id: "summary", label: "Summary", hint: "a button that shows the chapter's summary, and Show all summaries above the outline" },
+  { id: "readToHere", label: "Read to here", hint: "a link to the story from the start down to the chapter, on one page" },
+  { id: "headerPicture", label: "Header picture", hint: "an icon, for chapters that have one, that shows it in a popup" },
+  { id: "footerPicture", label: "Footer picture", hint: "the same for the footer picture" },
+  { id: "illustrate", label: "Illustrate", hint: "a paintbrush that opens the chapter's Illustrate page" },
+] as const satisfies readonly { id: keyof OutlineOptions; label: string; hint: string }[];
+
+export const DEFAULT_OUTLINE: OutlineOptions = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true };
 
 export type ComfySettings = {
   /** Where ComfyUI is, e.g. https://comfy.example.ts.net; "" when there is none. */
@@ -101,6 +127,7 @@ export const DEFAULT_SETTINGS: Settings = {
   temperature: null,
   contextTokens: 8000,
   autoSuggestChoices: false,
+  outline: DEFAULT_OUTLINE,
   imagePromptStyle: "tags",
   imagePromptModel: null,
   comfy: { url: "", width: 1344, height: 768, count: 4, drawPresets: DEFAULT_DRAW_PRESETS, editPresets: DEFAULT_EDIT_PRESETS, editPreset: "qwen-image-edit" },
@@ -239,6 +266,16 @@ const settingsSchema = z.object({
   temperature: z.number().min(0).max(2).nullable().catch(null),
   contextTokens: z.number().int().min(1000).max(2_000_000).catch(DEFAULT_SETTINGS.contextTokens),
   autoSuggestChoices: z.boolean().catch(false),
+  // A part that is missing or isn't true/false is shown, as before the options existed.
+  outline: z
+    .object({
+      summary: z.boolean().catch(true),
+      readToHere: z.boolean().catch(true),
+      headerPicture: z.boolean().catch(true),
+      footerPicture: z.boolean().catch(true),
+      illustrate: z.boolean().catch(true),
+    })
+    .catch(DEFAULT_OUTLINE),
   imagePromptStyle: z.enum(["tags", "natural"]).catch("tags"),
   imagePromptModel: refSchema.nullable().catch(null),
   comfy: z

@@ -17,6 +17,7 @@ import {
   modelLabel,
   newConnection,
   newFavorite,
+  OUTLINE_PARTS,
   parseRefKey,
   refKey,
   removeConnection,
@@ -51,6 +52,7 @@ const TABS = [
   { id: "drawing", label: "Drawing", holds: ["setup-drawing", "drawing-presets", "pictures", "picture-setup", "redraw"] },
   { id: "edit-qwen-image-edit", label: "Qwen edit", holds: ["setup-qwen-image-edit", "qwen-image-edit-presets", "edit-loras"] },
   { id: "edit-flux-kontext", label: "Flux edit", holds: ["setup-flux-kontext", "flux-kontext-presets"] },
+  { id: "outline", label: "Outline", holds: [] },
   { id: "backup", label: "Backup", holds: [] },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
@@ -623,6 +625,29 @@ export default function SettingsForm() {
           <EditSettings modelId={m} comfy={settings.comfy} setup={pictureSetup} onChange={updateComfy} onConnections={() => openTab("connections")} />
         </div>
       ))}
+
+      <div {...panel("outline")}>
+        <section className="settings-section">
+          <h2>Outline</h2>
+          <p className="meta">
+            What the outline of a story shows after each chapter&apos;s name, in the square brackets. Untick a part to
+            hide it from every outline.
+          </p>
+          {OUTLINE_PARTS.map((part) => (
+            <label key={part.id} className="inline-label" style={{ alignItems: "flex-start" }}>
+              <input
+                type="checkbox"
+                style={{ marginTop: "0.2rem" }}
+                checked={settings.outline[part.id]}
+                onChange={(e) => update({ outline: { ...settings.outline, [part.id]: e.target.checked } })}
+              />
+              <span>
+                {part.label} <small>({part.hint})</small>
+              </span>
+            </label>
+          ))}
+        </section>
+      </div>
 
       <section {...panel("backup")}>
         <h2>Back up or move your settings</h2>

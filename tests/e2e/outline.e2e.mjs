@@ -106,6 +106,77 @@ ok(await page.getByRole("heading", { name: "Picture prompt" }).isVisible(), "the
 await page.goBack();
 await page.getByText(/5 chapters/).waitFor();
 
+// Settings → Outline: each part of the [...] section can be turned off
+const settingsNow = async () => (await getJson("/api/settings")).settings;
+const putSettings = (s) => fetch(`${BASE}/api/settings`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(s) });
+const settingsBefore = await settingsNow();
+const until = async (fn, what) => {
+  for (let i = 0; i < 100; i++) { if (await fn()) return true; await new Promise((r) => setTimeout(r, 100)); }
+  ok(false, `timed out waiting for ${what}`);
+  return false;
+};
+const outlineUrl = page.url();
+await page.goto(`${BASE}/settings#outline`);
+ok((await page.getByRole("tab", { name: "Outline" }).getAttribute("aria-selected")) === "true", "Settings has an Outline tab, which /settings#outline opens");
+const part = (name) => page.getByRole("checkbox", { name: new RegExp(`^${name}`) });
+const PARTS = ["Summary", "Read to here", "Header picture", "Footer picture", "Illustrate"];
+await part("Summary").waitFor();
+ok((await Promise.all(PARTS.map((p) => part(p).isChecked()))).every(Boolean), "…with the five parts all ticked at first");
+const outlineNow = async () => (await settingsNow()).outline;
+const look = async () => {
+  await page.goto(outlineUrl);
+  await page.getByText(/5 chapters/).waitFor();
+  return {
+    summaries: await page.getByRole("button", { name: "summary", exact: true }).count(),
+    all: await page.getByRole("button", { name: /all summaries/ }).count(),
+    reads: await page.getByRole("link", { name: "read to here" }).count(),
+    headers: await page.getByRole("button", { name: "Show the header picture" }).count(),
+    footers: await page.getByRole("button", { name: "Show the footer picture" }).count(),
+    brushes: await page.getByRole("link", { name: "Illustrate this chapter" }).count(),
+    brackets: await page.locator(".outline-actions").count(),
+  };
+};
+const show = async (name, on) => {
+  await page.goto(`${BASE}/settings#outline`);
+  await part(name).waitFor();
+  await part(name)[on ? "check" : "uncheck"]();
+};
+
+let seen = await look();
+ok(seen.summaries === 5 && seen.all === 1 && seen.reads === 5 && seen.headers === 2 && seen.footers === 2 && seen.brushes === 5 && seen.brackets === 5, "the outline shows every part at first");
+await show("Summary", false);
+await until(async () => (await outlineNow()).summary === false, "Summary to be turned off");
+seen = await look();
+ok(seen.summaries === 0 && seen.all === 0 && seen.reads === 5 && seen.brushes === 5, "with Summary off there are no summary buttons and no Show all summaries, and the rest stays");
+await show("Summary", true);
+await show("Read to here", false);
+await until(async () => (await outlineNow()).readToHere === false && (await outlineNow()).summary === true, "Read to here to be turned off");
+seen = await look();
+ok(seen.reads === 0 && seen.summaries === 5 && seen.headers === 2, "with Read to here off its links go, and the rest stays");
+ok(!(await page.locator(".outline-actions").first().innerText()).includes(","), "…without a stray comma between the parts left");
+await show("Read to here", true);
+await show("Header picture", false);
+await until(async () => (await outlineNow()).headerPicture === false && (await outlineNow()).readToHere === true, "Header picture to be turned off");
+seen = await look();
+ok(seen.headers === 0 && seen.footers === 2 && seen.reads === 5, "with Header picture off only the header icons go");
+await show("Header picture", true);
+await show("Footer picture", false);
+await until(async () => (await outlineNow()).footerPicture === false && (await outlineNow()).headerPicture === true, "Footer picture to be turned off");
+seen = await look();
+ok(seen.footers === 0 && seen.headers === 2, "with Footer picture off only the footer icons go");
+await show("Footer picture", true);
+await show("Illustrate", false);
+await until(async () => (await outlineNow()).illustrate === false && (await outlineNow()).footerPicture === true, "Illustrate to be turned off");
+seen = await look();
+ok(seen.brushes === 0 && seen.footers === 2 && seen.summaries === 5, "with Illustrate off the paintbrushes go");
+await putSettings({ ...settingsBefore, outline: { summary: false, readToHere: false, headerPicture: false, footerPicture: false, illustrate: false } });
+seen = await look();
+ok(seen.brackets === 0 && !(await page.locator(".outline-page").innerText()).includes("["), "with every part off the brackets go too");
+await putSettings({ ...settingsBefore, outline: { summary: false, readToHere: false, headerPicture: false, footerPicture: false, illustrate: true } });
+seen = await look();
+ok(seen.brackets === 5 && seen.brushes === 5 && seen.summaries === 0, "with only Illustrate on, each chapter has just its paintbrush in the brackets");
+await putSettings(settingsBefore ?? {});
+
 // from a chapter page
 await page.goto(`${BASE}/c/${prev}`);
 await page.locator(".site-menu > summary").click();

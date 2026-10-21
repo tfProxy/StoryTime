@@ -68,6 +68,19 @@ ok(r.json.settings.autoSuggestChoices === false, "suggesting choices after writi
 r = await call("PUT", "/api/settings", { ...conns, autoSuggestChoices: true });
 ok(r.json.settings.autoSuggestChoices === true && (await call("GET", "/api/settings")).json.settings.autoSuggestChoices === true, "…and can be turned on");
 
+// ---- the outline's parts ----
+const allOutline = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true };
+ok(JSON.stringify((await call("GET", "/api/settings")).json.settings.outline) === JSON.stringify(allOutline), "every part of the outline is shown unless turned off");
+r = await call("PUT", "/api/settings", { ...conns, outline: { ...allOutline, readToHere: false, illustrate: false } });
+ok(JSON.stringify(r.json.settings.outline) === JSON.stringify({ ...allOutline, readToHere: false, illustrate: false }) && (await call("GET", "/api/settings")).json.settings.outline.readToHere === false, "parts turned off are kept");
+r = await call("PUT", "/api/settings", { ...conns, outline: { summary: false } });
+ok(JSON.stringify(r.json.settings.outline) === JSON.stringify({ ...allOutline, summary: false }), "a part not mentioned stays on");
+r = await call("PUT", "/api/settings", { ...conns, outline: { summary: "no", headerPicture: 0, footerPicture: null } });
+ok(JSON.stringify(r.json.settings.outline) === JSON.stringify(allOutline), "a part that isn't true or false is left on");
+r = await call("PUT", "/api/settings", { ...conns, outline: "off" });
+ok(JSON.stringify(r.json.settings.outline) === JSON.stringify(allOutline), "outline settings of the wrong kind are ignored");
+r = await call("PUT", "/api/settings", { ...conns, outline: allOutline });
+
 ok(r.json.settings.imagePromptStyle === "tags" && (await call("GET", "/api/settings")).json.settings.imagePromptStyle === "tags", "picture prompts are written as tags unless asked otherwise");
 r = await call("PUT", "/api/settings", { ...conns, imagePromptStyle: "natural" });
 ok(r.json.settings.imagePromptStyle === "natural" && (await call("GET", "/api/settings")).json.settings.imagePromptStyle === "natural", "…and the sentence style is kept");

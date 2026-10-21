@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { chapterImageUrl, type ImageSlot, type ImageVersions } from "@/lib/imageSlots";
+import type { OutlineOptions } from "@/lib/settingsSchema";
 import { BrushIcon, FooterIcon, HeaderIcon } from "./PictureIcons";
 
 // Summaries in the outline: each chapter has its own toggle, and one button shows or hides them all.
@@ -84,12 +85,15 @@ function PictureButton({ chapterId, title, slot, version }: { chapterId: string;
 // Sits inside the chapter's row, which is the <summary> of its branch, so clicks must not fold the branch.
 // `children` (the 'read to here' link) sit right after the button. `via` is the choice that was taken to reach the chapter; it is shown ahead of the summary.
 // After them come icons: the chapter's header and footer pictures (when it has them), and a paintbrush to its Illustrate page.
+// `show` says which of these parts are turned on in Settings (Outline); `children` is only given when 'read to here' is on.
+// With every part off there is nothing to show, not even the brackets.
 export function NodeSummary({
   chapterId,
   title,
   images,
   summary,
   via,
+  show,
   children,
 }: {
   chapterId: string;
@@ -97,6 +101,7 @@ export function NodeSummary({
   images: ImageVersions;
   summary: string | null;
   via: string | null;
+  show: OutlineOptions;
   children?: ReactNode;
 }) {
   const { open: allOpen, n } = useContext(Ctx);
@@ -104,39 +109,56 @@ export function NodeSummary({
   useEffect(() => {
     if (n > 0) setOpen(allOpen);
   }, [allOpen, n]);
+  const showSummary = show.summary;
+  const header = show.headerPicture && images.header !== null ? images.header : null;
+  const footer = show.footerPicture && images.footer !== null ? images.footer : null;
+  // The words come first, separated by commas; the icons follow them.
+  const words: ReactNode[] = [];
+  if (showSummary) {
+    words.push(
+      <button
+        key="summary"
+        type="button"
+        className="outline-action"
+        aria-expanded={open}
+        title={open ? "Hide this chapter's summary" : "Show this chapter's summary"}
+        onClick={(e) => {
+          e.preventDefault();
+          setOpen(!open);
+        }}
+      >
+        summary
+      </button>,
+    );
+  }
+  if (children) words.push(<span key="read">{children}</span>);
+  const hasIcons = header !== null || footer !== null || show.illustrate;
   return (
     <>
-      <span className="meta outline-actions">
-        [
-        <button
-          type="button"
-          className="outline-action"
-          aria-expanded={open}
-          title={open ? "Hide this chapter's summary" : "Show this chapter's summary"}
-          onClick={(e) => {
-            e.preventDefault();
-            setOpen(!open);
-          }}
-        >
-          summary
-        </button>
-        {", "}
-        {children}
-        <span className="outline-icons">
-          {images.header !== null && <PictureButton chapterId={chapterId} title={title} slot="header" version={images.header} />}
-          {images.footer !== null && <PictureButton chapterId={chapterId} title={title} slot="footer" version={images.footer} />}
-          <Link
-            className="outline-action outline-icon"
-            href={`/c/${chapterId}/illustrate`}
-            title="Make pictures for this chapter"
-            aria-label="Illustrate this chapter"
-          >
-            <BrushIcon />
-          </Link>
+      {(words.length > 0 || hasIcons) && (
+        <span className="meta outline-actions">
+          [
+          {words.flatMap((w, i) => (i === 0 ? [w] : [", ", w]))}
+          {hasIcons && (
+            <span className="outline-icons">
+              {header !== null && <PictureButton chapterId={chapterId} title={title} slot="header" version={header} />}
+              {footer !== null && <PictureButton chapterId={chapterId} title={title} slot="footer" version={footer} />}
+              {show.illustrate && (
+                <Link
+                  className="outline-action outline-icon"
+                  href={`/c/${chapterId}/illustrate`}
+                  title="Make pictures for this chapter"
+                  aria-label="Illustrate this chapter"
+                >
+                  <BrushIcon />
+                </Link>
+              )}
+            </span>
+          )}
+          ]
         </span>
-        ]
-      </span>
-      {open && (
+      )}
+      {open && showSummary && (
         <span className="outline-summary" onClick={(e) => e.preventDefault()}>
           {via && <strong className="outline-via">{via}</strong>}
           {summary?.trim() || "No summary yet."}
