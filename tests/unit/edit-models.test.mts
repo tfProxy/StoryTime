@@ -200,6 +200,32 @@ const sc = checkEditModels(withSamplers)[0];
 ok(sc.samplers.join() === "euler,dpmpp_2m" && sc.schedulers.join() === "simple,karras", "the check lists the samplers and schedulers ComfyUI's KSampler offers, for Settings");
 ok(EDIT_NODES.includes("KSampler"), "…which it asks about anyway");
 
+// ---- reference pictures for an edit ----
+{
+  const plain = qm.build(qs.files, params);
+  ok(nodes(plain, "TextEncodeQwenImageEditPlus").every((n) => !("image2" in n.inputs)) && nodes(plain, "LoadImage").length === 1, "without references, Qwen's encoders get only image 1");
+  const wf = qm.build(qs.files, { ...params, refs: ["ref-a.png", "ref-b.png", "ref-c.png"] });
+  const encoders = nodes(wf, "TextEncodeQwenImageEditPlus");
+  const loaded = (link: unknown) => (wf[(link as [string, number])[0]].inputs as { image?: string }).image;
+  ok(encoders.length === 2 && encoders.every((e) => loaded(e.inputs.image2) === "ref-a.png" && loaded(e.inputs.image3) === "ref-b.png" && !("image4" in e.inputs)), "Qwen takes at most two references, as images 2 and 3 of both text encoders");
+  ok(encoders.every((e) => (e.inputs.image1 as [string, number])[0] === "11"), "…and the starting picture stays image 1");
+  const one = qm.build(qs.files, { ...params, refs: ["ref-a.png"] });
+  ok(nodes(one, "TextEncodeQwenImageEditPlus").every((e) => "image2" in e.inputs && !("image3" in e.inputs)), "one reference is only image 2");
+
+  const kplain = km.build(ks.files, params);
+  ok(nodes(kplain, "ReferenceLatent").length === 1, "without references, Kontext has one reference latent");
+  const kref = km.build(ks.files, { ...params, refs: ["ref-a.png", "ref-b.png"] });
+  const latents = nodes(kref, "ReferenceLatent");
+  ok(latents.length === 2, "Kontext takes one reference as a second reference latent");
+  const second = latents.find((n) => (n.inputs.conditioning as [string, number])[0] !== "4")!;
+  const scaled = kref[(second.inputs.latent as [string, number])[0]];
+  ok(scaled.class_type === "VAEEncode" && kref[(scaled.inputs.pixels as [string, number])[0]].class_type === "ImageScale", "…encoded from the reference scaled to the size");
+  const scale = kref[(scaled.inputs.pixels as [string, number])[0]];
+  ok(scale.inputs.width === params.width && scale.inputs.height === params.height && (kref[(scale.inputs.image as [string, number])[0]].inputs as { image: string }).image === "ref-a.png", "…the first reference only, at the edit's size");
+  const guide = nodes(kref, "FluxGuidance")[0];
+  ok(guide.inputs.conditioning instanceof Array && kref[(guide.inputs.conditioning as [string, number])[0]] === second, "…chained before the guidance");
+}
+
 // ---- presetCheck and buildEdit: files a preset chooses ----
 {
   const aio = "Qwen-Rapid-AIO-NSFW-v19.safetensors";

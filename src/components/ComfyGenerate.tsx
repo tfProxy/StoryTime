@@ -9,7 +9,7 @@ import { QUEUE_COUNTS, type ComfySettings } from "@/lib/settingsSchema";
 import { targetKey, type PictureMoment, type PictureTarget } from "@/lib/pictureTarget";
 import type { LoadedPrompt } from "./ImagePromptPanel";
 import type { JobProgress, MadeWith, PendingJob, Picture, StartMode } from "./pictures";
-import { drawPresetFamily, editBlocked, usableEditPresets, type EditModels } from "./useEditModels";
+import { drawPresetFamily, drawPresetIpAdapter, editBlocked, usableEditPresets, type EditModels } from "./useEditModels";
 import AutoTextarea from "./AutoTextarea";
 import { usePictureQueue } from "./PictureQueue";
 import { LIMITS } from "@/lib/limits";
@@ -20,7 +20,8 @@ import { drawPresetFor, drawPresetSummary, presetName, usesFamily, type DrawPres
 import type { StartPicture } from "@/lib/comfy/startPicture";
 import { readEdit, readRedraw, stateKey, writeEdit, writeRedraw } from "@/lib/comfy/editingState";
 import { listCheckpoints } from "@/lib/comfy/client";
-import { denoiseOf, madeWithText, maskOf, type JobInput } from "@/lib/comfy/makeJob";
+import { denoiseOf, madeWithText, maskOf, refsOf, type JobInput } from "@/lib/comfy/makeJob";
+import { storedOf, type Reference } from "@/lib/comfy/references";
 import { describeWorkflow, parseWorkflow } from "@/lib/comfy/workflow";
 import type { PaintedArea } from "@/lib/mask";
 import { MaskPainter, useMaskPreview } from "./StartMask";
@@ -151,6 +152,8 @@ type Props = {
   onQueue?: (jobs: PendingJob[]) => void;
   /** An element at the bottom of the page's column to put Size, Queue and the queue's status in, so they stay in view; without it they sit at the end of this panel. */
   dock?: HTMLElement | null;
+  /** Reference pictures to draw with (none by default; the page's References section gives them from stage 2c on). */
+  refs?: Reference[];
 };
 
 /** Whether a drawing preset's workflow ("" is the built-in one) can redraw only a painted part of a picture. */
@@ -172,7 +175,7 @@ export type PaintProps = { mask: PaintedArea | null; onMask: (area: PaintedArea 
  */
 export default function ComfyGenerate({
   target, storyPreset, chapterPreset: savedPreset, moment, prompt: boxPrompt, negative: boxNegative, fixedPrompt = "", loaded = null, start = null, onClearStart,
-  startMode = "redraw", onStartMode, paint, editModels = { state: "checking" }, onPictures, onQueue, onChapterPreset, dock = null,
+  startMode = "redraw", onStartMode, paint, editModels = { state: "checking" }, onPictures, onQueue, onChapterPreset, dock = null, refs,
 }: Props) {
   const { storyId, chapterId } = target;
   // Where this browser keeps the edit's text and strengths, and the queue's name for the target.
@@ -366,6 +369,8 @@ export default function ComfyGenerate({
       mask: editing ? null : mask,
       edit: editing && chosen && tuning ? { check: chosen, instruction: instruction.trim(), strength: editStrength, fast, loras: editLoras, tuning, textEncoderDevice: editPreset?.textEncoderDevice ?? "default" } : null,
       seed: reuseSeed && loadedSeed !== null ? loadedSeed : null,
+      refs,
+      ipAdapter: drawPresetIpAdapter(editModels, draw),
     };
     pictureQueue.ask({
       chapterId,
@@ -380,6 +385,7 @@ export default function ComfyGenerate({
         denoise: denoiseOf(input),
         source: start?.source ?? null,
         mask: maskOf(input)?.id ?? null,
+        refs: storedOf(refsOf(input)),
         instruction: input.edit?.instruction ?? null,
         editModel: input.edit?.check.model.id ?? null,
         moment,

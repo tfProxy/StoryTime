@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { forgetEditModels, modelChecksFor } from "@/lib/comfy/check";
 import { familyPresetCheck, type FamilyCheck } from "@/lib/comfy/drawModels";
+import { baseOf, type IpAdapterCheck } from "@/lib/comfy/ipAdapter";
 import { editPresetCheck, type EditCheck } from "@/lib/comfy/editModels";
 import { usesFamily, type DrawPreset, type EditPreset } from "@/lib/comfy/presets";
 
@@ -16,6 +17,8 @@ export type EditModels =
       checks: EditCheck[];
       /** What ComfyUI has for every drawing model family, for drawing presets that use one (see drawPresetFamily). */
       families: FamilyCheck[];
+      /** What ComfyUI has for IP-Adapter (reference pictures) for each model base (see drawPresetIpAdapter). */
+      ipAdapters: IpAdapterCheck[];
       /** Every LoRA file ComfyUI lists, for the author's LoRA stacks. */
       loras: string[];
       /** The samplers and schedulers ComfyUI offers, for Settings. */
@@ -36,7 +39,7 @@ export function useEditModels(url: string, fresh?: number): EditModels {
     let live = true;
     if (fresh !== undefined) forgetEditModels();
     modelChecksFor(url).then(
-      ({ edits: checks, families }) =>
+      ({ edits: checks, families, ipAdapters }) =>
         live &&
         setFound({
           url,
@@ -46,6 +49,7 @@ export function useEditModels(url: string, fresh?: number): EditModels {
             ready: checks.filter((c) => c.ready),
             checks,
             families,
+            ipAdapters,
             loras: checks[0]?.loras ?? [],
             samplers: checks[0]?.samplers ?? [],
             schedulers: checks[0]?.schedulers ?? [],
@@ -68,6 +72,16 @@ export function useEditModels(url: string, fresh?: number): EditModels {
 export function drawPresetFamily(models: EditModels, preset: DrawPreset): FamilyCheck | null {
   if (models.state !== "done" || !usesFamily(preset)) return null;
   return familyPresetCheck(models.families, preset);
+}
+
+/**
+ * What ComfyUI has for IP-Adapter for a drawing preset's model base: null for a preset of a model family, and while
+ * ComfyUI hasn't answered (or can't be asked).
+ */
+export function drawPresetIpAdapter(models: EditModels, preset: DrawPreset): IpAdapterCheck | null {
+  if (models.state !== "done" || preset.family !== "checkpoint") return null;
+  const base = baseOf(preset);
+  return models.ipAdapters.find((c) => c.base === base) ?? null;
 }
 
 /** The edit presets ComfyUI can run now, each with its check (the files it uses); empty until ComfyUI has answered. */

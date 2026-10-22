@@ -4,7 +4,7 @@
 import { comfyVersion, listCheckpoints, nodeInfo } from "./client";
 import { checkDrawFamilies, DRAW_NODES, familyPresetCheck, type FamilyCheck } from "./drawModels";
 import { checkEditModels, EDIT_NODES, type EditCheck } from "./editModels";
-import { baseOf, checkIpAdapter, IPADAPTER_NODES, type IpAdapterCheck } from "./ipAdapter";
+import { baseOf, checkIpAdapter, IPADAPTER_NODES, MODEL_BASES, type IpAdapterCheck } from "./ipAdapter";
 import { comboOptions } from "./modelParts";
 import { usesFamily, type DrawPreset } from "./presets";
 import { BUILTIN_INPAINT, BUILTIN_WORKFLOW, parseWorkflow, WorkflowError } from "./workflow";
@@ -77,7 +77,7 @@ export async function checkComfy(url: string, presets: DrawPreset[]): Promise<Co
 }
 
 /** What ComfyUI has for the edit models and the drawing model families. */
-export type ModelChecks = { edits: EditCheck[]; families: FamilyCheck[] };
+export type ModelChecks = { edits: EditCheck[]; families: FamilyCheck[]; ipAdapters: IpAdapterCheck[] };
 
 // The Illustrate page asks once per ComfyUI address; the Settings check asks again.
 const cache = new Map<string, Promise<ModelChecks>>();
@@ -86,7 +86,11 @@ const cache = new Map<string, Promise<ModelChecks>>();
 export function modelChecksFor(url: string): Promise<ModelChecks> {
   let found = cache.get(url);
   if (!found) {
-    found = nodeInfo(url, [...new Set([...EDIT_NODES, ...DRAW_NODES])]).then((info) => ({ edits: checkEditModels(info), families: checkDrawFamilies(info) }));
+    found = nodeInfo(url, [...new Set([...EDIT_NODES, ...DRAW_NODES, ...IPADAPTER_NODES])]).then((info) => ({
+      edits: checkEditModels(info),
+      families: checkDrawFamilies(info),
+      ipAdapters: MODEL_BASES.map((base) => checkIpAdapter(info, base)),
+    }));
     found.catch(() => cache.delete(url));
     cache.set(url, found);
   }

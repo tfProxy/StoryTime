@@ -365,6 +365,11 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE picture_jobs ADD COLUMN mask TEXT;
   `,
+  // 23: the reference pictures a job was made with (reference pictures through IP-Adapter, or extra images
+  // for an edit): a JSON list of {source, label, role, weight}, null for none.
+  `
+  ALTER TABLE picture_jobs ADD COLUMN refs TEXT;
+  `,
 ];
 
 function open(): Database.Database {

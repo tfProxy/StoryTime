@@ -2,6 +2,7 @@
 // keeps in its queue and its history). A page that was refreshed while a job was being made reads it back
 // to find the job again, show it, and record it. Browser code.
 import type { PictureMoment } from "../pictureTarget";
+import { REFERENCE_ROLES, type StoredReference } from "./references";
 
 /** How a job was made: what the picture-job log records besides the chapter, ComfyUI's job id and the pictures. */
 export type JobRecord = {
@@ -19,6 +20,8 @@ export type JobRecord = {
   mask?: string | null;
   instruction?: string;
   edit_model?: string;
+  /** The reference pictures it was made with (at most 4); left out when there were none. */
+  refs?: StoredReference[];
 };
 
 export type JobTag = {
@@ -36,6 +39,9 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 const isString = (v: unknown): v is string => typeof v === "string";
 const isNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
+const isStoredReference = (v: unknown): v is StoredReference =>
+  isObject(v) && isString(v.source) && isString(v.label) && isNumber(v.weight) && (REFERENCE_ROLES as readonly unknown[]).includes(v.role);
+
 /** The tag in a job's `extra_data`, or null when it has none (a job from before jobs were tagged this fully, or not StoryTime's). */
 export function readTag(extra: unknown): JobTag | null {
   const t = isObject(extra) ? extra.storytime : null;
@@ -48,5 +54,6 @@ export function readTag(extra: unknown): JobTag | null {
   if ((j.source !== undefined && !isString(j.source)) || (j.instruction !== undefined && !isString(j.instruction)) || (j.edit_model !== undefined && !isString(j.edit_model))) return null;
   if (j.denoise !== undefined && j.denoise !== null && !isNumber(j.denoise)) return null;
   if (j.mask !== undefined && j.mask !== null && (!isString(j.mask) || j.mask.length === 0 || j.mask.length > 300)) return null;
+  if (j.refs !== undefined && !(Array.isArray(j.refs) && j.refs.length <= 4 && j.refs.every(isStoredReference))) return null;
   return { chapterId: t.chapterId, storyId: t.storyId, clientId: t.clientId, job: j as JobRecord, ...(isString(t.instance) && { instance: t.instance }) };
 }

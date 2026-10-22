@@ -38,7 +38,15 @@ export type EditParams = {
   tuning?: EditTuning;
   /** Where the text encoder is loaded: ComfyUI's "default", or "cpu" to keep it in system memory. */
   textEncoderDevice?: TextEncoderDevice;
+  /**
+   * Reference pictures (names in ComfyUI's input folder, at most 2) shown to the model beside the starting
+   * picture: Qwen takes them as images 2 and 3, Kontext uses the first as one more reference latent.
+   */
+  refs?: string[];
 };
+
+/** How many reference pictures an edit takes: Qwen-Image-Edit two (images 2 and 3), Kontext one. */
+export const EDIT_REFS = { qwen: 2, kontext: 1 } as const;
 
 /**
  * What an edit model runs with: the sampler's settings, the default strength the Edit tab starts at, and
@@ -145,11 +153,16 @@ function qwenWorkflow(files: Record<string, string>, p: EditParams, fast = false
   const t = p.tuning ?? QWEN_DEFAULTS;
   const lightning = fast && files.speedUp ? files.speedUp : null;
   const chain = loraChain(["1", 0], lightning, p.loras);
+  // Each reference is one more image for the text encoders ("image 2", "image 3" in the instruction).
+  const refs = (p.refs ?? []).slice(0, EDIT_REFS.qwen);
+  const refNodes: Workflow = Object.fromEntries(refs.map((image, i) => [`3${i}`, { class_type: "LoadImage", inputs: { image } }]));
+  const refInputs = Object.fromEntries(refs.map((_, i) => [`image${i + 2}`, [`3${i}`, 0]]));
   const encode = (prompt: string) => ({
     class_type: "TextEncodeQwenImageEditPlus",
-    inputs: { clip: ["2", 0], vae: ["3", 0], image1: ["11", 0], prompt },
+    inputs: { clip: ["2", 0], vae: ["3", 0], image1: ["11", 0], ...refInputs, prompt },
   });
   return {
+    ...refNodes,
     "1": { class_type: "UNETLoader", inputs: { unet_name: files.model, weight_dtype: "default" } },
     "2": { class_type: "CLIPLoader", inputs: { clip_name: files.textEncoder, type: "qwen_image", device: p.textEncoderDevice ?? "default" } },
     "3": { class_type: "VAELoader", inputs: { vae_name: files.vae } },
@@ -173,14 +186,25 @@ function qwenWorkflow(files: Record<string, string>, p: EditParams, fast = false
 function kontextWorkflow(files: Record<string, string>, p: EditParams): Workflow {
   const t = p.tuning ?? KONTEXT_DEFAULTS;
   const chain = loraChain(["1", 0], null, p.loras);
+  // A reference is a second reference latent after the starting picture's: loaded, scaled to the size, encoded.
+  const ref = (p.refs ?? []).slice(0, EDIT_REFS.kontext)[0];
+  const refNodes: Workflow = ref
+    ? {
+        "30": { class_type: "LoadImage", inputs: { image: ref } },
+        "31": { class_type: "ImageScale", inputs: { image: ["30", 0], upscale_method: "lanczos", width: p.width, height: p.height, crop: "disabled" } },
+        "32": { class_type: "VAEEncode", inputs: { pixels: ["31", 0], vae: ["3", 0] } },
+        "33": { class_type: "ReferenceLatent", inputs: { conditioning: ["5", 0], latent: ["32", 0] } },
+      }
+    : {};
   return {
+    ...refNodes,
     "1": { class_type: "UNETLoader", inputs: { unet_name: files.model, weight_dtype: "default" } },
     ...chain.nodes,
     "2": { class_type: "DualCLIPLoader", inputs: { clip_name1: files.clipL, clip_name2: files.t5, type: "flux", device: p.textEncoderDevice ?? "default" } },
     "3": { class_type: "VAELoader", inputs: { vae_name: files.vae } },
     "4": { class_type: "CLIPTextEncode", inputs: { clip: ["2", 0], text: p.instruction } },
     "5": { class_type: "ReferenceLatent", inputs: { conditioning: ["4", 0], latent: ["12", 0] } },
-    "6": { class_type: "FluxGuidance", inputs: { conditioning: ["5", 0], guidance: t.guidance ?? KONTEXT_DEFAULTS.guidance } },
+    "6": { class_type: "FluxGuidance", inputs: { conditioning: [ref ? "33" : "5", 0], guidance: t.guidance ?? KONTEXT_DEFAULTS.guidance } },
     "7": { class_type: "ConditioningZeroOut", inputs: { conditioning: ["4", 0] } },
     "8": {
       class_type: "KSampler",

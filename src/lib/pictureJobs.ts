@@ -9,6 +9,13 @@ import { PostError } from "./stories";
 const text = (max: number) => z.string().max(max);
 const JobImage = z.object({ filename: text(500).min(1), subfolder: text(500), type: text(50).min(1) });
 
+const StoredRefSchema = z.object({
+  source: text(1000).min(1),
+  label: text(200),
+  role: z.enum(["character", "item", "place", "style"]),
+  weight: z.number().min(0).max(2),
+});
+
 export const NewJobSchema = z
   .object({
     /** The chapter the job was for; a cover job gives its story instead. */
@@ -28,6 +35,8 @@ export const NewJobSchema = z
     denoise: z.number().min(0).max(1).nullish(),
     /** A redraw of only a painted part: the mask picture's name in ComfyUI's input folder. Needs a starting picture. */
     mask: text(300).min(1).nullish(),
+    /** The reference pictures the job was made with (at most 4). */
+    refs: z.array(StoredRefSchema).max(4).nullish(),
     /** An edit: what it was told to change, and the model (an id from EDIT_MODELS). Both or neither. */
     instruction: text(LIMITS.picturePrompt).min(1).nullish(),
     edit_model: text(100).min(1).nullish(),
@@ -60,6 +69,8 @@ export type PictureJob = {
   source: string | null;
   denoise: number | null;
   mask: string | null;
+  /** The reference pictures it was made with, or null for none. */
+  refs: z.infer<typeof StoredRefSchema>[] | null;
   instruction: string | null;
   edit_model: string | null;
   images: z.infer<typeof JobImage>[];
@@ -73,7 +84,7 @@ export type PictureJob = {
 export const PICTURE_MARKS = ["pinned", "rejected"] as const;
 export type PictureMark = (typeof PICTURE_MARKS)[number];
 
-type Row = Omit<PictureJob, "images" | "marks"> & { images: string; seq: number };
+type Row = Omit<PictureJob, "images" | "marks" | "refs"> & { images: string; refs: string | null; seq: number };
 
 /** The jobs of the rows, with each picture's mark. */
 function toJobs(rows: Row[]): PictureJob[] {
@@ -84,17 +95,17 @@ function toJobs(rows: Row[]): PictureJob[] {
       .all(...rows.map((r) => r.id)) as { job_id: string; image_index: number; mark: PictureMark }[];
     for (const m of found) marks.set(`${m.job_id}:${m.image_index}`, m.mark);
   }
-  return rows.map(({ seq, images, ...job }) => {
+  return rows.map(({ seq, images, refs, ...job }) => {
     void seq; // only the cursor for paging uses it
     const list = JSON.parse(images) as PictureJob["images"];
-    return { ...job, images: list, marks: list.map((_, i) => marks.get(`${job.id}:${i}`) ?? null) };
+    return { ...job, refs: refs ? (JSON.parse(refs) as PictureJob["refs"]) : null, images: list, marks: list.map((_, i) => marks.get(`${job.id}:${i}`) ?? null) };
   });
 }
 
 const toJob = (row: Row) => toJobs([row])[0];
 
 const COLUMNS = `rowid AS seq, id, story_id, chapter_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
-                 moment, source, denoise, mask, instruction, edit_model, images, created_at, seen_at`;
+                 moment, source, denoise, mask, refs, instruction, edit_model, images, created_at, seen_at`;
 
 /**
  * Records a finished job for a chapter, or (given a story instead) for the story's cover. Recording the
@@ -122,13 +133,13 @@ export function recordPictureJob(input: NewJob): PictureJob {
   db()
     .prepare(
       `INSERT INTO picture_jobs (id, story_id, chapter_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
-                                 moment, source, denoise, mask, instruction, edit_model, images, created_at, seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                 moment, source, denoise, mask, refs, instruction, edit_model, images, created_at, seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id, storyId, chapterId, input.prompt_id, input.prompt, input.negative, input.checkpoint,
       input.width, input.height, input.seed, input.count, input.moment ?? null, input.source ?? null,
-      input.denoise ?? null, input.mask ?? null, input.instruction ?? null, input.edit_model ?? null, JSON.stringify(input.images), now,
+      input.denoise ?? null, input.mask ?? null, input.refs?.length ? JSON.stringify(input.refs) : null, input.instruction ?? null, input.edit_model ?? null, JSON.stringify(input.images), now,
       input.unseen ? null : now,
     );
   return toJob(db().prepare(`SELECT ${COLUMNS} FROM picture_jobs WHERE id = ?`).get(id) as Row);

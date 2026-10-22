@@ -4,6 +4,7 @@ import type { ComfyImage, Progress } from "@/lib/comfy/client";
 import type { PictureMoment } from "@/lib/pictureTarget";
 import type { PictureJob, PictureMark } from "@/lib/pictureJobs";
 import { editFilesExtras, editModel } from "@/lib/comfy/editModels";
+import { referenceText, type StoredReference } from "@/lib/comfy/references";
 
 /** "1 LoRA", "3 LoRAs", or nothing for none. */
 const loraCount = (n: number) => (n === 0 ? false : n === 1 ? "1 LoRA" : `${n} LoRAs`);
@@ -20,7 +21,15 @@ export type MadeWith = { checkpoint: string; width: number; height: number; deno
  * What "Load prompt" hands back: the text and, where known, the seed, the settings and the moment of the
  * job that made the pictures.
  */
-export type PromptToLoad = { prompt: string; negative: string; seed: number | null; settings?: MadeWith | null; moment?: PictureMoment | null };
+export type PromptToLoad = {
+  prompt: string;
+  negative: string;
+  seed: number | null;
+  settings?: MadeWith | null;
+  moment?: PictureMoment | null;
+  /** The references the pictures were made with (Load prompt brings them back from 2c on). */
+  refs?: StoredReference[];
+};
 
 /**
  * One of a chapter's pictures. `jobId` is its job's record in StoryTime (null when that couldn't be
@@ -44,6 +53,8 @@ export type Picture = {
   source: string | null;
   /** The mask's file name in ComfyUI's input folder when only a painted part of the starting picture was redrawn, else null. */
   mask: string | null;
+  /** The reference pictures it was made with (none when missing or empty). */
+  refs?: StoredReference[];
   /** An edit: what it was told to change, and the edit model's id (see EDIT_MODELS); null otherwise. */
   instruction: string | null;
   editModel: string | null;
@@ -77,6 +88,7 @@ export function picturesOf(jobs: PictureJob[]): Picture[] {
       denoise: job.denoise,
       source: job.source,
       mask: job.mask ?? null,
+      refs: job.refs ?? [],
       instruction: job.instruction ?? null,
       editModel: job.edit_model ?? null,
       moment: job.moment,
@@ -149,6 +161,7 @@ export function pictureDetails(p: Picture, titles: Record<string, string>): Pict
     ...(p.source ? [{ label: "Started from", value: sourceText(p.source, titles) }] : []),
     ...(p.denoise !== null ? [{ label: "Strength (denoise)", value: String(p.denoise) }] : []),
     ...(p.mask ? [{ label: "Area", value: "painted part only" }] : []),
+    ...(p.refs?.length ? [{ label: "References", value: p.refs.map(referenceText).join(", ") }] : []),
     { label: "File", value: `${filePath(p.image)} (ComfyUI ${p.image.type})` },
   ];
 }
@@ -188,7 +201,7 @@ export function progressText(p: JobProgress): string {
 }
 
 /** What a run of pictures shares: the prompts and the settings they were made with. */
-type MadeFrom = Pick<Picture, "prompt" | "negative" | "checkpoint" | "width" | "height" | "denoise" | "source" | "mask" | "instruction" | "editModel" | "moment">;
+type MadeFrom = Pick<Picture, "prompt" | "negative" | "checkpoint" | "width" | "height" | "denoise" | "source" | "mask" | "refs" | "instruction" | "editModel" | "moment">;
 
 /** A job still being made, with a place kept for each of its pictures. */
 export type PendingJob = MadeFrom & { key: string; count: number; progress: JobProgress; stop: () => void };
@@ -198,7 +211,7 @@ export type PendingJob = MadeFrom & { key: string; count: number; progress: JobP
  * only counts for pictures made from the prompt alone.
  */
 const settingsOf = (m: MadeFrom) =>
-  JSON.stringify([m.prompt, m.negative, m.checkpoint, m.moment, m.source, m.denoise, m.mask, m.instruction, m.editModel, m.source ? null : [m.width, m.height]]);
+  JSON.stringify([m.prompt, m.negative, m.checkpoint, m.moment, m.source, m.denoise, m.mask, m.instruction, m.editModel, (m.refs ?? []).map((r) => [r.source, r.role, r.weight]), m.source ? null : [m.width, m.height]]);
 
 /** A run of pictures made one after another with the same settings: its jobs still being made, then its pictures. */
 export type PictureRun = { key: string; pending: PendingJob[]; pictures: Picture[] };

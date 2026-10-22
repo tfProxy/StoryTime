@@ -4,8 +4,10 @@
 import type { PictureMoment, PictureTarget } from "../pictureTarget";
 import type { ComfySettings } from "../settingsSchema";
 import { buildDraw, drawTuning, familyProblems, type FamilyCheck } from "./drawModels";
-import { buildEdit, editFilesText, editSize, type EditCheck, type EditLora, type EditTuning, type TextEncoderDevice } from "./editModels";
+import { buildEdit, EDIT_REFS, editFilesText, editSize, type EditCheck, type EditLora, type EditTuning, type TextEncoderDevice } from "./editModels";
 import { drawFilesText, presetName, usesFamily, type DrawPreset } from "./presets";
+import { ipAdapterProblem, type IpAdapterCheck } from "./ipAdapter";
+import { MAX_REFERENCES, storedOf, uploadReference, type Reference } from "./references";
 import { uploadStart, type StartPicture, type Uploaded } from "./startPicture";
 import { builtinSampler, describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "./workflow";
 import { cancelPrompt, queuePrompt, uploadImage, type Progress } from "./client";
@@ -43,7 +45,17 @@ export type JobInput = {
   } | null;
   /** The seed to use, or null for a random one. */
   seed: number | null;
+  /** Reference pictures (at most MAX_REFERENCES); none by default. A drawing uses them through IP-Adapter, an edit as extra images. */
+  refs?: Reference[];
+  /** What ComfyUI has for IP-Adapter for the drawing preset's model base (see `drawPresetIpAdapter`); needed when `refs` is used for drawing. */
+  ipAdapter?: IpAdapterCheck | null;
 };
+
+/** How many references an edit model really uses: the rest are left out of the job and its record. */
+const editRefLimit = (modelId: string) => (modelId === "flux-kontext" ? EDIT_REFS.kontext : EDIT_REFS.qwen);
+
+/** The references a job really uses (an edit model takes only its first one or two). */
+export const refsOf = (i: JobInput): Reference[] => (i.edit ? (i.refs ?? []).slice(0, editRefLimit(i.edit.check.model.id)) : i.refs ?? []);
 
 /** The strength a job's pictures are recorded with: a redraw's, an edit's when it is less than full, else null. */
 export const denoiseOf = (i: JobInput) => (i.edit ? (i.edit.strength < 1 ? i.edit.strength : null) : i.start ? i.redraw : null);
@@ -63,6 +75,7 @@ export const sameJob = (a: JobInput) =>
     a.start && !a.edit ? a.redraw : null, maskOf(a)?.id ?? null,
     a.edit?.check.model.id ?? null, a.edit?.instruction ?? null,
     a.edit?.strength ?? null, a.edit?.fast ?? null, a.edit?.loras ?? null, a.edit?.tuning ?? null, a.edit?.textEncoderDevice ?? null, a.seed,
+    refsOf(a).map((r) => [r.key, r.role, r.weight]),
   ]);
 
 /** A mask's upload to ComfyUI, kept (by the mask object, which changes whenever the mask does) so the next job with it doesn't send it again. */
@@ -137,6 +150,18 @@ export async function queueJob(
       throw new Error("Your workflow can't redraw only part of a picture. Clear the painted area, or add {{mask}} to the workflow (see Settings).");
     }
   }
+  const refs = refsOf(input);
+  if (refs.length > MAX_REFERENCES) throw new Error(`A picture can use at most ${MAX_REFERENCES} reference pictures.`);
+  if (refs.length > 0 && !edit) {
+    if (fromFamily) {
+      throw new Error(`The drawing preset “${presetName(draw)}” is for a model family, and those can't use reference pictures yet. Take the references out, or draw with a checkpoint preset.`);
+    }
+    if (!describeWorkflow(base!).refs) {
+      throw new Error("Your workflow can't take reference pictures (it has placeholders). Take the references out, or use a workflow without placeholders.");
+    }
+    const problem = ipAdapterProblem(input.ipAdapter ?? null);
+    if (problem) throw new Error(problem);
+  }
   let from: Uploaded | null = null;
   if (start) {
     onProgress({ stage: "uploading" });
@@ -163,6 +188,13 @@ export async function queueJob(
     maskName = await uploadMask(comfy.url, area);
     onProgress({ stage: "queued", ahead: null });
   }
+  // The references go up once each, like the starting picture.
+  let refNames: string[] = [];
+  if (refs.length > 0) {
+    onProgress({ stage: "uploading" });
+    refNames = await Promise.all(refs.map((r) => uploadReference(comfy.url, r)));
+    onProgress({ stage: "queued", ahead: null });
+  }
   // From a picture the pictures are its size; an edit is its shape at about one megapixel.
   const { width, height } = from && edit ? editSize(from.width, from.height) : { width: from?.width ?? comfy.width, height: from?.height ?? comfy.height };
   if (from) hooks.onSize(width, height);
@@ -171,7 +203,7 @@ export async function queueJob(
     edit && from
       ? buildEdit(
           edit.check,
-          { image: from.name, instruction: edit.instruction, seed, count, width, height, prefix, denoise: edit.strength, loras: edit.loras, tuning: edit.tuning, textEncoderDevice: edit.textEncoderDevice },
+          { image: from.name, instruction: edit.instruction, seed, count, width, height, prefix, denoise: edit.strength, loras: edit.loras, tuning: edit.tuning, textEncoderDevice: edit.textEncoderDevice, refs: refNames },
           edit.fast,
         )
       : fromFamily && family
@@ -193,6 +225,10 @@ export async function queueJob(
           prefix,
           sampler: builtinSampler(draw.sampler),
           loras: drawLoras,
+          ...(refs.length > 0 && {
+            refs: refs.map((r, i) => ({ image: refNames[i], role: r.role, weight: r.weight })),
+            ipAdapter: { ipadapter: input.ipAdapter!.files.ipAdapter, clipVision: input.ipAdapter!.files.clipVision },
+          }),
           ...(from && { image: from.name, denoise: input.redraw, ...(maskName && { mask: maskName }) }),
         });
   const denoise = from ? denoiseOf(input) : null;
@@ -209,6 +245,7 @@ export async function queueJob(
     moment,
     ...(from && { source: start!.source, denoise }),
     ...(maskName && { mask: maskName }),
+    ...(refs.length > 0 && { refs: storedOf(refs) }),
     ...(edit && { instruction: edit.instruction, edit_model: edit.check.model.id }),
   };
   if (signal.aborted) throw new DOMException("Stopped", "AbortError");

@@ -147,6 +147,7 @@ function picturesOfJob(chapterId: string | null, jobId: string | null, promptId:
     denoise: record.denoise ?? null,
     source: record.source ?? null,
     mask: record.mask ?? null,
+    refs: record.refs ?? [],
     instruction: record.instruction ?? null,
     editModel: record.edit_model ?? null,
     moment: record.moment,
@@ -368,6 +369,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
           denoise: job.denoise ?? null,
           source: job.source ?? null,
           mask: job.mask ?? null,
+          refs: job.refs ?? [],
           instruction: job.instruction ?? null,
           editModel: job.edit_model ?? null,
           moment: job.moment,
@@ -400,7 +402,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
       keep(
         {
           chapterId, storyId, count: job.count, prompt: job.prompt, negative: job.negative, checkpoint: job.checkpoint, width: job.width, height: job.height,
-          denoise: job.denoise ?? null, source: job.source ?? null, mask: job.mask ?? null, instruction: job.instruction ?? null, editModel: job.edit_model ?? null, moment: job.moment,
+          denoise: job.denoise ?? null, source: job.source ?? null, mask: job.mask ?? null, refs: job.refs ?? [], instruction: job.instruction ?? null, editModel: job.edit_model ?? null, moment: job.moment,
         },
         result,
       );
@@ -422,7 +424,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
         keep(
           {
             chapterId: j.chapter_id, storyId: j.story_id, count: j.images.length, prompt: j.prompt, negative: j.negative, checkpoint: j.checkpoint,
-            width: j.width, height: j.height, denoise: j.denoise, source: j.source, mask: j.mask, instruction: j.instruction, editModel: j.edit_model, moment: j.moment,
+            width: j.width, height: j.height, denoise: j.denoise, source: j.source, mask: j.mask, refs: j.refs ?? [], instruction: j.instruction, editModel: j.edit_model, moment: j.moment,
           },
           { pictures: picturesOf([j]), unseen: true },
         );

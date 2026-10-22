@@ -215,6 +215,34 @@ ok(r.json.jobs.length > 0 && r.json.jobs.every((j) => j.chapter_id === two), "no
   ok((await call("GET", `/api/picture-jobs?chapter=${ch}`)).json.jobs.length === 2, "…and nothing was recorded by those");
 }
 
+// ---- reference pictures ----
+{
+  const s = await call("POST", "/api/stories", { title: "Refs", chapter: { title: "One", body: "first", choices: [] } });
+  const ch = s.json.chapter_id;
+  const refs = [
+    { source: "comfy:StoryTime/a/b/jim_00001_.png", label: "Jim", role: "character", weight: 0.7 },
+    { source: `saved:${ch}:header`, label: "Tavern", role: "place", weight: 0.5 },
+  ];
+  let m = await call("POST", "/api/picture-jobs", job(ch, 1, { refs }));
+  ok(m.status === 201 && JSON.stringify(m.json.refs) === JSON.stringify(refs), "a job made with references records them (source, label, role, weight)");
+  m = await call("POST", "/api/picture-jobs", job(ch, 2));
+  ok(m.status === 201 && m.json.refs === null, "a job with none records null");
+  m = await call("POST", "/api/picture-jobs", job(ch, 3, { refs: [] }));
+  ok(m.status === 201 && m.json.refs === null, "…an empty list too");
+  const listed = (await call("GET", `/api/picture-jobs?chapter=${ch}`)).json.jobs;
+  ok(JSON.stringify(listed.find((j) => j.prompt_id === "p1")?.refs) === JSON.stringify(refs) && listed.find((j) => j.prompt_id === "p2")?.refs === null, "the list gives each job's references");
+  for (const [what, bad] of [
+    ["more than four references", Array.from({ length: 5 }, () => refs[0])],
+    ["an unknown role", [{ ...refs[0], role: "monster" }]],
+    ["a reference with no source", [{ ...refs[0], source: "" }]],
+    ["a weight that isn't a number", [{ ...refs[0], weight: "high" }]],
+  ]) {
+    const x = await call("POST", "/api/picture-jobs", job(ch, 9, { refs: bad }));
+    ok(x.status === 400 && x.json?.error, `rejected: ${what}`);
+  }
+  ok((await call("GET", `/api/picture-jobs?chapter=${ch}`)).json.jobs.length === 3, "…and nothing was recorded by those");
+}
+
 // ---- which ComfyUI jobs are already recorded (the picture queue checks before recording jobs it finds in ComfyUI) ----
 {
   const unknown = `never-${Date.now()}`;

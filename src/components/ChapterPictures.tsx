@@ -147,6 +147,7 @@ export default function ChapterPictures({ target, titles, comfyUrl, pictures, on
       // An edit's strength is not the Redraw strength, so it isn't offered back.
       settings: { checkpoint: p.checkpoint, width: p.width, height: p.height, denoise: p.editModel ? null : p.denoise },
       moment: p.moment,
+      refs: p.refs ?? [],
     });
   }
 

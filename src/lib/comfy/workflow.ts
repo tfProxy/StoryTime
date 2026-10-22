@@ -22,6 +22,8 @@
 // Either way, the saved pictures' file name prefix (`filename_prefix`) is set when it is "StoryTime",
 // the built-in workflow's prefix, or contains "{{prefix}}". Any other prefix is left alone.
 
+import { withReferences, type RefInput } from "./ipAdapter";
+
 export type WorkflowNode = { class_type: string; inputs: Record<string, unknown>; _meta?: unknown };
 export type Workflow = Record<string, WorkflowNode>;
 
@@ -45,6 +47,10 @@ export type PictureParams = {
   sampler?: SamplerTuning;
   /** The preset's LoRAs, applied in order after the checkpoint (see `addLoras`). */
   loras?: { name: string; strength: number }[];
+  /** Reference pictures (already in ComfyUI's input folder), put in front of the sampler's model with IP-Adapter; needs `ipAdapter`. */
+  refs?: RefInput[];
+  /** The IP-Adapter and CLIP Vision file names to use for `refs`. */
+  ipAdapter?: { ipadapter: string; clipVision: string };
 };
 
 /** What a sampler runs with: its steps, CFG, sampler and scheduler (names as ComfyUI's KSampler lists them). */
@@ -74,6 +80,8 @@ export type WorkflowFit = {
   image: boolean;
   /** Whether it can redraw only part of a picture (needs a picture to start from). */
   mask: boolean;
+  /** Whether it can take reference pictures (IP-Adapter in front of the sampler's model); placeholder workflows can't. */
+  refs: boolean;
 };
 
 /** Text-to-image with an SDXL checkpoint: 30 steps of DPM++ 2M Karras at CFG 6 (BUILTIN_SAMPLER; Settings can change them). */
@@ -202,7 +210,7 @@ function vaeSource(wf: Workflow): [string, number] | null {
 
 /** What the workflow lets StoryTime set. */
 export function describeWorkflow(wf: Workflow): WorkflowFit {
-  if (wf === BUILTIN_WORKFLOW) return { mode: "builtin", prompt: true, negative: true, checkpoint: true, size: true, count: true, seed: true, image: true, mask: true };
+  if (wf === BUILTIN_WORKFLOW) return { mode: "builtin", prompt: true, negative: true, checkpoint: true, size: true, count: true, seed: true, image: true, mask: true, refs: true };
   const found = placeholdersIn(wf);
   if (found.size > 0) {
     return {
@@ -215,6 +223,7 @@ export function describeWorkflow(wf: Workflow): WorkflowFit {
       seed: found.has("{{seed}}"),
       image: found.has("{{image}}"),
       mask: found.has("{{mask}}"),
+      refs: false,
     };
   }
   const nodes = Object.values(wf);
@@ -230,6 +239,7 @@ export function describeWorkflow(wf: Workflow): WorkflowFit {
     seed: nodes.some((n) => SEED_INPUTS.some((k) => typeof n.inputs[k] === "number")),
     image,
     mask: image,
+    refs: nodes.some((n) => /^(KSampler|KSamplerAdvanced)$/.test(n.class_type) && isLink(n.inputs.model)),
   };
 }
 
@@ -246,12 +256,21 @@ function setPrefix(wf: Workflow, prefix: string) {
 /** A copy of the workflow with the picture's settings filled in. Throws WorkflowError if the prompt has nowhere to go. */
 export function fillWorkflow(wf: Workflow, p: PictureParams): Workflow {
   const builtin = wf === BUILTIN_WORKFLOW;
-  const out = fillSettings(p.image && builtin ? (p.mask ? BUILTIN_INPAINT : BUILTIN_IMG2IMG) : wf, p);
+  const refs = p.refs ?? [];
+  if (refs.length > 0) {
+    if (!describeWorkflow(wf).refs) {
+      throw new WorkflowError("This workflow can't take reference pictures: it has placeholders, so StoryTime can't tell where the sampler's model comes from. Take the references out, or use a workflow without placeholders.");
+    }
+    if (!p.ipAdapter) throw new WorkflowError("Reference pictures need the IP-Adapter and CLIP Vision files, and none were given.");
+  }
+  let out = fillSettings(p.image && builtin ? (p.mask ? BUILTIN_INPAINT : BUILTIN_IMG2IMG) : wf, p);
   if (builtin && p.sampler) {
     const { steps, cfg, sampler, scheduler } = p.sampler;
     Object.assign(out["3"].inputs, { steps, cfg, sampler_name: sampler, scheduler });
   }
   addLoras(out, p.loras ?? []);
+  // After the LoRAs, so the references' adapters wrap the model the sampler really uses.
+  if (refs.length > 0) out = withReferences(out, refs, p.ipAdapter!);
   setPrefix(out, p.prefix ?? DEFAULT_PREFIX);
   return out;
 }
