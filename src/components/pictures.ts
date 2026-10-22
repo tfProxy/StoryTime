@@ -10,6 +10,8 @@ const loraCount = (n: number) => (n === 0 ? false : n === 1 ? "1 LoRA" : `${n} L
 
 /** How a starting picture is used: redrawn from the prompt at a strength, or edited by instruction. */
 export type StartMode = "redraw" | "edit";
+/** What choosing a picture's ☰ menu item asks for: a Redraw or an Edit, or a Redraw that opens the mask editor ("Change part of this…"). */
+export type StartRequest = StartMode | "paint";
 
 /** The shared settings a picture was made with, which "Load prompt" offers to use again. */
 export type MadeWith = { checkpoint: string; width: number; height: number; denoise: number | null };
@@ -40,6 +42,8 @@ export type Picture = {
   denoise: number | null;
   /** The starting picture it was made from (`comfy:…` or `saved:…`), or null. */
   source: string | null;
+  /** The mask's file name in ComfyUI's input folder when only a painted part of the starting picture was redrawn, else null. */
+  mask: string | null;
   /** An edit: what it was told to change, and the edit model's id (see EDIT_MODELS); null otherwise. */
   instruction: string | null;
   editModel: string | null;
@@ -72,6 +76,7 @@ export function picturesOf(jobs: PictureJob[]): Picture[] {
       height: job.height,
       denoise: job.denoise,
       source: job.source,
+      mask: job.mask ?? null,
       instruction: job.instruction ?? null,
       editModel: job.edit_model ?? null,
       moment: job.moment,
@@ -86,7 +91,7 @@ export function picturesOf(jobs: PictureJob[]): Picture[] {
 }
 
 /** What tells pictures from the same prompt apart: the settings, and the seed when `withSeed` (the list under the pictures leaves it out; Info has it). */
-export function pictureCaption(c: { seed: number; checkpoint: string; width: number; height: number; denoise: number | null; editModel?: string | null }, withSeed = false): string {
+export function pictureCaption(c: { seed: number; checkpoint: string; width: number; height: number; denoise: number | null; mask?: string | null; editModel?: string | null }, withSeed = false): string {
   // The files come after the model's or checkpoint's, joined by " + ": an edit's speed-up, and the LoRAs (each with its strength).
   const [main, ...extras] = c.checkpoint.split(" + ");
   return [
@@ -96,6 +101,7 @@ export function pictureCaption(c: { seed: number; checkpoint: string; width: num
     `${c.width} × ${c.height}`,
     withSeed && `seed ${c.seed}`,
     c.denoise !== null && `strength ${c.denoise}`,
+    c.mask && "painted area",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -142,6 +148,7 @@ export function pictureDetails(p: Picture, titles: Record<string, string>): Pict
     ...(p.batch > 1 ? [{ label: "Batch", value: `picture ${p.index + 1} of ${p.batch} (batch size ${p.batch}, batch index ${p.index})` }] : []),
     ...(p.source ? [{ label: "Started from", value: sourceText(p.source, titles) }] : []),
     ...(p.denoise !== null ? [{ label: "Strength (denoise)", value: String(p.denoise) }] : []),
+    ...(p.mask ? [{ label: "Area", value: "painted part only" }] : []),
     { label: "File", value: `${filePath(p.image)} (ComfyUI ${p.image.type})` },
   ];
 }
@@ -181,7 +188,7 @@ export function progressText(p: JobProgress): string {
 }
 
 /** What a run of pictures shares: the prompts and the settings they were made with. */
-type MadeFrom = Pick<Picture, "prompt" | "negative" | "checkpoint" | "width" | "height" | "denoise" | "source" | "instruction" | "editModel" | "moment">;
+type MadeFrom = Pick<Picture, "prompt" | "negative" | "checkpoint" | "width" | "height" | "denoise" | "source" | "mask" | "instruction" | "editModel" | "moment">;
 
 /** A job still being made, with a place kept for each of its pictures. */
 export type PendingJob = MadeFrom & { key: string; count: number; progress: JobProgress; stop: () => void };
@@ -191,7 +198,7 @@ export type PendingJob = MadeFrom & { key: string; count: number; progress: JobP
  * only counts for pictures made from the prompt alone.
  */
 const settingsOf = (m: MadeFrom) =>
-  JSON.stringify([m.prompt, m.negative, m.checkpoint, m.moment, m.source, m.denoise, m.instruction, m.editModel, m.source ? null : [m.width, m.height]]);
+  JSON.stringify([m.prompt, m.negative, m.checkpoint, m.moment, m.source, m.denoise, m.mask, m.instruction, m.editModel, m.source ? null : [m.width, m.height]]);
 
 /** A run of pictures made one after another with the same settings: its jobs still being made, then its pictures. */
 export type PictureRun = { key: string; pending: PendingJob[]; pictures: Picture[] };

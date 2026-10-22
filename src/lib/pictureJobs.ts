@@ -26,6 +26,8 @@ export const NewJobSchema = z
     moment: z.enum(["start", "end", "cover"]).nullish(),
     source: text(1000).nullish(),
     denoise: z.number().min(0).max(1).nullish(),
+    /** A redraw of only a painted part: the mask picture's name in ComfyUI's input folder. Needs a starting picture. */
+    mask: text(300).min(1).nullish(),
     /** An edit: what it was told to change, and the model (an id from EDIT_MODELS). Both or neither. */
     instruction: text(LIMITS.picturePrompt).min(1).nullish(),
     edit_model: text(100).min(1).nullish(),
@@ -37,7 +39,8 @@ export const NewJobSchema = z
   .refine((j) => !j.story_id === (j.moment !== "cover"), { message: "a cover job is given its story, and its moment is cover", path: ["moment"] })
   .refine((j) => !j.instruction === !j.edit_model, { message: "an edit needs both its instruction and its model", path: ["instruction"] })
   .refine((j) => j.prompt.length > 0 || !!j.instruction, { message: "a prompt is needed (or, for an edit, an instruction)", path: ["prompt"] })
-  .refine((j) => !j.instruction || !!j.source, { message: "an edit needs the picture it started from", path: ["source"] });
+  .refine((j) => !j.instruction || !!j.source, { message: "an edit needs the picture it started from", path: ["source"] })
+  .refine((j) => !j.mask || (!!j.source && !j.instruction), { message: "a mask needs the picture it started from, and is for a redraw, not an edit", path: ["mask"] });
 export type NewJob = z.infer<typeof NewJobSchema>;
 
 export type PictureJob = {
@@ -56,6 +59,7 @@ export type PictureJob = {
   moment: "start" | "end" | "cover" | null;
   source: string | null;
   denoise: number | null;
+  mask: string | null;
   instruction: string | null;
   edit_model: string | null;
   images: z.infer<typeof JobImage>[];
@@ -90,7 +94,7 @@ function toJobs(rows: Row[]): PictureJob[] {
 const toJob = (row: Row) => toJobs([row])[0];
 
 const COLUMNS = `rowid AS seq, id, story_id, chapter_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
-                 moment, source, denoise, instruction, edit_model, images, created_at, seen_at`;
+                 moment, source, denoise, mask, instruction, edit_model, images, created_at, seen_at`;
 
 /**
  * Records a finished job for a chapter, or (given a story instead) for the story's cover. Recording the
@@ -118,13 +122,13 @@ export function recordPictureJob(input: NewJob): PictureJob {
   db()
     .prepare(
       `INSERT INTO picture_jobs (id, story_id, chapter_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
-                                 moment, source, denoise, instruction, edit_model, images, created_at, seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                 moment, source, denoise, mask, instruction, edit_model, images, created_at, seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id, storyId, chapterId, input.prompt_id, input.prompt, input.negative, input.checkpoint,
       input.width, input.height, input.seed, input.count, input.moment ?? null, input.source ?? null,
-      input.denoise ?? null, input.instruction ?? null, input.edit_model ?? null, JSON.stringify(input.images), now,
+      input.denoise ?? null, input.mask ?? null, input.instruction ?? null, input.edit_model ?? null, JSON.stringify(input.images), now,
       input.unseen ? null : now,
     );
   return toJob(db().prepare(`SELECT ${COLUMNS} FROM picture_jobs WHERE id = ?`).get(id) as Row);

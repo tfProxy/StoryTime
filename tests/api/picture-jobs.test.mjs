@@ -193,6 +193,28 @@ ok(r.json.jobs.length > 0 && r.json.jobs.every((j) => j.chapter_id === two), "no
   ok((await call("GET", `/api/picture-jobs?chapter=${ch}`)).json.jobs.length === 2, "…and nothing was recorded by those");
 }
 
+// ---- redrawing only a painted part ----
+{
+  const s = await call("POST", "/api/stories", { title: "Masks", chapter: { title: "One", body: "first", choices: [] } });
+  const ch = s.json.chapter_id;
+  const masked = (n, extra = {}) => job(ch, n, { source: "comfy:StoryTime_1_0.png", denoise: 0.6, mask: "storytime-mask-abc.png", ...extra });
+  let m = await call("POST", "/api/picture-jobs", masked(1));
+  ok(m.status === 201 && m.json.mask === "storytime-mask-abc.png" && m.json.denoise === 0.6, "a masked redraw is recorded with its mask's file name");
+  m = await call("POST", "/api/picture-jobs", job(ch, 2));
+  ok(m.status === 201 && m.json.mask === null, "a job with no mask records null (the whole picture)");
+  const listed = (await call("GET", `/api/picture-jobs?chapter=${ch}`)).json.jobs;
+  ok(listed.find((j) => j.prompt_id === "p1")?.mask === "storytime-mask-abc.png" && listed.find((j) => j.prompt_id === "p2")?.mask === null, "the list gives each job's mask");
+  for (const [what, extra] of [
+    ["a mask with no starting picture", { source: undefined }],
+    ["a mask on an edit", { instruction: "make it night", edit_model: "qwen-image-edit" }],
+    ["an empty mask name", { mask: "" }],
+  ]) {
+    const x = await call("POST", "/api/picture-jobs", masked(9, extra));
+    ok(x.status === 400 && x.json?.error, `rejected: ${what}`);
+  }
+  ok((await call("GET", `/api/picture-jobs?chapter=${ch}`)).json.jobs.length === 2, "…and nothing was recorded by those");
+}
+
 // ---- which ComfyUI jobs are already recorded (the picture queue checks before recording jobs it finds in ComfyUI) ----
 {
   const unknown = `never-${Date.now()}`;

@@ -15,6 +15,8 @@ export type JobRecord = {
   moment: PictureMoment;
   source?: string;
   denoise?: number | null;
+  /** The mask picture's name in ComfyUI's input folder, when only a painted part was redrawn. */
+  mask?: string | null;
   instruction?: string;
   edit_model?: string;
 };
@@ -45,5 +47,6 @@ export function readTag(extra: unknown): JobTag | null {
   if (t.chapterId === null ? j.moment !== "cover" : j.moment !== "start" && j.moment !== "end") return null;
   if ((j.source !== undefined && !isString(j.source)) || (j.instruction !== undefined && !isString(j.instruction)) || (j.edit_model !== undefined && !isString(j.edit_model))) return null;
   if (j.denoise !== undefined && j.denoise !== null && !isNumber(j.denoise)) return null;
+  if (j.mask !== undefined && j.mask !== null && (!isString(j.mask) || j.mask.length === 0 || j.mask.length > 300)) return null;
   return { chapterId: t.chapterId, storyId: t.storyId, clientId: t.clientId, job: j as JobRecord, ...(isString(t.instance) && { instance: t.instance }) };
 }
