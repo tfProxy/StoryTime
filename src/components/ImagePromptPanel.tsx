@@ -5,14 +5,14 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { saveSettings, useSettings } from "@/lib/settings";
 import { LIMITS } from "@/lib/limits";
-import { copyText } from "@/lib/copyText";
 import { codexBudget, budgetFor, explainCodex, type ContextChapter, type ContextCodexEntry } from "@/lib/ai/prompts";
 import { combinePrompts, imagePromptRequest, withArtStyle, withoutGiven, writeImagePrompt, type ImageMoment } from "@/lib/ai/imagePrompt";
 import AutoTextarea from "./AutoTextarea";
 import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
+import PromptFields from "./PromptFields";
 import ComfyGenerate, { type PaintProps } from "./ComfyGenerate";
-import { CopyIcon, RedoIcon, SparkleIcon, StopIcon } from "./PictureIcons";
+import { RedoIcon, SparkleIcon, StopIcon } from "./PictureIcons";
 import type { StartPicture } from "@/lib/comfy/startPicture";
 import type { PendingJob, Picture, PromptToLoad, StartMode } from "./pictures";
 import type { EditModels } from "./useEditModels";
@@ -188,11 +188,6 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
     }
   }
 
-  async function copy(text: string, what: string) {
-    const done = await copyText(text);
-    setStatus(done ? { ok: true, text: `${what} copied.` } : { ok: false, text: "Couldn't copy; select the text and copy it yourself." });
-  }
-
   const promptPanel = (
     <section className="ai-panel image-prompt" id="picture-prompt">
       <h2>Picture prompt</h2>
@@ -251,33 +246,19 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
         </span>
       </div>
 
-      <div className="image-prompt-result">
-        <div className="prompt-field">
-          <div className="field-head">
-            <label htmlFor="picture-prompt-text">Prompt</label>
-            <button type="button" className="secondary icon-button" aria-label="Copy prompt" title="Copy the prompt" onClick={() => void copy(result.prompt, "Prompt")} disabled={!result.prompt}>
-              <CopyIcon />
-            </button>
-          </div>
-          <AutoTextarea
-            id="picture-prompt-text"
-            aria-label="Prompt"
-            style={{ minHeight: "5rem", fontFamily: "inherit" }}
-            maxLength={LIMITS.picturePrompt}
-            value={result.prompt}
-            onChange={(e) => change(moment, { prompt: e.target.value })}
-          />
-          {story.art_style.trim() && (
-            <span className="meta prompt-art-style" title="The story's art style, added to the end of every prompt">
-              {story.art_style.trim()}
-            </span>
-          )}
-          {draw.prompt.trim() && (
-            <span className="meta prompt-art-style" title="The drawing preset's prompt, added to every prompt">
-              Preset: {draw.prompt.trim()}
-            </span>
-          )}
-        </div>
+      <PromptFields
+        prompt={result.prompt}
+        negative={result.negative}
+        onPrompt={(prompt) => change(moment, { prompt })}
+        onNegative={(negative) => change(moment, { negative })}
+        artStyle={story.art_style}
+        presetPrompt={draw.prompt}
+        presetNegative={draw.negative}
+        status={status}
+        onStatus={setStatus}
+        extraError={fixedError && `Couldn't keep the always-included text: ${fixedError}`}
+        saveError={saveError}
+      >
         <label>
           Always include (this chapter)
           <AutoTextarea
@@ -291,31 +272,7 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
             onChange={(e) => setFixed(e.target.value)}
           />
         </label>
-        <div className="prompt-field">
-          <div className="field-head">
-            <label htmlFor="picture-negative-text">Negative prompt</label>
-            <button type="button" className="secondary icon-button" aria-label="Copy negative prompt" title="Copy the negative prompt" onClick={() => void copy(result.negative, "Negative prompt")} disabled={!result.negative}>
-              <CopyIcon />
-            </button>
-          </div>
-          <AutoTextarea
-            id="picture-negative-text"
-            aria-label="Negative prompt"
-            style={{ minHeight: "2.6rem", fontFamily: "inherit" }}
-            maxLength={LIMITS.picturePrompt}
-            value={result.negative}
-            onChange={(e) => change(moment, { negative: e.target.value })}
-          />
-          {draw.negative.trim() && (
-            <span className="meta prompt-art-style" title="The drawing preset's negative prompt, added to every negative prompt">
-              Preset: {draw.negative.trim()}
-            </span>
-          )}
-        </div>
-      </div>
-      {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
-      {fixedError && <p className="error" style={{ margin: 0 }}>Couldn&apos;t keep the always-included text: {fixedError}</p>}
-      {saveError && <p className="error" style={{ margin: 0 }}>Couldn&apos;t keep the prompt for next time: {saveError}</p>}
+      </PromptFields>
     </section>
   );
 

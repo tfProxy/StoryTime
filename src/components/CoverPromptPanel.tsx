@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { saveSettings, useSettings } from "@/lib/settings";
 import { LIMITS } from "@/lib/limits";
-import { copyText } from "@/lib/copyText";
 import { codexBudget, budgetFor, explainCodex, type ContextChapter, type ContextCodexEntry } from "@/lib/ai/prompts";
 import { withArtStyle, withoutGiven } from "@/lib/ai/imagePrompt";
 import { coverPromptRequest, writeCoverPrompt } from "@/lib/ai/coverPrompt";
@@ -11,11 +10,10 @@ import type { CoverDraft } from "@/lib/coverPictures";
 import type { CoverSource } from "@/lib/pictureTarget";
 import type { StartPicture } from "@/lib/comfy/startPicture";
 import { drawPresetFor } from "@/lib/comfy/presets";
-import AutoTextarea from "./AutoTextarea";
 import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
+import PromptFields from "./PromptFields";
 import ComfyGenerate, { type PaintProps } from "./ComfyGenerate";
-import { CopyIcon } from "./PictureIcons";
 import { StoryPicturesLine, type IllustratedStory, type LoadedPrompt } from "./ImagePromptPanel";
 import type { PendingJob, Picture, StartMode } from "./pictures";
 import type { EditModels } from "./useEditModels";
@@ -153,11 +151,6 @@ export default function CoverPromptPanel({
     }
   }
 
-  async function copy(text: string, what: string) {
-    const done = await copyText(text);
-    setStatus(done ? { ok: true, text: `${what} copied.` } : { ok: false, text: "Couldn't copy; select the text and copy it yourself." });
-  }
-
   return (
     <>
       <section className="ai-panel image-prompt" id="picture-prompt">
@@ -232,52 +225,17 @@ export default function CoverPromptPanel({
         </div>
         <p className="meta" style={{ margin: 0 }}>{used.length ? `Codex entries used: ${used.join(", ")}` : "No codex entries are used."}</p>
 
-        <div className="image-prompt-result">
-          <div className="prompt-field">
-            <div className="field-head">
-              <label htmlFor="picture-prompt-text">Prompt</label>
-              <button type="button" className="secondary icon-button" aria-label="Copy prompt" title="Copy the prompt" onClick={() => void copy(boxes.prompt, "Prompt")} disabled={!boxes.prompt}>
-                <CopyIcon />
-              </button>
-            </div>
-            <AutoTextarea
-              id="picture-prompt-text"
-              aria-label="Prompt"
-              style={{ minHeight: "5rem", fontFamily: "inherit" }}
-              maxLength={LIMITS.picturePrompt}
-              value={boxes.prompt}
-              onChange={(e) => change({ prompt: e.target.value })}
-            />
-            {draw.prompt.trim() && (
-              <span className="meta prompt-art-style" title="The drawing preset's prompt, added to every prompt">
-                Preset: {draw.prompt.trim()}
-              </span>
-            )}
-          </div>
-          <div className="prompt-field">
-            <div className="field-head">
-              <label htmlFor="picture-negative-text">Negative prompt</label>
-              <button type="button" className="secondary icon-button" aria-label="Copy negative prompt" title="Copy the negative prompt" onClick={() => void copy(boxes.negative, "Negative prompt")} disabled={!boxes.negative}>
-                <CopyIcon />
-              </button>
-            </div>
-            <AutoTextarea
-              id="picture-negative-text"
-              aria-label="Negative prompt"
-              style={{ minHeight: "2.6rem", fontFamily: "inherit" }}
-              maxLength={LIMITS.picturePrompt}
-              value={boxes.negative}
-              onChange={(e) => change({ negative: e.target.value })}
-            />
-            {draw.negative.trim() && (
-              <span className="meta prompt-art-style" title="The drawing preset's negative prompt, added to every negative prompt">
-                Preset: {draw.negative.trim()}
-              </span>
-            )}
-          </div>
-        </div>
-        {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
-        {saveError && <p className="error" style={{ margin: 0 }}>Couldn&apos;t keep the prompt for next time: {saveError}</p>}
+        <PromptFields
+          prompt={boxes.prompt}
+          negative={boxes.negative}
+          onPrompt={(prompt) => change({ prompt })}
+          onNegative={(negative) => change({ negative })}
+          presetPrompt={draw.prompt}
+          presetNegative={draw.negative}
+          status={status}
+          onStatus={setStatus}
+          saveError={saveError}
+        />
       </section>
       <ComfyGenerate
         target={{ storyId: story.id, chapterId: null }}
