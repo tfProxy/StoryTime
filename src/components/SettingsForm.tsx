@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { PROVIDERS, providerInfo, type ProviderKind } from "@/lib/ai/providers";
 import { AiError, listModels, streamChat } from "@/lib/ai/client";
 import PromptButton from "./PromptButton";
+import NumberInput from "./NumberInput";
 import ComfyConnection from "./ComfyConnection";
 import { DrawingSettings, EditSettings, usePictureSetup } from "./PictureSettings";
 import { EDIT_MODEL_IDS } from "@/lib/comfy/editModels";
@@ -564,24 +565,24 @@ export default function SettingsForm() {
           <h2>Options</h2>
           <label>
             Temperature <small>(leave blank for the provider&apos;s default)</small>
-            <input
-              type="number"
+            <NumberInput
               min={0}
               max={2}
               step={0.1}
-              value={settings.temperature ?? ""}
-              onChange={(e) => update({ temperature: e.target.value === "" ? null : Number(e.target.value) })}
+              allowEmpty
+              value={settings.temperature ?? null}
+              onChange={(temperature) => update({ temperature })}
             />
           </label>
 
           <label>
             Context budget <small>(approximate tokens of story context to send; lower it for small local models)</small>
-            <input
-              type="number"
+            <NumberInput
               min={1000}
               step={500}
+              integer
               value={settings.contextTokens}
-              onChange={(e) => update({ contextTokens: Math.max(1000, Number(e.target.value) || 1000) })}
+              onChange={(contextTokens) => contextTokens !== null && update({ contextTokens })}
             />
           </label>
 

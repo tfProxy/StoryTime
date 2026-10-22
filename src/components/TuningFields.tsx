@@ -1,6 +1,7 @@
 "use client";
 
 import { TUNING_LIMITS } from "@/lib/settingsSchema";
+import NumberInput from "./NumberInput";
 
 // Used when ComfyUI can't be asked for its own lists. These are names its KSampler has had for a long time.
 const COMMON_SAMPLERS = ["euler", "euler_ancestral", "heun", "dpm_2", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_3m_sde", "dpmpp_sde", "ddim", "uni_pc", "res_multistep", "lcm"];
@@ -24,18 +25,13 @@ function NumberField({ k, value, def, onChange }: { k: NumberKey; value: number;
       <span>
         {LABELS[k].label} <small>default {def}</small>
       </span>
-      <input
-        type="number"
+      <NumberInput
         min={lim.min}
         max={lim.max}
         step={lim.step}
+        integer={k === "steps"}
         value={value}
-        onChange={(e) => {
-          const v = Number(e.target.value);
-          if (e.target.value === "" || !Number.isFinite(v)) return;
-          const kept = Math.max(lim.min, Math.min(lim.max, k === "steps" ? Math.round(v) : v));
-          onChange(kept);
-        }}
+        onChange={(v) => v !== null && onChange(v)}
       />
     </label>
   );

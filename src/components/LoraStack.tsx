@@ -1,6 +1,7 @@
 "use client";
 
 import { MAX_LORAS, type LoraSetting } from "@/lib/comfy/presets";
+import NumberInput from "./NumberInput";
 
 const base = (f: string) => f.split(/[\\/]/).pop()!;
 
@@ -49,18 +50,14 @@ export default function LoraStack({
                 </option>
               ))}
             </select>
-            <input
-              type="number"
+            <NumberInput
               aria-label={`Strength of ${base(l.name) || "this LoRA"}`}
               title="Strength: 1 is full, lower is weaker"
               min={-4}
               max={4}
               step={0.05}
               value={l.strength}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                if (e.target.value !== "" && Number.isFinite(v)) change(i, { strength: Math.max(-4, Math.min(4, v)) });
-              }}
+              onChange={(v) => v !== null && change(i, { strength: v })}
             />
             <button
               type="button"
