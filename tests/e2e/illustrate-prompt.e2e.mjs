@@ -96,6 +96,7 @@ try {
   await styleMenu.selectOption({ label: "Sentences (Flux, SD3)" });
   ok(await until(async () => (await settingsNow()).comfy.drawPresets[0].promptStyle === "natural", "the prompt style to be saved"), "choosing sentences saves it with the preset");
   await page.goto(`${BASE}/c/${chapter}/illustrate`);
+  ok((await page.locator(".prompt-art-style").innerText()) === "watercolor storybook, soft light", "the story's art style is shown in small type under the Prompt box");
 
   // ---- write a prompt for the chapter's end ----
   ok(await page.getByText(/^For$/).count() === 0 && await page.getByRole("option", { name: "Footer picture" }).count() === 0, "there is no For header/footer choice");

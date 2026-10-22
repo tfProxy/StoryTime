@@ -1656,11 +1656,6 @@ main:has(.illustrate-grid) {
   width: 100%;
 }
 
-.generate-bar .size-icon {
-  flex: none;
-  color: var(--muted);
-}
-
 .queue-status {
   display: grid;
   gap: 0.25rem;
@@ -2116,6 +2111,88 @@ dialog.picture-info::backdrop {
 .picture-caption {
   margin: 0;
   font-size: 0.8rem;
+}
+
+/* The story's art style, under the Prompt box: it is added to the end of every prompt. */
+.prompt-art-style {
+  margin: 0;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * The Size menu: each option is a row of columns (shape, name, aspect ratio, pixels), in the closed menu and
+ * the list. This uses the browser's customizable select (Chrome and Edge 135+); other browsers show the same
+ * options as plain text in an ordinary menu.
+ */
+.size-select {
+  --size-columns: 1.2rem 5.6rem 2.8rem auto;
+}
+
+@supports (appearance: base-select) {
+  .size-select,
+  .size-select::picker(select) {
+    appearance: base-select;
+  }
+
+  .size-select::picker(select) {
+    padding: 0.25rem;
+    background: var(--card);
+    color: var(--fg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+
+  .size-select selectedcontent,
+  .size-select option {
+    display: grid;
+    grid-template-columns: var(--size-columns);
+    column-gap: 0.5rem;
+    align-items: baseline;
+    white-space: nowrap;
+  }
+
+  /* The select's inner button only holds the chosen option's columns: no button look. */
+  .size-select > button {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    box-shadow: none;
+    cursor: inherit;
+  }
+
+  .size-select option {
+    padding: 0.4rem 0.5rem;
+    border-radius: 4px;
+  }
+
+  .size-select option::checkmark {
+    display: none;
+  }
+
+  .size-select option:hover,
+  .size-select option:focus-visible {
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+
+  .size-select option:checked {
+    font-weight: 600;
+  }
+
+  .size-select .size-glyph,
+  .size-select .size-ratio {
+    text-align: center;
+  }
+
+  .size-select .size-px {
+    color: var(--muted);
+    text-align: right;
+  }
 }
 
 /* A link that is just an icon, beside a field. */

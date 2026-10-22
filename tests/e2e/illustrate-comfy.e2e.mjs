@@ -455,14 +455,9 @@ try {
   // ---- bringing back the prompt of any new picture, with its settings ----
   await page.getByLabel("Size").selectOption("1024x1024");
   ok(await until(async () => (await settingsNow()).comfy.width === 1024, "the size to be saved"), "(the size is changed to square)");
-  const sizeOptions = await page.getByLabel("Size").locator("option").allInnerTexts();
-  ok(sizeOptions.join("|") === "▯ Portrait 768 × 1344 (4:7)|□ Square 1024 × 1024 (1:1)|▭ Landscape 1344 × 768 (7:4)|▭ Wide 1536 × 640 (12:5)", `each size shows its aspect ratio (${sizeOptions.join("|")})`);
-  const iconRect = async () => page.locator(".generate-bar .size-icon rect").evaluate((r) => ({ w: Number(r.getAttribute("width")), h: Number(r.getAttribute("height")) }));
-  const square = await iconRect();
-  ok(square.w === square.h, "the icon beside Size is a square for a square size");
-  await page.getByLabel("Size").selectOption("768x1344");
-  const tall = await iconRect();
-  ok(Math.abs(tall.w / tall.h - 768 / 1344) < 0.01 && tall.h > tall.w, "…and is drawn to the shape of the size chosen (tall for Portrait)");
+  const sizeRows = await page.getByLabel("Size").locator("option").evaluateAll((os) => os.map((o) => [...o.querySelectorAll("span")].map((x) => x.textContent)));
+  ok(JSON.stringify(sizeRows) === JSON.stringify([["▯", "Portrait", "4:7", "768 × 1344"], ["□", "Square", "1:1", "1024 × 1024"], ["▭", "Landscape", "7:4", "1344 × 768"], ["▭", "Wide", "12:5", "1536 × 640"]]), `each size is a row of columns: shape, name, aspect ratio, pixels (${JSON.stringify(sizeRows)})`);
+  ok(await page.locator(".generate-bar .size-icon").count() === 0, "there is no icon outside the Size menu");
   await page.getByLabel("Size").selectOption("1024x1024");
   await until(async () => (await settingsNow()).comfy.width === 1024, "the size to be saved again");
   await page.getByLabel("Moment to show").selectOption("end");

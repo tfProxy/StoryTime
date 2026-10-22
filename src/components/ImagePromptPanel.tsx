@@ -194,6 +194,11 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
             value={result.prompt}
             onChange={(e) => change(moment, { prompt: e.target.value })}
           />
+          {story.art_style.trim() && (
+            <span className="meta prompt-art-style" title="The story's art style, added to the end of every prompt">
+              {story.art_style.trim()}
+            </span>
+          )}
         </div>
         <div className="prompt-field">
           <div className="field-head">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { createElement, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { SettingsIcon } from "./PictureIcons";
@@ -21,11 +21,11 @@ import { listCheckpoints } from "@/lib/comfy/client";
 import { denoiseOf, madeWithText, type JobInput } from "@/lib/comfy/makeJob";
 
 /** Sizes that suit SDXL (about one megapixel), tallest to widest. */
-const SIZES: { label: string; width: number; height: number }[] = [
-  { label: "Portrait 768 × 1344", width: 768, height: 1344 },
-  { label: "Square 1024 × 1024", width: 1024, height: 1024 },
-  { label: "Landscape 1344 × 768", width: 1344, height: 768 },
-  { label: "Wide 1536 × 640", width: 1536, height: 640 },
+const SIZES: { name: string; width: number; height: number }[] = [
+  { name: "Portrait", width: 768, height: 1344 },
+  { name: "Square", width: 1024, height: 1024 },
+  { name: "Landscape", width: 1344, height: 768 },
+  { name: "Wide", width: 1536, height: 640 },
 ];
 
 const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
@@ -43,15 +43,16 @@ function ratioText(width: number, height: number): string {
 /** A hollow glyph for the shape, for the drop-down's options, which can't hold a picture. */
 const shapeGlyph = (width: number, height: number) => (width === height ? "□" : width > height ? "▭" : "▯");
 
-/** A small rectangle drawn to the size's shape. */
-function SizeIcon({ width, height }: { width: number; height: number }) {
-  const longest = Math.max(width, height) || 1;
-  const w = Math.max(3, (18 * width) / longest);
-  const h = Math.max(3, (18 * height) / longest);
+/**
+ * One size option as columns: shape glyph, name, aspect ratio, pixel size. The spaces between the spans
+ * keep it readable as plain text in a browser that can't lay an option out (see .size-select).
+ */
+function SizeColumns({ name, width, height }: { name: string; width: number; height: number }) {
   return (
-    <svg className="size-icon" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true" focusable="false">
-      <rect x={(22 - w) / 2} y={(22 - h) / 2} width={w} height={h} rx="1.5" fill="currentColor" fillOpacity="0.2" stroke="currentColor" strokeWidth="1.5" />
-    </svg>
+    <>
+      <span className="size-glyph">{shapeGlyph(width, height)}</span> <span className="size-name">{name}</span>{" "}
+      <span className="size-ratio">{ratioText(width, height)}</span> <span className="size-px">{width} × {height}</span>
+    </>
   );
 }
 
@@ -324,10 +325,8 @@ export default function ComfyGenerate({
     <div className="generate-bar">
       <label className="row" style={{ gap: "0.4rem" }}>
         Size
-        <span title={`Shape of the pictures: ${ratioText(comfy.width, comfy.height)}`} style={{ display: "inline-flex" }}>
-          <SizeIcon width={comfy.width} height={comfy.height} />
-        </span>
         <select
+          className="size-select"
           aria-label="Size"
           value={`${comfy.width}x${comfy.height}`}
           onChange={(e) => {
@@ -338,10 +337,16 @@ export default function ComfyGenerate({
           title={start ? "Pictures made from a starting picture are its size" : undefined}
           style={{ width: "auto", flex: 1 }}
         >
-          {!size && <option value={`${comfy.width}x${comfy.height}`}>{`${shapeGlyph(comfy.width, comfy.height)} ${comfy.width} × ${comfy.height} (${ratioText(comfy.width, comfy.height)})`}</option>}
+          {/* The closed menu shows the chosen option's columns (customizable select; other browsers ignore this). */}
+          <button type="button">{createElement("selectedcontent")}</button>
+          {!size && (
+            <option value={`${comfy.width}x${comfy.height}`}>
+              <SizeColumns name="Custom" width={comfy.width} height={comfy.height} />
+            </option>
+          )}
           {SIZES.map((s) => (
-            <option key={s.label} value={`${s.width}x${s.height}`}>
-              {`${shapeGlyph(s.width, s.height)} ${s.label} (${ratioText(s.width, s.height)})`}
+            <option key={s.name} value={`${s.width}x${s.height}`}>
+              <SizeColumns name={s.name} width={s.width} height={s.height} />
             </option>
           ))}
         </select>
