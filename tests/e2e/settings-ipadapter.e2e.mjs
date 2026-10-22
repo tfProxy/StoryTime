@@ -77,7 +77,7 @@ try {
   ok(await until(async () => (await settingsNow()).drawPresets.find((p) => p.id === "noob")?.base === undefined, "the base to be cleared"), "going back to the guess clears it");
   block = await checkLines("Noob");
   ok((await block.innerText()).includes("Reference pictures (IP-Adapter): ready"), "guessed NoobAI, with its files installed: ready");
-  ok(await block.locator("li.ok", { hasText: "IP-Adapter" }).count() === 1, "…shown as a tick");
+  ok(await block.locator("li.ok", { hasText: "Reference pictures (IP-Adapter)" }).count() === 1, "…shown as a tick");
 
   await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR ?? "/tmp"}/settings-ipadapter-400.png`, fullPage: true });
   ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "at 400px the Drawing tab does not scroll sideways");

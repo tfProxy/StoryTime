@@ -6,7 +6,7 @@ import { BUILTIN_SAMPLER, builtinSampler, describeWorkflow, parseWorkflow, Workf
 import { checkComfy, type ComfyCheck, type DrawCheck } from "@/lib/comfy/check";
 import { listCheckpoints } from "@/lib/comfy/client";
 import { DRAW_FAMILIES, drawModel, drawTuning, FAMILY_NAMES, familyPresetCheck, familyProblems, ggufNeeded, type DrawFamily, type DrawModel, type FamilyCheck } from "@/lib/comfy/drawModels";
-import { BASE_NAMES, guessBase, MODEL_BASES, type IpAdapterCheck, type ModelBase } from "@/lib/comfy/ipAdapter";
+import { BASE_NAMES, guessBase, IPADAPTER_NODES, MODEL_BASES, type IpAdapterCheck, type ModelBase } from "@/lib/comfy/ipAdapter";
 import { editModel, editPresetCheck, editTuning, isGguf, lightningSteps, presetCheck, type EditModel } from "@/lib/comfy/editModels";
 import {
   drawPresetSummary,
@@ -69,9 +69,9 @@ function workflowSummary(preset: DrawPreset): { ok: boolean; builtin: boolean; n
 const SETUP_HELP = "https://github.com/tfProxy/StoryTime/blob/main/docs/pictures.md#edit-models-in-comfyui";
 
 /** One line of the setup check: a tick or a cross, and what it means. */
-function Line({ ok, children }: { ok: boolean; children: React.ReactNode }) {
+function Line({ ok, optional, children }: { ok: boolean; optional?: boolean; children: React.ReactNode }) {
   return (
-    <li className={ok ? "ok" : "error"}>
+    <li className={ok ? "ok" : optional ? "meta" : "error"}>
       <span aria-hidden="true">{ok ? "✓ " : "✗ "}</span>
       {children}
     </li>
@@ -160,30 +160,44 @@ function FamilyLines({ family }: { family: FamilyCheck }) {
 
 /** The setup check's line for reference pictures: informational, a preset without IP-Adapter is still fully usable. */
 function IpAdapterLine({ c }: { c: IpAdapterCheck }) {
+  const details = (
+    <ul>
+      {IPADAPTER_NODES.map((n) => {
+        const found = !c.missingNodes.includes(n);
+        return (
+          <Line key={n} ok={found} optional>
+            Node <code>{n}</code>: {found ? "found." : "missing. Install ComfyUI_IPAdapter_plus through ComfyUI-Manager."}
+          </Line>
+        );
+      })}
+      {c.parts.map((p) => (
+        <Line key={p.part.key} ok={p.file !== null} optional>
+          {p.part.label}:{" "}
+          {p.file ? (
+            <code>{p.file}</code>
+          ) : (
+            <>
+              missing. Put <code>{p.part.recommended}</code> in <code>ComfyUI/models/{p.part.folder}</code>.
+            </>
+          )}
+        </Line>
+      ))}
+    </ul>
+  );
   if (c.ready) {
     return (
-      <Line ok>
+      <li className="ok">
+        <span aria-hidden="true">✓ </span>
         Reference pictures (IP-Adapter): ready.
-      </Line>
+        {details}
+      </li>
     );
   }
-  const missingFiles = c.parts.filter((p) => !p.file);
   return (
     <li className="meta">
       <span aria-hidden="true">– </span>
       Reference pictures (IP-Adapter): not set up (optional; this preset draws fine without).
-      <ul>
-        {c.missingNodes.length > 0 && (
-          <li>
-            ComfyUI doesn&apos;t have the nodes {c.missingNodes.join(", ")}: install ComfyUI_IPAdapter_plus through ComfyUI-Manager.
-          </li>
-        )}
-        {missingFiles.map((p) => (
-          <li key={p.part.key}>
-            {p.part.label}: put <code>{p.part.recommended}</code> in <code>ComfyUI/models/{p.part.folder}</code>.
-          </li>
-        ))}
-      </ul>
+      {details}
     </li>
   );
 }
