@@ -98,7 +98,7 @@ r = await call("PUT", "/api/settings", { ...conns, imagePromptModel: "pics" });
 ok(r.json.settings.imagePromptModel === null, "…or when it isn't a model");
 
 // ---- ComfyUI (picture making), with presets ----
-const draw = (id, extra = {}) => ({ id, name: `Drawing ${id}`, promptStyle: "tags", prompt: "", negative: "", checkpoint: "sdxl.safetensors", workflow: "", loras: [], sampler: {}, denoise: 0.55, ...extra });
+const draw = (id, extra = {}) => ({ id, name: `Drawing ${id}`, promptStyle: "tags", prompt: "", negative: "", family: "checkpoint", checkpoint: "sdxl.safetensors", files: {}, textEncoderDevice: "default", workflow: "", loras: [], sampler: {}, denoise: 0.55, ...extra });
 const edit = (id, model, extra = {}) => ({ id, name: `Edit ${id}`, model, checkpoint: "", files: {}, fast: true, textEncoderDevice: "default", loras: [], tuning: {}, ...extra });
 const comfyIn = {
   url: "http://comfy.local:8188",
@@ -141,6 +141,20 @@ r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ promptStyle
 ok(r.json.settings.comfy.drawPresets[0].promptStyle === "tags", "an unknown prompt style on a preset falls back to tags");
 r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ prompt: "masterpiece", negative: "lowres" }) });
 ok(r.json.settings.comfy.drawPresets[0].prompt === "masterpiece" && r.json.settings.comfy.drawPresets[0].negative === "lowres", "a drawing preset keeps its prompt and negative prompt");
+{
+  // A drawing preset saved before model families has none of these fields: it is a checkpoint preset.
+  const { family, files, textEncoderDevice, ...before } = draw("old");
+  void family; void files; void textEncoderDevice;
+  r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, drawPresets: [before] } });
+  const old = r.json.settings.comfy.drawPresets[0];
+  ok(old.family === "checkpoint" && old.checkpoint === "sdxl.safetensors" && old.textEncoderDevice === "default" && JSON.stringify(old.files) === "{}", "a drawing preset from before model families is a checkpoint preset");
+  const zimage = { family: "zimage", checkpoint: "", files: { model: "z_image_turbo-Q8_0.gguf", textEncoder: "qwen_3_4b.safetensors", nonsense: "x" }, textEncoderDevice: "cpu", promptStyle: "natural", sampler: { steps: 6, shift: 2.5 } };
+  r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw(zimage) });
+  const z = r.json.settings.comfy.drawPresets[0];
+  ok(z.family === "zimage" && z.files.model === "z_image_turbo-Q8_0.gguf" && z.files.textEncoder === "qwen_3_4b.safetensors" && !("nonsense" in z.files) && z.textEncoderDevice === "cpu" && z.sampler.shift === 2.5, "a drawing preset keeps its model family, files, text encoder device and shift");
+  r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ family: "sd9" }) });
+  ok(r.json.settings.comfy.drawPresets[0].family === "checkpoint", "an unknown model family falls back to checkpoint");
+}
 await call("PUT", "/api/settings", { ...conns, comfy: comfyIn });
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, picturesOldestFirst: true } });
 ok(r.json.settings.comfy.picturesOldestFirst === true && (await call("GET", "/api/settings")).json.settings.comfy.picturesOldestFirst === true, "the Pictures panel's oldest-first order is kept");

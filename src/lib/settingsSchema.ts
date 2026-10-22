@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PROVIDER_KINDS, providerInfo, type ProviderKind } from "./ai/providers";
+import { DRAW_FAMILIES, DRAW_MODELS } from "./comfy/drawModels";
 import { EDIT_MODEL_IDS, EDIT_MODELS, TEXT_ENCODER_DEVICES } from "./comfy/editModels";
 import {
   DEFAULT_DENOISE,
@@ -208,8 +209,18 @@ const listOf = <T>(item: z.ZodType<T>) =>
 
 const loraList = listOf(loraSchema).transform((xs) => xs.slice(0, MAX_LORAS));
 const presetIdSchema = z.string().trim().min(1).max(100);
-const PART_KEYS = new Set(EDIT_MODELS.flatMap((m) => m.parts.map((p) => p.key)));
+const PART_KEYS = new Set([...EDIT_MODELS, ...DRAW_MODELS].flatMap((m) => m.parts.map((p) => p.key)));
 const presetNameSchema = z.string().max(100).catch("");
+
+// The files a preset chose, by part key: only the parts models have, each with a file name.
+const partFiles = z
+  .record(z.string(), z.unknown())
+  .transform((r) =>
+    Object.fromEntries(
+      Object.entries(r).filter((e): e is [string, string] => PART_KEYS.has(e[0]) && typeof e[1] === "string" && e[1] !== "" && e[1].length <= 500),
+    ),
+  )
+  .catch({});
 
 const drawPresetSchema = z.object({
   id: presetIdSchema,
@@ -217,10 +228,14 @@ const drawPresetSchema = z.object({
   promptStyle: z.enum(["tags", "natural"]).catch("tags"),
   prompt: z.string().max(4000).catch(""),
   negative: z.string().max(4000).catch(""),
+  // Presets saved before model families are checkpoint presets.
+  family: z.enum(DRAW_FAMILIES).catch("checkpoint"),
   checkpoint: z.string().max(500).catch(""),
+  files: partFiles,
+  textEncoderDevice: z.enum(TEXT_ENCODER_DEVICES).catch("default"),
   workflow: z.string().max(500_000).catch(""),
   loras: loraList,
-  sampler: samplerSchema.transform(setOnly).catch({}),
+  sampler: samplerSchema.extend({ shift: tuned("shift"), guidance: tuned("guidance") }).transform(setOnly).catch({}),
   denoise: z.number().min(0.05).max(1).catch(DEFAULT_DENOISE),
 });
 const editPresetSchema = z.object({
@@ -228,15 +243,7 @@ const editPresetSchema = z.object({
   name: presetNameSchema,
   model: z.enum(EDIT_MODEL_IDS),
   checkpoint: z.string().max(500).catch(""),
-  // Only the parts edit models have, each with a file name.
-  files: z
-    .record(z.string(), z.unknown())
-    .transform((r) =>
-      Object.fromEntries(
-        Object.entries(r).filter((e): e is [string, string] => PART_KEYS.has(e[0]) && typeof e[1] === "string" && e[1] !== "" && e[1].length <= 500),
-      ),
-    )
-    .catch({}),
+  files: partFiles,
   fast: z.boolean().catch(true),
   textEncoderDevice: z.enum(TEXT_ENCODER_DEVICES).catch("default"),
   loras: loraList,

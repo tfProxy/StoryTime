@@ -1,8 +1,8 @@
 // Named picture presets, set in Settings: drawing presets (new pictures and Redraw) and edit presets
 // (one set for each edit model). Each has its own LoRAs and settings. A story chooses its default
 // drawing preset on its details page, and a chapter can choose another on the Illustrate page. Pure code.
+import { drawModel, FAMILY_NAMES, type DrawFamily, type DrawTuning } from "./drawModels";
 import { EDIT_MODEL_IDS, type EditModelId, type EditTuning, type TextEncoderDevice } from "./editModels";
-import type { SamplerTuning } from "./workflow";
 
 /** A LoRA in a preset's stack: its file in ComfyUI's `loras` folder, its strength, and whether it is used. */
 export type LoraSetting = { name: string; strength: number; on: boolean };
@@ -24,6 +24,9 @@ export const PROMPT_STYLE_NAMES: Record<PromptStyle, string> = {
   natural: "Sentences (Flux, SD3)",
 };
 
+/** Whether a drawing preset draws with its family's built-in workflow: it has a family, and no workflow of its own (a pasted one overrides everything). */
+export const usesFamily = (p: { family: DrawFamily; workflow: string }) => p.family !== "checkpoint" && !p.workflow.trim();
+
 /** How new pictures are drawn, and redrawn from a picture. */
 export type DrawPreset = {
   id: string;
@@ -33,14 +36,23 @@ export type DrawPreset = {
   /** Added to every prompt and negative prompt made with this preset (quality tags, for example); "" for none. */
   prompt: string;
   negative: string;
-  /** The checkpoint file; "" until chosen. */
+  /**
+   * What kind of model it draws with: "checkpoint" (an SDXL-style all-in-one checkpoint, the built-in
+   * SDXL workflow) or a family of separate files with its own built-in workflow (drawModels.ts).
+   */
+  family: DrawFamily;
+  /** The checkpoint file of the "checkpoint" family (also what {{checkpoint}} is in your own workflow); "" until chosen. */
   checkpoint: string;
-  /** A workflow exported from ComfyUI in API format, as JSON; "" uses the built-in SDXL workflow. */
+  /** The other families' files chosen for the model's parts, by part key (see drawModels.ts); a part not here is found by its name. */
+  files: Record<string, string>;
+  /** The other families' text encoder loader: "cpu" keeps it in system memory so the graphics card has room for the model. */
+  textEncoderDevice: TextEncoderDevice;
+  /** A workflow exported from ComfyUI in API format, as JSON; "" uses the family's built-in workflow (SDXL for a checkpoint). */
   workflow: string;
   /** Applied in order after the checkpoint (or the workflow's model loader). */
   loras: LoraSetting[];
-  /** The built-in workflow's sampler settings that were changed; the rest are BUILTIN_SAMPLER's. */
-  sampler: Partial<SamplerTuning>;
+  /** The built-in workflow's sampler settings that were changed; the rest are the family's defaults (BUILTIN_SAMPLER's for a checkpoint). */
+  sampler: Partial<DrawTuning>;
   /** The strength the Redraw tab starts at: how far a redraw may change the picture, 0.05 to 1. */
   denoise: number;
 };
@@ -68,7 +80,8 @@ export type EditPreset = {
 };
 
 export const newDrawPreset = (id: string, name: string, checkpoint = ""): DrawPreset => ({
-  id, name, promptStyle: "tags", prompt: "", negative: "", checkpoint, workflow: "", loras: [], sampler: {}, denoise: DEFAULT_DENOISE,
+  id, name, promptStyle: "tags", prompt: "", negative: "", family: "checkpoint", checkpoint, files: {}, textEncoderDevice: "default",
+  workflow: "", loras: [], sampler: {}, denoise: DEFAULT_DENOISE,
 });
 
 export const newEditPreset = (id: string, name: string, model: EditModelId): EditPreset => ({
@@ -111,8 +124,15 @@ export const fileLabel = (file: string) => file.split(/[\\/]/).pop()!.replace(/\
 export const drawFilesText = (checkpoint: string, loras: { name: string; strength: number }[]) =>
   [checkpoint, ...loras.map((l) => `${l.name} (${l.strength})`)].join(" + ");
 
-/** A drawing preset in a few words: its checkpoint and how many LoRAs it uses. */
+/**
+ * A drawing preset in a few words: its family (when it isn't a checkpoint) and model file, and how many LoRAs
+ * it uses.
+ */
 export function drawPresetSummary(p: DrawPreset): string {
   const on = p.loras.filter((l) => l.on && l.name).length;
-  return [p.checkpoint ? fileLabel(p.checkpoint) : "no checkpoint", on > 0 && `${on} LoRA${on === 1 ? "" : "s"}`].filter(Boolean).join(" · ");
+  const model =
+    p.family === "checkpoint"
+      ? [p.checkpoint ? fileLabel(p.checkpoint) : "no checkpoint"]
+      : [drawModel(p.family)?.name ?? FAMILY_NAMES[p.family], p.files.model ? fileLabel(p.files.model) : "model found by name"];
+  return [...model, on > 0 && `${on} LoRA${on === 1 ? "" : "s"}`].filter(Boolean).join(" · ");
 }

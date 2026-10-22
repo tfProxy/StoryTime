@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { TUNING_LIMITS, type ComfySettings as Comfy } from "@/lib/settingsSchema";
 import { BUILTIN_SAMPLER, builtinSampler, describeWorkflow, parseWorkflow, WorkflowError, type WorkflowFit } from "@/lib/comfy/workflow";
-import { checkComfy, type ComfyCheck } from "@/lib/comfy/check";
+import { checkComfy, type ComfyCheck, type DrawCheck } from "@/lib/comfy/check";
 import { listCheckpoints } from "@/lib/comfy/client";
+import { DRAW_FAMILIES, drawModel, drawTuning, FAMILY_NAMES, familyPresetCheck, familyProblems, ggufNeeded, type DrawFamily, type DrawModel, type FamilyCheck } from "@/lib/comfy/drawModels";
 import { editModel, editPresetCheck, editTuning, isGguf, lightningSteps, presetCheck, type EditModel } from "@/lib/comfy/editModels";
 import {
   drawPresetSummary,
@@ -16,6 +17,7 @@ import {
   presetId,
   presetName,
   PROMPT_STYLE_NAMES,
+  usesFamily,
   type DrawPreset,
   type EditPreset,
   type PromptStyle,
@@ -35,26 +37,30 @@ const FIT_NAMES: [keyof Omit<WorkflowFit, "mode">, string][] = [
 ];
 
 /** What StoryTime can set in the workflow, or what is wrong with it. */
-function workflowSummary(text: string, changed: DrawPreset["sampler"]): { ok: boolean; builtin: boolean; text: string } {
+function workflowSummary(preset: DrawPreset): { ok: boolean; builtin: boolean; name: string; text: string } {
+  const { workflow: text, sampler: changed } = preset;
+  const family = usesFamily(preset) ? drawModel(preset.family) : undefined;
   try {
     const fit = describeWorkflow(parseWorkflow(text));
     if (fit.mode === "builtin") {
-      const s = builtinSampler(changed);
-      return { ok: true, builtin: true, text: `Using the built-in SDXL workflow (${s.steps} steps of ${s.sampler} ${s.scheduler}, CFG ${s.cfg}). It can also start from a picture.` };
+      const name = family?.name ?? "SDXL";
+      const s = family ? drawTuning(family, changed) : builtinSampler(changed);
+      return { ok: true, builtin: true, name, text: `Using the built-in ${name} workflow (${s.steps} steps of ${s.sampler} ${s.scheduler}, CFG ${s.cfg}). It can also start from a picture.` };
     }
     const sets = FIT_NAMES.filter(([k]) => fit[k]).map(([, n]) => n);
     const misses = FIT_NAMES.filter(([k]) => !fit[k]).map(([, n]) => n);
     const how = fit.mode === "placeholders" ? "Placeholders found" : "Found automatically";
-    if (!fit.prompt) return { ok: false, builtin: false, text: `${how}, but nothing for the prompt. Put {{prompt}} in the positive prompt's text.` };
+    if (!fit.prompt) return { ok: false, builtin: false, name: "", text: `${how}, but nothing for the prompt. Put {{prompt}} in the positive prompt's text.` };
     return {
       ok: true,
       builtin: false,
+      name: "",
       text:
         `${how}: StoryTime sets the ${sets.join(", ")}.${misses.length ? ` The workflow keeps its own ${misses.join(", ")}.` : ""}` +
         (fit.image ? " It can start from a picture." : " It can't start from a picture."),
     };
   } catch (e) {
-    return { ok: false, builtin: false, text: e instanceof WorkflowError ? e.message : String(e) };
+    return { ok: false, builtin: false, name: "", text: e instanceof WorkflowError ? e.message : String(e) };
   }
 }
 
@@ -119,44 +125,92 @@ export function usePictureSetup(comfy: Comfy): PictureSetup {
 }
 
 /** The setup check's findings for drawing: the checkpoints, and each drawing preset's checkpoint, nodes and LoRAs. */
+/** The setup check's lines for a drawing preset of a model family: whether it is ready, each file it uses, and the nodes. */
+function FamilyLines({ family }: { family: FamilyCheck }) {
+  return (
+    <>
+      <Line ok={family.ready}>
+        {family.model.name}: {family.ready ? "ready." : "not ready, so this preset can't draw yet."}
+      </Line>
+      {family.parts.map((p) => (
+        <Line key={p.part.key} ok={p.file !== null}>
+          {p.part.label}:{" "}
+          {p.file ? (
+            <code>{p.file}</code>
+          ) : p.chosen ? (
+            <>
+              ComfyUI doesn&apos;t list <code>{p.chosen}</code>.
+            </>
+          ) : (
+            <>
+              missing. Put <code>{p.part.recommended}</code> in <code>ComfyUI/models/{p.part.folder}</code>.
+            </>
+          )}
+        </Line>
+      ))}
+      {family.missingNodes.length > 0 && <Line ok={false}>ComfyUI doesn&apos;t have the nodes {family.missingNodes.join(", ")}. Update ComfyUI.</Line>}
+      {family.missingOptions.length > 0 && <Line ok={false}>ComfyUI is too old ({family.missingOptions.join("; ")}). Update ComfyUI.</Line>}
+      {ggufNeeded(family).length > 0 && (
+        <Line ok={false}>A GGUF file is chosen but ComfyUI doesn&apos;t have {ggufNeeded(family).join(", ")}: install the ComfyUI-GGUF custom nodes.</Line>
+      )}
+    </>
+  );
+}
+
+/** The setup check's lines for a checkpoint preset (or one with a workflow of its own): the checkpoint and the workflow's nodes. */
+function CheckpointLines({ d }: { d: DrawCheck }) {
+  return (
+    <>
+      <Line ok={d.checkpoint}>
+        {d.checkpoint ? (
+          <>
+            Checkpoint: <code>{d.preset.checkpoint}</code>
+          </>
+        ) : d.preset.checkpoint ? (
+          <>
+            ComfyUI doesn&apos;t list its checkpoint <code>{d.preset.checkpoint}</code>.
+          </>
+        ) : (
+          "No checkpoint chosen."
+        )}
+      </Line>
+      {d.workflowError ? (
+        <Line ok={false}>{d.workflowError}</Line>
+      ) : (
+        <Line ok={d.missingNodes!.length === 0}>
+          {d.missingNodes!.length === 0
+            ? "ComfyUI has every node its workflow uses."
+            : `ComfyUI doesn't have these nodes its workflow uses: ${d.missingNodes!.join(", ")}. Install the custom nodes they come from, or update ComfyUI.`}
+        </Line>
+      )}
+    </>
+  );
+}
+
 function DrawReport({ check }: { check: ComfyCheck }) {
+  const usesCheckpoints = check.draws.some((d) => d.preset.family === "checkpoint" || !d.family);
   return (
     <div className="comfy-check" role="status">
       <p style={{ margin: 0 }}>Connected to ComfyUI {check.version}.</p>
-      <ul>
-        <Line ok={check.checkpoints.length > 0}>
-          {check.checkpoints.length > 0
-            ? `${check.checkpoints.length} checkpoint${check.checkpoints.length === 1 ? "" : "s"} in models/checkpoints.`
-            : "No checkpoints in models/checkpoints: put an SDXL checkpoint there and restart ComfyUI."}
-        </Line>
-      </ul>
+      {usesCheckpoints && (
+        <ul>
+          <Line ok={check.checkpoints.length > 0}>
+            {check.checkpoints.length > 0
+              ? `${check.checkpoints.length} checkpoint${check.checkpoints.length === 1 ? "" : "s"} in models/checkpoints.`
+              : "No checkpoints in models/checkpoints: put an SDXL checkpoint there and restart ComfyUI."}
+          </Line>
+        </ul>
+      )}
       {check.draws.map((d) => (
         <div key={d.preset.id} className="comfy-check-model">
           <p style={{ margin: 0 }}>
             <strong>{presetName(d.preset)}</strong>
           </p>
           <ul>
-            <Line ok={d.checkpoint}>
-              {d.checkpoint ? (
-                <>
-                  Checkpoint: <code>{d.preset.checkpoint}</code>
-                </>
-              ) : d.preset.checkpoint ? (
-                <>
-                  ComfyUI doesn&apos;t list its checkpoint <code>{d.preset.checkpoint}</code>.
-                </>
-              ) : (
-                "No checkpoint chosen."
-              )}
-            </Line>
-            {d.workflowError ? (
-              <Line ok={false}>{d.workflowError}</Line>
+            {d.family ? (
+              <FamilyLines family={d.family} />
             ) : (
-              <Line ok={d.missingNodes!.length === 0}>
-                {d.missingNodes!.length === 0
-                  ? "ComfyUI has every node its workflow uses."
-                  : `ComfyUI doesn't have these nodes its workflow uses: ${d.missingNodes!.join(", ")}. Install the custom nodes they come from, or update ComfyUI.`}
-              </Line>
+              <CheckpointLines d={d} />
             )}
             {d.missingLoras.length > 0 && <Line ok={false}>ComfyUI doesn&apos;t list its LoRAs {d.missingLoras.join(", ")}.</Line>}
           </ul>
@@ -338,34 +392,139 @@ function usePresetList<P extends { id: string; name: string }>(presets: P[], sav
   };
 }
 
-/** One drawing preset's settings: name, checkpoint, Redraw strength, LoRAs, sampler and workflow. */
+/**
+ * The files a drawing preset of a model family draws with: the model (a diffusion model, safetensors or
+ * .gguf), the text encoder(s) and the VAE, each by default the one found by its name, and where the text
+ * encoder is loaded. `family` is what ComfyUI has for the preset's files (null until it has answered).
+ */
+function FamilyFiles({
+  preset,
+  model,
+  family,
+  setup,
+  onChange,
+}: {
+  preset: DrawPreset;
+  model: DrawModel;
+  family: FamilyCheck | null;
+  setup: PictureSetup;
+  onChange: (patch: Partial<DrawPreset>) => void;
+}) {
+  const [modelPart, ...others] = model.parts;
+  const listed = (key: string) => family?.parts.find((p) => p.part.key === key);
+  // What each part is without a choice, for the first option: the file found by its name.
+  const base = setup.models.state === "done" ? setup.models.families.find((c) => c.model.id === model.id) : undefined;
+  const found = (key: string) => base?.parts.find((p) => p.part.key === key)?.file;
+  const setFile = (key: string, file: string) => {
+    const files = { ...preset.files };
+    if (file) files[key] = file;
+    else delete files[key];
+    onChange({ files });
+  };
+  const choose = (part: typeof modelPart, label: string) => (
+    <label key={part.key}>
+      {label}
+      <select aria-label={part.key === "model" ? "Model file" : part.label} value={preset.files[part.key] ?? ""} onChange={(e) => setFile(part.key, e.target.value)}>
+        <option value="">Found by its name{found(part.key) ? ` (${found(part.key)})` : " (none found)"}</option>
+        <FileOptions files={listed(part.key)?.choices ?? []} chosen={preset.files[part.key]} />
+      </select>
+    </label>
+  );
+  const problems = family ? familyProblems(family) : [];
+  return (
+    <>
+      {choose(modelPart, "Model")}
+      <span className="meta" style={{ marginTop: "-0.5rem" }}>
+        A fine-tune from Civitai or Hugging Face goes in <code>ComfyUI/models/{modelPart.folder}</code> (.safetensors, or .gguf with ComfyUI-GGUF).
+      </span>
+      {others.map((part) => choose(part, part.label))}
+      <label className="inline-label" style={{ alignItems: "flex-start" }}>
+        <input
+          type="checkbox"
+          aria-label={`Text encoder on the CPU for ${presetName(preset)}`}
+          checked={preset.textEncoderDevice === "cpu"}
+          disabled={!!family && !family.devices.includes("cpu")}
+          onChange={(e) => onChange({ textEncoderDevice: e.target.checked ? "cpu" : "default" })}
+        />
+        <span>
+          Keep the text encoder on the CPU{" "}
+          <small>
+            (in system memory, so the graphics card has room for the model; a little slower to read the prompt
+            {family && !family.devices.includes("cpu") ? ". Doesn't apply: the text encoder loader in use has no such choice" : ""})
+          </small>
+        </span>
+      </label>
+      {family &&
+        (problems.length === 0 ? (
+          <p className="ok" style={{ margin: 0 }}>
+            ComfyUI has every file and node this preset uses.
+          </p>
+        ) : (
+          <p className="error" style={{ margin: 0 }}>
+            {problems.join(" ")} Pictures can&apos;t be drawn with this preset until then.
+          </p>
+        ))}
+      {setup.models.state !== "done" && (
+        <p className="meta" style={{ margin: 0 }}>
+          The files are listed once ComfyUI answers.
+        </p>
+      )}
+    </>
+  );
+}
+
+/** One drawing preset's settings: name, model type and files, Redraw strength, LoRAs, sampler and workflow. */
 function DrawPresetFields({ preset, setup, onChange }: { preset: DrawPreset; setup: PictureSetup; onChange: (patch: Partial<DrawPreset>) => void }) {
-  const summary = workflowSummary(preset.workflow, preset.sampler);
+  const summary = workflowSummary(preset);
   const { loras, samplers, schedulers } = lists(setup.models);
   const checkpoints = setup.checkpoints ?? [];
   const known = checkpoints.includes(preset.checkpoint);
   // The workflow box starts open when there is one in it.
   const [workflowOpen] = useState(preset.workflow.trim() !== "");
+  // The model family whose built-in workflow draws with this preset; none for a checkpoint, or when a workflow of its own is pasted.
+  const model = usesFamily(preset) ? drawModel(preset.family) : undefined;
+  const family = setup.models.state === "done" && model ? familyPresetCheck(setup.models.families, preset) : null;
+  // A new model type starts from its own sampler defaults, and (for the newer models) from prompts in sentences.
+  const setFamily = (next: DrawFamily) =>
+    onChange({ family: next, sampler: {}, ...(next !== "checkpoint" && preset.promptStyle !== "natural" ? { promptStyle: "natural" as const } : {}) });
   return (
     <>
       <NameField value={preset.name} onChange={(name) => onChange({ name })} />
       <label>
-        Checkpoint
-        <select aria-label="Checkpoint" value={preset.checkpoint} onChange={(e) => onChange({ checkpoint: e.target.value })}>
-          {!preset.checkpoint && <option value="">{setup.checkpoints ? "Choose one…" : "Not chosen"}</option>}
-          {preset.checkpoint && !known && (
-            <option value={preset.checkpoint}>
-              {preset.checkpoint}
-              {setup.checkpoints ? " (not in ComfyUI)" : ""}
-            </option>
-          )}
-          {checkpoints.map((c) => (
-            <option key={c} value={c}>
-              {c}
+        Model type
+        <select aria-label="Model type" value={preset.family} onChange={(e) => setFamily(e.target.value as DrawFamily)}>
+          {DRAW_FAMILIES.map((f) => (
+            <option key={f} value={f}>
+              {FAMILY_NAMES[f]}
             </option>
           ))}
         </select>
+        <span className="meta">
+          {preset.family === "checkpoint" ? "An all-in-one checkpoint file, drawn with the built-in SDXL workflow. " : `${drawModel(preset.family)?.blurb} `}
+          Changing the type puts the sampler settings back to the new type&apos;s defaults.
+          {preset.family !== "checkpoint" && preset.workflow.trim() ? " The workflow pasted below is used instead of the built-in one." : ""}
+        </span>
       </label>
+      {(preset.family === "checkpoint" || preset.workflow.trim() !== "") && (
+        <label>
+          Checkpoint
+          <select aria-label="Checkpoint" value={preset.checkpoint} onChange={(e) => onChange({ checkpoint: e.target.value })}>
+            {!preset.checkpoint && <option value="">{setup.checkpoints ? "Choose one…" : "Not chosen"}</option>}
+            {preset.checkpoint && !known && (
+              <option value={preset.checkpoint}>
+                {preset.checkpoint}
+                {setup.checkpoints ? " (not in ComfyUI)" : ""}
+              </option>
+            )}
+            {checkpoints.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {model && <FamilyFiles preset={preset} model={model} family={family} setup={setup} onChange={onChange} />}
       <label>
         Prompt style
         <select aria-label="Prompt style" value={preset.promptStyle} onChange={(e) => onChange({ promptStyle: e.target.value as PromptStyle })}>
@@ -399,24 +558,31 @@ function DrawPresetFields({ preset, setup, onChange }: { preset: DrawPreset; set
           placeholder="e.g. lowres, watermark"
           onChange={(e) => onChange({ negative: e.target.value })}
         />
-        <span className="meta">Added to every negative prompt drawn with this preset.</span>
+        <span className="meta">
+          Added to every negative prompt drawn with this preset.
+          {model && !model.negativeUsed ? ` ${model.name} runs at CFG 1, where the negative prompt changes nothing.` : ""}
+        </span>
       </label>
       <StrengthField label="Redraw strength" value={preset.denoise} onChange={(denoise) => onChange({ denoise })}>
         Where the Redraw tab&apos;s strength starts. Low keeps the picture close; high changes more.
       </StrengthField>
       <LoraStack
         label={presetName(preset)}
-        madeFor={preset.checkpoint ? `${fileLabel(preset.checkpoint)}'s kind of model (SDXL, Pony, SD 1.5…)` : "the checkpoint's kind of model"}
+        madeFor={
+          model ? model.name : preset.checkpoint ? `${fileLabel(preset.checkpoint)}'s kind of model (SDXL, Pony, SD 1.5…)` : "the checkpoint's kind of model"
+        }
         stack={preset.loras}
         available={loras}
         onChange={(stack) => onChange({ loras: stack })}
       />
       <details className="advanced">
-        <summary>Advanced: steps, CFG, sampler</summary>
+        <summary>
+          Advanced: steps, CFG, sampler{model && model.defaults.shift !== undefined ? ", shift" : ""}{model && model.defaults.guidance !== undefined ? ", guidance" : ""}
+        </summary>
         {summary.builtin ? (
           <TuningFields
-            value={builtinSampler(preset.sampler)}
-            defaults={BUILTIN_SAMPLER}
+            value={model ? drawTuning(model, preset.sampler) : builtinSampler(preset.sampler)}
+            defaults={model ? model.defaults : BUILTIN_SAMPLER}
             changed={Object.keys(preset.sampler).length > 0}
             samplers={samplers}
             schedulers={schedulers}
@@ -430,9 +596,13 @@ function DrawPresetFields({ preset, setup, onChange }: { preset: DrawPreset; set
         )}
       </details>
       <details className="advanced" open={workflowOpen}>
-        <summary>Workflow: {summary.builtin ? "built-in SDXL" : "your own"}</summary>
+        <summary>Workflow: {summary.builtin ? `built-in ${summary.name}` : "your own"}</summary>
         <label>
-          Workflow <small>(optional: paste a workflow exported from ComfyUI with Workflow › Export (API); leave empty for the built-in SDXL one)</small>
+          Workflow{" "}
+          <small>
+            (optional: paste a workflow exported from ComfyUI with Workflow › Export (API); leave empty for the built-in{" "}
+            {preset.family === "checkpoint" ? "SDXL" : (drawModel(preset.family)?.name ?? "")} one)
+          </small>
           <AutoTextarea
             aria-label="Workflow"
             style={{ minHeight: "4rem", maxHeight: "20rem", fontFamily: "monospace", fontSize: "0.8rem" }}

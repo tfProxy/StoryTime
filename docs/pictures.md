@@ -7,8 +7,10 @@ How to set up the machine that makes StoryTime's pictures, and how to use preset
 Pictures are made with named presets, set in **Settings**, one tab for each kind:
 
 - **Drawing**: how new pictures are drawn, and redrawn from a picture. Each drawing preset has its
-  own checkpoint, LoRAs (see [Your own LoRAs](#your-own-loras)), Redraw strength, sampler settings and,
-  optionally, a workflow of your own.
+  own **Model type** (a checkpoint, or one of the
+  [newer models](#newer-models-z-image-flux-chroma-qwen-image)), checkpoint or model files, LoRAs
+  (see [Your own LoRAs](#your-own-loras)), Redraw strength, sampler settings and, optionally, a
+  workflow of your own.
 - **Qwen edit** and **Flux edit**: how pictures are edited by instruction with each edit model. Each
   edit preset has its own LoRAs, Fast box, default strength and the model's settings.
 
@@ -34,6 +36,58 @@ become presets. Each checkpoint your stories used becomes a drawing preset named
 "Default" when they all used the same one), with your workflow, Redraw strength and sampler settings,
 and each story uses the one with its checkpoint. Each edit model gets a "Default" preset with its
 LoRA stack, Fast box and settings.
+
+## Newer models (Z-Image, Flux, Chroma, Qwen-Image)
+
+A drawing preset draws with an all-in-one SDXL-style checkpoint by default (Model type **Checkpoint**).
+Newer models don't come as one file: they are a **diffusion model**, a **text encoder** (Flux has two) and a
+**VAE**, which ComfyUI loads separately. Choose the model in the drawing preset's **Model type** menu and
+StoryTime draws with its own built-in workflow for it, with no workflow to paste. (A workflow pasted in
+the preset's card still overrides everything.)
+
+| Model type | Folder | Recommended file | Where to get it |
+| --- | --- | --- | --- |
+| Z-Image (Turbo) | `models/diffusion_models` | `z_image_turbo_bf16.safetensors` | [Comfy-Org/z_image_turbo](https://huggingface.co/Comfy-Org/z_image_turbo/tree/main/split_files) |
+| | `models/text_encoders` | `qwen_3_4b.safetensors` | the same repository |
+| | `models/vae` | `ae.safetensors` (the Flux VAE) | the same repository |
+
+(The Flux, Chroma and Qwen-Image rows are added as those models are.)
+
+The repositories of **Comfy-Org** are ComfyUI's own repackaged copies, so their file names are the ones
+StoryTime looks for. Open the repository's `split_files` folder and download each file into the folder
+in the table (a subfolder is fine), then restart ComfyUI. A preset finds each file by its name, and
+also accepts other versions of it (a bf16 or fp8 model, a fine-tune with the model's name in its file
+name), so a preset only needs to **choose** a file when the one found isn't the one you want.
+
+### Settings
+
+In **Settings › Drawing**, a preset's card has:
+
+- **Model type**: Checkpoint (SDXL, Pony, Illustrious, SD 1.5), Z-Image, and so on. Choosing a type
+  puts the prompt style on **Sentences** (these models understand sentences, not tag lists) and puts the
+  **Advanced** sampler settings back to that model's defaults, so any changes you made to them are lost.
+- **Model**, **Text encoder** and **VAE** menus instead of the Checkpoint menu. Each starts on "Found
+  by its name" and shows the file it would use. They list the files ComfyUI has, and a `.gguf` file is
+  marked "(GGUF)". A fine-tune from Civitai goes in `models/diffusion_models` like the original
+  (see [GGUF models](#gguf-models)).
+- **Keep the text encoder on the CPU**: loads the text encoder into system memory so the graphics card
+  has room for the model; reading the prompt is a little slower.
+- **Advanced**: steps, CFG, sampler and scheduler, and **Shift** where the model has one. Each shows its default.
+
+The card tells you when ComfyUI doesn't have a file or a node the preset needs. **Check setup** on the
+Drawing tab lists, for each preset, the files it found, the nodes it needs and "install ComfyUI-GGUF" when
+you chose a `.gguf` file and ComfyUI can't load it.
+
+A picture's log entry and **Info** show the model file (and LoRAs). LoRAs for these presets go on the
+model only; use LoRAs made for the same model (a Z-Image LoRA for Z-Image).
+
+### Z-Image Turbo
+
+The fastest of them: 9 steps of `res_multistep` at CFG 1, so a picture takes seconds. Because it runs
+at CFG 1, the **negative prompt does nothing**. Its prompts are sentences. The bf16 file is about 12 GB,
+more than a 12 GB card holds with the text encoder, so ComfyUI moves parts of it to system memory,
+which is slower. A GGUF quant of the model (search Hugging Face for "Z-Image-Turbo GGUF"; a Q6_K or
+Q8_0 file) fits whole, and ComfyUI-GGUF loads it (see [GGUF models](#gguf-models)).
 
 ## Edit models in ComfyUI
 
@@ -135,8 +189,9 @@ Restart ComfyUI so it lists the new files. Then, in StoryTime, open the **Qwen e
 edit**) tab of **Settings** and press **Check setup**. (The ComfyUI address is on the
 **Connections** tab.) Each tab shows what the check found for it:
 
-- **Drawing**: the checkpoints, and for each drawing preset whether ComfyUI has its checkpoint, its
-  LoRAs and the nodes its workflow uses;
+- **Drawing**: the checkpoints, and for each drawing preset whether ComfyUI has its checkpoint (or,
+  for a [newer model](#newer-models-z-image-flux-chroma-qwen-image), each file it needs), its LoRAs
+  and the nodes its workflow uses;
 - **Qwen edit** and **Flux edit**: whether ComfyUI has each file and the nodes the model needs. A
   missing file is named with the folder it goes in. Missing nodes, or a text encoder type ComfyUI
   doesn't know, mean ComfyUI needs updating (step 1). For Qwen-Image-Edit, also the Lightning LoRA it
@@ -168,7 +223,8 @@ or for an art style, so its pictures keep that look.
    switch it on or off for the next pictures. The boxes are saved with the preset.
 
 The LoRAs apply in the order listed: in a drawing preset, after the checkpoint (with ComfyUI's
-**LoraLoader**, so they change the model and the text encoder); in an edit preset, after the
+**LoraLoader**, so they change the model and the text encoder; a preset of a newer model type uses
+**LoraLoaderModelOnly**, like the edit presets); in an edit preset, after the
 Lightning LoRA when **Fast** is on (with **LoraLoaderModelOnly**, so they change the model but not
 the text encoder; a trigger word still works if you put it in the instruction). A drawing preset with
 a workflow of your own gets its LoRAs after the workflow's Load Checkpoint node, or after its Load

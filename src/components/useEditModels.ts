@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { editModelsFor, forgetEditModels } from "@/lib/comfy/check";
+import { forgetEditModels, modelChecksFor } from "@/lib/comfy/check";
+import { familyPresetCheck, type FamilyCheck } from "@/lib/comfy/drawModels";
 import { editPresetCheck, type EditCheck } from "@/lib/comfy/editModels";
-import type { EditPreset } from "@/lib/comfy/presets";
+import { usesFamily, type DrawPreset, type EditPreset } from "@/lib/comfy/presets";
 
 export type EditModels =
   | { state: "checking" }
@@ -13,6 +14,8 @@ export type EditModels =
       ready: EditCheck[];
       /** What ComfyUI has for every model, ready or not, for presets that choose their own files (see editPresetCheck). */
       checks: EditCheck[];
+      /** What ComfyUI has for every drawing model family, for drawing presets that use one (see drawPresetFamily). */
+      families: FamilyCheck[];
       /** Every LoRA file ComfyUI lists, for the author's LoRA stacks. */
       loras: string[];
       /** The samplers and schedulers ComfyUI offers, for Settings. */
@@ -32,8 +35,8 @@ export function useEditModels(url: string, fresh?: number): EditModels {
     if (!url) return;
     let live = true;
     if (fresh !== undefined) forgetEditModels();
-    editModelsFor(url).then(
-      (checks) =>
+    modelChecksFor(url).then(
+      ({ edits: checks, families }) =>
         live &&
         setFound({
           url,
@@ -42,6 +45,7 @@ export function useEditModels(url: string, fresh?: number): EditModels {
             state: "done",
             ready: checks.filter((c) => c.ready),
             checks,
+            families,
             loras: checks[0]?.loras ?? [],
             samplers: checks[0]?.samplers ?? [],
             schedulers: checks[0]?.schedulers ?? [],
@@ -55,6 +59,15 @@ export function useEditModels(url: string, fresh?: number): EditModels {
   }, [url, fresh]);
   // An earlier answer stays shown while ComfyUI is asked again.
   return found?.url === url ? found.result : { state: "checking" };
+}
+
+/**
+ * What ComfyUI has for a drawing preset's family and the files it chose: null for a checkpoint preset or one with a
+ * workflow of its own, and while ComfyUI hasn't answered (or can't be asked).
+ */
+export function drawPresetFamily(models: EditModels, preset: DrawPreset): FamilyCheck | null {
+  if (models.state !== "done" || !usesFamily(preset)) return null;
+  return familyPresetCheck(models.families, preset);
 }
 
 /** The edit presets ComfyUI can run now, each with its check (the files it uses); empty until ComfyUI has answered. */

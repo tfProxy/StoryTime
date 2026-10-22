@@ -9,13 +9,14 @@ import { QUEUE_COUNTS, type ComfySettings } from "@/lib/settingsSchema";
 import { targetKey, type PictureMoment, type PictureTarget } from "@/lib/pictureTarget";
 import type { LoadedPrompt } from "./ImagePromptPanel";
 import type { JobProgress, MadeWith, PendingJob, Picture, StartMode } from "./pictures";
-import { editBlocked, usableEditPresets, type EditModels } from "./useEditModels";
+import { drawPresetFamily, editBlocked, usableEditPresets, type EditModels } from "./useEditModels";
 import AutoTextarea from "./AutoTextarea";
 import { usePictureQueue } from "./PictureQueue";
 import { LIMITS } from "@/lib/limits";
 import { EDIT_MODELS, editTuning, lightningSteps, usableLoras } from "@/lib/comfy/editModels";
 import { combinePrompts } from "@/lib/ai/imagePrompt";
-import { drawPresetFor, drawPresetSummary, presetName, type DrawPreset, type EditPreset, type LoraSetting } from "@/lib/comfy/presets";
+import { familyProblems } from "@/lib/comfy/drawModels";
+import { drawPresetFor, drawPresetSummary, presetName, usesFamily, type DrawPreset, type EditPreset, type LoraSetting } from "@/lib/comfy/presets";
 import type { StartPicture } from "@/lib/comfy/startPicture";
 import { readEdit, readRedraw, stateKey, writeEdit, writeRedraw } from "@/lib/comfy/editingState";
 import { listCheckpoints } from "@/lib/comfy/client";
@@ -200,6 +201,9 @@ export default function ComfyGenerate({
   // The drawing preset's LoRAs switched on, and those of them ComfyUI doesn't list (when it is known what it lists).
   const loraFiles = editModels.state === "done" ? editModels.loras : null;
   const drawUsable = usableLoras(draw.loras, loraFiles ?? draw.loras.map((l) => l.name));
+  // A preset of a model family (Z-Image, Flux…) draws with the files ComfyUI has for it, not a checkpoint.
+  const fromFamily = usesFamily(draw);
+  const familyCheck = drawPresetFamily(editModels, draw);
 
   const editing = start !== null && startMode === "edit";
   const blocked = editBlocked(editModels, comfy.editPresets);
@@ -252,7 +256,8 @@ export default function ComfyGenerate({
 
   // Asking ComfyUI for its checkpoints says early whether it can be reached, and whether it still has the
   // drawing preset's checkpoint.
-  const checkpoint = draw.checkpoint;
+  // (A model family's preset has no checkpoint; its files are checked when a picture is asked for.)
+  const checkpoint = fromFamily ? "" : draw.checkpoint;
   const drawName = presetName(draw);
   useEffect(() => {
     if (!comfy.url) return;
@@ -299,6 +304,15 @@ export default function ComfyGenerate({
   function ask() {
     setStatus(null);
     if (editing && !chosen) return setStatus({ ok: false, text: blocked ?? "No edit model is ready." });
+    if (!editing && fromFamily) {
+      if (!familyCheck) {
+        const why = editModels.state === "error" ? `Couldn't ask ComfyUI which files it has: ${editModels.message}` : "Still asking ComfyUI which files it has for the drawing preset. Try again in a moment.";
+        return setStatus({ ok: false, text: why });
+      }
+      if (!familyCheck.ready) {
+        return setStatus({ ok: false, text: `The drawing preset “${drawName}” can't draw yet. ${familyProblems(familyCheck).join(" ")} Settings › Drawing has the details.` });
+      }
+    }
     const input: JobInput = {
       // An edit follows the instruction alone, so the preset's and chapter's text isn't added to it.
       prompt: (editing ? boxPrompt : prompt).trim(),
@@ -308,6 +322,7 @@ export default function ComfyGenerate({
       comfy,
       draw,
       drawLoras: drawUsable.loras,
+      family: fromFamily ? familyCheck : null,
       redraw: redrawStrength,
       start,
       edit: editing && chosen && tuning ? { check: chosen, instruction: instruction.trim(), strength: editStrength, fast, loras: editLoras, tuning, textEncoderDevice: editPreset?.textEncoderDevice ?? "default" } : null,

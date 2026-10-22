@@ -24,6 +24,7 @@
 //   gguf        true: the ComfyUI-GGUF loaders exist (UnetLoaderGGUF, CLIPLoaderGGUF, DualCLIPLoaderGGUF) and
 //               list the .gguf files in `files`; the ordinary loaders then list only the other files, like
 //               the real ones (default false: no GGUF nodes)
+//   tokenizerOptions  true: the T5TokenizerOptions node exists (Chroma's workflow uses it when it does; default false)
 import crypto from "node:crypto";
 import http from "node:http";
 import zlib from "node:zlib";
@@ -99,9 +100,21 @@ const NODES = [
   "CheckpointLoaderSimple", "KSampler", "EmptyLatentImage", "CLIPTextEncode", "VAEDecode", "VAEEncode", "SaveImage", "LoadImage",
   "RepeatLatentBatch", "ImageScale", "UNETLoader", "CLIPLoader", "DualCLIPLoader", "VAELoader", "TextEncodeQwenImageEditPlus",
   "ModelSamplingAuraFlow", "CFGNorm", "ReferenceLatent", "FluxGuidance", "ConditioningZeroOut", "LoraLoaderModelOnly", "LoraLoader",
+  "EmptySD3LatentImage",
 ];
 const GGUF_NODES = ["UnetLoaderGGUF", "CLIPLoaderGGUF", "DualCLIPLoaderGGUF"];
+// Nodes newer ComfyUIs have and the fake has only when asked (`tokenizerOptions: true`).
+const OPTIONAL_NODES = ["T5TokenizerOptions"];
 const isGguf = (f) => f.endsWith(".gguf");
+
+/** The files of each folder that look like the newer drawing models' files (Z-Image, Flux, Chroma, Qwen-Image), for tests that install them. */
+export const FAMILY_FILES = {
+  diffusion_models: [
+    "z_image_turbo_bf16.safetensors", "flux1-dev-fp8.safetensors", "chroma-unlocked-v50.safetensors", "qwen_image_fp8_e4m3fn.safetensors",
+  ],
+  text_encoders: ["qwen_3_4b.safetensors", "clip_l.safetensors", "t5xxl_fp8_e4m3fn_scaled.safetensors", "qwen_2.5_vl_7b_fp8_scaled.safetensors"],
+  vae: ["ae.safetensors", "qwen_image_vae.safetensors"],
+};
 
 /** The samplers and schedulers the fake's KSampler offers. */
 export const SAMPLERS = ["euler", "euler_ancestral", "dpmpp_2m", "res_multistep", "fake_sampler"];
@@ -110,8 +123,9 @@ export const SCHEDULERS = ["simple", "normal", "karras", "beta"];
 /** Qwen-Image-Edit's Lightning LoRA, for tests that install it (in `files.loras`). */
 export const LIGHTNING_LORA = "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors";
 
-export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.safetensors", "fake_sdxl_b.safetensors"], ws = true, steps = 4, stepDelay = 120, startDelay = 300, fail = null, version = "0.3.99", files = {}, missingNodes = [], gguf = false } = {}) {
-  const mode = { checkpoints, ws, steps, stepDelay, startDelay, fail, version, files, missingNodes, gguf };
+export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.safetensors", "fake_sdxl_b.safetensors"], ws = true, steps = 4, stepDelay = 120, startDelay = 300, fail = null, version = "0.3.99", files = {}, missingNodes = [], gguf = false, tokenizerOptions = false } = {}) {
+  const mode = { checkpoints, ws, steps, stepDelay, startDelay, fail, version, files, missingNodes, gguf, tokenizerOptions };
+  const known = (name) => NODES.includes(name) || (mode.gguf && GGUF_NODES.includes(name)) || (mode.tokenizerOptions && OPTIONAL_NODES.includes(name));
   // The ordinary loaders never list .gguf files when the GGUF nodes are there; the GGUF ones list them (and the rest of their folder).
   const folder = (name) => (mode.files[name] ?? []).filter((f) => !mode.gguf || !isGguf(f));
   const ggufFolder = (name) => mode.files[name] ?? [];
@@ -122,14 +136,14 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
     const required = {
       CheckpointLoaderSimple: { ckpt_name: combo(mode.checkpoints) },
       UNETLoader: { unet_name: combo(folder("diffusion_models")), weight_dtype: combo(["default", "fp8_e4m3fn"]) },
-      CLIPLoader: { clip_name: combo(folder("text_encoders")), type: combo(["stable_diffusion", "sd3", "qwen_image"]) },
+      CLIPLoader: { clip_name: combo(folder("text_encoders")), type: combo(["stable_diffusion", "sd3", "qwen_image", "lumina2", "chroma"]) },
       DualCLIPLoader: {
         clip_name1: ["COMBO", { options: folder("text_encoders") }],
         clip_name2: ["COMBO", { options: folder("text_encoders") }],
         type: ["COMBO", { options: ["sdxl", "sd3", "flux"] }],
       },
       UnetLoaderGGUF: { unet_name: combo(ggufFolder("diffusion_models")) },
-      CLIPLoaderGGUF: { clip_name: combo(ggufFolder("text_encoders")), type: combo(["stable_diffusion", "sd3", "qwen_image"]) },
+      CLIPLoaderGGUF: { clip_name: combo(ggufFolder("text_encoders")), type: combo(["stable_diffusion", "sd3", "qwen_image", "lumina2", "chroma"]) },
       DualCLIPLoaderGGUF: {
         clip_name1: ["COMBO", { options: ggufFolder("text_encoders") }],
         clip_name2: ["COMBO", { options: ggufFolder("text_encoders") }],
@@ -200,12 +214,13 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
       nodeErrors["3"] = { class_type: "KSampler", dependent_outputs: ["9"], errors: [{ type: "required_input_missing", message: "Required input is missing", details: "positive" }] };
     }
     for (const [id, node] of nodes) {
-      if (node?.class_type && (!NODES.includes(node.class_type) || mode.missingNodes.includes(node.class_type))) {
+      if (node?.class_type && (!known(node.class_type) || mode.missingNodes.includes(node.class_type))) {
         nodeErrors[id] = { class_type: node.class_type, dependent_outputs: [], errors: [{ type: "invalid_prompt", message: `Cannot execute because node ${node.class_type} does not exist.`, details: "" }] };
       }
       const unet = node?.inputs?.unet_name;
-      if (node?.class_type === "UNETLoader" && !folder("diffusion_models").includes(unet)) {
-        nodeErrors[id] = { class_type: "UNETLoader", dependent_outputs: ["21"], errors: [{ type: "value_not_in_list", message: "Value not in list", details: `unet_name: '${unet}'` }] };
+      const unets = { UNETLoader: folder("diffusion_models"), UnetLoaderGGUF: ggufFolder("diffusion_models") }[node?.class_type];
+      if (unets && !unets.includes(unet)) {
+        nodeErrors[id] = { class_type: node.class_type, dependent_outputs: ["21"], errors: [{ type: "value_not_in_list", message: "Value not in list", details: `unet_name: '${unet}'` }] };
       }
       const name = node?.inputs?.ckpt_name;
       if (node?.class_type === "CheckpointLoaderSimple" && !mode.checkpoints.includes(name)) {
@@ -266,7 +281,7 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
       if (p === "/models/checkpoints") return json(200, mode.checkpoints);
       if (p.startsWith("/object_info/")) {
         const name = decodeURIComponent(p.slice("/object_info/".length));
-        return json(200, (NODES.includes(name) || (mode.gguf && GGUF_NODES.includes(name))) && !mode.missingNodes.includes(name) ? { [name]: nodeInfo(name) } : {});
+        return json(200, known(name) && !mode.missingNodes.includes(name) ? { [name]: nodeInfo(name) } : {});
       }
       if (p === "/upload/image" && req.method === "POST") {
         // multipart/form-data: only the file name is read; a name taken twice gets "(1)" like ComfyUI does.

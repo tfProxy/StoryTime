@@ -3,8 +3,9 @@
 // and then waits for the pictures. Browser code, no React.
 import type { PictureMoment, PictureTarget } from "../pictureTarget";
 import type { ComfySettings } from "../settingsSchema";
+import { buildDraw, drawTuning, familyProblems, type FamilyCheck } from "./drawModels";
 import { buildEdit, editFilesText, editSize, type EditCheck, type EditLora, type EditTuning, type TextEncoderDevice } from "./editModels";
-import { drawFilesText, presetName, type DrawPreset } from "./presets";
+import { drawFilesText, presetName, usesFamily, type DrawPreset } from "./presets";
 import { uploadStart, type StartPicture, type Uploaded } from "./startPicture";
 import { builtinSampler, describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "./workflow";
 import { cancelPrompt, queuePrompt, type Progress } from "./client";
@@ -19,6 +20,8 @@ export type JobInput = {
   /** The drawing preset, its LoRAs that are switched on and in ComfyUI, and the Redraw strength (for new pictures and Redraw). */
   draw: DrawPreset;
   drawLoras: EditLora[];
+  /** What ComfyUI has for the drawing preset's model family and the files it chose; null for a checkpoint preset, one with a workflow of its own, or before ComfyUI has answered. */
+  family: FamilyCheck | null;
   redraw: number;
   start: StartPicture | null;
   /** An edit of the starting picture by instruction, with the model to make it; null to redraw it or make new pictures. */
@@ -42,14 +45,16 @@ export type JobInput = {
 /** The strength a job's pictures are recorded with: a redraw's, an edit's when it is less than full, else null. */
 export const denoiseOf = (i: JobInput) => (i.edit ? (i.edit.strength < 1 ? i.edit.strength : null) : i.start ? i.redraw : null);
 
-/** What the log will say the pictures were made with: the edit model's files, or the drawing preset's checkpoint and LoRAs. */
-export const madeWithText = (i: JobInput) => (i.edit ? editFilesText(i.edit.check, i.edit.fast, i.edit.loras) : drawFilesText(i.draw.checkpoint, i.drawLoras));
+/** What the log will say the pictures were made with: the edit model's files, or the drawing preset's checkpoint (or family's model file) and LoRAs. */
+export const madeWithText = (i: JobInput) =>
+  i.edit ? editFilesText(i.edit.check, i.edit.fast, i.edit.loras) : drawFilesText(i.family?.files.model ?? i.draw.checkpoint, i.drawLoras);
 
 /** What has to match for a click to join the job being gathered. */
 export const sameJob = (a: JobInput) =>
   JSON.stringify([
     a.prompt, a.negative, a.moment, a.comfy.url, a.comfy.width, a.comfy.height, a.start?.key ?? null,
-    a.edit ? null : [a.draw.checkpoint, a.draw.workflow, a.draw.sampler, a.drawLoras], a.start && !a.edit ? a.redraw : null,
+    a.edit ? null : [a.draw.checkpoint, a.draw.workflow, a.draw.sampler, a.drawLoras, a.draw.family, a.family?.files ?? null, a.draw.textEncoderDevice],
+    a.start && !a.edit ? a.redraw : null,
     a.edit?.check.model.id ?? null, a.edit?.instruction ?? null,
     a.edit?.strength ?? null, a.edit?.fast ?? null, a.edit?.loras ?? null, a.edit?.tuning ?? null, a.edit?.textEncoderDevice ?? null, a.seed,
   ]);
@@ -78,17 +83,22 @@ export async function queueJob(
     beforeQueue?: () => Promise<void>;
   },
 ): Promise<MadeJob> {
-  const { prompt, negative, moment, comfy, draw, drawLoras, start, edit } = input;
+  const { prompt, negative, moment, comfy, draw, drawLoras, start, edit, family } = input;
   const { signal, uploads, onProgress } = hooks;
   onProgress({ stage: "queued", ahead: null });
   const seed = input.seed ?? randomSeed();
   // Names this job's WebSocket connection, so ComfyUI sends its progress there.
   const clientId = `storytime-${randomSeed().toString(36)}`;
-  // An edit uses its own workflow, so the drawing preset doesn't matter.
-  const base = edit ? null : parseWorkflow(draw.workflow);
+  // An edit uses its own workflow, so the drawing preset doesn't matter. A model family has its own, unless the preset pastes one.
+  const fromFamily = !edit && usesFamily(draw);
+  const base = edit || fromFamily ? null : parseWorkflow(draw.workflow);
   if (edit) {
     if (!start) throw new Error("Choose a picture to edit first.");
     if (!edit.instruction) throw new Error("Say what to change first.");
+  } else if (fromFamily) {
+    if (!prompt) throw new Error("Write or type a prompt first.");
+    if (!family) throw new Error(`Still asking ComfyUI which files it has for the drawing preset “${presetName(draw)}”. Try again in a moment.`);
+    if (!family.ready) throw new Error(`The drawing preset “${presetName(draw)}” can't draw yet. ${familyProblems(family).join(" ")} Settings › Drawing has the details.`);
   } else {
     if (!prompt) throw new Error("Write or type a prompt first.");
     if (describeWorkflow(base!).checkpoint && !draw.checkpoint) {
@@ -124,6 +134,14 @@ export async function queueJob(
           { image: from.name, instruction: edit.instruction, seed, count, width, height, prefix, denoise: edit.strength, loras: edit.loras, tuning: edit.tuning, textEncoderDevice: edit.textEncoderDevice },
           edit.fast,
         )
+      : fromFamily && family
+        ? buildDraw(family, {
+            prompt, negative, seed, count, width, height, prefix,
+            loras: drawLoras,
+            tuning: drawTuning(family.model, draw.sampler),
+            textEncoderDevice: draw.textEncoderDevice,
+            ...(from && { image: from.name, denoise: input.redraw }),
+          })
       : fillWorkflow(base!, {
           prompt,
           negative,
