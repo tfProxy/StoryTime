@@ -65,3 +65,47 @@ Give a picture job up to four reference pictures (a character, an item, a place,
 - **Consistent characters:**
   - A per-character "look" as a fixed tag string taken from the codex (the reference picture is planned above).
   - A LoRA per story could be a workflow setting.
+
+## Story review: checks and tags (agreed with the owner, 2026-10-22)
+
+An AI review that suggests fixes and tags for the owner to approve, kept out of the writing flow. Run by hand at first (one chapter, one branch, or the whole story), automatic later. Not built.
+
+**Decisions so far**
+- A separate **Review** page per story (story menu, e.g. `/s/<id>/review`) with two tabs: **Issues** and **Tags**. The only sign of it elsewhere is an optional marker on outline chapters with open items, which opens Review filtered to that chapter; a setting hides the markers.
+- Checks and facts are per branch: a chapter is only compared with the chapters on its root-to-chapter path, as codex ops are folded (`codex.ts`). Sibling branches may differ.
+- Tags come from **one shared library** defined in a new **Settings** section and switched on per story.
+- Tags serve both the owner (filtering, finding things) and readers (content notes at choices, e.g. "ahead: violence, tf"). Later: show chosen tags in the outline, or highlight outline branches by tag.
+
+**Issues tab: what it checks**
+- Codex: names that keep appearing with no entry (suggest a create anchored where it first appears); entries the chapter contradicts (suggest a replace anchored at that chapter); entries live after a death or retired before a return; alias variants ("Jon"/"John"). Builds on `CodexAiScan.tsx` / `codexAi.ts`.
+- Summaries: missing; stale (chapter revision newer than the summary, no AI needed); wrong (leaves out key events or adds things not in the chapter); a story-so-far that contradicts its parent's. Fixes reuse `summaries.ts`.
+- Continuity along a branch: descriptions (eyes, age, scars, clothes), who knows or holds what, who is alive, where people are, timeline; a choice's text that its chapter doesn't deliver.
+- Optional: tense, point of view or tone drifting from the story's style.
+
+**Tags tab**
+- A tag definition: name, short label, **applies when**, **doesn't apply when**, kind, optional value (e.g. mild/graphic, or a species), and examples (a rejected suggestion can be saved as a "not this" example).
+- Kinds: **event** (on a chapter: violence, tg, tf) and **state** (a stretch: `species: wolf` for Jim from the chapter where it happens until one that ends it, stored as ops anchored at chapters and folded like codex ops, so it only applies on that branch). Branches and the story roll up their chapters' tags without approval.
+- A tf event can also suggest the matching codex change and open a species state tag.
+- Help writing rules: the AI drafts applies / doesn't apply from a rough idea, and **Try it** shows what a draft would tag on a few chapters before saving.
+- Starter rules to refine with the owner (open questions: do dreams or visions count, a change reversed in the same chapter, partial changes like ears or a tail):
+  - **violence:** a character deliberately injures or attacks someone, or destroys property in anger, on the page. Not threats, past or reported fights, accidents, sparring or play. Value: mild / graphic.
+  - **tg:** a character's physical sex changes, fully or partly, on the page. Not cross-dressing, disguise, illusion, or a change only talked about.
+  - **tf:** a character's species or physical form changes (animal, creature, object, size, partial), on the page. Not illusions or costumes, and not tg alone.
+
+**Review items (both tabs)**
+- Each shows its type, a quote with a link to the passage (two quotes for a contradiction) and a suggested fix. Actions: Apply / Approve, Reject (with "add as example" for tags), Intentional (adds a codex note so later checks know, e.g. a disguise), Later.
+- A fingerprint per item so a rejected one isn't raised again unless the chapter changes. Tags record whether they came from the AI or the owner; tags can always be added and removed by hand.
+
+**How it works**
+1. Once per chapter revision, the AI pulls out facts and events (entity, attribute, value, quote), saved against the revision so unchanged chapters aren't re-read. Checks and tags share this pass.
+2. Plain code compares facts along the path and against the codex at that chapter to find possible conflicts.
+3. The AI is asked only about those ("contradiction, a change in the story, or fine?"), which keeps prompts small enough for local models.
+
+New tables (a migration): tag definitions, per-story enabled tags, chapter tags, state-tag ops, chapter facts, review items.
+
+**Stages**
+1. The Review page and the Issues tab with the free checks (missing or stale summaries) plus the existing codex scan; outline markers.
+2. The tag library in Settings, rule help and Try it, event tags with approval.
+3. Fact extraction, continuity checks and state tags.
+4. Tags at choices and in the outline.
+5. Automatic runs: check a chapter after it is saved. A background or nightly run needs the server to make the AI calls (today the browser makes them; settings already live on the server).
