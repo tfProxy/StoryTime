@@ -2656,8 +2656,10 @@ fieldset.model-uses .inline-label input[type="checkbox"] {
   scrollbar-width: none;
 }
 
-.settings-tabs button {
+.settings-tabs button,
+.settings-tabs a {
   flex: 0 0 auto;
+  text-decoration: none;
   background: none;
   color: var(--muted);
   border: 0;
@@ -2667,7 +2669,8 @@ fieldset.model-uses .inline-label input[type="checkbox"] {
   white-space: nowrap;
 }
 
-.settings-tabs button[aria-selected="true"] {
+.settings-tabs button[aria-selected="true"],
+.settings-tabs a[aria-current="page"] {
   color: var(--fg);
   border-bottom-color: var(--accent);
   font-weight: 600;

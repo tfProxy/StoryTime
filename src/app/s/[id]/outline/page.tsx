@@ -9,6 +9,7 @@ import type { ImageVersions } from "@/lib/imageSlots";
 import { getSettings } from "@/lib/settingsStore";
 import { DEFAULT_OUTLINE, type OutlineOptions } from "@/lib/settingsSchema";
 import { issueCounts } from "@/lib/review";
+import { pendingTagCounts } from "@/lib/tags";
 
 export const dynamic = "force-dynamic";
 
@@ -40,20 +41,22 @@ function Node({
   node: TreeNode;
   via: string | null;
   images: Map<string, ImageVersions>;
-  issues: Map<string, number>;
+  issues: Map<string, { n: number; tags: boolean }>;
   storyId: string;
   show: OutlineOptions;
 }) {
   // Only written chapters are listed; unwritten choices are left to the story page.
   const written = node.choices.filter((c) => c.child);
-  const n = issues.get(node.id) ?? 0;
+  const n = issues.get(node.id)?.n ?? 0;
+  // The marker opens the Review tab that has something; the tags tab only when tag suggestions are all there is.
+  const tagsOnly = issues.get(node.id)?.tags ?? false;
   // Only the links that are on; none at all leaves NodeSummary's [...] without an empty part.
   const links = [
     n > 0 && (
       <Link
         key="review"
         className="outline-action outline-review"
-        href={`/s/${storyId}/review?chapter=${node.id}`}
+        href={`/s/${storyId}/review?${tagsOnly ? "tab=tags&" : ""}chapter=${node.id}`}
         title="Something to check on the Review page"
         aria-label={`${n} thing${n === 1 ? "" : "s"} to check`}
       >
@@ -102,7 +105,14 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
   const images = chapterImageVersions(idsOf(tree));
   // Read here, not in the browser, so a part turned off in Settings is never drawn first and then hidden.
   const show = (getSettings() ?? { outline: DEFAULT_OUTLINE }).outline;
-  const issues = show.review ? issueCounts(id) : new Map<string, number>();
+  const issues = new Map<string, { n: number; tags: boolean }>();
+  if (show.review) {
+    const checks = issueCounts(id);
+    const pending = pendingTagCounts(id);
+    for (const cid of new Set([...checks.keys(), ...pending.keys()])) {
+      issues.set(cid, { n: (checks.get(cid) ?? 0) + (pending.get(cid) ?? 0), tags: !checks.has(cid) });
+    }
+  }
 
   return (
     <div className="outline-page">

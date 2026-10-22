@@ -110,7 +110,7 @@ export const OUTLINE_PARTS = [
   { id: "headerPicture", label: "Header picture", hint: "an icon, for chapters that have one, that shows it in a popup" },
   { id: "footerPicture", label: "Footer picture", hint: "the same for the footer picture" },
   { id: "illustrate", label: "Illustrate", hint: "a paintbrush that opens the chapter's Illustrate page" },
-  { id: "review", label: "Review marker", hint: "a ⚠ count on chapters with something to check, which opens the Review page" },
+  { id: "review", label: "Review marker", hint: "a ⚠ count on chapters with something to check or tags waiting for your approval, which opens the Review page" },
 ] as const satisfies readonly { id: keyof OutlineOptions; label: string; hint: string }[];
 
 export const DEFAULT_OUTLINE: OutlineOptions = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, review: true };

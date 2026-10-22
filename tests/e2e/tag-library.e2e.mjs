@@ -65,7 +65,7 @@ try {
   await v.getByLabel("Doesn't apply when").fill("only mentioned");
   await v.getByLabel("Values").fill("mild, graphic, gory");
   await v.getByRole("button", { name: "Save", exact: true }).click();
-  await v.getByText("Saved.").waitFor();
+  await v.getByText("Saved.", { exact: true }).waitFor();
   const saved = (await getJson("/api/tags")).tags.find((t) => t.name === "violence");
   ok(saved.not_applies === "only mentioned" && saved.choices.join() === "mild,graphic,gory", "edit saved on the server");
 
