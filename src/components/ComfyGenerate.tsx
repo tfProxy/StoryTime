@@ -26,7 +26,7 @@ import { editRefLimit } from "@/lib/comfy/makeJob";
 import { ipAdapterProblem } from "@/lib/comfy/ipAdapter";
 import type { RefChoice } from "@/lib/comfy/referenceChoices";
 import References from "./References";
-import { describeWorkflow, parseWorkflow } from "@/lib/comfy/workflow";
+import { describeWorkflow, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
 import type { PaintedArea } from "@/lib/mask";
 import { MaskPainter, useMaskPreview } from "./StartMask";
 
@@ -324,6 +324,10 @@ export default function ComfyGenerate({
     setReuseSeed(false);
   }
   const loadedSeed = loaded?.seed ?? null;
+  // A seed kept between queues, or typed by hand: every picture asked for uses it (null while off or not a whole number).
+  const [keepSeed, setKeepSeed] = useState(false);
+  const [seedText, setSeedText] = useState("");
+  const fixedSeed = keepSeed && /^\d{1,15}$/.test(seedText.trim()) ? Number(seedText) : null;
 
   // Asking ComfyUI for its checkpoints says early whether it can be reached, and whether it still has the
   // drawing preset's checkpoint.
@@ -414,7 +418,7 @@ export default function ComfyGenerate({
       start,
       mask: editing ? null : mask,
       edit: editing && chosen && tuning ? { check: chosen, instruction: instruction.trim(), strength: editStrength, fast, loras: editLoras, tuning, textEncoderDevice: editPreset?.textEncoderDevice ?? "default" } : null,
-      seed: reuseSeed && loadedSeed !== null ? loadedSeed : null,
+      seed: fixedSeed ?? (reuseSeed && loadedSeed !== null ? loadedSeed : null),
       refs: sentRefs,
       ipAdapter: drawPresetIpAdapter(editModels, draw),
     };
@@ -565,8 +569,8 @@ export default function ComfyGenerate({
       {start && (
         <div className="start-picture">
           <div className="start-picture-frame">
-            {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
             <a href={start.thumb} target="_blank" rel="noreferrer" title="Open full size in a new tab" style={{ display: "block" }}>
+              {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
               <img src={start.thumb} alt="Starting picture" />
             </a>
             {/* eslint-disable-next-line @next/next/no-img-element -- a small picture made here */}
@@ -790,6 +794,28 @@ export default function ComfyGenerate({
           Reuse seed {loadedSeed}
         </label>
       )}
+      <div className="row" style={{ gap: "0.4rem", alignItems: "center" }}>
+        <label className="inline-label" title="Every picture uses the same seed until you turn this off. Pictures in one batch still differ from each other.">
+          <input
+            type="checkbox"
+            checked={keepSeed}
+            onChange={(e) => {
+              setKeepSeed(e.target.checked);
+              if (e.target.checked && !seedText) setSeedText(String(loadedSeed !== null && reuseSeed ? loadedSeed : randomSeed()));
+            }}
+          />
+          Keep seed
+        </label>
+        {keepSeed && (
+          <>
+            <input type="text" inputMode="numeric" aria-label="Seed" value={seedText} onChange={(e) => setSeedText(e.target.value)} style={{ width: "10rem" }} />
+            <button type="button" className="secondary" onClick={() => setSeedText(String(randomSeed()))}>
+              New seed
+            </button>
+          </>
+        )}
+      </div>
+      {keepSeed && fixedSeed === null && <p className="error" style={{ margin: 0 }}>The seed has to be a whole number, so a random one is used.</p>}
       {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
       {dock ? createPortal(bar, dock) : bar}
     </section>

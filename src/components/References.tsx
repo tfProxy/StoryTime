@@ -191,8 +191,8 @@ export default function References({ refs, onChange, suggested, pictures, codex,
       <h2>References</h2>
       {styleShown && (
         <div className="reference-item story-style" aria-label="Story style picture">
-          {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
           <a href={story.ref.thumb} target="_blank" rel="noreferrer" title="Open full size in a new tab" style={{ display: "flex" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
             <img className="reference-thumb" src={story.ref.thumb} alt="Story style picture" style={story.on ? undefined : { opacity: 0.4 }} />
           </a>
           <div className="reference-fields">
@@ -213,8 +213,8 @@ export default function References({ refs, onChange, suggested, pictures, codex,
         <ul className="reference-list" aria-label="Reference pictures">
           {refs.map((r, i) => (
             <li key={r.key} className="reference-item">
-              {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
               <a href={r.thumb} target="_blank" rel="noreferrer" title="Open full size in a new tab" style={{ display: "flex" }}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
                 <img className="reference-thumb" src={r.thumb} alt={`Reference ${i + 1}: ${r.label}`} />
               </a>
               <div className="reference-fields">

@@ -103,6 +103,25 @@ try {
   await page.keyboard.press("Escape");
   await info.waitFor({ state: "detached" });
 
+  // ---- a seed kept between queues, or typed by hand ----
+  const seedOf = (wf) => nodes(wf, "KSampler")[0][1].inputs.seed;
+  ok(await page.getByLabel("Seed", { exact: true }).count() === 0, "the seed box shows only with Keep seed ticked");
+  await page.getByRole("checkbox", { name: "Keep seed" }).check();
+  const seedBox = page.getByLabel("Seed", { exact: true });
+  ok(/^\d+$/.test(await seedBox.inputValue()), "ticking Keep seed fills in a random seed");
+  await seedBox.fill("4242");
+  const before = prompts().length;
+  await queue.click();
+  await until(async () => prompts().length === before + 1, "the first pictures to be queued");
+  await until(async () => await ready(), "the first pictures");
+  await queue.click();
+  await until(async () => prompts().length === before + 2, "the second pictures to be queued");
+  ok(prompts().slice(-2).every((p) => seedOf(p) === 4242), "both queues use the typed seed");
+  await seedBox.fill("12x");
+  ok(await page.getByText("The seed has to be a whole number").isVisible(), "a seed that isn't a whole number is refused, and says so");
+  await page.getByRole("checkbox", { name: "Keep seed" }).uncheck();
+  await until(async () => await ready(), "the pictures");
+
   // ---- kept per chapter and moment ----
   await until(async () => (await draft(second))?.end.refs.length === 1, "the reference to be kept");
   const kept = (await draft(second)).end.refs[0];
