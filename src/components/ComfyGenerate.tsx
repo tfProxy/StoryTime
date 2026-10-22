@@ -566,7 +566,9 @@ export default function ComfyGenerate({
         <div className="start-picture">
           <div className="start-picture-frame">
             {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
-            <img src={start.thumb} alt="Starting picture" />
+            <a href={start.thumb} target="_blank" rel="noreferrer" title="Open full size in a new tab" style={{ display: "block" }}>
+              <img src={start.thumb} alt="Starting picture" />
+            </a>
             {/* eslint-disable-next-line @next/next/no-img-element -- a small picture made here */}
             {!editing && preview.url && <img className="start-picture-mask" src={preview.url} alt="The part to redraw, tinted" />}
           </div>

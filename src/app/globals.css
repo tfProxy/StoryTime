@@ -1462,6 +1462,7 @@ textarea.two-lines {
   max-width: none;
   max-height: none;
   background: transparent;
+  pointer-events: none; /* clicks go to the picture's link */
   opacity: 0.6;
   pointer-events: none;
 }
