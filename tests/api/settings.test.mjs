@@ -69,7 +69,7 @@ r = await call("PUT", "/api/settings", { ...conns, autoSuggestChoices: true });
 ok(r.json.settings.autoSuggestChoices === true && (await call("GET", "/api/settings")).json.settings.autoSuggestChoices === true, "…and can be turned on");
 
 // ---- the outline's parts ----
-const allOutline = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true };
+const allOutline = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, review: true };
 ok(JSON.stringify((await call("GET", "/api/settings")).json.settings.outline) === JSON.stringify(allOutline), "every part of the outline is shown unless turned off");
 r = await call("PUT", "/api/settings", { ...conns, outline: { ...allOutline, readToHere: false, illustrate: false } });
 ok(JSON.stringify(r.json.settings.outline) === JSON.stringify({ ...allOutline, readToHere: false, illustrate: false }) && (await call("GET", "/api/settings")).json.settings.outline.readToHere === false, "parts turned off are kept");

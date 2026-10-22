@@ -41,6 +41,7 @@ export default function Home() {
                 {/* Nothing to download until the first chapter is written. */}
                 {s.root_chapter_id && (
                   <>
+                    <Link href={`/s/${s.id}/review`}>Review</Link>
                     <a href={download(s.id, "md")}>Download readable (Markdown)</a>
                     <a href={download(s.id, "html")}>Download to play offline (HTML)</a>
                     <a href={download(s.id, "twee")}>Download Twine (Twee)</a>

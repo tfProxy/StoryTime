@@ -8,12 +8,12 @@ const post = async (url, body) => (await fetch(BASE + url, { method: "POST", hea
 const getJson = async (url) => (await fetch(BASE + url)).json();
 
 // A story deep enough that the outline collapses its far branches.
-const s = await post("/api/stories", { title: "Outline story", chapter: { title: "Level 0", body: "zero", choices: ["a", "open one"] } });
+const s = await post("/api/stories", { title: "Outline story", chapter: { title: "Level 0", body: "zero", summary: "sum 0", choices: ["a", "open one"] } });
 let prev = s.chapter_id;
 const ids = [prev];
 for (let i = 1; i <= 4; i++) {
   const choice = (await getJson(`/api/chapters/${prev}`)).choices[0];
-  prev = (await post("/api/chapters", { choice_id: choice.id, title: `Level ${i}`, body: `level ${i}`, choices: i < 4 ? ["next"] : [] })).chapter_id;
+  prev = (await post("/api/chapters", { choice_id: choice.id, title: `Level ${i}`, body: `level ${i}`, summary: `sum ${i}`, choices: i < 4 ? ["next"] : [] })).chapter_id;
   ids.push(prev);
 }
 // Pictures: Level 1 has a header, Level 2 a footer, Level 3 both; the others none.

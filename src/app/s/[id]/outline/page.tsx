@@ -8,6 +8,7 @@ import { chapterImageVersions } from "@/lib/chapterImages";
 import type { ImageVersions } from "@/lib/imageSlots";
 import { getSettings } from "@/lib/settingsStore";
 import { DEFAULT_OUTLINE, type OutlineOptions } from "@/lib/settingsSchema";
+import { issueCounts } from "@/lib/review";
 
 export const dynamic = "force-dynamic";
 
@@ -28,19 +29,49 @@ function idsOf(node: TreeNode): string[] {
   return [node.id, ...node.choices.flatMap((c) => (c.child ? idsOf(c.child) : []))];
 }
 
-function Node({ node, via, images, show }: { node: TreeNode; via: string | null; images: Map<string, ImageVersions>; show: OutlineOptions }) {
+function Node({
+  node,
+  via,
+  images,
+  issues,
+  storyId,
+  show,
+}: {
+  node: TreeNode;
+  via: string | null;
+  images: Map<string, ImageVersions>;
+  issues: Map<string, number>;
+  storyId: string;
+  show: OutlineOptions;
+}) {
   // Only written chapters are listed; unwritten choices are left to the story page.
   const written = node.choices.filter((c) => c.child);
+  const n = issues.get(node.id) ?? 0;
+  // Only the links that are on; none at all leaves NodeSummary's [...] without an empty part.
+  const links = [
+    n > 0 && (
+      <Link
+        key="review"
+        className="outline-action outline-review"
+        href={`/s/${storyId}/review?chapter=${node.id}`}
+        title="Something to check on the Review page"
+        aria-label={`${n} thing${n === 1 ? "" : "s"} to check`}
+      >
+        ⚠ {n}
+      </Link>
+    ),
+    show.readToHere && (
+      <Link key="read" className="outline-action" href={`/c/${node.id}/path`} title="Read every chapter from the first one to this one on a single page">
+        read to here
+      </Link>
+    ),
+  ].filter(Boolean);
   const summary = (
     <>
       <Link href={`/c/${node.id}`}>{node.title}</Link>
       {" "}
       <NodeSummary chapterId={node.id} title={node.title} images={images.get(node.id)!} summary={node.summary} via={via} show={show}>
-        {show.readToHere && (
-          <Link className="outline-action" href={`/c/${node.id}/path`} title="Read every chapter from the first one to this one on a single page">
-            read to here
-          </Link>
-        )}
+        {links.length > 0 && links.flatMap((l, i) => (i === 0 ? [l] : [", ", l]))}
       </NodeSummary>
     </>
   );
@@ -52,7 +83,7 @@ function Node({ node, via, images, show }: { node: TreeNode; via: string | null;
         <summary>{summary}</summary>
         <ul className="outline">
           {written.map((c) => (
-            <Node key={c.id} node={c.child!} via={c.label} images={images} show={show} />
+            <Node key={c.id} node={c.child!} via={c.label} images={images} issues={issues} storyId={storyId} show={show} />
           ))}
         </ul>
       </details>
@@ -71,6 +102,7 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
   const images = chapterImageVersions(idsOf(tree));
   // Read here, not in the browser, so a part turned off in Settings is never drawn first and then hidden.
   const show = (getSettings() ?? { outline: DEFAULT_OUTLINE }).outline;
+  const issues = show.review ? issueCounts(id) : new Map<string, number>();
 
   return (
     <div className="outline-page">
@@ -87,10 +119,11 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
           </p>
         )}
         <ul className="outline outline-root">
-          <Node node={tree} via={null} images={images} show={show} />
+          <Node node={tree} via={null} images={images} issues={issues} storyId={story.id} show={show} />
         </ul>
       </SummaryProvider>
       <PageMenu>
+        <Link href={`/s/${story.id}/review`}>Review the story</Link>
         <Link href={`/s/${story.id}/summaries`}>Redo the AI summaries</Link>
       </PageMenu>
     </div>

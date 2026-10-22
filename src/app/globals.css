@@ -787,6 +787,11 @@ button.outline-action {
   text-decoration: none;
 }
 
+/* The count of things to check on the Review page. */
+.outline-review {
+  color: var(--warn);
+}
+
 /* The header, footer and illustrate icons after "read to here". */
 .outline-icons {
   display: inline-flex;

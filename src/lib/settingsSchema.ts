@@ -100,6 +100,8 @@ export type OutlineOptions = {
   footerPicture: boolean;
   /** A paintbrush that opens the chapter's Illustrate page. */
   illustrate: boolean;
+  /** A marker on chapters with something to check, linking to the Review page. */
+  review: boolean;
 };
 
 export const OUTLINE_PARTS = [
@@ -108,9 +110,10 @@ export const OUTLINE_PARTS = [
   { id: "headerPicture", label: "Header picture", hint: "an icon, for chapters that have one, that shows it in a popup" },
   { id: "footerPicture", label: "Footer picture", hint: "the same for the footer picture" },
   { id: "illustrate", label: "Illustrate", hint: "a paintbrush that opens the chapter's Illustrate page" },
+  { id: "review", label: "Review marker", hint: "a ⚠ count on chapters with something to check, which opens the Review page" },
 ] as const satisfies readonly { id: keyof OutlineOptions; label: string; hint: string }[];
 
-export const DEFAULT_OUTLINE: OutlineOptions = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true };
+export const DEFAULT_OUTLINE: OutlineOptions = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, review: true };
 
 export type ComfySettings = {
   /** Where ComfyUI is, e.g. https://comfy.example.ts.net; "" when there is none. */
@@ -306,6 +309,7 @@ const settingsSchema = z.object({
       headerPicture: z.boolean().catch(true),
       footerPicture: z.boolean().catch(true),
       illustrate: z.boolean().catch(true),
+      review: z.boolean().catch(true),
     })
     .catch(DEFAULT_OUTLINE),
   imagePromptStyle: z.enum(["tags", "natural"]).catch("tags"),

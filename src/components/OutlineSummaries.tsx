@@ -85,7 +85,7 @@ function PictureButton({ chapterId, title, slot, version }: { chapterId: string;
 // Sits inside the chapter's row, which is the <summary> of its branch, so clicks must not fold the branch.
 // `children` (the 'read to here' link) sit right after the button. `via` is the choice that was taken to reach the chapter; it is shown ahead of the summary.
 // After them come icons: the chapter's header and footer pictures (when it has them), and a paintbrush to its Illustrate page.
-// `show` says which of these parts are turned on in Settings (Outline); `children` is only given when 'read to here' is on.
+// `show` says which of these parts are turned on in Settings (Outline); `children` is only given when one of its links (the Review marker, 'read to here') is on.
 // With every part off there is nothing to show, not even the brackets.
 export function NodeSummary({
   chapterId,
