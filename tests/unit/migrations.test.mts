@@ -127,5 +127,15 @@ before.prepare(`INSERT INTO cover_prompts (story_id, prompt, updated_at) VALUES 
 ok((before.prepare(`SELECT source FROM cover_prompts`).get() as { source: string }).source === "premise", "the cover's prompt is written from the premise until another source is chosen");
 ok(refused(() => before.prepare(`UPDATE cover_prompts SET source = 'elsewhere'`).run()), "…and the source is one of premise, opening and path");
 before.close();
+
+// tags are on for a story unless switched off (schema version 28): switches made earlier stay on
+const tagDb = new Database(":memory:");
+for (let v = 0; v < 27; v++) tagDb.exec(MIGRATIONS[v]);
+tagDb.prepare(`INSERT INTO stories (id, title, root_chapter_id, created_at) VALUES ('ts', 'ts', 'tc', 1)`).run();
+tagDb.prepare(`INSERT INTO tags (id, name, created_at) VALUES ('tg', 'tg', 1)`).run();
+tagDb.prepare(`INSERT INTO story_tags (story_id, tag_id) VALUES ('ts', 'tg')`).run();
+tagDb.exec(MIGRATIONS[27]);
+ok((tagDb.prepare(`SELECT enabled FROM story_tags`).get() as { enabled: number }).enabled === 1, "a tag switched on before stays on");
+tagDb.close();
 d.close();
 fs.rmSync(dir, { recursive: true, force: true });

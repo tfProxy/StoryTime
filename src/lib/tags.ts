@@ -128,25 +128,28 @@ export function addTagExample(id: string, example: TagExample): Tag {
   })();
 }
 
-/** Ids of the live tags switched on for a story. */
+/** Ids of the live tags that are on for a story: all of them, except those the author switched off. */
 export function storyTags(storyId: string): string[] {
-  const rows = db()
-    .prepare(
-      `SELECT st.tag_id FROM story_tags st JOIN tags t ON t.id = st.tag_id
-        WHERE st.story_id = ? AND t.removed_at IS NULL ORDER BY lower(t.name), t.created_at`,
-    )
-    .all(storyId) as { tag_id: string }[];
-  return rows.map((r) => r.tag_id);
+  const off = new Set(
+    (db().prepare(`SELECT tag_id FROM story_tags WHERE story_id = ? AND enabled = 0`).all(storyId) as { tag_id: string }[]).map((r) => r.tag_id),
+  );
+  return listTags()
+    .filter((t) => !off.has(t.id))
+    .map((t) => t.id);
 }
 
 export function setStoryTag(storyId: string, tagId: string, on: boolean): void {
   db().transaction(() => {
     if (!db().prepare(`SELECT 1 FROM stories WHERE id = ?`).get(storyId)) throw new PostError("That story does not exist", 404);
     needTag(tagId);
-    if (on) db().prepare(`INSERT OR IGNORE INTO story_tags (story_id, tag_id) VALUES (?, ?)`).run(storyId, tagId);
-    else db().prepare(`DELETE FROM story_tags WHERE story_id = ? AND tag_id = ?`).run(storyId, tagId);
+    db()
+      .prepare(`INSERT INTO story_tags (story_id, tag_id, enabled) VALUES (?, ?, ?) ON CONFLICT (story_id, tag_id) DO UPDATE SET enabled = excluded.enabled`)
+      .run(storyId, tagId, on ? 1 : 0);
   })();
 }
+
+/** A chapter's story has not switched the tag off. */
+const TAG_ON = `NOT EXISTS (SELECT 1 FROM story_tags st WHERE st.story_id = c.story_id AND st.tag_id = ct.tag_id AND st.enabled = 0)`;
 
 export type ChapterTag = {
   id: string;
@@ -167,9 +170,8 @@ export type ChapterTag = {
 const CHAPTER_TAG_SELECT = `SELECT ct.id, ct.chapter_id, c.title AS chapter_title, ct.tag_id, t.name AS tag_name, ct.value,
        ct.status, ct.source, ct.quote, ct.reason, ct.revision, (ct.revision < c.revision) AS stale
   FROM chapter_tags ct
-  JOIN chapters c ON c.id = ct.chapter_id
-  JOIN tags t ON t.id = ct.tag_id AND t.removed_at IS NULL
-  JOIN story_tags st ON st.story_id = c.story_id AND st.tag_id = ct.tag_id`;
+  JOIN chapters c ON c.id = ct.chapter_id AND ${TAG_ON}
+  JOIN tags t ON t.id = ct.tag_id AND t.removed_at IS NULL`;
 
 type ChapterTagRow = Omit<ChapterTag, "stale"> & { stale: number };
 const toChapterTag = (r: ChapterTagRow): ChapterTag => ({ ...r, stale: r.stale === 1 });
@@ -329,9 +331,8 @@ export function pendingTagCounts(storyId: string): Map<string, number> {
     .prepare(
       `SELECT ct.chapter_id, COUNT(*) AS n
          FROM chapter_tags ct
-         JOIN chapters c ON c.id = ct.chapter_id
+         JOIN chapters c ON c.id = ct.chapter_id AND ${TAG_ON}
          JOIN tags t ON t.id = ct.tag_id AND t.removed_at IS NULL
-         JOIN story_tags st ON st.story_id = c.story_id AND st.tag_id = ct.tag_id
         WHERE c.story_id = ? AND ct.status = 'suggested'
         GROUP BY ct.chapter_id`,
     )

@@ -463,7 +463,7 @@ export const MIGRATIONS: string[] = [
   `,
   // 27: AI tagging. tags is a library of tag definitions shared by all stories (names unique among live
   // tags, checked in code); choices is a JSON list of allowed values (empty = no value) and examples
-  // a JSON list of {text, applies, note?}. story_tags switches a tag on for a story (a row = in use).
+  // a JSON list of {text, applies, note?}. story_tags records a tag's switch for a story (see 28).
   // chapter_tags holds the AI's suggestions and the author's decisions per chapter and tag: revision
   // is the chapter revision it was made from, so an edited chapter's tags can be told apart as stale.
   // Chapters are never deleted by the app, so nothing needs to clean up chapter_tags.
@@ -501,6 +501,11 @@ export const MIGRATIONS: string[] = [
     UNIQUE (chapter_id, tag_id)
   );
   CREATE INDEX chapter_tags_chapter ON chapter_tags(chapter_id);
+  `,
+  // 28: every tag is on for every story unless the author switches it off. A tag is on for a story unless
+  // its story_tags row says enabled = 0; rows made under 27 (when a row meant on) stay on.
+  `
+  ALTER TABLE story_tags ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;
   `,
 ];
 

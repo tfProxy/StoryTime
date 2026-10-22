@@ -44,16 +44,22 @@ const choices = (await call("GET", `/api/chapters/${root}`)).json.choices;
 const child = (await call("POST", "/api/chapters", { choice_id: choices[0].id, title: "Child", body: "child body", summary: "c" })).json.chapter_id;
 
 r = await call("GET", `/api/stories/${story}/tags`);
-ok(r.status === 200 && r.json.enabled.length === 0 && r.json.tags.some((t) => t.id === violence), "nothing enabled at first; all live tags listed");
+const mine = [violence, swearing, romance];
+ok(r.status === 200 && mine.every((t) => r.json.enabled.includes(t)) && r.json.tags.some((t) => t.id === violence), "every tag is on for a new story; all live tags listed");
 r = await call("PUT", `/api/stories/${story}/tags`, { tag_id: violence, on: true });
-ok(r.status === 200 && r.json.enabled.length === 1, "tag enabled");
-await call("PUT", `/api/stories/${story}/tags`, { tag_id: violence, on: true });
-r = await call("PUT", `/api/stories/${story}/tags`, { tag_id: swearing, on: true });
-ok(r.json.enabled.length === 2, "second tag enabled, enabling twice is harmless");
+ok(r.status === 200 && r.json.enabled.includes(violence), "switching on a tag that is already on is harmless");
 r = await call("PUT", `/api/stories/${story}/tags`, { tag_id: swearing, on: false });
-ok(r.json.enabled.length === 1 && r.json.enabled[0] === violence, "tag disabled");
+ok(r.json.enabled.includes(violence) && !r.json.enabled.includes(swearing) && r.json.enabled.includes(romance), "a tag can be switched off");
+await call("PUT", `/api/stories/${story}/tags`, { tag_id: swearing, on: false });
+r = await call("PUT", `/api/stories/${story}/tags`, { tag_id: romance, on: false });
+ok(!r.json.enabled.includes(romance) && !r.json.enabled.includes(swearing), "switching off twice is harmless; a second tag off");
 r = await call("PUT", `/api/stories/nope/tags`, { tag_id: violence, on: true });
 ok(r.status === 404, "unknown story is a 404");
+r = await call("PUT", `/api/stories/${story}/tags`, { tag_id: "nope", on: false });
+ok(r.status === 404, "unknown tag is a 404");
+const other = (await call("POST", "/api/stories", { title: "Other", chapter: { title: "Root", body: "root", summary: "s", choices: [] } })).json.story_id;
+r = await call("GET", `/api/stories/${other}/tags`);
+ok(mine.every((t) => r.json.enabled.includes(t)), "switches are per story");
 
 // --- suggestions
 const list = async (chapter) => (await call("GET", `/api/stories/${story}/chapter-tags${chapter ? `?chapter=${chapter}` : ""}`)).json.chapter_tags;
@@ -61,7 +67,7 @@ const suggest = (chapter, revision, body) => call("POST", `/api/chapters/${chapt
 const sug = (tag_id, extra = {}) => ({ tag_id, value: null, quote: "a quote", reason: "a reason", ...extra });
 
 r = await suggest(child, 1, { suggestions: [sug(violence, { value: "graphic" }), sug(swearing), sug(romance)] });
-ok(r.status === 200 && r.json.added === 1 && r.json.kept === 0, "only the enabled tag is added: " + JSON.stringify(r.json));
+ok(r.status === 200 && r.json.added === 1 && r.json.kept === 0, "a switched-off tag is ignored, the one that is on is added: " + JSON.stringify(r.json));
 let ct = await list();
 ok(ct.length === 1 && ct[0].tag_name === `violence-${sfx}` && ct[0].status === "suggested" && ct[0].source === "ai" && ct[0].value === "graphic" && ct[0].chapter_title === "Child" && ct[0].stale === false, "listed as suggested");
 ok((await list(root)).length === 0 && (await list(child)).length === 1, "chapter filter");
@@ -116,7 +122,7 @@ ok((await list()).length === 1, "an approved tag survives a check that did not r
 r = await call("POST", `/api/chapters/${root}/tags`, { tag_id: swearing, value: null });
 ok(r.status === 201 && r.json.status === "approved" && r.json.source === "author" && r.json.chapter_id === root, "added by hand");
 r = await call("POST", `/api/chapters/${root}/tags`, { tag_id: romance });
-ok(r.status === 400, "a tag not enabled for the story can't be added by hand");
+ok(r.status === 400, "a tag switched off for the story can't be added by hand");
 r = await call("POST", `/api/chapters/${root}/tags`, { tag_id: violence, value: "bad" });
 ok(r.status === 400, "an invalid value by hand is a 400");
 ct = await list();
@@ -142,6 +148,13 @@ r = await call("DELETE", `/api/chapter-tags/${rid}`);
 ok(r.status === 200 && (await list(root)).every((c) => c.tag_id !== romance), "chapter tag deleted");
 r = await call("DELETE", `/api/chapter-tags/${rid}`);
 ok(r.status === 404, "deleting again is a 404");
+
+// switching a tag off hides its chapter tags and keeps them for when it is switched on again
+const withViolence = (await list()).filter((c) => c.tag_id === violence).length;
+await call("PUT", `/api/stories/${story}/tags`, { tag_id: violence, on: false });
+ok(withViolence > 0 && (await list()).every((c) => c.tag_id !== violence), "a switched-off tag's chapter tags are hidden");
+await call("PUT", `/api/stories/${story}/tags`, { tag_id: violence, on: true });
+ok((await list()).filter((c) => c.tag_id === violence).length === withViolence, "…and come back when it is switched on again");
 
 // removed tags disappear
 r = await call("DELETE", `/api/tags/${swearing}`);

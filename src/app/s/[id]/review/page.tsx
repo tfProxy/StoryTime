@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import CodexAiScan from "@/components/CodexAiScan";
+import StoryTagSwitches from "@/components/StoryTagSwitches";
 import TagScan from "@/components/TagScan";
 import TagSuggestions from "@/components/TagSuggestions";
 import TaggedChapters from "@/components/TaggedChapters";
@@ -128,17 +129,29 @@ export default async function ReviewPage({
 
   function tagsPanel(storyId: string) {
     const enabledIds = storyTags(storyId);
+    const library = listTags();
+    const switches = (
+      <details open={enabledIds.length === 0}>
+        <summary>
+          Tags in this story
+          {enabledIds.length > 0 && `: ${enabledIds.map((tid) => library.find((t) => t.id === tid)?.name).filter(Boolean).join(", ")}`}
+        </summary>
+        <StoryTagSwitches
+          storyId={storyId}
+          tags={library.map((t) => ({ id: t.id, name: t.name, applies: t.applies }))}
+          enabled={enabledIds}
+          heading={false}
+        />
+      </details>
+    );
     if (enabledIds.length === 0) {
       return (
         <>
-          <h2>Tags</h2>
-          <p>
-            No tags are switched on for this story yet. <Link href="/settings#tags">Settings › Tags</Link> has the library.
-          </p>
+          {switches}
+          {library.length > 0 && <p>Every tag is switched off for this story.</p>}
         </>
       );
     }
-    const library = listTags();
     const enabled = enabledIds.map((tid) => library.find((t) => t.id === tid)).filter((t) => !!t);
     const all = chapterTags(storyId);
     const inScope = chosen ? all.filter((t) => t.chapter_id === chosen.id) : all;
@@ -165,6 +178,7 @@ export default async function ReviewPage({
 
     return (
       <>
+        {switches}
         <h2>Waiting for you</h2>
         {waiting.length === 0 ? (
           <p>{chosen ? "Nothing is waiting on this chapter." : "Nothing is waiting for your decision."}</p>

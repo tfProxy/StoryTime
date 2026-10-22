@@ -4,9 +4,11 @@ import CodexPanel from "@/components/CodexPanel";
 import CoverEditor from "@/components/CoverEditor";
 import StoryDetailsForm from "@/components/StoryDetailsForm";
 import StoryPictureSettings from "@/components/StoryPictureSettings";
+import StoryTagSwitches from "@/components/StoryTagSwitches";
 import { getCodexOps } from "@/lib/codexDb";
 import { coverRefPool } from "@/lib/referencePool";
 import { getChapter, getStory } from "@/lib/stories";
+import { listTags, storyTags } from "@/lib/tags";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +49,7 @@ export default async function StoryDetailsPage({ params }: { params: Promise<{ i
         pool={coverRefPool(story.id, story.cover_version)}
       />
       <CoverEditor story={{ id: story.id, title: story.title, cover_version: story.cover_version }} />
+      <StoryTagSwitches storyId={story.id} tags={listTags().map((t) => ({ id: t.id, name: t.name, applies: t.applies }))} enabled={storyTags(story.id)} />
       <section className="ai-panel">
         <h2>Codex</h2>
         {root ? (

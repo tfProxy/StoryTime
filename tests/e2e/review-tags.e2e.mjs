@@ -35,7 +35,6 @@ const tagId = tag.tag?.id ?? tag.id;
 const s = await post("/api/stories", { title: "Tagging trial", chapter: { title: "Start", body: "Mira stood in the market.", summary: "s", choices: ["Onward"] } });
 const choice = (await send("GET", `/api/chapters/${s.chapter_id}`)).choices[0];
 const horse = (await post("/api/chapters", { choice_id: choice.id, title: "Horse", body: "Mira had turned into a horse.", summary: "h" })).chapter_id;
-await send("PUT", `/api/stories/${s.story_id}/tags`, { tag_id: tagId, on: true });
 
 const browser = await launch();
 const ai = await useMockAi(BASE);
@@ -45,10 +44,35 @@ page.on("dialog", (d) => d.accept());
 const reviewUrl = (id, q = "") => `${BASE}/s/${id}/review${q}`;
 
 try {
-  // No tags switched on.
+  // Every tag is on for a story by default; the author can switch one off, on the Review page or on the details page.
+  const enabledFor = async (id) => (await send("GET", `/api/stories/${id}/tags`)).enabled;
+  const tagBox = () => page.getByRole("checkbox", { name: new RegExp(TAG) });
+  ok((await enabledFor(plain.story_id)).includes(tagId), "a new tag is on for a story that existed before it");
   await page.goto(reviewUrl(plain.story_id, "?tab=tags"));
-  ok(await page.getByText("No tags are switched on for this story yet.").isVisible(), "a story with no tags on says so");
-  ok((await page.getByRole("link", { name: /Settings/ }).first().getAttribute("href")) === "/settings#tags", "…and links to the tag library");
+  const summary = page.locator("summary", { hasText: "Tags in this story" });
+  ok((await summary.innerText()).includes(TAG), "the Tags tab names the tags that are on");
+  ok(!(await tagBox().isVisible()), "…so the switches are folded away");
+  await summary.click();
+  ok(await tagBox().isChecked(), "…and opening them shows the tag ticked");
+  ok(await page.getByText("A character visibly changes species.").isVisible(), "…with the first line of its rule as a hint");
+  await tagBox().uncheck();
+  await page.waitForFunction(async ([id, tid]) => !(await (await fetch(`/api/stories/${id}/tags`)).json()).enabled.includes(tid), [plain.story_id, tagId]);
+  ok(!(await enabledFor(plain.story_id)).includes(tagId), "unticking on the Review page switches it off");
+  ok((await enabledFor(s.story_id)).includes(tagId), "…for that story only");
+
+  await page.goto(`${BASE}/s/${plain.story_id}/details`);
+  ok(await page.getByRole("heading", { name: "Tags in this story" }).isVisible(), "the details page has a Tags card");
+  ok(!(await tagBox().isChecked()), "…showing the tag off");
+  await tagBox().check();
+  await page.waitForFunction(async ([id, tid]) => (await (await fetch(`/api/stories/${id}/tags`)).json()).enabled.includes(tid), [plain.story_id, tagId]);
+  ok((await enabledFor(plain.story_id)).includes(tagId), "ticking on the details page switches it on");
+  await page.goto(reviewUrl(plain.story_id, "?tab=tags"));
+  ok((await summary.innerText()).includes(TAG), "…and the Review page agrees");
+  await summary.click();
+  await tagBox().uncheck();
+  await page.waitForFunction(async ([id, tid]) => !(await (await fetch(`/api/stories/${id}/tags`)).json()).enabled.includes(tid), [plain.story_id, tagId]);
+  await page.goto(`${BASE}/s/${plain.story_id}/details`);
+  ok(!(await tagBox().isChecked()), "…and so does the details page after unticking on Review");
 
   // Tabs.
   await page.goto(reviewUrl(s.story_id));
@@ -114,6 +138,20 @@ try {
   await page.getByRole("button", { name: /^Remove .* from Start$/ }).click();
   await page.waitForFunction(() => !document.querySelector('button[aria-label$="from Start"]'));
   ok(true, "× removes it");
+
+  // Switched off: not offered by hand and not looked for.
+  await send("PUT", `/api/stories/${s.story_id}/tags`, { tag_id: tagId, on: false });
+  await page.goto(reviewUrl(s.story_id, `?tab=tags&chapter=${s.chapter_id}`));
+  ok((await page.locator("select option", { hasText: TAG }).count()) === 0, "a switched-off tag is not offered under Add a tag");
+  const findButton = page.getByRole("button", { name: "Find tags" });
+  if (await findButton.isVisible()) {
+    const seen = calls.length;
+    await findButton.click();
+    await page.waitForTimeout(1500);
+    ok(calls.slice(seen).every((c) => !c.user.includes(TAG)), "…and Find tags does not ask the AI about it");
+  } else {
+    ok(true, "…and Find tags is hidden when every tag is off");
+  }
 } finally {
   await send("DELETE", `/api/tags/${tagId}`);
   await ai.restore();
