@@ -6,7 +6,7 @@ import Link from "next/link";
 import { SettingsIcon } from "./PictureIcons";
 import { saveSettings, useSettings } from "@/lib/settings";
 import { QUEUE_COUNTS, type ComfySettings } from "@/lib/settingsSchema";
-import type { ImageMoment } from "@/lib/ai/imagePrompt";
+import { targetKey, type PictureMoment, type PictureTarget } from "@/lib/pictureTarget";
 import type { LoadedPrompt } from "./ImagePromptPanel";
 import type { JobProgress, MadeWith, PendingJob, Picture, StartMode } from "./pictures";
 import { editBlocked, usableEditPresets, type EditModels } from "./useEditModels";
@@ -16,7 +16,7 @@ import { LIMITS } from "@/lib/limits";
 import { EDIT_MODELS, editTuning, lightningSteps, usableLoras } from "@/lib/comfy/editModels";
 import { drawPresetFor, drawPresetSummary, presetName, type DrawPreset, type EditPreset, type LoraSetting } from "@/lib/comfy/presets";
 import type { StartPicture } from "@/lib/comfy/startPicture";
-import { readEdit, readRedraw, writeEdit, writeRedraw } from "@/lib/comfy/editingState";
+import { readEdit, readRedraw, stateKey, writeEdit, writeRedraw } from "@/lib/comfy/editingState";
 import { listCheckpoints } from "@/lib/comfy/client";
 import { denoiseOf, madeWithText, type JobInput } from "@/lib/comfy/makeJob";
 
@@ -26,6 +26,13 @@ const SIZES: { name: string; width: number; height: number }[] = [
   { name: "Square", width: 1024, height: 1024 },
   { name: "Landscape", width: 1344, height: 768 },
   { name: "Wide", width: 1536, height: 640 },
+];
+
+/** Sizes for a cover, tall like a book's first. */
+const COVER_SIZES: { name: string; width: number; height: number }[] = [
+  { name: "Book", width: 832, height: 1216 },
+  { name: "Portrait", width: 768, height: 1344 },
+  { name: "Square", width: 1024, height: 1024 },
 ];
 
 const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
@@ -109,14 +116,14 @@ function LoraToggles({ stack, available, href, onChange }: { stack: LoraSetting[
 }
 
 type Props = {
-  chapterId: string;
-  storyId: string;
-  /** The story's drawing preset (set on its details page), and the chapter's own (chosen here); null for none. */
+  /** What the pictures are for: a chapter, or the story's cover. */
+  target: PictureTarget;
+  /** The story's drawing preset (set on its details page), and the chapter's (or the cover's) own, chosen here; null for none. */
   storyPreset: string | null;
   chapterPreset: string | null;
-  /** Called when the chapter's drawing preset is changed here (null: follows the story's). */
+  /** Called when the chapter's (or cover's) drawing preset is changed here (null: follows the story's). */
   onChapterPreset?: (id: string | null) => void;
-  moment: ImageMoment;
+  moment: PictureMoment;
   prompt: string;
   negative: string;
   /** A prompt brought back from a saved picture; its seed can be used again. */
@@ -143,11 +150,18 @@ type Props = {
  * queue (`PictureQueue`), so they go on when the page is left; the chapter's pictures go to `onPictures`.
  */
 export default function ComfyGenerate({
-  chapterId, storyId, storyPreset, chapterPreset: savedPreset, moment, prompt, negative, loaded = null, start = null, onClearStart,
+  target, storyPreset, chapterPreset: savedPreset, moment, prompt, negative, loaded = null, start = null, onClearStart,
   startMode = "redraw", onStartMode, editModels = { state: "checking" }, onPictures, onQueue, onChapterPreset, dock = null,
 }: Props) {
+  const { storyId, chapterId } = target;
+  // Where this browser keeps the edit's text and strengths, and the queue's name for the target.
+  const kept = stateKey(target);
+  const at = targetKey(target);
   const settings = useSettings();
-  const comfy = settings.comfy;
+  // A cover has a size of its own (Settings keeps both), so choosing one doesn't change the chapters'.
+  const isCover = chapterId === null;
+  const comfy = isCover ? { ...settings.comfy, width: settings.comfy.coverWidth, height: settings.comfy.coverHeight } : settings.comfy;
+  const sizes = isCover ? COVER_SIZES : SIZES;
   const queueCount = comfy.queueCount;
   // What to change, when editing the starting picture by instruction.
   const [instruction, setInstruction] = useState("");
@@ -160,15 +174,15 @@ export default function ComfyGenerate({
   const [editKept, setEditKept] = useState(false);
   /* eslint-disable react-hooks/set-state-in-effect -- browser storage can only be read after the page is shown, so the server and browser draw the same first page */
   useEffect(() => {
-    const saved = readEdit(chapterId);
+    const saved = readEdit(kept);
     if (saved) {
       setInstruction(saved.instruction);
       setStrengthFor(saved.model ? { model: saved.model, value: saved.strength } : null);
     }
-    const redraw = readRedraw(chapterId);
+    const redraw = readRedraw(kept);
     setRedrawFor(redraw && { preset: redraw.preset, value: redraw.strength });
     setEditKept(true);
-  }, [chapterId]);
+  }, [kept]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // The drawing preset: the chapter's own (chosen here), else the story's, else the first.
@@ -194,19 +208,19 @@ export default function ComfyGenerate({
   const setEditStrength = (value: number) => editPreset && setStrengthFor({ model: editPreset.id, value });
   useEffect(() => {
     if (!editKept) return;
-    writeEdit(chapterId, { instruction, strength: strengthFor?.value ?? 1, model: strengthFor?.model });
-    writeRedraw(chapterId, redrawFor && { preset: redrawFor.preset, strength: redrawFor.value });
-  }, [editKept, chapterId, instruction, strengthFor, redrawFor]);
+    writeEdit(kept, { instruction, strength: strengthFor?.value ?? 1, model: strengthFor?.model });
+    writeRedraw(kept, redrawFor && { preset: redrawFor.preset, strength: redrawFor.value });
+  }, [editKept, kept, instruction, strengthFor, redrawFor]);
   // The chosen model's speed-up file, when ComfyUI has one, and whether edits use it.
   const speedUp = chosen?.files.speedUp ?? null;
   const fast = speedUp !== null && !!editPreset?.fast;
   // The edit preset's LoRA stack, and the LoRAs of it an edit uses now.
   const loraStack = editPreset?.loras ?? [];
   const { loras: editLoras, missing: missingLoras } = usableLoras(loraStack, chosen?.loras ?? []);
-  // This chapter's jobs being made, oldest first. The app's picture queue holds them, so they go on when the page is left.
+  // This chapter's (or cover's) jobs being made, oldest first. The app's picture queue holds them, so they go on when the page is left.
   const pictureQueue = usePictureQueue();
   const { stop, listen } = pictureQueue;
-  const queue = useMemo(() => pictureQueue.jobs.filter((j) => j.chapterId === chapterId && j.state === "making"), [pictureQueue.jobs, chapterId]);
+  const queue = useMemo(() => pictureQueue.jobs.filter((j) => targetKey(j) === at && j.state === "making"), [pictureQueue.jobs, at]);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
 
   // The Pictures panel shows the jobs, newest first, among the pictures.
@@ -219,7 +233,7 @@ export default function ComfyGenerate({
   useEffect(() => {
     picturesTo.current = onPictures;
   }, [onPictures]);
-  useEffect(() => listen(chapterId, { onPictures: (p) => picturesTo.current?.(p), onStatus: setStatus }), [listen, chapterId]);
+  useEffect(() => listen({ storyId, chapterId }, { onPictures: (p) => picturesTo.current?.(p), onStatus: setStatus }), [listen, storyId, chapterId]);
   // Each prompt loaded from a saved picture starts with a new seed again, until the author ticks the box.
   const [reuseSeed, setReuseSeed] = useState(false);
   const [seenLoad, setSeenLoad] = useState(0);
@@ -249,26 +263,27 @@ export default function ComfyGenerate({
     };
   }, [comfy.url, checkpoint, drawName]);
 
-  /** Chooses the chapter's drawing preset; the story's own goes back to following the story. */
+  /** Chooses the chapter's (or cover's) drawing preset; the story's own goes back to following the story. */
   function chooseDraw(id: string) {
     const next = id === storyDraw.id ? null : id;
     setChapterPreset(next);
     onChapterPreset?.(next);
-    fetch(`/api/chapters/${chapterId}/picture-preset`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draw_preset: next }) })
+    const url = chapterId === null ? `/api/stories/${storyId}/cover-preset` : `/api/chapters/${chapterId}/picture-preset`;
+    fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draw_preset: next }) })
       .then((res) => {
         if (!res.ok) throw new Error(`Request failed (${res.status})`);
       })
-      .catch((e) => setStatus({ ok: false, text: `Couldn't keep the chapter's preset: ${e instanceof Error ? e.message : String(e)}` }));
+      .catch((e) => setStatus({ ok: false, text: `Couldn't keep the ${chapterId === null ? "cover" : "chapter"}'s preset: ${e instanceof Error ? e.message : String(e)}` }));
   }
 
-  const set = (patch: Partial<ComfySettings>) => void saveSettings({ ...settings, comfy: { ...comfy, ...patch } });
+  const set = (patch: Partial<ComfySettings>) => void saveSettings({ ...settings, comfy: { ...settings.comfy, ...patch } });
   /** Changes a drawing or edit preset in Settings (switching a LoRA, Fast). */
   const changeDraw = (patch: Partial<DrawPreset>) => set({ drawPresets: comfy.drawPresets.map((p) => (p.id === draw.id ? { ...p, ...patch } : p)) });
   const changeEdit = (patch: Partial<EditPreset>) =>
     editPreset && set({ editPresets: comfy.editPresets.map((p) => (p.id === editPreset.id ? { ...p, ...patch } : p)) });
 
   const other = otherSettings(loaded?.settings ?? null, comfy, redrawStrength);
-  const size = SIZES.find((s) => s.width === comfy.width && s.height === comfy.height);
+  const size = sizes.find((s) => s.width === comfy.width && s.height === comfy.height);
 
   /**
    * One click asks for one picture. The picture queue gathers quick clicks with the same prompt and
@@ -331,7 +346,7 @@ export default function ComfyGenerate({
           value={`${comfy.width}x${comfy.height}`}
           onChange={(e) => {
             const [width, height] = e.target.value.split("x").map(Number);
-            set({ width, height });
+            set(isCover ? { coverWidth: width, coverHeight: height } : { width, height });
           }}
           disabled={start !== null}
           title={start ? "Pictures made from a starting picture are its size" : undefined}
@@ -344,7 +359,7 @@ export default function ComfyGenerate({
               <SizeColumns name="Custom" width={comfy.width} height={comfy.height} />
             </option>
           )}
-          {SIZES.map((s) => (
+          {sizes.map((s) => (
             <option key={s.name} value={`${s.width}x${s.height}`}>
               <SizeColumns name={s.name} width={s.width} height={s.height} />
             </option>
@@ -550,7 +565,8 @@ export default function ComfyGenerate({
             type="button"
             className="secondary"
             onClick={() => {
-              if (Object.keys(other.size).length > 0) set(other.size);
+              const { width, height } = other.size;
+              if (width && height) set(isCover ? { coverWidth: width, coverHeight: height } : { width, height });
               if (other.strength !== null) setRedrawFor({ preset: draw.id, value: other.strength });
             }}
           >

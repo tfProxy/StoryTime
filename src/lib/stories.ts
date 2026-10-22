@@ -186,6 +186,15 @@ export function chapterLabels(ids: string[]): Record<string, { title: string; st
   return Object.fromEntries(rows.map((r) => [r.id, { title: r.title, story_title: r.story_title }]));
 }
 
+/** The titles of some stories, by id; ids that don't exist are left out. */
+export function storyTitles(ids: string[]): Record<string, string> {
+  if (ids.length === 0) return {};
+  const rows = db()
+    .prepare(`SELECT id, title FROM stories WHERE id IN (${ids.map(() => "?").join(",")})`)
+    .all(...ids) as { id: string; title: string }[];
+  return Object.fromEntries(rows.map((r) => [r.id, r.title]));
+}
+
 export function getChoices(chapterId: string): Choice[] {
   return db()
     .prepare(
@@ -531,7 +540,12 @@ export function setCover(storyId: string, bytes: Buffer): { cover_version: numbe
 }
 
 export function clearCover(storyId: string): { ok: true } {
-  const r = db().prepare(`UPDATE stories SET cover = NULL, cover_type = NULL, cover_updated_at = NULL WHERE id = ?`).run(storyId);
+  const r = db()
+    .prepare(
+      `UPDATE stories SET cover = NULL, cover_type = NULL, cover_updated_at = NULL, cover_job_id = NULL, cover_image_index = NULL,
+         cover_prompt = NULL, cover_negative = NULL WHERE id = ?`,
+    )
+    .run(storyId);
   if (r.changes === 0) throw new PostError("That story does not exist", 404);
   return { ok: true };
 }

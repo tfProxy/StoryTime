@@ -97,6 +97,35 @@ before.exec(MIGRATIONS[13]);
 const moved = before.prepare(`SELECT * FROM picture_prompts`).all() as Record<string, unknown>[];
 ok(moved.length === 1 && JSON.stringify(moved[0]) === JSON.stringify({ chapter_id: "c", moment: "end", prompt: "a “lamp”", negative: "blur", scene: "sc", direction: "dir", updated_at: 9 }), "a saved prompt is kept, under the moment it was saved with");
 ok(!before.prepare(`SELECT 1 FROM sqlite_master WHERE name = 'picture_drafts'`).get(), "…and the old table is gone");
+
+// the job log is rebuilt for cover jobs (schema version 20): jobs and their marks are kept
+for (let v = 14; v < 19; v++) before.exec(MIGRATIONS[v]);
+before
+  .prepare(
+    `INSERT INTO picture_jobs (id, story_id, chapter_id, prompt_id, prompt, width, height, seed, count, moment, images, created_at, instruction, edit_model, seen_at)
+     VALUES ('pj', 's', 'c', 'p1', 'a lamp', 832, 1216, 5, 2, 'end', '[{"filename":"a.png","subfolder":"","type":"output"}]', 3, 'brighter', 'qwen', NULL)`,
+  )
+  .run();
+before.prepare(`INSERT INTO picture_marks (job_id, image_index, mark, updated_at) VALUES ('pj', 1, 'pinned', 4)`).run();
+before.exec(MIGRATIONS[19]);
+const rebuilt = before.prepare(`SELECT * FROM picture_jobs WHERE id = 'pj'`).get() as Record<string, unknown>;
+ok(rebuilt.chapter_id === "c" && rebuilt.moment === "end" && rebuilt.width === 832 && rebuilt.instruction === "brighter" && rebuilt.edit_model === "qwen" && rebuilt.seen_at === null, "a job keeps every column, its unseen state too");
+ok(JSON.stringify(before.prepare(`SELECT job_id, image_index, mark FROM picture_marks`).all()) === JSON.stringify([{ job_id: "pj", image_index: 1, mark: "pinned" }]), "…and its marks");
+ok((before.pragma("foreign_key_check") as unknown[]).length === 0, "…and every mark still points at its job");
+ok(!before.prepare(`SELECT 1 FROM sqlite_master WHERE name IN ('picture_jobs_new', 'marks_aside')`).get(), "nothing is left over from the rebuild");
+const indexes = (before.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'picture_jobs' AND name NOT LIKE 'sqlite_%'`).all() as { name: string }[]).map((r) => r.name).sort().join();
+ok(indexes === "picture_jobs_cover_prompt,picture_jobs_prompt,picture_jobs_story,picture_jobs_unseen", "the job log's indexes are back, with one for covers");
+const coverJob = (id: string, promptId: string, chapterId: string | null, moment: string | null) =>
+  before.prepare(`INSERT INTO picture_jobs (id, story_id, chapter_id, prompt_id, prompt, width, height, seed, count, moment, images, created_at) VALUES (?, 's', ?, ?, 'p', 1, 1, 1, 1, ?, '[]', 1)`).run(id, chapterId, promptId, moment);
+const refused = (f: () => unknown) => { try { f(); return false; } catch { return true; } };
+ok(!refused(() => coverJob("cj", "q1", null, "cover")), "a cover job has no chapter");
+ok(refused(() => coverJob("cj2", "q1", null, "cover")), "one ComfyUI job is recorded once per story's cover");
+ok(refused(() => coverJob("cj3", "q2", null, "start")) && refused(() => coverJob("cj4", "q3", null, null)), "a job with no chapter must be a cover");
+ok(refused(() => coverJob("cj5", "q4", "c", "cover")), "a chapter's job can't be a cover");
+ok(["cover_job_id", "cover_image_index", "cover_prompt", "cover_negative"].every((c) => (before.pragma("table_info(stories)") as { name: string }[]).some((x) => x.name === c)), "a saved cover can remember the job, picture and prompts that made it");
+before.prepare(`INSERT INTO cover_prompts (story_id, prompt, updated_at) VALUES ('s', 'a lighthouse', 1)`).run();
+ok((before.prepare(`SELECT source FROM cover_prompts`).get() as { source: string }).source === "premise", "the cover's prompt is written from the premise until another source is chosen");
+ok(refused(() => before.prepare(`UPDATE cover_prompts SET source = 'elsewhere'`).run()), "…and the source is one of premise, opening and path");
 before.close();
 d.close();
 fs.rmSync(dir, { recursive: true, force: true });

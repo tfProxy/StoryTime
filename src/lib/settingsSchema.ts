@@ -110,6 +110,9 @@ export type ComfySettings = {
   url: string;
   width: number;
   height: number;
+  /** The size of cover pictures, chosen on the cover page (taller than wide by default, like a book). */
+  coverWidth: number;
+  coverHeight: number;
   /** How many pictures to make at once. No longer used by the Illustrate page, which makes one per click. */
   count: number;
   /** Drawing presets (new pictures and Redraw); never empty. The first is the default for stories that choose none. */
@@ -137,7 +140,7 @@ export const DEFAULT_SETTINGS: Settings = {
   outline: DEFAULT_OUTLINE,
   imagePromptStyle: "tags",
   imagePromptModel: null,
-  comfy: { url: "", width: 1344, height: 768, count: 4, drawPresets: DEFAULT_DRAW_PRESETS, editPresets: DEFAULT_EDIT_PRESETS, editPreset: "qwen-image-edit", picturesOldestFirst: false, queueCount: 1 },
+  comfy: { url: "", width: 1344, height: 768, coverWidth: 832, coverHeight: 1216, count: 4, drawPresets: DEFAULT_DRAW_PRESETS, editPresets: DEFAULT_EDIT_PRESETS, editPreset: "qwen-image-edit", picturesOldestFirst: false, queueCount: 1 },
 };
 
 // Each field falls back to its default when missing or invalid, so partial files still
@@ -293,6 +296,8 @@ const settingsSchema = z.object({
         url: z.string().catch(""),
         width: z.number().int().min(64).max(4096).catch(DEFAULT_SETTINGS.comfy.width),
         height: z.number().int().min(64).max(4096).catch(DEFAULT_SETTINGS.comfy.height),
+        coverWidth: z.number().int().min(64).max(4096).catch(DEFAULT_SETTINGS.comfy.coverWidth),
+        coverHeight: z.number().int().min(64).max(4096).catch(DEFAULT_SETTINGS.comfy.coverHeight),
         count: z.number().int().min(1).max(8).catch(DEFAULT_SETTINGS.comfy.count),
         drawPresets: listOf(drawPresetSchema),
         editPresets: listOf(editPresetSchema),

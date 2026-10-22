@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { ImageSlot } from "@/lib/imageSlots";
+import type { PictureSlot } from "@/lib/pictureTarget";
 import { imageUrl, type ComfyImage } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
 import type { PictureSaver } from "./usePictureSaver";
@@ -19,7 +19,7 @@ type Props = {
   index: number;
   saver: PictureSaver;
   /** The slots this picture is saved in now (the chapter's header, footer, or both). */
-  inUse?: ImageSlot[];
+  inUse?: PictureSlot[];
   /** It is the starting picture now (being edited or redrawn): it is highlighted and tagged. */
   editing?: boolean;
   /** Called to make new pictures starting from this one: redrawn from the prompt, or edited by instruction. */

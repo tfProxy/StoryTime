@@ -24,7 +24,6 @@ The tests use a fake. Before building more on this, try once on the real machine
 
 ## Also planned (from the pictures plan)
 
-- **Cover picture:** a version of the Illustrate page for the story's cover. The prompt is harder because the story branches, so it might be written from the premise, the codex and the first chapter, or from a chosen path.
 - **Consistent characters:**
   - A per-character "look" (a fixed tag string, or a reference picture for IP-Adapter) taken from the codex, so the same person looks the same in every chapter.
   - A LoRA per story could be a workflow setting.

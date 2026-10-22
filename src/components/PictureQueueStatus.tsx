@@ -1,14 +1,15 @@
 "use client";
 
 // The picture queue in the header: a button that shows how many jobs are being made and how many have
-// finished since their chapter's Illustrate page was last open, and a list of them, each with a link to
-// its chapter's Illustrate page. Hidden when there are none. It also puts the number of jobs being made
+// finished since their page was last open, and a list of them, each with a link to its chapter's
+// Illustrate page (or the story's cover page). Hidden when there are none. It also puts the number of jobs being made
 // in the tab's title ("StoryTime (2)").
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSettings } from "@/lib/settings";
 import { imageUrl } from "@/lib/comfy/client";
+import { targetHref, targetKey, type PictureTarget } from "@/lib/pictureTarget";
 import { progressText } from "./pictures";
 import { usePictureQueue, type QueueJob } from "./PictureQueue";
 
@@ -17,21 +18,30 @@ type Labels = Record<string, { title: string; story_title: string }>;
 const MOMENTS = { start: "Chapter start", end: "Chapter end" } as const;
 const pictures = (n: number) => `${n} ${n === 1 ? "picture" : "pictures"}`;
 
-/** The titles of the chapters the jobs are for, fetched as new chapters turn up. */
-function useLabels(chapterIds: string[]): Labels {
+/** The titles of the chapters (and the stories, for covers) the jobs are for, by `targetKey`, fetched as new ones turn up. */
+function useLabels(targets: PictureTarget[]): Labels {
   const [labels, setLabels] = useState<Labels>({});
   const asked = useRef(new Set<string>());
-  const key = [...new Set(chapterIds)].sort().join(",");
+  const key = [...new Set(targets.map(targetKey))].sort().join(" ");
   useEffect(() => {
-    const ids = key.split(",").filter((id) => id && !asked.current.has(id));
-    if (ids.length === 0) return;
-    for (const id of ids) asked.current.add(id);
-    fetch(`/api/chapters/labels?ids=${encodeURIComponent(ids.join(","))}`)
-      .then((r) => (r.ok ? r.json() : { labels: {} }))
-      .then((d: { labels: Labels }) => setLabels((prev) => ({ ...prev, ...d.labels })))
+    const keys = key.split(" ").filter((k) => k && !asked.current.has(k));
+    if (keys.length === 0) return;
+    for (const k of keys) asked.current.add(k);
+    const of = (prefix: string) => keys.filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length));
+    const chapters = of("chapter:");
+    const stories = of("cover:");
+    fetch(`/api/chapters/labels?ids=${encodeURIComponent(chapters.join(","))}&stories=${encodeURIComponent(stories.join(","))}`)
+      .then((r) => (r.ok ? r.json() : { labels: {}, stories: {} }))
+      .then((d: { labels: Labels; stories?: Record<string, string> }) =>
+        setLabels((prev) => ({
+          ...prev,
+          ...Object.fromEntries(Object.entries(d.labels).map(([id, l]) => [targetKey({ storyId: "", chapterId: id }), l])),
+          ...Object.fromEntries(Object.entries(d.stories ?? {}).map(([id, title]) => [targetKey({ storyId: id, chapterId: null }), { title: "Cover", story_title: title }])),
+        })),
+      )
       .catch(() => {
         // asked again when the list next changes
-        for (const id of ids) asked.current.delete(id);
+        for (const k of keys) asked.current.delete(k);
       });
   }, [key]);
   return labels;
@@ -60,7 +70,7 @@ export default function PictureQueueStatus() {
   const comfyUrl = useSettings().comfy.url;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const labels = useLabels(jobs.map((j) => j.chapterId));
+  const labels = useLabels(jobs);
   const making = jobs.filter((j) => j.state === "making");
   const done = jobs.filter((j) => j.state === "done");
   const failed = jobs.filter((j) => j.state === "failed");
@@ -120,7 +130,7 @@ export default function PictureQueueStatus() {
         <div className="picture-queue-panel" role="region" aria-label="Picture jobs">
           <ul className="picture-queue-list">
             {newest.map((j) => (
-              <JobRow key={j.key} job={j} label={labels[j.chapterId]} comfyUrl={comfyUrl} onStop={() => stop(j.key)} onDismiss={() => dismiss(j.key)} />
+              <JobRow key={j.key} job={j} label={labels[targetKey(j)]} comfyUrl={comfyUrl} onStop={() => stop(j.key)} onDismiss={() => dismiss(j.key)} />
             ))}
           </ul>
           {done.length + failed.length > 1 && (
@@ -135,15 +145,15 @@ export default function PictureQueueStatus() {
 }
 
 function JobRow({ job, label, comfyUrl, onStop, onDismiss }: { job: QueueJob; label?: { title: string; story_title: string }; comfyUrl: string; onStop: () => void; onDismiss: () => void }) {
-  const href = `/c/${job.chapterId}/illustrate`;
-  const title = label?.title ?? "A chapter";
+  const href = targetHref(job);
+  const title = job.chapterId === null ? "Cover" : (label?.title ?? "A chapter");
   return (
     <li className={`picture-queue-job picture-queue-${job.state}`} aria-label={`${title}: ${job.state === "making" ? "being made" : job.state === "done" ? "ready" : "failed"}`}>
       <div className="picture-queue-head">
         <Link href={href}>{title}</Link>
         <span className="meta">
           {label?.story_title ? `${label.story_title} · ` : ""}
-          {job.moment ? MOMENTS[job.moment] : ""}
+          {job.moment && job.moment !== "cover" ? MOMENTS[job.moment] : ""}
         </span>
       </div>
       {job.state === "making" && (

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { ComfyImage } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
-import { IMAGE_SLOTS, type ImageSlot } from "@/lib/imageSlots";
+import type { PictureSlot, PictureTarget } from "@/lib/pictureTarget";
 import PictureTile from "./PictureTile";
 import OtherChapterPictures from "./OtherChapterPictures";
 import PictureViewer from "./PictureViewer";
@@ -24,8 +24,8 @@ type View = PictureView | "other";
 type Status = { ok: boolean; text: string };
 
 type Props = {
-  chapterId: string;
-  storyId: string;
+  /** Whose pictures these are: a chapter's, or the story's cover's. */
+  target: PictureTarget;
   /** Every chapter's title in the story, by chapter id. */
   titles: Record<string, string>;
   comfyUrl: string;
@@ -43,8 +43,8 @@ type Props = {
   editBlocked?: string | null;
   /** Called to bring back the prompt and settings a picture was made with. */
   onLoadPrompt: (p: PromptToLoad) => void;
-  /** Which picture is the chapter's header and footer now, when known. */
-  used?: Record<ImageSlot, { jobId: string; index: number } | null>;
+  /** Which picture is the chapter's header and footer (or the story's cover) now, when known. */
+  used?: Partial<Record<PictureSlot, { jobId: string; index: number } | null>>;
   /** The starting picture's source (`comfy:…`, see StartPicture), when new pictures are being made from one. */
   starting?: string | null;
 };
@@ -55,9 +55,7 @@ type Props = {
  * and footer (as if pinned) and those made on this visit, so coming back shows only the pinned ones; "All" every one but the trashed; and "Trashed"
  * those, to restore one (they are stored with the mark "rejected"). "Other chapters" lists what was made for the rest of the story.
  */
-export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, pictures, onChange, onClear, pending = [], onStart, editBlocked = null, onLoadPrompt, used, starting = null }: Props) {
-  /** The slots a picture is saved in now. */
-  const inUse = (p: Picture): ImageSlot[] => IMAGE_SLOTS.filter((slot) => used?.[slot] && used[slot].jobId === p.jobId && used[slot].index === p.index);
+export default function ChapterPictures({ target, titles, comfyUrl, pictures, onChange, onClear, pending = [], onStart, editBlocked = null, onLoadPrompt, used, starting = null }: Props) {
   /** The picture being edited or redrawn. */
   const isStarting = (p: Picture) => starting !== null && starting === comfySource(p.image);
   /** The pictures the first view always shows, as if pinned: the chapter's header and footer, and the starting picture. */
@@ -69,10 +67,16 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
   // The picture whose Info popup is open, if any.
   const [info, setInfo] = useState<Picture | null>(null);
   // The server pins a picture saved as the header or footer; the page's copy of its mark follows.
-  const saver = usePictureSaver(chapterId, comfyUrl, setStatus, (jobId, index) => {
+  const saver = usePictureSaver(target, comfyUrl, setStatus, (jobId, index) => {
     const p = pictures.find((q) => q.jobId === jobId && q.index === index);
     if (p && p.mark !== "pinned") onChange(p.key, { mark: "pinned" });
   });
+  /** The slots a picture is saved in now. */
+  const inUse = (p: Picture): PictureSlot[] =>
+    saver.slots.filter((slot) => {
+      const u = used?.[slot];
+      return u && u.jobId === p.jobId && u.index === p.index;
+    });
 
   const settings = useSettings();
   // The order is the person's choice, kept in Settings so it is the same on every device. Other chapters is always newest first.
@@ -113,7 +117,7 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
     { view: "shortlist", label: `Pinned & new (${count("shortlist")})` },
     { view: "all", label: `All (${count("all")})` },
     { view: "rejected", label: `Trashed (${count("rejected")})` },
-    { view: "other", label: "Other chapters" },
+    { view: "other", label: target.chapterId === null ? "Chapters" : "Other chapters" },
   ];
 
   // A mark shows on the picture itself, so only a failure is reported.
@@ -234,8 +238,7 @@ export default function ChapterPictures({ chapterId, storyId, titles, comfyUrl, 
       })}
       {view === "other" ? (
         <OtherChapterPictures
-          chapterId={chapterId}
-          storyId={storyId}
+          target={target}
           titles={titles}
           comfyUrl={comfyUrl}
           saver={saver}

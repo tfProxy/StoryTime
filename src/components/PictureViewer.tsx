@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ImageSlot } from "@/lib/imageSlots";
+import type { PictureSlot } from "@/lib/pictureTarget";
 import { imageUrl } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
 import type { PictureSaver } from "./usePictureSaver";
@@ -18,7 +18,7 @@ type Props = {
   /** The picture being shown. */
   current: Picture;
   /** The slots it is saved in now (the chapter's header, footer, or both). */
-  inUse: ImageSlot[];
+  inUse: PictureSlot[];
   onShow: (key: string) => void;
   onClose: () => void;
   onMark: (picture: Picture, mark: PictureMark | null) => void;

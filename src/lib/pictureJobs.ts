@@ -11,7 +11,9 @@ const JobImage = z.object({ filename: text(500).min(1), subfolder: text(500), ty
 
 export const NewJobSchema = z
   .object({
-    chapter_id: z.string().min(1).max(100),
+    /** The chapter the job was for; a cover job gives its story instead. */
+    chapter_id: z.string().min(1).max(100).optional(),
+    story_id: z.string().min(1).max(100).optional(),
     prompt_id: text(200).min(1),
     // An edit follows its instruction, so it may have no prompt.
     prompt: text(LIMITS.picturePrompt),
@@ -21,7 +23,7 @@ export const NewJobSchema = z
     height: z.number().int().min(1).max(16384),
     seed: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
     count: z.number().int().min(1).max(64),
-    moment: z.enum(["start", "end"]).nullish(),
+    moment: z.enum(["start", "end", "cover"]).nullish(),
     source: text(1000).nullish(),
     denoise: z.number().min(0).max(1).nullish(),
     /** An edit: what it was told to change, and the model (an id from EDIT_MODELS). Both or neither. */
@@ -31,6 +33,8 @@ export const NewJobSchema = z
     /** Finished while its chapter's Illustrate page wasn't open, so its pictures are new until they are seen. */
     unseen: z.boolean().optional(),
   })
+  .refine((j) => !j.chapter_id !== !j.story_id, { message: "give the chapter, or for a cover the story", path: ["chapter_id"] })
+  .refine((j) => !j.story_id === (j.moment !== "cover"), { message: "a cover job is given its story, and its moment is cover", path: ["moment"] })
   .refine((j) => !j.instruction === !j.edit_model, { message: "an edit needs both its instruction and its model", path: ["instruction"] })
   .refine((j) => j.prompt.length > 0 || !!j.instruction, { message: "a prompt is needed (or, for an edit, an instruction)", path: ["prompt"] })
   .refine((j) => !j.instruction || !!j.source, { message: "an edit needs the picture it started from", path: ["source"] });
@@ -39,7 +43,8 @@ export type NewJob = z.infer<typeof NewJobSchema>;
 export type PictureJob = {
   id: string;
   story_id: string;
-  chapter_id: string;
+  /** Null for a job made for the story's cover. */
+  chapter_id: string | null;
   prompt_id: string;
   prompt: string;
   negative: string;
@@ -48,7 +53,7 @@ export type PictureJob = {
   height: number;
   seed: number;
   count: number;
-  moment: "start" | "end" | null;
+  moment: "start" | "end" | "cover" | null;
   source: string | null;
   denoise: number | null;
   instruction: string | null;
@@ -87,13 +92,26 @@ const toJob = (row: Row) => toJobs([row])[0];
 const COLUMNS = `rowid AS seq, id, story_id, chapter_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
                  moment, source, denoise, instruction, edit_model, images, created_at, seen_at`;
 
-/** Records a finished job for a chapter. Recording the same ComfyUI job again returns the first record. */
+/**
+ * Records a finished job for a chapter, or (given a story instead) for the story's cover. Recording the
+ * same ComfyUI job again returns the first record.
+ */
 export function recordPictureJob(input: NewJob): PictureJob {
-  const chapter = db().prepare(`SELECT story_id FROM chapters WHERE id = ?`).get(input.chapter_id) as { story_id: string } | undefined;
-  if (!chapter) throw new PostError("That chapter does not exist", 404);
-  const seen = db()
-    .prepare(`SELECT ${COLUMNS} FROM picture_jobs WHERE chapter_id = ? AND prompt_id = ?`)
-    .get(input.chapter_id, input.prompt_id) as Row | undefined;
+  const chapterId = input.chapter_id ?? null;
+  let storyId: string;
+  if (chapterId !== null) {
+    const chapter = db().prepare(`SELECT story_id FROM chapters WHERE id = ?`).get(chapterId) as { story_id: string } | undefined;
+    if (!chapter) throw new PostError("That chapter does not exist", 404);
+    storyId = chapter.story_id;
+  } else {
+    if (!db().prepare(`SELECT 1 FROM stories WHERE id = ?`).get(input.story_id)) throw new PostError("That story does not exist", 404);
+    storyId = input.story_id!;
+  }
+  const seen = (
+    chapterId !== null
+      ? db().prepare(`SELECT ${COLUMNS} FROM picture_jobs WHERE chapter_id = ? AND prompt_id = ?`).get(chapterId, input.prompt_id)
+      : db().prepare(`SELECT ${COLUMNS} FROM picture_jobs WHERE story_id = ? AND chapter_id IS NULL AND prompt_id = ?`).get(storyId, input.prompt_id)
+  ) as Row | undefined;
   if (seen) return toJob(seen);
   const id = newId();
   const now = Date.now();
@@ -104,7 +122,7 @@ export function recordPictureJob(input: NewJob): PictureJob {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
-      id, chapter.story_id, input.chapter_id, input.prompt_id, input.prompt, input.negative, input.checkpoint,
+      id, storyId, chapterId, input.prompt_id, input.prompt, input.negative, input.checkpoint,
       input.width, input.height, input.seed, input.count, input.moment ?? null, input.source ?? null,
       input.denoise ?? null, input.instruction ?? null, input.edit_model ?? null, JSON.stringify(input.images), now,
       input.unseen ? null : now,
@@ -113,19 +131,24 @@ export function recordPictureJob(input: NewJob): PictureJob {
 }
 
 /**
- * A page of the log, newest first, for a story or for one chapter. `before` is the cursor from the
- * previous page; `next` is the cursor for the page after this one, or null at the end.
+ * A page of the log, newest first, for a story, one chapter, or the story's cover. For a story,
+ * `notChapter` leaves one chapter out and `chaptersOnly` leaves the cover's jobs out (leaving out a
+ * chapter leaves them out too). `before` is the cursor from the previous page; `next` is the cursor for
+ * the page after this one, or null at the end.
  */
 export function listPictureJobs(
-  where: { story: string; notChapter?: string } | { chapter: string },
+  where: { story: string; notChapter?: string; chaptersOnly?: boolean } | { chapter: string } | { cover: string },
   page: { before?: number; limit: number },
 ): { jobs: PictureJob[]; next: number | null } {
-  const [column, value] = "story" in where ? ["story_id", where.story] : ["chapter_id", where.chapter];
-  // The whole story but one chapter, for "other chapters".
+  const [filter, value] =
+    "story" in where ? ["story_id = ?", where.story] : "chapter" in where ? ["chapter_id = ?", where.chapter] : ["story_id = ? AND chapter_id IS NULL", where.cover];
+  // The whole story but one chapter, for "other chapters", or but the cover.
   const not = "story" in where && where.notChapter ? where.notChapter : null;
+  const chaptersOnly = "story" in where && !not && where.chaptersOnly;
   const rows = db()
     .prepare(
-      `SELECT ${COLUMNS} FROM picture_jobs WHERE ${column} = ? ${not ? "AND chapter_id != ?" : ""} AND rowid < ? ORDER BY rowid DESC LIMIT ?`,
+      `SELECT ${COLUMNS} FROM picture_jobs WHERE ${filter} ${not ? "AND chapter_id != ?" : ""} ${chaptersOnly ? "AND chapter_id IS NOT NULL" : ""}
+         AND rowid < ? ORDER BY rowid DESC LIMIT ?`,
     )
     .all(...[value, ...(not ? [not] : []), page.before ?? Number.MAX_SAFE_INTEGER, page.limit + 1]) as Row[];
   const more = rows.length > page.limit;
@@ -139,6 +162,11 @@ const CHAPTER_JOBS = 1000;
 /** A chapter's jobs, newest first (the most recent 1000), with their marks: what its Illustrate page shows. */
 export function chapterPictureJobs(chapterId: string): PictureJob[] {
   return listPictureJobs({ chapter: chapterId }, { limit: CHAPTER_JOBS }).jobs;
+}
+
+/** The story's cover jobs, newest first (the most recent 1000), with their marks: what its cover page shows. */
+export function coverPictureJobs(storyId: string): PictureJob[] {
+  return listPictureJobs({ cover: storyId }, { limit: CHAPTER_JOBS }).jobs;
 }
 
 // How many new jobs the picture queue in the header is given.
@@ -167,6 +195,8 @@ export const KnownJobsSchema = z.object({
   prompt_ids: z.array(text(200).min(1)).max(500),
   /** Chapters the jobs found in ComfyUI are for; `chapters` in the answer lists those that exist here. */
   chapter_ids: z.array(z.string().min(1).max(100)).max(500).optional(),
+  /** Stories the cover jobs found in ComfyUI are for; `stories` in the answer lists those that exist here. */
+  story_ids: z.array(z.string().min(1).max(100)).max(500).optional(),
 });
 
 /**
@@ -174,12 +204,13 @@ export const KnownJobsSchema = z.object({
  * queue only picks up jobs that are this StoryTime's and that a page left before they finished (ComfyUI may
  * be shared with other StoryTimes and tools).
  */
-export function knownPromptIds({ prompt_ids, chapter_ids = [] }: z.infer<typeof KnownJobsSchema>): { known: string[]; chapters: string[] } {
+export function knownPromptIds({ prompt_ids, chapter_ids = [], story_ids = [] }: z.infer<typeof KnownJobsSchema>): { known: string[]; chapters: string[]; stories: string[] } {
   const ids = (sql: string, list: string[], column: string) =>
     list.length === 0 ? [] : (db().prepare(`${sql} (${list.map(() => "?").join(",")})`).all(...list) as Record<string, string>[]).map((r) => r[column]);
   return {
     known: ids("SELECT DISTINCT prompt_id FROM picture_jobs WHERE prompt_id IN", prompt_ids, "prompt_id"),
     chapters: ids("SELECT id FROM chapters WHERE id IN", chapter_ids, "id"),
+    stories: ids("SELECT id FROM stories WHERE id IN", story_ids, "id"),
   };
 }
 

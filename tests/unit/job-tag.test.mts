@@ -10,5 +10,9 @@ ok(readTag({ storytime: { ...tag, job: { ...job, source: "comfy:a.png", denoise:
 ok(readTag({ storytime: { chapterId: "c1", storyId: "s1" } }) === null, "a tag from before jobs carried their settings is not enough to record a job");
 ok(readTag({}) === null && readTag(null) === null && readTag("x") === null, "a job that isn't StoryTime's has no tag");
 ok(readTag({ storytime: { ...tag, job: { ...job, moment: "middle" } } }) === null, "an unknown moment is refused");
+const cover = { ...tag, chapterId: null, job: { ...job, moment: "cover" } };
+ok(readTag({ storytime: cover })?.chapterId === null && readTag({ storytime: cover })?.job.moment === "cover", "a cover job has no chapter and the moment cover");
+ok(readTag({ storytime: { ...cover, job: { ...job, moment: "start" } } }) === null, "a job with no chapter must be a cover");
+ok(readTag({ storytime: { ...tag, job: { ...job, moment: "cover" } } }) === null, "a chapter's job can't be a cover");
 ok(readTag({ storytime: { ...tag, job: { ...job, width: "1024" } } }) === null, "a size that isn't a number is refused");
 ok(readTag({ storytime: { ...tag, job: { ...job, denoise: "high" } } }) === null, "a strength that isn't a number is refused");

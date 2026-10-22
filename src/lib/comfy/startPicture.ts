@@ -1,5 +1,5 @@
 // A picture chosen to start a job from (image to image), and getting it into ComfyUI. Browser code.
-import { chapterImageUrl, type ImageSlot } from "../imageSlots";
+import { savedPictureUrl, type PictureSlot, type PictureTarget } from "../pictureTarget";
 import { fetchImage, imageUrl, uploadImage, type ComfyImage } from "./client";
 
 export type StartPicture = {
@@ -13,7 +13,7 @@ export type StartPicture = {
   blob: () => Promise<Blob>;
   /** Which one it is, so the choice can be remembered across a refresh: ComfyUI's picture, or the saved slot. */
   image?: ComfyImage;
-  slot?: ImageSlot;
+  slot?: PictureSlot;
 };
 
 /** One of ComfyUI's own pictures (a new or a past one). */
@@ -22,17 +22,21 @@ export function fromComfyImage(comfyUrl: string, image: ComfyImage): StartPictur
   return { key: source, thumb: imageUrl(comfyUrl, image), source, blob: () => fetchImage(comfyUrl, image), image };
 }
 
-/** A chapter's saved header or footer picture; `version` is its current version. */
-export function fromSaved(chapterId: string, slot: ImageSlot, version: number): StartPicture {
-  const thumb = chapterImageUrl(chapterId, slot, version);
+/**
+ * A chapter's saved header or footer picture, or the story's saved cover (`saved:<story id>:cover`);
+ * `version` is its current version.
+ */
+export function fromSaved(target: PictureTarget, slot: PictureSlot, version: number): StartPicture {
+  const thumb = savedPictureUrl(target, slot, version);
+  const owner = slot === "cover" ? target.storyId : target.chapterId;
   return {
-    key: `saved:${chapterId}:${slot}:${version}`,
+    key: `saved:${owner}:${slot}:${version}`,
     thumb,
-    source: `saved:${chapterId}:${slot}`,
+    source: `saved:${owner}:${slot}`,
     slot,
     blob: async () => {
       const res = await fetch(thumb);
-      if (!res.ok) throw new Error(`Couldn't read the saved ${slot} picture (${res.status}).`);
+      if (!res.ok) throw new Error(`Couldn't read the saved ${slot === "cover" ? "cover" : `${slot} picture`} (${res.status}).`);
       return res.blob();
     },
   };

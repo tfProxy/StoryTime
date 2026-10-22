@@ -1,7 +1,7 @@
 // Turning what the author asked for on the Illustrate page into a job on ComfyUI: checking it, uploading
 // the starting picture, filling the workflow and queueing it. The picture queue (`PictureQueue`) calls it
 // and then waits for the pictures. Browser code, no React.
-import type { ImageMoment } from "../ai/imagePrompt";
+import type { PictureMoment, PictureTarget } from "../pictureTarget";
 import type { ComfySettings } from "../settingsSchema";
 import { buildEdit, editFilesText, editSize, type EditCheck, type EditLora, type EditTuning } from "./editModels";
 import { drawFilesText, presetName, type DrawPreset } from "./presets";
@@ -14,7 +14,7 @@ import type { JobRecord, JobTag } from "./jobTag";
 export type JobInput = {
   prompt: string;
   negative: string;
-  moment: ImageMoment;
+  moment: PictureMoment;
   comfy: ComfySettings;
   /** The drawing preset, its LoRAs that are switched on and in ComfyUI, and the Redraw strength (for new pictures and Redraw). */
   draw: DrawPreset;
@@ -65,7 +65,7 @@ export type MadeJob = { promptId: string; clientId: string; record: JobRecord };
 export async function queueJob(
   input: JobInput,
   count: number,
-  ids: { chapterId: string; storyId: string; instance: string | null },
+  ids: PictureTarget & { instance: string | null },
   hooks: {
     signal: AbortSignal;
     uploads: UploadCache;

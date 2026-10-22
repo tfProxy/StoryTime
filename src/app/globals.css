@@ -2113,6 +2113,37 @@ dialog.picture-info::backdrop {
   font-size: 0.8rem;
 }
 
+/* The story's settings as one small, quiet line, with Change at the end (the cover prompt panel's). */
+.story-pictures {
+  display: grid;
+  gap: 0.4rem;
+  overflow-wrap: anywhere;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.story-pictures-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.6rem;
+}
+
+.story-pictures-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  list-style: none;
+}
+
+.story-pictures-list li + li::before {
+  content: "·";
+  margin-right: 0.5rem;
+}
+
 /* The story's art style, under the Prompt box: it is added to the end of every prompt. */
 .prompt-art-style {
   margin: 0;

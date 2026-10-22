@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { saveSettings, useSettings } from "@/lib/settings";
 import { LIMITS } from "@/lib/limits";
 import { copyText } from "@/lib/copyText";
@@ -17,13 +18,35 @@ import type { PendingJob, Picture, PromptToLoad, StartMode } from "./pictures";
 import type { EditModels } from "./useEditModels";
 import type { PictureBoxes, PictureDraft } from "@/lib/pictureDrafts";
 import { EMPTY_BOXES, usePictureDraft } from "./usePictureDraft";
-import { type StoryPictures } from "./StoryPictureSettings";
-import { drawPresetFor } from "@/lib/comfy/presets";
+import { unsetPictureSettings, type StoryPictures } from "./StoryPictureSettings";
+import { drawPresetFor, presetName } from "@/lib/comfy/presets";
 
 const MOMENT_NAMES: Record<ImageMoment, string> = { start: "Chapter Start", end: "Chapter End" };
 
+const short = (text: string, max: number) => (text.length > max ? `${text.slice(0, max).trimEnd()}…` : text);
+
 /** The story fields the picture prompt uses: its premise, and its picture settings (see StoryPictureSettings). */
 export type IllustratedStory = { id: string; title: string; premise: string } & StoryPictures;
+
+/** The story's picture settings, the same for all its pictures, with a link to its details page where they are set. */
+export function StoryPicturesLine({ story }: { story: IllustratedStory }) {
+  const settings = useSettings();
+  const unset = unsetPictureSettings(story);
+  const settingsHref = `/s/${story.id}/details#pictures`;
+  return (
+    <div className="story-pictures">
+      <div className="story-pictures-row">
+        <ul className="story-pictures-list" aria-label="This story's picture settings">
+          <li>{story.art_style.trim() ? <span title={story.art_style}>{short(story.art_style.trim(), 80)}</span> : "no art style"}</li>
+          <li title="The story's drawing preset">{presetName(drawPresetFor(settings.comfy.drawPresets, story.draw_preset))}</li>
+        </ul>
+        <Link href={settingsHref} title={unset.length > 0 ? `Not chosen yet for this story: ${unset.join(", ")}` : undefined}>
+          {unset.length > 0 ? "Choose in Story details" : "Change"}
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 /** A prompt brought back from a saved picture. `nonce` changes with every request, even for the same prompt. */
 export type LoadedPrompt = PromptToLoad & { nonce: number };
@@ -82,7 +105,8 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
   const [seenLoad, setSeenLoad] = useState(0);
   if (loaded && loaded.nonce !== seenLoad) {
     setSeenLoad(loaded.nonce);
-    const into = loaded.moment ?? moment;
+    // A cover's prompt goes to the moment shown.
+    const into = loaded.moment && loaded.moment !== "cover" ? loaded.moment : moment;
     change(into, { scene: "", prompt: loaded.prompt, negative: loaded.negative });
     setMoment(into);
     setStatus({ ok: true, text: "Prompt loaded from the picture." });
@@ -234,8 +258,7 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
       {codexSlot && createPortal(codexLine, codexSlot)}
       {promptPanel}
       <ComfyGenerate
-        chapterId={chapterId}
-        storyId={story.id}
+        target={{ storyId: story.id, chapterId }}
         storyPreset={story.draw_preset}
         chapterPreset={chapterPreset}
         onChapterPreset={setPresetNow}

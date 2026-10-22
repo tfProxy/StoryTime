@@ -52,6 +52,17 @@ export function FooterIcon() {
   );
 }
 
+/** A book with a picture on its front: the story's cover. */
+export function CoverIcon() {
+  return (
+    <svg {...svg} strokeWidth={1.6}>
+      <path d="M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
+      <path d="M7 3v18" />
+      <rect x="10" y="7" width="6" height="6" rx="1" fill="currentColor" />
+    </svg>
+  );
+}
+
 /** A pencil: the picture is being edited or redrawn. */
 export function PencilIcon() {
   return (

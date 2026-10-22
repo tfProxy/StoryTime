@@ -3,21 +3,24 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { prepareImage } from "@/lib/prepareImage";
-import { chapterImageUrl, type ImageMade, type ImageSlot } from "@/lib/imageSlots";
+import type { ImageMade } from "@/lib/imageSlots";
+import { savedPictureApi, savedPictureUrl, type PictureSlot, type PictureTarget } from "@/lib/pictureTarget";
 import { PictureMenu, loadPromptItem, openItem, startItems } from "./PictureButtons";
 import type { StartMode } from "./pictures";
 
 // The longest side an uploaded illustration keeps. Bigger pictures are scaled down in the browser first.
 const MAX_SIDE = 1600;
 
-const LABELS: Record<ImageSlot, { title: string }> = {
+const LABELS: Record<PictureSlot, { title: string }> = {
   header: { title: "Header picture" },
   footer: { title: "Footer picture" },
+  cover: { title: "Cover" },
 };
 
 type Props = {
-  chapterId: string;
-  slot: ImageSlot;
+  /** The chapter (for its header or footer) or the story (for its cover). */
+  target: PictureTarget;
+  slot: PictureSlot;
   version: number | null;
   /** What the saved picture was made from, when it came from ComfyUI. */
   made?: ImageMade | null;
@@ -30,10 +33,11 @@ type Props = {
 };
 
 /**
- * Upload, replace or remove one of a chapter's pictures, from the ☰ menu on its corner (the same menu, with
- * the same items where they apply, as a picture in the Pictures panel). Changes apply straight away.
+ * Upload, replace or remove one of a chapter's pictures (or the story's cover), from the ☰ menu on its
+ * corner (the same menu, with the same items where they apply, as a picture in the Pictures panel).
+ * Changes apply straight away.
  */
-export default function ChapterImageEditor({ chapterId, slot, version: initial, made = null, onLoadPrompt, onStart, editBlocked = null }: Props) {
+export default function ChapterImageEditor({ target, slot, version: initial, made = null, onLoadPrompt, onStart, editBlocked = null }: Props) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [version, setVersion] = useState(initial);
@@ -63,13 +67,13 @@ export default function ChapterImageEditor({ chapterId, slot, version: initial, 
   }
 
   async function request(init: RequestInit) {
-    const res = await fetch(`/api/chapters/${chapterId}/images/${slot}`, init);
+    const res = await fetch(savedPictureApi(target, slot), init);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
     return data;
   }
 
-  const url = version !== null ? chapterImageUrl(chapterId, slot, version) : null;
+  const url = version !== null ? savedPictureUrl(target, slot, version) : null;
   const unavailable = busy ? "Saving the picture…" : undefined;
   return (
     <section className="ai-panel image-editor">
@@ -91,7 +95,7 @@ export default function ChapterImageEditor({ chapterId, slot, version: initial, 
               version !== null && made && onLoadPrompt && loadPromptItem(() => onLoadPrompt(made)),
               url !== null && openItem(url),
               version !== null && {
-                label: slot === "header" ? "Clear Header" : "Clear Footer",
+                label: slot === "header" ? "Clear Header" : slot === "footer" ? "Clear Footer" : "Clear Cover",
                 title: unavailable,
                 disabled: busy,
                 run: () => void run(async () => (await request({ method: "DELETE" }), { version: null, text: "Picture removed." })),
@@ -112,7 +116,8 @@ export default function ChapterImageEditor({ chapterId, slot, version: initial, 
           if (!file) return;
           void run(async () => {
             const data = await request({ method: "PUT", headers: { "Content-Type": "image/jpeg" }, body: await prepareImage(file, MAX_SIDE) });
-            return { version: data.version as number, text: "Picture saved." };
+            // The cover's answer names its version cover_version.
+            return { version: (data.version ?? data.cover_version) as number, text: "Picture saved." };
           });
         }}
       />
