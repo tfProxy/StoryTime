@@ -135,6 +135,20 @@ export function setChapterPreset(chapterId: string, input: z.infer<typeof Chapte
   return { draw_preset: input.draw_preset };
 }
 
+/** Text always included in the chapter's picture prompts. */
+export const ChapterFixedSchema = z.object({ fixed: z.string().max(LIMITS.picturePrompt) });
+
+export function getChapterFixed(chapterId: string): string {
+  const row = db().prepare(`SELECT picture_fixed FROM chapters WHERE id = ?`).get(chapterId) as { picture_fixed: string } | undefined;
+  return row?.picture_fixed ?? "";
+}
+
+export function setChapterFixed(chapterId: string, input: z.infer<typeof ChapterFixedSchema>): { fixed: string } {
+  const { changes } = db().prepare(`UPDATE chapters SET picture_fixed = ? WHERE id = ?`).run(input.fixed, chapterId);
+  if (changes === 0) throw new PostError("That chapter does not exist", 404);
+  return { fixed: input.fixed };
+}
+
 export class PostError extends Error {
   constructor(
     message: string,
