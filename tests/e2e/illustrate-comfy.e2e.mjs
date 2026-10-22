@@ -216,7 +216,7 @@ try {
   ok(await page.getByLabel("Checkpoint").count() === 0, "there is no Checkpoint menu on the Illustrate page: the checkpoint is the drawing preset's");
   const drawPreset = page.getByLabel("Drawing preset");
   ok(await drawPreset.inputValue() === "test" && (await drawPreset.locator("option").allInnerTexts()).join() === "Ink (default)", "the Make pictures panel offers the drawing presets, marking the story's as the default");
-  ok((await page.locator(".draw-preset").innerText()).includes("no checkpoint") === false && (await page.locator(".story-pictures").innerText()).includes("Ink"), "…lists no model summary under it, and the story's picture settings name its preset");
+  ok((await page.locator(".draw-preset").innerText()).includes("no checkpoint") === false, "…and lists no model summary under it");
   ok(await makeButton.isDisabled(), "Make pictures is off while the prompt is empty");
 
   await promptBox.fill("a lighthouse at dawn, gulls");

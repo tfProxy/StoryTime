@@ -79,13 +79,11 @@ try {
 
   // ---- the art style is the story's (details page); the prompt style belongs to the drawing preset (Settings) ----
   ok(await page.getByLabel(/Art style/).count() === 0 && await page.getByLabel("Prompt style").count() === 0, "the Illustrate page has no art style or prompt style fields");
-  const pictureLine = page.locator(".story-pictures");
-  ok((await pictureLine.innerText()).includes("no art style") && !(await pictureLine.innerText()).includes("Tags"), "a new story says it has no art style, and the line doesn't mention a prompt style");
+  ok(await page.locator(".story-pictures").count() === 0, "the Illustrate page has no line of story picture settings");
   await page.waitForTimeout(1000); // (the typed prompt is kept)
-  await page.getByRole("link", { name: "Choose in Story details" }).click();
-  await page.waitForURL(`**/s/${storyId}/details#pictures`);
+  await page.goto(`${BASE}/s/${storyId}/details#pictures`);
   const pics = page.locator("#pictures");
-  ok(await pics.getByLabel("Prompt style").count() === 0, "…which links to the story's details page, where the prompt style is no longer a story setting");
+  ok(await pics.getByLabel("Prompt style").count() === 0, "the story's details page is where the art style is set; the prompt style is no longer a story setting");
   await pics.getByLabel("Art style").fill("watercolor storybook, soft light");
   await pics.getByRole("button", { name: "Save picture settings" }).click();
   await pics.getByText("Picture settings saved.").waitFor();
@@ -98,7 +96,6 @@ try {
   await styleMenu.selectOption({ label: "Sentences (Flux, SD3)" });
   ok(await until(async () => (await settingsNow()).comfy.drawPresets[0].promptStyle === "natural", "the prompt style to be saved"), "choosing sentences saves it with the preset");
   await page.goto(`${BASE}/c/${chapter}/illustrate`);
-  ok((await pictureLine.locator("li").allInnerTexts()).join("|").startsWith("watercolor storybook, soft light|"), "the Illustrate page shows the art style and the preset");
 
   // ---- write a prompt for the chapter's end ----
   ok(await page.getByText(/^For$/).count() === 0 && await page.getByRole("option", { name: "Footer picture" }).count() === 0, "there is no For header/footer choice");
