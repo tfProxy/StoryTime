@@ -2364,8 +2364,10 @@ fieldset.model-uses .inline-label input[type="checkbox"] {
   min-width: 0;
 }
 
+/* !important beats the picker's own inline 16rem cap. */
 .prompt-writer-row > .model-picker select {
   flex: 1 1 8rem;
+  max-width: 100% !important;
 }
 
 .prompt-writer-row > .prompt-writer-buttons {
