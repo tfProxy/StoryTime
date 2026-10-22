@@ -4,7 +4,7 @@
 import { comfyVersion, listCheckpoints, nodeInfo } from "./client";
 import { checkEditModels, comboOptions, EDIT_NODES, type EditCheck } from "./editModels";
 import type { DrawPreset } from "./presets";
-import { BUILTIN_IMG2IMG, BUILTIN_WORKFLOW, parseWorkflow, WorkflowError } from "./workflow";
+import { BUILTIN_INPAINT, BUILTIN_WORKFLOW, parseWorkflow, WorkflowError } from "./workflow";
 
 /** What the check found for one drawing preset. */
 export type DrawCheck = {
@@ -33,7 +33,7 @@ const DRAW_LORA_LOADER = "LoraLoader";
 function workflowNodes(text: string): { nodes: string[] | null; error: string | null } {
   try {
     const wf = parseWorkflow(text);
-    const all = wf === BUILTIN_WORKFLOW ? { ...BUILTIN_WORKFLOW, ...BUILTIN_IMG2IMG } : wf;
+    const all = wf === BUILTIN_WORKFLOW ? { ...BUILTIN_WORKFLOW, ...BUILTIN_INPAINT } : wf;
     return { nodes: [...new Set(Object.values(all).map((n) => n.class_type))], error: null };
   } catch (e) {
     return { nodes: null, error: e instanceof WorkflowError ? e.message : String(e) };
