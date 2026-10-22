@@ -130,6 +130,14 @@ function shared(p: EditParams, vae: [string, number], sampler: string): Workflow
   };
 }
 
+/**
+ * The instruction with a sentence saying which picture is edited and which only shows what to take from.
+ * Without it the models treat the pictures alike and blend the starting picture into the reference.
+ */
+function framedForRefs(instruction: string, refs: string, start: string): string {
+  return `Edit ${start}, keeping its composition, pose and background. Use ${refs} only as a reference for how things look; do not change ${start} into ${refs}. ${instruction}`;
+}
+
 /** Qwen-Image-Edit 2509's defaults, as in ComfyUI's own template: 20 steps of Euler at CFG 2.5, shift 3. */
 const QWEN_DEFAULTS: EditTuning = { steps: 20, cfg: 2.5, sampler: "euler", scheduler: "simple", strength: 1, shift: 3 };
 /** FLUX.1 Kontext dev's defaults: 20 steps of Euler at CFG 1, guidance 2.5. */
@@ -161,6 +169,7 @@ function qwenWorkflow(files: Record<string, string>, p: EditParams, fast = false
     class_type: "TextEncodeQwenImageEditPlus",
     inputs: { clip: ["2", 0], vae: ["3", 0], image1: ["11", 0], ...refInputs, prompt },
   });
+  const instruction = refs.length > 0 ? framedForRefs(p.instruction, refs.length === 1 ? "image 2" : "images 2 and 3", "image 1") : p.instruction;
   return {
     ...refNodes,
     "1": { class_type: "UNETLoader", inputs: { unet_name: files.model, weight_dtype: "default" } },
@@ -169,7 +178,7 @@ function qwenWorkflow(files: Record<string, string>, p: EditParams, fast = false
     ...chain.nodes,
     "4": { class_type: "ModelSamplingAuraFlow", inputs: { model: chain.model, shift: t.shift ?? QWEN_DEFAULTS.shift } },
     "5": { class_type: "CFGNorm", inputs: { model: ["4", 0], strength: 1 } },
-    "6": encode(p.instruction),
+    "6": encode(instruction),
     "7": encode(""),
     "8": {
       class_type: "KSampler",
@@ -202,7 +211,7 @@ function kontextWorkflow(files: Record<string, string>, p: EditParams): Workflow
     ...chain.nodes,
     "2": { class_type: "DualCLIPLoader", inputs: { clip_name1: files.clipL, clip_name2: files.t5, type: "flux", device: p.textEncoderDevice ?? "default" } },
     "3": { class_type: "VAELoader", inputs: { vae_name: files.vae } },
-    "4": { class_type: "CLIPTextEncode", inputs: { clip: ["2", 0], text: p.instruction } },
+    "4": { class_type: "CLIPTextEncode", inputs: { clip: ["2", 0], text: ref ? framedForRefs(p.instruction, "the second picture", "the first picture") : p.instruction } },
     "5": { class_type: "ReferenceLatent", inputs: { conditioning: ["4", 0], latent: ["12", 0] } },
     "6": { class_type: "FluxGuidance", inputs: { conditioning: [ref ? "33" : "5", 0], guidance: t.guidance ?? KONTEXT_DEFAULTS.guidance } },
     "7": { class_type: "ConditioningZeroOut", inputs: { conditioning: ["4", 0] } },

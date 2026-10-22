@@ -224,6 +224,12 @@ ok(EDIT_NODES.includes("KSampler"), "…which it asks about anyway");
   ok(scale.inputs.width === params.width && scale.inputs.height === params.height && (kref[(scale.inputs.image as [string, number])[0]].inputs as { image: string }).image === "ref-a.png", "…the first reference only, at the edit's size");
   const guide = nodes(kref, "FluxGuidance")[0];
   ok(guide.inputs.conditioning instanceof Array && kref[(guide.inputs.conditioning as [string, number])[0]] === second, "…chained before the guidance");
+
+  const said = (n: { inputs: Record<string, unknown> }) => String(n.inputs.prompt ?? n.inputs.text);
+  ok(encoders.every((e) => said(e) !== params.instruction || e.inputs.prompt === "") && encoders.some((e) => said(e).startsWith("Edit image 1") && said(e).includes("images 2 and 3 only as a reference") && said(e).endsWith(params.instruction)), "Qwen's instruction says image 1 is edited and images 2 and 3 are only references");
+  ok(said(nodes(one, "TextEncodeQwenImageEditPlus")[0]).includes("image 2 only as a reference"), "…naming only image 2 with one reference");
+  ok(said(nodes(kref, "CLIPTextEncode")[0]).startsWith("Edit the first picture") && said(nodes(kref, "CLIPTextEncode")[0]).endsWith(params.instruction), "Kontext's instruction says the first picture is edited and the second only a reference");
+  ok(said(nodes(plain, "TextEncodeQwenImageEditPlus")[0]) === params.instruction && said(nodes(kplain, "CLIPTextEncode")[0]) === params.instruction, "without references the instruction is sent as written");
 }
 
 // ---- presetCheck and buildEdit: files a preset chooses ----
