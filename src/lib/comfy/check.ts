@@ -4,6 +4,7 @@
 import { comfyVersion, listCheckpoints, nodeInfo } from "./client";
 import { checkDrawFamilies, DRAW_NODES, familyPresetCheck, type FamilyCheck } from "./drawModels";
 import { checkEditModels, EDIT_NODES, type EditCheck } from "./editModels";
+import { baseOf, checkIpAdapter, IPADAPTER_NODES, type IpAdapterCheck } from "./ipAdapter";
 import { comboOptions } from "./modelParts";
 import { usesFamily, type DrawPreset } from "./presets";
 import { BUILTIN_INPAINT, BUILTIN_WORKFLOW, parseWorkflow, WorkflowError } from "./workflow";
@@ -24,6 +25,8 @@ export type DrawCheck = {
   checkpoint: boolean;
   /** Its LoRAs switched on whose files ComfyUI doesn't list. */
   missingLoras: string[];
+  /** Whether reference pictures (IP-Adapter) could be used with it; null for a preset of a model family. Informational: the preset works without. */
+  ipAdapter: IpAdapterCheck | null;
 };
 
 export type ComfyCheck = {
@@ -52,7 +55,7 @@ function workflowNodes(p: DrawPreset): { nodes: string[] | null; error: string |
 export async function checkComfy(url: string, presets: DrawPreset[]): Promise<ComfyCheck> {
   const version = await comfyVersion(url);
   const read = presets.map((p) => ({ preset: p, ...workflowNodes(p) }));
-  const asked = [...new Set([...EDIT_NODES, ...DRAW_NODES, DRAW_LORA_LOADER, ...read.flatMap((r) => r.nodes ?? [])])];
+  const asked = [...new Set([...EDIT_NODES, ...DRAW_NODES, DRAW_LORA_LOADER, ...IPADAPTER_NODES, ...read.flatMap((r) => r.nodes ?? [])])];
   const [checkpoints, info] = await Promise.all([listCheckpoints(url), nodeInfo(url, asked)]);
   forgetEditModels();
   const loras = comboOptions(info[DRAW_LORA_LOADER], "lora_name");
@@ -67,6 +70,7 @@ export async function checkComfy(url: string, presets: DrawPreset[]): Promise<Co
       workflowError: error,
       checkpoint: preset.checkpoint !== "" && checkpoints.includes(preset.checkpoint),
       missingLoras: preset.loras.filter((l) => l.on && l.name && !loras.includes(l.name)).map((l) => l.name),
+      ipAdapter: preset.family === "checkpoint" ? checkIpAdapter(info, baseOf(preset)) : null,
     })),
     edits: checkEditModels(info),
   };

@@ -6,6 +6,7 @@ import { BUILTIN_SAMPLER, builtinSampler, describeWorkflow, parseWorkflow, Workf
 import { checkComfy, type ComfyCheck, type DrawCheck } from "@/lib/comfy/check";
 import { listCheckpoints } from "@/lib/comfy/client";
 import { DRAW_FAMILIES, drawModel, drawTuning, FAMILY_NAMES, familyPresetCheck, familyProblems, ggufNeeded, type DrawFamily, type DrawModel, type FamilyCheck } from "@/lib/comfy/drawModels";
+import { BASE_NAMES, guessBase, MODEL_BASES, type IpAdapterCheck, type ModelBase } from "@/lib/comfy/ipAdapter";
 import { editModel, editPresetCheck, editTuning, isGguf, lightningSteps, presetCheck, type EditModel } from "@/lib/comfy/editModels";
 import {
   drawPresetSummary,
@@ -157,6 +158,36 @@ function FamilyLines({ family }: { family: FamilyCheck }) {
   );
 }
 
+/** The setup check's line for reference pictures: informational, a preset without IP-Adapter is still fully usable. */
+function IpAdapterLine({ c }: { c: IpAdapterCheck }) {
+  if (c.ready) {
+    return (
+      <Line ok>
+        Reference pictures (IP-Adapter): ready.
+      </Line>
+    );
+  }
+  const missingFiles = c.parts.filter((p) => !p.file);
+  return (
+    <li className="meta">
+      <span aria-hidden="true">– </span>
+      Reference pictures (IP-Adapter): not set up (optional; this preset draws fine without).
+      <ul>
+        {c.missingNodes.length > 0 && (
+          <li>
+            ComfyUI doesn&apos;t have the nodes {c.missingNodes.join(", ")}: install ComfyUI_IPAdapter_plus through ComfyUI-Manager.
+          </li>
+        )}
+        {missingFiles.map((p) => (
+          <li key={p.part.key}>
+            {p.part.label}: put <code>{p.part.recommended}</code> in <code>ComfyUI/models/{p.part.folder}</code>.
+          </li>
+        ))}
+      </ul>
+    </li>
+  );
+}
+
 /** The setup check's lines for a checkpoint preset (or one with a workflow of its own): the checkpoint and the workflow's nodes. */
 function CheckpointLines({ d }: { d: DrawCheck }) {
   return (
@@ -213,6 +244,7 @@ function DrawReport({ check }: { check: ComfyCheck }) {
               <CheckpointLines d={d} />
             )}
             {d.missingLoras.length > 0 && <Line ok={false}>ComfyUI doesn&apos;t list its LoRAs {d.missingLoras.join(", ")}.</Line>}
+            {d.ipAdapter && <IpAdapterLine c={d.ipAdapter} />}
           </ul>
         </div>
       ))}
@@ -522,6 +554,24 @@ function DrawPresetFields({ preset, setup, onChange }: { preset: DrawPreset; set
               </option>
             ))}
           </select>
+        </label>
+      )}
+      {preset.family === "checkpoint" && (
+        <label>
+          Model base
+          <select
+            aria-label="Model base"
+            value={preset.base ?? ""}
+            onChange={(e) => onChange({ base: e.target.value === "" ? undefined : (e.target.value as ModelBase) })}
+          >
+            <option value="">Guess from the file name ({BASE_NAMES[guessBase(preset.checkpoint)]})</option>
+            {MODEL_BASES.map((b) => (
+              <option key={b} value={b}>
+                {BASE_NAMES[b]}
+              </option>
+            ))}
+          </select>
+          <span className="meta">What the checkpoint is built on. It picks the IP-Adapter files used for reference pictures.</span>
         </label>
       )}
       {model && <FamilyFiles preset={preset} model={model} family={family} setup={setup} onChange={onChange} />}

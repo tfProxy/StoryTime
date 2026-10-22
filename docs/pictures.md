@@ -143,6 +143,41 @@ needs no extra node, and is the safe choice (a GGUF one also loads, with ComfyUI
 doesn't need the `mmproj` file that editing a picture does). Qwen-Image runs at 20 steps, so a picture
 takes noticeably longer than Z-Image's.
 
+## Reference pictures (IP-Adapter)
+
+Reference pictures (a character, an outfit, a place, so the same one comes back) are drawn with
+**IP-Adapter** on your drawing preset's own checkpoint, so the preset keeps its look. This is optional: a
+preset without it draws exactly as before. Settings › Drawing › **Check setup** shows a "Reference pictures
+(IP-Adapter)" line under each checkpoint preset, saying "ready" or what is missing. (Pictures can't use
+references yet; this is the setup for when they can.)
+
+1. **Install the nodes.** In ComfyUI-Manager search for **ComfyUI_IPAdapter_plus** (by cubiq) and install it,
+   or `git clone` <https://github.com/cubiq/ComfyUI_IPAdapter_plus> into `ComfyUI/custom_nodes`, then
+   restart ComfyUI. Until you do, the check says "install ComfyUI_IPAdapter_plus through ComfyUI-Manager".
+2. **Choose the preset's Model base** (Settings › Drawing, on the preset's card). It decides which files are
+   used. Left on "Guess from the file name", a name with "noob" is NoobAI, one with "illustrious", "illu" or
+   "ilxl" is Illustrious, one with "pony" or "pdxl" is Pony, and anything else is SDXL. Choose it yourself
+   when the name doesn't say.
+3. **Download the two files** for that base. Create the folders if they aren't there, then restart ComfyUI.
+
+| Model base | Put in `ComfyUI/models/ipadapter` | Put in `ComfyUI/models/clip_vision` |
+| --- | --- | --- |
+| SDXL, Pony | `ip-adapter-plus_sdxl_vit-h.safetensors` | `CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors` |
+| NoobAI, Illustrious | `noobIPAMARK1_mark1.safetensors` | `CLIP-ViT-bigG-14-laion2B-39B-b160k.safetensors` |
+
+Where to get them:
+
+- **SDXL and Pony:** the [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter) page on Hugging Face. The
+  adapter is `sdxl_models/ip-adapter-plus_sdxl_vit-h.safetensors`. The CLIP Vision model is
+  `models/image_encoder/model.safetensors` there; save it under the name in the table.
+- **NoobAI and Illustrious:** [Laxhar/noob_ipa](https://huggingface.co/Laxhar/noob_ipa) on Hugging Face has
+  the adapter (`noobIPAMARK1_mark1.safetensors`). Check that page for the CLIP Vision model it names (it uses
+  the larger bigG one, `CLIP-ViT-bigG-14-laion2B-39B-b160k.safetensors`) and download that one.
+
+Pony works less well: the SDXL adapter wasn't trained on Pony's way of describing pictures, so a Pony
+checkpoint follows a reference less closely than a NoobAI or Illustrious one does. The files are the same
+as for SDXL, so it is set up in the same way.
+
 ## Edit models in ComfyUI
 
 On a chapter's Illustrate page, a picture's ☰ menu has two ways to start from it:

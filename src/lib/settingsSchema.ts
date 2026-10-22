@@ -2,6 +2,7 @@ import { z } from "zod";
 import { PROVIDER_KINDS, providerInfo, type ProviderKind } from "./ai/providers";
 import { DRAW_FAMILIES, DRAW_MODELS } from "./comfy/drawModels";
 import { EDIT_MODEL_IDS, EDIT_MODELS, TEXT_ENCODER_DEVICES } from "./comfy/editModels";
+import { MODEL_BASES } from "./comfy/ipAdapter";
 import {
   DEFAULT_DENOISE,
   DEFAULT_DRAW_PRESETS,
@@ -231,6 +232,8 @@ const drawPresetSchema = z.object({
   // Presets saved before model families are checkpoint presets.
   family: z.enum(DRAW_FAMILIES).catch("checkpoint"),
   checkpoint: z.string().max(500).catch(""),
+  // Missing (and anything unknown) is guessed from the checkpoint's name.
+  base: z.enum(MODEL_BASES).optional().catch(undefined),
   files: partFiles,
   textEncoderDevice: z.enum(TEXT_ENCODER_DEVICES).catch("default"),
   workflow: z.string().max(500_000).catch(""),

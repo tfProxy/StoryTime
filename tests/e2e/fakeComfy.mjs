@@ -24,6 +24,8 @@
 //   gguf        true: the ComfyUI-GGUF loaders exist (UnetLoaderGGUF, CLIPLoaderGGUF, DualCLIPLoaderGGUF) and
 //               list the .gguf files in `files`; the ordinary loaders then list only the other files, like
 //               the real ones (default false: no GGUF nodes)
+//   ipAdapter   true: the IPAdapterModelLoader, IPAdapterAdvanced and CLIPVisionLoader nodes exist and list the
+//               `files.ipadapter` and `files.clip_vision` files (default false: no IP-Adapter nodes)
 //   tokenizerOptions  true: the T5TokenizerOptions node exists (Chroma's workflow uses it when it does; default false)
 import crypto from "node:crypto";
 import http from "node:http";
@@ -104,6 +106,8 @@ const NODES = [
   "LoadImageMask", "SetLatentNoiseMask", "InvertMask", "ImageCompositeMasked",
 ];
 const GGUF_NODES = ["UnetLoaderGGUF", "CLIPLoaderGGUF", "DualCLIPLoaderGGUF"];
+// The nodes of ComfyUI_IPAdapter_plus (and the CLIP Vision loader reference pictures use), present only with `ipAdapter: true`.
+const IPADAPTER_NODES = ["IPAdapterModelLoader", "IPAdapterAdvanced", "CLIPVisionLoader"];
 // Nodes newer ComfyUIs have and the fake has only when asked (`tokenizerOptions: true`).
 const OPTIONAL_NODES = ["T5TokenizerOptions"];
 const isGguf = (f) => f.endsWith(".gguf");
@@ -124,9 +128,9 @@ export const SCHEDULERS = ["simple", "normal", "karras", "beta"];
 /** Qwen-Image-Edit's Lightning LoRA, for tests that install it (in `files.loras`). */
 export const LIGHTNING_LORA = "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors";
 
-export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.safetensors", "fake_sdxl_b.safetensors"], ws = true, steps = 4, stepDelay = 120, startDelay = 300, fail = null, version = "0.3.99", files = {}, missingNodes = [], gguf = false, tokenizerOptions = false } = {}) {
-  const mode = { checkpoints, ws, steps, stepDelay, startDelay, fail, version, files, missingNodes, gguf, tokenizerOptions };
-  const known = (name) => NODES.includes(name) || (mode.gguf && GGUF_NODES.includes(name)) || (mode.tokenizerOptions && OPTIONAL_NODES.includes(name));
+export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.safetensors", "fake_sdxl_b.safetensors"], ws = true, steps = 4, stepDelay = 120, startDelay = 300, fail = null, version = "0.3.99", files = {}, missingNodes = [], gguf = false, tokenizerOptions = false, ipAdapter = false } = {}) {
+  const mode = { checkpoints, ws, steps, stepDelay, startDelay, fail, version, files, missingNodes, gguf, tokenizerOptions, ipAdapter };
+  const known = (name) => NODES.includes(name) || (mode.ipAdapter && IPADAPTER_NODES.includes(name)) || (mode.gguf && GGUF_NODES.includes(name)) || (mode.tokenizerOptions && OPTIONAL_NODES.includes(name));
   // The ordinary loaders never list .gguf files when the GGUF nodes are there; the GGUF ones list them (and the rest of their folder).
   const folder = (name) => (mode.files[name] ?? []).filter((f) => !mode.gguf || !isGguf(f));
   const ggufFolder = (name) => mode.files[name] ?? [];
@@ -151,6 +155,8 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
         type: ["COMBO", { options: ["sdxl", "sd3", "flux"] }],
       },
       VAELoader: { vae_name: combo(folder("vae")) },
+      IPAdapterModelLoader: { ipadapter_file: combo(folder("ipadapter")) },
+      CLIPVisionLoader: { clip_name: combo(folder("clip_vision")) },
       LoraLoaderModelOnly: { lora_name: combo(folder("loras")), strength_model: ["FLOAT", { default: 1 }] },
       LoraLoader: { lora_name: combo(folder("loras")), strength_model: ["FLOAT", { default: 1 }], strength_clip: ["FLOAT", { default: 1 }] },
       KSampler: { sampler_name: combo(SAMPLERS), scheduler: combo(SCHEDULERS) },
