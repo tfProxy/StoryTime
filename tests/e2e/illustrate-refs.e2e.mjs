@@ -75,7 +75,7 @@ try {
   await picker.locator("li button").first().click();
   await picker.waitFor({ state: "detached" });
   ok((await rows.count()) === 1 && await rows.first().getByLabel("Label of reference 1").inputValue() === "Header", "choosing it adds it as “Header” and closes the picker");
-  ok(await rows.first().getByLabel("Role of reference 1").inputValue() === "character" && await rows.first().getByLabel("Strength of reference 1").inputValue() === "0.7", "…as a character at the usual strength");
+  ok(await rows.first().getByLabel("Role of reference 1").inputValue() === "character" && await rows.first().getByLabel("Strength of reference 1").inputValue() === "0.4", "…as a character at the usual strength");
   await add.click();
   ok(await picker.locator("li button").first().isDisabled(), "a picture already chosen can't be added twice");
   await page.keyboard.press("Escape");
@@ -84,7 +84,7 @@ try {
 
   // ---- role and strength go into the workflow ----
   await rows.first().getByLabel("Role of reference 1").selectOption("place");
-  ok(await rows.first().getByLabel("Strength of reference 1").inputValue() === "0.5", "a new role brings its usual strength");
+  ok(await rows.first().getByLabel("Strength of reference 1").inputValue() === "0.3", "a new role brings its usual strength");
   await rows.first().getByLabel("Strength of reference 1").fill("0.35");
   ok((await rows.first().innerText()).includes("Strength 0.35"), "the strength slider says its value");
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("a cellar flooding");

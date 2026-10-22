@@ -20,14 +20,14 @@ const refs = [
 const params: PictureParams = { prompt: "a lighthouse", negative: "text", checkpoint: "sdxl.safetensors", width: 832, height: 1216, count: 1, seed: 7 };
 
 // ---- the Reference type ----
-ok(DEFAULT_WEIGHTS.character === 0.7 && DEFAULT_WEIGHTS.item === 0.6 && DEFAULT_WEIGHTS.place === 0.5 && DEFAULT_WEIGHTS.style === 0.8, "default weights per role");
+ok(DEFAULT_WEIGHTS.character === 0.4 && DEFAULT_WEIGHTS.item === 0.4 && DEFAULT_WEIGHTS.place === 0.3 && DEFAULT_WEIGHTS.style === 0.8, "default weights per role");
 const start = { key: "comfy:a/b.png", thumb: "http://x/view", source: "comfy:a/b.png", blob: async () => new Blob(["x"]) };
 const jim = asReference(start, "Jim", "character");
-ok(jim.weight === 0.7 && jim.key === start.key && jim.source === start.source && jim.thumb === start.thumb, "a picture becomes a reference with its role's default weight");
+ok(jim.weight === 0.4 && jim.key === start.key && jim.source === start.source && jim.thumb === start.thumb, "a picture becomes a reference with its role's default weight");
 ok(asReference(start, "Tavern", "place", 0.4).weight === 0.4, "…or the weight given");
 const stored = storedOf([jim, asReference(start, "Tavern", "place")]);
-ok(JSON.stringify(stored[0]) === JSON.stringify({ source: "comfy:a/b.png", label: "Jim", role: "character", weight: 0.7 }) && !("blob" in stored[0]), "only the serialisable part is recorded");
-ok(stored.map(referenceText).join(", ") === "Jim (character 0.7), Tavern (place 0.5)", "a reference reads “Jim (character 0.7)”");
+ok(JSON.stringify(stored[0]) === JSON.stringify({ source: "comfy:a/b.png", label: "Jim", role: "character", weight: 0.4 }) && !("blob" in stored[0]), "only the serialisable part is recorded");
+ok(stored.map(referenceText).join(", ") === "Jim (character 0.4), Tavern (place 0.3)", "a reference reads “Jim (character 0.7)”");
 ok(storedOf(undefined).length === 0, "no references is an empty list");
 
 // ---- withReferences ----
@@ -39,7 +39,7 @@ ok(nodes(plain, "LoadImage").length === 2 && nodes(plain, "IPAdapterAdvanced").l
 const [first, second] = nodes(plain, "IPAdapterAdvanced").map(([, n]) => n.inputs);
 ok(JSON.stringify(first.model) === '["4",0]' && JSON.stringify(second.model) === '["ref-1",0]', "the adapters are chained, the first after the checkpoint's model");
 ok(JSON.stringify(plain["3"].inputs.model) === '["ref-2",0]', "the sampler takes the end of the chain");
-ok(first.weight === 0.7 && first.weight_type === "linear" && first.end_at === 0.8 && first.start_at === 0 && first.combine_embeds === "concat" && first.embeds_scaling === "V only", "a character: linear, up to 0.8, concat, V only");
+ok(first.weight === 0.7 && first.weight_type === "linear" && first.end_at === 0.5 && first.start_at === 0 && first.combine_embeds === "concat" && first.embeds_scaling === "V only", "a character: linear, up to 0.5, concat, V only");
 ok(second.weight === 0.8 && second.weight_type === "style transfer" && second.end_at === 1, "a style: style transfer, to the end");
 ok(JSON.stringify(first.ipadapter) === '["ref-loader",0]' && JSON.stringify(first.clip_vision) === '["ref-clip-vision",0]' && JSON.stringify(first.image) === '["ref-1-image",0]', "each adapter is linked to the loaders and its image");
 ok(JSON.stringify(plain["ref-1-image"].inputs) === '{"image":"storytime-ref-a.png"}', "the image is the uploaded name");

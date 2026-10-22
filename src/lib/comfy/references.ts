@@ -11,7 +11,7 @@ export type ReferenceRole = (typeof REFERENCE_ROLES)[number];
 export const MAX_REFERENCES = 4;
 
 /** How strongly each kind of reference is followed, unless the author changes it. */
-export const DEFAULT_WEIGHTS: Record<ReferenceRole, number> = { character: 0.7, item: 0.6, place: 0.5, style: 0.8 };
+export const DEFAULT_WEIGHTS: Record<ReferenceRole, number> = { character: 0.4, item: 0.4, place: 0.3, style: 0.8 };
 
 /** The part of a reference that is recorded in the job log and the job's tag. */
 export type StoredReference = {

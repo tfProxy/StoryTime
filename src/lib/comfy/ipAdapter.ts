@@ -90,6 +90,12 @@ export type RefInput = { image: string; role: "character" | "item" | "place" | "
 
 const isLink = (v: unknown): v is [string, number] => Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "number";
 
+/**
+ * How far through the steps a character, item or place reference is followed. Stopping halfway leaves the
+ * rest to the model, so its own look comes back instead of the reference's drawing style taking over.
+ */
+const NON_STYLE_END = 0.5;
+
 /** The samplers whose model the references are put in front of. */
 const MODEL_SAMPLERS = /^(KSampler|KSamplerAdvanced)$/;
 
@@ -97,7 +103,7 @@ const MODEL_SAMPLERS = /^(KSampler|KSamplerAdvanced)$/;
  * A copy of the workflow whose samplers take their model through IP-Adapter, one `IPAdapterAdvanced` per
  * reference, chained after the model the samplers had (a LoRA's, say). `files` are the adapter's and the CLIP
  * Vision model's file names. A style reference is followed as "style transfer" for the whole run; the others
- * stop at 0.8 so the prompt can still shape the last steps. Throws an Error when no sampler has a model to wrap.
+ * stop at halfway so the model and the prompt shape the last steps. Throws an Error when no sampler has a model to wrap.
  */
 export function withReferences(workflow: Workflow, refs: RefInput[], files: { ipadapter: string; clipVision: string }): Workflow {
   const out: Workflow = JSON.parse(JSON.stringify(workflow));
@@ -122,7 +128,7 @@ export function withReferences(workflow: Workflow, refs: RefInput[], files: { ip
         weight_type: style ? "style transfer" : "linear",
         combine_embeds: "concat",
         start_at: 0,
-        end_at: style ? 1 : 0.8,
+        end_at: style ? 1 : NON_STYLE_END,
         embeds_scaling: "V only",
       },
     };
