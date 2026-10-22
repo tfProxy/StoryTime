@@ -1,5 +1,5 @@
 // A picture chosen to start a job from (image to image), and getting it into ComfyUI. Browser code.
-import { savedPictureUrl, type PictureSlot, type PictureTarget } from "../pictureTarget";
+import { savedOwner, savedPictureUrl,type PictureSlot, type PictureTarget } from "../pictureTarget";
 import { fetchImage, imageUrl, uploadImage, type ComfyImage } from "./client";
 
 export type StartPicture = {
@@ -28,7 +28,7 @@ export function fromComfyImage(comfyUrl: string, image: ComfyImage): StartPictur
  */
 export function fromSaved(target: PictureTarget, slot: PictureSlot, version: number): StartPicture {
   const thumb = savedPictureUrl(target, slot, version);
-  const owner = slot === "cover" ? target.storyId : target.chapterId;
+  const owner = savedOwner(target);
   return {
     key: `saved:${owner}:${slot}:${version}`,
     thumb,

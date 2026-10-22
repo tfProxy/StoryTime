@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { PictureJob } from "@/lib/pictureJobs";
-import type { PictureTarget } from "@/lib/pictureTarget";
+import { othersQuery, type PictureTarget } from "@/lib/pictureTarget";
 import type { ComfyImage } from "@/lib/comfy/client";
 import PictureTile from "./PictureTile";
 import type { PictureSaver } from "./usePictureSaver";
@@ -45,8 +45,7 @@ type Props = {
  * job, newest first, a page at a time. Any of them can be used here, started from, or have its prompt brought back.
  */
 export default function OtherChapterPictures({ target, titles, comfyUrl, saver, onLoadPrompt, onStart, editBlocked, onInfo }: Props) {
-  const { storyId, chapterId } = target;
-  const query = `story=${encodeURIComponent(storyId)}&${chapterId === null ? "chapters=1" : `not_chapter=${encodeURIComponent(chapterId)}`}`;
+  const query = othersQuery(target);
   const [jobs, setJobs] = useState<PictureJob[]>([]);
   const [next, setNext] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,7 +92,7 @@ export default function OtherChapterPictures({ target, titles, comfyUrl, saver, 
   return (
     <div className="other-pictures" id="other-pictures">
       {error && <p className="error" style={{ margin: 0 }}>{error}</p>}
-      {jobs.length === 0 && !loading && !error && <p className="meta" style={{ margin: 0 }}>No pictures have been made for the story&apos;s {chapterId === null ? "" : "other "}chapters yet.</p>}
+      {jobs.length === 0 && !loading && !error && <p className="meta" style={{ margin: 0 }}>No pictures have been made for the story&apos;s {target.kind === "cover" ? "" : "other "}chapters yet.</p>}
       {[...groups].map(([group, list]) => (
         <div key={group ?? "cover"} className="past-group">
           <h3>{group === null ? "Cover" : (titles[group] ?? "A chapter that has been removed")}</h3>

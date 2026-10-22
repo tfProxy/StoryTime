@@ -117,7 +117,7 @@ export default function ChapterPictures({ target, titles, comfyUrl, pictures, on
     { view: "shortlist", label: `Pinned & new (${count("shortlist")})` },
     { view: "all", label: `All (${count("all")})` },
     { view: "rejected", label: `Trashed (${count("rejected")})` },
-    { view: "other", label: target.chapterId === null ? "Chapters" : "Other chapters" },
+    { view: "other", label: target.kind === "cover" ? "Chapters" : "Other chapters" },
   ];
 
   // A mark shows on the picture itself, so only a failure is reported.

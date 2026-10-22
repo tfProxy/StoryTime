@@ -8,7 +8,7 @@ import { newMaskId, type PaintedArea } from "@/lib/mask";
 import { editBlocked, useEditModels } from "./useEditModels";
 import { useSettings } from "@/lib/settings";
 import type { PictureJob } from "@/lib/pictureJobs";
-import type { PictureSlot, PictureTarget } from "@/lib/pictureTarget";
+import { chapterIdOf, targetOfIds, type PictureSlot, type PictureTarget } from "@/lib/pictureTarget";
 import { fromComfyImage, fromSaved, type StartPicture } from "@/lib/comfy/startPicture";
 import { asReference } from "@/lib/comfy/references";
 import type { RefRequest } from "./useReferences";
@@ -51,7 +51,9 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
   // The starting picture and mode are kept in this browser, so a refresh brings them back. They are read once
   // ComfyUI's address is known (the settings load after the page), and written only after that.
   const kept = stateKey(target);
-  const { storyId, chapterId } = target;
+  // The target is rebuilt each render, so what is used below is its ids.
+  const { storyId } = target;
+  const chapterId = chapterIdOf(target);
   const [restored, setRestored] = useState(false);
   /* eslint-disable react-hooks/set-state-in-effect -- browser storage can only be read after the page is shown, so the server and browser draw the same first page */
   useEffect(() => {
@@ -60,7 +62,7 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
     const version = saved?.slot ? versions[saved.slot] : null;
     let picture: StartPicture | null = null;
     if (saved?.image) picture = fromComfyImage(comfy.url, saved.image);
-    else if (saved?.slot && version) picture = fromSaved({ storyId, chapterId }, saved.slot, version);
+    else if (saved?.slot && version) picture = fromSaved(targetOfIds(storyId, chapterId),saved.slot, version);
     if (picture) {
       setStart(picture);
       if (saved) setStartMode(saved.mode);

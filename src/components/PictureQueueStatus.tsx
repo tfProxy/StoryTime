@@ -9,7 +9,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSettings } from "@/lib/settings";
 import { imageUrl } from "@/lib/comfy/client";
-import { targetHref, targetKey, type PictureTarget } from "@/lib/pictureTarget";
+import { chapterTarget, coverTarget, targetHref, targetKey, type PictureTarget } from "@/lib/pictureTarget";
 import { progressText } from "./pictures";
 import { usePictureQueue, type QueueJob } from "./PictureQueue";
 
@@ -35,8 +35,8 @@ function useLabels(targets: PictureTarget[]): Labels {
       .then((d: { labels: Labels; stories?: Record<string, string> }) =>
         setLabels((prev) => ({
           ...prev,
-          ...Object.fromEntries(Object.entries(d.labels).map(([id, l]) => [targetKey({ storyId: "", chapterId: id }), l])),
-          ...Object.fromEntries(Object.entries(d.stories ?? {}).map(([id, title]) => [targetKey({ storyId: id, chapterId: null }), { title: "Cover", story_title: title }])),
+          ...Object.fromEntries(Object.entries(d.labels).map(([id, l]) => [targetKey(chapterTarget("", id)), l])),
+          ...Object.fromEntries(Object.entries(d.stories ?? {}).map(([id, title]) => [targetKey(coverTarget(id)), { title: "Cover", story_title: title }])),
         })),
       )
       .catch(() => {
@@ -146,7 +146,7 @@ export default function PictureQueueStatus() {
 
 function JobRow({ job, label, comfyUrl, onStop, onDismiss }: { job: QueueJob; label?: { title: string; story_title: string }; comfyUrl: string; onStop: () => void; onDismiss: () => void }) {
   const href = targetHref(job);
-  const title = job.chapterId === null ? "Cover" : (label?.title ?? "A chapter");
+  const title = job.kind === "cover" ? "Cover" : (label?.title ?? "A chapter");
   return (
     <li className={`picture-queue-job picture-queue-${job.state}`} aria-label={`${title}: ${job.state === "making" ? "being made" : job.state === "done" ? "ready" : "failed"}`}>
       <div className="picture-queue-head">

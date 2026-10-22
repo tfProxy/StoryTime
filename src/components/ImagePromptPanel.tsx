@@ -20,6 +20,7 @@ import type { PictureBoxes, PictureDraft } from "@/lib/pictureDrafts";
 import { EMPTY_BOXES, usePictureDraft } from "./usePictureDraft";
 import { unsetPictureSettings, type StoryPictures } from "./StoryPictureSettings";
 import { drawPresetFor, presetName } from "@/lib/comfy/presets";
+import { chapterTarget } from "@/lib/pictureTarget";
 import { referenceChoices, type RefPool } from "@/lib/comfy/referenceChoices";
 import { useReferences, type RefRequest } from "./useReferences";
 
@@ -307,7 +308,7 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
       {codexSlot && createPortal(codexLine, codexSlot)}
       {promptPanel}
       <ComfyGenerate
-        target={{ storyId: story.id, chapterId }}
+        target={chapterTarget(story.id, chapterId)}
         storyPreset={story.draw_preset}
         chapterPreset={chapterPreset}
         onChapterPreset={setPresetNow}

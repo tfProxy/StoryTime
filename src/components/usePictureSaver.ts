@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { slotsFor, type PictureSlot, type PictureTarget } from "@/lib/pictureTarget";
+import { savedPictureApi, slotsFor,type PictureSlot, type PictureTarget } from "@/lib/pictureTarget";
 import { prepareImage } from "@/lib/prepareImage";
 import { fetchImage, type ComfyImage } from "@/lib/comfy/client";
 
@@ -43,8 +43,7 @@ export function usePictureSaver(
     try {
       const blob = await prepareImage(await fetchImage(comfyUrl, image), MAX_SIDE);
       const made = jobId ? `?job=${encodeURIComponent(jobId)}&index=${index}` : "";
-      const url = slot === "cover" ? `/api/stories/${target.storyId}/cover` : `/api/chapters/${target.chapterId}/images/${slot}`;
-      const res = await fetch(`${url}${made}`, { method: "PUT", headers: { "Content-Type": "image/jpeg" }, body: blob });
+      const res = await fetch(`${savedPictureApi(target, slot)}${made}`, { method: "PUT", headers: { "Content-Type": "image/jpeg" }, body: blob });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Couldn't save the picture (${res.status})`);
       if (jobId) onPinned?.(jobId, index);

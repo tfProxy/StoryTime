@@ -1,7 +1,7 @@
 // Which pictures can be chosen as references on a picture page, and turning kept references back into
 // pictures. Pure code (no React); the browser builds the pictures with `fromSaved` and `fromComfyImage`.
 import type { ComfyImage } from "./client";
-import type { PictureMoment, PictureSlot } from "../pictureTarget";
+import { targetOfIds, type PictureMoment, type PictureSlot } from "../pictureTarget";
 import { asReference, type Reference, type StoredReference } from "./references";
 import { fromComfyImage, fromSaved, type StartPicture } from "./startPicture";
 
@@ -26,7 +26,7 @@ const shortTitle = (title: string) => (title.length > 24 ? `${title.slice(0, 23)
 const SLOT_WORDS: Record<PictureSlot, string> = { header: "header", footer: "footer", cover: "cover" };
 
 /** The picture of a saved choice. */
-export const savedPicture = (pool: RefPool, c: SavedChoice): StartPicture => fromSaved({ storyId: pool.storyId, chapterId: c.chapterId }, c.slot, c.version);
+export const savedPicture = (pool: RefPool, c: SavedChoice): StartPicture => fromSaved(targetOfIds(pool.storyId, c.chapterId),c.slot, c.version);
 
 /** A saved picture's label as a reference: “Header”, “Footer”, “Cover”, or “Ch. <title> footer” for another chapter's. */
 export function savedLabel(c: SavedChoice, ownChapterId: string | null): string {

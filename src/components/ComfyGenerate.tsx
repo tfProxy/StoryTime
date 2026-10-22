@@ -6,7 +6,7 @@ import Link from "next/link";
 import { SettingsIcon } from "./PictureIcons";
 import { saveSettings, useSettings } from "@/lib/settings";
 import { QUEUE_COUNTS, type ComfySettings } from "@/lib/settingsSchema";
-import { targetKey, type PictureMoment, type PictureTarget } from "@/lib/pictureTarget";
+import { chapterIdOf, presetApi, targetKey, targetOfIds, targetWord, type PictureMoment, type PictureTarget } from "@/lib/pictureTarget";
 import type { LoadedPrompt } from "./ImagePromptPanel";
 import type { JobProgress, MadeWith, PendingJob, Picture, StartMode } from "./pictures";
 import { drawPresetFamily, drawPresetIpAdapter, editBlocked, usableEditPresets, type EditModels } from "./useEditModels";
@@ -192,13 +192,15 @@ export default function ComfyGenerate({
   target, storyPreset, chapterPreset: savedPreset, moment, prompt: boxPrompt, negative: boxNegative, fixedPrompt = "", loaded = null, start = null, onClearStart,
   startMode = "redraw", onStartMode, paint, editModels = { state: "checking" }, onPictures, onQueue, onChapterPreset, dock = null, refs, onRefs, refChoices,
 }: Props) {
-  const { storyId, chapterId } = target;
+  // The target is rebuilt each render, so what effects depend on is its ids.
+  const { storyId } = target;
+  const chapterId = chapterIdOf(target);
   // Where this browser keeps the edit's text and strengths, and the queue's name for the target.
   const kept = stateKey(target);
   const at = targetKey(target);
   const settings = useSettings();
   // A cover has a size of its own (Settings keeps both), so choosing one doesn't change the chapters'.
-  const isCover = chapterId === null;
+  const isCover = target.kind === "cover";
   const comfy = isCover ? { ...settings.comfy, width: settings.comfy.coverWidth, height: settings.comfy.coverHeight } : settings.comfy;
   const sizes = isCover ? COVER_SIZES : SIZES;
   const queueCount = comfy.queueCount;
@@ -300,7 +302,7 @@ export default function ComfyGenerate({
   useEffect(() => {
     picturesTo.current = onPictures;
   }, [onPictures]);
-  useEffect(() => listen({ storyId, chapterId }, { onPictures: (p) => picturesTo.current?.(p), onStatus: setStatus }), [listen, storyId, chapterId]);
+  useEffect(() => listen(targetOfIds(storyId, chapterId),{ onPictures: (p) => picturesTo.current?.(p), onStatus: setStatus }), [listen, storyId, chapterId]);
   // Each prompt loaded from a saved picture starts with a new seed again, until the author ticks the box.
   const [reuseSeed, setReuseSeed] = useState(false);
   const [seenLoad, setSeenLoad] = useState(0);
@@ -347,12 +349,11 @@ export default function ComfyGenerate({
     const next = id === storyDraw.id ? null : id;
     setChapterPreset(next);
     onChapterPreset?.(next);
-    const url = chapterId === null ? `/api/stories/${storyId}/cover-preset` : `/api/chapters/${chapterId}/picture-preset`;
-    fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draw_preset: next }) })
+    fetch(presetApi(target), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draw_preset: next }) })
       .then((res) => {
         if (!res.ok) throw new Error(`Request failed (${res.status})`);
       })
-      .catch((e) => setStatus({ ok: false, text: `Couldn't keep the ${chapterId === null ? "cover" : "chapter"}'s preset: ${e instanceof Error ? e.message : String(e)}` }));
+      .catch((e) => setStatus({ ok: false, text: `Couldn't keep the ${targetWord(target)}'s preset: ${e instanceof Error ? e.message : String(e)}` }));
   }
 
   const set = (patch: Partial<ComfySettings>) => void saveSettings({ ...settings, comfy: { ...settings.comfy, ...patch } });
@@ -399,8 +400,7 @@ export default function ComfyGenerate({
       ipAdapter: drawPresetIpAdapter(editModels, draw),
     };
     pictureQueue.ask({
-      chapterId,
-      storyId,
+      ...target,
       input,
       view: {
         prompt: input.prompt,

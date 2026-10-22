@@ -1,7 +1,7 @@
 // What StoryTime tells ComfyUI about a job when it queues it (in the job's `extra_data`, which ComfyUI
 // keeps in its queue and its history). A page that was refreshed while a job was being made reads it back
 // to find the job again, show it, and record it. Browser code.
-import type { PictureMoment } from "../pictureTarget";
+import { targetOfIds, type PictureMoment, type PictureTarget } from "../pictureTarget";
 import { REFERENCE_ROLES, type StoredReference } from "./references";
 
 /** How a job was made: what the picture-job log records besides the chapter, ComfyUI's job id and the pictures. */
@@ -34,6 +34,9 @@ export type JobTag = {
   /** The StoryTime that queued it (`GET /api/instance`); jobs from before this have none. */
   instance?: string;
 };
+
+/** What the tag's job was made for. */
+export const tagTarget = (tag: JobTag): PictureTarget => targetOfIds(tag.storyId, tag.chapterId);
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 const isString = (v: unknown): v is string => typeof v === "string";

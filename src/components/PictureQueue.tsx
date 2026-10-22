@@ -9,11 +9,11 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useSettings } from "@/lib/settings";
 import { freeOllamaForPictures } from "@/lib/ai/ollama";
 import { cancelPrompt, listTaggedJobs, waitForPictures, type ComfyImage, type Progress, type TaggedJob } from "@/lib/comfy/client";
-import type { JobRecord } from "@/lib/comfy/jobTag";
+import { tagTarget, type JobRecord } from "@/lib/comfy/jobTag";
 import { queueJob, sameJob, type JobInput, type UploadCache } from "@/lib/comfy/makeJob";
 import { randomSeed } from "@/lib/comfy/workflow";
 import type { PictureJob } from "@/lib/pictureJobs";
-import { targetKey, type PictureTarget } from "@/lib/pictureTarget";
+import { chapterIdOf, chapterTarget, coverTarget, targetKey, targetOfIds, type PictureTarget } from "@/lib/pictureTarget";
 import { picturesOf, type PendingJob, type Picture } from "./pictures";
 
 /** How long after the last click a job is sent, so quick clicks with the same settings make one job. */
@@ -115,8 +115,8 @@ const jobIdsOf = (pictures: Picture[] = []) => [...new Set(pictures.map((p) => p
 /** Which of these ComfyUI jobs StoryTime has already recorded, and which of these chapters it has. */
 async function knownJobs(promptIds: string[], targets: PictureTarget[]): Promise<{ known: Set<string>; has: (t: PictureTarget) => boolean }> {
   // A chapter's job needs the chapter here; a cover job, the story.
-  const chapterIds = [...new Set(targets.flatMap((t) => (t.chapterId === null ? [] : [t.chapterId])))];
-  const storyIds = [...new Set(targets.flatMap((t) => (t.chapterId === null ? [t.storyId] : [])))];
+  const chapterIds = [...new Set(targets.flatMap((t) => (t.kind === "chapter" ? [t.chapterId] : [])))];
+  const storyIds = [...new Set(targets.flatMap((t) => (t.kind === "cover" ? [t.storyId] : [])))];
   const res = await fetch("/api/picture-jobs/known", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -126,7 +126,7 @@ async function knownJobs(promptIds: string[], targets: PictureTarget[]): Promise
   const body = (await res.json()) as { known: string[]; chapters: string[]; stories?: string[] };
   const chapters = new Set(body.chapters);
   const stories = new Set(body.stories ?? []);
-  return { known: new Set(body.known), has: (t) => (t.chapterId === null ? stories.has(t.storyId) : chapters.has(t.chapterId)) };
+  return { known: new Set(body.known), has: (t) => (t.kind === "cover" ? stories.has(t.storyId) : chapters.has(t.chapterId)) };
 }
 
 /** A finished job's pictures, as the Illustrate page shows them. */
@@ -164,7 +164,7 @@ const RESCAN_MS = 10_000;
 type Gathering = { key: string; target: PictureTarget; input: JobInput; count: number; timer: ReturnType<typeof setTimeout> };
 
 /** Just the target, without the rest of a job. */
-const targetOf = ({ storyId, chapterId }: PictureTarget): PictureTarget => ({ storyId, chapterId });
+const targetOf = (t: PictureTarget): PictureTarget => (t.kind === "chapter" ? chapterTarget(t.storyId, t.chapterId) : coverTarget(t.storyId));
 
 export default function PictureQueueProvider({ children }: { children: ReactNode }) {
   const settings = useSettings();
@@ -181,7 +181,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
     jobsRef.current = change(jobsRef.current);
     setJobs(jobsRef.current);
   }, []);
-  const patch = useCallback((key: string, p: Partial<QueueJob>) => update((prev) => prev.map((j) => (j.key === key ? { ...j, ...p } : j))), [update]);
+  const patch = useCallback((key: string, p: Partial<QueueJob>) => update((prev) => prev.map((j) => (j.key === key ? ({ ...j, ...p } as QueueJob) : j))), [update]);
   // What Stop needs for each job being made.
   const controls = useRef(new Map<string, { promptId: string | null; ctl: AbortController; url: string }>());
   // The newest job, while clicks can still add pictures to it.
@@ -348,7 +348,8 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
   /** Shows a job found in ComfyUI's queue like one asked for here, and records it when it finishes. */
   const resume = useCallback(
     (url: string, found: TaggedJob) => {
-      const { job, chapterId, storyId, clientId } = found.tag;
+      const { job, clientId } = found.tag;
+      const target = tagTarget(found.tag);
       const key = `job-${randomSeed().toString(36)}`;
       const ctl = new AbortController();
       controls.current.set(key, { promptId: found.promptId, ctl, url });
@@ -356,8 +357,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
         ...prev,
         {
           key,
-          chapterId,
-          storyId,
+          ...target,
           state: "making",
           count: job.count,
           progress: { stage: "queued", ahead: null },
@@ -375,7 +375,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
           moment: job.moment,
         },
       ]);
-      finish(key, { target: { storyId, chapterId }, url, promptId: found.promptId, clientId, record: job, signal: ctl.signal }).then(
+      finish(key, { target, url, promptId: found.promptId, clientId, record: job, signal: ctl.signal }).then(
         (result) => ended(key, result),
         (e) => failed(key, e),
       );
@@ -396,12 +396,13 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
   /** A job ComfyUI finished that was never recorded (the page that asked for it was gone): records it and keeps it as new. */
   const adopt = useCallback(
     async (found: TaggedJob & { state: "done" }) => {
-      const { job, chapterId, storyId } = found.tag;
-      const result = await record({ storyId, chapterId }, found.promptId, job, found.images);
+      const { job } = found.tag;
+      const target = tagTarget(found.tag);
+      const result = await record(target, found.promptId, job, found.images);
       if ("gone" in result) return;
       keep(
         {
-          chapterId, storyId, count: job.count, prompt: job.prompt, negative: job.negative, checkpoint: job.checkpoint, width: job.width, height: job.height,
+          ...target, count: job.count, prompt: job.prompt, negative: job.negative, checkpoint: job.checkpoint, width: job.width, height: job.height,
           denoise: job.denoise ?? null, source: job.source ?? null, mask: job.mask ?? null, refs: job.refs ?? [], instruction: job.instruction ?? null, editModel: job.edit_model ?? null, moment: job.moment,
         },
         result,
@@ -423,7 +424,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
         listed.add(j.id);
         keep(
           {
-            chapterId: j.chapter_id, storyId: j.story_id, count: j.images.length, prompt: j.prompt, negative: j.negative, checkpoint: j.checkpoint,
+            ...targetOfIds(j.story_id, j.chapter_id), count: j.images.length, prompt: j.prompt, negative: j.negative, checkpoint: j.checkpoint,
             width: j.width, height: j.height, denoise: j.denoise, source: j.source, mask: j.mask, refs: j.refs ?? [], instruction: j.instruction, editModel: j.edit_model, moment: j.moment,
           },
           { pictures: picturesOf([j]), unseen: true },
@@ -450,9 +451,9 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
         const found = (await listTaggedJobs(url)).filter((j) => !picked.current.has(j.promptId) && (!j.tag.instance || !mine || j.tag.instance === mine));
         if (found.length === 0) return;
         const done = found.filter((j): j is TaggedJob & { state: "done" } => j.state === "done");
-        const { known, has } = await knownJobs(done.map((j) => j.promptId), found.map((j) => j.tag));
+        const { known, has } = await knownJobs(done.map((j) => j.promptId), found.map((j) => tagTarget(j.tag)));
         for (const j of found) {
-          if (picked.current.has(j.promptId) || !has(j.tag)) continue;
+          if (picked.current.has(j.promptId) || !has(tagTarget(j.tag))) continue;
           picked.current.add(j.promptId);
           if (j.state !== "done") resume(url, j);
           else if (!known.has(j.promptId)) void adopt(j);
@@ -486,10 +487,10 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
 
 /** Records a finished job in the log and makes its pictures. The pictures are usable even if recording fails. */
 async function recordPictures(target: PictureTarget, promptId: string, record: JobRecord, images: ComfyImage[], unseen: boolean): Promise<Ended> {
-  const { chapterId } = target;
+  const chapterId = chapterIdOf(target);
   try {
     // A cover job is recorded for its story.
-    const by = chapterId === null ? { story_id: target.storyId } : { chapter_id: chapterId };
+    const by = target.kind === "cover" ? { story_id: target.storyId } : { chapter_id: target.chapterId };
     const jobId = await recordJob({ ...by, prompt_id: promptId, ...record, images, unseen });
     return { pictures: picturesOfJob(chapterId, jobId, promptId, record, images), unseen };
   } catch (e) {

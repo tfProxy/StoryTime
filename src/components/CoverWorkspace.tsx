@@ -3,6 +3,7 @@
 import { useMemo, type ComponentProps } from "react";
 import type { ImageMade } from "@/lib/imageSlots";
 import type { PictureJob } from "@/lib/pictureJobs";
+import { coverTarget } from "@/lib/pictureTarget";
 import CoverPromptPanel from "./CoverPromptPanel";
 import PictureWorkspace from "./PictureWorkspace";
 
@@ -27,7 +28,7 @@ export default function CoverWorkspace({ titles, version, made, jobs, ...panel }
 
   return (
     <PictureWorkspace
-      target={{ storyId: panel.story.id, chapterId: null }}
+      target={coverTarget(panel.story.id)}
       jobs={jobs}
       titles={titles}
       versions={versions}

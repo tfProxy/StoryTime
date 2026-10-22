@@ -1,7 +1,7 @@
 // Turning what the author asked for on the Illustrate page into a job on ComfyUI: checking it, uploading
 // the starting picture, filling the workflow and queueing it. The picture queue (`PictureQueue`) calls it
 // and then waits for the pictures. Browser code, no React.
-import type { PictureMoment, PictureTarget } from "../pictureTarget";
+import { chapterIdOf, type PictureMoment, type PictureTarget } from "../pictureTarget";
 import type { ComfySettings } from "../settingsSchema";
 import { buildDraw, drawTuning, familyProblems, type FamilyCheck } from "./drawModels";
 import { buildEdit, EDIT_REFS, editFilesText, editSize, type EditCheck, type EditLora, type EditTuning, type TextEncoderDevice } from "./editModels";
@@ -198,7 +198,7 @@ export async function queueJob(
   // From a picture the pictures are its size; an edit is its shape at about one megapixel.
   const { width, height } = from && edit ? editSize(from.width, from.height) : { width: from?.width ?? comfy.width, height: from?.height ?? comfy.height };
   if (from) hooks.onSize(width, height);
-  const prefix = filenamePrefix(ids.storyId, ids.chapterId);
+  const prefix = filenamePrefix(ids.storyId, chapterIdOf(ids));
   const workflow =
     edit && from
       ? buildEdit(
@@ -252,7 +252,7 @@ export async function queueJob(
   // A text model on the same machine lets go of the graphics memory first (never holds the job up for long).
   await hooks.beforeQueue?.();
   if (signal.aborted) throw new DOMException("Stopped", "AbortError");
-  const promptId = await queuePrompt(comfy.url, workflow, clientId, { storytime: { chapterId: ids.chapterId, storyId: ids.storyId, clientId, job: record, ...(ids.instance && { instance: ids.instance }) } satisfies JobTag });
+  const promptId = await queuePrompt(comfy.url, workflow, clientId, { storytime: { chapterId: chapterIdOf(ids), storyId: ids.storyId, clientId, job: record, ...(ids.instance && { instance: ids.instance }) } satisfies JobTag });
   hooks.onPromptId(promptId);
   // Stopped while it was being queued: take it off ComfyUI's queue again.
   if (signal.aborted) {

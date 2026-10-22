@@ -16,7 +16,8 @@ import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
 import PromptFields from "./PromptFields";
 import ComfyGenerate, { type PaintProps } from "./ComfyGenerate";
-import { StoryPicturesLine, type IllustratedStory, type LoadedPrompt } from "./ImagePromptPanel";
+import { coverTarget } from "@/lib/pictureTarget";
+import { StoryPicturesLine,type IllustratedStory, type LoadedPrompt } from "./ImagePromptPanel";
 import type { PendingJob, Picture, StartMode } from "./pictures";
 import type { EditModels } from "./useEditModels";
 import { EMPTY_COVER, useCoverDraft } from "./usePictureDraft";
@@ -256,7 +257,7 @@ export default function CoverPromptPanel({
         />
       </section>
       <ComfyGenerate
-        target={{ storyId: story.id, chapterId: null }}
+        target={coverTarget(story.id)}
         storyPreset={story.draw_preset}
         chapterPreset={coverPreset}
         onChapterPreset={setPresetNow}

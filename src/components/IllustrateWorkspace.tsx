@@ -7,6 +7,7 @@ import IllustrateChapter from "./IllustrateChapter";
 import ImagePromptPanel, { type IllustratedStory } from "./ImagePromptPanel";
 import PictureWorkspace from "./PictureWorkspace";
 import type { PictureDraft } from "@/lib/pictureDrafts";
+import { chapterTarget } from "@/lib/pictureTarget";
 import type { PictureJob } from "@/lib/pictureJobs";
 import type { RefPool } from "@/lib/comfy/referenceChoices";
 
@@ -42,7 +43,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
 
   return (
     <PictureWorkspace
-      target={{ storyId: story.id, chapterId }}
+      target={chapterTarget(story.id, chapterId)}
       jobs={jobs}
       titles={titles}
       versions={versions}
