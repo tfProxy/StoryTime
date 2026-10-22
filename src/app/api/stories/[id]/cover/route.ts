@@ -1,4 +1,5 @@
-import { clearCover, getCover, PostError, setCover } from "@/lib/stories";
+import { saveCover } from "@/lib/coverPictures";
+import { clearCover, getCover, PostError } from "@/lib/stories";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -18,11 +19,14 @@ export async function GET(request: Request, ctx: Ctx) {
   return new Response(new Uint8Array(cover.bytes), { headers: { ...headers, "Content-Type": cover.type } });
 }
 
-// Replace the cover. The body is the image itself (PNG, JPEG, GIF or WebP).
+// Replace the cover. The body is the image itself (PNG, JPEG, GIF or WebP). ?job=<picture job id>&index=<n>
+// say which picture made it (from the cover page), so its prompts are kept with it and it is pinned.
 export async function PUT(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
+  const query = new URL(request.url).searchParams;
+  const index = query.get("index");
   try {
-    return Response.json(setCover(id, Buffer.from(await request.arrayBuffer())));
+    return Response.json(saveCover(id, Buffer.from(await request.arrayBuffer()), query.get("job"), index === null || !/^\d+$/.test(index) ? null : Number(index)));
   } catch (e) {
     return fail(e);
   }

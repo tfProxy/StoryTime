@@ -531,7 +531,12 @@ export function setCover(storyId: string, bytes: Buffer): { cover_version: numbe
 }
 
 export function clearCover(storyId: string): { ok: true } {
-  const r = db().prepare(`UPDATE stories SET cover = NULL, cover_type = NULL, cover_updated_at = NULL WHERE id = ?`).run(storyId);
+  const r = db()
+    .prepare(
+      `UPDATE stories SET cover = NULL, cover_type = NULL, cover_updated_at = NULL, cover_job_id = NULL, cover_image_index = NULL,
+         cover_prompt = NULL, cover_negative = NULL WHERE id = ?`,
+    )
+    .run(storyId);
   if (r.changes === 0) throw new PostError("That story does not exist", 404);
   return { ok: true };
 }

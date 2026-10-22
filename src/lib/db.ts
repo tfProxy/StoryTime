@@ -291,6 +291,70 @@ export const MIGRATIONS: string[] = [
   UPDATE picture_jobs SET seen_at = created_at;
   CREATE INDEX picture_jobs_unseen ON picture_jobs(created_at) WHERE seen_at IS NULL;
   `,
+  // 20: pictures for the story's cover, made like a chapter's. A cover job has no chapter and the moment
+  // 'cover' (a chapter's job keeps its chapter), so picture_jobs is rebuilt: SQLite can't loosen NOT NULL
+  // or change a CHECK in place. The marks are put aside while the old table goes, then back.
+  // `cover_prompts` keeps the cover page's prompt boxes (like picture_prompts), what the prompt is written
+  // from ('premise', 'opening' or 'path', with the chapter the path ends at) and the cover's own drawing
+  // preset (null follows the story's). A saved cover remembers the job, picture and prompts that made it
+  // (null for uploads), like chapter_images.
+  `
+  CREATE TEMP TABLE marks_aside AS SELECT * FROM picture_marks;
+  DELETE FROM picture_marks;
+
+  CREATE TABLE picture_jobs_new (
+    id          TEXT PRIMARY KEY,
+    story_id    TEXT NOT NULL REFERENCES stories(id),
+    chapter_id  TEXT REFERENCES chapters(id),
+    prompt_id   TEXT NOT NULL,
+    prompt      TEXT NOT NULL,
+    negative    TEXT NOT NULL DEFAULT '',
+    checkpoint  TEXT NOT NULL DEFAULT '',
+    width       INTEGER NOT NULL,
+    height      INTEGER NOT NULL,
+    seed        INTEGER NOT NULL,
+    count       INTEGER NOT NULL,
+    moment      TEXT CHECK (moment IN ('start', 'end', 'cover')),
+    source      TEXT,
+    denoise     REAL,
+    images      TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    instruction TEXT,
+    edit_model  TEXT,
+    seen_at     INTEGER,
+    CHECK ((chapter_id IS NULL) = (moment IS 'cover'))
+  );
+  INSERT INTO picture_jobs_new (id, story_id, chapter_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
+                                moment, source, denoise, images, created_at, instruction, edit_model, seen_at)
+    SELECT id, story_id, chapter_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
+           moment, source, denoise, images, created_at, instruction, edit_model, seen_at FROM picture_jobs;
+  DROP TABLE picture_jobs;
+  ALTER TABLE picture_jobs_new RENAME TO picture_jobs;
+  CREATE UNIQUE INDEX picture_jobs_prompt ON picture_jobs(chapter_id, prompt_id);
+  CREATE UNIQUE INDEX picture_jobs_cover_prompt ON picture_jobs(story_id, prompt_id) WHERE chapter_id IS NULL;
+  CREATE INDEX picture_jobs_story ON picture_jobs(story_id);
+  CREATE INDEX picture_jobs_unseen ON picture_jobs(created_at) WHERE seen_at IS NULL;
+
+  INSERT INTO picture_marks SELECT * FROM marks_aside;
+  DROP TABLE marks_aside;
+
+  CREATE TABLE cover_prompts (
+    story_id        TEXT PRIMARY KEY REFERENCES stories(id),
+    prompt          TEXT NOT NULL DEFAULT '',
+    negative        TEXT NOT NULL DEFAULT '',
+    scene           TEXT NOT NULL DEFAULT '',
+    direction       TEXT NOT NULL DEFAULT '',
+    source          TEXT NOT NULL DEFAULT 'premise' CHECK (source IN ('premise', 'opening', 'path')),
+    path_chapter_id TEXT,
+    draw_preset     TEXT,
+    updated_at      INTEGER NOT NULL
+  );
+
+  ALTER TABLE stories ADD COLUMN cover_job_id TEXT;
+  ALTER TABLE stories ADD COLUMN cover_image_index INTEGER;
+  ALTER TABLE stories ADD COLUMN cover_prompt TEXT;
+  ALTER TABLE stories ADD COLUMN cover_negative TEXT;
+  `,
 ];
 
 function open(): Database.Database {
