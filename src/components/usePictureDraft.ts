@@ -7,7 +7,7 @@ import type { CoverDraft } from "@/lib/coverPictures";
 // How long typing has to pause before the prompt boxes are saved.
 const PAUSE_MS = 700;
 
-export const EMPTY_BOXES: PictureBoxes = { prompt: "", negative: "", scene: "", direction: "" };
+export const EMPTY_BOXES: PictureBoxes = { prompt: "", negative: "", scene: "", direction: "", refs: [] };
 
 function put(url: string, draft: unknown, keepalive = false) {
   return fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft), keepalive });
@@ -95,7 +95,8 @@ function useSavedBoxes<T>(url: string, current: T, saved: string, keyOf: (d: T) 
   return error;
 }
 
-const draftKey = (d: PictureDraftInput) => JSON.stringify([d.prompt, d.negative, d.scene, d.direction, d.moment]);
+const refsKey = (refs: PictureBoxes["refs"]) => refs.map((r) => [r.source, r.label, r.role, r.weight]);
+const draftKey = (d: PictureDraftInput) => JSON.stringify([d.prompt, d.negative, d.scene, d.direction, d.moment, refsKey(d.refs)]);
 const momentOf = (d: PictureDraftInput) => d.moment;
 
 /**
@@ -107,7 +108,7 @@ export function usePictureDraft(chapterId: string, current: PictureDraftInput, s
   return useSavedBoxes(`/api/chapters/${chapterId}/picture-draft`, current, opened, draftKey, momentOf);
 }
 
-const coverKey = (d: CoverDraft) => JSON.stringify([d.prompt, d.negative, d.scene, d.direction, d.source, d.path_chapter_id]);
+const coverKey = (d: CoverDraft) => JSON.stringify([d.prompt, d.negative, d.scene, d.direction, d.source, d.path_chapter_id, refsKey(d.refs)]);
 const oneGroup = () => "";
 
 /** An empty set of cover boxes, written from the premise. */

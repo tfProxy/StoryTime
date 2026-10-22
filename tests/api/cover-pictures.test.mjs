@@ -71,7 +71,11 @@ ok(r.status === 200 && r.json.draft === null, "a story starts with no saved cove
 r = await call("PUT", `/api/stories/${story}/cover-draft`, { prompt: "a “lighthouse”", negative: "blur", scene: "sc", direction: "dir", source: "path", path_chapter_id: one });
 ok(r.status === 200, "the cover's prompt boxes can be saved");
 r = await call("GET", `/api/stories/${story}/cover-draft`);
-ok(JSON.stringify(r.json.draft) === JSON.stringify({ prompt: "a “lighthouse”", negative: "blur", scene: "sc", direction: "dir", source: "path", path_chapter_id: one }), "…and come back as saved");
+ok(JSON.stringify(r.json.draft) === JSON.stringify({ prompt: "a “lighthouse”", negative: "blur", scene: "sc", direction: "dir", source: "path", path_chapter_id: one, refs: [] }), "…and come back as saved, with no references");
+await call("PUT", `/api/stories/${story}/cover-draft`, { prompt: "p", refs: [{ source: "saved:abc:cover", label: "Cover", role: "style", weight: 0.8 }] });
+r = await call("GET", `/api/stories/${story}/cover-draft`);
+ok(JSON.stringify(r.json.draft.refs) === JSON.stringify([{ source: "saved:abc:cover", label: "Cover", role: "style", weight: 0.8 }]), "a cover's references are kept with its boxes");
+ok((await call("PUT", `/api/stories/${story}/cover-draft`, { refs: Array.from({ length: 5 }, () => ({ source: "s", label: "l", role: "item", weight: 0.5 })) })).status === 400, "…at most four");
 await call("PUT", `/api/stories/${story}/cover-draft`, { prompt: "again" });
 r = await call("GET", `/api/stories/${story}/cover-draft`);
 ok(r.json.draft.prompt === "again" && r.json.draft.negative === "" && r.json.draft.source === "premise" && r.json.draft.path_chapter_id === null, "a missing field is saved empty, and the source goes back to the premise");

@@ -10,6 +10,8 @@ import { useSettings } from "@/lib/settings";
 import type { PictureJob } from "@/lib/pictureJobs";
 import type { PictureSlot, PictureTarget } from "@/lib/pictureTarget";
 import { fromComfyImage, fromSaved, type StartPicture } from "@/lib/comfy/startPicture";
+import { asReference } from "@/lib/comfy/references";
+import type { RefRequest } from "./useReferences";
 import { readStart, stateKey, writeStart } from "@/lib/comfy/editingState";
 
 /** The narrowest the controls column can be dragged to, the widest as a share of the page, and the handle's width (see .column-resizer). */
@@ -27,6 +29,8 @@ const HANDLE_PX = 16;
  */
 export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], versions: Partial<Record<PictureSlot, number | null>>) {
   const [loaded, setLoaded] = useState<LoadedPrompt | null>(null);
+  // A picture chosen with "Use as reference", for the prompt panel to add to its References (a new `nonce` for each).
+  const [refRequest, setRefRequest] = useState<RefRequest | null>(null);
   // The picture new pictures start from, when one is chosen, and whether it is redrawn or edited.
   const [start, setStart] = useState<StartPicture | null>(null);
   const [startMode, setStartMode] = useState<StartMode>("redraw");
@@ -93,6 +97,13 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
   }
 
   function startFrom(picture: StartPicture, request: StartRequest) {
+    if (request === "reference") {
+      // Not a starting picture: the picture joins the References, where the prompt panel takes it from here.
+      const label = picture.slot === "header" ? "Header" : picture.slot === "footer" ? "Footer" : picture.slot === "cover" ? "Cover" : "Picture";
+      setRefRequest((prev) => ({ ref: asReference(picture, label, "character"), nonce: (prev?.nonce ?? 0) + 1 }));
+      document.getElementById("picture-references")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     chooseStart(picture);
     setStartMode(request === "paint" ? "redraw" : request);
     if (request === "paint") setPaintNonce((n) => n + 1);
@@ -164,7 +175,7 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
   };
 
   return {
-    comfy, editModels, blocked, loaded, load, start, setStart: chooseStart, mask, setMask, paintNonce, startMode, setStartMode, startFrom,
+    comfy, editModels, blocked, loaded, load, refRequest, start, setStart: chooseStart, mask, setMask, paintNonce, startMode, setStartMode, startFrom,
     pictures, addPictures, changePicture, clearFresh, pending, setPending, dock, setDock, gridProps, resizerProps,
   };
 }

@@ -370,6 +370,12 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE picture_jobs ADD COLUMN refs TEXT;
   `,
+  // 24: the reference pictures chosen on the Illustrate page (per chapter and moment) and the cover page,
+  // kept with the prompt boxes: a JSON list of {source, label, role, weight}, null for none.
+  `
+  ALTER TABLE picture_prompts ADD COLUMN refs TEXT;
+  ALTER TABLE cover_prompts ADD COLUMN refs TEXT;
+  `,
 ];
 
 function open(): Database.Database {

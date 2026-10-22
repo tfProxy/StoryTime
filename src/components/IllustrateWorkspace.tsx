@@ -8,6 +8,7 @@ import ImagePromptPanel, { type IllustratedStory } from "./ImagePromptPanel";
 import PictureWorkspace from "./PictureWorkspace";
 import type { PictureDraft } from "@/lib/pictureDrafts";
 import type { PictureJob } from "@/lib/pictureJobs";
+import type { RefPool } from "@/lib/comfy/referenceChoices";
 
 type Props = {
   chapterId: string;
@@ -20,6 +21,8 @@ type Props = {
   chapterPreset: string | null;
   path: ContextChapter[];
   codex: ContextCodexEntry[];
+  /** The saved pictures the References offer: headers and footers on the path, the cover. */
+  pool: RefPool;
   versions: ImageVersions;
   made: Record<ImageSlot, ImageMade | null>;
   /** The prompt boxes as last left for this chapter. */
@@ -34,7 +37,7 @@ type Props = {
  * The Illustrate page: the chapter and the prompt on one side, the pictures on the other (see
  * `PictureWorkspace`).
  */
-export default function IllustrateWorkspace({ chapterId, chapter, titles, story, chapterPreset, path, codex, versions, made, draft, fixedPrompt, jobs }: Props) {
+export default function IllustrateWorkspace({ chapterId, chapter, titles, story, chapterPreset, path, codex, pool, versions, made, draft, fixedPrompt, jobs }: Props) {
   const [codexSlot, setCodexSlot] = useState<HTMLElement | null>(null);
 
   return (
@@ -54,6 +57,9 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
             path={path}
             codex={codex}
             loaded={w.loaded}
+            pool={pool}
+            refRequest={w.refRequest}
+            pinned={w.pinned}
             start={w.start}
             startMode={w.startMode}
             onStartMode={w.setStartMode}

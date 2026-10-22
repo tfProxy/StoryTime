@@ -1279,6 +1279,129 @@ main:has(.library) {
   background: var(--line);
 }
 
+/* The References section: a row for each reference picture (thumbnail, label, role, strength), then Add reference. */
+.references-panel {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.references-collapsed {
+  gap: 0.4rem;
+}
+
+.reference-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reference-item {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  gap: 0.6rem;
+  align-items: start;
+}
+
+.reference-thumb {
+  width: 4.5rem;
+  height: 4.5rem;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--line);
+}
+
+.reference-fields {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.reference-top {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.reference-top input {
+  flex: 1;
+  min-width: 0;
+}
+
+.reference-fields select {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* The picker for adding a reference: a dialog like the Info popup, with tabs and a grid of pictures. */
+dialog.reference-picker {
+  width: min(40rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--fg);
+}
+
+dialog.reference-picker[open] {
+  display: grid;
+  gap: 0.9rem;
+}
+
+dialog.reference-picker::backdrop {
+  background: rgb(0 0 0 / 0.5);
+}
+
+.reference-picker h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.reference-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.reference-group h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.reference-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+button.reference-choice {
+  display: grid;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.35rem;
+  text-align: left;
+  font-weight: normal;
+}
+
+button.reference-choice img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--line);
+}
+
+.reference-choice-label {
+  overflow-wrap: anywhere;
+}
+
 /* Two lines to start with (the global textarea is tall); AutoTextarea grows it with the text. */
 textarea.two-lines {
   min-height: 0;

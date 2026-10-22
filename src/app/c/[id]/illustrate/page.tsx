@@ -5,6 +5,7 @@ import { chapterImageMade, chapterImageVersions } from "@/lib/chapterImages";
 import { foldCodex } from "@/lib/codex";
 import { getCodexOps } from "@/lib/codexDb";
 import { chapterPictureJobs, storyChapterTitles } from "@/lib/pictureJobs";
+import { chapterRefPool } from "@/lib/referencePool";
 import { getPictureDraft } from "@/lib/pictureDrafts";
 import { getChapterFixed, getChapterPreset, getPath, getStory } from "@/lib/stories";
 
@@ -56,6 +57,7 @@ export default async function IllustratePage({ params }: { params: Promise<{ id:
         chapterPreset={getChapterPreset(chapter.id)}
         path={path.map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary }))}
         codex={codex}
+        pool={chapterRefPool(story.id, path, story.cover_version)}
         versions={versions}
         made={chapterImageMade(chapter.id)}
         draft={getPictureDraft(chapter.id)}

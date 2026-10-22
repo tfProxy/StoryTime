@@ -20,6 +20,8 @@ import type { PictureBoxes, PictureDraft } from "@/lib/pictureDrafts";
 import { EMPTY_BOXES, usePictureDraft } from "./usePictureDraft";
 import { unsetPictureSettings, type StoryPictures } from "./StoryPictureSettings";
 import { drawPresetFor, presetName } from "@/lib/comfy/presets";
+import { referenceChoices, type RefPool } from "@/lib/comfy/referenceChoices";
+import { useReferences, type RefRequest } from "./useReferences";
 
 const MOMENT_NAMES: Record<ImageMoment, string> = { start: "Chapter Start", end: "Chapter End" };
 
@@ -54,6 +56,12 @@ export type LoadedPrompt = PromptToLoad & { nonce: number };
 type Props = {
   /** Fills in the prompt boxes when it changes. */
   loaded?: LoadedPrompt | null;
+  /** The saved pictures the References offer (headers and footers on the path, the cover). */
+  pool: RefPool;
+  /** A picture chosen with "Use as reference" in a picture's menu, to add to the References. */
+  refRequest?: RefRequest | null;
+  /** The pinned pictures, which the reference picker offers. */
+  pinned?: Picture[];
   /** The picture new pictures start from (image to image), and how to drop it. */
   start?: StartPicture | null;
   onClearStart?: () => void;
@@ -90,7 +98,7 @@ type Props = {
  * (chapter start, chapter end) has its own boxes, so switching between them brings each one's prompt back;
  * they are kept for the chapter on the server, so they are there again next time.
  */
-export default function ImagePromptPanel({ chapterId, story, chapterPreset = null, path, codex, loaded = null, start = null, onClearStart, startMode = "redraw", onStartMode, paint, editModels, onPictures, onQueue, draft = null, fixedPrompt = "", dock = null, codexSlot = null }: Props) {
+export default function ImagePromptPanel({ chapterId, story, chapterPreset = null, path, codex, pool, refRequest = null, pinned = [], loaded = null, start = null, onClearStart, startMode = "redraw", onStartMode, paint, editModels, onPictures, onQueue, draft = null, fixedPrompt = "", dock = null, codexSlot = null }: Props) {
   const settings = useSettings();
   const chapter = path[path.length - 1];
   const [moment, setMoment] = useState<ImageMoment>(draft?.moment ?? "start");
@@ -99,7 +107,9 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
   const result = boxes[moment];
   const direction = result.direction;
   const change = (m: ImageMoment, patch: Partial<PictureBoxes>) => setBoxes((prev) => ({ ...prev, [m]: { ...prev[m], ...patch } }));
-  const saveError = usePictureDraft(chapterId, { ...result, moment }, draft);
+  // The reference pictures, one list per moment, kept with the boxes.
+  const refState = useReferences({ start: draft?.start.refs ?? [], end: draft?.end.refs ?? [] }, pool, settings.comfy.url);
+  const saveError = usePictureDraft(chapterId, { ...result, refs: refState.stored(moment), moment }, draft);
   // The moments a prompt was written for on this visit.
   const [written, setWritten] = useState<Record<ImageMoment, boolean>>({ start: false, end: false });
   const [busy, setBusy] = useState(false);
@@ -112,9 +122,18 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
     // A cover's prompt goes to the moment shown.
     const into = loaded.moment && loaded.moment !== "cover" ? loaded.moment : moment;
     change(into, { scene: "", prompt: loaded.prompt, negative: loaded.negative });
+    // A picture made with references brings them back (a saved header or footer doesn't know its own).
+    if (loaded.refs) refState.replace(into, loaded.refs);
     setMoment(into);
     setStatus({ ok: true, text: "Prompt loaded from the picture." });
   }
+  // A picture chosen with "Use as reference" joins the moment shown.
+  const [seenRef, setSeenRef] = useState(0);
+  if (refRequest && refRequest.nonce !== seenRef) {
+    setSeenRef(refRequest.nonce);
+    refState.add(moment, refRequest.ref);
+  }
+  const choices = referenceChoices({ pool, chapterId, moment, comfyUrl: settings.comfy.url, pinned });
   // Prompts are written in the style of the model that will draw them: the chapter's drawing preset, else the story's.
   const [presetNow, setPresetNow] = useState(chapterPreset);
   const draw = drawPresetFor(settings.comfy.drawPresets, presetNow, story.draw_preset);
@@ -297,6 +316,9 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
         negative={result.negative}
         fixedPrompt={fixed}
         loaded={loaded}
+        refs={refState.refsOf(moment)}
+        onRefs={(refs) => refState.set(moment, refs)}
+        refChoices={choices}
         start={start}
         startMode={startMode}
         onStartMode={onStartMode}

@@ -11,8 +11,12 @@ const loraCount = (n: number) => (n === 0 ? false : n === 1 ? "1 LoRA" : `${n} L
 
 /** How a starting picture is used: redrawn from the prompt at a strength, or edited by instruction. */
 export type StartMode = "redraw" | "edit";
-/** What choosing a picture's ☰ menu item asks for: a Redraw or an Edit, or a Redraw that opens the mask editor ("Change part of this…"). */
-export type StartRequest = StartMode | "paint";
+/**
+ * What choosing a picture's ☰ menu item asks for: a Redraw or an Edit, a Redraw that opens the mask editor
+ * ("Change part of this…"), or the picture added to the References ("Use as reference"), which leaves the
+ * starting picture alone.
+ */
+export type StartRequest = StartMode | "paint" | "reference";
 
 /** The shared settings a picture was made with, which "Load prompt" offers to use again. */
 export type MadeWith = { checkpoint: string; width: number; height: number; denoise: number | null };

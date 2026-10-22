@@ -5,6 +5,7 @@ import type { CoverChapter, CoverContext } from "@/components/CoverPromptPanel";
 import { coverMade, getCoverDraft, getCoverPreset } from "@/lib/coverPictures";
 import { getContextCodex } from "@/lib/codexDb";
 import { coverPictureJobs, storyChapterTitles } from "@/lib/pictureJobs";
+import { coverRefPool } from "@/lib/referencePool";
 import { getPath, getStory } from "@/lib/stories";
 import { getStoryTree, type TreeNode } from "@/lib/tree";
 
@@ -52,6 +53,7 @@ export default async function CoverPage({ params }: { params: Promise<{ id: stri
           draw_preset: story.draw_preset,
         }}
         coverPreset={getCoverPreset(story.id)}
+        pool={coverRefPool(story.id, story.cover_version)}
         chapters={tree ? inOrder(tree) : []}
         opening={opening}
         // A path that ends at a chapter no longer in the story starts again from the last chapter listed.

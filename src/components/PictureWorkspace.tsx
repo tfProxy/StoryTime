@@ -8,12 +8,15 @@ import { fromComfyImage, fromSaved } from "@/lib/comfy/startPicture";
 import ChapterImageEditor from "./ChapterImageEditor";
 import ChapterPictures from "./ChapterPictures";
 import { usePictureWorkspace } from "./usePictureWorkspace";
+import type { Picture } from "./pictures";
 
 type Workspace = Omit<ReturnType<typeof usePictureWorkspace>, "gridProps" | "resizerProps" | "setDock">;
 
 /** What a prompt panel needs from the workspace to fill its prompt boxes and make pictures. */
-export type WorkspaceControls = Pick<Workspace, "loaded" | "start" | "startMode" | "setStartMode" | "mask" | "setMask" | "paintNonce" | "editModels" | "addPictures" | "setPending" | "dock"> & {
+export type WorkspaceControls = Pick<Workspace, "loaded" | "refRequest" | "start" | "startMode" | "setStartMode" | "mask" | "setMask" | "paintNonce" | "editModels" | "addPictures" | "setPending" | "dock"> & {
   onClearStart: () => void;
+  /** The target's pinned pictures, which the reference picker offers. */
+  pinned: Picture[];
 };
 
 type Props = {
@@ -45,6 +48,8 @@ export default function PictureWorkspace({ target, jobs, titles, versions, made,
       <div className="illustrate-controls">
         {controls({
           loaded: w.loaded,
+          refRequest: w.refRequest,
+          pinned: w.pictures.filter((p) => p.mark === "pinned"),
           start: w.start,
           startMode: w.startMode,
           setStartMode: w.setStartMode,

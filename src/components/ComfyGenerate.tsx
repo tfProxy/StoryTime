@@ -22,6 +22,10 @@ import { readEdit, readRedraw, stateKey, writeEdit, writeRedraw } from "@/lib/co
 import { listCheckpoints } from "@/lib/comfy/client";
 import { denoiseOf, madeWithText, maskOf, refsOf, type JobInput } from "@/lib/comfy/makeJob";
 import { storedOf, type Reference } from "@/lib/comfy/references";
+import { editRefLimit } from "@/lib/comfy/makeJob";
+import { ipAdapterProblem } from "@/lib/comfy/ipAdapter";
+import type { RefChoice } from "@/lib/comfy/referenceChoices";
+import References from "./References";
 import { describeWorkflow, parseWorkflow } from "@/lib/comfy/workflow";
 import type { PaintedArea } from "@/lib/mask";
 import { MaskPainter, useMaskPreview } from "./StartMask";
@@ -152,9 +156,20 @@ type Props = {
   onQueue?: (jobs: PendingJob[]) => void;
   /** An element at the bottom of the page's column to put Size, Queue and the queue's status in, so they stay in view; without it they sit at the end of this panel. */
   dock?: HTMLElement | null;
-  /** Reference pictures to draw with (none by default; the page's References section gives them from stage 2c on). */
+  /** The reference pictures chosen (shown in the References section, and sent with each job unless the preset can't use them), how to change them, and the pictures the picker offers. Without `onRefs` there is no section. */
   refs?: Reference[];
+  onRefs?: (refs: Reference[]) => void;
+  refChoices?: { suggested: RefChoice[]; pictures: RefChoice[] };
 };
+
+/** Whether a drawing preset's workflow ("" is the built-in one) can take reference pictures. */
+function workflowCanRefs(workflow: string): boolean {
+  try {
+    return describeWorkflow(parseWorkflow(workflow)).refs;
+  } catch {
+    return false;
+  }
+}
 
 /** Whether a drawing preset's workflow ("" is the built-in one) can redraw only a painted part of a picture. */
 function workflowCanMask(workflow: string): boolean {
@@ -175,7 +190,7 @@ export type PaintProps = { mask: PaintedArea | null; onMask: (area: PaintedArea 
  */
 export default function ComfyGenerate({
   target, storyPreset, chapterPreset: savedPreset, moment, prompt: boxPrompt, negative: boxNegative, fixedPrompt = "", loaded = null, start = null, onClearStart,
-  startMode = "redraw", onStartMode, paint, editModels = { state: "checking" }, onPictures, onQueue, onChapterPreset, dock = null, refs,
+  startMode = "redraw", onStartMode, paint, editModels = { state: "checking" }, onPictures, onQueue, onChapterPreset, dock = null, refs, onRefs, refChoices,
 }: Props) {
   const { storyId, chapterId } = target;
   // Where this browser keeps the edit's text and strengths, and the queue's name for the target.
@@ -300,6 +315,17 @@ export default function ComfyGenerate({
   // (A model family's preset has no checkpoint; its files are checked when a picture is asked for.)
   const checkpoint = fromFamily ? "" : draw.checkpoint;
   const drawName = presetName(draw);
+  // Why the chosen references can't be used with the drawing preset (an edit needs no IP-Adapter), or null. Then none are sent.
+  const refProblem: string | null = editing
+    ? null
+    : fromFamily
+      ? `The drawing preset “${drawName}” is for a model family, and those can't use reference pictures yet.`
+      : !workflowCanRefs(draw.workflow)
+        ? `The drawing preset “${drawName}” has a workflow with placeholders, which can't take reference pictures.`
+        : editModels.state === "checking"
+          ? null
+          : ipAdapterProblem(drawPresetIpAdapter(editModels, draw));
+  const sentRefs = refProblem ? undefined : refs;
   useEffect(() => {
     if (!comfy.url) return;
     let live = true;
@@ -369,7 +395,7 @@ export default function ComfyGenerate({
       mask: editing ? null : mask,
       edit: editing && chosen && tuning ? { check: chosen, instruction: instruction.trim(), strength: editStrength, fast, loras: editLoras, tuning, textEncoderDevice: editPreset?.textEncoderDevice ?? "default" } : null,
       seed: reuseSeed && loadedSeed !== null ? loadedSeed : null,
-      refs,
+      refs: sentRefs,
       ipAdapter: drawPresetIpAdapter(editModels, draw),
     };
     pictureQueue.ask({
@@ -486,6 +512,16 @@ export default function ComfyGenerate({
 
   return (
     <>
+    {onRefs && (
+      <References
+        refs={refs ?? []}
+        onChange={onRefs}
+        suggested={refChoices?.suggested ?? []}
+        pictures={refChoices?.pictures ?? []}
+        unavailable={refProblem}
+        editLimit={editing && chosen ? { model: chosen.model.name, count: editRefLimit(chosen.model.id) } : null}
+      />
+    )}
     {/* Editing the starting picture: a section of its own, collapsed (with its tabs off) while there is no picture to edit. */}
     <section className={`ai-panel edit-panel${start ? "" : " edit-collapsed"}`}>
       <h2>Edit</h2>

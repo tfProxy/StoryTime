@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { db } from "./db";
 import { LIMITS } from "./limits";
-import { jobPrompts, setPictureMark } from "./pictureJobs";
+import { jobPrompts, setPictureMark, StoredRefSchema } from "./pictureJobs";
 import type { ImageMade } from "./imageSlots";
 import { COVER_SOURCES } from "./pictureTarget";
 import { PostError, setCover } from "./stories";
@@ -64,15 +64,17 @@ export const CoverDraftSchema = z.object({
   source: z.enum(COVER_SOURCES).default("premise"),
   /** For a path: the chapter it ends at. */
   path_chapter_id: z.string().min(1).max(100).nullable().default(null),
+  /** The reference pictures chosen for the cover (at most 4; uploads are never kept). */
+  refs: z.array(StoredRefSchema).max(4).default([]),
 });
 export type CoverDraft = z.infer<typeof CoverDraftSchema>;
 
 /** The story's saved cover prompt boxes, or null when nothing was saved. */
 export function getCoverDraft(storyId: string): CoverDraft | null {
   const row = db()
-    .prepare(`SELECT prompt, negative, scene, direction, source, path_chapter_id FROM cover_prompts WHERE story_id = ?`)
-    .get(storyId) as CoverDraft | undefined;
-  return row ?? null;
+    .prepare(`SELECT prompt, negative, scene, direction, source, path_chapter_id, refs FROM cover_prompts WHERE story_id = ?`)
+    .get(storyId) as (Omit<CoverDraft, "refs"> & { refs: string | null }) | undefined;
+  return row ? { ...row, refs: row.refs ? (JSON.parse(row.refs) as CoverDraft["refs"]) : [] } : null;
 }
 
 /** Replaces the cover's saved prompt boxes (the preset stays). */
@@ -80,11 +82,11 @@ export function saveCoverDraft(storyId: string, d: CoverDraft): { ok: true } {
   requireStory(storyId);
   db()
     .prepare(
-      `INSERT INTO cover_prompts (story_id, prompt, negative, scene, direction, source, path_chapter_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO cover_prompts (story_id, prompt, negative, scene, direction, source, path_chapter_id, refs, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (story_id) DO UPDATE SET prompt = excluded.prompt, negative = excluded.negative, scene = excluded.scene,
-         direction = excluded.direction, source = excluded.source, path_chapter_id = excluded.path_chapter_id, updated_at = excluded.updated_at`,
+         direction = excluded.direction, source = excluded.source, path_chapter_id = excluded.path_chapter_id, refs = excluded.refs, updated_at = excluded.updated_at`,
     )
-    .run(storyId, d.prompt, d.negative, d.scene, d.direction, d.source, d.path_chapter_id, Date.now());
+    .run(storyId, d.prompt, d.negative, d.scene, d.direction, d.source, d.path_chapter_id, d.refs.length ? JSON.stringify(d.refs) : null, Date.now());
   return { ok: true };
 }
 

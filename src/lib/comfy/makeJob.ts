@@ -52,7 +52,7 @@ export type JobInput = {
 };
 
 /** How many references an edit model really uses: the rest are left out of the job and its record. */
-const editRefLimit = (modelId: string) => (modelId === "flux-kontext" ? EDIT_REFS.kontext : EDIT_REFS.qwen);
+export const editRefLimit = (modelId: string) => (modelId === "flux-kontext" ? EDIT_REFS.kontext : EDIT_REFS.qwen);
 
 /** The references a job really uses (an edit model takes only its first one or two). */
 export const refsOf = (i: JobInput): Reference[] => (i.edit ? (i.refs ?? []).slice(0, editRefLimit(i.edit.check.model.id)) : i.refs ?? []);

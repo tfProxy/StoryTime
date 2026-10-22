@@ -399,7 +399,7 @@ try {
   ok(await items.first().getByRole("button", { name: "Load prompt" }).count() === 0 && await items.first().getByRole("button", { name: "Redraw from this" }).count() === 0, "Load prompt and Redraw from this are not buttons on the tile");
   await more.click();
   const menu = items.first().getByRole("menu");
-  ok((await menu.getByRole("menuitem").allInnerTexts()).join("|") === "This is the header picture|Use as footer picture|Redraw from this|Change part of this…|Edit this|Load prompt|Info|Open in a new tab" && await more.getAttribute("aria-expanded") === "true", "…but in the ☰ menu, after Use as header and footer, with Info and Open in a new tab");
+  ok((await menu.getByRole("menuitem").allInnerTexts()).join("|") === "This is the header picture|Use as footer picture|Redraw from this|Change part of this…|Use as reference|Edit this|Load prompt|Info|Open in a new tab" && await more.getAttribute("aria-expanded") === "true", "…but in the ☰ menu, after Use as header and footer, with Use as reference, Info and Open in a new tab");
   const inUseItem = menu.getByRole("menuitem", { name: "This is the header picture" });
   ok(await inUseItem.getAttribute("aria-disabled") === "true", "…where the slot the picture is in says so, and can't be chosen again");
   await inUseItem.click({ force: true });
@@ -429,7 +429,7 @@ try {
   };
   await card("Header picture").locator("img.image-editor-preview").waitFor();
   ok((await card("Header picture").innerText()).includes("Made from") === false, "the Header picture card has no Made from blurb");
-  ok((await (await cardMenu("Header picture")).allInnerTexts()).join("|") === "Upload picture|Redraw from this|Change part of this…|Edit this|Load prompt|Open in a new tab|Clear Header", "its ☰ menu has Replace, Redraw from this, Change part of this…, Edit this, Load prompt, Open in a new tab and Remove");
+  ok((await (await cardMenu("Header picture")).allInnerTexts()).join("|") === "Upload picture|Redraw from this|Change part of this…|Use as reference|Edit this|Load prompt|Open in a new tab|Clear Header", "its ☰ menu has Replace, Redraw from this, Change part of this…, Use as reference, Edit this, Load prompt, Open in a new tab and Remove");
   await page.keyboard.press("Escape");
   ok((await (await cardMenu("Footer picture")).allInnerTexts()).includes("Load prompt") === false, "an uploaded picture has no Load prompt");
   await page.keyboard.press("Escape");

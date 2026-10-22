@@ -9,7 +9,7 @@ import { PostError } from "./stories";
 const text = (max: number) => z.string().max(max);
 const JobImage = z.object({ filename: text(500).min(1), subfolder: text(500), type: text(50).min(1) });
 
-const StoredRefSchema = z.object({
+export const StoredRefSchema = z.object({
   source: text(1000).min(1),
   label: text(200),
   role: z.enum(["character", "item", "place", "style"]),

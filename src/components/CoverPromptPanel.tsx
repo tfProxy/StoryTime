@@ -10,6 +10,8 @@ import type { CoverDraft } from "@/lib/coverPictures";
 import type { CoverSource } from "@/lib/pictureTarget";
 import type { StartPicture } from "@/lib/comfy/startPicture";
 import { drawPresetFor } from "@/lib/comfy/presets";
+import { referenceChoices, type RefPool } from "@/lib/comfy/referenceChoices";
+import { useReferences, type RefRequest } from "./useReferences";
 import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
 import PromptFields from "./PromptFields";
@@ -55,6 +57,12 @@ type Props = {
   savedPath: CoverContext | null;
   /** The boxes as last left, to start from. */
   draft: CoverDraft | null;
+  /** The saved pictures the References offer (the cover). */
+  pool: RefPool;
+  /** A picture chosen with "Use as reference" in a picture's menu, to add to the References. */
+  refRequest?: RefRequest | null;
+  /** The pinned pictures, which the reference picker offers. */
+  pinned?: Picture[];
   loaded?: LoadedPrompt | null;
   start?: StartPicture | null;
   onClearStart?: () => void;
@@ -73,7 +81,7 @@ type Props = {
  * it. The boxes and the choice are kept on the server (see `useCoverDraft`).
  */
 export default function CoverPromptPanel({
-  story, coverPreset, chapters, opening, savedPath, draft = null, loaded = null, start = null, onClearStart, startMode, onStartMode, paint, editModels, onPictures, onQueue, dock = null,
+  story, coverPreset, chapters, opening, savedPath, draft = null, pool, refRequest = null, pinned = [], loaded = null, start = null, onClearStart, startMode, onStartMode, paint, editModels, onPictures, onQueue, dock = null,
 }: Props) {
   const settings = useSettings();
   const [boxes, setBoxes] = useState<CoverDraft>(() => ({
@@ -83,7 +91,9 @@ export default function CoverPromptPanel({
     source: opening ? (draft?.source ?? "premise") : "premise",
   }));
   const change = (patch: Partial<CoverDraft>) => setBoxes((prev) => ({ ...prev, ...patch }));
-  const saveError = useCoverDraft(story.id, boxes, draft);
+  // The cover's reference pictures, kept with the boxes.
+  const refState = useReferences({ cover: draft?.refs ?? [] }, pool, settings.comfy.url);
+  const saveError = useCoverDraft(story.id, { ...boxes, refs: refState.stored("cover") }, draft);
   const [written, setWritten] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
@@ -110,8 +120,16 @@ export default function CoverPromptPanel({
   if (loaded && loaded.nonce !== seenLoad) {
     setSeenLoad(loaded.nonce);
     change({ scene: "", prompt: loaded.prompt, negative: loaded.negative });
+    if (loaded.refs) refState.replace("cover", loaded.refs);
     setStatus({ ok: true, text: "Prompt loaded from the picture." });
   }
+  // A picture chosen with "Use as reference" joins the References.
+  const [seenRef, setSeenRef] = useState(0);
+  if (refRequest && refRequest.nonce !== seenRef) {
+    setSeenRef(refRequest.nonce);
+    refState.add("cover", refRequest.ref);
+  }
+  const choices = referenceChoices({ pool, chapterId: null, moment: "cover", comfyUrl: settings.comfy.url, pinned });
 
   // Prompts are written in the style of the model that will draw them: the cover's drawing preset, else the story's.
   const [presetNow, setPresetNow] = useState(coverPreset);
@@ -246,6 +264,9 @@ export default function CoverPromptPanel({
         prompt={boxes.prompt}
         negative={boxes.negative}
         loaded={loaded}
+        refs={refState.refsOf("cover")}
+        onRefs={(refs) => refState.set("cover", refs)}
+        refChoices={choices}
         start={start}
         startMode={startMode}
         onStartMode={onStartMode}
