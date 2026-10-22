@@ -16,10 +16,20 @@ export const MAX_PRESETS = 40;
 /** The Redraw strength a new drawing preset starts with. */
 export const DEFAULT_DENOISE = 0.55;
 
+/** How picture prompts are written: comma-separated tags (SDXL, Pony, SD 1.5) or plain sentences (Flux, SD3). */
+export type PromptStyle = "tags" | "natural";
+
+export const PROMPT_STYLE_NAMES: Record<PromptStyle, string> = {
+  tags: "Tags (SDXL, Pony, SD 1.5)",
+  natural: "Sentences (Flux, SD3)",
+};
+
 /** How new pictures are drawn, and redrawn from a picture. */
 export type DrawPreset = {
   id: string;
   name: string;
+  /** How prompts are written for this preset's model. */
+  promptStyle: PromptStyle;
   /** The checkpoint file; "" until chosen. */
   checkpoint: string;
   /** A workflow exported from ComfyUI in API format, as JSON; "" uses the built-in SDXL workflow. */
@@ -53,7 +63,7 @@ export type EditPreset = {
 };
 
 export const newDrawPreset = (id: string, name: string, checkpoint = ""): DrawPreset => ({
-  id, name, checkpoint, workflow: "", loras: [], sampler: {}, denoise: DEFAULT_DENOISE,
+  id, name, promptStyle: "tags", checkpoint, workflow: "", loras: [], sampler: {}, denoise: DEFAULT_DENOISE,
 });
 
 export const newEditPreset = (id: string, name: string, model: EditModelId): EditPreset => ({

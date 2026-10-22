@@ -191,18 +191,27 @@ export function markPictureJobsSeen({ ids }: z.infer<typeof SeenJobsSchema>): { 
   return { seen: done.changes };
 }
 
-export const KnownJobsSchema = z.object({ prompt_ids: z.array(text(200).min(1)).max(500) });
+export const KnownJobsSchema = z.object({
+  prompt_ids: z.array(text(200).min(1)).max(500),
+  /** Chapters the jobs found in ComfyUI are for; `chapters` in the answer lists those that exist here. */
+  chapter_ids: z.array(z.string().min(1).max(100)).max(500).optional(),
+  /** Stories the cover jobs found in ComfyUI are for; `stories` in the answer lists those that exist here. */
+  story_ids: z.array(z.string().min(1).max(100)).max(500).optional(),
+});
 
 /**
- * Which of these ComfyUI jobs are already in the log, so the picture queue only records those that a page
- * left before they finished.
+ * Which of these ComfyUI jobs are already in the log, and which of these chapters exist, so the picture
+ * queue only picks up jobs that are this StoryTime's and that a page left before they finished (ComfyUI may
+ * be shared with other StoryTimes and tools).
  */
-export function knownPromptIds({ prompt_ids }: z.infer<typeof KnownJobsSchema>): { known: string[] } {
-  if (prompt_ids.length === 0) return { known: [] };
-  const rows = db()
-    .prepare(`SELECT DISTINCT prompt_id FROM picture_jobs WHERE prompt_id IN (${prompt_ids.map(() => "?").join(",")})`)
-    .all(...prompt_ids) as { prompt_id: string }[];
-  return { known: rows.map((r) => r.prompt_id) };
+export function knownPromptIds({ prompt_ids, chapter_ids = [], story_ids = [] }: z.infer<typeof KnownJobsSchema>): { known: string[]; chapters: string[]; stories: string[] } {
+  const ids = (sql: string, list: string[], column: string) =>
+    list.length === 0 ? [] : (db().prepare(`${sql} (${list.map(() => "?").join(",")})`).all(...list) as Record<string, string>[]).map((r) => r[column]);
+  return {
+    known: ids("SELECT DISTINCT prompt_id FROM picture_jobs WHERE prompt_id IN", prompt_ids, "prompt_id"),
+    chapters: ids("SELECT id FROM chapters WHERE id IN", chapter_ids, "id"),
+    stories: ids("SELECT id FROM stories WHERE id IN", story_ids, "id"),
+  };
 }
 
 /** Pins or rejects one of a job's pictures (by its place in the job's `images`), or clears its mark with null. */

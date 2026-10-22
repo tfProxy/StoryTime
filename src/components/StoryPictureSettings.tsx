@@ -5,47 +5,40 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LIMITS } from "@/lib/limits";
 import { useSettings } from "@/lib/settings";
-import type { ImagePromptStyle } from "@/lib/settingsSchema";
 import { drawPresetFor, drawPresetSummary, presetName } from "@/lib/comfy/presets";
 import AutoTextarea from "./AutoTextarea";
-
-export const PROMPT_STYLE_NAMES: Record<ImagePromptStyle, string> = {
-  tags: "Tags (SDXL, Pony, SD 1.5)",
-  natural: "Sentences (Flux, SD3)",
-};
 
 /**
  * A story's picture settings, kept the same for all its pictures so they match. `draw_preset` is its
  * drawing preset (an id from Settings), null for the first one.
  */
-export type StoryPictures = { image_prompt_style: ImagePromptStyle | null; art_style: string; draw_preset: string | null };
+export type StoryPictures = { art_style: string; draw_preset: string | null };
 
 /** Which of a story's picture settings are still to be chosen, by name. */
 export function unsetPictureSettings(s: StoryPictures): string[] {
-  return [!s.image_prompt_style && "prompt style", !s.art_style.trim() && "art style"].filter((x): x is string => Boolean(x));
+  return [!s.art_style.trim() && "art style"].filter((x): x is string => Boolean(x));
 }
 
 /**
- * The story's picture settings, on its details page: how picture prompts are written, the art style added
+ * The story's picture settings, on its details page: the art style added
  * to every one, and the drawing preset (from Settings) its chapters use unless one chooses another.
  */
 export default function StoryPictureSettings({ story }: { story: StoryPictures & { id: string } }) {
   const router = useRouter();
   const presets = useSettings().comfy.drawPresets;
   const [saved, setSaved] = useState<StoryPictures>(story);
-  const [style, setStyle] = useState<ImagePromptStyle | null>(story.image_prompt_style);
   const [art, setArt] = useState(story.art_style);
   // The preset shown is the one used: a deleted one shows as the first, which is what the story then uses.
   const [preset, setPreset] = useState<string | null>(story.draw_preset);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const shown = drawPresetFor(presets, preset);
-  const changed = style !== saved.image_prompt_style || art.trim() !== saved.art_style || preset !== saved.draw_preset;
+  const changed = art.trim() !== saved.art_style || preset !== saved.draw_preset;
 
   async function save() {
     setBusy(true);
     setStatus(null);
-    const next: StoryPictures = { image_prompt_style: style, art_style: art.trim(), draw_preset: preset };
+    const next: StoryPictures = { art_style: art.trim(), draw_preset: preset };
     try {
       const res = await fetch(`/api/stories/${story.id}`, {
         method: "PATCH",
@@ -64,31 +57,13 @@ export default function StoryPictureSettings({ story }: { story: StoryPictures &
     }
   }
 
-  const unset = unsetPictureSettings({ image_prompt_style: style, art_style: art, draw_preset: preset });
+  const unset = unsetPictureSettings({ art_style: art, draw_preset: preset });
   return (
     <section className="ai-panel" id="pictures">
       <h2>Pictures</h2>
       <p className="meta" style={{ margin: 0 }}>
         Used for every picture in this story, so they match.{unset.length > 0 && ` Not chosen yet: ${unset.join(", ")}.`}
       </p>
-      <label className="row" style={{ gap: "0.4rem", flexWrap: "wrap" }}>
-        Prompt style
-        <select
-          value={style ?? ""}
-          onChange={(e) => {
-            setStatus(null);
-            setStyle((e.target.value || null) as ImagePromptStyle | null);
-          }}
-          style={{ width: "auto" }}
-        >
-          {!style && <option value="">Choose one…</option>}
-          {(Object.keys(PROMPT_STYLE_NAMES) as ImagePromptStyle[]).map((s) => (
-            <option key={s} value={s}>
-              {PROMPT_STYLE_NAMES[s]}
-            </option>
-          ))}
-        </select>
-      </label>
       <label>
         Art style
         <AutoTextarea

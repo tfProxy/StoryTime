@@ -37,7 +37,7 @@ export type QueueJob = Queued & PictureTarget & {
 };
 
 /** What a job's end hands on. */
-type Ended = { pictures: Picture[]; warning?: string; unseen?: boolean } | { error: string } | { stopped: true };
+type Ended = { pictures: Picture[]; warning?: string; unseen?: boolean } | { error: string } | { stopped: true } | { gone: true };
 
 /** What an open page (a chapter's, or the cover's) is told: each finished job's pictures, and how a job ended when there is something to say. */
 export type ChapterListener = {
@@ -70,12 +70,30 @@ export function usePictureQueue(): QueueApi {
   return api;
 }
 
+/** The job's chapter isn't in this StoryTime (deleted meanwhile, or the job is another StoryTime's). */
+class ChapterGone extends Error {}
+
 /** Records a finished job in StoryTime's log; returns the record's id. */
 async function recordJob(job: Record<string, unknown>): Promise<string> {
   const res = await fetch("/api/picture-jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(job) });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 404) throw new ChapterGone(data.error);
   if (!res.ok || typeof data.id !== "string") throw new Error(data.error ?? `Couldn't record the job (${res.status})`);
   return data.id;
+}
+
+/** This StoryTime's id, which its jobs carry in ComfyUI (null when it can't be fetched; asked again next time). */
+let instance: Promise<string | null> | null = null;
+function getInstanceId(): Promise<string | null> {
+  instance ??= fetch("/api/instance", { cache: "no-store" })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d: { id?: unknown } | null) => (typeof d?.id === "string" ? d.id : null))
+    .catch(() => null)
+    .then((id) => {
+      if (!id) instance = null;
+      return id;
+    });
+  return instance;
 }
 
 /** Jobs marked seen in this tab, which the server may not have heard of yet: not listed as ready again. */
@@ -93,12 +111,21 @@ export function markJobsSeen(ids: string[]): void {
 /** The ids of the recorded jobs a finished job's pictures belong to. */
 const jobIdsOf = (pictures: Picture[] = []) => [...new Set(pictures.map((p) => p.jobId).filter((id): id is string => id !== null))];
 
-/** Which of these ComfyUI jobs StoryTime has already recorded. */
-async function knownJobs(promptIds: string[]): Promise<Set<string>> {
-  if (promptIds.length === 0) return new Set();
-  const res = await fetch("/api/picture-jobs/known", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt_ids: promptIds }) });
+/** Which of these ComfyUI jobs StoryTime has already recorded, and which of these chapters it has. */
+async function knownJobs(promptIds: string[], targets: PictureTarget[]): Promise<{ known: Set<string>; has: (t: PictureTarget) => boolean }> {
+  // A chapter's job needs the chapter here; a cover job, the story.
+  const chapterIds = [...new Set(targets.flatMap((t) => (t.chapterId === null ? [] : [t.chapterId])))];
+  const storyIds = [...new Set(targets.flatMap((t) => (t.chapterId === null ? [t.storyId] : [])))];
+  const res = await fetch("/api/picture-jobs/known", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt_ids: promptIds, chapter_ids: chapterIds, story_ids: storyIds }),
+  });
   if (!res.ok) throw new Error(`Couldn't check the picture log (${res.status})`);
-  return new Set(((await res.json()) as { known: string[] }).known);
+  const body = (await res.json()) as { known: string[]; chapters: string[]; stories?: string[] };
+  const chapters = new Set(body.chapters);
+  const stories = new Set(body.stories ?? []);
+  return { known: new Set(body.known), has: (t) => (t.chapterId === null ? stories.has(t.storyId) : chapters.has(t.chapterId)) };
 }
 
 /** A finished job's pictures, as the Illustrate page shows them. */
@@ -163,8 +190,8 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
       const job = jobsRef.current.find((j) => j.key === key);
       if (!job) return;
       const listener = listeners.current.get(targetKey(job));
-      if ("stopped" in result) {
-        listener?.onStatus({ ok: true, text: "Stopped." });
+      if ("stopped" in result || "gone" in result) {
+        if ("stopped" in result) listener?.onStatus({ ok: true, text: "Stopped." });
         return update((prev) => prev.filter((j) => j.key !== key));
       }
       if (listener) {
@@ -214,7 +241,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
       const control = controls.current.get(g.key);
       if (!control) return;
       try {
-        const made = await queueJob(g.input, g.count, g.target, {
+        const made = await queueJob(g.input, g.count, { ...g.target, instance: await getInstanceId() }, {
           signal: control.ctl.signal,
           uploads,
           onProgress: (progress) => patch(g.key, { progress }),
@@ -359,6 +386,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
     async (found: TaggedJob & { state: "done" }) => {
       const { job, chapterId, storyId } = found.tag;
       const result = await record({ storyId, chapterId }, found.promptId, job, found.images);
+      if ("gone" in result) return;
       keep(
         {
           chapterId, storyId, count: job.count, prompt: job.prompt, negative: job.negative, checkpoint: job.checkpoint, width: job.width, height: job.height,
@@ -404,11 +432,15 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
       if (scanning.current) return;
       scanning.current = true;
       try {
-        const found = (await listTaggedJobs(url)).filter((j) => !picked.current.has(j.promptId));
+        // ComfyUI may be shared with other StoryTimes and tools: only jobs this one queued (or, from before
+        // jobs carried an id, for chapters it has) are picked up.
+        const mine = await getInstanceId();
+        const found = (await listTaggedJobs(url)).filter((j) => !picked.current.has(j.promptId) && (!j.tag.instance || !mine || j.tag.instance === mine));
+        if (found.length === 0) return;
         const done = found.filter((j): j is TaggedJob & { state: "done" } => j.state === "done");
-        const known = await knownJobs(done.map((j) => j.promptId));
+        const { known, has } = await knownJobs(done.map((j) => j.promptId), found.map((j) => j.tag));
         for (const j of found) {
-          if (picked.current.has(j.promptId)) continue;
+          if (picked.current.has(j.promptId) || !has(j.tag)) continue;
           picked.current.add(j.promptId);
           if (j.state !== "done") resume(url, j);
           else if (!known.has(j.promptId)) void adopt(j);
@@ -441,7 +473,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
 }
 
 /** Records a finished job in the log and makes its pictures. The pictures are usable even if recording fails. */
-async function recordPictures(target: PictureTarget, promptId: string, record: JobRecord, images: ComfyImage[], unseen: boolean): Promise<{ pictures: Picture[]; warning?: string; unseen?: boolean }> {
+async function recordPictures(target: PictureTarget, promptId: string, record: JobRecord, images: ComfyImage[], unseen: boolean): Promise<Ended> {
   const { chapterId } = target;
   try {
     // A cover job is recorded for its story.
@@ -449,6 +481,8 @@ async function recordPictures(target: PictureTarget, promptId: string, record: J
     const jobId = await recordJob({ ...by, prompt_id: promptId, ...record, images, unseen });
     return { pictures: picturesOfJob(chapterId, jobId, promptId, record, images), unseen };
   } catch (e) {
+    // Not this StoryTime's chapter: nothing to show or to warn about.
+    if (e instanceof ChapterGone) return { gone: true };
     return {
       pictures: picturesOfJob(chapterId, null, promptId, record, images),
       warning: `The pictures are ready, but StoryTime couldn't record how they were made: ${e instanceof Error ? e.message : String(e)}`,

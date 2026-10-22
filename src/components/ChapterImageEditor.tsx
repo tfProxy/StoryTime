@@ -11,10 +11,10 @@ import type { StartMode } from "./pictures";
 // The longest side an uploaded illustration keeps. Bigger pictures are scaled down in the browser first.
 const MAX_SIDE = 1600;
 
-const LABELS: Record<PictureSlot, { title: string; where: string }> = {
-  header: { title: "Header picture", where: "Shown after the chapter's title, before its text." },
-  footer: { title: "Footer picture", where: "Shown after the chapter's text, before the choices." },
-  cover: { title: "Cover", where: "Shown on the story list like the cover of a book." },
+const LABELS: Record<PictureSlot, { title: string }> = {
+  header: { title: "Header picture" },
+  footer: { title: "Footer picture" },
+  cover: { title: "Cover" },
 };
 
 type Props = {
@@ -49,7 +49,7 @@ export default function ChapterImageEditor({ target, slot, version: initial, mad
   }
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
-  const { title, where } = LABELS[slot];
+  const { title } = LABELS[slot];
 
   async function run(action: () => Promise<{ version: number | null; text: string }>) {
     setBusy(true);
@@ -78,7 +78,6 @@ export default function ChapterImageEditor({ target, slot, version: initial, mad
   return (
     <section className="ai-panel image-editor">
       <h2>{title}</h2>
-      <p className="meta" style={{ margin: 0 }}>{where}</p>
       <div className="picture-frame">
         {url ? (
           <a href={url} target="_blank" rel="noreferrer" title="Open full size">
@@ -91,12 +90,12 @@ export default function ChapterImageEditor({ target, slot, version: initial, mad
         <div className="picture-marks">
           <PictureMenu
             items={[
-              { label: busy ? "Saving…" : version === null ? "Upload picture" : "Replace picture", title: unavailable, disabled: busy, run: () => input.current?.click() },
+              { label: busy ? "Saving…" : "Upload picture", title: unavailable, disabled: busy, run: () => input.current?.click() },
               ...(version !== null && onStart ? startItems((mode) => onStart(version, mode), editBlocked) : []),
               version !== null && made && onLoadPrompt && loadPromptItem(() => onLoadPrompt(made)),
               url !== null && openItem(url),
               version !== null && {
-                label: "Remove picture",
+                label: slot === "header" ? "Clear Header" : slot === "footer" ? "Clear Footer" : "Clear Cover",
                 title: unavailable,
                 disabled: busy,
                 run: () => void run(async () => (await request({ method: "DELETE" }), { version: null, text: "Picture removed." })),

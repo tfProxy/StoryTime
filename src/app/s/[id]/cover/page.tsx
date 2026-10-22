@@ -49,7 +49,6 @@ export default async function CoverPage({ params }: { params: Promise<{ id: stri
           title: story.title,
           premise: story.premise,
           art_style: story.art_style,
-          image_prompt_style: story.image_prompt_style,
           draw_preset: story.draw_preset,
         }}
         coverPreset={getCoverPreset(story.id)}

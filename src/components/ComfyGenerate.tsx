@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { SettingsIcon } from "./PictureIcons";
 import { saveSettings, useSettings } from "@/lib/settings";
 import { QUEUE_COUNTS, type ComfySettings } from "@/lib/settingsSchema";
 import { targetKey, type PictureMoment, type PictureTarget } from "@/lib/pictureTarget";
@@ -19,12 +20,12 @@ import { readEdit, readRedraw, stateKey, writeEdit, writeRedraw } from "@/lib/co
 import { listCheckpoints } from "@/lib/comfy/client";
 import { denoiseOf, madeWithText, type JobInput } from "@/lib/comfy/makeJob";
 
-/** Sizes that suit SDXL (about one megapixel). */
+/** Sizes that suit SDXL (about one megapixel), tallest to widest. */
 const SIZES: { label: string; width: number; height: number }[] = [
+  { label: "Portrait 768 × 1344", width: 768, height: 1344 },
+  { label: "Square 1024 × 1024", width: 1024, height: 1024 },
   { label: "Landscape 1344 × 768", width: 1344, height: 768 },
   { label: "Wide 1536 × 640", width: 1536, height: 640 },
-  { label: "Square 1024 × 1024", width: 1024, height: 1024 },
-  { label: "Portrait 768 × 1344", width: 768, height: 1344 },
 ];
 
 /** Sizes for a cover, tall like a book's first. */
@@ -46,8 +47,8 @@ function ratioText(width: number, height: number): string {
   return width >= height ? `${(width / height).toFixed(1)}:1` : `1:${(height / width).toFixed(1)}`;
 }
 
-/** A glyph for the shape, for the drop-down's options, which can't hold a picture. */
-const shapeGlyph = (width: number, height: number) => (width === height ? "□" : width / height >= 1.8 ? "▬" : width > height ? "▭" : "▯");
+/** A hollow glyph for the shape, for the drop-down's options, which can't hold a picture. */
+const shapeGlyph = (width: number, height: number) => (width === height ? "□" : width > height ? "▭" : "▯");
 
 /** A small rectangle drawn to the size's shape. */
 function SizeIcon({ width, height }: { width: number; height: number }) {
@@ -119,6 +120,8 @@ type Props = {
   /** The story's drawing preset (set on its details page), and the chapter's (or the cover's) own, chosen here; null for none. */
   storyPreset: string | null;
   chapterPreset: string | null;
+  /** Called when the chapter's (or cover's) drawing preset is changed here (null: follows the story's). */
+  onChapterPreset?: (id: string | null) => void;
   moment: PictureMoment;
   prompt: string;
   negative: string;
@@ -147,7 +150,7 @@ type Props = {
  */
 export default function ComfyGenerate({
   target, storyPreset, chapterPreset: savedPreset, moment, prompt, negative, loaded = null, start = null, onClearStart,
-  startMode = "redraw", onStartMode, editModels = { state: "checking" }, onPictures, onQueue, dock = null,
+  startMode = "redraw", onStartMode, editModels = { state: "checking" }, onPictures, onQueue, onChapterPreset, dock = null,
 }: Props) {
   const { storyId, chapterId } = target;
   // Where this browser keeps the edit's text and strengths, and the queue's name for the target.
@@ -263,6 +266,7 @@ export default function ComfyGenerate({
   function chooseDraw(id: string) {
     const next = id === storyDraw.id ? null : id;
     setChapterPreset(next);
+    onChapterPreset?.(next);
     const url = chapterId === null ? `/api/stories/${storyId}/cover-preset` : `/api/chapters/${chapterId}/picture-preset`;
     fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draw_preset: next }) })
       .then((res) => {
@@ -407,7 +411,7 @@ export default function ComfyGenerate({
 
   return (
     <section className="ai-panel comfy-generate">
-      <h2>Make pictures</h2>
+      <h2>Model Settings</h2>
       {start && (
         <div className="start-picture">
           <div className="start-picture-thumb">
@@ -526,20 +530,22 @@ export default function ComfyGenerate({
       )}
       {!editing && (
         <div className="draw-preset">
-          <label className="row" style={{ gap: "0.4rem" }}>
-            Preset
-            <select aria-label="Drawing preset" value={draw.id} onChange={(e) => chooseDraw(e.target.value)} style={{ width: "auto", minWidth: 0, flex: 1 }}>
-              {comfy.drawPresets.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {presetName(p)}
-                  {p.id === storyDraw.id ? " (default)" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p className="meta" style={{ margin: 0 }}>
-            {drawPresetSummary(draw)} · <Link href={`/settings#preset-${draw.id}`}>Change</Link>
-          </p>
+          <div className="row" style={{ gap: "0.4rem", flexWrap: "nowrap" }}>
+            <label className="row" style={{ gap: "0.4rem", flex: 1, minWidth: 0 }}>
+              Preset
+              <select aria-label="Drawing preset" value={draw.id} onChange={(e) => chooseDraw(e.target.value)} style={{ width: "auto", minWidth: 0, flex: 1 }}>
+                {comfy.drawPresets.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {presetName(p)}
+                    {p.id === storyDraw.id ? " (default)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Link className="icon-link" href={`/settings#preset-${draw.id}`} aria-label="Change preset in Settings" title={`Change this preset in Settings (${drawPresetSummary(draw)})`}>
+              <SettingsIcon />
+            </Link>
+          </div>
           {draw.loras.length > 0 && <LoraToggles stack={draw.loras} available={loraFiles} onChange={(loras) => changeDraw({ loras })} />}
           {drawUsable.missing.length > 0 && (
             <p className="error" style={{ margin: 0 }}>

@@ -15,8 +15,10 @@ import {
   newEditPreset,
   presetId,
   presetName,
+  PROMPT_STYLE_NAMES,
   type DrawPreset,
   type EditPreset,
+  type PromptStyle,
 } from "@/lib/comfy/presets";
 import AutoTextarea from "./AutoTextarea";
 import LoraStack from "./LoraStack";
@@ -362,6 +364,17 @@ function DrawPresetFields({ preset, setup, onChange }: { preset: DrawPreset; set
             </option>
           ))}
         </select>
+      </label>
+      <label>
+        Prompt style
+        <select aria-label="Prompt style" value={preset.promptStyle} onChange={(e) => onChange({ promptStyle: e.target.value as PromptStyle })}>
+          {(Object.keys(PROMPT_STYLE_NAMES) as PromptStyle[]).map((s) => (
+            <option key={s} value={s}>
+              {PROMPT_STYLE_NAMES[s]}
+            </option>
+          ))}
+        </select>
+        <span className="meta">How the AI writes picture prompts for this model.</span>
       </label>
       <StrengthField label="Redraw strength" value={preset.denoise} onChange={(denoise) => onChange({ denoise })}>
         Where the Redraw tab&apos;s strength starts. Low keeps the picture close; high changes more.

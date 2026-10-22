@@ -36,7 +36,7 @@ type Props = {
 };
 
 /** The chapter being illustrated, to check a picture against: its summary, with the full text and the story so far folded away. */
-export default function IllustrateChapter({ chapterId, title, body, summary, earlier, slotRef }: Props) {
+export default function IllustrateChapter({ chapterId, body, summary, earlier, slotRef }: Props) {
   const box = useRef<HTMLElement>(null);
   // The folds are plain <details>; the saved state is applied after the first render so the server and browser agree on what to draw.
   useEffect(() => {
@@ -56,10 +56,12 @@ export default function IllustrateChapter({ chapterId, title, body, summary, ear
 
   return (
     <aside ref={box} className="ai-panel illustrate-chapter" aria-label="The chapter">
-      <h2>Chapter</h2>
-      <p className="meta" style={{ margin: 0 }}>“{title}”</p>
+      <h2>Chapter Text</h2>
       {summary ? (
-        <p className="illustrate-summary">{summary}</p>
+        <details className="illustrate-fold" data-fold="summary" onToggle={remember}>
+          <summary>Summary</summary>
+          <p className="illustrate-summary">{summary}</p>
+        </details>
       ) : (
         <p className="meta" style={{ margin: 0 }}>
           No summary yet. <Link href={`/c/${chapterId}/summary`}>Write one</Link>, or read the whole chapter below.

@@ -35,7 +35,7 @@ export default async function IllustratePage({ params }: { params: Promise<{ id:
       <p className="crumbs">
         <Link href={`/c/${id}`}>← Back to “{chapter.title}”</Link>
       </p>
-      <h1>Illustrate chapter</h1>
+      <h1>Illustrate “{chapter.title}”</h1>
       <IllustrateWorkspace
         chapterId={chapter.id}
         chapter={{
@@ -51,7 +51,6 @@ export default async function IllustratePage({ params }: { params: Promise<{ id:
           title: story.title,
           premise: story.premise,
           art_style: story.art_style,
-          image_prompt_style: story.image_prompt_style,
           draw_preset: story.draw_preset,
         }}
         chapterPreset={getChapterPreset(chapter.id)}

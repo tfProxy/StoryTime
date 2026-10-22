@@ -163,8 +163,16 @@ export default function ChapterPictures({ target, titles, comfyUrl, pictures, on
     <section className="ai-panel chapter-pictures" aria-labelledby="chapter-pictures-title">
       <div className="chapter-pictures-bar">
         <div className="chapter-pictures-top">
-          <h2 id="chapter-pictures-title">Pictures</h2>
-          <div className="row chapter-pictures-actions">
+          {/* Hidden, but still names the panel for screen readers. */}
+          <h2 id="chapter-pictures-title" className="visually-hidden">Pictures</h2>
+          <div className="row picture-views" role="group" aria-label="Show">
+            {VIEWS.map((v) => (
+              <button key={v.view} type="button" className={view === v.view ? undefined : "secondary"} aria-pressed={view === v.view} onClick={() => setView(v.view)}>
+                {v.label}
+              </button>
+            ))}
+          </div>
+          <div className="row chapter-pictures-actions" style={{ marginLeft: "auto" }}>
             {view !== "other" && (
               <button
                 type="button"
@@ -182,13 +190,6 @@ export default function ChapterPictures({ target, titles, comfyUrl, pictures, on
               </button>
             )}
           </div>
-        </div>
-        <div className="row picture-views" role="group" aria-label="Show">
-          {VIEWS.map((v) => (
-            <button key={v.view} type="button" className={view === v.view ? undefined : "secondary"} aria-pressed={view === v.view} onClick={() => setView(v.view)}>
-              {v.label}
-            </button>
-          ))}
         </div>
       </div>
       {status && (

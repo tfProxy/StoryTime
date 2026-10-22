@@ -98,7 +98,7 @@ r = await call("PUT", "/api/settings", { ...conns, imagePromptModel: "pics" });
 ok(r.json.settings.imagePromptModel === null, "…or when it isn't a model");
 
 // ---- ComfyUI (picture making), with presets ----
-const draw = (id, extra = {}) => ({ id, name: `Drawing ${id}`, checkpoint: "sdxl.safetensors", workflow: "", loras: [], sampler: {}, denoise: 0.55, ...extra });
+const draw = (id, extra = {}) => ({ id, name: `Drawing ${id}`, promptStyle: "tags", checkpoint: "sdxl.safetensors", workflow: "", loras: [], sampler: {}, denoise: 0.55, ...extra });
 const edit = (id, model, extra = {}) => ({ id, name: `Edit ${id}`, model, checkpoint: "", files: {}, fast: true, loras: [], tuning: {}, ...extra });
 const comfyIn = {
   url: "http://comfy.local:8188",
@@ -131,6 +131,11 @@ ok(JSON.stringify(r.json.settings.comfy) === JSON.stringify(comfyIn) && JSON.str
   r = await call("PUT", "/api/settings", { ...conns, comfy: noCover });
   ok(r.json.settings.comfy.coverWidth === 832 && r.json.settings.comfy.coverHeight === 1216 && r.json.settings.comfy.width === 1024, "settings without a cover size get the book size, 832 × 1216, and keep the chapters' size");
 }
+r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ promptStyle: "natural" }) });
+ok(r.json.settings.comfy.drawPresets[0].promptStyle === "natural", "a drawing preset keeps its prompt style");
+r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ promptStyle: "poetry" }) });
+ok(r.json.settings.comfy.drawPresets[0].promptStyle === "tags", "an unknown prompt style on a preset falls back to tags");
+await call("PUT", "/api/settings", { ...conns, comfy: comfyIn });
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, picturesOldestFirst: true } });
 ok(r.json.settings.comfy.picturesOldestFirst === true && (await call("GET", "/api/settings")).json.settings.comfy.picturesOldestFirst === true, "the Pictures panel's oldest-first order is kept");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, picturesOldestFirst: "yes" } });

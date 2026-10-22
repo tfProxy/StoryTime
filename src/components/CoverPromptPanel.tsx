@@ -10,6 +10,7 @@ import { coverPromptRequest, writeCoverPrompt } from "@/lib/ai/coverPrompt";
 import type { CoverDraft } from "@/lib/coverPictures";
 import type { CoverSource } from "@/lib/pictureTarget";
 import type { StartPicture } from "@/lib/comfy/startPicture";
+import { drawPresetFor } from "@/lib/comfy/presets";
 import AutoTextarea from "./AutoTextarea";
 import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
@@ -113,8 +114,9 @@ export default function CoverPromptPanel({
     setStatus({ ok: true, text: "Prompt loaded from the picture." });
   }
 
-  // Tags until the story's prompt style is chosen.
-  const style = story.image_prompt_style ?? "tags";
+  // Prompts are written in the style of the model that will draw them: the cover's drawing preset, else the story's.
+  const [presetNow, setPresetNow] = useState(coverPreset);
+  const style = drawPresetFor(settings.comfy.drawPresets, presetNow, story.draw_preset).promptStyle;
   const model = settings.imagePromptModel;
   const context = boxes.source === "path" ? pathContext : opening;
   const options = () => ({
@@ -269,6 +271,7 @@ export default function CoverPromptPanel({
         target={{ storyId: story.id, chapterId: null }}
         storyPreset={story.draw_preset}
         chapterPreset={coverPreset}
+        onChapterPreset={setPresetNow}
         moment="cover"
         prompt={boxes.prompt}
         negative={boxes.negative}
