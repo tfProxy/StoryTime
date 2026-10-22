@@ -25,6 +25,8 @@ export type JobTag = {
   /** The WebSocket client id the job was queued with, which ComfyUI sends its progress to. */
   clientId: string;
   job: JobRecord;
+  /** The StoryTime that queued it (`GET /api/instance`); jobs from before this have none. */
+  instance?: string;
 };
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
@@ -41,5 +43,5 @@ export function readTag(extra: unknown): JobTag | null {
   if (j.moment !== "start" && j.moment !== "end") return null;
   if ((j.source !== undefined && !isString(j.source)) || (j.instruction !== undefined && !isString(j.instruction)) || (j.edit_model !== undefined && !isString(j.edit_model))) return null;
   if (j.denoise !== undefined && j.denoise !== null && !isNumber(j.denoise)) return null;
-  return { chapterId: t.chapterId, storyId: t.storyId, clientId: t.clientId, job: j as JobRecord };
+  return { chapterId: t.chapterId, storyId: t.storyId, clientId: t.clientId, job: j as JobRecord, ...(isString(t.instance) && { instance: t.instance }) };
 }

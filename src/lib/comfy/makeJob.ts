@@ -65,7 +65,7 @@ export type MadeJob = { promptId: string; clientId: string; record: JobRecord };
 export async function queueJob(
   input: JobInput,
   count: number,
-  ids: { chapterId: string; storyId: string },
+  ids: { chapterId: string; storyId: string; instance: string | null },
   hooks: {
     signal: AbortSignal;
     uploads: UploadCache;
@@ -149,7 +149,7 @@ export async function queueJob(
     ...(edit && { instruction: edit.instruction, edit_model: edit.check.model.id }),
   };
   if (signal.aborted) throw new DOMException("Stopped", "AbortError");
-  const promptId = await queuePrompt(comfy.url, workflow, clientId, { storytime: { chapterId: ids.chapterId, storyId: ids.storyId, clientId, job: record } satisfies JobTag });
+  const promptId = await queuePrompt(comfy.url, workflow, clientId, { storytime: { chapterId: ids.chapterId, storyId: ids.storyId, clientId, job: record, ...(ids.instance && { instance: ids.instance }) } satisfies JobTag });
   hooks.onPromptId(promptId);
   // Stopped while it was being queued: take it off ComfyUI's queue again.
   if (signal.aborted) {
