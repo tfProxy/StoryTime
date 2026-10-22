@@ -38,7 +38,8 @@ export type ImagePrompt = {
   negative: string;
 };
 
-const STYLE_RULES: Record<ImagePromptStyle, string> = {
+/** How the prompt is written for each kind of image model; the cover prompt uses the same. */
+export const STYLE_RULES: Record<ImagePromptStyle, string> = {
   tags: `The image model reads comma-separated tags (Stable Diffusion XL style).
 - "prompt": comma-separated tags and short phrases, most important first: how many people and who they are (e.g. "1man", "2women"), each person's visible traits (age, build, hair, eyes, skin, clothing), their pose, action and expression, then the setting, props, time of day, lighting, camera framing and composition. About 25-45 tags. No weights or brackets, no full sentences.
 - "negative": comma-separated tags for things to avoid in this picture, such as lowres, bad anatomy, extra fingers, deformed hands, blurry, text, watermark, signature, plus anything that would contradict the scene.`,

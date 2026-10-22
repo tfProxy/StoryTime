@@ -18,5 +18,9 @@ export type PictureSlot = ImageSlot | "cover";
 /** The slots a target's pictures can be saved in. */
 export const slotsFor = (t: PictureTarget): readonly PictureSlot[] => (t.chapterId === null ? ["cover"] : IMAGE_SLOTS);
 
+/** What the cover's prompt is written from: the premise and codex, those and the first chapter, or a path through the story. */
+export const COVER_SOURCES = ["premise", "opening", "path"] as const;
+export type CoverSource = (typeof COVER_SOURCES)[number];
+
 /** The page that makes the target's pictures. */
 export const targetHref = (t: PictureTarget) => (t.chapterId === null ? `/s/${t.storyId}/cover` : `/c/${t.chapterId}/illustrate`);

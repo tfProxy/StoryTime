@@ -3,6 +3,7 @@ import { db } from "./db";
 import { LIMITS } from "./limits";
 import { jobPrompts, setPictureMark } from "./pictureJobs";
 import type { ImageMade } from "./imageSlots";
+import { COVER_SOURCES } from "./pictureTarget";
 import { PostError, setCover } from "./stories";
 
 // The story's cover made like a chapter's pictures (see migration 20): the job and prompts a saved cover
@@ -51,10 +52,6 @@ export function coverMade(storyId: string): ImageMade | null {
     from: r.job_id !== null && r.image_index !== null ? { jobId: r.job_id, index: r.image_index } : null,
   };
 }
-
-/** What the cover's prompt is written from: the premise and codex, those and the first chapter, or a path through the story. */
-export const COVER_SOURCES = ["premise", "opening", "path"] as const;
-export type CoverSource = (typeof COVER_SOURCES)[number];
 
 /** The cover page's prompt boxes as saved, and what the prompt is written from. */
 export const CoverDraftSchema = z.object({
