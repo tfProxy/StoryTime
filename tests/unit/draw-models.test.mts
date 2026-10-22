@@ -149,3 +149,70 @@ const zp = { ...newDrawPreset("z", "Z"), family: "zimage" as const, files: { mod
 ok(drawPresetSummary(zp) === "Z-Image · z_image_turbo-Q8_0 · 1 LoRA", `a family preset's summary has the family and the model file (${drawPresetSummary(zp)})`);
 ok(drawPresetSummary({ ...zp, files: {}, loras: [] }) === "Z-Image · model found by name", "…or says the model is found by its name");
 ok(drawPresetSummary({ ...newDrawPreset("c", "C"), checkpoint: "sdxl/juggernaut.safetensors" }) === "juggernaut", "a checkpoint preset's summary is as before");
+
+// ---- Flux ----
+const fFiles: Files = {
+  unet: ["flux1-dev-fp8.safetensors", "flux1-dev-kontext_fp8_scaled.safetensors", "chroma-unlocked-v50.safetensors", "z_image_turbo_bf16.safetensors", "qwen_image_edit_2509_fp8_e4m3fn.safetensors"],
+  clip: ["clip_l.safetensors", "t5xxl_fp8_e4m3fn_scaled.safetensors", "qwen_3_4b.safetensors"],
+  vae: ["ae.safetensors"],
+};
+let f = byId(checkDrawFamilies(info(fFiles)), "flux");
+ok(f.ready && f.files.model === "flux1-dev-fp8.safetensors" && f.files.clipL === "clip_l.safetensors" && f.files.t5 === "t5xxl_fp8_e4m3fn_scaled.safetensors" && f.files.vae === "ae.safetensors", "Flux: every file is found by its name");
+f = byId(checkDrawFamilies(info({ ...fFiles, unet: fFiles.unet!.slice(1) })), "flux");
+ok(!f.ready && f.parts[0].file === null, "…Kontext, Chroma, Z-Image and Qwen files are not a Flux model");
+f = byId(checkDrawFamilies(info({ ...fFiles, unet: ["FLUX/flux_dev_fp8_scaled_diffusion_model.safetensors", "flux1-schnell-Q4_K_S.gguf"] })), "flux");
+ok(f.ready && f.files.model === "FLUX/flux_dev_fp8_scaled_diffusion_model.safetensors", "…another Flux file (a fine-tune, a subfolder) is found by its name");
+f = byId(checkDrawFamilies(info(fFiles, { types: TYPES })), "flux");
+ok(byId(checkDrawFamilies(info({ ...fFiles, unet: ["flux1-dev-kontext_fp8_scaled.safetensors"] })), "zimage").parts[0].file === null, "…and a Z-Image preset doesn't take the Flux files either");
+
+wf = buildDraw(f, P);
+ks = only(wf, "KSampler");
+ok(wf["2"].class_type === "DualCLIPLoader" && wf["2"].inputs.type === "flux" && wf["2"].inputs.clip_name1 === "clip_l.safetensors" && wf["2"].inputs.clip_name2 === "t5xxl_fp8_e4m3fn_scaled.safetensors" && wf["2"].inputs.device === "default", "Flux: DualCLIPLoader with CLIP-L and T5-XXL, type flux");
+ok(ks.inputs.steps === 20 && ks.inputs.cfg === 1 && ks.inputs.sampler_name === "euler" && ks.inputs.scheduler === "simple", "…20 steps of euler simple at CFG 1");
+const guide = target(wf, ks.inputs.positive), enc2 = target(wf, guide?.inputs.conditioning);
+ok(guide?.class_type === "FluxGuidance" && guide.inputs.guidance === 3.5 && enc2?.class_type === "CLIPTextEncode" && enc2.inputs.text === P.prompt, "…the prompt goes through FluxGuidance 3.5");
+ok(target(wf, ks.inputs.negative)?.class_type === "ConditioningZeroOut" && target(wf, target(wf, ks.inputs.negative)!.inputs.conditioning) === enc2 && nodesOfType(wf, "ModelSamplingAuraFlow").length === 0, "…the negative is the encoded prompt zeroed out; no ModelSamplingAuraFlow");
+ok(target(wf, ks.inputs.model)?.class_type === "UNETLoader" && target(wf, only(wf, "VAEDecode").inputs.vae)?.class_type === "VAELoader", "…the sampler takes the model loader's output");
+ok(drawKnobs(drawModel("flux")!).join() === "guidance" && drawTuning(drawModel("flux")!, { guidance: 2, shift: 9 }).guidance === 2 && drawTuning(drawModel("flux")!, { shift: 9 }).shift === undefined, "Flux has a guidance setting, not shift");
+wf = buildDraw(f, { ...P, tuning: drawTuning(drawModel("flux")!, { guidance: 2, steps: 4 }), loras: [{ name: "style.safetensors", strength: 0.7 }] });
+ok(only(wf, "FluxGuidance").inputs.guidance === 2 && only(wf, "KSampler").inputs.steps === 4 && only(wf, "KSampler").inputs.model[0] === idOf(wf, "LoraLoaderModelOnly") && only(wf, "LoraLoaderModelOnly").inputs.model[0] === "1", "changed guidance and steps apply, and LoRAs chain after the model loader into the sampler");
+wf = buildDraw(f, { ...P, image: "s.png", denoise: 0.4 });
+ok(nodesOfType(wf, "EmptySD3LatentImage").length === 0 && only(wf, "KSampler").inputs.denoise === 0.4 && only(wf, "KSampler").inputs.latent_image[0] === idOf(wf, "RepeatLatentBatch") && only(wf, "VAEEncode").inputs.vae[0] === "3", "Flux Redraw: the same start from the picture");
+
+const fg = { unet: [...fFiles.unet!, "flux1-dev-Q4_K_S.gguf"], clip: [...fFiles.clip!, "t5-v1_1-xxl-encoder-Q5_K_M.gguf"], vae: fFiles.vae };
+let fc = familyPresetCheck(checkDrawFamilies(info(fg, { gguf: true })), { family: "flux", files: { model: "flux1-dev-Q4_K_S.gguf", t5: "t5-v1_1-xxl-encoder-Q5_K_M.gguf" } })!;
+wf = buildDraw(fc, { ...P, textEncoderDevice: "cpu" });
+ok(fc.ready && wf["1"].class_type === "UnetLoaderGGUF" && wf["2"].class_type === "DualCLIPLoaderGGUF" && wf["2"].inputs.clip_name1 === "clip_l.safetensors" && wf["2"].inputs.clip_name2 === "t5-v1_1-xxl-encoder-Q5_K_M.gguf" && wf["2"].inputs.type === "flux", "Flux GGUF: UnetLoaderGGUF and DualCLIPLoaderGGUF with both encoders' files");
+ok(!("device" in wf["2"].inputs) && wf["3"].class_type === "VAELoader", "…which has no device input, so none is sent; the VAE loader is unchanged");
+ok(byId(checkDrawFamilies(info(fg, { gguf: true })), "flux").files.model === "flux1-dev-fp8.safetensors", "…and the safetensors model is still preferred when found by name");
+
+// ---- Chroma ----
+const cFiles: Files = { unet: ["chroma-unlocked-v50.safetensors", "flux1-dev-fp8.safetensors"], clip: ["t5xxl_fp8_e4m3fn_scaled.safetensors", "clip_l.safetensors"], vae: ["ae.safetensors"] };
+let ch = byId(checkDrawFamilies(info(cFiles)), "chroma");
+ok(ch.ready && ch.files.model === "chroma-unlocked-v50.safetensors" && ch.files.textEncoder === "t5xxl_fp8_e4m3fn_scaled.safetensors" && ch.files.vae === "ae.safetensors", "Chroma: its model, T5-XXL and the Flux VAE are found by their names");
+ok(!byId(checkDrawFamilies(info({ ...cFiles, unet: ["flux1-dev-fp8.safetensors"] })), "chroma").ready && byId(checkDrawFamilies(info({ ...cFiles, unet: ["flux1-dev-fp8.safetensors"] })), "flux").ready, "…Flux's model isn't Chroma's, nor Chroma's Flux's");
+ok(!byId(checkDrawFamilies(info(cFiles, { types: ["stable_diffusion", "sd3"] })), "chroma").ready && byId(checkDrawFamilies(info(cFiles, { types: ["stable_diffusion", "sd3"] })), "chroma").missingOptions.join() === "CLIPLoader type: chroma", "an old ComfyUI without the chroma text encoder type stops it");
+ok(ch.optionalNodes.length === 0 && byId(checkDrawFamilies(info(cFiles, { tokenizer: true })), "chroma").optionalNodes.join() === "T5TokenizerOptions" && ch.ready, "T5TokenizerOptions is optional: noted when ComfyUI has it, and not needed to be ready");
+
+wf = buildDraw(ch, P);
+ks = only(wf, "KSampler");
+ok(wf["2"].class_type === "CLIPLoader" && wf["2"].inputs.type === "chroma" && wf["2"].inputs.clip_name === ch.files.textEncoder, "Chroma: a CLIPLoader of type chroma with T5-XXL");
+ok(ks.inputs.steps === 26 && ks.inputs.cfg === 4 && ks.inputs.sampler_name === "euler" && ks.inputs.scheduler === "beta", "…26 steps of euler beta at CFG 4");
+const cpos = target(wf, ks.inputs.positive), cneg = target(wf, ks.inputs.negative);
+ok(cpos?.class_type === "CLIPTextEncode" && cpos.inputs.text === P.prompt && cneg?.class_type === "CLIPTextEncode" && cneg.inputs.text === "blurry" && cpos !== cneg, "…a real negative prompt, encoded on its own");
+ok(nodesOfType(wf, "T5TokenizerOptions").length === 0 && cpos.inputs.clip[0] === "2" && nodesOfType(wf, "ConditioningZeroOut").length === 0 && nodesOfType(wf, "FluxGuidance").length === 0, "…without T5TokenizerOptions when ComfyUI doesn't have it, and no guidance node");
+ch = byId(checkDrawFamilies(info(cFiles, { tokenizer: true })), "chroma");
+wf = buildDraw(ch, P);
+const tok = only(wf, "T5TokenizerOptions");
+ok(tok.inputs.min_padding === 1 && tok.inputs.min_length === 0 && tok.inputs.clip[0] === "2", "with it, T5TokenizerOptions (min_padding 1, min_length 0) follows the loader");
+ok(target(wf, only(wf, "KSampler").inputs.positive)?.inputs.clip[0] === idOf(wf, "T5TokenizerOptions") && target(wf, only(wf, "KSampler").inputs.negative)?.inputs.clip[0] === idOf(wf, "T5TokenizerOptions"), "…and both prompts are encoded through it");
+wf = buildDraw(ch, { ...P, image: "s.png", denoise: 0.7, textEncoderDevice: "cpu", loras: [{ name: "l.safetensors", strength: 1 }] });
+ok(wf["2"].inputs.device === "cpu" && only(wf, "KSampler").inputs.denoise === 0.7 && only(wf, "KSampler").inputs.model[0] === idOf(wf, "LoraLoaderModelOnly") && nodesOfType(wf, "EmptySD3LatentImage").length === 0, "Chroma: device cpu, a LoRA chain and Redraw work too");
+
+const cg = { unet: [...cFiles.unet!, "Chroma1-HD-Q5_K_S.gguf"], clip: [...cFiles.clip!, "t5-v1_1-xxl-encoder-Q5_K_M.gguf"], vae: cFiles.vae };
+const cc = familyPresetCheck(checkDrawFamilies(info(cg, { gguf: true })), { family: "chroma", files: { model: "Chroma1-HD-Q5_K_S.gguf", textEncoder: "t5-v1_1-xxl-encoder-Q5_K_M.gguf" } })!;
+wf = buildDraw(cc, { ...P, textEncoderDevice: "cpu" });
+ok(cc.ready && wf["1"].class_type === "UnetLoaderGGUF" && wf["2"].class_type === "CLIPLoaderGGUF" && wf["2"].inputs.type === "chroma" && wf["2"].inputs.clip_name === "t5-v1_1-xxl-encoder-Q5_K_M.gguf" && !("device" in wf["2"].inputs), "Chroma GGUF: UnetLoaderGGUF and CLIPLoaderGGUF (type chroma), no device the GGUF loader doesn't list");
+
+// A preset of one family never uses another's check.
+ok(familyPresetCheck(checkDrawFamilies(info(cFiles)), { family: "chroma", files: {} })!.model.id === "chroma" && drawPresetSummary({ ...zp, family: "flux", files: {}, loras: [] }) === "Flux · model found by name", "the summary names the preset's own family");

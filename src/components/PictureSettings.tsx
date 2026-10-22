@@ -484,9 +484,9 @@ function DrawPresetFields({ preset, setup, onChange }: { preset: DrawPreset; set
   // The model family whose built-in workflow draws with this preset; none for a checkpoint, or when a workflow of its own is pasted.
   const model = usesFamily(preset) ? drawModel(preset.family) : undefined;
   const family = setup.models.state === "done" && model ? familyPresetCheck(setup.models.families, preset) : null;
-  // A new model type starts from its own sampler defaults, and (for the newer models) from prompts in sentences.
+  // A new model type starts from its own sampler defaults and files (another type's don't fit), and (for the newer models) from prompts in sentences.
   const setFamily = (next: DrawFamily) =>
-    onChange({ family: next, sampler: {}, ...(next !== "checkpoint" && preset.promptStyle !== "natural" ? { promptStyle: "natural" as const } : {}) });
+    onChange({ family: next, sampler: {}, files: {}, ...(next !== "checkpoint" && preset.promptStyle !== "natural" ? { promptStyle: "natural" as const } : {}) });
   return (
     <>
       <NameField value={preset.name} onChange={(name) => onChange({ name })} />
@@ -501,7 +501,7 @@ function DrawPresetFields({ preset, setup, onChange }: { preset: DrawPreset; set
         </select>
         <span className="meta">
           {preset.family === "checkpoint" ? "An all-in-one checkpoint file, drawn with the built-in SDXL workflow. " : `${drawModel(preset.family)?.blurb} `}
-          Changing the type puts the sampler settings back to the new type&apos;s defaults.
+          Changing the type puts the sampler settings back to the new type&apos;s defaults and clears the chosen model files.
           {preset.family !== "checkpoint" && preset.workflow.trim() ? " The workflow pasted below is used instead of the built-in one." : ""}
         </span>
       </label>

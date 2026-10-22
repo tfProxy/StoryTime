@@ -49,7 +49,7 @@ try {
   await card.getByLabel("Preset prompt", { exact: true }).fill("a storybook illustration");
   await type.selectOption("zimage");
   ok((await card.getByLabel("Checkpoint", { exact: true }).count()) === 0 && (await card.getByLabel("Model file").count()) === 1, "choosing Z-Image replaces the Checkpoint chooser with Model / Text encoder / VAE");
-  ok((await card.innerText()).includes("puts the sampler settings back to the new type's defaults"), "…and says that the sampler settings go back to the defaults");
+  ok((await card.innerText()).includes("puts the sampler settings back to the new type's defaults and clears the chosen model files"), "…and says that the sampler settings and chosen files go back to the defaults");
   await until(async () => (await presetNow()).family === "zimage", "the family to be saved");
   const saved = await presetNow();
   ok(saved.promptStyle === "natural" && Object.keys(saved.sampler).length === 0 && saved.prompt === "a storybook illustration", "…the prompt style becomes sentences, the sampler overrides are cleared and the rest is kept");
@@ -111,6 +111,55 @@ try {
   const redraw = prompts(mark2)[0];
   ok(nodes(redraw, "LoadImage").length === 1 && nodes(redraw, "ImageScale").length === 1 && nodes(redraw, "VAEEncode").length === 1 && nodes(redraw, "RepeatLatentBatch").length === 1 && nodes(redraw, "EmptySD3LatentImage").length === 0, "Redraw starts from the picture: LoadImage, ImageScale, VAEEncode, RepeatLatentBatch");
   ok(nodes(redraw, "KSampler")[0].inputs.denoise === 0.55, "…at the preset's Redraw strength");
+
+  // ---- Flux ----
+  const chooseType = async (family) => {
+    await page.goto(`${BASE}/settings#preset-test`);
+    await page.locator("#preset-test").getByLabel("Model type", { exact: true }).selectOption(family);
+    await until(async () => (await presetNow()).family === family, `the ${family} type to be saved`);
+  };
+  /** Opens the Illustrate page afresh (so ComfyUI is asked again), queues one picture and returns its workflow. */
+  const draw = async (text) => {
+    await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+    await page.getByRole("textbox", { name: "Prompt", exact: true }).fill(text);
+    const mark = comfy.calls.length;
+    await queue.click();
+    await until(async () => prompts(mark).length === 1, "the picture to be queued");
+    await until(async () => (await page.locator(".comfy-pending-tile [role=status]").count()) === 0, "the picture to be made");
+    return prompts(mark)[0];
+  };
+  await chooseType("flux");
+  const flux = await presetNow();
+  ok(Object.keys(flux.files).length === 0 && Object.keys(flux.sampler).length === 0 && flux.promptStyle === "natural", "changing the type to Flux clears the chosen files (a Z-Image model isn't a Flux one) and the sampler overrides");
+  const fluxCard = page.locator("#preset-test");
+  await fluxCard.locator("details.advanced", { hasText: "Advanced" }).locator("summary").first().click();
+  ok((await fluxCard.locator(".tuning").first().innerText()).includes("Guidance") && (await fluxCard.locator(".tuning").first().innerText()).includes("default 3.5"), "Flux's Advanced settings have Guidance (default 3.5)");
+  ok((await fluxCard.getByLabel("T5-XXL text encoder").locator("option").first().innerText()).includes("t5xxl_fp8_e4m3fn_scaled.safetensors") && (await fluxCard.getByLabel("CLIP-L text encoder").count()) === 1, "…and two text encoder choosers");
+  const fluxWf = await draw("a fox on the ice, in sentences");
+  const guidance = nodes(fluxWf, "FluxGuidance")[0];
+  ok(guidance?.inputs.guidance === 3.5 && nodes(fluxWf, "DualCLIPLoader")[0]?.inputs.type === "flux" && nodes(fluxWf, "UNETLoader")[0]?.inputs.unet_name === "flux1-dev-fp8.safetensors", "a Flux picture is queued with UNETLoader, DualCLIPLoader (flux) and FluxGuidance 3.5");
+  ok(nodes(fluxWf, "KSampler")[0].inputs.steps === 20 && nodes(fluxWf, "ConditioningZeroOut").length === 1, "…20 steps and a zeroed-out negative");
+  ok((await call("GET", `/api/picture-jobs?chapter=${chapterId}`)).jobs[0]?.checkpoint === "flux1-dev-fp8.safetensors", "…and the job log records the Flux model file");
+
+  // ---- Chroma ----
+  await chooseType("chroma");
+  const chromaWf = await draw("a fox on the ice, again");
+  ok(nodes(chromaWf, "CLIPLoader")[0]?.inputs.type === "chroma" && nodes(chromaWf, "CLIPTextEncode").length === 2 && nodes(chromaWf, "T5TokenizerOptions").length === 0, "a Chroma picture is queued with a chroma CLIPLoader and two prompts, and no T5TokenizerOptions ComfyUI lacks");
+  ok(nodes(chromaWf, "KSampler")[0].inputs.cfg === 4 && nodes(chromaWf, "KSampler")[0].inputs.scheduler === "beta", "…at CFG 4 with the beta scheduler");
+  comfy.setMode({ tokenizerOptions: true });
+  const chromaTok = await draw("a fox on the ice, once more");
+  ok(nodes(chromaTok, "T5TokenizerOptions").length === 1, "when ComfyUI has T5TokenizerOptions the workflow uses it");
+
+  // ---- a preset whose files are missing says so and doesn't queue ----
+  const now = (await call("GET", "/api/settings")).settings;
+  await putSettings({ ...now, comfy: { ...now.comfy, drawPresets: [{ ...(await presetNow()), family: "chroma", files: { model: "deleted.safetensors" } }] } });
+  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  const markGone = comfy.calls.length;
+  await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("never drawn");
+  await until(async () => (await page.getByRole("button", { name: "Queue", exact: true }).isEnabled()), "Queue");
+  await queue.click();
+  await page.getByText("can't draw yet").waitFor();
+  ok(prompts(markGone).length === 0 && (await page.getByText("can't draw yet").innerText()).includes("deleted.safetensors"), "a family preset whose model ComfyUI doesn't list doesn't queue, and the page says which file");
 } finally {
   await putSettings(before ?? {});
   await browser.close();

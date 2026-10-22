@@ -50,8 +50,14 @@ the preset's card still overrides everything.)
 | Z-Image (Turbo) | `models/diffusion_models` | `z_image_turbo_bf16.safetensors` | [Comfy-Org/z_image_turbo](https://huggingface.co/Comfy-Org/z_image_turbo/tree/main/split_files) |
 | | `models/text_encoders` | `qwen_3_4b.safetensors` | the same repository |
 | | `models/vae` | `ae.safetensors` (the Flux VAE) | the same repository |
+| Flux | `models/diffusion_models` | `flux1-dev-fp8.safetensors` (the diffusion model alone, not an all-in-one checkpoint) | [Kijai/flux-fp8](https://huggingface.co/Kijai/flux-fp8), or a Flux fine-tune from Civitai |
+| | `models/text_encoders` | `clip_l.safetensors` and `t5xxl_fp8_e4m3fn_scaled.safetensors` | [Comfy-Org/flux_text_encoders](https://huggingface.co/Comfy-Org/flux_text_encoders/tree/main) |
+| | `models/vae` | `ae.safetensors` | the Z-Image repository above, or [black-forest-labs/FLUX.1-schnell](https://huggingface.co/black-forest-labs/FLUX.1-schnell/tree/main) |
+| Chroma | `models/diffusion_models` | `Chroma1-HD.safetensors` | [lodestones/Chroma1-HD](https://huggingface.co/lodestones/Chroma1-HD/tree/main) |
+| | `models/text_encoders` | `t5xxl_fp8_e4m3fn_scaled.safetensors` | [Comfy-Org/flux_text_encoders](https://huggingface.co/Comfy-Org/flux_text_encoders/tree/main) |
+| | `models/vae` | `ae.safetensors` | as for Flux |
 
-(The Flux, Chroma and Qwen-Image rows are added as those models are.)
+(Qwen-Image is added with its own row.)
 
 The repositories of **Comfy-Org** are ComfyUI's own repackaged copies, so their file names are the ones
 StoryTime looks for. Open the repository's `split_files` folder and download each file into the folder
@@ -64,8 +70,9 @@ name), so a preset only needs to **choose** a file when the one found isn't the 
 In **Settings › Drawing**, a preset's card has:
 
 - **Model type**: Checkpoint (SDXL, Pony, Illustrious, SD 1.5), Z-Image, and so on. Choosing a type
-  puts the prompt style on **Sentences** (these models understand sentences, not tag lists) and puts the
-  **Advanced** sampler settings back to that model's defaults, so any changes you made to them are lost.
+  puts the prompt style on **Sentences** (these models understand sentences, not tag lists), puts the
+  **Advanced** sampler settings back to that model's defaults and clears the chosen model files, so
+  any changes you made to them are lost. (Your LoRAs, prompts and Redraw strength stay.)
 - **Model**, **Text encoder** and **VAE** menus instead of the Checkpoint menu. Each starts on "Found
   by its name" and shows the file it would use. They list the files ComfyUI has, and a `.gguf` file is
   marked "(GGUF)". A fine-tune from Civitai goes in `models/diffusion_models` like the original
@@ -88,6 +95,33 @@ at CFG 1, the **negative prompt does nothing**. Its prompts are sentences. The b
 more than a 12 GB card holds with the text encoder, so ComfyUI moves parts of it to system memory,
 which is slower. A GGUF quant of the model (search Hugging Face for "Z-Image-Turbo GGUF"; a Q6_K or
 Q8_0 file) fits whole, and ComfyUI-GGUF loads it (see [GGUF models](#gguf-models)).
+
+### Flux
+
+FLUX.1 dev (or schnell) and fine-tunes of them. The workflow is ComfyUI's usual Flux one: two text
+encoders (CLIP-L and T5-XXL), a **Guidance** setting (3.5; it is in Advanced) instead of CFG, and 20
+steps of Euler. Flux has no negative prompt, so that box does nothing. For **schnell** or a
+fine-tune that is distilled to fewer steps, set the steps under Advanced to what its page says (4 for
+schnell). The model file must be the diffusion model alone; an all-in-one `flux1-dev-fp8` checkpoint
+(which Comfy-Org's repository has) goes in `models/checkpoints` and is not what this preset loads. The
+files of FLUX.1 Kontext (the editing model) and Chroma are not taken for a Flux model.
+
+12 GB: the fp8 model (about 12 GB) is more than the card holds with the text encoders, so ComfyUI
+moves parts to system memory. A **Q4_K_S** or **Q5_K_S** GGUF quant of FLUX.1 dev
+([city96/FLUX.1-dev-gguf](https://huggingface.co/city96/FLUX.1-dev-gguf), or `FLUX.1-schnell-gguf`)
+fits; a GGUF T5-XXL (`t5-v1_1-xxl-encoder-Q5_K_M.gguf`, in
+[city96/t5-v1_1-xxl-encoder-gguf](https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf)) also works.
+Turning on **Keep the text encoder on the CPU** (62 GB of RAM is plenty) leaves the card to the model.
+
+### Chroma
+
+An uncensored model built from FLUX.1 schnell, trained for real CFG: the default is 26 steps of Euler
+with the beta scheduler at **CFG 4**, so unlike Flux, the **negative prompt matters** (put things like
+"lowres, watermark, deformed" in the preset's negative prompt). It needs only the T5-XXL text encoder
+(no CLIP-L) and the same VAE. If ComfyUI has the `T5TokenizerOptions` node, the workflow uses it as
+ComfyUI's own template does; without it the picture is still drawn. Chroma is a smaller model than
+Flux (about 9 billion parameters), so a **Q5** or **Q4** GGUF quant (search "Chroma1-HD GGUF"; for
+example from silveroxides on Hugging Face) fits a 12 GB card whole, with the text encoder on the CPU.
 
 ## Edit models in ComfyUI
 
@@ -297,6 +331,13 @@ Some to try:
   files (untick **Fast** and set 4 steps and CFG 1, as for the Rapid AIO checkpoint above).
 - **Qwen-Image-Edit 2511, GGUF:**
   [unsloth/Qwen-Image-Edit-2511-GGUF](https://huggingface.co/unsloth/Qwen-Image-Edit-2511-GGUF).
+
+Drawing presets of the [newer models](#newer-models-z-image-flux-chroma-qwen-image) use GGUF files in
+the same way: their **Model** and **Text encoder** menus list `.gguf` files marked "(GGUF)", and
+a GGUF text encoder (Qwen 3 for Z-Image, T5-XXL for Flux and Chroma) is loaded with ComfyUI-GGUF's
+`CLIPLoaderGGUF` or `DualCLIPLoaderGGUF`. Their **Check setup** says "install the ComfyUI-GGUF custom
+nodes" when you chose a `.gguf` file and ComfyUI can't load it. Civitai fine-tunes that come as GGUF
+files go in `models/diffusion_models` too.
 
 ### Each preset's settings
 
