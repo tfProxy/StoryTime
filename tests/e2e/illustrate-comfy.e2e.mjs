@@ -180,8 +180,21 @@ try {
   ok(await until(async () => JSON.stringify((await testPreset()).sampler) === '{"steps":22,"sampler":"euler_ancestral"}', "the sampler settings to be saved"), "a changed step count and sampler are saved with the preset, and only those");
   ok((await summaryText()).includes("22 steps of euler_ancestral karras, CFG 6"), "…and the workflow summary shows them");
   await advanced.getByLabel(/^Steps/).fill("500");
-  ok(await until(async () => (await testPreset()).sampler.steps === 150, "the steps to be capped"), "a step count over 150 is kept at 150");
-  await advanced.getByLabel(/^Steps/).fill("22");
+  await advanced.getByLabel(/^Steps/).blur();
+  ok(await until(async () => (await testPreset()).sampler.steps === 150, "the steps to be capped"), "a step count over 150 is kept at 150 on leaving the box");
+  ok((await advanced.getByLabel(/^Steps/).inputValue()) === "150", "…and the box shows 150");
+  // As on a phone: delete both digits, then type a new number.
+  const steps = advanced.getByLabel(/^Steps/);
+  await steps.fill("22");
+  await until(async () => (await testPreset()).sampler.steps === 22, "the steps to be 22 again");
+  await steps.click();
+  await steps.press("End");
+  await steps.press("Backspace");
+  await steps.press("Backspace");
+  ok((await steps.inputValue()) === "", "a number box can be emptied while typing a new value");
+  await steps.pressSequentially("8");
+  ok(await until(async () => (await testPreset()).sampler.steps === 8, "the steps to be 8"), "…and the new number is saved");
+  await steps.fill("22");
   await until(async () => (await testPreset()).sampler.steps === 22, "the steps to be 22 again");
   await redraw.getByLabel("Redraw strength").fill("0.4");
   ok(await until(async () => (await testPreset()).denoise === 0.4, "the redraw strength to be saved"), "the preset's Redraw strength (where the Redraw tab starts) is set here");
