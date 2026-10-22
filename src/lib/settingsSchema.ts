@@ -29,6 +29,11 @@ export type Connection = {
    * running on the same machine has the graphics memory. Does nothing while no ComfyUI address is set.
    */
   freeComfy: boolean;
+  /**
+   * Ollama connections only: unload the models this server has loaded before each picture job is sent to
+   * ComfyUI, so ComfyUI has the graphics memory.
+   */
+  freeForPictures: boolean;
 };
 
 /** A model on a particular connection. */
@@ -152,6 +157,7 @@ const connectionSchema = z.object({
   baseUrl: z.string().catch(""),
   apiKey: z.string().catch(""),
   freeComfy: z.boolean().catch(false),
+  freeForPictures: z.boolean().catch(false),
 });
 const refSchema = z.object({ connectionId: z.string().min(1), model: z.string().trim().min(1) });
 const favoriteSchema = refSchema.extend({
@@ -425,7 +431,7 @@ export function newConnection(s: Settings, kind: ProviderKind): Connection {
   for (let n = 2; taken.has(name); n++) name = `${base} ${n}`;
   // crypto.randomUUID needs a secure context, which a LAN address over http isn't.
   const id = `${kind}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-  return { id, name, kind, baseUrl: providerInfo(kind).defaultBaseUrl, apiKey: "", freeComfy: false };
+  return { id, name, kind, baseUrl: providerInfo(kind).defaultBaseUrl, apiKey: "", freeComfy: false, freeForPictures: false };
 }
 
 /** Settings without the connection, its favorites, or defaults that used it. */

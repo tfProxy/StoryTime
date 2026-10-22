@@ -1,5 +1,6 @@
 import http from "node:http";
 import { streamChat, listModels, completeChat, AiError } from "../../src/lib/ai/client.ts";
+import { freeOllamaForPictures, freeOllamaMemory, ollamaRoot } from "../../src/lib/ai/ollama.ts";
 import { DEFAULT_SETTINGS, favoritesFor, parseSettings, exportSettingsJson, importSettingsJson } from "../../src/lib/settingsSchema.ts";
 
 const seen: { url?: string; headers?: http.IncomingHttpHeaders; body?: any }[] = [];
@@ -13,6 +14,8 @@ const server = http.createServer((req, res) => {
       return res.end(JSON.stringify({ data: [{ id: "b-model" }, { id: "a-model" }] }));
     }
     if (req.url === "/comfy/free") { res.setHeader("content-type", "application/json"); return res.end("{}"); }
+    if (req.url === "/ol/api/ps") { res.setHeader("content-type", "application/json"); return res.end(JSON.stringify({ models: [{ name: "big:14b", model: "big:14b" }, { name: "tiny:1b" }] })); }
+    if (req.url === "/ol/api/generate") { res.setHeader("content-type", "application/json"); return res.end("{}"); }
     if (req.url === "/bad/chat/completions") { res.statusCode = 401; return res.end(JSON.stringify({ error: { message: "bad key" } })); }
     res.setHeader("content-type", "text/event-stream");
     const chunks = req.url!.startsWith("/anth")
@@ -122,6 +125,22 @@ r = await urlsOf(local(true, "http://localhost:1"));
 assert(r.text === "Hello", "a ComfyUI that can't be reached doesn't stop the text request");
 assert(parseSettings({ connections: [{ id: "a", kind: "ollama" }] }).connections[0].freeComfy === false, "settings saved before the option have it off");
 assert(parseSettings({ connections: [{ id: "a", kind: "ollama", freeComfy: true }] }).connections[0].freeComfy === true, "…and it is kept when on");
+
+// Unloading Ollama's models before a picture job: the native API sits beside /v1, not under it.
+assert(ollamaRoot("http://localhost:11434/v1") === "http://localhost:11434" && ollamaRoot(" http://h:1/v1/ ") === "http://h:1" && ollamaRoot("http://h:1") === "http://h:1" && ollamaRoot("http://h:1/proxy/v1") === "http://h:1/proxy", "ollamaRoot drops a trailing /v1 (and slashes, spaces) and keeps a path before it");
+let from = seen.length;
+assert((await freeOllamaMemory(base + "/ol/v1")) === true, "freeOllamaMemory reports it unloaded something");
+assert(JSON.stringify(seen.slice(from).map((x) => x.url)) === '["/ol/api/ps","/ol/api/generate","/ol/api/generate"]', "…listing the loaded models, then one unload call each");
+assert(JSON.stringify(seen.slice(from + 1).map((x) => x.body).sort((a, b) => a.model.localeCompare(b.model))) === '[{"model":"big:14b","keep_alive":0},{"model":"tiny:1b","keep_alive":0}]', "…with keep_alive 0 for each model");
+assert((await freeOllamaMemory("http://localhost:1/v1")) === false, "an Ollama that can't be reached is not an error");
+from = seen.length;
+await freeOllamaForPictures([
+  { ...conn("ollama", base + "/ol/v1"), freeForPictures: true },
+  { ...conn("ollama", base + "/o/v1"), freeForPictures: false },
+  { ...conn("openai", base + "/o/v1"), freeForPictures: true },
+] as any);
+assert(seen.slice(from).every((x) => x.url!.startsWith("/ol/")) && seen.length > from, "only Ollama connections with the box ticked are unloaded");
+assert(parseSettings({ connections: [{ id: "a", kind: "ollama" }] }).connections[0].freeForPictures === false && parseSettings({ connections: [{ id: "a", kind: "ollama", freeForPictures: true }] }).connections[0].freeForPictures === true, "freeForPictures is off in older settings and kept when on");
 
 // settings parse / export / import
 assert(parseSettings(null).contextTokens === 8000, "parse null -> defaults");

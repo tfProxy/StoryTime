@@ -72,6 +72,8 @@ export async function queueJob(
     onProgress: (p: Progress) => void;
     onSize: (width: number, height: number) => void;
     onPromptId: (id: string) => void;
+    /** Called once the job is checked and ready, just before it goes to ComfyUI; must not throw. */
+    beforeQueue?: () => Promise<void>;
   },
 ): Promise<MadeJob> {
   const { prompt, negative, moment, comfy, draw, drawLoras, start, edit } = input;
@@ -148,6 +150,9 @@ export async function queueJob(
     ...(from && { source: start!.source, denoise }),
     ...(edit && { instruction: edit.instruction, edit_model: edit.check.model.id }),
   };
+  if (signal.aborted) throw new DOMException("Stopped", "AbortError");
+  // A text model on the same machine lets go of the graphics memory first (never holds the job up for long).
+  await hooks.beforeQueue?.();
   if (signal.aborted) throw new DOMException("Stopped", "AbortError");
   const promptId = await queuePrompt(comfy.url, workflow, clientId, { storytime: { chapterId: ids.chapterId, storyId: ids.storyId, clientId, job: record, ...(ids.instance && { instance: ids.instance }) } satisfies JobTag });
   hooks.onPromptId(promptId);

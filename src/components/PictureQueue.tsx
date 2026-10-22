@@ -7,6 +7,7 @@
 // After a refresh it finds StoryTime's jobs in ComfyUI's queue and history again (by their tags).
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSettings } from "@/lib/settings";
+import { freeOllamaForPictures } from "@/lib/ai/ollama";
 import { cancelPrompt, listTaggedJobs, waitForPictures, type ComfyImage, type Progress, type TaggedJob } from "@/lib/comfy/client";
 import type { JobRecord } from "@/lib/comfy/jobTag";
 import { queueJob, sameJob, type JobInput, type UploadCache } from "@/lib/comfy/makeJob";
@@ -164,7 +165,13 @@ type Gathering = { key: string; target: PictureTarget; input: JobInput; count: n
 const targetOf = ({ storyId, chapterId }: PictureTarget): PictureTarget => ({ storyId, chapterId });
 
 export default function PictureQueueProvider({ children }: { children: ReactNode }) {
-  const comfyUrl = useSettings().comfy.url;
+  const settings = useSettings();
+  const comfyUrl = settings.comfy.url;
+  // The AI connections as they are now, for the callbacks below (which outlive a render).
+  const connectionsRef = useRef(settings.connections);
+  useEffect(() => {
+    connectionsRef.current = settings.connections;
+  }, [settings.connections]);
   const [jobs, setJobs] = useState<QueueJob[]>([]);
   // The same list, for the callbacks below (which outlive a render).
   const jobsRef = useRef<QueueJob[]>([]);
@@ -246,6 +253,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
           uploads,
           onProgress: (progress) => patch(g.key, { progress }),
           onSize: (width, height) => patch(g.key, { width, height }),
+          beforeQueue: () => freeOllamaForPictures(connectionsRef.current),
           onPromptId: (id) => {
             control.promptId = id;
             picked.current.add(id);

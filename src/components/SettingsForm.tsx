@@ -171,6 +171,18 @@ function ConnectionCard({
         graphics memory (pictures then take longer to start). Does nothing while no ComfyUI address is set
         below.
       </small>
+      {conn.kind === "ollama" && (
+        <>
+          <label className="inline-label">
+            <input type="checkbox" checked={conn.freeForPictures} onChange={(e) => onChange({ freeForPictures: e.target.checked })} />
+            Unload this server&apos;s models before each picture job
+          </label>
+          <small>
+            For ComfyUI on the same machine as this server: Ollama unloads the models it has loaded first, so
+            ComfyUI has the graphics memory (writing then takes longer to start).
+          </small>
+        </>
+      )}
       <div className="row" style={{ flexWrap: "wrap" }}>
         <button type="button" onClick={test} disabled={testing}>
           {testing ? "Testing…" : models ? "Refresh models" : "Test connection"}
