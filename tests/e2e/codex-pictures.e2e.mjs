@@ -214,7 +214,7 @@ try {
   await until(() => posted().length === 4, "the job with a reference to be sent", 60);
   const logged = await until(async () => (await call("GET", `/api/picture-jobs?chapter=${second}`)).jobs.some((j) => (j.refs ?? []).length === 1), "the job to be recorded", 50);
   const withRef = logged && (await call("GET", `/api/picture-jobs?chapter=${second}`)).jobs.find((j) => (j.refs ?? []).length === 1);
-  ok(withRef && JSON.stringify(withRef.refs) === JSON.stringify([{ source: `codex:${two}`, label: "Zephyr", role: "character", weight: 0.7 }]), "the job log records the codex reference");
+  ok(withRef && JSON.stringify(withRef.refs) === JSON.stringify([{ source: `codex:${two}`, label: "Zephyr", role: "character", weight: 0.4 }]), "the job log records the codex reference");
   ok(Object.values(posted()[3].body.prompt).some((n) => n.class_type === "IPAdapterAdvanced"), "…and the workflow sent has an IP-Adapter for it");
 
   // ---- …as of the first chapter it is the first picture, and a name in the prompt suggests it ----
