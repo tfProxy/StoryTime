@@ -8,6 +8,7 @@ import NumberInput from "./NumberInput";
 import ComfyConnection from "./ComfyConnection";
 import { DrawingSettings, EditSettings, usePictureSetup } from "./PictureSettings";
 import { EDIT_MODEL_IDS } from "@/lib/comfy/editModels";
+import TagLibrary from "./TagLibrary";
 import {
   exportSettingsJson,
   favoriteFor,
@@ -54,6 +55,7 @@ const TABS = [
   { id: "edit-qwen-image-edit", label: "Qwen edit", holds: ["setup-qwen-image-edit", "qwen-image-edit-presets", "edit-loras"] },
   { id: "edit-flux-kontext", label: "Flux edit", holds: ["setup-flux-kontext", "flux-kontext-presets"] },
   { id: "outline", label: "Outline", holds: [] },
+  { id: "tags", label: "Tags", holds: [] },
   { id: "backup", label: "Backup", holds: [] },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
@@ -660,6 +662,11 @@ export default function SettingsForm() {
             </label>
           ))}
         </section>
+      </div>
+
+      {/* Tags save through their own API, not with the settings. */}
+      <div {...panel("tags")}>
+        <TagLibrary />
       </div>
 
       <section {...panel("backup")}>
