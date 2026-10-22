@@ -94,6 +94,14 @@ ks = only(wf, "KSampler");
 const load = idOf(wf, "LoadImage"), scale = idOf(wf, "ImageScale"), enc = idOf(wf, "VAEEncode"), rep = idOf(wf, "RepeatLatentBatch");
 ok(only(wf, "LoadImage").inputs.image === "start.png" && only(wf, "ImageScale").inputs.image[0] === load && only(wf, "VAEEncode").inputs.pixels[0] === scale && only(wf, "VAEEncode").inputs.vae[0] === "3" && only(wf, "RepeatLatentBatch").inputs.samples[0] === enc, "Redraw: LoadImage → ImageScale → VAEEncode → RepeatLatentBatch");
 ok(ks.inputs.latent_image[0] === rep && only(wf, "RepeatLatentBatch").inputs.amount === 2 && ks.inputs.denoise === 0.6 && nodesOfType(wf, "EmptySD3LatentImage").length === 0, "…the sampler starts from it at the Redraw strength, with no empty latent");
+{
+  const m = buildDraw(z, { ...P, image: "start.png", denoise: 0.6, mask: "mask.png" });
+  const noise = only(m, "SetLatentNoiseMask");
+  const paste = only(m, "ImageCompositeMasked");
+  ok(only(m, "LoadImageMask").inputs.image === "mask.png" && noise.inputs.samples[0] === idOf(m, "RepeatLatentBatch") && only(m, "KSampler").inputs.latent_image[0] === idOf(m, "SetLatentNoiseMask"), "…with a painted area, the mask limits the sampler's latent");
+  ok(paste.inputs.source[0] === idOf(m, "ImageScale") && paste.inputs.destination[0] === idOf(m, "VAEDecode") && only(m, "SaveImage").inputs.images[0] === idOf(m, "ImageCompositeMasked"), "…and the new pictures are pasted over the scaled picture outside it");
+  ok(nodesOfType(buildDraw(z, { ...P, mask: "mask.png" }), "LoadImageMask").length === 0, "…a mask without a starting picture is ignored");
+}
 ok(only(wf, "ImageScale").inputs.width === 1008 && only(wf, "ImageScale").inputs.height === 1504, "…scaled to the size in multiples of 16");
 
 // Settings, device, LoRAs

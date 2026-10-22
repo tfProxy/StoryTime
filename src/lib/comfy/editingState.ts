@@ -2,6 +2,7 @@
 // redrawn, the mode, and the edit's text and strength. Per chapter (and one set for the story's cover),
 // named by `stateKey`; browser code.
 import type { PictureSlot, PictureTarget } from "../pictureTarget";
+import type { MaskState, MaskStroke } from "../mask";
 import type { ComfyImage } from "./client";
 
 /** What the stored values are kept under: the chapter's id (as before covers), or `cover-<story id>`. */
@@ -29,16 +30,38 @@ function write(name: string, chapterId: string, value: unknown) {
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 
 /** The starting picture (one of ComfyUI's, or a saved header, footer or cover) and whether it is redrawn or edited. */
-export type StoredStart = { mode: "redraw" | "edit"; image?: ComfyImage; slot?: PictureSlot };
+export type StoredStart = { mode: "redraw" | "edit"; image?: ComfyImage; slot?: PictureSlot; mask?: StoredMask };
+
+/** The painted area of a starting picture: its strokes (the PNG is drawn from them again) and the picture's size. */
+export type StoredMask = MaskState & { width: number; height: number };
+
+const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+function readMask(v: unknown): StoredMask | undefined {
+  if (!isObject(v) || !Array.isArray(v.strokes) || !isNum(v.softness) || typeof v.inverted !== "boolean") return undefined;
+  if (!isNum(v.width) || !isNum(v.height) || v.width < 1 || v.height < 1 || v.width > 16384 || v.height > 16384) return undefined;
+  const strokes: MaskStroke[] = [];
+  for (const s of v.strokes) {
+    if (!isObject(s) || (s.tool !== "brush" && s.tool !== "eraser" && s.tool !== "fill") || !isNum(s.size) || !Array.isArray(s.points)) return undefined;
+    const points: MaskStroke["points"] = [];
+    for (const p of s.points) {
+      if (!Array.isArray(p) || !isNum(p[0]) || !isNum(p[1])) return undefined;
+      points.push([p[0], p[1], isNum(p[2]) ? p[2] : 0]);
+    }
+    strokes.push({ tool: s.tool, size: s.size, points });
+  }
+  return strokes.length > 0 ? { strokes, softness: Math.max(0, v.softness), inverted: v.inverted, width: v.width, height: v.height } : undefined;
+}
 
 export function readStart(chapterId: string): StoredStart | null {
   const v = read("start", chapterId);
   if (!isObject(v) || (v.mode !== "redraw" && v.mode !== "edit")) return null;
+  const mask = readMask(v.mask);
   const im = v.image;
   if (isObject(im) && typeof im.filename === "string" && typeof im.subfolder === "string" && typeof im.type === "string") {
-    return { mode: v.mode, image: { filename: im.filename, subfolder: im.subfolder, type: im.type } };
+    return { mode: v.mode, image: { filename: im.filename, subfolder: im.subfolder, type: im.type }, ...(mask && { mask }) };
   }
-  if (v.slot === "header" || v.slot === "footer" || v.slot === "cover") return { mode: v.mode, slot: v.slot };
+  if (v.slot === "header" || v.slot === "footer" || v.slot === "cover") return { mode: v.mode, slot: v.slot, ...(mask && { mask }) };
   return null;
 }
 

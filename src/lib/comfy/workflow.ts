@@ -13,6 +13,12 @@
 // image variant. A workflow without placeholders has its empty latent image replaced by the picture
 // (LoadImage, VAEEncode, RepeatLatentBatch) and its samplers' `denoise` set.
 //
+// Redrawing only a painted area (inpainting): `mask` is a picture already in ComfyUI's input folder, the
+// same size as the starting one, white where to redraw and black where to keep. The built-in workflow has
+// a mask variant. "{{mask}}" is the mask's name (put it in a LoadImageMask node). A workflow without
+// placeholders gets the mask applied to the latent (SetLatentNoiseMask) and the new pictures pasted back
+// over the original outside the mask (InvertMask, ImageCompositeMasked) before they are saved.
+//
 // Either way, the saved pictures' file name prefix (`filename_prefix`) is set when it is "StoryTime",
 // the built-in workflow's prefix, or contains "{{prefix}}". Any other prefix is left alone.
 
@@ -31,6 +37,8 @@ export type PictureParams = {
   prefix?: string;
   /** Image to image: the starting picture's name in ComfyUI's input folder. The size then comes from the picture. */
   image?: string;
+  /** Inpainting: the mask's name in ComfyUI's input folder (white = redraw). Only used together with `image`. */
+  mask?: string;
   /** Image to image: how far the pictures may drift from the starting one, 0 to 1 (default 1). */
   denoise?: number;
   /** The built-in workflow's sampler settings (from the preset); other workflows keep their own. */
@@ -64,6 +72,8 @@ export type WorkflowFit = {
   seed: boolean;
   /** Whether it can start from a picture. */
   image: boolean;
+  /** Whether it can redraw only part of a picture (needs a picture to start from). */
+  mask: boolean;
 };
 
 /** Text-to-image with an SDXL checkpoint: 30 steps of DPM++ 2M Karras at CFG 6 (BUILTIN_SAMPLER; Settings can change them). */
@@ -90,6 +100,21 @@ export const BUILTIN_IMG2IMG: Workflow = {
   "10": { class_type: "LoadImage", inputs: { image: "{{image}}" } },
   "11": { class_type: "VAEEncode", inputs: { pixels: ["10", 0], vae: ["4", 2] } },
   "12": { class_type: "RepeatLatentBatch", inputs: { samples: ["11", 0], amount: "{{count}}" } },
+};
+
+/**
+ * The built-in image workflow redrawing only a painted area: the mask limits the latent's noise, and the
+ * new pictures are pasted over the original wherever the mask is black. The destination is the new batch
+ * and the source the original, because ComfyUI repeats the source to the destination's batch size.
+ */
+export const BUILTIN_INPAINT: Workflow = {
+  ...BUILTIN_IMG2IMG,
+  "3": { class_type: "KSampler", inputs: { ...BUILTIN_IMG2IMG["3"].inputs, latent_image: ["14", 0] } },
+  "9": { class_type: "SaveImage", inputs: { filename_prefix: "StoryTime", images: ["16", 0] } },
+  "13": { class_type: "LoadImageMask", inputs: { image: "{{mask}}", channel: "red" } },
+  "14": { class_type: "SetLatentNoiseMask", inputs: { samples: ["12", 0], mask: ["13", 0] } },
+  "15": { class_type: "InvertMask", inputs: { mask: ["13", 0] } },
+  "16": { class_type: "ImageCompositeMasked", inputs: { destination: ["8", 0], source: ["10", 0], x: 0, y: 0, resize_source: false, mask: ["15", 0] } },
 };
 
 export class WorkflowError extends Error {}
@@ -120,7 +145,7 @@ export function parseWorkflow(text: string): Workflow {
 }
 
 const NUMBER_SLOTS = { "{{seed}}": "seed", "{{width}}": "width", "{{height}}": "height", "{{count}}": "count", "{{denoise}}": "denoise" } as const;
-const TEXT_SLOTS = { "{{prompt}}": "prompt", "{{negative}}": "negative", "{{checkpoint}}": "checkpoint", "{{image}}": "image" } as const;
+const TEXT_SLOTS = { "{{prompt}}": "prompt", "{{negative}}": "negative", "{{checkpoint}}": "checkpoint", "{{image}}": "image", "{{mask}}": "mask" } as const;
 
 const isLink = (v: unknown): v is [string, number] => Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "number";
 
@@ -177,7 +202,7 @@ function vaeSource(wf: Workflow): [string, number] | null {
 
 /** What the workflow lets StoryTime set. */
 export function describeWorkflow(wf: Workflow): WorkflowFit {
-  if (wf === BUILTIN_WORKFLOW) return { mode: "builtin", prompt: true, negative: true, checkpoint: true, size: true, count: true, seed: true, image: true };
+  if (wf === BUILTIN_WORKFLOW) return { mode: "builtin", prompt: true, negative: true, checkpoint: true, size: true, count: true, seed: true, image: true, mask: true };
   const found = placeholdersIn(wf);
   if (found.size > 0) {
     return {
@@ -189,10 +214,12 @@ export function describeWorkflow(wf: Workflow): WorkflowFit {
       count: found.has("{{count}}"),
       seed: found.has("{{seed}}"),
       image: found.has("{{image}}"),
+      mask: found.has("{{mask}}"),
     };
   }
   const nodes = Object.values(wf);
   const { positive, negative } = promptNodes(wf);
+  const image = nodes.some((n) => LATENTS.test(n.class_type)) && vaeSource(wf) !== null && nodes.some(hasDenoise);
   return {
     mode: "detected",
     prompt: positive !== null,
@@ -201,7 +228,8 @@ export function describeWorkflow(wf: Workflow): WorkflowFit {
     size: nodes.some((n) => LATENTS.test(n.class_type)),
     count: nodes.some((n) => LATENTS.test(n.class_type)),
     seed: nodes.some((n) => SEED_INPUTS.some((k) => typeof n.inputs[k] === "number")),
-    image: nodes.some((n) => LATENTS.test(n.class_type)) && vaeSource(wf) !== null && nodes.some(hasDenoise),
+    image,
+    mask: image,
   };
 }
 
@@ -218,7 +246,7 @@ function setPrefix(wf: Workflow, prefix: string) {
 /** A copy of the workflow with the picture's settings filled in. Throws WorkflowError if the prompt has nowhere to go. */
 export function fillWorkflow(wf: Workflow, p: PictureParams): Workflow {
   const builtin = wf === BUILTIN_WORKFLOW;
-  const out = fillSettings(p.image && builtin ? BUILTIN_IMG2IMG : wf, p);
+  const out = fillSettings(p.image && builtin ? (p.mask ? BUILTIN_INPAINT : BUILTIN_IMG2IMG) : wf, p);
   if (builtin && p.sampler) {
     const { steps, cfg, sampler, scheduler } = p.sampler;
     Object.assign(out["3"].inputs, { steps, cfg, sampler_name: sampler, scheduler });
@@ -283,6 +311,29 @@ function startFromImage(wf: Workflow, p: PictureParams & { image: string }) {
   }
   for (const id of empties) delete wf[id];
   for (const node of samplers) node.inputs.denoise = p.denoise ?? 1;
+  if (p.mask) redrawOnlyMask(wf, p.mask, load, repeat);
+}
+
+/**
+ * Limits the redraw to the mask: the picture's latent gets the mask as its noise mask, and each saved
+ * picture is pasted over the original wherever the mask is black, so the rest stays exactly as it was.
+ */
+export function redrawOnlyMask(wf: Workflow, mask: string, load: string, repeat: string) {
+  const [loadMask, noiseMask, invert] = ["storytime_mask", "storytime_noise_mask", "storytime_mask_invert"];
+  for (const node of Object.values(wf)) {
+    for (const [k, v] of Object.entries(node.inputs)) if (isLink(v) && v[0] === repeat) node.inputs[k] = [noiseMask, 0];
+  }
+  wf[loadMask] = { class_type: "LoadImageMask", inputs: { image: mask, channel: "red" } };
+  wf[noiseMask] = { class_type: "SetLatentNoiseMask", inputs: { samples: [repeat, 0], mask: [loadMask, 0] } };
+  wf[invert] = { class_type: "InvertMask", inputs: { mask: [loadMask, 0] } };
+  const saves = Object.entries(wf).filter(([, n]) => /^(SaveImage|PreviewImage)$/.test(n.class_type));
+  saves.forEach(([id, save], i) => {
+    const link = save.inputs.images;
+    if (!isLink(link) || wf[link[0]]?.class_type !== "VAEDecode") return;
+    const paste = `storytime_paste_${i + 1}`;
+    wf[paste] = { class_type: "ImageCompositeMasked", inputs: { destination: link, source: [load, 0], x: 0, y: 0, resize_source: false, mask: [invert, 0] } };
+    wf[id].inputs.images = [paste, 0];
+  });
 }
 
 function fillSettings(wf: Workflow, p: PictureParams): Workflow {
@@ -294,12 +345,15 @@ function fillSettings(wf: Workflow, p: PictureParams): Workflow {
     if (p.image && !found.has("{{image}}")) {
       throw new WorkflowError("This workflow has placeholders but no {{image}}, so it can't start from a picture. Put {{image}} in a Load Image node and {{denoise}} in the sampler.");
     }
-    const value = { ...p, image: p.image ?? "", denoise: p.denoise ?? 1 };
+    if (p.image && p.mask && !found.has("{{mask}}")) {
+      throw new WorkflowError("This workflow has placeholders but no {{mask}}, so it can't redraw only part of a picture. Put {{mask}} in a Load Image (as Mask) node, and use its mask output for the sampler's latent (Set Latent Noise Mask).");
+    }
+    const value = { ...p, image: p.image ?? "", mask: p.image ? p.mask ?? "" : "", denoise: p.denoise ?? 1 };
     for (const node of Object.values(out)) {
       for (const [k, v] of Object.entries(node.inputs)) {
         if (typeof v !== "string") continue;
         if (v in NUMBER_SLOTS) node.inputs[k] = value[NUMBER_SLOTS[v as keyof typeof NUMBER_SLOTS]];
-        else node.inputs[k] = v.replace(/\{\{(prompt|negative|checkpoint|image)\}\}/g, (_, key: "prompt" | "negative" | "checkpoint" | "image") => value[key]);
+        else node.inputs[k] = v.replace(/\{\{(prompt|negative|checkpoint|image|mask)\}\}/g, (_, key: "prompt" | "negative" | "checkpoint" | "image" | "mask") => value[key]);
       }
     }
     return out;

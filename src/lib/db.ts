@@ -360,6 +360,11 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE chapters ADD COLUMN picture_fixed TEXT NOT NULL DEFAULT '';
   `,
+  // 22: a redraw of only a painted part of the starting picture: the name of the mask picture in ComfyUI's
+  // input folder (null = the whole picture).
+  `
+  ALTER TABLE picture_jobs ADD COLUMN mask TEXT;
+  `,
 ];
 
 function open(): Database.Database {

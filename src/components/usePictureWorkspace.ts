@@ -3,7 +3,8 @@
 import { useEffect, useState, type CSSProperties, type HTMLAttributes, type KeyboardEvent, type PointerEvent } from "react";
 import type { LoadedPrompt } from "./ImagePromptPanel";
 import { markJobsSeen } from "./PictureQueue";
-import { picturesOf, type PendingJob, type Picture, type PromptToLoad, type StartMode } from "./pictures";
+import { picturesOf, type PendingJob, type Picture, type PromptToLoad, type StartMode, type StartRequest } from "./pictures";
+import { newMaskId, type PaintedArea } from "@/lib/mask";
 import { editBlocked, useEditModels } from "./useEditModels";
 import { useSettings } from "@/lib/settings";
 import type { PictureJob } from "@/lib/pictureJobs";
@@ -29,6 +30,11 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
   // The picture new pictures start from, when one is chosen, and whether it is redrawn or edited.
   const [start, setStart] = useState<StartPicture | null>(null);
   const [startMode, setStartMode] = useState<StartMode>("redraw");
+  // The painted part of the starting picture to redraw (Redraw only), kept with the picture it was painted on,
+  // and a number that goes up each time "Change part of this…" asks the mask editor to open.
+  const [maskOf, setMaskOf] = useState<{ startKey: string; area: PaintedArea } | null>(null);
+  const [paintNonce, setPaintNonce] = useState(0);
+  const mask = maskOf && start && maskOf.startKey === start.key ? maskOf.area : null;
   const comfy = useSettings().comfy;
   const editModels = useEditModels(comfy.url);
   const blocked = editBlocked(editModels, comfy.editPresets);
@@ -48,15 +54,37 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
     if (restored || !comfy.url) return;
     const saved = readStart(kept);
     const version = saved?.slot ? versions[saved.slot] : null;
-    if (saved?.image) setStart(fromComfyImage(comfy.url, saved.image));
-    else if (saved?.slot && version) setStart(fromSaved({ storyId, chapterId }, saved.slot, version));
-    if (saved && (saved.image || version)) setStartMode(saved.mode);
+    let picture: StartPicture | null = null;
+    if (saved?.image) picture = fromComfyImage(comfy.url, saved.image);
+    else if (saved?.slot && version) picture = fromSaved({ storyId, chapterId }, saved.slot, version);
+    if (picture) {
+      setStart(picture);
+      if (saved) setStartMode(saved.mode);
+      if (saved?.mask) setMaskOf({ startKey: picture.key, area: { ...saved.mask, id: newMaskId() } });
+    }
     setRestored(true);
   }, [restored, comfy.url, kept, storyId, chapterId, versions]);
   /* eslint-enable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (restored) writeStart(kept, start && (start.image || start.slot) ? { mode: startMode, image: start.image, slot: start.slot } : null);
-  }, [restored, kept, start, startMode]);
+    if (!restored) return;
+    const { strokes, softness, inverted, width, height } = mask ?? { strokes: [], softness: 0, inverted: false, width: 0, height: 0 };
+    writeStart(
+      kept,
+      start && (start.image || start.slot)
+        ? { mode: startMode, image: start.image, slot: start.slot, ...(mask && { mask: { strokes, softness, inverted, width, height } }) }
+        : null,
+    );
+  }, [restored, kept, start, startMode, mask]);
+
+  /** Chooses (or, with null, clears) the starting picture. A different picture drops the painted area. */
+  function chooseStart(picture: StartPicture | null) {
+    setStart(picture);
+    setMaskOf(null);
+  }
+  /** Sets (or, with null, clears) the painted area of the current starting picture. */
+  function setMask(area: PaintedArea | null) {
+    setMaskOf(area && start ? { startKey: start.key, area } : null);
+  }
 
   function load(p: PromptToLoad) {
     setLoaded({ ...p, nonce: (loaded?.nonce ?? 0) + 1 });
@@ -64,9 +92,10 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
     document.getElementById("picture-prompt")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function startFrom(picture: StartPicture, mode: StartMode) {
-    setStart(picture);
-    setStartMode(mode);
+  function startFrom(picture: StartPicture, request: StartRequest) {
+    chooseStart(picture);
+    setStartMode(request === "paint" ? "redraw" : request);
+    if (request === "paint") setPaintNonce((n) => n + 1);
     document.getElementById("picture-prompt")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -135,7 +164,7 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
   };
 
   return {
-    comfy, editModels, blocked, loaded, load, start, setStart, startMode, setStartMode, startFrom,
+    comfy, editModels, blocked, loaded, load, start, setStart: chooseStart, mask, setMask, paintNonce, startMode, setStartMode, startFrom,
     pictures, addPictures, changePicture, clearFresh, pending, setPending, dock, setDock, gridProps, resizerProps,
   };
 }

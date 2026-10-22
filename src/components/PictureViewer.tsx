@@ -5,7 +5,7 @@ import type { PictureSlot } from "@/lib/pictureTarget";
 import { imageUrl } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
 import type { PictureSaver } from "./usePictureSaver";
-import { pictureCaption, type Picture, type StartMode } from "./pictures";
+import { pictureCaption, type Picture, type StartRequest } from "./pictures";
 import PictureButtons, { InUseBadge, loadPromptItem, openItem, startItems } from "./PictureButtons";
 
 // How far a finger has to move sideways to count as a swipe.
@@ -26,7 +26,7 @@ type Props = {
   /** Shows everything the picture was made with (the Info popup, over the viewer). */
   onInfo: (picture: Picture) => void;
   /** Makes new pictures starting from the one shown: redrawn from the prompt, or edited by instruction. */
-  onStart?: (picture: Picture, mode: StartMode) => void;
+  onStart?: (picture: Picture, mode: StartRequest) => void;
   /** Why it can't be edited by instruction now, or null. */
   editBlocked?: string | null;
   saver: PictureSaver;

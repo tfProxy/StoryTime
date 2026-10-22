@@ -1,4 +1,4 @@
-import { BUILTIN_IMG2IMG, BUILTIN_SAMPLER, BUILTIN_WORKFLOW, builtinSampler, describeWorkflow, filenamePrefix, fillWorkflow, parseWorkflow, randomSeed, WorkflowError, type PictureParams, type Workflow } from "../../src/lib/comfy/workflow.ts";
+import { BUILTIN_IMG2IMG, BUILTIN_INPAINT, BUILTIN_SAMPLER, BUILTIN_WORKFLOW, builtinSampler, describeWorkflow, filenamePrefix, fillWorkflow, parseWorkflow, randomSeed, WorkflowError, type PictureParams, type Workflow } from "../../src/lib/comfy/workflow.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const throwsWorkflowError = (fn: () => unknown) => {
@@ -226,6 +226,43 @@ const fluxImg = fillWorkflow(flux, imgParams);
 ok(fluxImg["17"].inputs.denoise === 0.4 && JSON.stringify(fluxImg["19"].inputs.latent_image) === '["storytime_repeat",0]' && JSON.stringify(fluxImg.storytime_encode.inputs.vae) === '["21",0]', "img2img detected (Flux): the scheduler's denoise is set and the VAE loader's VAE is used");
 const cantStart = throwsWorkflowError(() => fillWorkflow({ ...sdxl, "3": { class_type: "KSampler", inputs: { ...sdxl["3"].inputs, denoise: "x" } } }, imgParams));
 ok(cantStart !== null && cantStart.includes("{{image}}"), "img2img detected: a workflow with no numeric denoise is an error pointing to {{image}} and {{denoise}}");
+
+// ---- redrawing only a painted area (inpainting) ----
+const maskParams: PictureParams = { ...imgParams, mask: "storytime-mask-abc.png" };
+const inBefore = JSON.stringify(BUILTIN_INPAINT);
+const inBuilt = fillWorkflow(BUILTIN_WORKFLOW, maskParams);
+ok(JSON.stringify(BUILTIN_INPAINT) === inBefore && JSON.stringify(BUILTIN_INPAINT).includes("{{mask}}"), "inpaint builtin: filling does not change the built-in workflow");
+ok(inBuilt["13"].class_type === "LoadImageMask" && inBuilt["13"].inputs.image === "storytime-mask-abc.png" && inBuilt["13"].inputs.channel === "red", "inpaint builtin: LoadImageMask reads the mask's red channel");
+ok(inBuilt["14"].class_type === "SetLatentNoiseMask" && JSON.stringify(inBuilt["14"].inputs.samples) === '["12",0]' && JSON.stringify(inBuilt["14"].inputs.mask) === '["13",0]', "inpaint builtin: SetLatentNoiseMask takes the repeated latent and the mask");
+ok(JSON.stringify(inBuilt["3"].inputs.latent_image) === '["14",0]' && inBuilt["3"].inputs.denoise === 0.4, "inpaint builtin: the sampler uses the masked latent at the chosen strength");
+const comp = inBuilt["16"].inputs;
+ok(inBuilt["15"].class_type === "InvertMask" && JSON.stringify(inBuilt["15"].inputs.mask) === '["13",0]', "inpaint builtin: InvertMask inverts the mask");
+ok(inBuilt["16"].class_type === "ImageCompositeMasked" && JSON.stringify(comp.destination) === '["8",0]' && JSON.stringify(comp.source) === '["10",0]' && JSON.stringify(comp.mask) === '["15",0]' && comp.x === 0 && comp.y === 0 && comp.resize_source === false, "inpaint builtin: the new pictures (destination) are pasted over the original (source) outside the mask");
+ok(JSON.stringify(inBuilt["9"].inputs.images) === '["16",0]' && JSON.stringify(inBuilt).includes("{{") === false, "inpaint builtin: the composite is saved, and no placeholder is left");
+ok(fillWorkflow(BUILTIN_WORKFLOW, { ...maskParams, image: undefined })["5"].class_type === "EmptyLatentImage", "inpaint builtin: a mask without a picture is ignored");
+const noMaskBuilt = fillWorkflow(BUILTIN_WORKFLOW, imgParams);
+ok(!("13" in noMaskBuilt) && !("16" in noMaskBuilt) && JSON.stringify(noMaskBuilt["9"].inputs.images) === '["8",0]' && JSON.stringify(noMaskBuilt["3"].inputs.latent_image) === '["12",0]', "inpaint builtin: without a mask the image to image workflow is unchanged");
+
+const sdxlMask = fillWorkflow(sdxl, maskParams);
+ok(sdxlMask.storytime_mask.class_type === "LoadImageMask" && sdxlMask.storytime_mask.inputs.image === "storytime-mask-abc.png" && sdxlMask.storytime_mask.inputs.channel === "red", "inpaint detected: a LoadImageMask is added");
+ok(JSON.stringify(sdxlMask.storytime_noise_mask.inputs.samples) === '["storytime_repeat",0]' && JSON.stringify(sdxlMask["3"].inputs.latent_image) === '["storytime_noise_mask",0]', "inpaint detected: SetLatentNoiseMask sits between RepeatLatentBatch and the sampler");
+const dp = sdxlMask.storytime_paste_1.inputs;
+ok(JSON.stringify(dp.destination) === '["8",0]' && JSON.stringify(dp.source) === '["storytime_image",0]' && JSON.stringify(dp.mask) === '["storytime_mask_invert",0]' && JSON.stringify(sdxlMask["9"].inputs.images) === '["storytime_paste_1",0]', "inpaint detected: the decoded pictures are pasted over the original before SaveImage");
+ok(sdxlMask["3"].inputs.denoise === 0.4 && !("storytime_mask" in fillWorkflow(sdxl, imgParams)) && !("storytime_mask" in sdxl), "inpaint detected: strength is set, and nothing is added without a mask");
+const twoSaves: Workflow = { ...sdxl, "10": { class_type: "PreviewImage", inputs: { images: ["8", 0] } } };
+const twoOut = fillWorkflow(twoSaves, maskParams);
+ok(JSON.stringify(twoOut["9"].inputs.images) !== JSON.stringify(twoOut["10"].inputs.images) && twoOut["10"].inputs.images[0].startsWith("storytime_paste_"), "inpaint detected: every save or preview node gets its own paste");
+
+const maskPlaceholders: Workflow = { ...imgPlaceholders, "8": { class_type: "LoadImageMask", inputs: { image: "{{mask}}", channel: "red" } } };
+const maskFilled = fillWorkflow(maskPlaceholders, maskParams);
+ok(maskFilled["8"].inputs.image === "storytime-mask-abc.png" && maskFilled["5"].inputs.image === "storytime-abc.png", "inpaint placeholders: {{mask}} is the mask's name");
+ok(fillWorkflow(maskPlaceholders, imgParams)["8"].inputs.image === "", "inpaint placeholders: {{mask}} with no mask is harmless (empty)");
+const noMaskSlot = throwsWorkflowError(() => fillWorkflow(imgPlaceholders, maskParams));
+ok(noMaskSlot !== null && noMaskSlot.includes("{{mask}}"), "inpaint placeholders: a mask with a workflow that has no {{mask}} is an error mentioning {{mask}}");
+
+ok(describeWorkflow(BUILTIN_WORKFLOW).mask === true, "describe: the built-in workflow can redraw part of a picture");
+ok(describeWorkflow(maskPlaceholders).mask === true && describeWorkflow(imgPlaceholders).mask === false && describeWorkflow(custom).mask === false, "describe: a placeholder workflow can only with {{mask}}");
+ok(describeWorkflow(sdxl).mask === true && describeWorkflow(bare).mask === false, "describe: a detected workflow can when it can start from a picture");
 
 // ---- the built-in workflow's sampler settings ----
 const sampled = (wf: Workflow) => Object.values(wf).find((n) => n.class_type === "KSampler")!.inputs;

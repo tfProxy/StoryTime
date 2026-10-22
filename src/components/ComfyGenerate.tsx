@@ -20,7 +20,10 @@ import { drawPresetFor, drawPresetSummary, presetName, usesFamily, type DrawPres
 import type { StartPicture } from "@/lib/comfy/startPicture";
 import { readEdit, readRedraw, stateKey, writeEdit, writeRedraw } from "@/lib/comfy/editingState";
 import { listCheckpoints } from "@/lib/comfy/client";
-import { denoiseOf, madeWithText, type JobInput } from "@/lib/comfy/makeJob";
+import { denoiseOf, madeWithText, maskOf, type JobInput } from "@/lib/comfy/makeJob";
+import { describeWorkflow, parseWorkflow } from "@/lib/comfy/workflow";
+import type { PaintedArea } from "@/lib/mask";
+import { MaskPainter, useMaskPreview } from "./StartMask";
 
 /** Sizes that suit SDXL (about one megapixel), tallest to widest. */
 const SIZES: { name: string; width: number; height: number }[] = [
@@ -138,6 +141,8 @@ type Props = {
   /** Whether the starting picture is redrawn from the prompt (at a strength) or edited by instruction, and how to switch. */
   startMode?: StartMode;
   onStartMode?: (mode: StartMode) => void;
+  /** Redrawing only a painted part of the starting picture: the painted area (or null), how to set or clear it, and a number that goes up when the mask editor should open. */
+  paint?: PaintProps;
   /** Which edit models ComfyUI can run. */
   editModels?: EditModels;
   /** Called with each finished job's pictures. */
@@ -148,6 +153,18 @@ type Props = {
   dock?: HTMLElement | null;
 };
 
+/** Whether a drawing preset's workflow ("" is the built-in one) can redraw only a painted part of a picture. */
+function workflowCanMask(workflow: string): boolean {
+  try {
+    return describeWorkflow(parseWorkflow(workflow)).mask;
+  } catch {
+    return false;
+  }
+}
+
+/** The painted area of the starting picture (or null), how to set or clear it, and a number that goes up when the mask editor should open. */
+export type PaintProps = { mask: PaintedArea | null; onMask: (area: PaintedArea | null) => void; nonce: number };
+
 /**
  * Makes pictures from the prompt on the ComfyUI machine, or from a starting picture: redrawn from the
  * prompt at a strength, or edited by an instruction with an edit model. The jobs go to the app's picture
@@ -155,7 +172,7 @@ type Props = {
  */
 export default function ComfyGenerate({
   target, storyPreset, chapterPreset: savedPreset, moment, prompt: boxPrompt, negative: boxNegative, fixedPrompt = "", loaded = null, start = null, onClearStart,
-  startMode = "redraw", onStartMode, editModels = { state: "checking" }, onPictures, onQueue, onChapterPreset, dock = null,
+  startMode = "redraw", onStartMode, paint, editModels = { state: "checking" }, onPictures, onQueue, onChapterPreset, dock = null,
 }: Props) {
   const { storyId, chapterId } = target;
   // Where this browser keeps the edit's text and strengths, and the queue's name for the target.
@@ -233,6 +250,23 @@ export default function ComfyGenerate({
   const { stop, listen } = pictureQueue;
   const queue = useMemo(() => pictureQueue.jobs.filter((j) => targetKey(j) === at && j.state === "making"), [pictureQueue.jobs, at]);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Painting the part of the starting picture to redraw. Whether the drawing preset's workflow can do it, the mask
+  // editor being open, and "Change part of this…" (a new `paint.nonce`) asking for it to open.
+  const mask = paint?.mask ?? null;
+  const canMask = workflowCanMask(draw.workflow);
+  const [painting, setPainting] = useState(false);
+  const [seenNonce, setSeenNonce] = useState(paint?.nonce ?? 0);
+  if ((paint?.nonce ?? 0) !== seenNonce) {
+    setSeenNonce(paint?.nonce ?? 0);
+    if (start && canMask) setPainting(true);
+  }
+  const failPaint = () => {
+    setPainting(false);
+    setStatus({ ok: false, text: "Couldn't load the starting picture to paint on." });
+  };
+  const preview = useMaskPreview(mask);
+  const maskPercent = Math.max(1, Math.round(preview.coverage * 100));
 
   // The Pictures panel shows the jobs, newest first, among the pictures.
   useEffect(() => {
@@ -325,6 +359,7 @@ export default function ComfyGenerate({
       family: fromFamily ? familyCheck : null,
       redraw: redrawStrength,
       start,
+      mask: editing ? null : mask,
       edit: editing && chosen && tuning ? { check: chosen, instruction: instruction.trim(), strength: editStrength, fast, loras: editLoras, tuning, textEncoderDevice: editPreset?.textEncoderDevice ?? "default" } : null,
       seed: reuseSeed && loadedSeed !== null ? loadedSeed : null,
     };
@@ -340,6 +375,7 @@ export default function ComfyGenerate({
         height: comfy.height,
         denoise: denoiseOf(input),
         source: start?.source ?? null,
+        mask: maskOf(input)?.id ?? null,
         instruction: input.edit?.instruction ?? null,
         editModel: input.edit?.check.model.id ?? null,
         moment,
@@ -443,8 +479,12 @@ export default function ComfyGenerate({
       {start && (
         <div className="start-picture">
           <div className="start-picture-thumb">
-            {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
-            <img src={start.thumb} alt="Starting picture" />
+            <div className="start-picture-frame">
+              {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
+              <img src={start.thumb} alt="Starting picture" />
+              {/* eslint-disable-next-line @next/next/no-img-element -- a small picture made here */}
+              {!editing && preview.url && <img className="start-picture-mask" src={preview.url} alt="The part to redraw, tinted" />}
+            </div>
             <button type="button" className="secondary" onClick={onClearStart}>
               Clear starting picture
             </button>
@@ -476,6 +516,7 @@ export default function ComfyGenerate({
                 Edit
               </button>
             </div>
+            {editing && mask && <p className="meta" style={{ margin: 0 }}>The painted area is only used by Redraw for now.</p>}
             {editing ? (
               chosen && editPreset ? (
                 <>
@@ -547,6 +588,36 @@ export default function ComfyGenerate({
             ) : (
               <>
                 <p className="meta" style={{ margin: 0 }}>The new pictures are its size, drawn with the preset below.</p>
+                {paint &&
+                  (mask ? (
+                    <div className="start-mask">
+                      <p style={{ margin: 0 }}>Redrawing only the painted area ({maskPercent}%).</p>
+                      <div className="row start-mask-buttons">
+                        <button type="button" className="secondary" onClick={() => setPainting(true)}>
+                          Change painted area
+                        </button>
+                        <button type="button" className="secondary" onClick={() => paint.onMask(null)}>
+                          Clear painted area
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="start-mask">
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={!canMask}
+                        onClick={() => setPainting(true)}
+                        title={
+                          canMask
+                            ? "Paint the part of the picture to redraw, and leave the rest as it is"
+                            : "This drawing preset's workflow can't redraw only part of a picture. Add {{mask}} to it in Settings, or use the built-in workflow."
+                        }
+                      >
+                        Paint area
+                      </button>
+                    </div>
+                  ))}
                 {strength(redrawStrength, (value) => setRedrawFor({ preset: draw.id, value }))}
                 <p className="meta" style={{ margin: 0 }}>
                   It starts at the preset&apos;s default ({draw.denoise.toFixed(2)}), <Link href={`/settings#preset-${draw.id}`}>set in Settings</Link>.
@@ -555,6 +626,18 @@ export default function ComfyGenerate({
             )}
           </div>
         </div>
+      )}
+      {painting && start && paint && !editing && (
+        <MaskPainter
+          src={start.thumb}
+          initial={mask}
+          onDone={(area) => {
+            paint.onMask(area);
+            setPainting(false);
+          }}
+          onCancel={() => setPainting(false)}
+          onFail={failPaint}
+        />
       )}
       {!editing && (
         <div className="draw-preset">

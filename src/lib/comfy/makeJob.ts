@@ -8,7 +8,8 @@ import { buildEdit, editFilesText, editSize, type EditCheck, type EditLora, type
 import { drawFilesText, presetName, usesFamily, type DrawPreset } from "./presets";
 import { uploadStart, type StartPicture, type Uploaded } from "./startPicture";
 import { builtinSampler, describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "./workflow";
-import { cancelPrompt, queuePrompt, type Progress } from "./client";
+import { cancelPrompt, queuePrompt, uploadImage, type Progress } from "./client";
+import { renderMask, type PaintedArea } from "../mask";
 import type { JobRecord, JobTag } from "./jobTag";
 
 /** Everything a job is made with, as it was when it was asked for. */
@@ -24,6 +25,8 @@ export type JobInput = {
   family: FamilyCheck | null;
   redraw: number;
   start: StartPicture | null;
+  /** The painted part of the starting picture to redraw (Redraw only; ignored by an edit); null for the whole picture. */
+  mask?: PaintedArea | null;
   /** An edit of the starting picture by instruction, with the model to make it; null to redraw it or make new pictures. */
   edit: {
     check: EditCheck;
@@ -49,15 +52,38 @@ export const denoiseOf = (i: JobInput) => (i.edit ? (i.edit.strength < 1 ? i.edi
 export const madeWithText = (i: JobInput) =>
   i.edit ? editFilesText(i.edit.check, i.edit.fast, i.edit.loras) : drawFilesText(i.family?.files.model ?? i.draw.checkpoint, i.drawLoras);
 
+/** The mask a job really uses: only a Redraw from a starting picture has one. */
+export const maskOf = (i: JobInput) => (i.start && !i.edit ? i.mask ?? null : null);
+
 /** What has to match for a click to join the job being gathered. */
 export const sameJob = (a: JobInput) =>
   JSON.stringify([
     a.prompt, a.negative, a.moment, a.comfy.url, a.comfy.width, a.comfy.height, a.start?.key ?? null,
     a.edit ? null : [a.draw.checkpoint, a.draw.workflow, a.draw.sampler, a.drawLoras, a.draw.family, a.family?.files ?? null, a.draw.textEncoderDevice],
-    a.start && !a.edit ? a.redraw : null,
+    a.start && !a.edit ? a.redraw : null, maskOf(a)?.id ?? null,
     a.edit?.check.model.id ?? null, a.edit?.instruction ?? null,
     a.edit?.strength ?? null, a.edit?.fast ?? null, a.edit?.loras ?? null, a.edit?.tuning ?? null, a.edit?.textEncoderDevice ?? null, a.seed,
   ]);
+
+/** A mask's upload to ComfyUI, kept (by the mask object, which changes whenever the mask does) so the next job with it doesn't send it again. */
+const maskUploads = new WeakMap<PaintedArea, { url: string; name: Promise<string> }>();
+
+/** Draws the mask and uploads it next to the starting picture; its name in ComfyUI's input folder. */
+function uploadMask(comfyUrl: string, area: PaintedArea): Promise<string> {
+  const cached = maskUploads.get(area);
+  if (cached?.url === comfyUrl) return cached.name;
+  const name = (async () => {
+    const rendered = await renderMask(area, area.width, area.height);
+    if (!rendered) throw new Error("The painted area is empty. Paint the part to redraw again, or clear it.");
+    return uploadImage(comfyUrl, rendered.blob, `storytime-mask-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.png`);
+  })();
+  maskUploads.set(area, { url: comfyUrl, name });
+  // the next job tries the upload again
+  name.catch(() => {
+    if (maskUploads.get(area)?.name === name) maskUploads.delete(area);
+  });
+  return name;
+}
 
 /** A starting picture's upload to ComfyUI, kept so the next job from it doesn't send it again. */
 export type UploadCache = { current: { key: string; upload: Promise<Uploaded> } | null };
@@ -107,6 +133,9 @@ export async function queueJob(
     if (start && !describeWorkflow(base!).image) {
       throw new Error("Your workflow can't start from a picture. Clear the starting picture, or see Settings for how to allow it.");
     }
+    if (start && maskOf(input) && !describeWorkflow(base!).mask) {
+      throw new Error("Your workflow can't redraw only part of a picture. Clear the painted area, or add {{mask}} to the workflow (see Settings).");
+    }
   }
   let from: Uploaded | null = null;
   if (start) {
@@ -121,6 +150,17 @@ export async function queueJob(
       if (uploads.current === upload) uploads.current = null;
       throw e;
     }
+    onProgress({ stage: "queued", ahead: null });
+  }
+  // The painted part of a Redraw goes up beside the starting picture, and has to be its size.
+  let maskName: string | null = null;
+  const area = maskOf(input);
+  if (from && area) {
+    if (area.width !== from.width || area.height !== from.height) {
+      throw new Error("The painted area was made for a picture of another size. Paint it again, or clear it.");
+    }
+    onProgress({ stage: "uploading" });
+    maskName = await uploadMask(comfy.url, area);
     onProgress({ stage: "queued", ahead: null });
   }
   // From a picture the pictures are its size; an edit is its shape at about one megapixel.
@@ -140,7 +180,7 @@ export async function queueJob(
             loras: drawLoras,
             tuning: drawTuning(family.model, draw.sampler),
             textEncoderDevice: draw.textEncoderDevice,
-            ...(from && { image: from.name, denoise: input.redraw }),
+            ...(from && { image: from.name, denoise: input.redraw, ...(maskName && { mask: maskName }) }),
           })
       : fillWorkflow(base!, {
           prompt,
@@ -153,7 +193,7 @@ export async function queueJob(
           prefix,
           sampler: builtinSampler(draw.sampler),
           loras: drawLoras,
-          ...(from && { image: from.name, denoise: input.redraw }),
+          ...(from && { image: from.name, denoise: input.redraw, ...(maskName && { mask: maskName }) }),
         });
   const denoise = from ? denoiseOf(input) : null;
   // Everything the log records about the job. It goes to ComfyUI with the job too, so a page opened while
@@ -168,6 +208,7 @@ export async function queueJob(
     count,
     moment,
     ...(from && { source: start!.source, denoise }),
+    ...(maskName && { mask: maskName }),
     ...(edit && { instruction: edit.instruction, edit_model: edit.check.model.id }),
   };
   if (signal.aborted) throw new DOMException("Stopped", "AbortError");

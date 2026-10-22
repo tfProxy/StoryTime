@@ -6,7 +6,7 @@ import type { PictureTarget } from "@/lib/pictureTarget";
 import type { ComfyImage } from "@/lib/comfy/client";
 import PictureTile from "./PictureTile";
 import type { PictureSaver } from "./usePictureSaver";
-import { pictureCaption, picturesOf, type Picture, type StartMode } from "./pictures";
+import { pictureCaption, picturesOf, type Picture, type StartRequest } from "./pictures";
 
 const PAGE = 12;
 const SHOWN_PROMPT = 80;
@@ -33,7 +33,7 @@ type Props = {
   /** Called to bring back the prompt and settings a picture was made with. */
   onLoadPrompt: (picture: Picture) => void;
   /** Called to make new pictures starting from one of these: redrawn from the prompt, or edited by instruction. */
-  onStart: (image: ComfyImage, mode: StartMode) => void;
+  onStart: (image: ComfyImage, mode: StartRequest) => void;
   /** Why they can't be edited by instruction now, or null. */
   editBlocked: string | null;
   /** Shows everything a picture was made with. */

@@ -6,7 +6,7 @@ import { checkDrawFamilies, DRAW_NODES, familyPresetCheck, type FamilyCheck } fr
 import { checkEditModels, EDIT_NODES, type EditCheck } from "./editModels";
 import { comboOptions } from "./modelParts";
 import { usesFamily, type DrawPreset } from "./presets";
-import { BUILTIN_IMG2IMG, BUILTIN_WORKFLOW, parseWorkflow, WorkflowError } from "./workflow";
+import { BUILTIN_INPAINT, BUILTIN_WORKFLOW, parseWorkflow, WorkflowError } from "./workflow";
 
 /** What the check found for one drawing preset. */
 export type DrawCheck = {
@@ -41,7 +41,7 @@ function workflowNodes(p: DrawPreset): { nodes: string[] | null; error: string |
   if (usesFamily(p)) return { nodes: [], error: null };
   try {
     const wf = parseWorkflow(p.workflow);
-    const all = wf === BUILTIN_WORKFLOW ? { ...BUILTIN_WORKFLOW, ...BUILTIN_IMG2IMG } : wf;
+    const all = wf === BUILTIN_WORKFLOW ? { ...BUILTIN_WORKFLOW, ...BUILTIN_INPAINT } : wf;
     return { nodes: [...new Set(Object.values(all).map((n) => n.class_type))], error: null };
   } catch (e) {
     return { nodes: null, error: e instanceof WorkflowError ? e.message : String(e) };

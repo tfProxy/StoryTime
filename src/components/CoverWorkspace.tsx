@@ -9,7 +9,7 @@ import ChapterPictures from "./ChapterPictures";
 import CoverPromptPanel from "./CoverPromptPanel";
 import { usePictureWorkspace } from "./usePictureWorkspace";
 
-type Props = Omit<ComponentProps<typeof CoverPromptPanel>, "loaded" | "start" | "onClearStart" | "startMode" | "onStartMode" | "editModels" | "onPictures" | "onQueue" | "dock"> & {
+type Props = Omit<ComponentProps<typeof CoverPromptPanel>, "loaded" | "start" | "onClearStart" | "startMode" | "onStartMode" | "paint" | "editModels" | "onPictures" | "onQueue" | "dock"> & {
   /** Every chapter's title in the story, by chapter id. */
   titles: Record<string, string>;
   /** The saved cover's version, or null when there is none. */
@@ -40,6 +40,7 @@ export default function CoverWorkspace({ titles, version, made, jobs, ...panel }
           start={w.start}
           startMode={w.startMode}
           onStartMode={w.setStartMode}
+          paint={{ mask: w.mask, onMask: w.setMask, nonce: w.paintNonce }}
           editModels={w.editModels}
           onClearStart={() => w.setStart(null)}
           onPictures={w.addPictures}

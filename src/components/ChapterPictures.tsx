@@ -10,7 +10,7 @@ import PictureViewer from "./PictureViewer";
 import PictureInfo from "./PictureInfo";
 import { usePictureSaver } from "./usePictureSaver";
 import { saveSettings, useSettings } from "@/lib/settings";
-import { inView, pictureCaption, progressText, timeline, type PendingJob, type Picture, type PictureView, type PromptToLoad, type StartMode } from "./pictures";
+import { inView, pictureCaption, progressText, timeline, type PendingJob, type Picture, type PictureView, type PromptToLoad, type StartRequest } from "./pictures";
 
 const SHOWN_PROMPT = 80;
 
@@ -38,7 +38,7 @@ type Props = {
   /** The jobs being made, newest first; they show at the top, a place kept for each of their pictures. */
   pending?: PendingJob[];
   /** Called to make new pictures starting from one of these: redrawn from the prompt, or edited by instruction. */
-  onStart: (image: ComfyImage, mode: StartMode) => void;
+  onStart: (image: ComfyImage, mode: StartRequest) => void;
   /** Why pictures can't be edited by instruction now (no edit model installed), or null. */
   editBlocked?: string | null;
   /** Called to bring back the prompt and settings a picture was made with. */
