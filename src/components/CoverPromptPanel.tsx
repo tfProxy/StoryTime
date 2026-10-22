@@ -10,7 +10,7 @@ import type { CoverDraft } from "@/lib/coverPictures";
 import type { CoverSource } from "@/lib/pictureTarget";
 import type { StartPicture } from "@/lib/comfy/startPicture";
 import { drawPresetFor } from "@/lib/comfy/presets";
-import { referenceChoices, type RefPool } from "@/lib/comfy/referenceChoices";
+import { referenceChoices, restoreReference, type RefPool } from "@/lib/comfy/referenceChoices";
 import { useReferences, type RefRequest } from "./useReferences";
 import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
@@ -268,6 +268,7 @@ export default function CoverPromptPanel({
         refs={refState.refsOf("cover")}
         onRefs={(refs) => refState.set("cover", refs)}
         refChoices={choices}
+        styleRef={story.style_ref ? restoreReference(story.style_ref, { pool, comfyUrl: settings.comfy.url }) : null}
         start={start}
         startMode={startMode}
         onStartMode={onStartMode}

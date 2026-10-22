@@ -65,3 +65,16 @@ ok(r.status === 201 && (await call("GET", `/api/stories/${r.json.story_id}`)).js
 delete exported.story.style;
 r = await call("POST", "/api/stories/import", exported);
 ok(r.status === 201 && (await call("GET", `/api/stories/${r.json.story_id}`)).json.style === "", "an older export without style notes still imports");
+
+// ---- the story's style picture ----
+ok((await call("GET", `/api/stories/${story}`)).json.style_ref === null, "a new story has no style picture");
+const styleRef = { source: `saved:${story}:cover`, label: "  Cover  ", role: "style", weight: 0.65 };
+r = await call("PATCH", `/api/stories/${story}`, { style_ref: styleRef });
+s = (await call("GET", `/api/stories/${story}`)).json;
+ok(r.status === 200 && s.style_ref?.source === `saved:${story}:cover` && s.style_ref.label === "Cover" && s.style_ref.role === "style" && s.style_ref.weight === 0.65, "a style picture can be saved (label trimmed)");
+await call("PATCH", `/api/stories/${story}`, { art_style: "Ink wash" });
+ok((await call("GET", `/api/stories/${story}`)).json.style_ref?.weight === 0.65, "saving other fields leaves it");
+ok((await call("PATCH", `/api/stories/${story}`, { style_ref: { ...styleRef, role: "character" } })).status === 400, "only the role style is accepted");
+ok((await call("PATCH", `/api/stories/${story}`, { style_ref: { ...styleRef, weight: 1.5 } })).status === 400, "…and a strength from 0 to 1");
+r = await call("PATCH", `/api/stories/${story}`, { style_ref: null });
+ok(r.status === 200 && (await call("GET", `/api/stories/${story}`)).json.style_ref === null, "it can be removed");

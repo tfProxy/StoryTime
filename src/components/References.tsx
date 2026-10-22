@@ -22,12 +22,14 @@ type PickerProps = {
   /** The sources already chosen, which can't be chosen again. */
   chosen: string[];
   full: boolean;
+  /** Leaves the Upload tab out (a picture that must be kept can't be an upload), and words the dialog for a style picture. */
+  noUpload?: boolean;
   onPick: (picture: StartPicture, label: string, role?: ReferenceRole) => void;
   onClose: () => void;
 };
 
 /** The picker: a modal <dialog> with the pictures that suit this moment, the others on offer, the codex's, and an upload. */
-function ReferencePicker({ suggested, pictures, codex, chosen, full, onPick, onClose }: PickerProps) {
+export function ReferencePicker({ suggested, pictures, codex, chosen, full, noUpload = false, onPick, onClose }: PickerProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [tab, setTab] = useState<Tab>(suggested.length > 0 ? "suggested" : "pictures");
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +96,7 @@ function ReferencePicker({ suggested, pictures, codex, chosen, full, onPick, onC
     { id: "suggested", name: "Suggested" },
     { id: "pictures", name: "Pictures" },
     { id: "codex", name: "Codex" },
-    { id: "upload", name: "Upload" },
+    ...(noUpload ? [] : [{ id: "upload" as Tab, name: "Upload" }]),
   ];
   return (
     <dialog
@@ -160,15 +162,18 @@ type Props = {
   unavailable: string | null;
   /** On the Instruct tab: the edit model's name and how many references it uses; the rest are left out. */
   editLimit: { model: string; count: number } | null;
+  /** The story's style picture, shown as a fixed first row with a switch; it counts toward the limit while it is on. */
+  story?: { ref: Reference; on: boolean; onChange: (on: boolean) => void } | null;
 };
 
 /**
  * The reference pictures of the next picture: a thumbnail for each with a label, what it shows, how strongly
  * to follow it and a button to take it out, and an Add reference button that opens the picker.
  */
-export default function References({ refs, onChange, suggested, pictures, codex, unavailable, editLimit }: Props) {
+export default function References({ refs, onChange, suggested, pictures, codex, unavailable, editLimit, story = null }: Props) {
   const [picking, setPicking] = useState(false);
-  const full = refs.length >= MAX_REFERENCES;
+  const styleShown = story !== null && !editLimit;
+  const full = refs.length + (styleShown && story.on ? 1 : 0) >= MAX_REFERENCES;
   const change = (key: string, patch: Partial<Reference>) => onChange(refs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
   if (unavailable) {
@@ -184,11 +189,25 @@ export default function References({ refs, onChange, suggested, pictures, codex,
   return (
     <section className="ai-panel references-panel" id="picture-references">
       <h2>References</h2>
-      {refs.length === 0 ? (
+      {styleShown && (
+        <div className="reference-item story-style" aria-label="Story style picture">
+          {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
+          <img className="reference-thumb" src={story.ref.thumb} alt="Story style picture" style={story.on ? undefined : { opacity: 0.4 }} />
+          <div className="reference-fields">
+            <strong>Story style</strong>
+            <span className="meta">Style, strength {story.ref.weight.toFixed(2)} (changed on the story&apos;s details page)</span>
+            <label className="row" style={{ gap: "0.4rem" }}>
+              <input type="checkbox" checked={story.on} onChange={(e) => story.onChange(e.target.checked)} style={{ width: "auto" }} />
+              Use the story&apos;s style picture
+            </label>
+          </div>
+        </div>
+      )}
+      {refs.length === 0 && !styleShown ? (
         <p className="meta" style={{ margin: 0 }}>
           Pictures to keep a character, item, place or style the same.
         </p>
-      ) : (
+      ) : refs.length > 0 ? (
         <ul className="reference-list" aria-label="Reference pictures">
           {refs.map((r, i) => (
             <li key={r.key} className="reference-item">
@@ -235,7 +254,7 @@ export default function References({ refs, onChange, suggested, pictures, codex,
             </li>
           ))}
         </ul>
-      )}
+      ) : null}
       {editLimit && refs.length > editLimit.count && (
         <p className="meta" style={{ margin: 0 }}>
           {editLimit.model} uses the first {editLimit.count} reference{editLimit.count === 1 ? "" : "s"} of an instruction; the others are left out.

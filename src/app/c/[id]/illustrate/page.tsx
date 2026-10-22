@@ -53,6 +53,7 @@ export default async function IllustratePage({ params }: { params: Promise<{ id:
           premise: story.premise,
           art_style: story.art_style,
           draw_preset: story.draw_preset,
+          style_ref: story.style_ref,
         }}
         chapterPreset={getChapterPreset(chapter.id)}
         path={path.map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary }))}

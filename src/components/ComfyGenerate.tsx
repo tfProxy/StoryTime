@@ -21,7 +21,7 @@ import type { StartPicture } from "@/lib/comfy/startPicture";
 import { readEdit, readRedraw, stateKey, writeEdit, writeRedraw } from "@/lib/comfy/editingState";
 import { listCheckpoints } from "@/lib/comfy/client";
 import { denoiseOf, madeWithText, maskOf, refsOf, type JobInput } from "@/lib/comfy/makeJob";
-import { storedOf, type Reference } from "@/lib/comfy/references";
+import { MAX_REFERENCES, storedOf, type Reference } from "@/lib/comfy/references";
 import { editRefLimit } from "@/lib/comfy/makeJob";
 import { ipAdapterProblem } from "@/lib/comfy/ipAdapter";
 import type { RefChoice } from "@/lib/comfy/referenceChoices";
@@ -160,7 +160,19 @@ type Props = {
   refs?: Reference[];
   onRefs?: (refs: Reference[]) => void;
   refChoices?: { suggested: RefChoice[]; pictures: RefChoice[]; codex: RefChoice[] };
+  /** The story's style picture, when it has one and it can be found: the References section shows it first, and it is sent with each drawing job (not an edit) unless switched off. */
+  styleRef?: Reference | null;
 };
+
+/** Whether the story's style picture is switched off for a chapter's moment (or a cover or codex page), kept in this browser. */
+const styleOffKey = (at: string, moment: string) => `storytime:style-ref-off:${at}:${moment}`;
+function readStyleOff(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
 
 /** Whether a drawing preset's workflow ("" is the built-in one) can take reference pictures. */
 function workflowCanRefs(workflow: string): boolean {
@@ -190,7 +202,7 @@ export type PaintProps = { mask: PaintedArea | null; onMask: (area: PaintedArea 
  */
 export default function ComfyGenerate({
   target, storyPreset, chapterPreset: savedPreset, moment, prompt: boxPrompt, negative: boxNegative, fixedPrompt = "", loaded = null, start = null, onClearStart,
-  startMode = "redraw", onStartMode, paint, editModels = { state: "checking" }, onPictures, onQueue, onChapterPreset, dock = null, refs, onRefs, refChoices,
+  startMode = "redraw", onStartMode, paint, editModels = { state: "checking" }, onPictures, onQueue, onChapterPreset, dock = null, refs, onRefs, refChoices, styleRef = null,
 }: Props) {
   // The target is rebuilt each render, so what effects depend on is its ids.
   const { storyId } = target;
@@ -328,7 +340,13 @@ export default function ComfyGenerate({
         : editModels.state === "checking"
           ? null
           : ipAdapterProblem(drawPresetIpAdapter(editModels, draw));
-  const sentRefs = refProblem ? undefined : refs;
+  // The story's style picture goes first, counts toward the limit, and is left out of an edit or when it is switched off.
+  const styleKey = styleOffKey(at, moment);
+  const [styleOff, setStyleOff] = useState<{ key: string; off: boolean }>({ key: "", off: false });
+  if (styleOff.key !== styleKey) setStyleOff({ key: styleKey, off: readStyleOff(styleKey) });
+  const styleOn = styleRef !== null && !styleOff.off;
+  const withStyle = styleOn && !editing && !(refs ?? []).some((r) => r.source === styleRef.source);
+  const sentRefs = refProblem ? undefined : withStyle && styleRef ? [styleRef, ...(refs ?? [])].slice(0, MAX_REFERENCES) : refs;
   useEffect(() => {
     if (!comfy.url) return;
     let live = true;
@@ -520,6 +538,23 @@ export default function ComfyGenerate({
         suggested={refChoices?.suggested ?? []}
         pictures={refChoices?.pictures ?? []}
         codex={refChoices?.codex ?? []}
+        story={
+          styleRef
+            ? {
+                ref: styleRef,
+                on: styleOn,
+                onChange: (on) => {
+                  setStyleOff({ key: styleKey, off: !on });
+                  try {
+                    if (on) localStorage.removeItem(styleKey);
+                    else localStorage.setItem(styleKey, "1");
+                  } catch {
+                    // Not kept; the switch still works for this visit.
+                  }
+                },
+              }
+            : null
+        }
         unavailable={refProblem}
         editLimit={editing && chosen ? { model: chosen.model.name, count: editRefLimit(chosen.model.id) } : null}
       />

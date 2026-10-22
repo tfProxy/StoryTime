@@ -21,7 +21,7 @@ import { EMPTY_BOXES, usePictureDraft } from "./usePictureDraft";
 import { unsetPictureSettings, type StoryPictures } from "./StoryPictureSettings";
 import { drawPresetFor, presetName } from "@/lib/comfy/presets";
 import { chapterTarget } from "@/lib/pictureTarget";
-import { referenceChoices, type RefPool } from "@/lib/comfy/referenceChoices";
+import { referenceChoices, restoreReference, type RefPool } from "@/lib/comfy/referenceChoices";
 import { useReferences, type RefRequest } from "./useReferences";
 
 const MOMENT_NAMES: Record<ImageMoment, string> = { start: "Chapter Start", end: "Chapter End" };
@@ -320,6 +320,7 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
         refs={refState.refsOf(moment)}
         onRefs={(refs) => refState.set(moment, refs)}
         refChoices={choices}
+        styleRef={story.style_ref ? restoreReference(story.style_ref, { pool, comfyUrl: settings.comfy.url }) : null}
         start={start}
         startMode={startMode}
         onStartMode={onStartMode}

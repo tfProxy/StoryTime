@@ -456,6 +456,11 @@ export const MIGRATIONS: string[] = [
     PRIMARY KEY (story_id, entry_id)
   );
   `,
+  // 26: the story's style picture, sent as a style reference with every picture job unless left out there:
+  // a JSON {source, label, role: "style", weight}, null for none.
+  `
+  ALTER TABLE stories ADD COLUMN style_ref TEXT;
+  `,
 ];
 
 function open(): Database.Database {

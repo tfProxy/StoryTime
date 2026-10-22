@@ -51,6 +51,7 @@ export default async function CoverPage({ params }: { params: Promise<{ id: stri
           premise: story.premise,
           art_style: story.art_style,
           draw_preset: story.draw_preset,
+          style_ref: story.style_ref,
         }}
         coverPreset={getCoverPreset(story.id)}
         pool={coverRefPool(story.id, story.cover_version)}

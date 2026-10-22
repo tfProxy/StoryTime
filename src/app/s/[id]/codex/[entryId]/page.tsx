@@ -37,6 +37,7 @@ export default async function CodexPicturePage({ params, searchParams }: { param
           premise: story.premise,
           art_style: story.art_style,
           draw_preset: story.draw_preset,
+          style_ref: story.style_ref,
         }}
         entry={{ id: entryId, name: entry.name, type: entry.type, aliases: entry.aliases, content: entry.content }}
         asOf={from?.title ?? null}

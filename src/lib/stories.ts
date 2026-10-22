@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { db, newId } from "./db";
 import { LIMITS } from "./limits";
+import type { StoredReference } from "./comfy/references";
 
 export type Story = {
   id: string;
@@ -16,6 +17,8 @@ export type Story = {
   checkpoint: string;
   /** The drawing preset (an id from Settings) its chapters' pictures use unless a chapter chooses another; null for the first preset. */
   draw_preset: string | null;
+  /** The story's style picture (role "style"), added to its picture jobs as a style reference; null for none. */
+  style_ref: StoredReference | null;
   root_chapter_id: string | null;
   created_at: number;
   /** When the cover image was last set (it changes with every upload); null when there is no cover. */
@@ -119,7 +122,23 @@ export const EditStorySchema = z.object({
   image_prompt_style: z.enum(["tags", "natural"]).nullable().optional(),
   checkpoint: text(LIMITS.label).optional(),
   draw_preset: z.string().trim().min(1).max(100).nullable().optional(),
+  style_ref: z
+    .object({ source: z.string().trim().min(1).max(300), label: z.string().trim().max(40), role: z.literal("style"), weight: z.number().min(0).max(1) })
+    .nullable()
+    .optional(),
 });
+
+/** A story row as read from the database: its style picture is JSON text. */
+function withStyleRef<T extends { style_ref: unknown }>(row: T): Omit<T, "style_ref"> & { style_ref: StoredReference | null } {
+  let ref: StoredReference | null = null;
+  try {
+    const v = typeof row.style_ref === "string" ? JSON.parse(row.style_ref) : null;
+    if (v && typeof v.source === "string" && typeof v.weight === "number") ref = { source: v.source, label: String(v.label ?? ""), role: "style", weight: v.weight };
+  } catch {
+    ref = null;
+  }
+  return { ...row, style_ref: ref };
+}
 
 /** A chapter's own drawing preset (an id from Settings), or null to use its story's. */
 export const ChapterPresetSchema = z.object({ draw_preset: z.string().trim().min(1).max(100).nullable() });
@@ -161,22 +180,24 @@ export class PostError extends Error {
 const now = () => Date.now();
 
 export function listStories(): (Story & { chapter_count: number })[] {
-  return db()
+  const rows = db()
     .prepare(
-      `SELECT s.id, s.title, s.premise, s.style, s.art_style, s.image_prompt_style, s.checkpoint, s.draw_preset, s.root_chapter_id, s.created_at, s.cover_updated_at AS cover_version,
+      `SELECT s.id, s.title, s.premise, s.style, s.art_style, s.image_prompt_style, s.checkpoint, s.draw_preset, s.style_ref, s.root_chapter_id, s.created_at, s.cover_updated_at AS cover_version,
               (SELECT COUNT(*) FROM chapters c WHERE c.story_id = s.id) AS chapter_count
          FROM stories s ORDER BY s.created_at DESC`,
     )
-    .all() as (Story & { chapter_count: number })[];
+    .all() as (Omit<Story, "style_ref"> & { style_ref: string | null; chapter_count: number })[];
+  return rows.map(withStyleRef) as (Story & { chapter_count: number })[];
 }
 
 export function getStory(id: string): Story | undefined {
-  return db()
+  const row = db()
     .prepare(
-      `SELECT id, title, premise, style, art_style, image_prompt_style, checkpoint, draw_preset, root_chapter_id, created_at, cover_updated_at AS cover_version
+      `SELECT id, title, premise, style, art_style, image_prompt_style, checkpoint, draw_preset, style_ref, root_chapter_id, created_at, cover_updated_at AS cover_version
          FROM stories WHERE id = ?`,
     )
-    .get(id) as Story | undefined;
+    .get(id) as (Omit<Story, "style_ref"> & { style_ref: string | null }) | undefined;
+  return row && (withStyleRef(row) as Story);
 }
 
 const CHAPTER_COLS = `c.id, c.story_id, c.parent_choice_id, c.depth, c.title, c.body, c.summary, c.path_summary,
@@ -513,13 +534,15 @@ export function editStory(storyId: string, input: z.infer<typeof EditStorySchema
     const story = getStory(storyId);
     if (!story) throw new PostError("That story does not exist", 404);
     db()
-      .prepare(`UPDATE stories SET title = ?, premise = ?, style = ?, art_style = ?, image_prompt_style = ?, checkpoint = ?, draw_preset = ? WHERE id = ?`)
+      .prepare(`UPDATE stories SET title = ?, premise = ?, style = ?, art_style = ?, image_prompt_style = ?, checkpoint = ?, draw_preset = ?, style_ref = ? WHERE id = ?`)
       .run(
         input.title ?? story.title, input.premise ?? story.premise, input.style ?? story.style,
         input.art_style ?? story.art_style,
         input.image_prompt_style === undefined ? story.image_prompt_style : input.image_prompt_style,
         input.checkpoint ?? story.checkpoint,
-        input.draw_preset === undefined ? story.draw_preset : input.draw_preset, storyId,
+        input.draw_preset === undefined ? story.draw_preset : input.draw_preset,
+        (input.style_ref === undefined ? story.style_ref : input.style_ref) === null ? null : JSON.stringify(input.style_ref === undefined ? story.style_ref : input.style_ref),
+        storyId,
       );
     return { ok: true as const };
   })();

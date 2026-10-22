@@ -55,7 +55,7 @@ Give a picture job up to four reference pictures (a character, an item, a place,
    - A codex picture page (`kind: "codex"` target): the prompt written from the entry's text as of a chapter, aimed at a clear full-body picture on a plain background; saving it asks which chapter it starts from.
    - The Codex panel shows each entry's picture and links to its page. The picker gets a Codex tab, and entries whose name or aliases are in the prompt or scene are suggested with their picture as of this chapter.
    - Instruct prompts written by the AI are told which reference is which ("image 2 is Jim").
-4. **A story style picture** (a story setting), added to every job in style-transfer mode, with a switch to leave it out.
+4. **A story style picture** (a story setting), added to every job in style-transfer mode, with a switch to leave it out. (Done: `stories.style_ref`, migration 26, chosen on the details page's Pictures card and shown as the first row of the References section on the Illustrate, cover and codex pages with a Use the story's style picture box; not yet tried on a real ComfyUI. Not done: Use as story style picture in a picture's ☰ menu, the JSON export.)
 5. **Later:** a region per character for two-character scenes (IP-Adapter `attn_mask`), the face adapter, Flux Redux for the Flux family.
 
 **Check on the real ComfyUI** (when the owner is at it, before relying on stage 2): install `ComfyUI_IPAdapter_plus` and the files above, then for an Illustrious or NoobAI checkpoint and a furry merge: a character picture as a reference for a new scene, a header as a reference for its footer, and a style reference. Note the strengths that work and the time each reference adds, and put better defaults in.

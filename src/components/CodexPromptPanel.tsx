@@ -10,7 +10,7 @@ import type { CodexDraft } from "@/lib/codexPictures";
 import { codexTarget } from "@/lib/pictureTarget";
 import type { StartPicture } from "@/lib/comfy/startPicture";
 import { drawPresetFor } from "@/lib/comfy/presets";
-import { referenceChoices, type RefPool } from "@/lib/comfy/referenceChoices";
+import { referenceChoices, restoreReference, type RefPool } from "@/lib/comfy/referenceChoices";
 import { useReferences, type RefRequest } from "./useReferences";
 import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
@@ -174,6 +174,7 @@ export default function CodexPromptPanel({
         refs={refState.refsOf("codex")}
         onRefs={(refs) => refState.set("codex", refs)}
         refChoices={choices}
+        styleRef={story.style_ref ? restoreReference(story.style_ref, { pool, comfyUrl: settings.comfy.url }) : null}
         start={start}
         startMode={startMode}
         onStartMode={onStartMode}
