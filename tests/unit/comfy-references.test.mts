@@ -41,6 +41,8 @@ ok(JSON.stringify(first.model) === '["4",0]' && JSON.stringify(second.model) ===
 ok(JSON.stringify(plain["3"].inputs.model) === '["ref-2",0]', "the sampler takes the end of the chain");
 ok(first.weight === 0.7 && first.weight_type === "linear" && first.end_at === 0.5 && first.start_at === 0 && first.combine_embeds === "concat" && first.embeds_scaling === "V only", "a character: linear, up to 0.5, concat, V only");
 ok(second.weight === 0.8 && second.weight_type === "style transfer" && second.end_at === 1, "a style: style transfer, to the end");
+const tuned = nodes(withReferences(BUILTIN_WORKFLOW, refs, { ...files, mode: "weakOutput", end: 0.3 }), "IPAdapterAdvanced").map(([, n]) => n.inputs);
+ok(tuned[0].weight_type === "weak output" && tuned[0].end_at === 0.3 && tuned[1].weight_type === "style transfer" && tuned[1].end_at === 1, "the preset's mode and stop point apply to a character, never to a style");
 ok(JSON.stringify(first.ipadapter) === '["ref-loader",0]' && JSON.stringify(first.clip_vision) === '["ref-clip-vision",0]' && JSON.stringify(first.image) === '["ref-1-image",0]', "each adapter is linked to the loaders and its image");
 ok(JSON.stringify(plain["ref-1-image"].inputs) === '{"image":"storytime-ref-a.png"}', "the image is the uploaded name");
 ok(withReferences(BUILTIN_WORKFLOW, [], files)["3"].inputs.model !== undefined && Object.keys(withReferences(BUILTIN_WORKFLOW, [], files)).length === Object.keys(BUILTIN_WORKFLOW).length, "no references changes nothing");

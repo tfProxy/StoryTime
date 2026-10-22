@@ -13,7 +13,7 @@ export const BASE_NAMES: Record<ModelBase, string> = { sdxl: "SDXL", illustrious
 /** The base a checkpoint file's name suggests; SDXL when it says nothing. */
 export function guessBase(checkpoint: string): ModelBase {
   if (/noob/i.test(checkpoint)) return "noobai";
-  if (/illustrious|illu\b|ilxl/i.test(checkpoint)) return "illustrious";
+  if (/illustrious|illu\b|ilxl|(^|[^a-z])il(v\d|_|-|\.|$)/i.test(checkpoint)) return "illustrious";
   if (/pony|pdxl/i.test(checkpoint)) return "pony";
   return "sdxl";
 }
@@ -91,10 +91,25 @@ export type RefInput = { image: string; role: "character" | "item" | "place" | "
 const isLink = (v: unknown): v is [string, number] => Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "number";
 
 /**
- * How far through the steps a character, item or place reference is followed. Stopping halfway leaves the
- * rest to the model, so its own look comes back instead of the reference's drawing style taking over.
+ * How a character, item or place reference is followed, by IPAdapterAdvanced's `weight_type`: which layers of the
+ * model see it. Linear passes everything, the look included; the "weak" ones hold some layers back.
+ * Which one keeps a character without its drawing style depends on the model, so the preset lets you try them.
  */
-const NON_STYLE_END = 0.5;
+export const REF_MODES = {
+  linear: { label: "Everything (the default)", weightType: "linear" },
+  weakOutput: { label: "Weaker late layers", weightType: "weak output" },
+  weakInput: { label: "Weaker early layers", weightType: "weak input" },
+  weakMiddle: { label: "Weaker middle layers", weightType: "weak middle" },
+  easeInOut: { label: "Fade in and out across layers", weightType: "ease in-out" },
+} as const;
+export const REF_MODE_IDS = Object.keys(REF_MODES) as [keyof typeof REF_MODES, ...(keyof typeof REF_MODES)[]];
+export type RefMode = keyof typeof REF_MODES;
+
+/**
+ * How far through the steps a character, item or place reference is followed, unless the preset says. Stopping
+ * halfway leaves the rest to the model, so its own look comes back instead of the reference's style taking over.
+ */
+export const DEFAULT_REF_END = 0.5;
 
 /** The samplers whose model the references are put in front of. */
 const MODEL_SAMPLERS = /^(KSampler|KSamplerAdvanced)$/;
@@ -105,7 +120,7 @@ const MODEL_SAMPLERS = /^(KSampler|KSamplerAdvanced)$/;
  * Vision model's file names. A style reference is followed as "style transfer" for the whole run; the others
  * stop at halfway so the model and the prompt shape the last steps. Throws an Error when no sampler has a model to wrap.
  */
-export function withReferences(workflow: Workflow, refs: RefInput[], files: { ipadapter: string; clipVision: string }): Workflow {
+export function withReferences(workflow: Workflow, refs: RefInput[], files: { ipadapter: string; clipVision: string; mode?: RefMode; end?: number }): Workflow {
   const out: Workflow = JSON.parse(JSON.stringify(workflow));
   if (refs.length === 0) return out;
   const samplers = Object.values(out).filter((n) => MODEL_SAMPLERS.test(n.class_type) && isLink(n.inputs.model));
@@ -125,10 +140,10 @@ export function withReferences(workflow: Workflow, refs: RefInput[], files: { ip
         image: [`ref-${n}-image`, 0],
         clip_vision: ["ref-clip-vision", 0],
         weight: r.weight,
-        weight_type: style ? "style transfer" : "linear",
+        weight_type: style ? "style transfer" : REF_MODES[files.mode ?? "linear"].weightType,
         combine_embeds: "concat",
         start_at: 0,
-        end_at: style ? 1 : NON_STYLE_END,
+        end_at: style ? 1 : files.end ?? DEFAULT_REF_END,
         embeds_scaling: "V only",
       },
     };

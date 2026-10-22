@@ -7,6 +7,7 @@ import { parseSettings } from "../../src/lib/settingsSchema.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 
+ok(guessBase("novaFurryXL_ilV180A.safetensors") === "illustrious" && guessBase("model_il_v2.safetensors") === "illustrious" && guessBase("civil.safetensors") === "sdxl", "Illustrious from an 'il' in the name, such as _ilV180, but not inside a word");
 ok(guessBase("noobaiXL_vpred10.safetensors") === "noobai" && guessBase("furry/NoobAI-v1.safetensors") === "noobai", "NoobAI checkpoints are guessed from 'noob'");
 ok(guessBase("illustriousXL_v10.safetensors") === "illustrious" && guessBase("waiIllu.safetensors") === "illustrious" && guessBase("cool_ilxl.safetensors") === "illustrious", "Illustrious from 'illustrious', 'illu' and 'ilxl'");
 ok(guessBase("ponyDiffusionV6XL.safetensors") === "pony" && guessBase("autismPDXL.safetensors") === "pony", "Pony from 'pony' and 'pdxl'");

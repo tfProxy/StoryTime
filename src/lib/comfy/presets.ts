@@ -3,7 +3,7 @@
 // drawing preset on its details page, and a chapter can choose another on the Illustrate page. Pure code.
 import { drawModel, FAMILY_NAMES, type DrawFamily, type DrawTuning } from "./drawModels";
 import { EDIT_MODEL_IDS, type EditModelId, type EditTuning, type TextEncoderDevice } from "./editModels";
-import type { ModelBase } from "./ipAdapter";
+import type { ModelBase, RefMode } from "./ipAdapter";
 
 /** A LoRA in a preset's stack: its file in ComfyUI's `loras` folder, its strength, and whether it is used. */
 export type LoraSetting = { name: string; strength: number; on: boolean };
@@ -46,6 +46,9 @@ export type DrawPreset = {
   checkpoint: string;
   /** What the checkpoint is built on, which picks the IP-Adapter files for reference pictures; missing means guessed from the checkpoint's name (ipAdapter.ts). Only for the "checkpoint" family. */
   base?: ModelBase;
+  /** How character, item and place references are followed (ipAdapter.ts `REF_MODES`, default "linear") and where in the steps they stop (default `DEFAULT_REF_END`). Only for the "checkpoint" family. */
+  refMode?: RefMode;
+  refEnd?: number;
   /** The other families' files chosen for the model's parts, by part key (see drawModels.ts); a part not here is found by its name. */
   files: Record<string, string>;
   /** The other families' text encoder loader: "cpu" keeps it in system memory so the graphics card has room for the model. */

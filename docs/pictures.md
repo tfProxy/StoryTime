@@ -155,8 +155,8 @@ references yet; this is the setup for when they can.)
    or `git clone` <https://github.com/cubiq/ComfyUI_IPAdapter_plus> into `ComfyUI/custom_nodes`, then
    restart ComfyUI. Until you do, the check says "install ComfyUI_IPAdapter_plus through ComfyUI-Manager".
 2. **Choose the preset's Model base** (Settings › Drawing, on the preset's card). It decides which files are
-   used. Left on "Guess from the file name", a name with "noob" is NoobAI, one with "illustrious", "illu" or
-   "ilxl" is Illustrious, one with "pony" or "pdxl" is Pony, and anything else is SDXL. Choose it yourself
+   used. Left on "Guess from the file name", a name with "noob" is NoobAI, one with "illustrious", "illu",
+   "ilxl" or "_il" followed by a version (`novaFurryXL_ilV180A`) is Illustrious, one with "pony" or "pdxl" is Pony, and anything else is SDXL. Choose it yourself
    when the name doesn't say.
 3. **Download the two files** for that base. Create the folders if they aren't there, then restart ComfyUI.
 
@@ -177,6 +177,20 @@ Where to get them:
 Pony works less well: the SDXL adapter wasn't trained on Pony's way of describing pictures, so a Pony
 checkpoint follows a reference less closely than a NoobAI or Illustrious one does. The files are the same
 as for SDXL, so it is set up in the same way.
+
+### When a reference pulls in its drawing style
+
+A character, item or place reference is followed up to halfway through the steps, at a strength you set
+per reference (a lower strength pulls less). If the reference still drags its look into the picture, two
+settings on the drawing preset's card (Settings › Drawing) change how:
+
+- **Reference mode** chooses which layers of the model see the reference. "Everything" is the default. The
+  "weaker" modes hold some layers back; which one keeps a character without its style depends on the model,
+  so try them one at a time with the same prompt and seed.
+- **Reference stops at** is how far through the steps the reference is followed. Earlier lets the model's
+  own style take over sooner.
+
+Style references ignore both and always run to the end.
 
 ## Edit models in ComfyUI
 

@@ -71,7 +71,7 @@ export const maskOf = (i: JobInput) => (i.start && !i.edit ? i.mask ?? null : nu
 export const sameJob = (a: JobInput) =>
   JSON.stringify([
     a.prompt, a.negative, a.moment, a.comfy.url, a.comfy.width, a.comfy.height, a.start?.key ?? null,
-    a.edit ? null : [a.draw.checkpoint, a.draw.workflow, a.draw.sampler, a.drawLoras, a.draw.family, a.family?.files ?? null, a.draw.textEncoderDevice],
+    a.edit ? null : [a.draw.checkpoint, a.draw.workflow, a.draw.sampler, a.drawLoras, a.draw.family, a.family?.files ?? null, a.draw.textEncoderDevice, a.draw.refMode ?? null, a.draw.refEnd ?? null],
     a.start && !a.edit ? a.redraw : null, maskOf(a)?.id ?? null,
     a.edit?.check.model.id ?? null, a.edit?.instruction ?? null,
     a.edit?.strength ?? null, a.edit?.fast ?? null, a.edit?.loras ?? null, a.edit?.tuning ?? null, a.edit?.textEncoderDevice ?? null, a.seed,
@@ -227,7 +227,7 @@ export async function queueJob(
           loras: drawLoras,
           ...(refs.length > 0 && {
             refs: refs.map((r, i) => ({ image: refNames[i], role: r.role, weight: r.weight })),
-            ipAdapter: { ipadapter: input.ipAdapter!.files.ipAdapter, clipVision: input.ipAdapter!.files.clipVision },
+            ipAdapter: { ipadapter: input.ipAdapter!.files.ipAdapter, clipVision: input.ipAdapter!.files.clipVision, mode: draw.refMode, end: draw.refEnd },
           }),
           ...(from && { image: from.name, denoise: input.redraw, ...(maskName && { mask: maskName }) }),
         });

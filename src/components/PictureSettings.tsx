@@ -7,7 +7,7 @@ import { checkComfy, type ComfyCheck, type DrawCheck } from "@/lib/comfy/check";
 import { listCheckpoints } from "@/lib/comfy/client";
 import { DRAW_FAMILIES, drawModel, drawTuning, FAMILY_NAMES, familyPresetCheck, familyProblems, ggufNeeded, type DrawFamily, type DrawModel, type FamilyCheck } from "@/lib/comfy/drawModels";
 import { downloadWorkflow, drawPresetWorkflow, editPresetWorkflow, SAMPLE_IMAGE } from "@/lib/comfy/exportWorkflow";
-import { BASE_NAMES, guessBase, IPADAPTER_NODES, MODEL_BASES, type IpAdapterCheck, type ModelBase } from "@/lib/comfy/ipAdapter";
+import { BASE_NAMES, DEFAULT_REF_END, guessBase, IPADAPTER_NODES, MODEL_BASES, REF_MODE_IDS, REF_MODES, type IpAdapterCheck, type ModelBase, type RefMode } from "@/lib/comfy/ipAdapter";
 import { editModel, editPresetCheck, editTuning, isGguf, lightningSteps, presetCheck, type EditModel } from "@/lib/comfy/editModels";
 import {
   drawPresetSummary,
@@ -603,6 +603,40 @@ function DrawPresetFields({ preset, setup, onChange }: { preset: DrawPreset; set
           </select>
           <span className="meta">What the checkpoint is built on. It picks the IP-Adapter files used for reference pictures.</span>
         </label>
+      )}
+      {preset.family === "checkpoint" && (
+        <>
+          <label>
+            Reference mode
+            <select
+              aria-label="Reference mode"
+              value={preset.refMode ?? "linear"}
+              onChange={(e) => onChange({ refMode: e.target.value === "linear" ? undefined : (e.target.value as RefMode) })}
+            >
+              {REF_MODE_IDS.map((m) => (
+                <option key={m} value={m}>
+                  {REF_MODES[m].label}
+                </option>
+              ))}
+            </select>
+            <span className="meta">
+              Which of the model&apos;s layers see a character, item or place reference. If a reference drags its drawing style into the picture, try the others; which one works depends on the model.
+            </span>
+          </label>
+          <label>
+            Reference stops at {Math.round((preset.refEnd ?? DEFAULT_REF_END) * 100)}% of the steps
+            <input
+              type="range"
+              aria-label="Reference stops at"
+              min={0.1}
+              max={1}
+              step={0.05}
+              value={preset.refEnd ?? DEFAULT_REF_END}
+              onChange={(e) => onChange({ refEnd: Number(e.target.value) === DEFAULT_REF_END ? undefined : Number(e.target.value) })}
+            />
+            <span className="meta">Earlier lets the model&apos;s own style take over sooner; style references always run to the end.</span>
+          </label>
+        </>
       )}
       {model && <FamilyFiles preset={preset} model={model} family={family} setup={setup} onChange={onChange} />}
       <label>

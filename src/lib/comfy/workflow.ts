@@ -22,7 +22,7 @@
 // Either way, the saved pictures' file name prefix (`filename_prefix`) is set when it is "StoryTime",
 // the built-in workflow's prefix, or contains "{{prefix}}". Any other prefix is left alone.
 
-import { withReferences, type RefInput } from "./ipAdapter";
+import { withReferences, type RefInput, type RefMode } from "./ipAdapter";
 
 export type WorkflowNode = { class_type: string; inputs: Record<string, unknown>; _meta?: unknown };
 export type Workflow = Record<string, WorkflowNode>;
@@ -49,8 +49,8 @@ export type PictureParams = {
   loras?: { name: string; strength: number }[];
   /** Reference pictures (already in ComfyUI's input folder), put in front of the sampler's model with IP-Adapter; needs `ipAdapter`. */
   refs?: RefInput[];
-  /** The IP-Adapter and CLIP Vision file names to use for `refs`. */
-  ipAdapter?: { ipadapter: string; clipVision: string };
+  /** The IP-Adapter and CLIP Vision file names to use for `refs`, and how non-style references are followed (see `withReferences`). */
+  ipAdapter?: { ipadapter: string; clipVision: string; mode?: RefMode; end?: number };
 };
 
 /** What a sampler runs with: its steps, CFG, sampler and scheduler (names as ComfyUI's KSampler lists them). */

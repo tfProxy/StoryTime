@@ -79,6 +79,14 @@ try {
   ok((await block.innerText()).includes("Reference pictures (IP-Adapter): ready"), "guessed NoobAI, with its files installed: ready");
   ok(await block.locator("li.ok", { hasText: "Reference pictures (IP-Adapter)" }).count() === 1, "…shown as a tick");
 
+  // ---- how references are followed ----
+  await card.getByLabel("Reference mode").selectOption("weakOutput");
+  await card.getByLabel("Reference stops at").fill("0.3");
+  ok(await until(async () => { const p = (await settingsNow()).drawPresets.find((x) => x.id === "noob"); return p?.refMode === "weakOutput" && p?.refEnd === 0.3; }, "the reference mode to be saved"), "the reference mode and stop point are saved in the preset");
+  await card.getByLabel("Reference mode").selectOption("linear");
+  await card.getByLabel("Reference stops at").fill("0.5");
+  ok(await until(async () => { const p = (await settingsNow()).drawPresets.find((x) => x.id === "noob"); return p?.refMode === undefined && p?.refEnd === undefined; }, "the defaults to be cleared"), "going back to the defaults clears them");
+
   // ---- export the preset's workflow ----
   const exportButton = card.getByRole("button", { name: "Export workflow" });
   const [download] = await Promise.all([page.waitForEvent("download"), exportButton.click()]);
