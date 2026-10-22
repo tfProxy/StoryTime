@@ -105,7 +105,7 @@ New tables (a migration): tag definitions, per-story enabled tags, chapter tags,
 
 **Stages**
 1. The Review page and the Issues tab with the free checks (missing or stale summaries) plus the existing codex scan; outline markers. (Done: `src/lib/review.ts`, `GET /api/stories/:id/review`, `/s/:id/review` with `?chapter=`, the outline's ⚠ count and its Settings > Outline "Review marker" switch. "Stale" means the last edit changed the text but kept the summary, read from `chapter_revisions`; no migration. No Tags tab or dismissing yet: those come with the review items table in stage 2.)
-2. The tag library in Settings, rule help and Try it, event tags with approval.
+2. The tag library in Settings, rule help and Try it, event tags with approval. (Done: `src/lib/ai/tagAi.ts`, `src/lib/tags.ts` (migrations 27 and 28), Settings > Tags, the Review page's Tags tab (Waiting for you, Tagged, Find tags), and a per-story switch for each tag on the Tags tab and the story details page; every tag starts on. Still to do: dismissing summary issues, which needs the review items table.)
 3. Fact extraction, continuity checks and state tags.
 4. Tags at choices and in the outline.
 5. Automatic runs: check a chapter after it is saved. A background or nightly run needs the server to make the AI calls (today the browser makes them; settings already live on the server).
