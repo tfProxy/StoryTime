@@ -118,7 +118,11 @@ const until = async (fn, what) => {
 };
 const outlineUrl = page.url();
 await page.goto(`${BASE}/settings#outline`);
-ok((await page.getByRole("tab", { name: "Outline" }).getAttribute("aria-selected")) === "true", "Settings has an Outline tab, which /settings#outline opens");
+// The tab named in the address is chosen after the page hydrates, so wait for it.
+ok(
+  await until(async () => (await page.getByRole("tab", { name: "Outline" }).getAttribute("aria-selected")) === "true", "the Outline tab to be chosen"),
+  "Settings has an Outline tab, which /settings#outline opens",
+);
 const part = (name) => page.getByRole("checkbox", { name: new RegExp(`^${name}`) });
 const PARTS = ["Summary", "Read to here", "Header picture", "Footer picture", "Illustrate"];
 await part("Summary").waitFor();
