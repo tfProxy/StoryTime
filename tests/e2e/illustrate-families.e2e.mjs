@@ -65,6 +65,7 @@ try {
   ok((await card.locator(".tuning").first().innerText()).includes("default 9"), "the Advanced settings start from Z-Image's defaults (9 steps)");
   ok(await until(async () => (await presetNow()).files.model === ZGGUF && (await presetNow()).textEncoderDevice === "cpu", "the choices to be saved"), "the preset keeps the .gguf model and the CPU choice");
   ok((await card.locator("summary").first().innerText()).includes("Z-Image · z_image_turbo-Q8_0"), "the card's summary names the family and the model file");
+  ok((await card.innerText()).includes("ComfyUI has every file and node this preset uses.") && (await card.locator("p.error").count()) === 0, "the card says ComfyUI has every file and node the preset uses");
 
   // ---- the setup check ----
   await panel.getByRole("button", { name: "Check setup" }).click();

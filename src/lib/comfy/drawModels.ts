@@ -412,7 +412,7 @@ export function familyProblems(check: FamilyCheck): string[] {
       .map((p) => (p.chosen ? `ComfyUI doesn't list ${p.chosen} (${p.part.label}).` : `No ${p.part.label} found in ComfyUI/models/${p.part.folder}.`)),
     ...(check.missingNodes.length > 0 ? [`ComfyUI doesn't have the nodes ${check.missingNodes.join(", ")}. Update ComfyUI.`] : []),
     ...(check.missingOptions.length > 0 ? [`ComfyUI is too old (${check.missingOptions.join("; ")}). Update ComfyUI.`] : []),
-    ...(ggufNeeded(check) ? [`A GGUF file is chosen but ComfyUI doesn't have ${ggufNeeded(check).join(", ")}. Install the ComfyUI-GGUF custom nodes.`] : []),
+    ...(ggufNeeded(check).length > 0 ? [`A GGUF file is chosen but ComfyUI doesn't have ${ggufNeeded(check).join(", ")}. Install the ComfyUI-GGUF custom nodes.`] : []),
   ];
 }
 

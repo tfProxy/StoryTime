@@ -69,6 +69,7 @@ const zFiles: Files = { unet: ["z_image_turbo_bf16.safetensors", "flux1-dev-fp8.
 let checks = checkDrawFamilies(info(zFiles));
 let z = byId(checks, "zimage");
 ok(z.ready && z.files.model === "z_image_turbo_bf16.safetensors" && z.files.textEncoder === "qwen_3_4b.safetensors" && z.files.vae === "ae.safetensors", "Z-Image: every file is found by its name, among other models' files");
+ok(familyProblems(z).length === 0, "…and a ready family has no problems to report");
 ok(!byId(checkDrawFamilies(info({ ...zFiles, unet: ["flux1-dev-fp8.safetensors"] })), "zimage").ready, "…and without its model it isn't ready");
 z = byId(checkDrawFamilies(info({ ...zFiles, unet: ["sub/Z-Image-Turbo_fp8.safetensors"], vae: ["flux/ae.safetensors"], clip: ["Qwen3-4B.safetensors"] })), "zimage");
 ok(z.ready && z.files.model === "sub/Z-Image-Turbo_fp8.safetensors" && z.files.textEncoder === "Qwen3-4B.safetensors", "…other names are found too (a Civitai fine-tune, a subfolder)");
