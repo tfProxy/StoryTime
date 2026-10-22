@@ -147,8 +147,8 @@ the Illustrate page only when everything it needs is there. The check looks
 for the files above by name, and also accepts other versions of the same file, such as a bf16
 model, another fp8 version, `t5xxl_fp16`, or a newer Qwen-Image-Edit release. If several match, the
 one listed above is used. A preset can also choose its own files (see
-[Your own edit models](#your-own-edit-models)). GGUF versions are not supported, because they need a
-custom loader node.
+[Your own edit models](#your-own-edit-models)). GGUF versions work too, with an extra custom node
+(see [GGUF models](#gguf-models)).
 
 ### Your own LoRAs
 
@@ -183,7 +183,8 @@ fine-tune. LoRAs alone often can't make an edit model follow instructions it was
 a fine-tuned model can. Open the preset's card in Settings (Qwen edit or Flux edit tab) and its
 **Model files**:
 
-- **Model:** a model in `ComfyUI/models/diffusion_models`, or an **all-in-one checkpoint** in
+- **Model:** a model in `ComfyUI/models/diffusion_models` (a `.gguf` one too, see
+  [GGUF models](#gguf-models)), or an **all-in-one checkpoint** in
   `ComfyUI/models/checkpoints` (the model, text encoder and VAE in one file, loaded with ComfyUI's
   Load Checkpoint).
 - **Text encoder(s)** and **VAE:** another file from their folders. With an all-in-one checkpoint
@@ -212,10 +213,43 @@ Some fine-tunes to try:
   models, such as Chroma, are built on FLUX.1 dev or schnell and can't edit by instruction. Flux's T5
   text encoder doesn't refuse, so changing it doesn't help.
 
+### GGUF models
+
+A GGUF file is a smaller (quantised) copy of a model, which fits in less graphics memory: a good fit
+for a 12 GB card. ComfyUI can't load them by itself, so:
+
+1. Install the **ComfyUI-GGUF** custom nodes (city96): in ComfyUI-Manager search for "GGUF", or
+   `git clone` <https://github.com/city96/ComfyUI-GGUF> into `ComfyUI/custom_nodes` and install its
+   requirements, then restart ComfyUI. Until you do, the setup check on the edit tab says "GGUF files:
+   install the ComfyUI-GGUF custom nodes to use them", and no `.gguf` file is offered.
+2. Put the `.gguf` model in `ComfyUI/models/diffusion_models` (or `models/unet`). It then shows in the
+   preset's **Model files** menus marked "(GGUF)", and is found by its name like the other versions
+   (`Qwen-Image-Edit-2509-Q4_K_M.gguf`, `Qwen-Image-Edit-Rapid-AIO-v11-Q4_0.gguf`, a `kontext` file).
+   If the recommended safetensors file is also there, that one is still used until you choose the GGUF one.
+3. Keep the text encoder as the **fp8 safetensors** file from step 3 above. A GGUF Qwen 2.5 VL text
+   encoder only sees the picture with its `mmproj` file beside it, so the safetensors one is the safer
+   choice. (A GGUF T5 for Kontext works.) The VAE stays as it is.
+
+For 12 GB, try a **Q4_0** or **Q4_K_S** quant (larger quants fit less well), and turn on **Keep the text
+encoder on the CPU** in the preset's card (below). Fast (Lightning) and your own LoRAs work with GGUF models.
+
+Some to try:
+
+- **Qwen-Image-Edit Rapid AIO, GGUF:**
+  [Phil2Sat/Qwen-Image-Edit-Rapid-AIO-GGUF](https://huggingface.co/Phil2Sat/Qwen-Image-Edit-Rapid-AIO-GGUF)
+  on Hugging Face. These hold only the model, so the text encoder and VAE are the usual separate
+  files (untick **Fast** and set 4 steps and CFG 1, as for the Rapid AIO checkpoint above).
+- **Qwen-Image-Edit 2511, GGUF:**
+  [unsloth/Qwen-Image-Edit-2511-GGUF](https://huggingface.co/unsloth/Qwen-Image-Edit-2511-GGUF).
+
 ### Each preset's settings
 
 Each edit preset also has:
 
+- **Keep the text encoder on the CPU:** loads the text encoder into system memory instead of the
+  graphics card's, so the card has room for the model. Reading the instruction is a little slower. It
+  uses the `device` choice of ComfyUI's text encoder loader; where the loader in use has none (some
+  GGUF loaders), the card says it doesn't apply and nothing is sent.
 - **Default strength:** where the Edit tab's Strength slider starts for that preset. At 1 the model
   follows the instruction freely. Lower, it starts from the picture with less noise on it, so more of
   the picture stays as it was, but too low and the change may not happen at all. You can still move

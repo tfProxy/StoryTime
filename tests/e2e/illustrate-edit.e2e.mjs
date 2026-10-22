@@ -114,7 +114,7 @@ try {
   await tab("Qwen edit");
   ok((await report.innerText()).includes("Qwen-Image-Edit: ready") && await qwenPanel.getByText("Qwen-Image-Edit is installed in ComfyUI.").isVisible(), "with every file there, both are ready, and their tabs say so");
   ok((await qwenCard.innerText()).includes(`Fast with the Lightning LoRA (not installed: put ${LIGHTNING_LORA} in ComfyUI/models/loras)`) && await qwenCard.getByRole("checkbox", { name: /^Fast with the Lightning LoRA/ }).isDisabled(), "Qwen's preset offers Fast, off while its LoRA isn't installed");
-  ok(await kontextCard.locator("input[type=checkbox]").count() === 0, "…and Kontext's, which has no speed-up, doesn't");
+  ok(await kontextCard.getByRole("checkbox", { name: /^Fast with/ }).count() === 0, "…and Kontext's, which has no speed-up, doesn't");
   ok((await report.innerText()).includes(`Lightning LoRA (optional, for fast edits): not installed. For edits several times faster, put ${LIGHTNING_LORA} in ComfyUI/models/loras.`), "…and the optional Lightning LoRA is said to be missing, with where it goes");
   comfy.setMode({ files: { ...EDIT_FILES, loras: [LIGHTNING_LORA] } });
   await checkSetup();

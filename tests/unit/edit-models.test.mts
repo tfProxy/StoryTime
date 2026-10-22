@@ -30,7 +30,8 @@ function info(files: { unet?: string[]; clip?: string[]; vae?: string[]; lora?: 
     VAELoader: { vae_name: [files.vae ?? [], {}] },
     CheckpointLoaderSimple: { ckpt_name: [files.ckpt ?? [], {}] },
   };
-  return Object.fromEntries(EDIT_NODES.map((n) => [n, missing.includes(n) ? null : { input: { required: loaders[n] ?? {} } }]));
+  // ComfyUI-GGUF's loaders aren't there unless a test adds them (see ggufInfo).
+  return Object.fromEntries(EDIT_NODES.map((n) => [n, missing.includes(n) || n.endsWith("GGUF") ? null : { input: { required: loaders[n] ?? {} } }]));
 }
 const all = {
   unet: ["qwen_image_edit_2509_fp8_e4m3fn.safetensors", "flux1-dev-kontext_fp8_scaled.safetensors", "other.safetensors"],
@@ -239,4 +240,115 @@ ok(EDIT_NODES.includes("KSampler"), "…which it asks about anyway");
   const kwf2 = buildEdit(kck, params);
   ok(kck.ready && kck.files.clipL === "clip_l.safetensors" && nodes(kwf2, "DualCLIPLoader").length === 1 && nodes(kwf2, "VAELoader").length === 0, "Flux: choosing one text encoder keeps both on their own loader (the other found by name); the VAE is the checkpoint's");
   ok(editPresetCheck(checkEditModels(info(all)), { model: "flux-kontext", checkpoint: "", files: {} })?.ready === true, "editPresetCheck finds the preset's model");
+}
+
+// ---- GGUF files (the ComfyUI-GGUF loaders) ----
+{
+  const qGguf = "Qwen-Image-Edit-2509-Q4_K_M.gguf";
+  const rapid = "Qwen-Image-Edit-Rapid-AIO-v11-Q4_0.gguf";
+  const kGguf = "flux1-kontext-dev-Q4_K_S.gguf";
+  const t5Gguf = "t5-v1_1-xxl-encoder-Q5_K_M.gguf";
+  const vlGguf = "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf";
+  const normal = { unet: [] as string[], clip: ["clip_l.safetensors", "qwen_2.5_vl_7b_fp8_scaled.safetensors"], vae: all.vae };
+  /** ComfyUI with the ComfyUI-GGUF nodes: their loaders list the .gguf files (and the rest of the folder, as the real ones do). */
+  function ggufInfo(files: { unet?: string[]; clip?: string[]; vae?: string[]; lora?: string[] }, withGguf = true, deviceInGguf = false): Record<string, NodeInfo> {
+    const plain = (xs: string[] = []) => xs.filter((x) => !x.endsWith(".gguf"));
+    const base = info({ ...files, unet: plain(files.unet), clip: plain(files.clip) });
+    const device = (options: string[]) => ({ device: [options, {}] });
+    base.CLIPLoader = { input: { required: { clip_name: [plain(files.clip), {}], type: [["qwen_image"], {}] }, optional: device(["default", "cpu"]) } };
+    base.DualCLIPLoader = { input: { required: { clip_name1: ["COMBO", { options: plain(files.clip) }], clip_name2: ["COMBO", { options: plain(files.clip) }], type: ["COMBO", { options: ["flux"] }] }, optional: device(["default", "cpu"]) } };
+    base.UnetLoaderGGUF = withGguf ? { input: { required: { unet_name: [files.unet ?? [], {}] } } } : null;
+    base.CLIPLoaderGGUF = withGguf ? { input: { required: { clip_name: [files.clip ?? [], {}], type: [["qwen_image"], {}] }, optional: deviceInGguf ? device(["default", "cpu"]) : {} } } : null;
+    base.DualCLIPLoaderGGUF = withGguf ? { input: { required: { clip_name1: ["COMBO", { options: files.clip ?? [] }], clip_name2: ["COMBO", { options: files.clip ?? [] }], type: ["COMBO", { options: ["flux"] }] } } } : null;
+    return base;
+  }
+  const choose = (check: ReturnType<typeof checkEditModels>[number], files: Record<string, string>, checkpoint = "") => presetCheck(check, { checkpoint, files });
+  const fileInputs = (wf: Workflow, id: string) => Object.keys(wf[id].inputs).sort().join();
+
+  ok(EDIT_NODES.includes("UnetLoaderGGUF") && EDIT_NODES.includes("CLIPLoaderGGUF") && EDIT_NODES.includes("DualCLIPLoaderGGUF"), "the check asks ComfyUI about the GGUF loaders");
+  ok(EDIT_MODELS.every((m) => !m.nodes.some((n) => n.includes("GGUF"))), "…but no model needs them to be ready");
+
+  // Without ComfyUI-GGUF, nothing changes, and the report can say so.
+  let g = checkEditModels(ggufInfo({ unet: [qGguf], clip: normal.clip, vae: normal.vae }, false));
+  ok(!byId(g, "qwen-image-edit").ready && byId(g, "qwen-image-edit").ggufMissing.length === 2 && byId(g, "flux-kontext").ggufMissing.length === 2, "without the GGUF nodes, a .gguf file isn't listed, and the check names the loaders that are missing");
+  ok(byId(checkEditModels(info(all)), "qwen-image-edit").ggufMissing.length === 2 && byId(checkEditModels(info(all)), "qwen-image-edit").ready, "…which doesn't stop a model that uses safetensors files");
+
+  // Choices are both loaders' lists, once each.
+  g = checkEditModels(ggufInfo({ unet: [...all.unet, qGguf, rapid, kGguf], clip: [...normal.clip, vlGguf, t5Gguf], vae: normal.vae }));
+  let q = byId(g, "qwen-image-edit");
+  ok(q.ggufMissing.length === 0 && q.parts[0].choices.includes(qGguf) && q.parts[0].choices.includes("other.safetensors") && new Set(q.parts[0].choices).size === q.parts[0].choices.length, "a part's choices are the loader's files and the GGUF loader's, without repeats");
+  ok(q.parts[1].choices.includes(vlGguf) && q.parts[1].choices.includes("qwen_2.5_vl_7b_fp8_scaled.safetensors"), "…text encoders too");
+
+  // The recommended safetensors file is still preferred; names are found.
+  ok(q.ready && q.files.model === "qwen_image_edit_2509_fp8_e4m3fn.safetensors", "with the recommended file there, it is used rather than a GGUF one");
+  g = checkEditModels(ggufInfo({ unet: [qGguf, kGguf], clip: [...normal.clip], vae: normal.vae }));
+  q = byId(g, "qwen-image-edit");
+  ok(q.ready && q.files.model === qGguf, "a GGUF model alone is found by its name (Qwen-Image-Edit-…-Q4_K_M.gguf)");
+  g = checkEditModels(ggufInfo({ unet: [rapid], clip: normal.clip, vae: normal.vae }));
+  ok(byId(g, "qwen-image-edit").files.model === rapid, "…also a Rapid AIO quant");
+  ok(byId(checkEditModels(ggufInfo({ unet: ["Qwen-Rapid-AIO-NSFW-v22-Q4_0.gguf"], clip: normal.clip, vae: normal.vae })), "qwen-image-edit").ready, "…whatever it is called, as long as it says Qwen and Rapid AIO");
+  g = checkEditModels(ggufInfo({ unet: [kGguf, "other.gguf"], clip: [...normal.clip, t5Gguf, "t5xxl_fp16.safetensors", vlGguf, "Qwen2.5-VL-7B-Instruct-mmproj-F16.gguf"], vae: normal.vae }));
+  const kn = byId(g, "flux-kontext");
+  ok(kn.ready && kn.files.model === kGguf && kn.files.t5 === "t5xxl_fp16.safetensors", "Kontext: a GGUF model is found, and a safetensors T5 is preferred to a GGUF one");
+  ok(byId(g, "qwen-image-edit").parts[1].file === "qwen_2.5_vl_7b_fp8_scaled.safetensors", "…and so is Qwen's text encoder");
+  g = checkEditModels(ggufInfo({ unet: [qGguf], clip: [vlGguf, "Qwen2.5-VL-7B-Instruct-mmproj-F16.gguf"], vae: normal.vae }));
+  ok(byId(g, "qwen-image-edit").files.textEncoder === vlGguf, "a GGUF text encoder is found, but not the mmproj file that goes beside it");
+  ok(lightningSteps("x") === 8 && byId(checkEditModels(ggufInfo({ unet: [qGguf], clip: normal.clip, vae: normal.vae, lora: [lightning4, "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"] })), "qwen-image-edit").files.speedUp === lightning4, "the Lightning LoRA is the 2509 one for a 2509 GGUF model…");
+  ok(byId(checkEditModels(ggufInfo({ unet: ["Qwen-Image-Edit-2511-Q4_K_S.gguf"], clip: normal.clip, vae: normal.vae, lora: [lightning4, "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"] })), "qwen-image-edit").files.speedUp === "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors", "…and the 2511 one for a 2511 GGUF model");
+
+  // Building: Qwen with a GGUF model and a GGUF text encoder, a LoRA stack and Fast.
+  g = checkEditModels(ggufInfo({ unet: [qGguf], clip: [vlGguf, ...normal.clip], vae: normal.vae, lora: [lightning4, "styles/ink.safetensors"] }));
+  q = choose(byId(g, "qwen-image-edit"), { model: qGguf, textEncoder: vlGguf });
+  let wf = buildEdit(q, { ...params, loras: [{ name: "styles/ink.safetensors", strength: 0.8 }], textEncoderDevice: "cpu" }, true);
+  ok(q.ready && nodes(wf, "UNETLoader").length === 0 && nodes(wf, "UnetLoaderGGUF")[0].inputs.unet_name === qGguf, "a .gguf model is loaded by UnetLoaderGGUF");
+  ok(fileInputs(wf, "1") === "unet_name", "…without the inputs it doesn't list (weight_dtype)");
+  ok(nodes(wf, "CLIPLoader").length === 0 && nodes(wf, "CLIPLoaderGGUF")[0].inputs.clip_name === vlGguf && nodes(wf, "CLIPLoaderGGUF")[0].inputs.type === "qwen_image", "…and a .gguf text encoder by CLIPLoaderGGUF, with its type");
+  ok(!("device" in wf["2"].inputs) && q.devices.length === 0, "…whose missing device choice is dropped, and the check says it can't be set");
+  ok(chainOf(wf).loras.join() === `${lightning4}@1,styles/ink.safetensors@0.8` && chainOf(wf).from === "UnetLoaderGGUF", "the LoRA chain is intact on top of the GGUF model");
+  const gl = Object.values(wf).flatMap((n) => Object.values(n.inputs).filter((v): v is [string, number] => Array.isArray(v)));
+  ok(gl.every(([id]) => id in wf) && nodes(wf, "VAELoader")[0].inputs.vae_name === "qwen_image_vae.safetensors", "…every link still points at a node, and the VAE is as before");
+  ok(editFilesText(q, false) === qGguf, "the job log keeps the .gguf file");
+
+  // Only the parts that use a .gguf file are switched.
+  q = choose(byId(g, "qwen-image-edit"), { model: qGguf });
+  wf = buildEdit(q, { ...params, textEncoderDevice: "cpu" });
+  ok(nodes(wf, "UnetLoaderGGUF").length === 1 && nodes(wf, "CLIPLoader")[0].inputs.clip_name === "qwen_2.5_vl_7b_fp8_scaled.safetensors", "a GGUF model with a safetensors text encoder switches only the model's loader");
+  ok(wf["2"].inputs.device === "cpu" && q.devices.join() === "default,cpu", "…and the text encoder's device is set to cpu where the loader offers it");
+  wf = buildEdit(q, params);
+  ok(wf["2"].inputs.device === "default", "…and default otherwise");
+  const noDevice = { ...ggufInfo({ unet: [qGguf], clip: normal.clip, vae: normal.vae }), CLIPLoader: { input: { required: { clip_name: [normal.clip, {}], type: [["qwen_image"], {}] } } } as NodeInfo };
+  q = choose(byId(checkEditModels(noDevice), "qwen-image-edit"), {});
+  ok(!("device" in buildEdit(q, { ...params, textEncoderDevice: "cpu" })["2"].inputs) && q.devices.length === 0, "a loader with no device input gets none");
+  const gpuOnly = { ...noDevice, CLIPLoader: { input: { required: { clip_name: [normal.clip, {}], type: [["qwen_image"], {}] }, optional: { device: [["default"], {}] } } } as NodeInfo };
+  q = choose(byId(checkEditModels(gpuOnly), "qwen-image-edit"), {});
+  ok(!("device" in buildEdit(q, { ...params, textEncoderDevice: "cpu" })["2"].inputs), "…and a value the loader doesn't offer is dropped");
+  q = choose(byId(checkEditModels(ggufInfo({ unet: [qGguf], clip: [vlGguf], vae: normal.vae }, true, true)), "qwen-image-edit"), { textEncoder: vlGguf });
+  ok(buildEdit(q, { ...params, textEncoderDevice: "cpu" })["2"].inputs.device === "cpu", "a GGUF text encoder loader that lists a device gets it");
+  ok(!("device" in buildEdit(choose(byId(checkEditModels(info(all)), "qwen-image-edit"), {}), { ...params, textEncoderDevice: "cpu" })["2"].inputs), "…an ordinary check where the loader lists no device input leaves it out too");
+
+  // A .gguf file needs the GGUF loader to be there.
+  const lonely = byId(checkEditModels(ggufInfo({ unet: [qGguf], clip: normal.clip, vae: normal.vae })), "qwen-image-edit");
+  const withoutNode = { ...lonely, loaders: Object.fromEntries(Object.entries(lonely.loaders).filter(([k]) => k !== "UnetLoaderGGUF")) };
+  ok(choose(lonely, { model: qGguf }).ready && !choose(withoutNode, { model: qGguf }).ready, "a .gguf file in use needs its GGUF loader node for the preset to be ready");
+  const mixed = byId(checkEditModels(ggufInfo({ unet: [qGguf, all.unet[0]], clip: normal.clip, vae: normal.vae })), "qwen-image-edit");
+  ok(choose({ ...mixed, loaders: {} }, {}).ready, "…which a safetensors model never does");
+
+  // Kontext: a GGUF model, and a GGUF T5 through the dual loader (which then loads CLIP-L too).
+  const kinfo = ggufInfo({ unet: [kGguf], clip: ["clip_l.safetensors", t5Gguf], vae: normal.vae });
+  let k = choose(byId(checkEditModels(kinfo), "flux-kontext"), { model: kGguf, t5: t5Gguf });
+  ok(k.ready && k.files.clipL === "clip_l.safetensors", "Kontext: a safetensors CLIP-L with a GGUF T5 is ready");
+  wf = buildEdit(k, { ...params, loras: [{ name: "styles/ink.safetensors", strength: 1 }], textEncoderDevice: "cpu" });
+  const dual = nodes(wf, "DualCLIPLoaderGGUF")[0];
+  ok(nodes(wf, "DualCLIPLoader").length === 0 && dual.inputs.clip_name1 === "clip_l.safetensors" && dual.inputs.clip_name2 === t5Gguf && dual.inputs.type === "flux", "…its text encoders go through one DualCLIPLoaderGGUF, with both files");
+  ok(!("device" in dual.inputs) && k.devices.length === 0, "…which lists no device here, so none is sent");
+  ok(nodes(wf, "UnetLoaderGGUF")[0].inputs.unet_name === kGguf && chainOf(wf).from === "UnetLoaderGGUF" && chainOf(wf).loras.length === 1, "…the model by UnetLoaderGGUF with the LoRA after it");
+  k = choose(byId(checkEditModels(kinfo), "flux-kontext"), { model: kGguf });
+  wf = buildEdit(k, { ...params, textEncoderDevice: "cpu" });
+  ok(k.files.t5 === t5Gguf && nodes(wf, "DualCLIPLoaderGGUF").length === 1, "a T5 found by name that is GGUF switches the dual loader too");
+  k = choose(byId(checkEditModels(info(all)), "flux-kontext"), {});
+  ok(k.ready && nodes(buildEdit(k, params), "DualCLIPLoader").length === 1 && k.devices.length === 0, "with only safetensors files, Kontext's workflow is as before");
+
+  // With an all-in-one checkpoint, a GGUF text encoder of the preset's own still works.
+  const ck = choose(byId(checkEditModels(ggufInfo({ unet: [], clip: [vlGguf], vae: normal.vae, ...{} })), "qwen-image-edit"), { textEncoder: vlGguf }, "x.safetensors");
+  ok(!ck.ready && ck.checkpoint?.found === false, "an unlisted checkpoint still stops the preset, GGUF or not");
 }

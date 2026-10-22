@@ -1,7 +1,7 @@
 // Named picture presets, set in Settings: drawing presets (new pictures and Redraw) and edit presets
 // (one set for each edit model). Each has its own LoRAs and settings. A story chooses its default
 // drawing preset on its details page, and a chapter can choose another on the Illustrate page. Pure code.
-import { EDIT_MODEL_IDS, type EditModelId, type EditTuning } from "./editModels";
+import { EDIT_MODEL_IDS, type EditModelId, type EditTuning, type TextEncoderDevice } from "./editModels";
 import type { SamplerTuning } from "./workflow";
 
 /** A LoRA in a preset's stack: its file in ComfyUI's `loras` folder, its strength, and whether it is used. */
@@ -59,6 +59,8 @@ export type EditPreset = {
   files: Record<string, string>;
   /** Uses the model's speed-up (Qwen's Lightning LoRA) when ComfyUI has it. */
   fast: boolean;
+  /** Where the text encoder is loaded: "cpu" keeps it in system memory so the graphics card has room for the model. */
+  textEncoderDevice: TextEncoderDevice;
   /** Applied in order, after the speed-up. */
   loras: LoraSetting[];
   /** The model's settings that were changed, including the Edit tab's starting strength; the rest are the model's defaults. */
@@ -70,7 +72,7 @@ export const newDrawPreset = (id: string, name: string, checkpoint = ""): DrawPr
 });
 
 export const newEditPreset = (id: string, name: string, model: EditModelId): EditPreset => ({
-  id, name, model, checkpoint: "", files: {}, fast: true, loras: [], tuning: {},
+  id, name, model, checkpoint: "", files: {}, fast: true, textEncoderDevice: "default", loras: [], tuning: {},
 });
 
 /** The presets a fresh setup starts with: one for drawing, and one for each edit model (its id is the model's). */
@@ -100,7 +102,7 @@ export function drawPresetFor(presets: DrawPreset[], ...ids: (string | null | un
 }
 
 /** A checkpoint or LoRA file's name without its folder or extension, for short labels. */
-export const fileLabel = (file: string) => file.split(/[\\/]/).pop()!.replace(/\.(safetensors|ckpt|pt|sft)$/i, "");
+export const fileLabel = (file: string) => file.split(/[\\/]/).pop()!.replace(/\.(safetensors|ckpt|pt|sft|gguf)$/i, "");
 
 /**
  * The files pictures are drawn with, as the job log keeps them (in its checkpoint column): the checkpoint,

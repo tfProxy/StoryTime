@@ -21,6 +21,9 @@
 //   files       the model files the loaders list in /object_info, by folder: { diffusion_models,
 //               text_encoders, vae, loras } (default none, so no edit model is ready)
 //   missingNodes  node names /object_info answers {} for, like a ComfyUI too old to have them
+//   gguf        true: the ComfyUI-GGUF loaders exist (UnetLoaderGGUF, CLIPLoaderGGUF, DualCLIPLoaderGGUF) and
+//               list the .gguf files in `files`; the ordinary loaders then list only the other files, like
+//               the real ones (default false: no GGUF nodes)
 import crypto from "node:crypto";
 import http from "node:http";
 import zlib from "node:zlib";
@@ -97,6 +100,8 @@ const NODES = [
   "RepeatLatentBatch", "ImageScale", "UNETLoader", "CLIPLoader", "DualCLIPLoader", "VAELoader", "TextEncodeQwenImageEditPlus",
   "ModelSamplingAuraFlow", "CFGNorm", "ReferenceLatent", "FluxGuidance", "ConditioningZeroOut", "LoraLoaderModelOnly", "LoraLoader",
 ];
+const GGUF_NODES = ["UnetLoaderGGUF", "CLIPLoaderGGUF", "DualCLIPLoaderGGUF"];
+const isGguf = (f) => f.endsWith(".gguf");
 
 /** The samplers and schedulers the fake's KSampler offers. */
 export const SAMPLERS = ["euler", "euler_ancestral", "dpmpp_2m", "res_multistep", "fake_sampler"];
@@ -105,9 +110,11 @@ export const SCHEDULERS = ["simple", "normal", "karras", "beta"];
 /** Qwen-Image-Edit's Lightning LoRA, for tests that install it (in `files.loras`). */
 export const LIGHTNING_LORA = "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors";
 
-export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.safetensors", "fake_sdxl_b.safetensors"], ws = true, steps = 4, stepDelay = 120, startDelay = 300, fail = null, version = "0.3.99", files = {}, missingNodes = [] } = {}) {
-  const mode = { checkpoints, ws, steps, stepDelay, startDelay, fail, version, files, missingNodes };
-  const folder = (name) => mode.files[name] ?? [];
+export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.safetensors", "fake_sdxl_b.safetensors"], ws = true, steps = 4, stepDelay = 120, startDelay = 300, fail = null, version = "0.3.99", files = {}, missingNodes = [], gguf = false } = {}) {
+  const mode = { checkpoints, ws, steps, stepDelay, startDelay, fail, version, files, missingNodes, gguf };
+  // The ordinary loaders never list .gguf files when the GGUF nodes are there; the GGUF ones list them (and the rest of their folder).
+  const folder = (name) => (mode.files[name] ?? []).filter((f) => !mode.gguf || !isGguf(f));
+  const ggufFolder = (name) => mode.files[name] ?? [];
 
   /** What /object_info says about a node: its loaders list the files (DualCLIPLoader in ComfyUI's newer COMBO form). */
   function nodeInfo(name) {
@@ -121,12 +128,21 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
         clip_name2: ["COMBO", { options: folder("text_encoders") }],
         type: ["COMBO", { options: ["sdxl", "sd3", "flux"] }],
       },
+      UnetLoaderGGUF: { unet_name: combo(ggufFolder("diffusion_models")) },
+      CLIPLoaderGGUF: { clip_name: combo(ggufFolder("text_encoders")), type: combo(["stable_diffusion", "sd3", "qwen_image"]) },
+      DualCLIPLoaderGGUF: {
+        clip_name1: ["COMBO", { options: ggufFolder("text_encoders") }],
+        clip_name2: ["COMBO", { options: ggufFolder("text_encoders") }],
+        type: ["COMBO", { options: ["sdxl", "sd3", "flux"] }],
+      },
       VAELoader: { vae_name: combo(folder("vae")) },
       LoraLoaderModelOnly: { lora_name: combo(folder("loras")), strength_model: ["FLOAT", { default: 1 }] },
       LoraLoader: { lora_name: combo(folder("loras")), strength_model: ["FLOAT", { default: 1 }], strength_clip: ["FLOAT", { default: 1 }] },
       KSampler: { sampler_name: combo(SAMPLERS), scheduler: combo(SCHEDULERS) },
     }[name] ?? {};
-    return { input: { required }, name };
+    // Like ComfyUI, the text encoder loaders have an optional `device` (the GGUF ones don't).
+    const optional = ["CLIPLoader", "DualCLIPLoader"].includes(name) ? { device: combo(["default", "cpu"]) } : {};
+    return { input: { required, optional }, name };
   }
   const calls = [];
   const jobs = new Map(); // prompt_id -> job
@@ -250,7 +266,7 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
       if (p === "/models/checkpoints") return json(200, mode.checkpoints);
       if (p.startsWith("/object_info/")) {
         const name = decodeURIComponent(p.slice("/object_info/".length));
-        return json(200, NODES.includes(name) && !mode.missingNodes.includes(name) ? { [name]: nodeInfo(name) } : {});
+        return json(200, (NODES.includes(name) || (mode.gguf && GGUF_NODES.includes(name))) && !mode.missingNodes.includes(name) ? { [name]: nodeInfo(name) } : {});
       }
       if (p === "/upload/image" && req.method === "POST") {
         // multipart/form-data: only the file name is read; a name taken twice gets "(1)" like ComfyUI does.

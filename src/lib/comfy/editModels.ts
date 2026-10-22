@@ -22,6 +22,11 @@ export type ModelPart = {
   /** Other names the same kind of file goes by (another precision, a newer release), used when the recommended one isn't there. */
   match: RegExp;
   /**
+   * The loader (of the ComfyUI-GGUF custom nodes) that loads this part from a .gguf file, and its file input.
+   * Its list is added to the part's choices; a .gguf file switches the part's loader node to it (see buildEdit).
+   */
+  gguf?: { loader: string; input: string };
+  /**
    * Which of an all-in-one checkpoint's outputs stands in for it (0 the model, 1 the text encoder, 2 the
    * VAE). It is also the workflow's loader node for it, less one: the model is node "1", the text encoder "2", the VAE "3".
    */
@@ -51,7 +56,12 @@ export type EditParams = {
   loras?: EditLora[];
   /** The model's settings (`editTuning`); its defaults when not given. */
   tuning?: EditTuning;
+  /** Where the text encoder is loaded: ComfyUI's "default", or "cpu" to keep it in system memory. */
+  textEncoderDevice?: TextEncoderDevice;
 };
+
+export const TEXT_ENCODER_DEVICES = ["default", "cpu"] as const;
+export type TextEncoderDevice = (typeof TEXT_ENCODER_DEVICES)[number];
 
 /**
  * What an edit model runs with: the sampler's settings, the default strength the Edit tab starts at, and
@@ -182,7 +192,7 @@ function qwenWorkflow(files: Record<string, string>, p: EditParams, fast = false
   });
   return {
     "1": { class_type: "UNETLoader", inputs: { unet_name: files.model, weight_dtype: "default" } },
-    "2": { class_type: "CLIPLoader", inputs: { clip_name: files.textEncoder, type: "qwen_image", device: "default" } },
+    "2": { class_type: "CLIPLoader", inputs: { clip_name: files.textEncoder, type: "qwen_image", device: p.textEncoderDevice ?? "default" } },
     "3": { class_type: "VAELoader", inputs: { vae_name: files.vae } },
     ...chain.nodes,
     "4": { class_type: "ModelSamplingAuraFlow", inputs: { model: chain.model, shift: t.shift ?? QWEN_DEFAULTS.shift } },
@@ -207,7 +217,7 @@ function kontextWorkflow(files: Record<string, string>, p: EditParams): Workflow
   return {
     "1": { class_type: "UNETLoader", inputs: { unet_name: files.model, weight_dtype: "default" } },
     ...chain.nodes,
-    "2": { class_type: "DualCLIPLoader", inputs: { clip_name1: files.clipL, clip_name2: files.t5, type: "flux", device: "default" } },
+    "2": { class_type: "DualCLIPLoader", inputs: { clip_name1: files.clipL, clip_name2: files.t5, type: "flux", device: p.textEncoderDevice ?? "default" } },
     "3": { class_type: "VAELoader", inputs: { vae_name: files.vae } },
     "4": { class_type: "CLIPTextEncode", inputs: { clip: ["2", 0], text: p.instruction } },
     "5": { class_type: "ReferenceLatent", inputs: { conditioning: ["4", 0], latent: ["12", 0] } },
@@ -224,6 +234,9 @@ function kontextWorkflow(files: Record<string, string>, p: EditParams): Workflow
   };
 }
 
+/** The model loader of the ComfyUI-GGUF custom nodes; it lists .gguf files from `diffusion_models` and `unet`. */
+const UNET_GGUF = { loader: "UnetLoaderGGUF", input: "unet_name" };
+
 const SAMPLE: EditParams = { image: "x.png", instruction: "x", seed: 1, count: 1, width: 1024, height: 1024, prefix: "StoryTime", denoise: 1 };
 
 export const EDIT_MODELS: EditModel[] = [
@@ -234,11 +247,13 @@ export const EDIT_MODELS: EditModel[] = [
     parts: [
       {
         key: "model", label: "Qwen-Image-Edit 2509 model", folder: "diffusion_models", loader: "UNETLoader", input: "unet_name",
-        recommended: "qwen_image_edit_2509_fp8_e4m3fn.safetensors", match: /qwen[-_ ]?image[-_ ]?edit/i, output: 0,
+        recommended: "qwen_image_edit_2509_fp8_e4m3fn.safetensors", match: /qwen[-_ ]?image[-_ ]?edit|qwen.*rapid[-_ ]?aio/i, output: 0,
+        gguf: UNET_GGUF,
       },
       {
         key: "textEncoder", label: "Qwen 2.5 VL text encoder", folder: "text_encoders", loader: "CLIPLoader", input: "clip_name",
         recommended: "qwen_2.5_vl_7b_fp8_scaled.safetensors", match: /qwen[-_]?2\.5[-_]?vl[-_]?7b/i, output: 1,
+        gguf: { loader: "CLIPLoaderGGUF", input: "clip_name" },
       },
       {
         key: "vae", label: "Qwen-Image VAE", folder: "vae", loader: "VAELoader", input: "vae_name",
@@ -262,14 +277,17 @@ export const EDIT_MODELS: EditModel[] = [
       {
         key: "model", label: "FLUX.1 Kontext dev model", folder: "diffusion_models", loader: "UNETLoader", input: "unet_name",
         recommended: "flux1-dev-kontext_fp8_scaled.safetensors", match: /kontext/i, output: 0,
+        gguf: UNET_GGUF,
       },
       {
         key: "clipL", label: "CLIP-L text encoder", folder: "text_encoders", loader: "DualCLIPLoader", input: "clip_name1",
-        recommended: "clip_l.safetensors", match: /(^|[\\/])clip_l[^\\/]*\.safetensors$/i, output: 1,
+        recommended: "clip_l.safetensors", match: /(^|[\\/])clip_l[^\\/]*\.(safetensors|gguf)$/i, output: 1,
+        gguf: { loader: "DualCLIPLoaderGGUF", input: "clip_name1" },
       },
       {
         key: "t5", label: "T5-XXL text encoder", folder: "text_encoders", loader: "DualCLIPLoader", input: "clip_name2",
-        recommended: "t5xxl_fp8_e4m3fn_scaled.safetensors", match: /t5xxl/i, output: 1,
+        recommended: "t5xxl_fp8_e4m3fn_scaled.safetensors", match: /t5[-_ ]?(v1_1[-_ ])?xxl/i, output: 1,
+        gguf: { loader: "DualCLIPLoaderGGUF", input: "clip_name2" },
       },
       {
         key: "vae", label: "FLUX VAE", folder: "vae", loader: "VAELoader", input: "vae_name",
@@ -361,7 +379,15 @@ export type EditCheck = {
   /** The samplers and schedulers ComfyUI's KSampler offers, for the choices in Settings. */
   samplers: string[];
   schedulers: string[];
+  /** What ComfyUI says about each loader node the parts use (the GGUF ones too) that it has: the inputs it lists and the choices of its `device`. */
+  loaders: Record<string, LoaderInfo>;
+  /** The GGUF loader nodes of this model that ComfyUI doesn't have (ComfyUI-GGUF isn't installed). */
+  ggufMissing: string[];
+  /** The choices for where the text encoder is loaded, on the loader in use (the GGUF one for a .gguf file); empty when it has no such input. */
+  devices: string[];
 };
+
+export type LoaderInfo = { inputs: string[]; devices: string[] };
 
 /** The node that loads a LoRA onto a model, for the speed-up and the author's stack. */
 const LORA_LOADER = "LoraLoaderModelOnly";
@@ -374,18 +400,28 @@ export const EDIT_NODES = [
   ...new Set([
     LORA_LOADER,
     CHECKPOINT_LOADER,
-    ...EDIT_MODELS.flatMap((m) => [...m.nodes, ...m.parts.map((p) => p.loader), ...m.options.map((o) => o.node), ...(m.speedUp ? [m.speedUp.loader] : [])]),
+    ...EDIT_MODELS.flatMap((m) => [
+      ...m.nodes, ...m.parts.map((p) => p.loader), ...m.parts.flatMap((p) => (p.gguf ? [p.gguf.loader] : [])),
+      ...m.options.map((o) => o.node), ...(m.speedUp ? [m.speedUp.loader] : []),
+    ]),
   ]),
 ].sort();
 
 const base = (f: string) => f.split(/[\\/]/).pop()!;
+
+/** Whether a file is a GGUF one, which needs the ComfyUI-GGUF loaders. */
+export const isGguf = (file: string) => /\.gguf$/i.test(file);
+
+/** The names of the inputs a node lists, required or optional. */
+const inputNames = (info: NodeInfo) => Object.keys({ ...info?.input?.optional, ...info?.input?.required });
 
 /**
  * The file for a part among the ones a loader lists: one of the same release (such as 2509) as `release`
  * when given, else the recommended one, else the first that looks like it.
  */
 function findFile(part: ModelPart, choices: string[], release?: string): string | null {
-  const like = choices.filter((c) => part.match.test(c));
+  // A safetensors file is preferred to a GGUF one of the same kind; a GGUF text encoder's mmproj file is not a text encoder.
+  const like = choices.filter((c) => part.match.test(c) && !/mmproj/i.test(c)).sort((a, b) => Number(isGguf(a)) - Number(isGguf(b)));
   return (release && like.find((c) => base(c).includes(release))) || choices.find((c) => base(c) === part.recommended) || like[0] || null;
 }
 
@@ -428,9 +464,19 @@ export function checkEditModels(info: Record<string, NodeInfo>): EditCheck[] {
       .filter((o) => info[o.node] && !comboOptions(info[o.node], o.input).includes(o.value))
       .map((o) => `${o.node} ${o.input}: ${o.value}`);
     const s = model.speedUp;
+    const ggufLoaders = [...new Set(model.parts.flatMap((p) => (p.gguf ? [p.gguf.loader] : [])))];
+    const loaders: Record<string, LoaderInfo> = {};
+    for (const name of [...model.parts.map((p) => p.loader), ...ggufLoaders]) {
+      if (info[name]) loaders[name] = { inputs: inputNames(info[name]), devices: comboOptions(info[name], "device") };
+    }
     const found: EditCheck = {
       model, missingNodes, missingOptions,
-      parts: model.parts.map((part) => ({ part, file: null, choices: comboOptions(info[part.loader], part.input) })),
+      // A part's choices: its loader's files, then the GGUF loader's (which also lists the others).
+      parts: model.parts.map((part) => ({
+        part, file: null,
+        choices: [...new Set([...comboOptions(info[part.loader], part.input), ...(part.gguf ? comboOptions(info[part.gguf.loader], part.gguf.input) : [])])],
+      })),
+      loaders, ggufMissing: ggufLoaders.filter((n) => !info[n]), devices: [],
       files: {}, ready: false, checkpoint: null,
       checkpoints: comboOptions(info[CHECKPOINT_LOADER], "ckpt_name"),
       speedUp: s ? { part: s, file: null, choices: comboOptions(info[s.loader], s.input) } : null,
@@ -460,11 +506,18 @@ export function presetCheck(check: EditCheck, choice: FileChoice): EditCheck {
     if (checkpoint && !ownLoader(part)) return { part, choices, file: null, fromCheckpoint: true };
     return { part, choices, file: findFile(part, choices) };
   });
+  // The GGUF loaders are needed only for the parts that use a .gguf file.
+  const ggufInstalled = parts.every((p) => !p.file || !isGguf(p.file) || !p.part.gguf || !!check.loaders[p.part.gguf.loader]);
   const ready =
     check.missingNodes.length === 0 &&
     check.missingOptions.length === 0 &&
+    ggufInstalled &&
     (!checkpoint || checkpoint.found) &&
     parts.every((p) => p.file !== null || p.fromCheckpoint);
+  // The text encoder's loader in use, and so where it can be loaded.
+  const encoders = parts.filter((p) => p.part.output === 1 && !p.fromCheckpoint);
+  const encoderLoader = encoders.length === 0 ? null : encoders.some((p) => p.file && isGguf(p.file)) ? encoders[0].part.gguf?.loader : encoders[0].part.loader;
+  const devices = (encoderLoader && check.loaders[encoderLoader]?.devices) || [];
   const files: Record<string, string> = ready
     ? Object.fromEntries(parts.filter((p) => p.file !== null).map((p) => [p.part.key, p.file!]))
     : {};
@@ -473,7 +526,7 @@ export function presetCheck(check: EditCheck, choice: FileChoice): EditCheck {
   const s = check.speedUp;
   const speedUp = s ? { ...s, file: findFile(s.part, s.choices, releaseOf(files.model ?? files.checkpoint)) } : null;
   if (ready && speedUp?.file) files.speedUp = speedUp.file;
-  return { ...check, parts, files, ready, checkpoint, speedUp };
+  return { ...check, parts, files, ready, checkpoint, speedUp, devices };
 }
 
 /** An edit preset's check: its model's, with the files it chose. Null when ComfyUI's answer has no such model. */
@@ -483,12 +536,36 @@ export function editPresetCheck(checks: EditCheck[], preset: FileChoice & { mode
 }
 
 /**
+ * Switches the loader node of every part whose file is a .gguf to the ComfyUI-GGUF loader, keeping only
+ * the inputs that node lists (the normal loaders' weight_dtype or device may not be there); the file
+ * inputs are always kept. Then drops the text encoder's `device` when its loader doesn't list it or
+ * doesn't offer the value. A loader ComfyUI told us nothing about keeps all its inputs.
+ */
+function switchToGgufLoaders(check: EditCheck, wf: Workflow) {
+  const fileInputs = new Set(check.model.parts.flatMap((q) => [q.input, ...(q.gguf ? [q.gguf.input] : [])]));
+  for (const part of check.model.parts) {
+    const file = check.files[part.key];
+    const node = wf[String(part.output + 1)];
+    if (!part.gguf || !file || !isGguf(file) || !node) continue;
+    node.class_type = part.gguf.loader;
+    const listed = check.loaders[part.gguf.loader]?.inputs;
+    if (listed) node.inputs = Object.fromEntries(Object.entries(node.inputs).filter(([k]) => listed.includes(k) || fileInputs.has(k)));
+  }
+  const encoder = wf["2"];
+  const info = encoder && check.model.parts.some((q) => q.output === 1) ? check.loaders[encoder.class_type] : undefined;
+  if (info && "device" in encoder.inputs && (!info.inputs.includes("device") || (info.devices.length > 0 && !info.devices.includes(String(encoder.inputs.device))))) {
+    delete encoder.inputs.device;
+  }
+}
+
+/**
  * The workflow for an edit, with the files of `check` (see presetCheck). With an all-in-one checkpoint,
  * node "1" loads it instead of the model, and the text encoder's and VAE's loaders give way to its
  * outputs unless the preset chose files for them.
  */
 export function buildEdit(check: EditCheck, p: EditParams, fast?: boolean): Workflow {
   const wf = check.model.build(check.files, p, fast);
+  switchToGgufLoaders(check, wf);
   const ckpt = check.files.checkpoint;
   if (!ckpt) return wf;
   wf["1"] = { class_type: CHECKPOINT_LOADER, inputs: { ckpt_name: ckpt } };

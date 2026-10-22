@@ -3,7 +3,7 @@
 // and then waits for the pictures. Browser code, no React.
 import type { PictureMoment, PictureTarget } from "../pictureTarget";
 import type { ComfySettings } from "../settingsSchema";
-import { buildEdit, editFilesText, editSize, type EditCheck, type EditLora, type EditTuning } from "./editModels";
+import { buildEdit, editFilesText, editSize, type EditCheck, type EditLora, type EditTuning, type TextEncoderDevice } from "./editModels";
 import { drawFilesText, presetName, type DrawPreset } from "./presets";
 import { uploadStart, type StartPicture, type Uploaded } from "./startPicture";
 import { builtinSampler, describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "./workflow";
@@ -32,6 +32,8 @@ export type JobInput = {
     loras: EditLora[];
     /** The model's settings from Settings (steps, CFG, sampler…). */
     tuning: EditTuning;
+    /** Where the text encoder is loaded (the preset's setting). */
+    textEncoderDevice: TextEncoderDevice;
   } | null;
   /** The seed to use, or null for a random one. */
   seed: number | null;
@@ -49,7 +51,7 @@ export const sameJob = (a: JobInput) =>
     a.prompt, a.negative, a.moment, a.comfy.url, a.comfy.width, a.comfy.height, a.start?.key ?? null,
     a.edit ? null : [a.draw.checkpoint, a.draw.workflow, a.draw.sampler, a.drawLoras], a.start && !a.edit ? a.redraw : null,
     a.edit?.check.model.id ?? null, a.edit?.instruction ?? null,
-    a.edit?.strength ?? null, a.edit?.fast ?? null, a.edit?.loras ?? null, a.edit?.tuning ?? null, a.seed,
+    a.edit?.strength ?? null, a.edit?.fast ?? null, a.edit?.loras ?? null, a.edit?.tuning ?? null, a.edit?.textEncoderDevice ?? null, a.seed,
   ]);
 
 /** A starting picture's upload to ComfyUI, kept so the next job from it doesn't send it again. */
@@ -119,7 +121,7 @@ export async function queueJob(
     edit && from
       ? buildEdit(
           edit.check,
-          { image: from.name, instruction: edit.instruction, seed, count, width, height, prefix, denoise: edit.strength, loras: edit.loras, tuning: edit.tuning },
+          { image: from.name, instruction: edit.instruction, seed, count, width, height, prefix, denoise: edit.strength, loras: edit.loras, tuning: edit.tuning, textEncoderDevice: edit.textEncoderDevice },
           edit.fast,
         )
       : fillWorkflow(base!, {

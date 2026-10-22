@@ -5,7 +5,7 @@ import { TUNING_LIMITS, type ComfySettings as Comfy } from "@/lib/settingsSchema
 import { BUILTIN_SAMPLER, builtinSampler, describeWorkflow, parseWorkflow, WorkflowError, type WorkflowFit } from "@/lib/comfy/workflow";
 import { checkComfy, type ComfyCheck } from "@/lib/comfy/check";
 import { listCheckpoints } from "@/lib/comfy/client";
-import { editModel, editPresetCheck, editTuning, lightningSteps, presetCheck, type EditModel } from "@/lib/comfy/editModels";
+import { editModel, editPresetCheck, editTuning, isGguf, lightningSteps, presetCheck, type EditModel } from "@/lib/comfy/editModels";
 import {
   drawPresetSummary,
   fileLabel,
@@ -191,6 +191,7 @@ function EditReport({ check, model }: { check: ComfyCheck; model: EditModel }) {
           </Line>
         ))}
         {e.missingNodes.length > 0 && <Line ok={false}>ComfyUI doesn&apos;t have the nodes {e.missingNodes.join(", ")}. Update ComfyUI.</Line>}
+        {e.ggufMissing.length > 0 && <li className="meta">GGUF files: install the ComfyUI-GGUF custom nodes to use them.</li>}
         {e.missingOptions.length > 0 && <Line ok={false}>ComfyUI is too old ({e.missingOptions.join("; ")}). Update ComfyUI.</Line>}
         {e.speedUp &&
           (e.speedUp.file ? (
@@ -551,6 +552,7 @@ function FileOptions({ files, chosen, prefix = "" }: { files: string[]; chosen?:
       {files.map((f) => (
         <option key={f} value={prefix + f}>
           {f}
+          {isGguf(f) ? " (GGUF)" : ""}
         </option>
       ))}
     </>
@@ -662,6 +664,22 @@ function EditPresetFields({ preset, model, setup, onChange }: { preset: EditPres
     <>
       <NameField value={preset.name} onChange={(name) => onChange({ name })} />
       <ModelFiles preset={preset} model={model} setup={setup} onChange={onChange} />
+      <label className="inline-label" style={{ alignItems: "flex-start" }}>
+        <input
+          type="checkbox"
+          aria-label={`Text encoder on the CPU for ${presetName(preset)}`}
+          checked={preset.textEncoderDevice === "cpu"}
+          disabled={!!check && !check.devices.includes("cpu")}
+          onChange={(e) => onChange({ textEncoderDevice: e.target.checked ? "cpu" : "default" })}
+        />
+        <span>
+          Keep the text encoder on the CPU{" "}
+          <small>
+            (in system memory, so the graphics card has room for the model; reading the instruction is a little slower
+            {check && !check.devices.includes("cpu") ? ". Doesn't apply: the text encoder loader in use has no such choice" : ""})
+          </small>
+        </span>
+      </label>
       {model.speedUp && (
         <label className="inline-label" style={{ alignItems: "flex-start" }}>
           <input type="checkbox" checked={preset.fast} disabled={!speedUp} onChange={(e) => onChange({ fast: e.target.checked })} />

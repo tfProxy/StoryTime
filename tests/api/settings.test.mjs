@@ -99,7 +99,7 @@ ok(r.json.settings.imagePromptModel === null, "…or when it isn't a model");
 
 // ---- ComfyUI (picture making), with presets ----
 const draw = (id, extra = {}) => ({ id, name: `Drawing ${id}`, promptStyle: "tags", prompt: "", negative: "", checkpoint: "sdxl.safetensors", workflow: "", loras: [], sampler: {}, denoise: 0.55, ...extra });
-const edit = (id, model, extra = {}) => ({ id, name: `Edit ${id}`, model, checkpoint: "", files: {}, fast: true, loras: [], tuning: {}, ...extra });
+const edit = (id, model, extra = {}) => ({ id, name: `Edit ${id}`, model, checkpoint: "", files: {}, fast: true, textEncoderDevice: "default", loras: [], tuning: {}, ...extra });
 const comfyIn = {
   url: "http://comfy.local:8188",
   width: 1024,
@@ -131,6 +131,10 @@ ok(JSON.stringify(r.json.settings.comfy) === JSON.stringify(comfyIn) && JSON.str
   r = await call("PUT", "/api/settings", { ...conns, comfy: noCover });
   ok(r.json.settings.comfy.coverWidth === 832 && r.json.settings.comfy.coverHeight === 1216 && r.json.settings.comfy.width === 1024, "settings without a cover size get the book size, 832 × 1216, and keep the chapters' size");
 }
+r = await call("PUT", "/api/settings", { ...conns, comfy: withEdit({ textEncoderDevice: "cpu" }) });
+ok(r.json.settings.comfy.editPresets[0].textEncoderDevice === "cpu" && r.json.settings.comfy.editPresets[1].textEncoderDevice === "default", "an edit preset keeps its text encoder device");
+r = await call("PUT", "/api/settings", { ...conns, comfy: withEdit({ textEncoderDevice: "cuda:1" }) });
+ok(r.json.settings.comfy.editPresets[0].textEncoderDevice === "default", "…and a device that isn't one of the choices falls back to the default");
 r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ promptStyle: "natural" }) });
 ok(r.json.settings.comfy.drawPresets[0].promptStyle === "natural", "a drawing preset keeps its prompt style");
 r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ promptStyle: "poetry" }) });

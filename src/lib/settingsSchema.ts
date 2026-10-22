@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { PROVIDER_KINDS, providerInfo, type ProviderKind } from "./ai/providers";
-import { EDIT_MODEL_IDS, EDIT_MODELS } from "./comfy/editModels";
+import { EDIT_MODEL_IDS, EDIT_MODELS, TEXT_ENCODER_DEVICES } from "./comfy/editModels";
 import {
   DEFAULT_DENOISE,
   DEFAULT_DRAW_PRESETS,
@@ -238,6 +238,7 @@ const editPresetSchema = z.object({
     )
     .catch({}),
   fast: z.boolean().catch(true),
+  textEncoderDevice: z.enum(TEXT_ENCODER_DEVICES).catch("default"),
   loras: loraList,
   tuning: editTuningSchema.transform(setOnly).catch({}),
 });

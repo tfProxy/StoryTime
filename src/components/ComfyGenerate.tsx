@@ -310,7 +310,7 @@ export default function ComfyGenerate({
       drawLoras: drawUsable.loras,
       redraw: redrawStrength,
       start,
-      edit: editing && chosen && tuning ? { check: chosen, instruction: instruction.trim(), strength: editStrength, fast, loras: editLoras, tuning } : null,
+      edit: editing && chosen && tuning ? { check: chosen, instruction: instruction.trim(), strength: editStrength, fast, loras: editLoras, tuning, textEncoderDevice: editPreset?.textEncoderDevice ?? "default" } : null,
       seed: reuseSeed && loadedSeed !== null ? loadedSeed : null,
     };
     pictureQueue.ask({
