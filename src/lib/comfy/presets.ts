@@ -30,6 +30,9 @@ export type DrawPreset = {
   name: string;
   /** How prompts are written for this preset's model. */
   promptStyle: PromptStyle;
+  /** Added to every prompt and negative prompt made with this preset (quality tags, for example); "" for none. */
+  prompt: string;
+  negative: string;
   /** The checkpoint file; "" until chosen. */
   checkpoint: string;
   /** A workflow exported from ComfyUI in API format, as JSON; "" uses the built-in SDXL workflow. */
@@ -63,7 +66,7 @@ export type EditPreset = {
 };
 
 export const newDrawPreset = (id: string, name: string, checkpoint = ""): DrawPreset => ({
-  id, name, promptStyle: "tags", checkpoint, workflow: "", loras: [], sampler: {}, denoise: DEFAULT_DENOISE,
+  id, name, promptStyle: "tags", prompt: "", negative: "", checkpoint, workflow: "", loras: [], sampler: {}, denoise: DEFAULT_DENOISE,
 });
 
 export const newEditPreset = (id: string, name: string, model: EditModelId): EditPreset => ({

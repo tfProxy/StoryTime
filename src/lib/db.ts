@@ -355,6 +355,11 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE stories ADD COLUMN cover_prompt TEXT;
   ALTER TABLE stories ADD COLUMN cover_negative TEXT;
   `,
+  // 21: text the author always wants in a chapter's picture prompt (the Illustrate page's "Always include"
+  // box), one for the chapter whichever moment is shown. It is added to the written prompt when a picture is made.
+  `
+  ALTER TABLE chapters ADD COLUMN picture_fixed TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 function open(): Database.Database {

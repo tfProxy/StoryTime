@@ -376,6 +376,30 @@ function DrawPresetFields({ preset, setup, onChange }: { preset: DrawPreset; set
         </select>
         <span className="meta">How the AI writes picture prompts for this model.</span>
       </label>
+      <label>
+        Preset prompt
+        <textarea
+          aria-label="Preset prompt"
+          rows={2}
+          maxLength={4000}
+          value={preset.prompt}
+          placeholder="e.g. masterpiece, best quality"
+          onChange={(e) => onChange({ prompt: e.target.value })}
+        />
+        <span className="meta">Added to every prompt drawn with this preset, without repeating tags the prompt already has.</span>
+      </label>
+      <label>
+        Preset negative prompt
+        <textarea
+          aria-label="Preset negative prompt"
+          rows={2}
+          maxLength={4000}
+          value={preset.negative}
+          placeholder="e.g. lowres, watermark"
+          onChange={(e) => onChange({ negative: e.target.value })}
+        />
+        <span className="meta">Added to every negative prompt drawn with this preset.</span>
+      </label>
       <StrengthField label="Redraw strength" value={preset.denoise} onChange={(denoise) => onChange({ denoise })}>
         Where the Redraw tab&apos;s strength starts. Low keeps the picture close; high changes more.
       </StrengthField>
