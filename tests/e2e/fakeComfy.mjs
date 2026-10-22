@@ -96,6 +96,7 @@ const NODES = [
   "CheckpointLoaderSimple", "KSampler", "EmptyLatentImage", "CLIPTextEncode", "VAEDecode", "VAEEncode", "SaveImage", "LoadImage",
   "RepeatLatentBatch", "ImageScale", "UNETLoader", "CLIPLoader", "DualCLIPLoader", "VAELoader", "TextEncodeQwenImageEditPlus",
   "ModelSamplingAuraFlow", "CFGNorm", "ReferenceLatent", "FluxGuidance", "ConditioningZeroOut", "LoraLoaderModelOnly", "LoraLoader",
+  "LoadImageMask", "SetLatentNoiseMask", "InvertMask", "ImageCompositeMasked",
 ];
 
 /** The samplers and schedulers the fake's KSampler offers. */
@@ -205,9 +206,9 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
     }
     for (const [id, node] of nodes) {
       const image = node?.inputs?.image;
-      if (node?.class_type === "LoadImage" && !uploads.has(image)) {
+      if ((node?.class_type === "LoadImage" || node?.class_type === "LoadImageMask") && !uploads.has(image)) {
         nodeErrors[id] = {
-          class_type: "LoadImage",
+          class_type: node.class_type,
           dependent_outputs: ["9"],
           errors: [{ type: "value_not_in_list", message: "Value not in list", details: `image: '${image}' not in [${[...uploads].map((u) => `'${u}'`).join(", ")}]` }],
         };

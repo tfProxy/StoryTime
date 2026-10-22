@@ -6,7 +6,7 @@ import { imageUrl, type ComfyImage } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
 import type { PictureSaver } from "./usePictureSaver";
 import PictureButtons, { InUseBadge, loadPromptItem, openItem, startItems } from "./PictureButtons";
-import type { StartMode } from "./pictures";
+import type { StartRequest } from "./pictures";
 
 type Props = {
   comfyUrl: string;
@@ -23,7 +23,7 @@ type Props = {
   /** It is the starting picture now (being edited or redrawn): it is highlighted and tagged. */
   editing?: boolean;
   /** Called to make new pictures starting from this one: redrawn from the prompt, or edited by instruction. */
-  onStart?: (image: ComfyImage, mode: StartMode) => void;
+  onStart?: (image: ComfyImage, mode: StartRequest) => void;
   /** Why it can't be edited by instruction now (no edit model installed), or null. */
   editBlocked?: string | null;
   /** A short line under the picture, such as its seed and checkpoint. */

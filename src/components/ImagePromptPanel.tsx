@@ -11,7 +11,7 @@ import { imagePromptRequest, withArtStyle, writeImagePrompt, type ImageMoment } 
 import AutoTextarea from "./AutoTextarea";
 import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
-import ComfyGenerate from "./ComfyGenerate";
+import ComfyGenerate, { type PaintProps } from "./ComfyGenerate";
 import { CopyIcon, RedoIcon, SparkleIcon, StopIcon } from "./PictureIcons";
 import type { StartPicture } from "@/lib/comfy/startPicture";
 import type { PendingJob, Picture, PromptToLoad, StartMode } from "./pictures";
@@ -60,6 +60,8 @@ type Props = {
   /** Whether the starting picture is redrawn from the prompt or edited by instruction, and how to switch. */
   startMode?: StartMode;
   onStartMode?: (mode: StartMode) => void;
+  /** The part of the starting picture painted to redraw (Redraw only). */
+  paint?: PaintProps;
   /** Which edit models ComfyUI can run. */
   editModels?: EditModels;
   /** Called with each finished job's pictures. */
@@ -86,7 +88,7 @@ type Props = {
  * (chapter start, chapter end) has its own boxes, so switching between them brings each one's prompt back;
  * they are kept for the chapter on the server, so they are there again next time.
  */
-export default function ImagePromptPanel({ chapterId, story, chapterPreset = null, path, codex, loaded = null, start = null, onClearStart, startMode = "redraw", onStartMode, editModels, onPictures, onQueue, draft = null, dock = null, codexSlot = null }: Props) {
+export default function ImagePromptPanel({ chapterId, story, chapterPreset = null, path, codex, loaded = null, start = null, onClearStart, startMode = "redraw", onStartMode, paint, editModels, onPictures, onQueue, draft = null, dock = null, codexSlot = null }: Props) {
   const settings = useSettings();
   const chapter = path[path.length - 1];
   const [moment, setMoment] = useState<ImageMoment>(draft?.moment ?? "start");
@@ -269,6 +271,7 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
         start={start}
         startMode={startMode}
         onStartMode={onStartMode}
+        paint={paint}
         editModels={editModels}
         onPictures={onPictures}
         onQueue={onQueue}

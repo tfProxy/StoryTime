@@ -56,6 +56,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
           start={w.start}
           startMode={w.startMode}
           onStartMode={w.setStartMode}
+          paint={{ mask: w.mask, onMask: w.setMask, nonce: w.paintNonce }}
           editModels={w.editModels}
           onClearStart={() => w.setStart(null)}
           onPictures={w.addPictures}

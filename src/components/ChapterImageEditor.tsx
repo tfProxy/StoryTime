@@ -6,7 +6,7 @@ import { prepareImage } from "@/lib/prepareImage";
 import type { ImageMade } from "@/lib/imageSlots";
 import { savedPictureApi, savedPictureUrl, type PictureSlot, type PictureTarget } from "@/lib/pictureTarget";
 import { PictureMenu, loadPromptItem, openItem, startItems } from "./PictureButtons";
-import type { StartMode } from "./pictures";
+import type { StartRequest } from "./pictures";
 
 // The longest side an uploaded illustration keeps. Bigger pictures are scaled down in the browser first.
 const MAX_SIDE = 1600;
@@ -27,7 +27,7 @@ type Props = {
   /** Called with `made` when the author asks to bring its prompt back. */
   onLoadPrompt?: (made: ImageMade) => void;
   /** Called with the saved picture's version to make new pictures starting from it: redrawn, or edited by instruction. */
-  onStart?: (version: number, mode: StartMode) => void;
+  onStart?: (version: number, mode: StartRequest) => void;
   /** Why it can't be edited by instruction now, or null. */
   editBlocked?: string | null;
 };

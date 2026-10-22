@@ -159,3 +159,33 @@ export function pinchView(v0: View, mid0: [number, number], d0: number, mid: [nu
 export function isDoubleTap(prev: { t: number; x: number; y: number } | null, now: { t: number; x: number; y: number }, ms = 320, px = 32): boolean {
   return !!prev && now.t - prev.t <= ms && Math.hypot(now.x - prev.x, now.y - prev.y) <= px;
 }
+
+// ---- the finished mask ----
+
+/**
+ * A mask kept for a starting picture: what was painted (the PNG is drawn from the strokes when it is needed,
+ * so it survives a refresh), the picture's size it fits, and `id`, which changes whenever the mask does.
+ */
+export type PaintedArea = MaskState & { id: string; width: number; height: number };
+
+/** Renders a mask's strokes to the black and white PNG at the picture's size; null when nothing is painted or the browser can't. Browser only. */
+export async function renderMask(state: MaskState, width: number, height: number): Promise<MaskResult | null> {
+  const layer = document.createElement("canvas");
+  layer.width = width;
+  layer.height = height;
+  const out = document.createElement("canvas");
+  out.width = width;
+  out.height = height;
+  const lctx = layer.getContext("2d");
+  const octx = out.getContext("2d", { willReadFrequently: true });
+  if (!lctx || !octx) return null;
+  paintMask(lctx, width, height, state, "#fff");
+  finishMask(octx, layer, width, height, state.softness);
+  const coverage = coverageOf(octx.getImageData(0, 0, width, height).data, 0);
+  const blob = await new Promise<Blob | null>((resolve) => out.toBlob(resolve, "image/png"));
+  if (!blob || coverage === 0) return null;
+  return { strokes: state.strokes, softness: state.softness, inverted: state.inverted, blob, coverage };
+}
+
+/** A tag for a mask, so a changed one is told apart from the last (it joins the job's "same settings" key). */
+export const newMaskId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;

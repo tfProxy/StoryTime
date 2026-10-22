@@ -14,7 +14,7 @@ import { drawPresetFor } from "@/lib/comfy/presets";
 import AutoTextarea from "./AutoTextarea";
 import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
-import ComfyGenerate from "./ComfyGenerate";
+import ComfyGenerate, { type PaintProps } from "./ComfyGenerate";
 import { CopyIcon } from "./PictureIcons";
 import { StoryPicturesLine, type IllustratedStory, type LoadedPrompt } from "./ImagePromptPanel";
 import type { PendingJob, Picture, StartMode } from "./pictures";
@@ -62,6 +62,7 @@ type Props = {
   onClearStart?: () => void;
   startMode?: StartMode;
   onStartMode?: (mode: StartMode) => void;
+  paint?: PaintProps;
   editModels?: EditModels;
   onPictures?: (pictures: Picture[]) => void;
   onQueue?: (jobs: PendingJob[]) => void;
@@ -74,7 +75,7 @@ type Props = {
  * it. The boxes and the choice are kept on the server (see `useCoverDraft`).
  */
 export default function CoverPromptPanel({
-  story, coverPreset, chapters, opening, savedPath, draft = null, loaded = null, start = null, onClearStart, startMode, onStartMode, editModels, onPictures, onQueue, dock = null,
+  story, coverPreset, chapters, opening, savedPath, draft = null, loaded = null, start = null, onClearStart, startMode, onStartMode, paint, editModels, onPictures, onQueue, dock = null,
 }: Props) {
   const settings = useSettings();
   const [boxes, setBoxes] = useState<CoverDraft>(() => ({
@@ -279,6 +280,7 @@ export default function CoverPromptPanel({
         start={start}
         startMode={startMode}
         onStartMode={onStartMode}
+        paint={paint}
         editModels={editModels}
         onPictures={onPictures}
         onQueue={onQueue}

@@ -6,12 +6,12 @@ import {
   clientToPicture,
   coverageOf,
   drawStroke,
-  finishMask,
   fitSize,
   fitView,
   isDoubleTap,
   paintMask,
   pinchView,
+  renderMask,
   withoutLastStroke,
   zoomAt,
   type MaskResult,
@@ -343,21 +343,8 @@ export default function MaskEditor({ src, width, height, initial = null, onDone,
     if (busy || coverage === 0) return;
     setBusy(true);
     try {
-      const layer = document.createElement("canvas");
-      layer.width = width;
-      layer.height = height;
-      const lctx = layer.getContext("2d");
-      const out = document.createElement("canvas");
-      out.width = width;
-      out.height = height;
-      const octx = out.getContext("2d", { willReadFrequently: true });
-      if (!lctx || !octx) return;
-      paintMask(lctx, width, height, { strokes, inverted }, "#fff");
-      finishMask(octx, layer, width, height, softness);
-      const share = coverageOf(octx.getImageData(0, 0, width, height).data, 0);
-      const blob = await new Promise<Blob | null>((resolve) => out.toBlob(resolve, "image/png"));
-      if (!blob || share === 0) return;
-      onDone({ strokes, softness, inverted, blob, coverage: share });
+      const result = await renderMask({ strokes, softness, inverted }, width, height);
+      if (result) onDone(result);
     } finally {
       setBusy(false);
     }
