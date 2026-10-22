@@ -217,8 +217,10 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
 
       <label>
         What to show (optional)
-        <input
-          type="text"
+        <AutoTextarea
+          className="two-lines"
+          rows={2}
+          style={{ fontFamily: "inherit" }}
           value={direction}
           maxLength={LIMITS.label}
           placeholder="e.g. Jim taking the first bite [close-up]"
@@ -249,18 +251,6 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
         </span>
       </div>
 
-      <label>
-        Always include (this chapter)
-        <input
-          type="text"
-          value={fixed}
-          maxLength={LIMITS.label}
-          placeholder="e.g. 1girl, red scarf"
-          title="Added to every picture prompt for this chapter. Tags the written prompt already has aren't repeated."
-          onChange={(e) => setFixed(e.target.value)}
-        />
-      </label>
-
       <div className="image-prompt-result">
         <div className="prompt-field">
           <div className="field-head">
@@ -288,6 +278,19 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
             </span>
           )}
         </div>
+        <label>
+          Always include (this chapter)
+          <AutoTextarea
+            className="two-lines"
+            rows={2}
+            style={{ fontFamily: "inherit" }}
+            value={fixed}
+            maxLength={LIMITS.label}
+            placeholder="e.g. 1girl, red scarf"
+            title="Added to every picture prompt for this chapter. Tags the written prompt already has aren't repeated."
+            onChange={(e) => setFixed(e.target.value)}
+          />
+        </label>
         <div className="prompt-field">
           <div className="field-head">
             <label htmlFor="picture-negative-text">Negative prompt</label>

@@ -135,13 +135,13 @@ try {
   await stroke();
   await done.click();
   await maskLine.waitFor();
-  await page.getByRole("tab", { name: "Edit" }).click();
+  await page.getByRole("tab", { name: "Instruct" }).click();
   await page.getByText("The painted area is only used by Redraw for now.").waitFor();
   ok(await page.locator("img.start-picture-mask").count() === 0, "on the Edit tab a note says the painted area is only used by Redraw for now, and it is not tinted");
 
   // Changing the starting picture clears the painted area.
   await page.getByRole("tab", { name: "Redraw" }).click();
-  await page.getByRole("button", { name: "Clear starting picture" }).click();
+  await page.getByRole("button", { name: "Stop editing" }).click();
   await thumb.waitFor({ state: "detached" });
   ok((await stored()) === null, "clearing the starting picture forgets the painted area too");
 

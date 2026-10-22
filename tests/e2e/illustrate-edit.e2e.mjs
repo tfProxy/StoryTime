@@ -32,7 +32,7 @@ const items = page.locator(".candidates li.picture-tile");
 const thumb = page.getByRole("img", { name: "Starting picture" });
 const strength = page.getByRole("slider", { name: "Strength" });
 const redrawTab = page.getByRole("tab", { name: "Redraw" });
-const editTab = page.getByRole("tab", { name: "Edit" });
+const editTab = page.getByRole("tab", { name: "Instruct" });
 const modelMenu = page.getByLabel("Edit preset");
 // The presets the Edit tab offers (each model's Default has the model's id), and those that can be chosen.
 const offered = () => modelMenu.locator("option").evaluateAll((os) => os.map((o) => o.value).join("|"));
@@ -220,11 +220,11 @@ try {
   await thumb.waitFor();
   await until(async () => (await redrawTab.getAttribute("aria-selected")) === "true", "the Redraw tab to come back");
   ok(true, "…and a refresh in Redraw stays in Redraw");
-  await page.getByRole("button", { name: "Clear starting picture" }).click();
+  await page.getByRole("button", { name: "Stop editing" }).click();
   await page.reload();
   await page.getByRole("heading", { name: "Model Settings" }).waitFor();
   await page.waitForTimeout(500);
-  ok(await thumb.count() === 0, "after Clear starting picture a refresh starts with none");
+  ok(await thumb.count() === 0, "after Stop editing a refresh starts with none");
 
   // ---- Qwen's Lightning LoRA ----
   const fastBox = page.getByRole("checkbox", { name: /^Fast/ });
@@ -264,16 +264,16 @@ try {
   await fastBox.check();
   if (process.env.E2E_SCREENSHOT_DIR) {
     await page.waitForTimeout(300);
-    await page.locator(".comfy-generate").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-edit-fast-1000.png` });
+    await page.locator(".edit-panel").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-edit-fast-1000.png` });
   }
 
   // ---- the author's LoRA stack ----
   const toggles = page.getByRole("group", { name: "LoRAs" });
-  const noLoras = page.locator(".comfy-generate").getByText("No LoRAs in this preset.");
-  ok(await noLoras.isVisible() && await page.locator(".comfy-generate").getByRole("link", { name: "Add some in Settings" }).getAttribute("href") === "/settings#preset-qwen-image-edit", "with no stack, the Edit tab says so and links to the preset in Settings");
+  const noLoras = page.locator(".edit-panel").getByText("No LoRAs in this preset.");
+  ok(await noLoras.isVisible() && await page.locator(".edit-panel").getByRole("link", { name: "Add some in Settings" }).getAttribute("href") === "/settings#preset-qwen-image-edit", "with no stack, the Edit tab says so and links to the preset in Settings");
   const userLoras = ["styles/ink.safetensors", "hero.safetensors"];
   comfy.setMode({ files: { ...EDIT_FILES, loras: [LIGHTNING_LORA, ...userLoras] } });
-  await page.locator(".comfy-generate").getByRole("link", { name: "Add some in Settings" }).click();
+  await page.locator(".edit-panel").getByRole("link", { name: "Add some in Settings" }).click();
   await page.waitForURL("**/settings#preset-qwen-image-edit");
   await qwenCard.waitFor();
   ok(await page.getByRole("tab", { name: "Qwen edit" }).getAttribute("aria-selected") === "true" && await qwenCard.evaluate((d) => d.open), "…which opens the Qwen edit tab, with the preset's card open");
@@ -377,7 +377,7 @@ try {
   wf = prompts(mark)[0];
   ok(loraNodes() === `${LIGHTNING_LORA}@1`, "…and the edit goes ahead without it");
   if (process.env.E2E_SCREENSHOT_DIR) {
-    await page.locator(".comfy-generate").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-edit-loras-1000.png` });
+    await page.locator(".edit-panel").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-edit-loras-1000.png` });
   }
   comfy.setMode({ files: EDIT_FILES });
 
@@ -394,13 +394,13 @@ try {
   if (process.env.E2E_SCREENSHOT_DIR) {
     await instruction.fill("remove the logo on his shirt");
     await page.waitForTimeout(300);
-    await page.locator(".comfy-generate").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-edit-1000.png` });
+    await page.locator(".edit-panel").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-edit-1000.png` });
     await items.first().getByRole("button", { name: "More" }).click();
     await page.locator(".chapter-pictures .picture-tile").first().screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-edit-menu-1000.png` });
     await page.keyboard.press("Escape");
     await page.setViewportSize({ width: 390, height: 900 });
     await page.waitForTimeout(300);
-    await page.locator(".comfy-generate").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-edit-390.png` });
+    await page.locator(".edit-panel").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-edit-390.png` });
     ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "at phone width the Illustrate page does not scroll sideways");
     comfy.setMode({ missingNodes: [], files: { ...EDIT_FILES, diffusion_models: ["qwen_image_edit_2509_fp8_e4m3fn.safetensors"] } });
     await page.goto(`${BASE}/settings#edit-qwen-image-edit`);

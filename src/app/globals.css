@@ -1259,28 +1259,49 @@ main:has(.library) {
 
 /* One picture per line, in the order they were made, so each has room to be looked at closely. */
 /* The picture new pictures start from (image to image): a thumbnail beside the strength control. */
-.start-picture {
+/* The Edit section: the preview on top, then the tabs and their settings across the section's width. */
+.edit-panel {
   display: grid;
-  grid-template-columns: minmax(5rem, 9rem) minmax(0, 1fr);
-  gap: 0.75rem;
-  align-items: start;
+  gap: 0.6rem;
+}
+
+.edit-panel.edit-collapsed {
+  gap: 0.4rem;
 }
 
 .start-picture img {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 9rem;
+  max-height: 16rem;
   object-fit: contain;
   border-radius: 6px;
   background: var(--line);
 }
 
-.start-picture-thumb {
+/* Two lines to start with (the global textarea is tall); AutoTextarea grows it with the text. */
+textarea.two-lines {
+  min-height: 0;
+  line-height: 1.4;
+}
+
+.alt-prompt {
   display: grid;
-  gap: 0.4rem;
-  justify-items: start;
-  min-width: 0;
+  gap: 0.25rem;
+}
+
+.alt-prompt .field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.strength-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85em;
+  color: var(--muted, inherit);
 }
 
 .start-picture-controls {
@@ -1336,22 +1357,7 @@ main:has(.library) {
   min-width: 0;
 }
 
-/* On a phone the thumbnail goes above its controls, which need the width for the edit instruction. */
-@media (max-width: 520px) {
-  .start-picture {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .start-picture img {
-    max-width: 12rem;
-  }
-
-  .start-picture-frame {
-    max-width: 12rem;
-  }
-}
-
-/* Redraw or Edit: two buttons side by side, the chosen one filled. */
+/* Redraw or Instruct: two tabs side by side, the chosen one filled. */
 .start-modes {
   gap: 0.35rem;
 }

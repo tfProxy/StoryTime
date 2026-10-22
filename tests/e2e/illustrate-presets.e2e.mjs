@@ -115,7 +115,7 @@ try {
   await items.first().getByRole("button", { name: "More" }).click();
   await items.first().getByRole("menuitem", { name: "Redraw from this" }).click();
   await strength.waitFor();
-  ok(await strength.inputValue() === "0.4" && (await page.locator(".comfy-generate").innerText()).includes("It starts at the preset's default (0.40)"), "Redraw's strength starts at the preset's Redraw strength");
+  ok(await strength.inputValue() === "0.4", "Redraw's strength starts at the preset's Redraw strength");
   await drawMenu.selectOption("plain");
   ok(await until(async () => (await strength.inputValue()) === "0.55", "the strength to follow the preset"), "…and follows the preset chosen");
   ok(await until(async () => (await chapterPreset()) === null, "the chapter to follow the story"), "choosing the story's own preset again makes the chapter follow the story");
@@ -207,7 +207,7 @@ try {
       await page.getByRole("heading", { name: "Model Settings" }).waitFor();
       await page.waitForTimeout(500);
       // A refresh brings back the picture being edited; the drawing preset shows without one.
-      const clear = page.getByRole("button", { name: "Clear starting picture" });
+      const clear = page.getByRole("button", { name: "Stop editing" });
       if (await clear.count()) await clear.click();
       await drawMenu.waitFor();
       await page.waitForTimeout(400);

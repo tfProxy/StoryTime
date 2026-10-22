@@ -125,10 +125,10 @@ try {
   ok(sent.user.includes("closing moment") && !sent.user.includes("set the scene"), "…and the chapter end task");
   ok(sent.system.includes("plain descriptive English") && !sent.system.includes("comma-separated tags (Stable"), "…written for the sentence style");
   ok(sent.user.includes("Earlier in the story") === false, "…the previous chapter has no summary, so none is sent");
-  // (a textarea inside its label gets a name that includes its own text, so find them by position: prompt, then negative)
+  // (a textarea inside its label gets a name that includes its own text, so find them by position: prompt, always include, then negative)
   const promptBox = page.locator(".image-prompt-result textarea").nth(0);
-  const negativeBox = page.locator(".image-prompt-result textarea").nth(1);
-  ok((await page.locator(".image-prompt-result label").nth(0).innerText()).startsWith("Prompt") && (await page.locator(".image-prompt-result label").nth(1).innerText()).startsWith("Negative prompt"), "the result has a Prompt and a Negative prompt field");
+  const negativeBox = page.locator(".image-prompt-result textarea").nth(2);
+  ok((await page.locator(".image-prompt-result label").nth(0).innerText()).startsWith("Prompt") && (await page.locator(".image-prompt-result label").nth(1).innerText()).startsWith("Always include") && (await page.locator(".image-prompt-result label").nth(2).innerText()).startsWith("Negative prompt"), "the result has a Prompt, then Always include, then a Negative prompt field");
   ok((await promptBox.inputValue()) === "a man with blonde hair eating a sandwich in a kitchen. watercolor storybook, soft light.", "the prompt has the art style added as a sentence (replacing what was typed before)");
   ok((await negativeBox.inputValue()) === "text, watermark", "the negative prompt is shown");
   ok(await page.getByText("Scene: Jim eats.").count() === 0 && await page.getByRole("button", { name: "Write again" }).isVisible(), "the scene isn't shown (the Chapter panel covers it) and the button now says Write again");

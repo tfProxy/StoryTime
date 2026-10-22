@@ -186,6 +186,8 @@ export default function ComfyGenerate({
   const queueCount = comfy.queueCount;
   // What to change, when editing the starting picture by instruction.
   const [instruction, setInstruction] = useState("");
+  // A prompt for redrawing the starting picture in place of the main one (empty: the main prompt is used).
+  const [altPrompt, setAltPrompt] = useState("");
   // How closely an edit follows the starting picture: 1 lets the model change it freely, lower keeps it closer.
   // It starts at the edit preset's default strength (Settings); a change here is for that preset, until another is chosen.
   const [strengthFor, setStrengthFor] = useState<{ model: string; value: number } | null>(null);
@@ -223,6 +225,8 @@ export default function ComfyGenerate({
   const familyCheck = drawPresetFamily(editModels, draw);
 
   const editing = start !== null && startMode === "edit";
+  // What a redraw sends: its own prompt as typed (nothing added to it), else the main prompt with the added text.
+  const drawn = start !== null && !editing && altPrompt.trim() ? altPrompt : prompt;
   const blocked = editBlocked(editModels, comfy.editPresets);
   // The edit preset: the one last chosen, if ComfyUI has its files, else the first that it has them for.
   const usablePresets = usableEditPresets(editModels, comfy.editPresets);
@@ -349,7 +353,7 @@ export default function ComfyGenerate({
     }
     const input: JobInput = {
       // An edit follows the instruction alone, so the preset's and chapter's text isn't added to it.
-      prompt: (editing ? boxPrompt : prompt).trim(),
+      prompt: (editing ? boxPrompt : drawn).trim(),
       // Edits follow the instruction alone.
       negative: editing ? "" : negative.trim(),
       moment,
@@ -433,7 +437,7 @@ export default function ComfyGenerate({
             // Each is one more picture for the job being gathered, as if clicked quickly.
             for (let i = 0; i < queueCount; i++) ask();
           }}
-          disabled={editing ? !chosen || !instruction.trim() : !prompt.trim()}
+          disabled={editing ? !chosen || !instruction.trim() : !drawn.trim()}
           title={`Each click queues ${queueCount === 1 ? "one picture" : `${queueCount} pictures`}. Quick clicks with nothing changed in between go to ComfyUI as one job.`}
         >
           Queue
@@ -462,60 +466,59 @@ export default function ComfyGenerate({
     </div>
   );
 
-  // The Strength slider and its one-line explanation, the same for Redraw and Edit.
+  // The Strength slider, the same for Redraw and Instruct; its ends are labelled.
   const strength = (value: number, onChange: (v: number) => void) => (
-    <>
-      <label className="strength">
-        Strength {value.toFixed(2)}
-        <input type="range" aria-label="Strength" min={0.05} max={1} step={0.05} value={value} onChange={(e) => onChange(Number(e.target.value))} />
-      </label>
-      <p className="meta" style={{ margin: 0 }}>Low stays close to the picture; 1.00 changes it freely.</p>
-    </>
+    <label className="strength">
+      Strength {value.toFixed(2)}
+      <input type="range" aria-label="Strength" min={0.05} max={1} step={0.05} value={value} onChange={(e) => onChange(Number(e.target.value))} />
+      <span className="strength-ends" aria-hidden="true">
+        <span>Low</span>
+        <span>High</span>
+      </span>
+    </label>
   );
 
   return (
-    <section className="ai-panel comfy-generate">
-      <h2>Model Settings</h2>
+    <>
+    {/* Editing the starting picture: a section of its own, collapsed (with its tabs off) while there is no picture to edit. */}
+    <section className={`ai-panel edit-panel${start ? "" : " edit-collapsed"}`}>
+      <h2>Edit</h2>
       {start && (
         <div className="start-picture">
-          <div className="start-picture-thumb">
-            <div className="start-picture-frame">
-              {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
-              <img src={start.thumb} alt="Starting picture" />
-              {/* eslint-disable-next-line @next/next/no-img-element -- a small picture made here */}
-              {!editing && preview.url && <img className="start-picture-mask" src={preview.url} alt="The part to redraw, tinted" />}
-            </div>
-            <button type="button" className="secondary" onClick={onClearStart}>
-              Clear starting picture
-            </button>
+          <div className="start-picture-frame">
+            {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
+            <img src={start.thumb} alt="Starting picture" />
+            {/* eslint-disable-next-line @next/next/no-img-element -- a small picture made here */}
+            {!editing && preview.url && <img className="start-picture-mask" src={preview.url} alt="The part to redraw, tinted" />}
           </div>
-          <div className="start-picture-controls">
-            <p style={{ margin: 0 }}>
-              <strong>Starting from this picture.</strong>
-            </p>
-            <div className="row start-modes" role="tablist" aria-label="What to do with it">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={!editing}
-                className={editing ? "secondary" : undefined}
-                onClick={() => onStartMode?.("redraw")}
-                title="Make new pictures from the prompt, starting from this one"
-              >
-                Redraw
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={editing}
-                className={editing ? undefined : "secondary"}
-                onClick={() => onStartMode?.("edit")}
-                disabled={!editing && blocked !== null}
-                title={blocked ?? "Change this picture by telling an edit model what to change"}
-              >
-                Edit
-              </button>
-            </div>
+        </div>
+      )}
+      <div className="row start-modes" role="tablist" aria-label="What to do with it">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!editing}
+          className={editing ? "secondary" : undefined}
+          onClick={() => onStartMode?.("redraw")}
+          disabled={!start}
+          title="Make new pictures from the prompt, starting from this one"
+        >
+          Redraw
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={editing}
+          className={editing ? undefined : "secondary"}
+          onClick={() => onStartMode?.("edit")}
+          disabled={!start || (!editing && blocked !== null)}
+          title={start ? (blocked ?? "Change this picture by telling an edit model what to change") : undefined}
+        >
+          Instruct
+        </button>
+      </div>
+      {start && (
+        <div className="start-picture-controls" role="tabpanel">
             {editing && mask && <p className="meta" style={{ margin: 0 }}>The painted area is only used by Redraw for now.</p>}
             {editing ? (
               chosen && editPreset ? (
@@ -575,10 +578,6 @@ export default function ComfyGenerate({
                     />
                   </label>
                   {strength(editStrength, setEditStrength)}
-                  <p className="meta" style={{ margin: 0 }}>
-                    It starts at the preset&apos;s default ({(tuning?.strength ?? 1).toFixed(2)}),{" "}
-                    <Link href={`/settings#preset-${editPreset.id}`}>set in Settings</Link>.
-                  </p>
                 </>
               ) : (
                 <p className="error" style={{ margin: 0 }}>
@@ -588,6 +587,24 @@ export default function ComfyGenerate({
             ) : (
               <>
                 <p className="meta" style={{ margin: 0 }}>The new pictures are its size, drawn with the preset below.</p>
+                <div className="alt-prompt">
+                  <div className="field-head">
+                    <label htmlFor="redraw-prompt">Redraw prompt (optional)</label>
+                    <button type="button" className="secondary" onClick={() => setAltPrompt(prompt)} disabled={!prompt.trim()} title="Put the main prompt here, with the always-included text, to change it for this redraw">
+                      Copy main prompt
+                    </button>
+                  </div>
+                  <AutoTextarea
+                    id="redraw-prompt"
+                    className="two-lines"
+                    rows={2}
+                    style={{ fontFamily: "inherit" }}
+                    maxLength={LIMITS.picturePrompt}
+                    placeholder="Empty: the main prompt is used"
+                    value={altPrompt}
+                    onChange={(e) => setAltPrompt(e.target.value)}
+                  />
+                </div>
                 {paint &&
                   (mask ? (
                     <div className="start-mask">
@@ -619,14 +636,19 @@ export default function ComfyGenerate({
                     </div>
                   ))}
                 {strength(redrawStrength, (value) => setRedrawFor({ preset: draw.id, value }))}
-                <p className="meta" style={{ margin: 0 }}>
-                  It starts at the preset&apos;s default ({draw.denoise.toFixed(2)}), <Link href={`/settings#preset-${draw.id}`}>set in Settings</Link>.
-                </p>
               </>
             )}
-          </div>
         </div>
       )}
+      {start && (
+        <button type="button" className="secondary" onClick={onClearStart} style={{ justifySelf: "start" }}>
+          Stop editing
+        </button>
+      )}
+      {!start && <p className="meta" style={{ margin: 0 }}>Choose a picture to redraw or instruct.</p>}
+    </section>
+    <section className="ai-panel comfy-generate">
+      <h2>Model Settings</h2>
       {painting && start && paint && !editing && (
         <MaskPainter
           src={start.thumb}
@@ -690,6 +712,7 @@ export default function ComfyGenerate({
       {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
       {dock ? createPortal(bar, dock) : bar}
     </section>
+    </>
   );
 }
 

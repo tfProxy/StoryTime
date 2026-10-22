@@ -63,6 +63,7 @@ try {
 
   // ---- plain pictures first ----
   ok(await thumb.count() === 0 && await strength.count() === 0, "with nothing chosen there is no starting picture and no Strength slider");
+  ok(await page.locator(".edit-panel.edit-collapsed").count() === 1 && await page.getByRole("tab", { name: "Redraw" }).isDisabled() && await page.getByRole("tab", { name: "Instruct" }).isDisabled(), "the Edit section is collapsed, with its tabs off, while there is no picture to edit");
   await make(2);
   ok(prompts().length === 1 && nodes(prompts()[0], "EmptyLatentImage").length === 1 && nodes(prompts()[0], "LoadImage").length === 0 && uploads().length === 0, "pictures made with no starting picture use the empty latent image and upload nothing");
 
@@ -70,14 +71,15 @@ try {
   await startFrom(items.first());
   await thumb.waitFor();
   ok(await strength.isVisible() && await strength.inputValue() === "0.55", "Redraw from this shows the picture and a Strength slider at 0.55");
-  ok(await page.getByText("Low stays close to the picture; 1.00 changes it freely.").isVisible(), "…with a line saying what Strength does");
+  ok(await page.getByText("Low stays close to the picture").count() === 0 && await page.locator(".strength-ends").innerText() === "Low\nHigh", "…with its ends labelled Low and High instead of a line of explanation");
   ok(await sizeMenu.isDisabled(), "…and the Size menu is off, as the size comes from the picture");
   const clickedSrc = await items.first().locator("img").getAttribute("src");
   ok(await thumb.getAttribute("src") === clickedSrc, "…and the thumbnail is the picture that was chosen");
   ok(await items.first().getByText("Editing", { exact: true }).isVisible() && await page.locator(".picture-tile.editing").count() === 1, "…and that picture in the list is tagged Editing");
   const thumbBox = await thumb.boundingBox();
-  const clearBox = await page.getByRole("button", { name: "Clear starting picture" }).boundingBox();
-  ok(clearBox.y >= thumbBox.y + thumbBox.height - 1 && clearBox.x < thumbBox.x + thumbBox.width, "…and Clear starting picture is just below the thumbnail");
+  const stopBox = await page.getByRole("button", { name: "Stop editing" }).boundingBox();
+  const strengthBox = await strength.boundingBox();
+  ok(thumbBox.y + thumbBox.height <= strengthBox.y && stopBox.y > strengthBox.y, "…and the picture is above the settings, with Stop editing at the bottom of the section");
   ok(await page.getByText(/The prompt above isn't used/).count() === 0, "…without the long note about the prompt");
 
   await strength.fill("0.3");
@@ -96,9 +98,23 @@ try {
   ok(log[0].denoise === 0.3 && log[0].source === "comfy:StoryTime_1_0.png" && log[0].width === 96 && log[0].height === 60, `the job log keeps the strength, the source and the picture's own size (${log[0].denoise}, ${log[0].source}, ${log[0].width}x${log[0].height})`);
   ok(log[1].denoise === null && log[1].source === null, "…and the plain job before it has neither");
 
+  // ---- a prompt of its own for the redraw ----
+  const altBox = page.getByRole("textbox", { name: "Redraw prompt (optional)" });
+  ok(await altBox.inputValue() === "", "Redraw has a prompt box of its own, empty at first");
+  await page.getByRole("textbox", { name: "Always include (this chapter)" }).fill("red scarf");
+  await page.getByRole("button", { name: "Copy main prompt" }).click();
+  ok(await altBox.inputValue() === "red scarf, a keeper beside a lamp" || (await altBox.inputValue()).includes("red scarf") && (await altBox.inputValue()).includes("a keeper beside a lamp"), "Copy main prompt puts the main prompt in it, with the always-included text");
+  await altBox.fill("a keeper beside a lamp, at night");
+  const altMark = comfy.calls.length;
+  await make(6);
+  const altSent = nodes(prompts(altMark)[0], "CLIPTextEncode").map((n) => n.inputs.text);
+  ok(altSent.includes("a keeper beside a lamp, at night") && !altSent.some((t) => t.includes("red scarf")), "a redraw with its own prompt sends it as typed, without the always-included text");
+  await altBox.fill("");
+  await page.getByRole("textbox", { name: "Always include (this chapter)" }).fill("");
+
   // ---- the same picture again is not sent again ----
   const again = comfy.calls.length;
-  await make(6);
+  await make(8);
   ok(uploads(again).length === 0 && nodes(prompts(again)[0], "LoadImage")[0].inputs.image === load.inputs.image, "Make more from the same picture reuses the upload");
 
   // ---- from a saved picture ----
@@ -115,7 +131,7 @@ try {
   // two jobs from it share one upload
   await makeTwo();
   await until(() => prompts(savedMark).length === 1, "the first job to be sent");
-  await make(10);
+  await make(12);
   ok(uploads(savedMark).length === 1 && prompts(savedMark).length === 2 && (await jobs())[0].source === `saved:${chapterId}:header`, "…two jobs from it upload it once, and the log says it came from the saved header");
   const footerCard = page.locator(".image-editor", { has: page.getByRole("heading", { name: "Footer picture" }) });
   await footerCard.getByRole("button", { name: "More" }).click();
@@ -123,13 +139,13 @@ try {
   await page.keyboard.press("Escape");
 
   // ---- clear ----
-  await page.getByRole("button", { name: "Clear starting picture" }).click();
-  ok(await thumb.count() === 0 && await strength.count() === 0 && await sizeMenu.isEnabled(), "Clear starting picture removes it and the Size menu works again");
+  await page.getByRole("button", { name: "Stop editing" }).click();
+  ok(await thumb.count() === 0 && await strength.count() === 0 && await sizeMenu.isEnabled(), "Stop editing removes it and the Size menu works again");
   const clearMark = comfy.calls.length;
   await makeTwo();
   await until(() => prompts(clearMark).length === 1, "a job");
   ok(nodes(prompts(clearMark)[0], "EmptyLatentImage").length === 1 && nodes(prompts(clearMark)[0], "LoadImage").length === 0, "pictures made afterwards are from the prompt alone again");
-  await until(async () => (await items.count()) === 12 && (await ready()), "twelve pictures", 150);
+  await until(async () => (await items.count()) === 14 && (await ready()), "fourteen pictures", 150);
 
   // ---- from a past picture ----
   await page.goto(`${BASE}/c/${chapterId}/illustrate`);
@@ -185,10 +201,10 @@ try {
     await startFrom(pastTiles.nth(1));
     await thumb.waitFor();
     await page.waitForTimeout(400);
-    await page.locator(".comfy-generate").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-start-1000.png` });
+    await page.locator(".edit-panel").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-start-1000.png` });
     await page.setViewportSize({ width: 390, height: 900 });
     await page.waitForTimeout(300);
-    await page.locator(".comfy-generate").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-start-390.png` });
+    await page.locator(".edit-panel").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-start-390.png` });
     ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "at phone width the page does not scroll sideways");
   }
 } finally {
