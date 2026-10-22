@@ -10,6 +10,9 @@ export type MaskResult = MaskState & { blob: Blob; coverage: number };
 /** The subset of CanvasRenderingContext2D the drawing needs (so tests can pass a recorder). */
 export type Ctx = CanvasRenderingContext2D;
 
+/** The colour the painted area is shown in, in the editor and over the starting picture: a blue that stands out on skin and warm scenes. */
+export const MASK_TINT = "rgb(40 120 255)";
+
 export function emptyMask(): MaskState {
   return { strokes: [], softness: 0, inverted: false };
 }

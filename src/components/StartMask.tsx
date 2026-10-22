@@ -2,10 +2,8 @@
 
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import MaskEditor from "./MaskEditor";
-import { coverageOf, newMaskId, paintMask, type MaskResult, type PaintedArea } from "@/lib/mask";
+import { coverageOf, MASK_TINT as TINT, newMaskId, paintMask, type MaskResult, type PaintedArea } from "@/lib/mask";
 
-/** The tint the painted area is shown in over the starting picture (the editor tints it the same). */
-const TINT = "rgb(255 40 70)";
 
 /** The widest the small preview of a painted area is drawn: enough for a thumbnail, cheap to make. */
 const PREVIEW_PX = 320;

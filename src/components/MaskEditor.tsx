@@ -9,6 +9,7 @@ import {
   fitSize,
   fitView,
   isDoubleTap,
+  MASK_TINT as TINT,
   paintMask,
   pinchView,
   renderMask,
@@ -34,7 +35,6 @@ type Props = {
   onCancel: () => void;
 };
 
-const TINT = "rgb(255 40 70)";
 const EMPTY_SIZE: Size = { w: 0, h: 0 };
 
 type Pt = { x: number; y: number; type: string };
