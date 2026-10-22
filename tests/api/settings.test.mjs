@@ -104,6 +104,8 @@ const comfyIn = {
   url: "http://comfy.local:8188",
   width: 1024,
   height: 1024,
+  coverWidth: 768,
+  coverHeight: 1344,
   count: 2,
   drawPresets: [
     draw("ink", { workflow: '{"1":{"class_type":"X","inputs":{}}}', loras: [ink, hero], sampler: { steps: 25, sampler: "euler_ancestral" }, denoise: 0.3 }),
@@ -123,6 +125,12 @@ const withDraw = (patch, i = 0) => ({ ...comfyIn, drawPresets: comfyIn.drawPrese
 const withEdit = (patch, i = 0) => ({ ...comfyIn, editPresets: comfyIn.editPresets.map((p, j) => (j === i ? { ...p, ...patch } : p)) });
 r = await call("PUT", "/api/settings", { ...conns, comfy: comfyIn });
 ok(JSON.stringify(r.json.settings.comfy) === JSON.stringify(comfyIn) && JSON.stringify((await call("GET", "/api/settings")).json.settings.comfy) === JSON.stringify(comfyIn), "ComfyUI settings and presets are saved and read back");
+{
+  const { coverWidth, coverHeight, ...noCover } = comfyIn;
+  void coverWidth; void coverHeight;
+  r = await call("PUT", "/api/settings", { ...conns, comfy: noCover });
+  ok(r.json.settings.comfy.coverWidth === 832 && r.json.settings.comfy.coverHeight === 1216 && r.json.settings.comfy.width === 1024, "settings without a cover size get the book size, 832 × 1216, and keep the chapters' size");
+}
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, picturesOldestFirst: true } });
 ok(r.json.settings.comfy.picturesOldestFirst === true && (await call("GET", "/api/settings")).json.settings.comfy.picturesOldestFirst === true, "the Pictures panel's oldest-first order is kept");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, picturesOldestFirst: "yes" } });

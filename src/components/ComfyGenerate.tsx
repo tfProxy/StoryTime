@@ -27,6 +27,13 @@ const SIZES: { label: string; width: number; height: number }[] = [
   { label: "Portrait 768 × 1344", width: 768, height: 1344 },
 ];
 
+/** Sizes for a cover, tall like a book's first. */
+const COVER_SIZES: { label: string; width: number; height: number }[] = [
+  { label: "Book 832 × 1216", width: 832, height: 1216 },
+  { label: "Portrait 768 × 1344", width: 768, height: 1344 },
+  { label: "Square 1024 × 1024", width: 1024, height: 1024 },
+];
+
 const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
 
 /** The aspect ratio as small whole numbers ("7:4"); sizes with no small ratio get one decimal ("1.8:1"). */
@@ -147,7 +154,10 @@ export default function ComfyGenerate({
   const kept = stateKey(target);
   const at = targetKey(target);
   const settings = useSettings();
-  const comfy = settings.comfy;
+  // A cover has a size of its own (Settings keeps both), so choosing one doesn't change the chapters'.
+  const isCover = chapterId === null;
+  const comfy = isCover ? { ...settings.comfy, width: settings.comfy.coverWidth, height: settings.comfy.coverHeight } : settings.comfy;
+  const sizes = isCover ? COVER_SIZES : SIZES;
   const queueCount = comfy.queueCount;
   // What to change, when editing the starting picture by instruction.
   const [instruction, setInstruction] = useState("");
@@ -258,17 +268,17 @@ export default function ComfyGenerate({
       .then((res) => {
         if (!res.ok) throw new Error(`Request failed (${res.status})`);
       })
-      .catch((e) => setStatus({ ok: false, text: `Couldn't keep the ${chapterId === null ? "cover" : "chapter"}'s preset:${e instanceof Error ? e.message : String(e)}` }));
+      .catch((e) => setStatus({ ok: false, text: `Couldn't keep the ${chapterId === null ? "cover" : "chapter"}'s preset: ${e instanceof Error ? e.message : String(e)}` }));
   }
 
-  const set = (patch: Partial<ComfySettings>) => void saveSettings({ ...settings, comfy: { ...comfy, ...patch } });
+  const set = (patch: Partial<ComfySettings>) => void saveSettings({ ...settings, comfy: { ...settings.comfy, ...patch } });
   /** Changes a drawing or edit preset in Settings (switching a LoRA, Fast). */
   const changeDraw = (patch: Partial<DrawPreset>) => set({ drawPresets: comfy.drawPresets.map((p) => (p.id === draw.id ? { ...p, ...patch } : p)) });
   const changeEdit = (patch: Partial<EditPreset>) =>
     editPreset && set({ editPresets: comfy.editPresets.map((p) => (p.id === editPreset.id ? { ...p, ...patch } : p)) });
 
   const other = otherSettings(loaded?.settings ?? null, comfy, redrawStrength);
-  const size = SIZES.find((s) => s.width === comfy.width && s.height === comfy.height);
+  const size = sizes.find((s) => s.width === comfy.width && s.height === comfy.height);
 
   /**
    * One click asks for one picture. The picture queue gathers quick clicks with the same prompt and
@@ -333,14 +343,14 @@ export default function ComfyGenerate({
           value={`${comfy.width}x${comfy.height}`}
           onChange={(e) => {
             const [width, height] = e.target.value.split("x").map(Number);
-            set({ width, height });
+            set(isCover ? { coverWidth: width, coverHeight: height } : { width, height });
           }}
           disabled={start !== null}
           title={start ? "Pictures made from a starting picture are its size" : undefined}
           style={{ width: "auto", flex: 1 }}
         >
           {!size && <option value={`${comfy.width}x${comfy.height}`}>{`${shapeGlyph(comfy.width, comfy.height)} ${comfy.width} × ${comfy.height} (${ratioText(comfy.width, comfy.height)})`}</option>}
-          {SIZES.map((s) => (
+          {sizes.map((s) => (
             <option key={s.label} value={`${s.width}x${s.height}`}>
               {`${shapeGlyph(s.width, s.height)} ${s.label} (${ratioText(s.width, s.height)})`}
             </option>
@@ -544,7 +554,8 @@ export default function ComfyGenerate({
             type="button"
             className="secondary"
             onClick={() => {
-              if (Object.keys(other.size).length > 0) set(other.size);
+              const { width, height } = other.size;
+              if (width && height) set(isCover ? { coverWidth: width, coverHeight: height } : { width, height });
               if (other.strength !== null) setRedrawFor({ preset: draw.id, value: other.strength });
             }}
           >

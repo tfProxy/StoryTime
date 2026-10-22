@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import StoryCover from "./StoryCover";
 import { prepareImage } from "@/lib/prepareImage";
@@ -8,7 +9,7 @@ import { prepareImage } from "@/lib/prepareImage";
 // The longest side an uploaded cover keeps. Bigger pictures are scaled down in the browser first.
 const MAX_SIDE = 1200;
 
-/** Upload, replace or remove the story's cover image. Changes apply straight away. */
+/** Upload, replace or remove the story's cover image, or go to the cover page to make one. Changes apply straight away. */
 export default function CoverEditor({ story }: { story: { id: string; title: string; cover_version: number | null } }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
@@ -67,7 +68,10 @@ export default function CoverEditor({ story }: { story: { id: string; title: str
             }}
           />
           <div className="row" style={{ flexWrap: "wrap" }}>
-            <button type="button" onClick={() => input.current?.click()} disabled={busy}>
+            <Link className="button" href={`/s/${story.id}/cover`} title="Write a prompt for the cover and make pictures for it on your ComfyUI machine">
+              Make a cover
+            </Link>
+            <button type="button" className="secondary" onClick={() => input.current?.click()} disabled={busy}>
               {busy ? "Saving…" : version === null ? "Upload cover" : "Replace cover"}
             </button>
             {version !== null && (
