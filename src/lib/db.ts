@@ -461,6 +461,47 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE stories ADD COLUMN style_ref TEXT;
   `,
+  // 27: AI tagging. tags is a library of tag definitions shared by all stories (names unique among live
+  // tags, checked in code); choices is a JSON list of allowed values (empty = no value) and examples
+  // a JSON list of {text, applies, note?}. story_tags switches a tag on for a story (a row = in use).
+  // chapter_tags holds the AI's suggestions and the author's decisions per chapter and tag: revision
+  // is the chapter revision it was made from, so an edited chapter's tags can be told apart as stale.
+  // Chapters are never deleted by the app, so nothing needs to clean up chapter_tags.
+  `
+  CREATE TABLE tags (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    applies     TEXT NOT NULL DEFAULT '',
+    not_applies TEXT NOT NULL DEFAULT '',
+    kind        TEXT NOT NULL DEFAULT 'event' CHECK (kind IN ('event', 'state')),
+    choices     TEXT NOT NULL DEFAULT '[]',
+    examples    TEXT NOT NULL DEFAULT '[]',
+    created_at  INTEGER NOT NULL,
+    removed_at  INTEGER
+  );
+
+  CREATE TABLE story_tags (
+    story_id TEXT NOT NULL REFERENCES stories(id),
+    tag_id   TEXT NOT NULL REFERENCES tags(id),
+    PRIMARY KEY (story_id, tag_id)
+  );
+
+  CREATE TABLE chapter_tags (
+    id         TEXT PRIMARY KEY,
+    chapter_id TEXT NOT NULL REFERENCES chapters(id),
+    tag_id     TEXT NOT NULL REFERENCES tags(id),
+    value      TEXT,
+    status     TEXT NOT NULL CHECK (status IN ('suggested', 'approved', 'rejected')),
+    source     TEXT NOT NULL CHECK (source IN ('ai', 'author')),
+    quote      TEXT NOT NULL DEFAULT '',
+    reason     TEXT NOT NULL DEFAULT '',
+    revision   INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    decided_at INTEGER,
+    UNIQUE (chapter_id, tag_id)
+  );
+  CREATE INDEX chapter_tags_chapter ON chapter_tags(chapter_id);
+  `,
 ];
 
 function open(): Database.Database {
