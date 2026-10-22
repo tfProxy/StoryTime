@@ -64,8 +64,9 @@ export const builtinSampler = (changed: Partial<SamplerTuning> = {}): SamplerTun
 
 const DEFAULT_PREFIX = "StoryTime";
 
-/** The file name prefix for a chapter's pictures (or, with no chapter, the story's covers), so they can be found in ComfyUI's output folder. */
-export const filenamePrefix = (storyId: string, chapterId: string | null) => `${DEFAULT_PREFIX}/${storyId}/${chapterId ?? "cover"}`;
+/** The file name prefix for a chapter's pictures (or, with no chapter, the story's covers, or a codex entry's), so they can be found in ComfyUI's output folder. */
+export const filenamePrefix = (storyId: string, chapterId: string | null, entryId: string | null = null) =>
+  `${DEFAULT_PREFIX}/${storyId}/${entryId ? `codex/${entryId}` : (chapterId ?? "cover")}`;
 
 /** What a workflow lets StoryTime set, for showing in Settings. */
 export type WorkflowFit = {

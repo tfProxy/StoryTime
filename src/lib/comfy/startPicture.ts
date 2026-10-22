@@ -1,5 +1,5 @@
 // A picture chosen to start a job from (image to image), and getting it into ComfyUI. Browser code.
-import { savedOwner, savedPictureUrl,type PictureSlot, type PictureTarget } from "../pictureTarget";
+import { codexPictureUrl, savedOwner, savedPictureUrl, type PictureSlot, type PictureTarget } from "../pictureTarget";
 import { fetchImage, imageUrl, uploadImage, type ComfyImage } from "./client";
 
 export type StartPicture = {
@@ -20,6 +20,21 @@ export type StartPicture = {
 export function fromComfyImage(comfyUrl: string, image: ComfyImage): StartPicture {
   const source = `comfy:${image.subfolder ? `${image.subfolder}/` : ""}${image.filename}`;
   return { key: source, thumb: imageUrl(comfyUrl, image), source, blob: () => fetchImage(comfyUrl, image), image };
+}
+
+/** A codex entry's saved picture (`codex:<picture id>`); a picture never changes once saved. */
+export function fromCodex(storyId: string, pictureId: string): StartPicture {
+  const thumb = codexPictureUrl(storyId, pictureId);
+  return {
+    key: `codex:${pictureId}`,
+    thumb,
+    source: `codex:${pictureId}`,
+    blob: async () => {
+      const res = await fetch(thumb);
+      if (!res.ok) throw new Error(`Couldn't read the saved codex picture (${res.status}).`);
+      return res.blob();
+    },
+  };
 }
 
 /**

@@ -34,6 +34,7 @@ export default async function CodexPage({
       <CodexPanel
         openAiHelper={Boolean(review)}
         story={{ title: story.title, premise: story.premise }}
+        storyId={story.id}
         chapterId={id}
         path={path.map((c) => ({
           id: c.id,

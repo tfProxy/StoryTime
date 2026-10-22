@@ -121,7 +121,7 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
   if (loaded && loaded.nonce !== seenLoad) {
     setSeenLoad(loaded.nonce);
     // A cover's prompt goes to the moment shown.
-    const into = loaded.moment && loaded.moment !== "cover" ? loaded.moment : moment;
+    const into = loaded.moment === "start" || loaded.moment === "end" ? loaded.moment : moment;
     change(into, { scene: "", prompt: loaded.prompt, negative: loaded.negative });
     // A picture made with references brings them back (a saved header or footer doesn't know its own).
     if (loaded.refs) refState.replace(into, loaded.refs);
@@ -134,7 +134,7 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
     setSeenRef(refRequest.nonce);
     refState.add(moment, refRequest.ref);
   }
-  const choices = referenceChoices({ pool, chapterId, moment, comfyUrl: settings.comfy.url, pinned });
+  const choices = referenceChoices({ pool, chapterId, moment, comfyUrl: settings.comfy.url, pinned, text: `${result.prompt}\n${direction}` });
   // Prompts are written in the style of the model that will draw them: the chapter's drawing preset, else the story's.
   const [presetNow, setPresetNow] = useState(chapterPreset);
   const draw = drawPresetFor(settings.comfy.drawPresets, presetNow, story.draw_preset);

@@ -7,7 +7,8 @@ const bad = (error: string) => Response.json({ error }, { status: 400 });
 
 // The pictures made so far, newest first: ?story=<id> for a whole story (&not_chapter=<id> to leave one
 // chapter out, which leaves the cover's out too, or &chapters=1 for the chapters' alone), ?chapter=<id>
-// for one chapter, or ?cover=<story id> for the story's cover. Each job lists its pictures' marks
+// for one chapter, ?cover=<story id> for the story's cover, or ?story=<id>&entry=<entry id> for one codex
+// entry's. Each job lists its pictures' marks
 // (pinned, rejected or null). Page through with ?before=<next from the last page> and ?limit= (1 to 200,
 // default 50). ?unseen=1 instead lists the jobs whose pictures haven't been seen yet, in every story (the latest 50).
 export async function GET(request: Request) {
@@ -22,7 +23,14 @@ export async function GET(request: Request) {
   const before = q.has("before") ? Number(q.get("before")) : undefined;
   if (before !== undefined && (!Number.isInteger(before) || before < 1)) return bad("before must be the next value from an earlier page");
   const notChapter = q.get("not_chapter") ?? undefined;
-  const where = story ? { story, notChapter, chaptersOnly: q.get("chapters") === "1" } : chapter ? { chapter } : { cover: cover! };
+  const entry = q.get("entry");
+  const where = story
+    ? entry
+      ? { codex: story, entry }
+      : { story, notChapter, chaptersOnly: q.get("chapters") === "1" }
+    : chapter
+      ? { chapter }
+      : { cover: cover! };
   return Response.json(listPictureJobs(where, { before, limit }));
 }
 

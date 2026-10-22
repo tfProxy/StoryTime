@@ -27,6 +27,8 @@ export type JobRecord = {
 export type JobTag = {
   /** Null for the story's cover. */
   chapterId: string | null;
+  /** The codex entry of a codex job (whose `chapterId` is null and moment `codex`); tags from before codex pictures have none. */
+  entryId?: string;
   storyId: string;
   /** The WebSocket client id the job was queued with, which ComfyUI sends its progress to. */
   clientId: string;
@@ -36,7 +38,7 @@ export type JobTag = {
 };
 
 /** What the tag's job was made for. */
-export const tagTarget = (tag: JobTag): PictureTarget => targetOfIds(tag.storyId, tag.chapterId);
+export const tagTarget = (tag: JobTag): PictureTarget => targetOfIds(tag.storyId, tag.chapterId, tag.entryId);
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 const isString = (v: unknown): v is string => typeof v === "string";
@@ -52,11 +54,12 @@ export function readTag(extra: unknown): JobTag | null {
   const j = t.job;
   if (!isString(j.prompt) || !isString(j.negative) || !isString(j.checkpoint)) return null;
   if (!isNumber(j.width) || !isNumber(j.height) || !isNumber(j.seed) || !isNumber(j.count)) return null;
-  // A cover job has no chapter, and a chapter's job is for its start or end.
-  if (t.chapterId === null ? j.moment !== "cover" : j.moment !== "start" && j.moment !== "end") return null;
+  // A cover job has no chapter (nor an entry), a codex job has an entry instead, and a chapter's job is for its start or end.
+  if (t.entryId !== undefined && !isString(t.entryId)) return null;
+  if (t.chapterId === null ? (t.entryId === undefined ? j.moment !== "cover" : j.moment !== "codex") : t.entryId !== undefined || (j.moment !== "start" && j.moment !== "end")) return null;
   if ((j.source !== undefined && !isString(j.source)) || (j.instruction !== undefined && !isString(j.instruction)) || (j.edit_model !== undefined && !isString(j.edit_model))) return null;
   if (j.denoise !== undefined && j.denoise !== null && !isNumber(j.denoise)) return null;
   if (j.mask !== undefined && j.mask !== null && (!isString(j.mask) || j.mask.length === 0 || j.mask.length > 300)) return null;
   if (j.refs !== undefined && !(Array.isArray(j.refs) && j.refs.length <= 4 && j.refs.every(isStoredReference))) return null;
-  return { chapterId: t.chapterId, storyId: t.storyId, clientId: t.clientId, job: j as JobRecord, ...(isString(t.instance) && { instance: t.instance }) };
+  return { chapterId: t.chapterId, ...(isString(t.entryId) && { entryId: t.entryId }), storyId: t.storyId, clientId: t.clientId, job: j as JobRecord, ...(isString(t.instance) && { instance: t.instance }) };
 }

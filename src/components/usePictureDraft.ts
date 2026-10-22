@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { PictureBoxes, PictureDraft, PictureDraftInput } from "@/lib/pictureDrafts";
 import type { CoverDraft } from "@/lib/coverPictures";
+import type { CodexDraft } from "@/lib/codexPictures";
 
 // How long typing has to pause before the prompt boxes are saved.
 const PAUSE_MS = 700;
@@ -117,4 +118,14 @@ export const EMPTY_COVER: CoverDraft = { ...EMPTY_BOXES, source: "premise", path
 /** Keeps the cover page's prompt boxes (and what the prompt is written from) saved on the server. */
 export function useCoverDraft(storyId: string, current: CoverDraft, saved: CoverDraft | null): string | null {
   return useSavedBoxes(`/api/stories/${storyId}/cover-draft`, current, coverKey(saved ?? EMPTY_COVER), coverKey, oneGroup);
+}
+
+const codexKey = (d: CodexDraft) => JSON.stringify([d.prompt, d.negative, d.scene, d.direction, refsKey(d.refs)]);
+
+/** An empty set of codex picture boxes. */
+export const EMPTY_CODEX: CodexDraft = { ...EMPTY_BOXES };
+
+/** Keeps a codex entry's picture prompt boxes saved on the server. */
+export function useCodexDraft(storyId: string, entryId: string, current: CodexDraft, saved: CodexDraft | null): string | null {
+  return useSavedBoxes(`/api/stories/${storyId}/codex-draft?entry=${encodeURIComponent(entryId)}`, current, codexKey(saved ?? EMPTY_CODEX), codexKey, oneGroup);
 }

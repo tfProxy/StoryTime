@@ -1,6 +1,7 @@
 // What the Illustrate page knows about a picture made on ComfyUI, and the helpers its gallery uses.
 // Pure code: no React.
 import type { ComfyImage, Progress } from "@/lib/comfy/client";
+import type { ImageMoment } from "@/lib/ai/imagePrompt";
 import type { PictureMoment } from "@/lib/pictureTarget";
 import type { PictureJob, PictureMark } from "@/lib/pictureJobs";
 import { editFilesExtras, editModel } from "@/lib/comfy/editModels";
@@ -123,7 +124,7 @@ export function pictureCaption(c: { seed: number; checkpoint: string; width: num
     .join(" · ");
 }
 
-const MOMENT_NAMES: Record<Exclude<PictureMoment, "cover">, string> = { start: "chapter start", end: "chapter end" };
+const MOMENT_NAMES: Record<ImageMoment, string> = { start: "chapter start", end: "chapter end" };
 const SLOT_NAMES: Record<string, string> = { header: "header picture", footer: "footer picture" };
 
 /** The file path ComfyUI keeps a picture under. */
@@ -132,6 +133,7 @@ const filePath = (image: ComfyImage) => `${image.subfolder ? `${image.subfolder}
 /** What a starting picture (`comfy:<file>`, `saved:<chapter id>:<slot>` or `saved:<story id>:cover`) was, in words. */
 export function sourceText(source: string, titles: Record<string, string>): string {
   if (source.startsWith("comfy:")) return `ComfyUI picture ${source.slice("comfy:".length)}`;
+  if (source.startsWith("codex:")) return "a saved codex picture";
   if (/^saved:.+:cover$/.test(source)) return "the story's saved cover";
   const saved = /^saved:(.+):(header|footer)$/.exec(source);
   if (saved) {
@@ -153,8 +155,8 @@ export function pictureDetails(p: Picture, titles: Record<string, string>): Pict
   const chapter = p.chapterId !== null && titles[p.chapterId] ? `“${titles[p.chapterId]}”` : "A chapter that has been removed";
   return [
     p.chapterId === null
-      ? { label: "For", value: "the story's cover" }
-      : { label: "Chapter", value: p.moment && p.moment !== "cover" ? `${chapter}, ${MOMENT_NAMES[p.moment]}` : chapter },
+      ? { label: "For", value: p.moment === "codex" ? "a codex entry's picture" : "the story's cover" }
+      : { label: "Chapter", value: p.moment === "start" || p.moment === "end" ? `${chapter}, ${MOMENT_NAMES[p.moment]}` : chapter },
     { label: "Made", value: new Date(p.madeAt).toLocaleString() },
     ...(p.editModel
       ? [{ label: "Edit model", value: `${editModel(p.editModel)?.name ?? p.editModel} (${p.checkpoint})` }]

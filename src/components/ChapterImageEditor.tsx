@@ -4,14 +4,14 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { prepareImage } from "@/lib/prepareImage";
 import type { ImageMade } from "@/lib/imageSlots";
-import { savedPictureApi, savedPictureUrl, type PictureSlot, type PictureTarget } from "@/lib/pictureTarget";
+import { savedPictureApi, savedPictureUrl, type SavedSlot, type PictureTarget } from "@/lib/pictureTarget";
 import { PictureMenu, loadPromptItem, openItem, startItems } from "./PictureButtons";
 import type { StartRequest } from "./pictures";
 
 // The longest side an uploaded illustration keeps. Bigger pictures are scaled down in the browser first.
 const MAX_SIDE = 1600;
 
-const LABELS: Record<PictureSlot, { title: string }> = {
+const LABELS: Record<SavedSlot, { title: string }> = {
   header: { title: "Header picture" },
   footer: { title: "Footer picture" },
   cover: { title: "Cover" },
@@ -20,7 +20,7 @@ const LABELS: Record<PictureSlot, { title: string }> = {
 type Props = {
   /** The chapter (for its header or footer) or the story (for its cover). */
   target: PictureTarget;
-  slot: PictureSlot;
+  slot: SavedSlot;
   version: number | null;
   /** What the saved picture was made from, when it came from ComfyUI. */
   made?: ImageMade | null;

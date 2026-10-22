@@ -12,20 +12,22 @@ const ROLE_NAMES: Record<ReferenceRole, string> = { character: "Character", item
 /** The longest side an uploaded reference keeps; bigger pictures are scaled down in the browser first. */
 const MAX_SIDE = 1024;
 
-type Tab = "suggested" | "pictures" | "upload";
+type Tab = "suggested" | "pictures" | "codex" | "upload";
 
 type PickerProps = {
   suggested: RefChoice[];
   pictures: RefChoice[];
+  /** The codex entries that have a picture as of this chapter. */
+  codex: RefChoice[];
   /** The sources already chosen, which can't be chosen again. */
   chosen: string[];
   full: boolean;
-  onPick: (picture: StartPicture, label: string) => void;
+  onPick: (picture: StartPicture, label: string, role?: ReferenceRole) => void;
   onClose: () => void;
 };
 
-/** The picker: a modal <dialog> with the pictures that suit this moment, the others on offer, and an upload. */
-function ReferencePicker({ suggested, pictures, chosen, full, onPick, onClose }: PickerProps) {
+/** The picker: a modal <dialog> with the pictures that suit this moment, the others on offer, the codex's, and an upload. */
+function ReferencePicker({ suggested, pictures, codex, chosen, full, onPick, onClose }: PickerProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [tab, setTab] = useState<Tab>(suggested.length > 0 ? "suggested" : "pictures");
   const [error, setError] = useState<string | null>(null);
@@ -73,7 +75,7 @@ function ReferencePicker({ suggested, pictures, chosen, full, onPick, onClose }:
                     className="secondary reference-choice"
                     disabled={already || full}
                     title={already ? "Already a reference" : full ? `A picture takes at most ${MAX_REFERENCES} references` : `Use ${c.label} as a reference`}
-                    onClick={() => onPick(c.picture, c.label)}
+                    onClick={() => onPick(c.picture, c.label, c.role)}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
                     <img src={c.picture.thumb} alt="" />
@@ -91,6 +93,7 @@ function ReferencePicker({ suggested, pictures, chosen, full, onPick, onClose }:
   const tabs: { id: Tab; name: string }[] = [
     { id: "suggested", name: "Suggested" },
     { id: "pictures", name: "Pictures" },
+    { id: "codex", name: "Codex" },
     { id: "upload", name: "Upload" },
   ];
   return (
@@ -121,6 +124,7 @@ function ReferencePicker({ suggested, pictures, chosen, full, onPick, onClose }:
       <div role="tabpanel" className="reference-panel">
         {tab === "suggested" && list(suggested, "Nothing is suggested yet: the pictures that fit this moment (a header for a footer, the previous chapter's footer…) haven't been saved.")}
         {tab === "pictures" && list(pictures, "No pictures to choose from yet. Pin a picture, or save a header, footer or cover.")}
+        {tab === "codex" && list(codex, "No codex entry has a picture here yet. Make one from the Codex panel (Make a picture).")}
         {tab === "upload" && (
           <>
             <label>
@@ -151,6 +155,7 @@ type Props = {
   onChange: (refs: Reference[]) => void;
   suggested: RefChoice[];
   pictures: RefChoice[];
+  codex: RefChoice[];
   /** Why references can't be used with the drawing preset now, or null when they can. Then the section is only its heading and this. */
   unavailable: string | null;
   /** On the Instruct tab: the edit model's name and how many references it uses; the rest are left out. */
@@ -161,7 +166,7 @@ type Props = {
  * The reference pictures of the next picture: a thumbnail for each with a label, what it shows, how strongly
  * to follow it and a button to take it out, and an Add reference button that opens the picker.
  */
-export default function References({ refs, onChange, suggested, pictures, unavailable, editLimit }: Props) {
+export default function References({ refs, onChange, suggested, pictures, codex, unavailable, editLimit }: Props) {
   const [picking, setPicking] = useState(false);
   const full = refs.length >= MAX_REFERENCES;
   const change = (key: string, patch: Partial<Reference>) => onChange(refs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
@@ -248,10 +253,11 @@ export default function References({ refs, onChange, suggested, pictures, unavai
         <ReferencePicker
           suggested={suggested}
           pictures={pictures}
+          codex={codex}
           chosen={refs.map((r) => r.source)}
           full={full}
-          onPick={(picture, label) => {
-            if (!refs.some((r) => r.source === picture.source) && !full) onChange([...refs, asReference(picture, label, "character")]);
+          onPick={(picture, label, role = "character") => {
+            if (!refs.some((r) => r.source === picture.source) && !full) onChange([...refs, asReference(picture, label, role)]);
             setPicking(false);
           }}
           onClose={() => setPicking(false)}

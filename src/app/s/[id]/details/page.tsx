@@ -56,6 +56,7 @@ export default async function StoryDetailsPage({ params }: { params: Promise<{ i
             <CodexPanel
               storyWide
               story={{ title: story.title, premise: story.premise }}
+              storyId={story.id}
               chapterId={root.id}
               path={[
                 {

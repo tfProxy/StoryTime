@@ -24,8 +24,10 @@ type View = PictureView | "other";
 type Status = { ok: boolean; text: string };
 
 type Props = {
-  /** Whose pictures these are: a chapter's, or the story's cover's. */
+  /** Whose pictures these are: a chapter's, the story's cover's, or a codex entry's. */
   target: PictureTarget;
+  /** For a codex entry: the chapter the page was opened from, which a picture can be saved from. */
+  codexFrom?: { id: string; title: string } | null;
   /** Every chapter's title in the story, by chapter id. */
   titles: Record<string, string>;
   comfyUrl: string;
@@ -55,7 +57,7 @@ type Props = {
  * and footer (as if pinned) and those made on this visit, so coming back shows only the pinned ones; "All" every one but the trashed; and "Trashed"
  * those, to restore one (they are stored with the mark "rejected"). "Other chapters" lists what was made for the rest of the story.
  */
-export default function ChapterPictures({ target, titles, comfyUrl, pictures, onChange, onClear, pending = [], onStart, editBlocked = null, onLoadPrompt, used, starting = null }: Props) {
+export default function ChapterPictures({ target, titles, comfyUrl, pictures, onChange, onClear, pending = [], onStart, editBlocked = null, onLoadPrompt, used, starting = null, codexFrom = null }: Props) {
   /** The picture being edited or redrawn. */
   const isStarting = (p: Picture) => starting !== null && starting === comfySource(p.image);
   /** The pictures the first view always shows, as if pinned: the chapter's header and footer, and the starting picture. */
@@ -70,7 +72,7 @@ export default function ChapterPictures({ target, titles, comfyUrl, pictures, on
   const saver = usePictureSaver(target, comfyUrl, setStatus, (jobId, index) => {
     const p = pictures.find((q) => q.jobId === jobId && q.index === index);
     if (p && p.mark !== "pinned") onChange(p.key, { mark: "pinned" });
-  });
+  }, codexFrom);
   /** The slots a picture is saved in now. */
   const inUse = (p: Picture): PictureSlot[] =>
     saver.slots.filter((slot) => {
@@ -117,7 +119,7 @@ export default function ChapterPictures({ target, titles, comfyUrl, pictures, on
     { view: "shortlist", label: `Pinned & new (${count("shortlist")})` },
     { view: "all", label: `All (${count("all")})` },
     { view: "rejected", label: `Trashed (${count("rejected")})` },
-    { view: "other", label: target.kind === "cover" ? "Chapters" : "Other chapters" },
+    { view: "other", label: target.kind === "chapter" ? "Other chapters" : "Chapters" },
   ];
 
   // A mark shows on the picture itself, so only a failure is reported.

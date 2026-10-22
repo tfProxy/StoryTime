@@ -13,7 +13,7 @@ import { tagTarget, type JobRecord } from "@/lib/comfy/jobTag";
 import { queueJob, sameJob, type JobInput, type UploadCache } from "@/lib/comfy/makeJob";
 import { randomSeed } from "@/lib/comfy/workflow";
 import type { PictureJob } from "@/lib/pictureJobs";
-import { chapterIdOf, chapterTarget, coverTarget, targetKey, targetOfIds, type PictureTarget } from "@/lib/pictureTarget";
+import { chapterIdOf, chapterTarget, codexTarget, coverTarget, targetKey, targetOfIds, type PictureTarget } from "@/lib/pictureTarget";
 import { picturesOf, type PendingJob, type Picture } from "./pictures";
 
 /** How long after the last click a job is sent, so quick clicks with the same settings make one job. */
@@ -116,7 +116,7 @@ const jobIdsOf = (pictures: Picture[] = []) => [...new Set(pictures.map((p) => p
 async function knownJobs(promptIds: string[], targets: PictureTarget[]): Promise<{ known: Set<string>; has: (t: PictureTarget) => boolean }> {
   // A chapter's job needs the chapter here; a cover job, the story.
   const chapterIds = [...new Set(targets.flatMap((t) => (t.kind === "chapter" ? [t.chapterId] : [])))];
-  const storyIds = [...new Set(targets.flatMap((t) => (t.kind === "cover" ? [t.storyId] : [])))];
+  const storyIds = [...new Set(targets.flatMap((t) => (t.kind === "chapter" ? [] : [t.storyId])))];
   const res = await fetch("/api/picture-jobs/known", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -126,7 +126,7 @@ async function knownJobs(promptIds: string[], targets: PictureTarget[]): Promise
   const body = (await res.json()) as { known: string[]; chapters: string[]; stories?: string[] };
   const chapters = new Set(body.chapters);
   const stories = new Set(body.stories ?? []);
-  return { known: new Set(body.known), has: (t) => (t.kind === "cover" ? stories.has(t.storyId) : chapters.has(t.chapterId)) };
+  return { known: new Set(body.known), has: (t) => (t.kind === "chapter" ? chapters.has(t.chapterId) : stories.has(t.storyId)) };
 }
 
 /** A finished job's pictures, as the Illustrate page shows them. */
@@ -164,7 +164,8 @@ const RESCAN_MS = 10_000;
 type Gathering = { key: string; target: PictureTarget; input: JobInput; count: number; timer: ReturnType<typeof setTimeout> };
 
 /** Just the target, without the rest of a job. */
-const targetOf = (t: PictureTarget): PictureTarget => (t.kind === "chapter" ? chapterTarget(t.storyId, t.chapterId) : coverTarget(t.storyId));
+const targetOf = (t: PictureTarget): PictureTarget =>
+  t.kind === "chapter" ? chapterTarget(t.storyId, t.chapterId) : t.kind === "cover" ? coverTarget(t.storyId) : codexTarget(t.storyId, t.entryId);
 
 export default function PictureQueueProvider({ children }: { children: ReactNode }) {
   const settings = useSettings();
@@ -424,7 +425,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
         listed.add(j.id);
         keep(
           {
-            ...targetOfIds(j.story_id, j.chapter_id), count: j.images.length, prompt: j.prompt, negative: j.negative, checkpoint: j.checkpoint,
+            ...targetOfIds(j.story_id, j.chapter_id, j.entry_id), count: j.images.length, prompt: j.prompt, negative: j.negative, checkpoint: j.checkpoint,
             width: j.width, height: j.height, denoise: j.denoise, source: j.source, mask: j.mask, refs: j.refs ?? [], instruction: j.instruction, editModel: j.edit_model, moment: j.moment,
           },
           { pictures: picturesOf([j]), unseen: true },
@@ -489,8 +490,8 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
 async function recordPictures(target: PictureTarget, promptId: string, record: JobRecord, images: ComfyImage[], unseen: boolean): Promise<Ended> {
   const chapterId = chapterIdOf(target);
   try {
-    // A cover job is recorded for its story.
-    const by = target.kind === "cover" ? { story_id: target.storyId } : { chapter_id: target.chapterId };
+    // A cover job is recorded for its story, a codex job for its story and entry.
+    const by = target.kind === "chapter" ? { chapter_id: target.chapterId } : target.kind === "cover" ? { story_id: target.storyId } : { story_id: target.storyId, entry_id: target.entryId };
     const jobId = await recordJob({ ...by, prompt_id: promptId, ...record, images, unseen });
     return { pictures: picturesOfJob(chapterId, jobId, promptId, record, images), unseen };
   } catch (e) {

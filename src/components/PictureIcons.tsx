@@ -63,6 +63,18 @@ export function CoverIcon() {
   );
 }
 
+/** An open book with a figure on its page: a codex entry's picture. */
+export function CodexIcon() {
+  return (
+    <svg {...svg} strokeWidth={1.6}>
+      <path d="M3 5.5C5.5 4.5 9 4.5 12 6c3-1.5 6.5-1.5 9-.5V19c-2.5-1-6-1-9 .5-3-1.5-6.5-1.5-9-.5Z" />
+      <path d="M12 6v13.5" />
+      <circle cx="7.5" cy="9.5" r="1.3" fill="currentColor" />
+      <path d="M5.5 14.5c.4-1.7 3.6-1.7 4 0" />
+    </svg>
+  );
+}
+
 /** A pencil: the picture is being edited or redrawn. */
 export function PencilIcon() {
   return (

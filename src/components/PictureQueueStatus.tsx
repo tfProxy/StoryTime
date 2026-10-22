@@ -9,7 +9,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSettings } from "@/lib/settings";
 import { imageUrl } from "@/lib/comfy/client";
-import { chapterTarget, coverTarget, targetHref, targetKey, type PictureTarget } from "@/lib/pictureTarget";
+import { chapterTarget, codexTarget, coverTarget, targetHref, targetKey, type PictureTarget } from "@/lib/pictureTarget";
 import { progressText } from "./pictures";
 import { usePictureQueue, type QueueJob } from "./PictureQueue";
 
@@ -30,13 +30,15 @@ function useLabels(targets: PictureTarget[]): Labels {
     const of = (prefix: string) => keys.filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length));
     const chapters = of("chapter:");
     const stories = of("cover:");
-    fetch(`/api/chapters/labels?ids=${encodeURIComponent(chapters.join(","))}&stories=${encodeURIComponent(stories.join(","))}`)
+    const entries = of("codex:");
+    fetch(`/api/chapters/labels?ids=${encodeURIComponent(chapters.join(","))}&stories=${encodeURIComponent(stories.join(","))}&entries=${encodeURIComponent(entries.join(","))}`)
       .then((r) => (r.ok ? r.json() : { labels: {}, stories: {} }))
-      .then((d: { labels: Labels; stories?: Record<string, string> }) =>
+      .then((d: { labels: Labels; stories?: Record<string, string>; entries?: Record<string, { name: string; story_title: string }> }) =>
         setLabels((prev) => ({
           ...prev,
           ...Object.fromEntries(Object.entries(d.labels).map(([id, l]) => [targetKey(chapterTarget("", id)), l])),
           ...Object.fromEntries(Object.entries(d.stories ?? {}).map(([id, title]) => [targetKey(coverTarget(id)), { title: "Cover", story_title: title }])),
+          ...Object.fromEntries(Object.entries(d.entries ?? {}).map(([id, e]) => [targetKey(codexTarget("", id)), { title: `${e.name} (codex)`, story_title: e.story_title }])),
         })),
       )
       .catch(() => {
@@ -146,14 +148,14 @@ export default function PictureQueueStatus() {
 
 function JobRow({ job, label, comfyUrl, onStop, onDismiss }: { job: QueueJob; label?: { title: string; story_title: string }; comfyUrl: string; onStop: () => void; onDismiss: () => void }) {
   const href = targetHref(job);
-  const title = job.kind === "cover" ? "Cover" : (label?.title ?? "A chapter");
+  const title = job.kind === "cover" ? "Cover" : (label?.title ?? (job.kind === "codex" ? "A codex entry" : "A chapter"));
   return (
     <li className={`picture-queue-job picture-queue-${job.state}`} aria-label={`${title}: ${job.state === "making" ? "being made" : job.state === "done" ? "ready" : "failed"}`}>
       <div className="picture-queue-head">
         <Link href={href}>{title}</Link>
         <span className="meta">
           {label?.story_title ? `${label.story_title} · ` : ""}
-          {job.moment && job.moment !== "cover" ? MOMENTS[job.moment] : ""}
+          {job.moment === "start" || job.moment === "end" ? MOMENTS[job.moment] : ""}
         </span>
       </div>
       {job.state === "making" && (

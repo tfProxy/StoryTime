@@ -130,7 +130,7 @@ export default function CoverPromptPanel({
     setSeenRef(refRequest.nonce);
     refState.add("cover", refRequest.ref);
   }
-  const choices = referenceChoices({ pool, chapterId: null, moment: "cover", comfyUrl: settings.comfy.url, pinned });
+  const choices = referenceChoices({ pool, chapterId: null, moment: "cover", comfyUrl: settings.comfy.url, pinned, text: `${boxes.prompt}\n${boxes.direction}` });
 
   // Prompts are written in the style of the model that will draw them: the cover's drawing preset, else the story's.
   const [presetNow, setPresetNow] = useState(coverPreset);

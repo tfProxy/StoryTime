@@ -5,8 +5,8 @@ import type { PictureSlot, PictureTarget } from "../pictureTarget";
 import type { MaskState, MaskStroke } from "../mask";
 import type { ComfyImage } from "./client";
 
-/** What the stored values are kept under: the chapter's id (as before covers), or `cover-<story id>`. */
-export const stateKey = (t: PictureTarget) => (t.kind === "chapter" ? t.chapterId : `cover-${t.storyId}`);
+/** What the stored values are kept under: the chapter's id (as before covers), `cover-<story id>` or `codex-<entry id>`. */
+export const stateKey = (t: PictureTarget) => (t.kind === "chapter" ? t.chapterId : t.kind === "cover" ? `cover-${t.storyId}` : `codex-${t.entryId}`);
 
 const key = (name: string, chapterId: string) => `storytime.illustrate.${name}.${chapterId}`;
 

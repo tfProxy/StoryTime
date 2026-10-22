@@ -376,6 +376,86 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE picture_prompts ADD COLUMN refs TEXT;
   ALTER TABLE cover_prompts ADD COLUMN refs TEXT;
   `,
+  // 25: pictures for codex entries. A codex picture is anchored at a chapter (null = the whole story) and
+  // applies to it and its descendants, like codex text: the picture at a chapter is the one anchored nearest
+  // to it on the root->chapter path (see ./codexPictures). `codex_picture_prompts` keeps the codex page's
+  // prompt boxes (like cover_prompts) and the entry's own drawing preset. A codex job has no chapter, an
+  // entry_id and the moment 'codex' (cover jobs: no chapter, no entry, 'cover'), so picture_jobs is rebuilt
+  // again, the marks put aside meanwhile, as in migration 20.
+  `
+  CREATE TEMP TABLE marks_aside AS SELECT * FROM picture_marks;
+  DELETE FROM picture_marks;
+
+  CREATE TABLE picture_jobs_new (
+    id          TEXT PRIMARY KEY,
+    story_id    TEXT NOT NULL REFERENCES stories(id),
+    chapter_id  TEXT REFERENCES chapters(id),
+    entry_id    TEXT,
+    prompt_id   TEXT NOT NULL,
+    prompt      TEXT NOT NULL,
+    negative    TEXT NOT NULL DEFAULT '',
+    checkpoint  TEXT NOT NULL DEFAULT '',
+    width       INTEGER NOT NULL,
+    height      INTEGER NOT NULL,
+    seed        INTEGER NOT NULL,
+    count       INTEGER NOT NULL,
+    moment      TEXT CHECK (moment IN ('start', 'end', 'cover', 'codex')),
+    source      TEXT,
+    denoise     REAL,
+    images      TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    instruction TEXT,
+    edit_model  TEXT,
+    seen_at     INTEGER,
+    mask        TEXT,
+    refs        TEXT,
+    CHECK ((chapter_id IS NULL) = (moment IS 'cover' OR moment IS 'codex')),
+    CHECK ((entry_id IS NOT NULL) = (moment IS 'codex'))
+  );
+  INSERT INTO picture_jobs_new (id, story_id, chapter_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
+                                moment, source, denoise, images, created_at, instruction, edit_model, seen_at, mask, refs)
+    SELECT id, story_id, chapter_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
+           moment, source, denoise, images, created_at, instruction, edit_model, seen_at, mask, refs FROM picture_jobs;
+  DROP TABLE picture_jobs;
+  ALTER TABLE picture_jobs_new RENAME TO picture_jobs;
+  CREATE UNIQUE INDEX picture_jobs_prompt ON picture_jobs(chapter_id, prompt_id);
+  CREATE UNIQUE INDEX picture_jobs_cover_prompt ON picture_jobs(story_id, prompt_id) WHERE chapter_id IS NULL;
+  CREATE INDEX picture_jobs_story ON picture_jobs(story_id);
+  CREATE INDEX picture_jobs_entry ON picture_jobs(story_id, entry_id) WHERE entry_id IS NOT NULL;
+  CREATE INDEX picture_jobs_unseen ON picture_jobs(created_at) WHERE seen_at IS NULL;
+
+  INSERT INTO picture_marks SELECT * FROM marks_aside;
+  DROP TABLE marks_aside;
+
+  CREATE TABLE codex_pictures (
+    id                TEXT PRIMARY KEY,
+    story_id          TEXT NOT NULL REFERENCES stories(id),
+    entry_id          TEXT NOT NULL,
+    anchor_chapter_id TEXT REFERENCES chapters(id),
+    job_id            TEXT,
+    image_index       INTEGER,
+    image             BLOB NOT NULL,
+    type              TEXT NOT NULL,
+    prompt            TEXT NOT NULL DEFAULT '',
+    negative          TEXT NOT NULL DEFAULT '',
+    posted_at         INTEGER NOT NULL,
+    removed_at        INTEGER
+  );
+  CREATE INDEX codex_pictures_entry ON codex_pictures(story_id, entry_id);
+
+  CREATE TABLE codex_picture_prompts (
+    story_id    TEXT NOT NULL REFERENCES stories(id),
+    entry_id    TEXT NOT NULL,
+    prompt      TEXT NOT NULL DEFAULT '',
+    negative    TEXT NOT NULL DEFAULT '',
+    scene       TEXT NOT NULL DEFAULT '',
+    direction   TEXT NOT NULL DEFAULT '',
+    refs        TEXT,
+    draw_preset TEXT,
+    updated_at  INTEGER NOT NULL,
+    PRIMARY KEY (story_id, entry_id)
+  );
+  `,
 ];
 
 function open(): Database.Database {

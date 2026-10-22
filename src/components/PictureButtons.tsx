@@ -5,13 +5,13 @@ import type { PictureSlot } from "@/lib/pictureTarget";
 import type { ComfyImage } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
 import { SLOT_NAMES, slotOf, type PictureSaver } from "./usePictureSaver";
-import { CoverIcon, FooterIcon, HeaderIcon, MenuIcon, PencilIcon, PinIcon, TrashIcon } from "./PictureIcons";
+import { CodexIcon, CoverIcon, FooterIcon, HeaderIcon, MenuIcon, PencilIcon, PinIcon, TrashIcon } from "./PictureIcons";
 import type { StartRequest } from "./pictures";
 
 // The buttons and badge on a picture, the same on a tile in the Pictures panel and in the full-size viewer.
 
-const SLOT_TITLES: Record<PictureSlot, string> = { header: "Header", footer: "Footer", cover: "Cover" };
-const SLOT_ICONS: Record<PictureSlot, () => React.JSX.Element> = { header: HeaderIcon, footer: FooterIcon, cover: CoverIcon };
+const SLOT_TITLES: Record<PictureSlot, string> = { header: "Header", footer: "Footer", cover: "Cover", codex: "Codex" };
+const SLOT_ICONS: Record<PictureSlot, () => React.JSX.Element> = { header: HeaderIcon, footer: FooterIcon, cover: CoverIcon, codex: CodexIcon };
 
 /** On the picture's top left corner: which slots (the chapter's, or the story's cover) it is saved in now, if any, and whether it is the picture being edited or redrawn. */
 export function InUseBadge({ inUse, editing = false, isNew = false }: { inUse: PictureSlot[]; editing?: boolean; isNew?: boolean }) {
@@ -99,17 +99,21 @@ export default function PictureButtons({ image, tileKey, jobId, index, saver, in
   // Use as header and footer come first in the menu; the one it is already is shown, but can't be chosen.
   const slotItems: MenuItem[] = missing
     ? []
-    : saver.slots.map((slot) => {
-        const used = inUse.includes(slot);
-        const saving = saver.saving === `${tileKey}-${slot}`;
-        return {
-          label: saving ? `Saving as the ${SLOT_NAMES[slot]}…` : used ? `This is the ${SLOT_NAMES[slot]}` : `Use as ${SLOT_NAMES[slot]}`,
-          title: used ? `This is ${slotOf(slot)}` : `Use as ${slotOf(slot)}`,
-          icon: SLOT_ICONS[slot],
-          disabled: used || saver.saving !== null,
-          run: () => void saver.use(tileKey, image, jobId, index, slot),
-        };
-      });
+    : saver.slots.flatMap((slot) =>
+        saver.anchors(slot).map((anchor) => {
+          // A codex picture can be saved more than once (from the start, or from a chapter on), so being it now doesn't block either.
+          const used = inUse.includes(slot) && slot !== "codex";
+          const saving = saver.saving === `${tileKey}-${slot}-${anchor.id ?? ""}`;
+          const words = anchor.words ? `, ${anchor.words}` : "";
+          return {
+            label: saving ? `Saving as the ${SLOT_NAMES[slot]}…` : used ? `This is the ${SLOT_NAMES[slot]}` : `Use as ${SLOT_NAMES[slot]}${words}`,
+            title: used ? `This is ${slotOf(slot)}` : `Use as ${slotOf(slot)}${words}`,
+            icon: SLOT_ICONS[slot],
+            disabled: used || saver.saving !== null,
+            run: () => void saver.use(tileKey, image, jobId, index, slot, anchor),
+          };
+        }),
+      );
   return (
     <div className="picture-marks">
       {onMark && (

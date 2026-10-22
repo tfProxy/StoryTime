@@ -6,7 +6,7 @@ import Link from "next/link";
 import { SettingsIcon } from "./PictureIcons";
 import { saveSettings, useSettings } from "@/lib/settings";
 import { QUEUE_COUNTS, type ComfySettings } from "@/lib/settingsSchema";
-import { chapterIdOf, presetApi, targetKey, targetOfIds, targetWord, type PictureMoment, type PictureTarget } from "@/lib/pictureTarget";
+import { chapterIdOf, entryIdOf, presetApi, targetKey, targetOfIds, targetWord, type PictureMoment, type PictureTarget } from "@/lib/pictureTarget";
 import type { LoadedPrompt } from "./ImagePromptPanel";
 import type { JobProgress, MadeWith, PendingJob, Picture, StartMode } from "./pictures";
 import { drawPresetFamily, drawPresetIpAdapter, editBlocked, usableEditPresets, type EditModels } from "./useEditModels";
@@ -159,7 +159,7 @@ type Props = {
   /** The reference pictures chosen (shown in the References section, and sent with each job unless the preset can't use them), how to change them, and the pictures the picker offers. Without `onRefs` there is no section. */
   refs?: Reference[];
   onRefs?: (refs: Reference[]) => void;
-  refChoices?: { suggested: RefChoice[]; pictures: RefChoice[] };
+  refChoices?: { suggested: RefChoice[]; pictures: RefChoice[]; codex: RefChoice[] };
 };
 
 /** Whether a drawing preset's workflow ("" is the built-in one) can take reference pictures. */
@@ -195,6 +195,7 @@ export default function ComfyGenerate({
   // The target is rebuilt each render, so what effects depend on is its ids.
   const { storyId } = target;
   const chapterId = chapterIdOf(target);
+  const entryId = entryIdOf(target);
   // Where this browser keeps the edit's text and strengths, and the queue's name for the target.
   const kept = stateKey(target);
   const at = targetKey(target);
@@ -302,7 +303,7 @@ export default function ComfyGenerate({
   useEffect(() => {
     picturesTo.current = onPictures;
   }, [onPictures]);
-  useEffect(() => listen(targetOfIds(storyId, chapterId),{ onPictures: (p) => picturesTo.current?.(p), onStatus: setStatus }), [listen, storyId, chapterId]);
+  useEffect(() => listen(targetOfIds(storyId, chapterId, entryId), { onPictures: (p) => picturesTo.current?.(p), onStatus: setStatus }), [listen, storyId, chapterId, entryId]);
   // Each prompt loaded from a saved picture starts with a new seed again, until the author ticks the box.
   const [reuseSeed, setReuseSeed] = useState(false);
   const [seenLoad, setSeenLoad] = useState(0);
@@ -518,6 +519,7 @@ export default function ComfyGenerate({
         onChange={onRefs}
         suggested={refChoices?.suggested ?? []}
         pictures={refChoices?.pictures ?? []}
+        codex={refChoices?.codex ?? []}
         unavailable={refProblem}
         editLimit={editing && chosen ? { model: chosen.model.name, count: editRefLimit(chosen.model.id) } : null}
       />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -27,6 +27,8 @@ type PathItem = PathChapter;
 
 type Props = {
   story: StoryInfo;
+  /** The story's id, which lets each entry show its picture and link to its picture page (not in the writing page's drawer). */
+  storyId?: string;
   /** Open the AI helper section initially (used right after posting a chapter). */
   openAiHelper?: boolean;
   /** Shown inside the writing page's drawer: no chapter timeline or AI scan, just the entries. */
@@ -53,8 +55,23 @@ type Change = { op: CodexOp["op"]; entry_id?: string; anchor?: string } & Partia
 const when = (t: number) => new Date(t).toISOString().replace("T", " ").slice(0, 16) + " UTC";
 const localId = () => `draft-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 
-export default function CodexPanel({ story, openAiHelper, embedded, storyWide, startEditing, chapterId, path, ops, draft }: Props) {
+export default function CodexPanel({ story, storyId, openAiHelper, embedded, storyWide, startEditing, chapterId, path, ops, draft }: Props) {
   const router = useRouter();
+  // Each entry's picture as of this chapter (by entry id), for the thumbnails and the picture links.
+  const [pictures, setPictures] = useState<Record<string, { id: string }>>({});
+  useEffect(() => {
+    if (!storyId || embedded) return;
+    let live = true;
+    fetch(`/api/stories/${storyId}/codex-pictures?chapter=${encodeURIComponent(chapterId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { pictures: Record<string, { id: string }> } | null) => live && d && setPictures(d.pictures))
+      .catch(() => {
+        // no thumbnails this time
+      });
+    return () => {
+      live = false;
+    };
+  }, [storyId, chapterId, embedded]);
   const titleOf = (id: string) =>
     id === DRAFT_ANCHOR ? "this chapter (not posted yet)" : (path.find((p) => p.id === id)?.title ?? "an earlier chapter");
 
@@ -207,10 +224,19 @@ export default function CodexPanel({ story, openAiHelper, embedded, storyWide, s
               const here = e.op.anchor_chapter_id === chapterId;
               const held = pending.get(e.entry_id);
               const hist = entryHistory(allOps, e.entry_id);
+              const picture = pictures[e.entry_id];
+              const pictureHref = storyId && !embedded && !isDraftEntry(e.entry_id) ? `/s/${storyId}/codex/${e.entry_id}?at=${chapterId}` : null;
               return (
                 <article key={e.entry_id} className="card">
                   <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div>
+                    <div className="row" style={{ alignItems: "flex-start", flexWrap: "nowrap", minWidth: 0 }}>
+                      {picture && storyId && pictureHref && (
+                        <Link href={pictureHref} title={`The picture of ${e.name} as of this chapter`} className="codex-thumb-link">
+                          {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
+                          <img className="codex-thumb" src={`/api/stories/${storyId}/codex-pictures/${picture.id}`} alt={`Picture of ${e.name}`} />
+                        </Link>
+                      )}
+                      <div>
                       <strong>{e.name}</strong>{" "}
                       {e.always_include && <span className="tag">· always included</span>}{" "}
                       {here && !draft && <span className="tag">· changed in this chapter</span>}
@@ -218,8 +244,18 @@ export default function CodexPanel({ story, openAiHelper, embedded, storyWide, s
                         <span className="tag">· {held.op === "create" ? "new" : "changed"} in this chapter, saved when you post</span>
                       )}
                       {e.aliases.length > 0 && <div className="meta">Also: {e.aliases.join(", ")}</div>}
+                      </div>
                     </div>
                     <div className="row">
+                      {pictureHref && (
+                        <Link
+                          className="button secondary"
+                          href={pictureHref}
+                          title={picture ? `Make another picture of ${e.name}, or see this one` : `Make a picture of ${e.name} to use as a reference`}
+                        >
+                          {picture ? "Picture" : "Make a picture"}
+                        </Link>
+                      )}
                       <button type="button" className="secondary" disabled={busy} onClick={() => setEditing(e)}>
                         Edit
                       </button>

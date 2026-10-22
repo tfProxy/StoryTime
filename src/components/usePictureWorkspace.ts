@@ -8,9 +8,9 @@ import { newMaskId, type PaintedArea } from "@/lib/mask";
 import { editBlocked, useEditModels } from "./useEditModels";
 import { useSettings } from "@/lib/settings";
 import type { PictureJob } from "@/lib/pictureJobs";
-import { chapterIdOf, targetOfIds, type PictureSlot, type PictureTarget } from "@/lib/pictureTarget";
+import { chapterIdOf, entryIdOf, targetOfIds, type PictureSlot, type PictureTarget } from "@/lib/pictureTarget";
 import { fromComfyImage, fromSaved, type StartPicture } from "@/lib/comfy/startPicture";
-import { asReference } from "@/lib/comfy/references";
+import { asReference, type ReferenceRole } from "@/lib/comfy/references";
 import type { RefRequest } from "./useReferences";
 import { readStart, stateKey, writeStart } from "@/lib/comfy/editingState";
 
@@ -54,6 +54,7 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
   // The target is rebuilt each render, so what is used below is its ids.
   const { storyId } = target;
   const chapterId = chapterIdOf(target);
+  const entryId = entryIdOf(target);
   const [restored, setRestored] = useState(false);
   /* eslint-disable react-hooks/set-state-in-effect -- browser storage can only be read after the page is shown, so the server and browser draw the same first page */
   useEffect(() => {
@@ -62,14 +63,14 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
     const version = saved?.slot ? versions[saved.slot] : null;
     let picture: StartPicture | null = null;
     if (saved?.image) picture = fromComfyImage(comfy.url, saved.image);
-    else if (saved?.slot && version) picture = fromSaved(targetOfIds(storyId, chapterId),saved.slot, version);
+    else if (saved?.slot && version) picture = fromSaved(targetOfIds(storyId, chapterId, entryId), saved.slot, version);
     if (picture) {
       setStart(picture);
       if (saved) setStartMode(saved.mode);
       if (saved?.mask) setMaskOf({ startKey: picture.key, area: { ...saved.mask, id: newMaskId() } });
     }
     setRestored(true);
-  }, [restored, comfy.url, kept, storyId, chapterId, versions]);
+  }, [restored, comfy.url, kept, storyId, chapterId, entryId, versions]);
   /* eslint-enable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!restored) return;
@@ -98,11 +99,12 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
     document.getElementById("picture-prompt")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function startFrom(picture: StartPicture, request: StartRequest) {
+  /** `as` says what a picture added to the References is called and what it shows (a codex entry's picture knows). */
+  function startFrom(picture: StartPicture, request: StartRequest, as?: { label: string; role: ReferenceRole }) {
     if (request === "reference") {
       // Not a starting picture: the picture joins the References, where the prompt panel takes it from here.
-      const label = picture.slot === "header" ? "Header" : picture.slot === "footer" ? "Footer" : picture.slot === "cover" ? "Cover" : "Picture";
-      setRefRequest((prev) => ({ ref: asReference(picture, label, "character"), nonce: (prev?.nonce ?? 0) + 1 }));
+      const label = as?.label ?? (picture.slot === "header" ? "Header" : picture.slot === "footer" ? "Footer" : picture.slot === "cover" ? "Cover" : "Picture");
+      setRefRequest((prev) => ({ ref: asReference(picture, label, as?.role ?? "character"), nonce: (prev?.nonce ?? 0) + 1 }));
       document.getElementById("picture-references")?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }

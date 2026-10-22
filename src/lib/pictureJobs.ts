@@ -18,9 +18,11 @@ export const StoredRefSchema = z.object({
 
 export const NewJobSchema = z
   .object({
-    /** The chapter the job was for; a cover job gives its story instead. */
+    /** The chapter the job was for; a cover or codex job gives its story instead. */
     chapter_id: z.string().min(1).max(100).optional(),
     story_id: z.string().min(1).max(100).optional(),
+    /** A codex job: the codex entry it is for (with the story, and the moment codex). */
+    entry_id: z.string().min(1).max(100).optional(),
     prompt_id: text(200).min(1),
     // An edit follows its instruction, so it may have no prompt.
     prompt: text(LIMITS.picturePrompt),
@@ -30,7 +32,7 @@ export const NewJobSchema = z
     height: z.number().int().min(1).max(16384),
     seed: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
     count: z.number().int().min(1).max(64),
-    moment: z.enum(["start", "end", "cover"]).nullish(),
+    moment: z.enum(["start", "end", "cover", "codex"]).nullish(),
     source: text(1000).nullish(),
     denoise: z.number().min(0).max(1).nullish(),
     /** A redraw of only a painted part: the mask picture's name in ComfyUI's input folder. Needs a starting picture. */
@@ -45,7 +47,8 @@ export const NewJobSchema = z
     unseen: z.boolean().optional(),
   })
   .refine((j) => !j.chapter_id !== !j.story_id, { message: "give the chapter, or for a cover the story", path: ["chapter_id"] })
-  .refine((j) => !j.story_id === (j.moment !== "cover"), { message: "a cover job is given its story, and its moment is cover", path: ["moment"] })
+  .refine((j) => !j.story_id === (j.moment !== "cover" && j.moment !== "codex"), { message: "a cover or codex job is given its story, and its moment is cover or codex", path: ["moment"] })
+  .refine((j) => !j.entry_id === (j.moment !== "codex"), { message: "a codex job is given its entry, and no other job is", path: ["entry_id"] })
   .refine((j) => !j.instruction === !j.edit_model, { message: "an edit needs both its instruction and its model", path: ["instruction"] })
   .refine((j) => j.prompt.length > 0 || !!j.instruction, { message: "a prompt is needed (or, for an edit, an instruction)", path: ["prompt"] })
   .refine((j) => !j.instruction || !!j.source, { message: "an edit needs the picture it started from", path: ["source"] })
@@ -55,8 +58,10 @@ export type NewJob = z.infer<typeof NewJobSchema>;
 export type PictureJob = {
   id: string;
   story_id: string;
-  /** Null for a job made for the story's cover. */
+  /** Null for a job made for the story's cover or a codex entry. */
   chapter_id: string | null;
+  /** The codex entry a codex job was made for, else null. */
+  entry_id: string | null;
   prompt_id: string;
   prompt: string;
   negative: string;
@@ -65,7 +70,7 @@ export type PictureJob = {
   height: number;
   seed: number;
   count: number;
-  moment: "start" | "end" | "cover" | null;
+  moment: "start" | "end" | "cover" | "codex" | null;
   source: string | null;
   denoise: number | null;
   mask: string | null;
@@ -104,15 +109,16 @@ function toJobs(rows: Row[]): PictureJob[] {
 
 const toJob = (row: Row) => toJobs([row])[0];
 
-const COLUMNS = `rowid AS seq, id, story_id, chapter_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
+const COLUMNS = `rowid AS seq, id, story_id, chapter_id, entry_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
                  moment, source, denoise, mask, refs, instruction, edit_model, images, created_at, seen_at`;
 
 /**
- * Records a finished job for a chapter, or (given a story instead) for the story's cover. Recording the
- * same ComfyUI job again returns the first record.
+ * Records a finished job for a chapter, or (given a story instead) for the story's cover, or for one of its
+ * codex entries (given the entry too). Recording the same ComfyUI job again returns the first record.
  */
 export function recordPictureJob(input: NewJob): PictureJob {
   const chapterId = input.chapter_id ?? null;
+  const entryId = input.entry_id ?? null;
   let storyId: string;
   if (chapterId !== null) {
     const chapter = db().prepare(`SELECT story_id FROM chapters WHERE id = ?`).get(chapterId) as { story_id: string } | undefined;
@@ -121,6 +127,9 @@ export function recordPictureJob(input: NewJob): PictureJob {
   } else {
     if (!db().prepare(`SELECT 1 FROM stories WHERE id = ?`).get(input.story_id)) throw new PostError("That story does not exist", 404);
     storyId = input.story_id!;
+    if (entryId !== null && !db().prepare(`SELECT 1 FROM codex_ops WHERE story_id = ? AND entry_id = ?`).get(storyId, entryId)) {
+      throw new PostError("That codex entry does not exist", 404);
+    }
   }
   const seen = (
     chapterId !== null
@@ -132,12 +141,12 @@ export function recordPictureJob(input: NewJob): PictureJob {
   const now = Date.now();
   db()
     .prepare(
-      `INSERT INTO picture_jobs (id, story_id, chapter_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
+      `INSERT INTO picture_jobs (id, story_id, chapter_id, entry_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
                                  moment, source, denoise, mask, refs, instruction, edit_model, images, created_at, seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
-      id, storyId, chapterId, input.prompt_id, input.prompt, input.negative, input.checkpoint,
+      id, storyId, chapterId, entryId, input.prompt_id, input.prompt, input.negative, input.checkpoint,
       input.width, input.height, input.seed, input.count, input.moment ?? null, input.source ?? null,
       input.denoise ?? null, input.mask ?? null, input.refs?.length ? JSON.stringify(input.refs) : null, input.instruction ?? null, input.edit_model ?? null, JSON.stringify(input.images), now,
       input.unseen ? null : now,
@@ -152,11 +161,17 @@ export function recordPictureJob(input: NewJob): PictureJob {
  * the page after this one, or null at the end.
  */
 export function listPictureJobs(
-  where: { story: string; notChapter?: string; chaptersOnly?: boolean } | { chapter: string } | { cover: string },
+  where: { story: string; notChapter?: string; chaptersOnly?: boolean } | { chapter: string } | { cover: string } | { codex: string; entry: string },
   page: { before?: number; limit: number },
 ): { jobs: PictureJob[]; next: number | null } {
-  const [filter, value] =
-    "story" in where ? ["story_id = ?", where.story] : "chapter" in where ? ["chapter_id = ?", where.chapter] : ["story_id = ? AND chapter_id IS NULL", where.cover];
+  const [filter, ...values] =
+    "story" in where
+      ? ["story_id = ?", where.story]
+      : "chapter" in where
+        ? ["chapter_id = ?", where.chapter]
+        : "cover" in where
+          ? ["story_id = ? AND chapter_id IS NULL AND entry_id IS NULL", where.cover]
+          : ["story_id = ? AND entry_id = ?", where.codex, where.entry];
   // The whole story but one chapter, for "other chapters", or but the cover.
   const not = "story" in where && where.notChapter ? where.notChapter : null;
   const chaptersOnly = "story" in where && !not && where.chaptersOnly;
@@ -165,7 +180,7 @@ export function listPictureJobs(
       `SELECT ${COLUMNS} FROM picture_jobs WHERE ${filter} ${not ? "AND chapter_id != ?" : ""} ${chaptersOnly ? "AND chapter_id IS NOT NULL" : ""}
          AND rowid < ? ORDER BY rowid DESC LIMIT ?`,
     )
-    .all(...[value, ...(not ? [not] : []), page.before ?? Number.MAX_SAFE_INTEGER, page.limit + 1]) as Row[];
+    .all(...values, ...(not ? [not] : []), page.before ?? Number.MAX_SAFE_INTEGER, page.limit + 1) as Row[];
   const more = rows.length > page.limit;
   const shown = rows.slice(0, page.limit);
   return { jobs: toJobs(shown), next: more ? shown[shown.length - 1].seq : null };
@@ -182,6 +197,11 @@ export function chapterPictureJobs(chapterId: string): PictureJob[] {
 /** The story's cover jobs, newest first (the most recent 1000), with their marks: what its cover page shows. */
 export function coverPictureJobs(storyId: string): PictureJob[] {
   return listPictureJobs({ cover: storyId }, { limit: CHAPTER_JOBS }).jobs;
+}
+
+/** A codex entry's jobs, newest first (the most recent 1000), with their marks: what its codex picture page shows. */
+export function codexPictureJobs(storyId: string, entryId: string): PictureJob[] {
+  return listPictureJobs({ codex: storyId, entry: entryId }, { limit: CHAPTER_JOBS }).jobs;
 }
 
 // How many new jobs the picture queue in the header is given.

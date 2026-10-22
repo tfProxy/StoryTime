@@ -4,11 +4,12 @@ import type { ReactNode } from "react";
 import type { ImageMade } from "@/lib/imageSlots";
 import { slotsFor, type PictureSlot, type PictureTarget } from "@/lib/pictureTarget";
 import type { PictureJob } from "@/lib/pictureJobs";
-import { fromComfyImage, fromSaved } from "@/lib/comfy/startPicture";
+import { fromComfyImage, fromSaved, type StartPicture } from "@/lib/comfy/startPicture";
 import ChapterImageEditor from "./ChapterImageEditor";
 import ChapterPictures from "./ChapterPictures";
 import { usePictureWorkspace } from "./usePictureWorkspace";
-import type { Picture } from "./pictures";
+import type { Picture, PromptToLoad, StartRequest } from "./pictures";
+import type { ReferenceRole } from "@/lib/comfy/references";
 
 type Workspace = Omit<ReturnType<typeof usePictureWorkspace>, "gridProps" | "resizerProps" | "setDock">;
 
@@ -17,6 +18,15 @@ export type WorkspaceControls = Pick<Workspace, "loaded" | "refRequest" | "start
   onClearStart: () => void;
   /** The target's pinned pictures, which the reference picker offers. */
   pinned: Picture[];
+};
+
+/** What a page's own destination card (instead of the header and footer cards) needs from the workspace. */
+export type WorkspaceDestination = {
+  startFrom: (picture: StartPicture, request: StartRequest, as?: { label: string; role: ReferenceRole }) => void;
+  load: (p: PromptToLoad) => void;
+  /** Why a picture can't be edited by instruction now, or null. */
+  blocked: string | null;
+  comfyUrl: string;
 };
 
 type Props = {
@@ -31,6 +41,10 @@ type Props = {
   made: Partial<Record<PictureSlot, ImageMade | null>>;
   /** The controls column: the prompt panel (and anything above it). */
   controls: (w: WorkspaceControls) => ReactNode;
+  /** A codex page's own card for the entry's picture, in place of the chapter and cover cards. */
+  destination?: (w: WorkspaceDestination) => ReactNode;
+  /** For a codex entry: the chapter the page was opened from, which a picture can be saved from. */
+  codexFrom?: { id: string; title: string } | null;
 };
 
 /**
@@ -38,7 +52,7 @@ type Props = {
  * the new pictures on the other. On a phone the chosen header and footer come first (CSS moves them), then
  * the controls and the pictures. The state they share is kept by `usePictureWorkspace`.
  */
-export default function PictureWorkspace({ target, jobs, titles, versions, made, controls }: Props) {
+export default function PictureWorkspace({ target, jobs, titles, versions, made, controls, destination, codexFrom = null }: Props) {
   const { gridProps, resizerProps, setDock, ...w } = usePictureWorkspace(target, jobs, versions);
   const { comfy } = w;
   const slots = slotsFor(target);
@@ -67,29 +81,34 @@ export default function PictureWorkspace({ target, jobs, titles, versions, made,
       <div className="illustrate-gallery">
         {/* The saved pictures first, to compare the new ones with. */}
         <div className="image-editors">
-          {slots.map((slot) => (
-            <ChapterImageEditor
-              key={slot}
-              target={target}
-              slot={slot}
-              version={versions[slot] ?? null}
-              made={made[slot] ?? null}
-              onLoadPrompt={(m) =>
-                w.load({
-                  prompt: m.prompt,
-                  negative: m.negative,
-                  seed: m.job?.seed ?? null,
-                  settings: m.job && { checkpoint: m.job.checkpoint, width: m.job.width, height: m.job.height, denoise: null },
-                })
-              }
-              onStart={comfy.url ? (v, mode) => w.startFrom(fromSaved(target, slot, v), mode) : undefined}
-              editBlocked={w.blocked}
-            />
-          ))}
+          {destination
+            ? destination({ startFrom: w.startFrom, load: w.load, blocked: w.blocked, comfyUrl: comfy.url })
+            : slots.map((slot) =>
+                slot === "codex" ? null : (
+                  <ChapterImageEditor
+                    key={slot}
+                    target={target}
+                    slot={slot}
+                    version={versions[slot] ?? null}
+                    made={made[slot] ?? null}
+                    onLoadPrompt={(m) =>
+                      w.load({
+                        prompt: m.prompt,
+                        negative: m.negative,
+                        seed: m.job?.seed ?? null,
+                        settings: m.job && { checkpoint: m.job.checkpoint, width: m.job.width, height: m.job.height, denoise: null },
+                      })
+                    }
+                    onStart={comfy.url ? (v, mode) => w.startFrom(fromSaved(target, slot, v), mode) : undefined}
+                    editBlocked={w.blocked}
+                  />
+                ),
+              )}
         </div>
         {comfy.url && (
           <ChapterPictures
             target={target}
+            codexFrom={codexFrom}
             titles={titles}
             comfyUrl={comfy.url}
             pictures={w.pictures}

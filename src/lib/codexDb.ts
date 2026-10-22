@@ -141,3 +141,28 @@ export function getContextCodex(chapterId: string | null) {
     always_include: e.always_include,
   }));
 }
+
+/**
+ * A codex entry as it reads at a chapter; with no chapter (or when the entry isn't live there), as it was last
+ * written on any branch. Null when the story has no such entry.
+ */
+export function codexEntryAt(storyId: string, entryId: string, chapterId: string | null): { name: string; type: CodexEntry["type"]; aliases: string[]; content: string } | null {
+  const live = chapterId ? getCodexState(chapterId).find((e) => e.entry_id === entryId) : undefined;
+  if (live) return live;
+  const row = db()
+    .prepare(`SELECT name, type, aliases, content FROM codex_ops WHERE story_id = ? AND entry_id = ? AND op != 'retire' ORDER BY posted_at DESC, rowid DESC LIMIT 1`)
+    .get(storyId, entryId) as { name: string; type: CodexEntry["type"]; aliases: string; content: string } | undefined;
+  return row ? { ...row, aliases: JSON.parse(row.aliases) as string[] } : null;
+}
+
+/** The latest name of each of these codex entries (any branch) and its story's title, by entry id; entries that don't exist are left out. */
+export function codexEntryLabels(entryIds: string[]): Record<string, { name: string; story_title: string }> {
+  if (entryIds.length === 0) return {};
+  const rows = db()
+    .prepare(
+      `SELECT o.entry_id, o.name, s.title AS story_title FROM codex_ops o JOIN stories s ON s.id = o.story_id
+        WHERE o.entry_id IN (${entryIds.map(() => "?").join(",")}) AND o.op != 'retire' ORDER BY o.posted_at, o.rowid`,
+    )
+    .all(...entryIds) as { entry_id: string; name: string; story_title: string }[];
+  return Object.fromEntries(rows.map((r) => [r.entry_id, { name: r.name, story_title: r.story_title }]));
+}
