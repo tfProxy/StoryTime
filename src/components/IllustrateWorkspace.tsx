@@ -191,8 +191,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
         </div>
         {comfy.url && (
           <ChapterPictures
-            chapterId={chapterId}
-            storyId={story.id}
+            target={{ storyId: story.id, chapterId }}
             titles={titles}
             comfyUrl={comfy.url}
             pictures={pictures}

@@ -85,7 +85,8 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
   const [seenLoad, setSeenLoad] = useState(0);
   if (loaded && loaded.nonce !== seenLoad) {
     setSeenLoad(loaded.nonce);
-    const into = loaded.moment ?? moment;
+    // A cover's prompt goes to the moment shown.
+    const into = loaded.moment && loaded.moment !== "cover" ? loaded.moment : moment;
     change(into, { scene: "", prompt: loaded.prompt, negative: loaded.negative });
     setMoment(into);
     setStatus({ ok: true, text: "Prompt loaded from the picture." });
@@ -248,8 +249,7 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
       {codexSlot && createPortal(codexLine, codexSlot)}
       {promptPanel}
       <ComfyGenerate
-        chapterId={chapterId}
-        storyId={story.id}
+        target={{ storyId: story.id, chapterId }}
         storyPreset={story.draw_preset}
         chapterPreset={chapterPreset}
         moment={moment}

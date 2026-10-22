@@ -1,7 +1,7 @@
 // What the Illustrate page knows about a picture made on ComfyUI, and the helpers its gallery uses.
 // Pure code: no React.
-import type { ImageMoment } from "@/lib/ai/imagePrompt";
 import type { ComfyImage, Progress } from "@/lib/comfy/client";
+import type { PictureMoment } from "@/lib/pictureTarget";
 import type { PictureJob, PictureMark } from "@/lib/pictureJobs";
 import { editFilesExtras, editModel } from "@/lib/comfy/editModels";
 
@@ -18,7 +18,7 @@ export type MadeWith = { checkpoint: string; width: number; height: number; deno
  * What "Load prompt" hands back: the text and, where known, the seed, the settings and the moment of the
  * job that made the pictures.
  */
-export type PromptToLoad = { prompt: string; negative: string; seed: number | null; settings?: MadeWith | null; moment?: ImageMoment | null };
+export type PromptToLoad = { prompt: string; negative: string; seed: number | null; settings?: MadeWith | null; moment?: PictureMoment | null };
 
 /**
  * One of a chapter's pictures. `jobId` is its job's record in StoryTime (null when that couldn't be
@@ -43,9 +43,9 @@ export type Picture = {
   /** An edit: what it was told to change, and the edit model's id (see EDIT_MODELS); null otherwise. */
   instruction: string | null;
   editModel: string | null;
-  moment: ImageMoment | null;
-  /** The chapter it was made for. */
-  chapterId: string;
+  moment: PictureMoment | null;
+  /** The chapter it was made for, or null for the story's cover. */
+  chapterId: string | null;
   /** When its job finished (ms since 1970). */
   madeAt: number;
   /** How many pictures its job made together (ComfyUI's batch size); `index` is its place in that batch. */
@@ -101,7 +101,7 @@ export function pictureCaption(c: { seed: number; checkpoint: string; width: num
     .join(" · ");
 }
 
-const MOMENT_NAMES: Record<ImageMoment, string> = { start: "chapter start", end: "chapter end" };
+const MOMENT_NAMES: Record<Exclude<PictureMoment, "cover">, string> = { start: "chapter start", end: "chapter end" };
 const SLOT_NAMES: Record<string, string> = { header: "header picture", footer: "footer picture" };
 
 /** The file path ComfyUI keeps a picture under. */
@@ -127,9 +127,11 @@ export type PictureDetail = { label: string; value: string };
  * noise from it, so the batch size and the picture's place in it count too.
  */
 export function pictureDetails(p: Picture, titles: Record<string, string>): PictureDetail[] {
-  const chapter = titles[p.chapterId] ? `“${titles[p.chapterId]}”` : "A chapter that has been removed";
+  const chapter = p.chapterId !== null && titles[p.chapterId] ? `“${titles[p.chapterId]}”` : "A chapter that has been removed";
   return [
-    { label: "Chapter", value: p.moment ? `${chapter}, ${MOMENT_NAMES[p.moment]}` : chapter },
+    p.chapterId === null
+      ? { label: "For", value: "the story's cover" }
+      : { label: "Chapter", value: p.moment && p.moment !== "cover" ? `${chapter}, ${MOMENT_NAMES[p.moment]}` : chapter },
     { label: "Made", value: new Date(p.madeAt).toLocaleString() },
     ...(p.editModel
       ? [{ label: "Edit model", value: `${editModel(p.editModel)?.name ?? p.editModel} (${p.checkpoint})` }]

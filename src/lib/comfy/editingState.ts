@@ -1,7 +1,12 @@
 // What the Illustrate page keeps in this browser so a refresh doesn't lose the picture being edited or
-// redrawn, the mode, and the edit's text and strength. Per chapter; browser code.
+// redrawn, the mode, and the edit's text and strength. Per chapter (and one set for the story's cover),
+// named by `stateKey`; browser code.
 import type { ImageSlot } from "../imageSlots";
+import type { PictureTarget } from "../pictureTarget";
 import type { ComfyImage } from "./client";
+
+/** What the stored values are kept under: the chapter's id (as before covers), or `cover-<story id>`. */
+export const stateKey = (t: PictureTarget) => t.chapterId ?? `cover-${t.storyId}`;
 
 const key = (name: string, chapterId: string) => `storytime.illustrate.${name}.${chapterId}`;
 

@@ -1,20 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { IMAGE_SLOTS, type ImageSlot } from "@/lib/imageSlots";
+import type { PictureSlot } from "@/lib/pictureTarget";
 import type { ComfyImage } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
-import { SLOT_NAMES, type PictureSaver } from "./usePictureSaver";
-import { FooterIcon, HeaderIcon, MenuIcon, PencilIcon, PinIcon, TrashIcon } from "./PictureIcons";
+import { SLOT_NAMES, slotOf, type PictureSaver } from "./usePictureSaver";
+import { CoverIcon, FooterIcon, HeaderIcon, MenuIcon, PencilIcon, PinIcon, TrashIcon } from "./PictureIcons";
 import type { StartMode } from "./pictures";
 
 // The buttons and badge on a picture, the same on a tile in the Pictures panel and in the full-size viewer.
 
-const SLOT_TITLES: Record<ImageSlot, string> = { header: "Header", footer: "Footer" };
-const SLOT_ICONS: Record<ImageSlot, () => React.JSX.Element> = { header: HeaderIcon, footer: FooterIcon };
+const SLOT_TITLES: Record<PictureSlot, string> = { header: "Header", footer: "Footer", cover: "Cover" };
+const SLOT_ICONS: Record<PictureSlot, () => React.JSX.Element> = { header: HeaderIcon, footer: FooterIcon, cover: CoverIcon };
 
-/** On the picture's top left corner: which of the chapter's slots it is saved in now, if any, and whether it is the picture being edited or redrawn. */
-export function InUseBadge({ inUse, editing = false, isNew = false }: { inUse: ImageSlot[]; editing?: boolean; isNew?: boolean }) {
+/** On the picture's top left corner: which slots (the chapter's, or the story's cover) it is saved in now, if any, and whether it is the picture being edited or redrawn. */
+export function InUseBadge({ inUse, editing = false, isNew = false }: { inUse: PictureSlot[]; editing?: boolean; isNew?: boolean }) {
   if (inUse.length === 0 && !editing && !isNew) return null;
   return (
     <div className="picture-in-use">
@@ -31,7 +31,7 @@ export function InUseBadge({ inUse, editing = false, isNew = false }: { inUse: I
       {inUse.map((slot) => {
         const Icon = SLOT_ICONS[slot];
         return (
-          <span key={slot} title={`This is the chapter's ${SLOT_NAMES[slot]}`}>
+          <span key={slot} title={`This is ${slotOf(slot)}`}>
             <Icon /> {SLOT_TITLES[slot]}
           </span>
         );
@@ -74,7 +74,7 @@ type Props = {
   index: number;
   saver: PictureSaver;
   /** The slots this picture is saved in now. */
-  inUse: ImageSlot[];
+  inUse: PictureSlot[];
   /** ComfyUI no longer has the picture, so it can't be used. */
   missing: boolean;
   /** Whether the author pinned or trashed it ("rejected" as stored), and how to change that (no pin and trash buttons without it). */
@@ -97,12 +97,12 @@ export default function PictureButtons({ image, tileKey, jobId, index, saver, in
   // Use as header and footer come first in the menu; the one it is already is shown, but can't be chosen.
   const slotItems: MenuItem[] = missing
     ? []
-    : IMAGE_SLOTS.map((slot) => {
+    : saver.slots.map((slot) => {
         const used = inUse.includes(slot);
         const saving = saver.saving === `${tileKey}-${slot}`;
         return {
           label: saving ? `Saving as the ${SLOT_NAMES[slot]}…` : used ? `This is the ${SLOT_NAMES[slot]}` : `Use as ${SLOT_NAMES[slot]}`,
-          title: used ? `This is the chapter's ${SLOT_NAMES[slot]}` : `Use as the chapter's ${SLOT_NAMES[slot]}`,
+          title: used ? `This is ${slotOf(slot)}` : `Use as ${slotOf(slot)}`,
           icon: SLOT_ICONS[slot],
           disabled: used || saver.saving !== null,
           run: () => void saver.use(tileKey, image, jobId, index, slot),

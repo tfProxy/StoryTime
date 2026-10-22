@@ -164,6 +164,7 @@ ok(sameOut["1"].inputs.text === "a lighthouse at dawn" && !describeWorkflow(same
 // ---- the file name prefix of the saved pictures ----
 const prefix = filenamePrefix("story1", "chap2");
 ok(prefix === "StoryTime/story1/chap2", "a chapter's pictures are filed under StoryTime/<story>/<chapter>");
+ok(filenamePrefix("story1", null) === "StoryTime/story1/cover", "a story's covers are filed under StoryTime/<story>/cover");
 const prefixOf = (wf: Workflow) => Object.values(wf).find((n) => n.class_type === "SaveImage")!.inputs.filename_prefix;
 ok(prefixOf(fillWorkflow(BUILTIN_WORKFLOW, { ...params, prefix })) === prefix, "the built-in workflow's StoryTime prefix is replaced");
 ok(prefixOf(fillWorkflow(BUILTIN_WORKFLOW, params)) === "StoryTime" && prefixOf(BUILTIN_WORKFLOW) === "StoryTime", "…and kept when no prefix is given, and the built-in workflow itself is unchanged");

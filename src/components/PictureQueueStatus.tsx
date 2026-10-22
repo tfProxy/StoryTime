@@ -9,6 +9,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSettings } from "@/lib/settings";
 import { imageUrl } from "@/lib/comfy/client";
+import { targetHref } from "@/lib/pictureTarget";
 import { progressText } from "./pictures";
 import { usePictureQueue, type QueueJob } from "./PictureQueue";
 
@@ -60,7 +61,7 @@ export default function PictureQueueStatus() {
   const comfyUrl = useSettings().comfy.url;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const labels = useLabels(jobs.map((j) => j.chapterId));
+  const labels = useLabels(jobs.flatMap((j) => (j.chapterId === null ? [] : [j.chapterId])));
   const making = jobs.filter((j) => j.state === "making");
   const done = jobs.filter((j) => j.state === "done");
   const failed = jobs.filter((j) => j.state === "failed");
@@ -120,7 +121,7 @@ export default function PictureQueueStatus() {
         <div className="picture-queue-panel" role="region" aria-label="Picture jobs">
           <ul className="picture-queue-list">
             {newest.map((j) => (
-              <JobRow key={j.key} job={j} label={labels[j.chapterId]} comfyUrl={comfyUrl} onStop={() => stop(j.key)} onDismiss={() => dismiss(j.key)} />
+              <JobRow key={j.key} job={j} label={j.chapterId === null ? undefined : labels[j.chapterId]} comfyUrl={comfyUrl} onStop={() => stop(j.key)} onDismiss={() => dismiss(j.key)} />
             ))}
           </ul>
           {done.length + failed.length > 1 && (
@@ -135,15 +136,15 @@ export default function PictureQueueStatus() {
 }
 
 function JobRow({ job, label, comfyUrl, onStop, onDismiss }: { job: QueueJob; label?: { title: string; story_title: string }; comfyUrl: string; onStop: () => void; onDismiss: () => void }) {
-  const href = `/c/${job.chapterId}/illustrate`;
-  const title = label?.title ?? "A chapter";
+  const href = targetHref(job);
+  const title = job.chapterId === null ? "Cover" : (label?.title ?? "A chapter");
   return (
     <li className={`picture-queue-job picture-queue-${job.state}`} aria-label={`${title}: ${job.state === "making" ? "being made" : job.state === "done" ? "ready" : "failed"}`}>
       <div className="picture-queue-head">
         <Link href={href}>{title}</Link>
         <span className="meta">
           {label?.story_title ? `${label.story_title} · ` : ""}
-          {job.moment ? MOMENTS[job.moment] : ""}
+          {job.moment && job.moment !== "cover" ? MOMENTS[job.moment] : ""}
         </span>
       </div>
       {job.state === "making" && (
