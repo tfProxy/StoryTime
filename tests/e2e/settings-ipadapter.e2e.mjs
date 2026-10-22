@@ -79,6 +79,12 @@ try {
   ok((await block.innerText()).includes("Reference pictures (IP-Adapter): ready"), "guessed NoobAI, with its files installed: ready");
   ok(await block.locator("li.ok", { hasText: "Reference pictures (IP-Adapter)" }).count() === 1, "…shown as a tick");
 
+  // ---- export the preset's workflow ----
+  const exportButton = card.getByRole("button", { name: "Export workflow" });
+  const [download] = await Promise.all([page.waitForEvent("download"), exportButton.click()]);
+  const exported = JSON.parse(await (await import("node:fs/promises")).readFile(await download.path(), "utf8"));
+  ok(download.suggestedFilename() === "storytime-noob.json" && Object.values(exported).some((n) => n.class_type === "CheckpointLoaderSimple" && n.inputs.ckpt_name === NOOB), "Export workflow saves the preset's workflow as JSON, with its checkpoint");
+
   await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR ?? "/tmp"}/settings-ipadapter-400.png`, fullPage: true });
   ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "at 400px the Drawing tab does not scroll sideways");
 } finally {

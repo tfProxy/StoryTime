@@ -384,3 +384,19 @@ ok(EDIT_NODES.includes("KSampler"), "…which it asks about anyway");
   const ck = choose(byId(checkEditModels(ggufInfo({ unet: [], clip: [vlGguf], vae: normal.vae, ...{} })), "qwen-image-edit"), { textEncoder: vlGguf }, "x.safetensors");
   ok(!ck.ready && ck.checkpoint?.found === false, "an unlisted checkpoint still stops the preset, GGUF or not");
 }
+
+// ---- exporting a preset's workflow for ComfyUI ----
+{
+  const { drawPresetWorkflow, editPresetWorkflow, SAMPLE_IMAGE } = await import("../../src/lib/comfy/exportWorkflow.ts");
+  const { newDrawPreset, newEditPreset } = await import("../../src/lib/comfy/presets.ts");
+  const dp = { ...newDrawPreset("d", "D", "my.safetensors"), loras: [{ name: "l.safetensors", strength: 0.5, on: true }, { name: "off.safetensors", strength: 1, on: false }] };
+  const dw = drawPresetWorkflow(dp, null, { width: 832, height: 1216 })!;
+  const dn = Object.values(dw);
+  ok(dn.some((n) => n.class_type === "CheckpointLoaderSimple" && n.inputs.ckpt_name === "my.safetensors") && dn.filter((n) => n.class_type === "LoraLoader").length === 1, "a checkpoint preset exports its checkpoint and its LoRAs that are on");
+  ok(dn.some((n) => n.class_type === "EmptyLatentImage" && n.inputs.width === 832 && n.inputs.height === 1216) && dn.every((n) => !JSON.stringify(n.inputs).includes("{{")), "…at the Settings size, with no placeholders left");
+  ok(drawPresetWorkflow({ ...dp, family: "zimage" }, null, { width: 1, height: 1 }) === null, "a model-family preset without a ready check has nothing to export");
+  const qc = byId(checkEditModels(info(all)), "qwen-image-edit");
+  const ew = editPresetWorkflow(newEditPreset("e", "E", "qwen-image-edit"), qc)!;
+  ok(Object.values(ew).some((n) => n.class_type === "LoadImage" && n.inputs.image === SAMPLE_IMAGE) && Object.values(ew).some((n) => n.class_type === "TextEncodeQwenImageEditPlus" && String(n.inputs.prompt).length > 0), "an edit preset exports its workflow with a sample picture and instruction");
+  ok(editPresetWorkflow(newEditPreset("e", "E", "qwen-image-edit"), byId(checkEditModels(info({})), "qwen-image-edit")) === null, "…and nothing when the model isn't ready");
+}

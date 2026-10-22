@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { TUNING_LIMITS, type ComfySettings as Comfy } from "@/lib/settingsSchema";
-import { BUILTIN_SAMPLER, builtinSampler, describeWorkflow, parseWorkflow, WorkflowError, type WorkflowFit } from "@/lib/comfy/workflow";
+import { BUILTIN_SAMPLER, builtinSampler, describeWorkflow, parseWorkflow, WorkflowError, type Workflow, type WorkflowFit } from "@/lib/comfy/workflow";
 import { checkComfy, type ComfyCheck, type DrawCheck } from "@/lib/comfy/check";
 import { listCheckpoints } from "@/lib/comfy/client";
 import { DRAW_FAMILIES, drawModel, drawTuning, FAMILY_NAMES, familyPresetCheck, familyProblems, ggufNeeded, type DrawFamily, type DrawModel, type FamilyCheck } from "@/lib/comfy/drawModels";
+import { downloadWorkflow, drawPresetWorkflow, editPresetWorkflow, SAMPLE_IMAGE } from "@/lib/comfy/exportWorkflow";
 import { BASE_NAMES, guessBase, IPADAPTER_NODES, MODEL_BASES, type IpAdapterCheck, type ModelBase } from "@/lib/comfy/ipAdapter";
 import { editModel, editPresetCheck, editTuning, isGguf, lightningSteps, presetCheck, type EditModel } from "@/lib/comfy/editModels";
 import {
@@ -26,7 +27,7 @@ import {
 import AutoTextarea from "./AutoTextarea";
 import LoraStack from "./LoraStack";
 import TuningFields from "./TuningFields";
-import { useEditModels, type EditModels } from "./useEditModels";
+import { drawPresetFamily, useEditModels, type EditModels } from "./useEditModels";
 
 const FIT_NAMES: [keyof Omit<WorkflowFit, "mode">, string][] = [
   ["prompt", "prompt"],
@@ -353,6 +354,21 @@ function SetupSection({ id, comfy, setup, model, onConnections }: { id: string; 
         </>
       )}
     </section>
+  );
+}
+
+/** Saves the workflow StoryTime would send for a preset, with sample text, to try in ComfyUI; `wf` is null while it can't be made. */
+function ExportButton({ name, wf, why }: { name: string; wf: Workflow | null; why: string }) {
+  return (
+    <button
+      type="button"
+      className="secondary"
+      disabled={!wf}
+      title={wf ? "Save this preset's workflow as JSON (with a sample prompt) to open in ComfyUI" : why}
+      onClick={() => wf && downloadWorkflow(name, wf)}
+    >
+      Export workflow
+    </button>
   );
 }
 
@@ -705,6 +721,13 @@ export function DrawingSettings({
 }) {
   const presets = comfy.drawPresets;
   const list = usePresetList(presets, (drawPresets) => onChange({ drawPresets }), "drawing preset");
+  const exportOf = (p: DrawPreset) => {
+    try {
+      return drawPresetWorkflow(p, drawPresetFamily(setup.models, p), comfy);
+    } catch {
+      return null; // a pasted workflow that can't be read: the card says so
+    }
+  };
   return (
     <div className="settings-section">
       <SetupSection id="setup-drawing" comfy={comfy} setup={setup} onConnections={onConnections} />
@@ -740,6 +763,7 @@ export function DrawingSettings({
                 >
                   Move to top
                 </button>
+                <ExportButton name={p.name} wf={exportOf(p)} why="Press Check setup first: this model's files have to be found in ComfyUI" />
                 <button
                   type="button"
                   className="secondary"
@@ -1015,6 +1039,11 @@ export function EditSettings({
                 >
                   Delete
                 </button>
+                <ExportButton
+                  name={p.name}
+                  wf={editPresetWorkflow(p, setup.models.state === "done" ? editPresetCheck(setup.models.checks, p) : null)}
+                  why={`${model.name}'s files have to be found in ComfyUI first. Check setup says what is missing. The export loads ${SAMPLE_IMAGE} from ComfyUI's input folder.`}
+                />
               </>
             }
           >
