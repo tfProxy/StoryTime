@@ -429,6 +429,36 @@ and, under Advanced, the built-in SDXL workflow's steps (30), CFG (6), sampler (
 scheduler (karras). A workflow of your own, pasted under **Workflow** in the preset's card, keeps its
 own sampler settings; change them in ComfyUI and export it again.
 
+### Using reference pictures in an edit
+
+On the Edit tab, the References section above the instruction lets you add pictures that show the
+model what to take: a character's face, an outfit, a prop. The starting picture is always the one
+that is changed; references are only looked at. (Edits don't use IP-Adapter, and a reference's
+Role and weight settings don't matter here. Only which pictures are in the list, and their order.)
+
+**Qwen-Image-Edit** takes up to two references. It numbers the pictures in the order they are
+given: the starting picture is **image 1**, the first reference in the list is **image 2**, and the
+second is **image 3**. Refer to them by those numbers in the instruction:
+
+- With one reference: `Give the girl in image 1 the jacket from image 2.`
+- With two: `Put the sword from image 2 in the knight's hand in image 1, and make his armour match image 3.`
+- Keep the face: `Replace the man in image 1 with the character from image 2, in the same pose.`
+
+**FLUX.1 Kontext** takes one reference and has no numbering. Describe it in words instead:
+
+- `Give the woman the same red jacket as in the reference picture.`
+- `Make the character look like the one in the second picture, keeping the first picture's pose and background.`
+
+You don't have to say which picture is edited: StoryTime puts a sentence in front of your
+instruction ("Edit image 1, keeping its composition, pose and background. Use image 2 only as a
+reference for how things look…"). Name what to take from the reference, such as the jacket, the face
+or the sword, because "use the reference" alone gives the model little to go on. A third reference on
+Qwen, or a second on Kontext, is left out, and a note says so.
+
+If the result looks like the reference with your starting picture mixed in, name the one thing to
+take from it ("only the jacket"), lower the Strength so it stays closer to the starting picture, or
+use a reference that shows only that thing.
+
 ### Tips for instructions
 
 - Say what to change, not the whole scene: "remove the logo on his shirt", "make it night",
