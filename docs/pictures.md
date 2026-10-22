@@ -56,8 +56,14 @@ the preset's card still overrides everything.)
 | Chroma | `models/diffusion_models` | `Chroma1-HD.safetensors` | [lodestones/Chroma1-HD](https://huggingface.co/lodestones/Chroma1-HD/tree/main) |
 | | `models/text_encoders` | `t5xxl_fp8_e4m3fn_scaled.safetensors` | [Comfy-Org/flux_text_encoders](https://huggingface.co/Comfy-Org/flux_text_encoders/tree/main) |
 | | `models/vae` | `ae.safetensors` | as for Flux |
+| Qwen-Image | `models/diffusion_models` | `qwen_image_fp8_e4m3fn.safetensors` | [Comfy-Org/Qwen-Image_ComfyUI](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/tree/main/split_files) |
+| | `models/text_encoders` | `qwen_2.5_vl_7b_fp8_scaled.safetensors` | the same repository |
+| | `models/vae` | `qwen_image_vae.safetensors` | the same repository |
 
-(Qwen-Image is added with its own row.)
+Qwen-Image's text encoder and VAE are the ones the Qwen edit tab uses, so if you set that up
+(step 3 of [Edit models in ComfyUI](#edit-models-in-comfyui)) you already have them. The model is a
+different file: **Qwen-Image**, not Qwen-Image-Edit. A preset finds only its own model by name, so the
+two sit side by side in `models/diffusion_models`.
 
 The repositories of **Comfy-Org** are ComfyUI's own repackaged copies, so their file names are the ones
 StoryTime looks for. Open the repository's `split_files` folder and download each file into the folder
@@ -122,6 +128,20 @@ with the beta scheduler at **CFG 4**, so unlike Flux, the **negative prompt matt
 ComfyUI's own template does; without it the picture is still drawn. Chroma is a smaller model than
 Flux (about 9 billion parameters), so a **Q5** or **Q4** GGUF quant (search "Chroma1-HD GGUF"; for
 example from silveroxides on Hugging Face) fits a 12 GB card whole, with the text encoder on the CPU.
+
+### Qwen-Image
+
+A 20-billion-parameter model that follows long, detailed prompts closely and can draw readable text
+(a sign, a book cover's title). Prompts are sentences. It uses a real negative prompt at **CFG 2.5**,
+20 steps of Euler, and **Shift** 3.1 (ComfyUI's own template). It is the heaviest of these: the fp8
+model is about 20 GB and its Qwen 2.5 VL text encoder about 9 GB. On a 12 GB card use a **Q4** GGUF quant
+([unsloth/Qwen-Image-GGUF](https://huggingface.co/unsloth/Qwen-Image-GGUF) or
+[city96/Qwen-Image-gguf](https://huggingface.co/city96/Qwen-Image-gguf): Q4_K_S or Q4_0) and turn on
+**Keep the text encoder on the CPU** (the PC's 62 GB of RAM holds it), which leaves the card to the model;
+reading the prompt is then a little slower. Keep the text encoder as the fp8 safetensors file: it
+needs no extra node, and is the safe choice (a GGUF one also loads, with ComfyUI-GGUF; a drawing
+doesn't need the `mmproj` file that editing a picture does). Qwen-Image runs at 20 steps, so a picture
+takes noticeably longer than Z-Image's.
 
 ## Edit models in ComfyUI
 

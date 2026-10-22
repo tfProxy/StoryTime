@@ -11,13 +11,13 @@
 // the VAE (modelParts.ts relies on that), LoRAs (model only) come after node "1", and the sampler is "8".
 import {
   CLIP_L, comboOptions, FLUX_VAE, isGguf, loaderReport, loraChain, nodesOf, partChoices, partsState, pickPart, switchToGgufLoaders,
-  T5_XXL, UNET_GGUF,
+  QWEN_TEXT_ENCODER, QWEN_VAE, T5_XXL, UNET_GGUF,
   type LoaderInfo, type ModelLora, type ModelPart, type NeededOption, type NodeInfo, type PartCheck, type TextEncoderDevice,
 } from "./modelParts";
 import type { SamplerTuning, Workflow } from "./workflow";
 
 /** "checkpoint" is the SDXL-style all-in-one checkpoint of the built-in workflow; the rest are families of separate files. */
-export const DRAW_FAMILIES = ["checkpoint", "zimage", "flux", "chroma"] as const;
+export const DRAW_FAMILIES = ["checkpoint", "zimage", "flux", "chroma", "qwen-image"] as const;
 export type DrawFamily = (typeof DRAW_FAMILIES)[number];
 export type ModelFamily = Exclude<DrawFamily, "checkpoint">;
 
@@ -27,6 +27,7 @@ export const FAMILY_NAMES: Record<DrawFamily, string> = {
   zimage: "Z-Image",
   flux: "Flux",
   chroma: "Chroma",
+  "qwen-image": "Qwen-Image",
 };
 
 /** What a family's sampler runs with: the usual settings, and the ones only some families have. */
@@ -189,6 +190,29 @@ function chromaWorkflow(files: Record<string, string>, p: DrawParams): Workflow 
   };
 }
 
+// ---- Qwen-Image ----
+
+/** Qwen-Image's defaults, as in ComfyUI's own template: 20 steps of Euler at CFG 2.5, shift 3.1. */
+const QWEN_DEFAULTS: DrawTuning = { steps: 20, cfg: 2.5, sampler: "euler", scheduler: "simple", shift: 3.1 };
+
+/** Qwen-Image: a Qwen 2.5 VL text encoder (type qwen_image), ModelSamplingAuraFlow and a real negative prompt. */
+function qwenImageWorkflow(files: Record<string, string>, p: DrawParams): Workflow {
+  const t = p.tuning ?? QWEN_DEFAULTS;
+  const chain = loraChain(["1", 0], null, p.loras);
+  const start = startLatent(p);
+  return {
+    "1": unetLoader(files),
+    "2": { class_type: "CLIPLoader", inputs: { clip_name: files.textEncoder, type: "qwen_image", device: p.textEncoderDevice ?? "default" } },
+    "3": vaeLoader(files),
+    ...chain.nodes,
+    "4": { class_type: "ModelSamplingAuraFlow", inputs: { model: chain.model, shift: t.shift ?? QWEN_DEFAULTS.shift } },
+    "6": { class_type: "CLIPTextEncode", inputs: { clip: ["2", 0], text: p.prompt } },
+    "7": { class_type: "CLIPTextEncode", inputs: { clip: ["2", 0], text: p.negative } },
+    ...start.nodes,
+    ...sampleAndSave(p, t, { model: ["4", 0], positive: ["6", 0], negative: ["7", 0], latent: start.latent }),
+  };
+}
+
 const SAMPLE: DrawParams = { prompt: "x", negative: "x", seed: 1, count: 1, width: 1024, height: 1024, prefix: "StoryTime" };
 
 /** Every node a family's workflows use, text to image and Redraw. */
@@ -259,6 +283,26 @@ export const DRAW_MODELS: DrawModel[] = [
     defaults: CHROMA_DEFAULTS,
     negativeUsed: true,
     build: chromaWorkflow,
+  },
+  {
+    id: "qwen-image",
+    name: "Qwen-Image",
+    blurb: "A large model (20 billion parameters) that follows long prompts closely and draws readable text. Heavy: use a GGUF quant and keep the text encoder on the CPU on a 12 GB card.",
+    parts: [
+      {
+        key: "model", label: "Qwen-Image model", folder: "diffusion_models", loader: "UNETLoader", input: "unet_name",
+        // Not Qwen-Image-Edit, the editing model made from it (the Edit tabs use that one).
+        recommended: "qwen_image_fp8_e4m3fn.safetensors", match: /^(?!.*edit).*qwen[-_ ]?image/i, output: 0, gguf: UNET_GGUF,
+      },
+      QWEN_TEXT_ENCODER,
+      QWEN_VAE,
+    ],
+    nodes: nodesFor(qwenImageWorkflow),
+    optionalNodes: [],
+    options: [{ node: "CLIPLoader", input: "type", value: "qwen_image" }],
+    defaults: QWEN_DEFAULTS,
+    negativeUsed: true,
+    build: qwenImageWorkflow,
   },
 ];
 

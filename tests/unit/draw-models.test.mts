@@ -4,6 +4,7 @@ import {
   buildDraw, checkDrawFamilies, DRAW_FAMILIES, DRAW_MODELS, DRAW_NODES, drawKnobs, drawModel, drawTuning, familyPresetCheck, familyProblems, ggufNeeded,
   type DrawParams, type FamilyCheck,
 } from "../../src/lib/comfy/drawModels.ts";
+import { checkEditModels } from "../../src/lib/comfy/editModels.ts";
 import { drawPresetSummary, newDrawPreset, usesFamily } from "../../src/lib/comfy/presets.ts";
 import { parseSettings } from "../../src/lib/settingsSchema.ts";
 import type { NodeInfo } from "../../src/lib/comfy/modelParts.ts";
@@ -213,6 +214,41 @@ const cg = { unet: [...cFiles.unet!, "Chroma1-HD-Q5_K_S.gguf"], clip: [...cFiles
 const cc = familyPresetCheck(checkDrawFamilies(info(cg, { gguf: true })), { family: "chroma", files: { model: "Chroma1-HD-Q5_K_S.gguf", textEncoder: "t5-v1_1-xxl-encoder-Q5_K_M.gguf" } })!;
 wf = buildDraw(cc, { ...P, textEncoderDevice: "cpu" });
 ok(cc.ready && wf["1"].class_type === "UnetLoaderGGUF" && wf["2"].class_type === "CLIPLoaderGGUF" && wf["2"].inputs.type === "chroma" && wf["2"].inputs.clip_name === "t5-v1_1-xxl-encoder-Q5_K_M.gguf" && !("device" in wf["2"].inputs), "Chroma GGUF: UnetLoaderGGUF and CLIPLoaderGGUF (type chroma), no device the GGUF loader doesn't list");
+
+// ---- Qwen-Image ----
+const qFiles: Files = {
+  unet: ["qwen_image_edit_2509_fp8_e4m3fn.safetensors", "qwen_image_fp8_e4m3fn.safetensors", "flux1-dev-fp8.safetensors"],
+  clip: ["qwen_2.5_vl_7b_fp8_scaled.safetensors", "qwen_3_4b.safetensors"],
+  vae: ["qwen_image_vae.safetensors", "ae.safetensors"],
+};
+let qi = byId(checkDrawFamilies(info(qFiles)), "qwen-image");
+ok(qi.ready && qi.files.model === "qwen_image_fp8_e4m3fn.safetensors" && qi.files.textEncoder === "qwen_2.5_vl_7b_fp8_scaled.safetensors" && qi.files.vae === "qwen_image_vae.safetensors", "Qwen-Image: its files are found by their names, not Qwen-Image-Edit's");
+qi = byId(checkDrawFamilies(info({ ...qFiles, unet: ["qwen_image_edit_2509_fp8_e4m3fn.safetensors", "Qwen-Image-Edit-2511-Q4_K_M.gguf", "Qwen-Image-Edit-Rapid-AIO-v11-Q4_0.gguf"] }, { gguf: true })), "qwen-image");
+ok(!qi.ready && qi.parts[0].file === null, "…none of the Qwen-Image-Edit files (safetensors, GGUF, Rapid AIO) is taken for the drawing model");
+const editChecks = checkEditModels(info({ ...qFiles, unet: ["qwen_image_fp8_e4m3fn.safetensors", "Qwen-Image-Q4_K_S.gguf", "Qwen-Image-2512-Q4_K_M.gguf"] }, { gguf: true }));
+ok(editChecks.find((c) => c.model.id === "qwen-image-edit")!.parts[0].file === null, "…and the edit model doesn't take the drawing model's files either");
+qi = byId(checkDrawFamilies(info({ ...qFiles, unet: ["sub/Qwen-Image-2512-bf16.safetensors"] })), "qwen-image");
+ok(qi.ready && qi.files.model === "sub/Qwen-Image-2512-bf16.safetensors", "…another release of Qwen-Image is found by its name");
+qi = byId(checkDrawFamilies(info(qFiles)), "qwen-image");
+
+wf = buildDraw(qi, P);
+ks = only(wf, "KSampler");
+ok(wf["2"].class_type === "CLIPLoader" && wf["2"].inputs.type === "qwen_image" && wf["2"].inputs.clip_name === qi.files.textEncoder && wf["3"].inputs.vae_name === "qwen_image_vae.safetensors", "Qwen-Image: a qwen_image CLIPLoader and its own VAE");
+ok(ks.inputs.steps === 20 && ks.inputs.cfg === 2.5 && ks.inputs.sampler_name === "euler" && ks.inputs.scheduler === "simple", "…20 steps of euler simple at CFG 2.5");
+ok(only(wf, "ModelSamplingAuraFlow").inputs.shift === 3.1 && target(wf, ks.inputs.model)?.class_type === "ModelSamplingAuraFlow", "…the model goes through ModelSamplingAuraFlow, shift 3.1");
+ok(target(wf, ks.inputs.positive)?.inputs.text === P.prompt && target(wf, ks.inputs.negative)?.inputs.text === "blurry" && target(wf, ks.inputs.negative)?.class_type === "CLIPTextEncode", "…with a real negative prompt");
+ok(only(wf, "EmptySD3LatentImage").inputs.width === 832 && nodesOfType(wf, "CFGNorm").length === 0, "…on an EmptySD3LatentImage (16-channel latents), without the edit model's CFGNorm");
+ok(drawKnobs(drawModel("qwen-image")!).join() === "shift" && drawTuning(drawModel("qwen-image")!, { shift: 2 }).shift === 2, "Qwen-Image has a shift setting");
+wf = buildDraw(qi, { ...P, image: "s.png", denoise: 0.5, loras: [{ name: "q.safetensors", strength: 0.9 }], tuning: drawTuning(drawModel("qwen-image")!, { cfg: 3, shift: 2 }) });
+ok(only(wf, "KSampler").inputs.denoise === 0.5 && only(wf, "KSampler").inputs.cfg === 3 && only(wf, "ModelSamplingAuraFlow").inputs.shift === 2 && only(wf, "ModelSamplingAuraFlow").inputs.model[0] === idOf(wf, "LoraLoaderModelOnly") && nodesOfType(wf, "RepeatLatentBatch").length === 1, "Qwen-Image Redraw, a LoRA and changed settings");
+
+const qg = { unet: [...qFiles.unet!, "Qwen-Image-Q4_K_S.gguf"], clip: [...qFiles.clip!, "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf", "Qwen2.5-VL-7B-Instruct-mmproj-F16.gguf"], vae: qFiles.vae };
+const qc = familyPresetCheck(checkDrawFamilies(info(qg, { gguf: true })), { family: "qwen-image", files: { model: "Qwen-Image-Q4_K_S.gguf", textEncoder: "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf" } })!;
+wf = buildDraw(qc, { ...P, textEncoderDevice: "cpu" });
+ok(qc.ready && wf["1"].class_type === "UnetLoaderGGUF" && wf["1"].inputs.unet_name === "Qwen-Image-Q4_K_S.gguf" && wf["2"].class_type === "CLIPLoaderGGUF" && wf["2"].inputs.type === "qwen_image" && !("device" in wf["2"].inputs), "Qwen-Image GGUF: UnetLoaderGGUF and CLIPLoaderGGUF");
+const qcpu = familyPresetCheck(checkDrawFamilies(info(qg, { gguf: true, ggufDevice: true })), { family: "qwen-image", files: { model: "Qwen-Image-Q4_K_S.gguf" } })!;
+ok(qcpu.ready && qcpu.devices.join() === "default,cpu" && buildDraw(qcpu, { ...P, textEncoderDevice: "cpu" })["2"].inputs.device === "cpu", "…the ordinary text encoder keeps the cpu device");
+ok(byId(checkDrawFamilies(info({ ...qg, clip: ["Qwen2.5-VL-7B-Instruct-mmproj-F16.gguf"] }, { gguf: true })), "qwen-image").parts[1].file === null, "…and a Qwen 2.5 VL mmproj file is not a text encoder");
 
 // A preset of one family never uses another's check.
 ok(familyPresetCheck(checkDrawFamilies(info(cFiles)), { family: "chroma", files: {} })!.model.id === "chroma" && drawPresetSummary({ ...zp, family: "flux", files: {}, loras: [] }) === "Flux · model found by name", "the summary names the preset's own family");

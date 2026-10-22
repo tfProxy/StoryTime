@@ -20,7 +20,7 @@ const until = async (fn, what, tries = 150) => {
 const story = await call("POST", "/api/stories", { title: "Families", chapter: { title: "The fox", body: "A fox crossed the frozen river.", choices: [] } });
 const chapterId = story.chapter_id;
 const before = (await call("GET", "/api/settings")).settings;
-const files = { ...FAMILY_FILES, diffusion_models: [...FAMILY_FILES.diffusion_models, ZGGUF] };
+const files = { ...FAMILY_FILES, diffusion_models: [...FAMILY_FILES.diffusion_models, ZGGUF, "qwen_image_edit_2509_fp8_e4m3fn.safetensors"] };
 const comfy = await startFakeComfy({ port: COMFY_PORT, steps: 2, stepDelay: 60, startDelay: 100, files, gguf: true });
 await putSettings({ ...(before ?? {}), comfy: comfySettings({ url: comfy.url, checkpoint: "fake_sdxl_a.safetensors", count: 1 }) });
 
@@ -149,6 +149,12 @@ try {
   comfy.setMode({ tokenizerOptions: true });
   const chromaTok = await draw("a fox on the ice, once more");
   ok(nodes(chromaTok, "T5TokenizerOptions").length === 1, "when ComfyUI has T5TokenizerOptions the workflow uses it");
+
+  // ---- Qwen-Image (with the Qwen-Image-Edit model in the same folder) ----
+  await chooseType("qwen-image");
+  const qwenWf = await draw("a fox on the ice, with a sign saying HELLO");
+  ok(nodes(qwenWf, "UNETLoader")[0]?.inputs.unet_name === "qwen_image_fp8_e4m3fn.safetensors", "a Qwen-Image picture uses the Qwen-Image model, not the Qwen-Image-Edit one beside it");
+  ok(nodes(qwenWf, "CLIPLoader")[0]?.inputs.type === "qwen_image" && nodes(qwenWf, "ModelSamplingAuraFlow")[0]?.inputs.shift === 3.1 && nodes(qwenWf, "CLIPTextEncode").length === 2 && nodes(qwenWf, "KSampler")[0].inputs.cfg === 2.5, "…with a qwen_image text encoder, shift 3.1, two prompts and CFG 2.5");
 
   // ---- a preset whose files are missing says so and doesn't queue ----
   const now = (await call("GET", "/api/settings")).settings;
