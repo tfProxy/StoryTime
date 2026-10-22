@@ -12,6 +12,7 @@ const get = async (url) => (await fetch(BASE + url)).json();
 // ---- a fake model whose reply the test chooses ----
 const calls = [];
 let reply = "";
+let delay = 0;
 const mock = http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "*");
@@ -22,8 +23,10 @@ const mock = http.createServer((req, res) => {
     if (!body.messages) { res.setHeader("content-type", "application/json"); return res.end(JSON.stringify({ data: [] })); }
     calls.push({ system: body.messages[0].content, user: body.messages.at(-1).content, model: body.model });
     res.setHeader("content-type", "text/event-stream");
-    res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: reply } }] })}\n\n`);
-    res.end("data: [DONE]\n\n");
+    setTimeout(() => {
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: reply } }] })}\n\n`);
+      res.end("data: [DONE]\n\n");
+    }, delay);
   });
 });
 await new Promise((r) => mock.listen(3222, r));
@@ -189,6 +192,18 @@ try {
   await bad("Sorry, I can't draw.", /didn't return anything I could read/, "a reply that isn't JSON shows an error");
   await bad('{"scene":"x","prompt":""}', /no prompt in it/, "a reply with no prompt shows an error");
   ok((await promptBox.inputValue()).endsWith("pencil sketch"), "…and the earlier prompt is kept");
+
+  // ---- while a prompt is being written, the write button becomes Stop ----
+  const before = await promptBox.inputValue();
+  delay = 3000;
+  await page.getByRole("button", { name: "Write again" }).click();
+  const stop = page.getByRole("button", { name: "Stop writing" });
+  await stop.waitFor();
+  ok(await page.getByRole("button", { name: "Write again" }).count() === 0 && await page.getByRole("button", { name: /^Stop$/ }).count() === 0, "writing turns the write button into Stop, with no second Stop button");
+  await stop.click();
+  await page.getByRole("button", { name: "Write again" }).waitFor();
+  ok((await promptBox.inputValue()) === before, "stopping keeps the earlier prompt, and the button goes back to Write again");
+  delay = 0;
 
   // ---- the model for picture prompts is a setting, shared by every chapter's page ----
   const picker = page.getByLabel("Model for picture prompts");

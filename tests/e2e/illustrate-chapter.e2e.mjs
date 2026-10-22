@@ -26,7 +26,12 @@ const panel = page.getByRole("complementary", { name: "The chapter" });
 try {
   await page.goto(`${BASE}/c/${lit}/illustrate`);
   await panel.waitFor();
-  ok((await panel.innerText()).includes("The lantern glows blue and so do the walls."), "the chapter's summary is shown");
+  const summaryFold = panel.locator("details", { hasText: "Summary" });
+  ok(!(await summaryFold.evaluate((d) => d.open)) && !(await panel.getByText("The lantern glows blue and so do the walls.").isVisible()), "the chapter's summary starts folded");
+  await summaryFold.locator("summary").click();
+  ok(await panel.getByText("The lantern glows blue and so do the walls.").isVisible(), "…and opening it shows the summary");
+  await summaryFold.locator("summary").click();
+  ok(!(await summaryFold.evaluate((d) => d.open)), "…and it folds again");
   const text = panel.locator("details", { hasText: "Show the whole chapter" });
   ok(!(await text.evaluate((d) => d.open)), "the whole chapter starts folded");
   ok(!(await panel.getByText("Mara stepped back").isVisible()), "…and its text is out of sight");

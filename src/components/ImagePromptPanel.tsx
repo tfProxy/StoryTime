@@ -12,7 +12,7 @@ import AutoTextarea from "./AutoTextarea";
 import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
 import ComfyGenerate from "./ComfyGenerate";
-import { CopyIcon, RedoIcon, SparkleIcon } from "./PictureIcons";
+import { CopyIcon, RedoIcon, SparkleIcon, StopIcon } from "./PictureIcons";
 import type { StartPicture } from "@/lib/comfy/startPicture";
 import type { PendingJob, Picture, PromptToLoad, StartMode } from "./pictures";
 import type { EditModels } from "./useEditModels";
@@ -173,7 +173,7 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
         />
       </label>
 
-      <div className="row" style={{ flexWrap: "wrap" }}>
+      <div className="row prompt-writer-row">
         <ModelPicker
           label="Model for picture prompts"
           role="cheap"
@@ -182,23 +182,17 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
           onChange={(ref) => void saveSettings({ ...settings, imagePromptModel: ref })}
         />
         {/* The write button and the eye that shows its prompt stay together on one line. */}
-        <span className="row" style={{ flexWrap: "nowrap", gap: "0.4rem" }}>
+        <span className="row prompt-writer-buttons" style={{ flexWrap: "nowrap", gap: "0.4rem" }}>
           <button
             type="button"
             className="icon-button"
-            onClick={() => void write()}
-            disabled={busy}
-            aria-label={busy ? "Writing…" : written[moment] ? "Write again" : "Write prompt"}
-            title={busy ? "Writing the prompt…" : written[moment] ? "Write the prompt again" : "Write the prompt from the chapter"}
+            onClick={() => (busy ? abortRef.current?.abort() : void write())}
+            aria-label={busy ? "Stop writing" : written[moment] ? "Write again" : "Write prompt"}
+            title={busy ? "Stop writing the prompt" : written[moment] ? "Write the prompt again" : "Write the prompt from the chapter"}
           >
-            {written[moment] ? <RedoIcon /> : <SparkleIcon />}
+            {busy ? <StopIcon /> : written[moment] ? <RedoIcon /> : <SparkleIcon />}
           </button>
           <PromptButton label="Write prompt" build={() => imagePromptRequest(settings.contextTokens, options())} />
-          {busy && (
-            <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
-              Stop
-            </button>
-          )}
         </span>
       </div>
 

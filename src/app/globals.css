@@ -2354,6 +2354,25 @@ fieldset.model-uses .inline-label input[type="checkbox"] {
   white-space: nowrap;
 }
 
+/* Picture prompt: the model menu takes the room left, so Write and View prompt sit at the right of one line. */
+.row.prompt-writer-row:has(> .model-picker) {
+  flex-wrap: nowrap;
+}
+
+.prompt-writer-row > .model-picker {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.prompt-writer-row > .model-picker select {
+  flex: 1 1 8rem;
+}
+
+.prompt-writer-row > .prompt-writer-buttons {
+  flex: none;
+  margin-left: auto;
+}
+
 .settings-section {
   display: grid;
   gap: 1rem;
