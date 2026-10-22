@@ -1,25 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState, type ComponentProps, type CSSProperties } from "react";
+import { useState, type ComponentProps } from "react";
 import { IMAGE_SLOTS, type ImageMade, type ImageSlot, type ImageVersions } from "@/lib/imageSlots";
 import type { ContextChapter, ContextCodexEntry } from "@/lib/ai/prompts";
 import ChapterImageEditor from "./ChapterImageEditor";
 import IllustrateChapter from "./IllustrateChapter";
-import ImagePromptPanel, { type IllustratedStory, type LoadedPrompt } from "./ImagePromptPanel";
+import ImagePromptPanel, { type IllustratedStory } from "./ImagePromptPanel";
 import ChapterPictures from "./ChapterPictures";
-import { markJobsSeen } from "./PictureQueue";
-import { picturesOf, type PendingJob, type Picture, type PromptToLoad, type StartMode } from "./pictures";
-import { editBlocked, useEditModels } from "./useEditModels";
-import { useSettings } from "@/lib/settings";
+import { usePictureWorkspace } from "./usePictureWorkspace";
 import type { PictureDraft } from "@/lib/pictureDrafts";
 import type { PictureJob } from "@/lib/pictureJobs";
-import { fromComfyImage, fromSaved, type StartPicture } from "@/lib/comfy/startPicture";
-import { readStart, writeStart } from "@/lib/comfy/editingState";
-
-/** The narrowest the controls column can be dragged to, the widest as a share of the page, and the handle's width (see .column-resizer). */
-const MIN_CONTROLS = 320;
-const MAX_CONTROLS_SHARE = 0.6;
-const HANDLE_PX = 16;
+import { fromComfyImage, fromSaved } from "@/lib/comfy/startPicture";
 
 type Props = {
   chapterId: string;
@@ -42,89 +33,17 @@ type Props = {
 
 /**
  * The Illustrate page's two columns: the chapter and the prompt on one side, the pictures on the other. On a
- * phone the chosen header and footer come first (CSS moves them), then the chapter, the prompt and the pictures. The state they share lives here: the prompt loaded from a picture (each load
- * carries a number, so loading the same prompt twice still counts as a new request), the starting picture,
- * and the chapter's pictures (those made earlier, then those made on this visit).
+ * phone the chosen header and footer come first (CSS moves them), then the chapter, the prompt and the
+ * pictures. The state they share is kept by `usePictureWorkspace`.
  */
 export default function IllustrateWorkspace({ chapterId, chapter, titles, story, chapterPreset, path, codex, versions, made, draft, jobs }: Props) {
-  const [loaded, setLoaded] = useState<LoadedPrompt | null>(null);
-  // The picture new pictures start from, when one is chosen, and whether it is redrawn or edited.
-  const [start, setStart] = useState<StartPicture | null>(null);
-  const [startMode, setStartMode] = useState<StartMode>("redraw");
-  const comfy = useSettings().comfy;
-  const editModels = useEditModels(comfy.url);
-  const blocked = editBlocked(editModels, comfy.editPresets);
-  // The chapter's pictures, newest first.
-  const [pictures, setPictures] = useState<Picture[]>(() => picturesOf(jobs));
-  // Jobs that finished while the page wasn't open show as new (fresh) this once.
-  useEffect(() => markJobsSeen(jobs.filter((j) => j.seen_at === null).map((j) => j.id)), [jobs]);
-  // The jobs being made, newest first, shown among the pictures.
-  const [pending, setPending] = useState<PendingJob[]>([]);
-  // The starting picture and mode are kept in this browser, so a refresh brings them back. They are read once
-  // ComfyUI's address is known (the settings load after the page), and written only after that.
-  const [restored, setRestored] = useState(false);
-  /* eslint-disable react-hooks/set-state-in-effect -- browser storage can only be read after the page is shown, so the server and browser draw the same first page */
-  useEffect(() => {
-    if (restored || !comfy.url) return;
-    const saved = readStart(chapterId);
-    if (saved?.image) setStart(fromComfyImage(comfy.url, saved.image));
-    else if (saved?.slot && versions[saved.slot]) setStart(fromSaved(chapterId, saved.slot, versions[saved.slot]!));
-    if (saved && (saved.image || (saved.slot && versions[saved.slot]))) setStartMode(saved.mode);
-    setRestored(true);
-  }, [restored, comfy.url, chapterId, versions]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    if (restored) writeStart(chapterId, start && (start.image || start.slot) ? { mode: startMode, image: start.image, slot: start.slot } : null);
-  }, [restored, chapterId, start, startMode]);
-  const [dock, setDock] = useState<HTMLElement | null>(null);
+  const target = { storyId: story.id, chapterId };
+  const { gridProps, resizerProps, setDock, ...w } = usePictureWorkspace(target, jobs, versions);
+  const { comfy } = w;
   const [codexSlot, setCodexSlot] = useState<HTMLElement | null>(null);
-  function load(p: PromptToLoad) {
-    setLoaded({ ...p, nonce: (loaded?.nonce ?? 0) + 1 });
-    // On a phone the prompt box is far above the pictures.
-    document.getElementById("picture-prompt")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
-  function startFrom(picture: StartPicture, mode: StartMode) {
-    setStart(picture);
-    setStartMode(mode);
-    document.getElementById("picture-prompt")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
-  // EXPERIMENT: the width the author dragged the controls column to (px), or null for the default; wide screens only.
-  const gridRef = useRef<HTMLDivElement>(null);
-  const [controlsWidth, setControlsWidth] = useState<number | null>(null);
-  const fit = (px: number) => Math.round(Math.min(Math.max(px, MIN_CONTROLS), (gridRef.current?.clientWidth ?? 1600) * MAX_CONTROLS_SHARE));
-
-  function drag(e: React.PointerEvent<HTMLDivElement>) {
-    const grid = gridRef.current;
-    if (!grid || e.button !== 0) return;
-    e.preventDefault();
-    const handle = e.currentTarget;
-    handle.setPointerCapture(e.pointerId);
-    const left = grid.getBoundingClientRect().left;
-    const move = (ev: PointerEvent) => setControlsWidth(fit(ev.clientX - left - HANDLE_PX / 2));
-    const end = () => {
-      handle.removeEventListener("pointermove", move);
-      handle.removeEventListener("pointerup", end);
-      handle.removeEventListener("pointercancel", end);
-    };
-    handle.addEventListener("pointermove", move);
-    handle.addEventListener("pointerup", end);
-    handle.addEventListener("pointercancel", end);
-  }
-
-  function nudge(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-      e.preventDefault();
-      const now = controlsWidth ?? gridRef.current?.querySelector<HTMLElement>(".illustrate-controls")?.offsetWidth ?? MIN_CONTROLS;
-      setControlsWidth(fit(now + (e.key === "ArrowRight" ? 24 : -24)));
-    } else if (e.key === "Home" || e.key === "Escape") {
-      setControlsWidth(null);
-    }
-  }
 
   return (
-    <div className="illustrate-grid" ref={gridRef} style={controlsWidth ? ({ "--controls-width": `${controlsWidth}px` } as CSSProperties) : undefined}>
+    <div className="illustrate-grid" {...gridProps}>
       <div className="illustrate-controls">
         <IllustrateChapter {...chapter} slotRef={setCodexSlot} />
         <ImagePromptPanel
@@ -133,76 +52,56 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
           chapterPreset={chapterPreset}
           path={path}
           codex={codex}
-          loaded={loaded}
-          start={start}
-          startMode={startMode}
-          onStartMode={setStartMode}
-          editModels={editModels}
-          onClearStart={() => setStart(null)}
-          // A job that finished while the page was away may already be listed (the page loaded after it was
-          // recorded); it is new all the same.
-          onPictures={(made) =>
-            setPictures((prev) => {
-              const byKey = new Map(made.map((m) => [m.key, m]));
-              const listed = new Set(prev.filter((p) => byKey.has(p.key)).map((p) => p.key));
-              const again = (p: Picture) => ({ ...p, fresh: true, isNew: p.isNew || byKey.get(p.key)!.isNew });
-              return [...made.filter((m) => !listed.has(m.key)), ...prev.map((p) => (byKey.has(p.key) ? again(p) : p))];
-            })
-          }
-          onQueue={setPending}
+          loaded={w.loaded}
+          start={w.start}
+          startMode={w.startMode}
+          onStartMode={w.setStartMode}
+          editModels={w.editModels}
+          onClearStart={() => w.setStart(null)}
+          onPictures={w.addPictures}
+          onQueue={w.setPending}
           draft={draft}
-          dock={dock}
+          dock={w.dock}
           codexSlot={codexSlot}
         />
       </div>
-      <div
-        className="column-resizer"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Column divider"
-        title="Drag to resize the columns; double-click to reset"
-        tabIndex={0}
-        onPointerDown={drag}
-        onDoubleClick={() => setControlsWidth(null)}
-        onKeyDown={nudge}
-      />
+      <div {...resizerProps} />
       <div className="illustrate-gallery">
         {/* The chosen pictures first, to compare the new ones with. */}
         <div className="image-editors">
           {IMAGE_SLOTS.map((slot) => (
             <ChapterImageEditor
               key={slot}
-              chapterId={chapterId}
+              target={target}
               slot={slot}
               version={versions[slot]}
               made={made[slot]}
               onLoadPrompt={(m) =>
-                load({
+                w.load({
                   prompt: m.prompt,
                   negative: m.negative,
                   seed: m.job?.seed ?? null,
                   settings: m.job && { checkpoint: m.job.checkpoint, width: m.job.width, height: m.job.height, denoise: null },
                 })
               }
-              onStart={comfy.url ? (v, mode) => startFrom(fromSaved(chapterId, slot, v), mode) : undefined}
-              editBlocked={blocked}
+              onStart={comfy.url ? (v, mode) => w.startFrom(fromSaved(target, slot, v), mode) : undefined}
+              editBlocked={w.blocked}
             />
           ))}
         </div>
         {comfy.url && (
           <ChapterPictures
-            target={{ storyId: story.id, chapterId }}
+            target={target}
             titles={titles}
             comfyUrl={comfy.url}
-            pictures={pictures}
-            // Any change to a picture (pinning, trashing…) means it has been looked at, so it is no longer marked new.
-            onChange={(key, patch) => setPictures((prev) => prev.map((p) => (p.key === key ? { ...p, isNew: false, ...patch } : p)))}
-            onClear={() => setPictures((prev) => prev.map((p) => (p.fresh ? { ...p, fresh: false } : p)))}
-            pending={pending}
-            onStart={(image, mode) => startFrom(fromComfyImage(comfy.url, image), mode)}
-            editBlocked={blocked}
-            onLoadPrompt={load}
-            starting={start?.source ?? null}
+            pictures={w.pictures}
+            onChange={w.changePicture}
+            onClear={w.clearFresh}
+            pending={w.pending}
+            onStart={(image, mode) => w.startFrom(fromComfyImage(comfy.url, image), mode)}
+            editBlocked={w.blocked}
+            onLoadPrompt={w.load}
+            starting={w.start?.source ?? null}
             used={{ header: made.header?.from ?? null, footer: made.footer?.from ?? null }}
           />
         )}

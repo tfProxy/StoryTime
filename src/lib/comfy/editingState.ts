@@ -1,8 +1,7 @@
 // What the Illustrate page keeps in this browser so a refresh doesn't lose the picture being edited or
 // redrawn, the mode, and the edit's text and strength. Per chapter (and one set for the story's cover),
 // named by `stateKey`; browser code.
-import type { ImageSlot } from "../imageSlots";
-import type { PictureTarget } from "../pictureTarget";
+import type { PictureSlot, PictureTarget } from "../pictureTarget";
 import type { ComfyImage } from "./client";
 
 /** What the stored values are kept under: the chapter's id (as before covers), or `cover-<story id>`. */
@@ -29,8 +28,8 @@ function write(name: string, chapterId: string, value: unknown) {
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 
-/** The starting picture (one of ComfyUI's, or a saved header or footer) and whether it is redrawn or edited. */
-export type StoredStart = { mode: "redraw" | "edit"; image?: ComfyImage; slot?: ImageSlot };
+/** The starting picture (one of ComfyUI's, or a saved header, footer or cover) and whether it is redrawn or edited. */
+export type StoredStart = { mode: "redraw" | "edit"; image?: ComfyImage; slot?: PictureSlot };
 
 export function readStart(chapterId: string): StoredStart | null {
   const v = read("start", chapterId);
@@ -39,7 +38,7 @@ export function readStart(chapterId: string): StoredStart | null {
   if (isObject(im) && typeof im.filename === "string" && typeof im.subfolder === "string" && typeof im.type === "string") {
     return { mode: v.mode, image: { filename: im.filename, subfolder: im.subfolder, type: im.type } };
   }
-  if (v.slot === "header" || v.slot === "footer") return { mode: v.mode, slot: v.slot };
+  if (v.slot === "header" || v.slot === "footer" || v.slot === "cover") return { mode: v.mode, slot: v.slot };
   return null;
 }
 

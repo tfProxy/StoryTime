@@ -107,9 +107,10 @@ const SLOT_NAMES: Record<string, string> = { header: "header picture", footer: "
 /** The file path ComfyUI keeps a picture under. */
 const filePath = (image: ComfyImage) => `${image.subfolder ? `${image.subfolder}/` : ""}${image.filename}`;
 
-/** What a starting picture (`comfy:<file>` or `saved:<chapter id>:<slot>`) was, in words. */
+/** What a starting picture (`comfy:<file>`, `saved:<chapter id>:<slot>` or `saved:<story id>:cover`) was, in words. */
 export function sourceText(source: string, titles: Record<string, string>): string {
   if (source.startsWith("comfy:")) return `ComfyUI picture ${source.slice("comfy:".length)}`;
+  if (/^saved:.+:cover$/.test(source)) return "the story's saved cover";
   const saved = /^saved:(.+):(header|footer)$/.exec(source);
   if (saved) {
     const title = titles[saved[1]];
