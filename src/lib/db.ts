@@ -355,7 +355,12 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE stories ADD COLUMN cover_prompt TEXT;
   ALTER TABLE stories ADD COLUMN cover_negative TEXT;
   `,
-  // A redraw of only a painted part of the starting picture: the name of the mask picture in ComfyUI's
+  // 21: text the author always wants in a chapter's picture prompt (the Illustrate page's "Always include"
+  // box), one for the chapter whichever moment is shown. It is added to the written prompt when a picture is made.
+  `
+  ALTER TABLE chapters ADD COLUMN picture_fixed TEXT NOT NULL DEFAULT '';
+  `,
+  // 22: a redraw of only a painted part of the starting picture: the name of the mask picture in ComfyUI's
   // input folder (null = the whole picture).
   `
   ALTER TABLE picture_jobs ADD COLUMN mask TEXT;

@@ -98,7 +98,7 @@ r = await call("PUT", "/api/settings", { ...conns, imagePromptModel: "pics" });
 ok(r.json.settings.imagePromptModel === null, "…or when it isn't a model");
 
 // ---- ComfyUI (picture making), with presets ----
-const draw = (id, extra = {}) => ({ id, name: `Drawing ${id}`, promptStyle: "tags", checkpoint: "sdxl.safetensors", workflow: "", loras: [], sampler: {}, denoise: 0.55, ...extra });
+const draw = (id, extra = {}) => ({ id, name: `Drawing ${id}`, promptStyle: "tags", prompt: "", negative: "", checkpoint: "sdxl.safetensors", workflow: "", loras: [], sampler: {}, denoise: 0.55, ...extra });
 const edit = (id, model, extra = {}) => ({ id, name: `Edit ${id}`, model, checkpoint: "", files: {}, fast: true, loras: [], tuning: {}, ...extra });
 const comfyIn = {
   url: "http://comfy.local:8188",
@@ -135,6 +135,8 @@ r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ promptStyle
 ok(r.json.settings.comfy.drawPresets[0].promptStyle === "natural", "a drawing preset keeps its prompt style");
 r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ promptStyle: "poetry" }) });
 ok(r.json.settings.comfy.drawPresets[0].promptStyle === "tags", "an unknown prompt style on a preset falls back to tags");
+r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ prompt: "masterpiece", negative: "lowres" }) });
+ok(r.json.settings.comfy.drawPresets[0].prompt === "masterpiece" && r.json.settings.comfy.drawPresets[0].negative === "lowres", "a drawing preset keeps its prompt and negative prompt");
 await call("PUT", "/api/settings", { ...conns, comfy: comfyIn });
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, picturesOldestFirst: true } });
 ok(r.json.settings.comfy.picturesOldestFirst === true && (await call("GET", "/api/settings")).json.settings.comfy.picturesOldestFirst === true, "the Pictures panel's oldest-first order is kept");

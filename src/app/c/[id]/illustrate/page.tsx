@@ -6,7 +6,7 @@ import { foldCodex } from "@/lib/codex";
 import { getCodexOps } from "@/lib/codexDb";
 import { chapterPictureJobs, storyChapterTitles } from "@/lib/pictureJobs";
 import { getPictureDraft } from "@/lib/pictureDrafts";
-import { getChapterPreset, getPath, getStory } from "@/lib/stories";
+import { getChapterFixed, getChapterPreset, getPath, getStory } from "@/lib/stories";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +59,7 @@ export default async function IllustratePage({ params }: { params: Promise<{ id:
         versions={versions}
         made={chapterImageMade(chapter.id)}
         draft={getPictureDraft(chapter.id)}
+        fixedPrompt={getChapterFixed(chapter.id)}
         jobs={chapterPictureJobs(chapter.id)}
       />
     </>

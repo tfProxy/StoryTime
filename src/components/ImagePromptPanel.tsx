@@ -1,13 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { saveSettings, useSettings } from "@/lib/settings";
 import { LIMITS } from "@/lib/limits";
 import { copyText } from "@/lib/copyText";
 import { codexBudget, budgetFor, explainCodex, type ContextChapter, type ContextCodexEntry } from "@/lib/ai/prompts";
-import { imagePromptRequest, withArtStyle, writeImagePrompt, type ImageMoment } from "@/lib/ai/imagePrompt";
+import { combinePrompts, imagePromptRequest, withArtStyle, withoutGiven, writeImagePrompt, type ImageMoment } from "@/lib/ai/imagePrompt";
 import AutoTextarea from "./AutoTextarea";
 import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
@@ -77,6 +77,8 @@ type Props = {
   codex: ContextCodexEntry[];
   /** The prompt boxes as last left for this chapter, to start from. */
   draft?: PictureDraft | null;
+  /** Text the chapter's prompts always include, as saved. */
+  fixedPrompt?: string;
   /** Where Size, Queue and the queue's status go, to stay in view at the bottom of the column. */
   dock?: HTMLElement | null;
   /** Where the "Codex entries used" line goes: the bottom of the chapter panel. */
@@ -88,7 +90,7 @@ type Props = {
  * (chapter start, chapter end) has its own boxes, so switching between them brings each one's prompt back;
  * they are kept for the chapter on the server, so they are there again next time.
  */
-export default function ImagePromptPanel({ chapterId, story, chapterPreset = null, path, codex, loaded = null, start = null, onClearStart, startMode = "redraw", onStartMode, paint, editModels, onPictures, onQueue, draft = null, dock = null, codexSlot = null }: Props) {
+export default function ImagePromptPanel({ chapterId, story, chapterPreset = null, path, codex, loaded = null, start = null, onClearStart, startMode = "redraw", onStartMode, paint, editModels, onPictures, onQueue, draft = null, fixedPrompt = "", dock = null, codexSlot = null }: Props) {
   const settings = useSettings();
   const chapter = path[path.length - 1];
   const [moment, setMoment] = useState<ImageMoment>(draft?.moment ?? "start");
@@ -115,10 +117,51 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
   }
   // Prompts are written in the style of the model that will draw them: the chapter's drawing preset, else the story's.
   const [presetNow, setPresetNow] = useState(chapterPreset);
-  const style = drawPresetFor(settings.comfy.drawPresets, presetNow, story.draw_preset).promptStyle;
+  const draw = drawPresetFor(settings.comfy.drawPresets, presetNow, story.draw_preset);
+  const style = draw.promptStyle;
   const model = settings.imagePromptModel;
 
-  const options = () => ({ story, path, codex, moment, direction, style });
+  // Text always included in this chapter's prompts: kept on the server 0.7 s after typing stops, and when the page is left.
+  const [fixed, setFixed] = useState(fixedPrompt);
+  const [fixedError, setFixedError] = useState<string | null>(null);
+  const fixedSaved = useRef(fixedPrompt);
+  const fixedNow = useRef(fixed);
+  useEffect(() => {
+    fixedNow.current = fixed;
+  }, [fixed]);
+  const saveFixed = useCallback(
+    (keepalive: boolean) => {
+      const text = fixedNow.current;
+      if (text === fixedSaved.current) return;
+      fetch(`/api/chapters/${chapterId}/picture-fixed`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fixed: text }),
+        keepalive,
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error(`Request failed (${res.status})`);
+          fixedSaved.current = text;
+          setFixedError(null);
+        })
+        .catch((e) => setFixedError(e instanceof Error ? e.message : String(e)));
+    },
+    [chapterId],
+  );
+  useEffect(() => {
+    const timer = setTimeout(() => saveFixed(false), 700);
+    return () => clearTimeout(timer);
+  }, [fixed, saveFixed]);
+  useEffect(() => {
+    const leave = () => saveFixed(true);
+    window.addEventListener("pagehide", leave);
+    return () => {
+      window.removeEventListener("pagehide", leave);
+      leave();
+    };
+  }, [saveFixed]);
+
+  const options = () => ({ story, path, codex, moment, direction, style, fixed: combinePrompts(style, fixed, draw.prompt) });
   const used = explainCodex(codex, `${chapter.body}\n${direction}`, codexBudget(budgetFor(settings.contextTokens)))
     .filter((r) => r.state === "included")
     .map((r) => r.entry.name);
@@ -132,7 +175,9 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
     setStatus(null);
     try {
       const p = await writeImagePrompt(settings, { ...options(), model, signal: ctl.signal });
-      change(forMoment, { scene: p.scene, prompt: withArtStyle(p.prompt, story.art_style, style), negative: p.negative });
+      // What the author always includes is added when pictures are made, so it isn't repeated in the written prompt.
+      const prompt = withoutGiven(p.prompt, [fixed, draw.prompt], style);
+      change(forMoment, { scene: p.scene, prompt: withArtStyle(prompt, story.art_style, style), negative: withoutGiven(p.negative, [draw.negative], style) });
       setWritten((prev) => ({ ...prev, [forMoment]: true }));
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) {
@@ -204,6 +249,18 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
         </span>
       </div>
 
+      <label>
+        Always include (this chapter)
+        <input
+          type="text"
+          value={fixed}
+          maxLength={LIMITS.label}
+          placeholder="e.g. 1girl, red scarf"
+          title="Added to every picture prompt for this chapter. Tags the written prompt already has aren't repeated."
+          onChange={(e) => setFixed(e.target.value)}
+        />
+      </label>
+
       <div className="image-prompt-result">
         <div className="prompt-field">
           <div className="field-head">
@@ -225,6 +282,11 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
               {story.art_style.trim()}
             </span>
           )}
+          {draw.prompt.trim() && (
+            <span className="meta prompt-art-style" title="The drawing preset's prompt, added to every prompt">
+              Preset: {draw.prompt.trim()}
+            </span>
+          )}
         </div>
         <div className="prompt-field">
           <div className="field-head">
@@ -241,9 +303,15 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
             value={result.negative}
             onChange={(e) => change(moment, { negative: e.target.value })}
           />
+          {draw.negative.trim() && (
+            <span className="meta prompt-art-style" title="The drawing preset's negative prompt, added to every negative prompt">
+              Preset: {draw.negative.trim()}
+            </span>
+          )}
         </div>
       </div>
       {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
+      {fixedError && <p className="error" style={{ margin: 0 }}>Couldn&apos;t keep the always-included text: {fixedError}</p>}
       {saveError && <p className="error" style={{ margin: 0 }}>Couldn&apos;t keep the prompt for next time: {saveError}</p>}
     </section>
   );
@@ -267,6 +335,7 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
         moment={moment}
         prompt={result.prompt}
         negative={result.negative}
+        fixedPrompt={fixed}
         loaded={loaded}
         start={start}
         startMode={startMode}

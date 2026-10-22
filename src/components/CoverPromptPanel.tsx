@@ -5,7 +5,7 @@ import { saveSettings, useSettings } from "@/lib/settings";
 import { LIMITS } from "@/lib/limits";
 import { copyText } from "@/lib/copyText";
 import { codexBudget, budgetFor, explainCodex, type ContextChapter, type ContextCodexEntry } from "@/lib/ai/prompts";
-import { withArtStyle } from "@/lib/ai/imagePrompt";
+import { withArtStyle, withoutGiven } from "@/lib/ai/imagePrompt";
 import { coverPromptRequest, writeCoverPrompt } from "@/lib/ai/coverPrompt";
 import type { CoverDraft } from "@/lib/coverPictures";
 import type { CoverSource } from "@/lib/pictureTarget";
@@ -117,7 +117,8 @@ export default function CoverPromptPanel({
 
   // Prompts are written in the style of the model that will draw them: the cover's drawing preset, else the story's.
   const [presetNow, setPresetNow] = useState(coverPreset);
-  const style = drawPresetFor(settings.comfy.drawPresets, presetNow, story.draw_preset).promptStyle;
+  const draw = drawPresetFor(settings.comfy.drawPresets, presetNow, story.draw_preset);
+  const style = draw.promptStyle;
   const model = settings.imagePromptModel;
   const context = boxes.source === "path" ? pathContext : opening;
   const options = () => ({
@@ -141,7 +142,7 @@ export default function CoverPromptPanel({
     setStatus(null);
     try {
       const p = await writeCoverPrompt(settings, { ...options(), model, signal: ctl.signal });
-      change({ scene: p.scene, prompt: withArtStyle(p.prompt, story.art_style, style), negative: p.negative });
+      change({ scene: p.scene, prompt: withArtStyle(withoutGiven(p.prompt, [draw.prompt], style), story.art_style, style), negative: withoutGiven(p.negative, [draw.negative], style) });
       setWritten(true);
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) {
@@ -247,6 +248,11 @@ export default function CoverPromptPanel({
               value={boxes.prompt}
               onChange={(e) => change({ prompt: e.target.value })}
             />
+            {draw.prompt.trim() && (
+              <span className="meta prompt-art-style" title="The drawing preset's prompt, added to every prompt">
+                Preset: {draw.prompt.trim()}
+              </span>
+            )}
           </div>
           <div className="prompt-field">
             <div className="field-head">
@@ -263,6 +269,11 @@ export default function CoverPromptPanel({
               value={boxes.negative}
               onChange={(e) => change({ negative: e.target.value })}
             />
+            {draw.negative.trim() && (
+              <span className="meta prompt-art-style" title="The drawing preset's negative prompt, added to every negative prompt">
+                Preset: {draw.negative.trim()}
+              </span>
+            )}
           </div>
         </div>
         {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}

@@ -29,6 +29,8 @@ export type ImagePromptOptions = {
   /** What the author wants shown, optionally with "[...]" notes. Empty lets the AI choose. */
   direction: string;
   style: ImagePromptStyle;
+  /** Text the author always includes in the chapter's prompt; the AI is told not to repeat it. */
+  fixed?: string;
 };
 
 export type ImagePrompt = {
@@ -89,6 +91,8 @@ export function imagePromptRequest(contextTokens: number, opts: ImagePromptOptio
   parts.push(MOMENT_TASK[opts.moment]);
   if (direction) parts.push(`The author wants the picture to show: ${direction}`);
   if (notes.length) parts.push(notesBlock(notes));
+  const fixed = opts.fixed?.trim();
+  if (fixed) parts.push(`The author always adds this to the prompt, so the picture will already have it. Do not repeat or contradict it in "prompt": ${fixed}`);
   return { system: SYSTEM_IMAGE(opts.style), message: parts.join("\n\n") };
 }
 
@@ -110,6 +114,42 @@ export function withArtStyle(prompt: string, artStyle: string, style: ImagePromp
   if (!p) return a;
   if (style === "tags") return `${p.replace(/,\s*$/, "")}, ${a}`;
   return `${/[.!?]$/.test(p) ? p : `${p}.`} ${/[.!?]$/.test(a) ? a : `${a}.`}`;
+}
+
+const tagList = (text: string) => text.split(/[,\n]/).map((t) => t.replace(/\s+/g, " ").trim()).filter(Boolean);
+/** A tag as compared for duplicates: ignoring case, underscores, brackets and a ":1.2" weight. */
+const tagKey = (tag: string) => tag.toLowerCase().replace(/^[([{\s]+|[)\]}\s]+$/g, "").replace(/:\s*-?[\d.]+$/, "").replace(/[_\s]+/g, " ").trim();
+
+/** Tags `prompt` has that none of `given` has. Sentence prompts are left as they are. */
+export function withoutGiven(prompt: string, given: string[], style: ImagePromptStyle): string {
+  const have = new Set(given.flatMap(tagList).map(tagKey));
+  if (style !== "tags" || have.size === 0) return prompt.trim();
+  return tagList(prompt).filter((t) => !have.has(tagKey(t))).join(", ");
+}
+
+/**
+ * The prompt parts put together in order: tags are joined with commas, leaving out any a part already
+ * has; sentences are joined with spaces, leaving out a part the text already contains.
+ */
+export function combinePrompts(style: ImagePromptStyle, ...parts: string[]): string {
+  if (style === "tags") {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const tag of parts.flatMap(tagList)) {
+      const key = tagKey(tag);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(tag);
+    }
+    return out.join(", ");
+  }
+  let out = "";
+  for (const raw of parts) {
+    const part = raw.replace(/\s+/g, " ").trim();
+    if (!part || out.toLowerCase().includes(part.toLowerCase().replace(/[.!?]+$/, ""))) continue;
+    out = out ? `${/[.!?]$/.test(out) ? out : `${out}.`} ${part}` : part;
+  }
+  return out;
 }
 
 export async function writeImagePrompt(

@@ -27,6 +27,8 @@ type Props = {
   made: Record<ImageSlot, ImageMade | null>;
   /** The prompt boxes as last left for this chapter. */
   draft: PictureDraft | null;
+  /** Text the chapter's prompts always include. */
+  fixedPrompt: string;
   /** The chapter's picture jobs as the page opened, newest first, with their marks. */
   jobs: PictureJob[];
 };
@@ -36,7 +38,7 @@ type Props = {
  * phone the chosen header and footer come first (CSS moves them), then the chapter, the prompt and the
  * pictures. The state they share is kept by `usePictureWorkspace`.
  */
-export default function IllustrateWorkspace({ chapterId, chapter, titles, story, chapterPreset, path, codex, versions, made, draft, jobs }: Props) {
+export default function IllustrateWorkspace({ chapterId, chapter, titles, story, chapterPreset, path, codex, versions, made, draft, fixedPrompt, jobs }: Props) {
   const target = { storyId: story.id, chapterId };
   const { gridProps, resizerProps, setDock, ...w } = usePictureWorkspace(target, jobs, versions);
   const { comfy } = w;
@@ -62,6 +64,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
           onPictures={w.addPictures}
           onQueue={w.setPending}
           draft={draft}
+          fixedPrompt={fixedPrompt}
           dock={w.dock}
           codexSlot={codexSlot}
         />

@@ -130,3 +130,17 @@ const written = await writeImagePrompt(settings, { ...base, moment: "end", direc
 ok(written.prompt === "a man with blonde hair eating" && written.scene === "Jim eats.", "writeImagePrompt returns the parsed reply");
 ok(seen[0].model === "cheap" && seen[0].user.includes("closing moment") && seen[0].user.includes("Jim [character]") && seen[0].system.includes("comma-separated tags"), "writeImagePrompt uses the cheaper model and sends the request");
 server.close();
+
+// ---- the author's always-included text ----
+{
+  const { combinePrompts, withoutGiven, imagePromptRequest: req } = await import("../../src/lib/ai/imagePrompt.ts");
+  const ok2 = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
+  ok2(withoutGiven("1girl, red scarf, snowy street", ["Red_Scarf, (1girl:1.2)"], "tags") === "snowy street", "tags the author gave are dropped from the written prompt, ignoring case, underscores and weights");
+  ok2(withoutGiven("A girl in a scarf.", ["a girl"], "natural") === "A girl in a scarf.", "sentence prompts are left alone");
+  ok2(withoutGiven("a, b", [], "tags") === "a, b", "nothing given leaves the prompt as typed");
+  ok2(combinePrompts("tags", "masterpiece", "1girl, red scarf", "1girl, snowy street") === "masterpiece, 1girl, red scarf, snowy street", "tags are joined without repeats");
+  ok2(combinePrompts("natural", "Soft light.", "A girl on a street") === "Soft light. A girl on a street", "sentences are joined");
+  ok2(combinePrompts("natural", "A girl on a street.", "a girl on a street") === "A girl on a street.", "a sentence already in the text is not repeated");
+  const r = req(8000, { story: { title: "T", premise: "" }, path: [{ title: "One", body: "Body", summary: null, path_summary: null }], codex: [], moment: "start", direction: "", style: "tags", fixed: "1girl, red scarf" });
+  ok2(r.message.includes("1girl, red scarf") && r.message.includes("Do not repeat"), "the AI is told the always-included text");
+}

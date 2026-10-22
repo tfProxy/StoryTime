@@ -14,6 +14,7 @@ import AutoTextarea from "./AutoTextarea";
 import { usePictureQueue } from "./PictureQueue";
 import { LIMITS } from "@/lib/limits";
 import { EDIT_MODELS, editTuning, lightningSteps, usableLoras } from "@/lib/comfy/editModels";
+import { combinePrompts } from "@/lib/ai/imagePrompt";
 import { drawPresetFor, drawPresetSummary, presetName, type DrawPreset, type EditPreset, type LoraSetting } from "@/lib/comfy/presets";
 import type { StartPicture } from "@/lib/comfy/startPicture";
 import { readEdit, readRedraw, stateKey, writeEdit, writeRedraw } from "@/lib/comfy/editingState";
@@ -129,6 +130,8 @@ type Props = {
   moment: PictureMoment;
   prompt: string;
   negative: string;
+  /** Text the chapter always includes; added to the prompt after the drawing preset's own. */
+  fixedPrompt?: string;
   /** A prompt brought back from a saved picture; its seed can be used again. */
   loaded?: LoadedPrompt | null;
   /** The picture new pictures start from (image to image), or null to make them from the prompt alone. */
@@ -167,7 +170,7 @@ export type PaintProps = { mask: PaintedArea | null; onMask: (area: PaintedArea 
  * queue (`PictureQueue`), so they go on when the page is left; the chapter's pictures go to `onPictures`.
  */
 export default function ComfyGenerate({
-  target, storyPreset, chapterPreset: savedPreset, moment, prompt, negative, loaded = null, start = null, onClearStart,
+  target, storyPreset, chapterPreset: savedPreset, moment, prompt: boxPrompt, negative: boxNegative, fixedPrompt = "", loaded = null, start = null, onClearStart,
   startMode = "redraw", onStartMode, paint, editModels = { state: "checking" }, onPictures, onQueue, onChapterPreset, dock = null,
 }: Props) {
   const { storyId, chapterId } = target;
@@ -207,6 +210,10 @@ export default function ComfyGenerate({
   const storyDraw = drawPresetFor(comfy.drawPresets, storyPreset);
   const draw = drawPresetFor(comfy.drawPresets, chapterPreset, storyPreset);
   const redrawStrength = redrawFor?.preset === draw.id ? redrawFor.value : draw.denoise;
+  // What is drawn: the prompt boxes with the drawing preset's text and the chapter's always-included text added.
+  // With nothing to add, the boxes are used as typed.
+  const prompt = draw.prompt.trim() || fixedPrompt.trim() ? combinePrompts(draw.promptStyle, draw.prompt, fixedPrompt, boxPrompt) : boxPrompt;
+  const negative = draw.negative.trim() ? combinePrompts(draw.promptStyle, boxNegative, draw.negative) : boxNegative;
   // The drawing preset's LoRAs switched on, and those of them ComfyUI doesn't list (when it is known what it lists).
   const loraFiles = editModels.state === "done" ? editModels.loras : null;
   const drawUsable = usableLoras(draw.loras, loraFiles ?? draw.loras.map((l) => l.name));
@@ -327,7 +334,8 @@ export default function ComfyGenerate({
     setStatus(null);
     if (editing && !chosen) return setStatus({ ok: false, text: blocked ?? "No edit model is ready." });
     const input: JobInput = {
-      prompt: prompt.trim(),
+      // An edit follows the instruction alone, so the preset's and chapter's text isn't added to it.
+      prompt: (editing ? boxPrompt : prompt).trim(),
       // Edits follow the instruction alone.
       negative: editing ? "" : negative.trim(),
       moment,
