@@ -32,6 +32,18 @@ for (const [name, r] of [["tags", tags], ["natural", natural]] as const) {
 }
 ok(tags.message === natural.message, "the message does not depend on the prompt style");
 
+// ---- booru tags (Illustrious, NoobAI, Pony) ----
+const booru = imagePromptRequest(8000, { ...base, style: "booru" });
+ok(booru.system !== tags.system && booru.system!.includes("Danbooru") && booru.system!.includes("e621") && !booru.system!.includes("Stable Diffusion XL"), "booru: asks for Danbooru and e621 tags");
+ok(booru.system!.includes('"cowboy shot"') && booru.system!.includes('"solo"'), "booru: names the framing and count tags");
+for (const [name, r] of [["tags", tags], ["booru", booru]] as const) {
+  ok(r.system!.includes("Say each thing once") && r.system!.includes("No mood words"), `${name}: no repeated traits and no flowery words`);
+}
+ok(!natural.system!.includes("Say each thing once"), "natural: the tag rules are left out");
+for (const [name, r] of [["tags", tags], ["booru", booru], ["natural", natural]] as const) {
+  ok(r.system!.includes("not full body by default") && r.system!.includes("close-up"), `${name}: the framing is chosen for the moment`);
+}
+
 // ---- chapter start and chapter end tasks ----
 const header = imagePromptRequest(8000, { ...base, moment: "start" });
 const footer = imagePromptRequest(8000, { ...base, moment: "end" });
@@ -139,6 +151,9 @@ server.close();
   ok2(withoutGiven("A girl in a scarf.", ["a girl"], "natural") === "A girl in a scarf.", "sentence prompts are left alone");
   ok2(withoutGiven("a, b", [], "tags") === "a, b", "nothing given leaves the prompt as typed");
   ok2(combinePrompts("tags", "masterpiece", "1girl, red scarf", "1girl, snowy street") === "masterpiece, 1girl, red scarf, snowy street", "tags are joined without repeats");
+  ok2(withoutGiven("1girl, red scarf, snowy street", ["red_scarf"], "booru") === "1girl, snowy street", "booru tags the author gave are dropped too");
+  ok2(combinePrompts("booru", "masterpiece, 1girl", "1girl, solo") === "masterpiece, 1girl, solo", "booru tags are joined without repeats");
+  ok2(withArtStyle("1girl, solo", "anime coloring", "booru") === "1girl, solo, anime coloring", "booru: the art style joins with a comma");
   ok2(combinePrompts("natural", "Soft light.", "A girl on a street") === "Soft light. A girl on a street", "sentences are joined");
   ok2(combinePrompts("natural", "A girl on a street.", "a girl on a street") === "A girl on a street.", "a sentence already in the text is not repeated");
   const r = req(8000, { story: { title: "T", premise: "" }, path: [{ title: "One", body: "Body", summary: null, path_summary: null }], codex: [], moment: "start", direction: "", style: "tags", fixed: "1girl, red scarf" });

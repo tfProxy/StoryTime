@@ -40,11 +40,28 @@ export type ImagePrompt = {
   negative: string;
 };
 
-/** How the prompt is written for each kind of image model; the cover prompt uses the same. */
+/** Rules every tag prompt follows, whatever tags the model knows. */
+const TAG_HYGIENE = `- Say each thing once. Never repeat a trait in other words ("blonde hair" and "golden hair", "smile" and "smiling", "muscular" and "strong build"): every repeat makes the model exaggerate it.
+- Only what is visible at the chosen framing: no shoes in a close-up, no eye colour in a wide shot.
+- No mood words or praise ("ethereal", "breathtaking", "intricate", "dramatic", "stunning", "beautiful"), no quality tags (masterpiece, best quality, score_9); the author adds those.
+- With two or more people, describe the main one fully and give each other person only the two or three traits that tell them apart; the model mixes up whose traits are whose.
+- No weights or brackets, no full sentences.`;
+
+/** How the prompt is written for each kind of image model; the cover and codex prompts use the same. */
 export const STYLE_RULES: Record<ImagePromptStyle, string> = {
   tags: `The image model reads comma-separated tags (Stable Diffusion XL style).
-- "prompt": comma-separated tags and short phrases, most important first: how many people and who they are (e.g. "1man", "2women"), each person's visible traits (age, build, hair, eyes, skin, clothing), their pose, action and expression, then the setting, props, time of day, lighting, camera framing and composition. About 25-45 tags. No weights or brackets, no full sentences.
+- "prompt": comma-separated tags and short plain phrases, most important first: how many people and who they are (e.g. "1man", "2women"), the camera framing and angle, each person's visible traits (age, build, hair, eyes, skin, clothing), their pose, action and expression, then the setting, props, time of day and lighting. About 20-35 tags.
+${TAG_HYGIENE}
 - "negative": comma-separated tags for things to avoid in this picture, such as lowres, bad anatomy, extra fingers, deformed hands, blurry, text, watermark, signature, plus anything that would contradict the scene.`,
+  booru: `The image model was trained on Danbooru and e621 tags (Illustrious, NoobAI or Pony style) and understands little else.
+- "prompt": comma-separated tags exactly as they are written on Danbooru (or e621 for animals and non-human characters), with spaces instead of underscores. One idea per tag; no descriptive phrases. About 15-30 tags, in this order:
+  1. who is there: "solo" for one person, and the count tags ("1girl", "1boy", "2girls", "1boy, 1girl", "multiple boys", "no humans"); for animal or non-human characters the e621 tags for them ("anthro", "feral", the species, "scales", "fur").
+  2. framing and camera angle: one of "portrait", "close-up", "upper body", "cowboy shot", "full body", "wide shot", and if it helps an angle such as "from above", "from below", "from side", "from behind", "dutch angle", "pov".
+  3. each person's visible traits as single tags: hair colour and length, hairstyle, eye colour, build, clothing items ("long hair", "brown hair", "ponytail", "blue eyes", "white shirt", "black jacket", "beard").
+  4. pose, action, expression and gaze ("sitting", "holding sword", "running", "smile", "frown", "crying", "looking at viewer", "looking away", "open mouth").
+  5. the setting, props, time and light as tags ("indoors", "kitchen", "forest", "night", "rain", "sunlight", "candle", "table").
+${TAG_HYGIENE}
+- "negative": a few tags for things that would contradict this picture, such as "multiple girls" when only one woman is there, "outdoors" for a room, plus lowres, bad anatomy, bad hands, text, watermark.`,
   natural: `The image model reads plain descriptive English (Flux or SD3 style).
 - "prompt": 3-6 sentences describing the picture as if to an illustrator: who is in it and what each person looks like (age, build, hair, eyes, skin, clothing), what they are doing and feeling, the setting and props, the time of day and lighting, and the framing.
 - "negative": a short comma-separated list of things to avoid (many such models ignore it), or "" if nothing is needed.`,
@@ -56,6 +73,7 @@ const SYSTEM_IMAGE = (style: ImagePromptStyle) => `You turn a chapter of a story
 - Take appearance and places from the codex and the chapter. Do not invent visible details that contradict them; where nothing is said, pick plausible, unremarkable details.
 - Do not describe an art style, medium or artist; the author's art style is added separately.
 - Nothing written or lettered in the picture.
+- Choose the framing the moment needs, not full body by default: a close-up or portrait for a feeling or a quiet beat, upper body or cowboy shot for a conversation, full body only when the whole figure matters (a fight, an entrance, an outfit), a wide shot when the place matters more than the people. A low or high angle, a view from behind or over a shoulder can make a moment stronger. Name the framing in the prompt.
 
 ${STYLE_RULES[style]}
 
@@ -106,13 +124,16 @@ export function parseImagePrompt(reply: string): ImagePrompt {
   return out;
 }
 
+/** Whether prompts in this style are comma-separated tags (plain or booru) rather than sentences. */
+export const isTagStyle = (style: ImagePromptStyle) => style !== "natural";
+
 /** The prompt with the story's art style added: as more tags, or as a closing sentence. */
 export function withArtStyle(prompt: string, artStyle: string, style: ImagePromptStyle): string {
   const p = prompt.trim();
   const a = artStyle.replace(/\s+/g, " ").trim();
   if (!a) return p;
   if (!p) return a;
-  if (style === "tags") return `${p.replace(/,\s*$/, "")}, ${a}`;
+  if (isTagStyle(style)) return `${p.replace(/,\s*$/, "")}, ${a}`;
   return `${/[.!?]$/.test(p) ? p : `${p}.`} ${/[.!?]$/.test(a) ? a : `${a}.`}`;
 }
 
@@ -123,7 +144,7 @@ const tagKey = (tag: string) => tag.toLowerCase().replace(/^[([{\s]+|[)\]}\s]+$/
 /** Tags `prompt` has that none of `given` has. Sentence prompts are left as they are. */
 export function withoutGiven(prompt: string, given: string[], style: ImagePromptStyle): string {
   const have = new Set(given.flatMap(tagList).map(tagKey));
-  if (style !== "tags" || have.size === 0) return prompt.trim();
+  if (!isTagStyle(style) || have.size === 0) return prompt.trim();
   return tagList(prompt).filter((t) => !have.has(tagKey(t))).join(", ");
 }
 
@@ -132,7 +153,7 @@ export function withoutGiven(prompt: string, given: string[], style: ImagePrompt
  * has; sentences are joined with spaces, leaving out a part the text already contains.
  */
 export function combinePrompts(style: ImagePromptStyle, ...parts: string[]): string {
-  if (style === "tags") {
+  if (isTagStyle(style)) {
     const seen = new Set<string>();
     const out: string[] = [];
     for (const tag of parts.flatMap(tagList)) {
