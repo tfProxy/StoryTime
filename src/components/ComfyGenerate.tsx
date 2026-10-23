@@ -187,7 +187,13 @@ export default function ComfyGenerate({
   const settings = useSettings();
   // A cover has a size of its own (Settings keeps both), so choosing one doesn't change the chapters'.
   const isCover = target.kind === "cover";
-  const comfy = isCover ? { ...settings.comfy, width: settings.comfy.coverWidth, height: settings.comfy.coverHeight } : settings.comfy;
+  const baseComfy = isCover ? { ...settings.comfy, width: settings.comfy.coverWidth, height: settings.comfy.coverHeight } : settings.comfy;
+  // The size sent is the chosen size times the multiplier (to a multiple of 16, which the models want).
+  const sizeScale = settings.comfy.sizeScale;
+  const scaled = (n: number) => (sizeScale === 1 ? n : Math.max(64, Math.round((n * sizeScale) / 16) * 16));
+  const comfy = { ...baseComfy, width: scaled(baseComfy.width), height: scaled(baseComfy.height) };
+  // What is typed in the multiplier box; the setting only follows a valid number.
+  const [scaleText, setScaleText] = useState(String(sizeScale));
   const sizes = isCover ? COVER_SIZES : SIZES;
   const queueCount = comfy.queueCount;
   // What to change, when editing the starting picture by instruction.
@@ -360,7 +366,7 @@ export default function ComfyGenerate({
   const set = (patch: Partial<ComfySettings>) => void saveSettings({ ...settings, comfy: { ...settings.comfy, ...patch } });
 
   const other = otherSettings(loaded?.settings ?? null, comfy, redrawStrength);
-  const size = sizes.find((s) => s.width === comfy.width && s.height === comfy.height);
+  const size = sizes.find((s) => s.width === baseComfy.width && s.height === baseComfy.height);
 
   /**
    * One click asks for one picture. The picture queue gathers quick clicks with the same prompt and
@@ -435,7 +441,7 @@ export default function ComfyGenerate({
         <select
           className="size-select"
           aria-label="Size"
-          value={`${comfy.width}x${comfy.height}`}
+          value={`${baseComfy.width}x${baseComfy.height}`}
           onChange={(e) => {
             const [width, height] = e.target.value.split("x").map(Number);
             set(isCover ? { coverWidth: width, coverHeight: height } : { width, height });
@@ -447,8 +453,8 @@ export default function ComfyGenerate({
           {/* The closed menu shows the chosen option's columns (customizable select; other browsers ignore this). */}
           <button type="button">{createElement("selectedcontent")}</button>
           {!size && (
-            <option value={`${comfy.width}x${comfy.height}`}>
-              <SizeColumns name="Custom" width={comfy.width} height={comfy.height} />
+            <option value={`${baseComfy.width}x${baseComfy.height}`}>
+              <SizeColumns name="Custom" width={baseComfy.width} height={baseComfy.height} />
             </option>
           )}
           {sizes.map((s) => (
@@ -457,6 +463,26 @@ export default function ComfyGenerate({
             </option>
           ))}
         </select>
+      </label>
+      <label className="row" style={{ gap: "0.4rem" }} title={start ? "Pictures made from a starting picture are its size" : "Multiplies the chosen size, to a multiple of 16 (0.5 to 2)"}>
+        ×
+        <input
+          type="number"
+          aria-label="Scale by"
+          min={0.5}
+          max={2}
+          step={0.05}
+          value={scaleText}
+          onChange={(e) => {
+            setScaleText(e.target.value);
+            const n = Number(e.target.value);
+            if (e.target.value.trim() !== "" && n >= 0.5 && n <= 2) set({ sizeScale: Math.round(n * 100) / 100 });
+          }}
+          onBlur={() => setScaleText(String(sizeScale))}
+          disabled={start !== null}
+          style={{ width: "5rem" }}
+        />
+        <span className="meta">{comfy.width} × {comfy.height}</span>
       </label>
       <div className="queue-row">
         <button
@@ -762,7 +788,8 @@ export default function ComfyGenerate({
             className="secondary"
             onClick={() => {
               const { width, height } = other.size;
-              if (width && height) set(isCover ? { coverWidth: width, coverHeight: height } : { width, height });
+              if (width && height) set(isCover ? { coverWidth: width, coverHeight: height, sizeScale: 1 } : { width, height, sizeScale: 1 });
+              setScaleText("1");
               if (other.strength !== null) setRedrawFor({ preset: draw.id, value: other.strength });
             }}
           >
