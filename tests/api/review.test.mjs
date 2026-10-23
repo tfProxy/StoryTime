@@ -43,3 +43,32 @@ ok(depths.every((d, i) => i === 0 || d >= depths[i - 1]), "issues are ordered pa
 
 r = await call("GET", "/api/stories/does-not-exist/review");
 ok(r.status === 404 && r.json.error, "unknown story is a 404");
+
+// ---- decisions: later, dismissed, undo, and an edit brings an issue back ----
+ok(list.every((i) => i.status === "open" && i.fingerprint === ""), "issues start open with an empty fingerprint");
+const decide = (id, body) => call("PUT", `/api/chapters/${id}/review`, body);
+r = await decide(noSummary, { kind: "summary-missing", status: "later" });
+ok(r.status === 200, "put off ok");
+list = await issues();
+ok(of(list, noSummary)[0].status === "later", "put-off issue is still listed, as later");
+r = await decide(stale, { kind: "summary-stale", status: "dismissed" });
+list = await issues();
+ok(of(list, stale)[0].status === "dismissed" && list.length === 2, "dismissed issue is listed as dismissed");
+r = await decide(noSummary, { kind: "summary-missing", status: "open" });
+list = await issues();
+ok(of(list, noSummary)[0].status === "open", "open undoes a decision");
+r = await call("PATCH", `/api/chapters/${stale}`, { base_revision: 2, title: "Stale", body: "newer text", summary: "stale sum" });
+ok(r.status === 200, "second edit keeping the summary ok");
+list = await issues();
+ok(of(list, stale)[0].status === "open", "an edit after dismissing brings the issue back");
+r = await decide(stale, { kind: "summary-stale", status: "dismissed" });
+r = await decide(stale, { kind: "summary-stale", status: "later" });
+list = await issues();
+ok(of(list, stale)[0].status === "later", "a new decision replaces the old one");
+
+r = await decide(noSummary, { kind: "nonsense", status: "later" });
+ok(r.status === 400, "unknown kind is a 400");
+r = await decide(noSummary, { kind: "summary-missing", status: "maybe" });
+ok(r.status === 400, "unknown status is a 400");
+r = await decide("does-not-exist", { kind: "summary-missing", status: "later" });
+ok(r.status === 404, "unknown chapter is a 404");

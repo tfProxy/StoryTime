@@ -136,6 +136,16 @@ tagDb.prepare(`INSERT INTO tags (id, name, created_at) VALUES ('tg', 'tg', 1)`).
 tagDb.prepare(`INSERT INTO story_tags (story_id, tag_id) VALUES ('ts', 'tg')`).run();
 tagDb.exec(MIGRATIONS[27]);
 ok((tagDb.prepare(`SELECT enabled FROM story_tags`).get() as { enabled: number }).enabled === 1, "a tag switched on before stays on");
+
+// decisions on Review issues (schema version 29): one per chapter, kind and fingerprint, of a known status
+tagDb.exec(MIGRATIONS[28]);
+tagDb.prepare(`INSERT INTO chapters (id, story_id, depth, title, body, posted_at) VALUES ('tc', 'ts', 0, 't', 'b', 1)`).run();
+const item = (id: string, status: string) =>
+  tagDb.prepare(`INSERT INTO review_items (id, chapter_id, kind, status, revision, decided_at) VALUES (?, 'tc', 'summary-missing', ?, 1, 1)`).run(id, status);
+const refusedItem = (f: () => unknown) => { try { f(); return false; } catch { return true; } };
+ok(!refusedItem(() => item("r1", "later")), "an issue can be put off");
+ok(refusedItem(() => item("r2", "dismissed")), "…and has one decision at a time");
+ok(refusedItem(() => tagDb.prepare(`UPDATE review_items SET status = 'maybe'`).run()), "the status is one of dismissed, later and intentional");
 tagDb.close();
 d.close();
 fs.rmSync(dir, { recursive: true, force: true });

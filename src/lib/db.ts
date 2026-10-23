@@ -507,6 +507,23 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE story_tags ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;
   `,
+  // 29: the author's decisions on Review issues. The issues themselves are worked out when asked for
+  // (review.ts); a row only records that one was dismissed or put off. fingerprint tells apart several
+  // issues of one kind on a chapter ("" when there is only ever one). A decision holds while the chapter
+  // is still at revision; after an edit the issue counts as new and shows again.
+  `
+  CREATE TABLE review_items (
+    id TEXT PRIMARY KEY,
+    chapter_id TEXT NOT NULL REFERENCES chapters(id),
+    kind TEXT NOT NULL,
+    fingerprint TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL CHECK (status IN ('dismissed', 'later', 'intentional')),
+    revision INTEGER NOT NULL,
+    note TEXT,
+    decided_at INTEGER NOT NULL,
+    UNIQUE (chapter_id, kind, fingerprint)
+  );
+  `,
 ];
 
 function open(): Database.Database {

@@ -1,11 +1,22 @@
-import { db } from "./db";
+import { z } from "zod";
+import { db, newId } from "./db";
+import { PostError } from "./stories";
+
+export const ISSUE_KINDS = ["summary-missing", "summary-stale"] as const;
+export type IssueKind = (typeof ISSUE_KINDS)[number];
+
+/** open: still to deal with; later: put off (kept on the Review page, left out of the outline count); dismissed: hidden. */
+export type IssueStatus = "open" | "later" | "dismissed";
 
 export type ReviewIssue = {
   chapterId: string;
   title: string;
   depth: number;
-  kind: "summary-missing" | "summary-stale";
+  kind: IssueKind;
+  /** Tells apart several issues of one kind on a chapter; "" when there is only ever one. */
+  fingerprint: string;
   message: string;
+  status: IssueStatus;
 };
 
 type Row = {
@@ -19,8 +30,11 @@ type Row = {
   prev_summary: string | null;
 };
 
+type Decision = { chapter_id: string; kind: string; fingerprint: string; status: string; revision: number };
+
 /**
- * Free checks (no AI) on a story's chapters, parents before children. Deleting is permanent, so every
+ * Free checks (no AI) on a story's chapters, parents before children, with the author's decisions on them.
+ * A decision only counts while the chapter is at the revision it was made at. Deleting is permanent, so every
  * chapter row of the story is live.
  */
 export function reviewIssues(storyId: string): ReviewIssue[] {
@@ -34,26 +48,63 @@ export function reviewIssues(storyId: string): ReviewIssue[] {
         ORDER BY c.depth, c.posted_at, c.rowid`,
     )
     .all(storyId) as Row[];
+  const decisions = new Map(
+    (
+      db()
+        .prepare(
+          `SELECT ri.chapter_id, ri.kind, ri.fingerprint, ri.status, ri.revision
+             FROM review_items ri JOIN chapters c ON c.id = ri.chapter_id
+            WHERE c.story_id = ? AND ri.revision = c.revision`,
+        )
+        .all(storyId) as Decision[]
+    ).map((d) => [`${d.chapter_id}\n${d.kind}\n${d.fingerprint}`, d.status]),
+  );
+  const statusOf = (chapterId: string, kind: IssueKind, fingerprint: string): IssueStatus => {
+    const s = decisions.get(`${chapterId}\n${kind}\n${fingerprint}`);
+    return s === "later" || s === "dismissed" ? s : s === "intentional" ? "dismissed" : "open";
+  };
 
   const issues: ReviewIssue[] = [];
   for (const c of rows) {
-    const base = { chapterId: c.id, title: c.title, depth: c.depth };
+    const add = (kind: IssueKind, message: string) =>
+      issues.push({ chapterId: c.id, title: c.title, depth: c.depth, kind, fingerprint: "", message, status: statusOf(c.id, kind, "") });
     if (c.summary === null || c.summary.trim() === "") {
-      issues.push({
-        ...base,
-        kind: "summary-missing",
-        message: "No summary. The AI reads the full text of this chapter instead, or nothing once it's far back.",
-      });
+      add("summary-missing", "No summary. The AI reads the full text of this chapter instead, or nothing once it's far back.");
     } else if (c.revision > 1 && c.prev_body !== null && c.prev_body !== c.body && c.prev_summary === c.summary) {
-      issues.push({ ...base, kind: "summary-stale", message: "The last edit changed the text but not the summary." });
+      add("summary-stale", "The last edit changed the text but not the summary.");
     }
   }
   return issues;
 }
 
-/** Chapter id to number of issues, for chapters with at least one. */
+/** Chapter id to number of open issues, for chapters with at least one. Put-off and dismissed ones don't count. */
 export function issueCounts(storyId: string): Map<string, number> {
   const counts = new Map<string, number>();
-  for (const i of reviewIssues(storyId)) counts.set(i.chapterId, (counts.get(i.chapterId) ?? 0) + 1);
+  for (const i of reviewIssues(storyId)) if (i.status === "open") counts.set(i.chapterId, (counts.get(i.chapterId) ?? 0) + 1);
   return counts;
+}
+
+export const DecideIssueSchema = z.object({
+  kind: z.enum(ISSUE_KINDS),
+  fingerprint: z.string().max(200).default(""),
+  /** open undoes an earlier decision. */
+  status: z.enum(["open", "later", "dismissed"]),
+});
+
+/** Records (or with status open, forgets) the author's decision on one issue, at the chapter's current revision. */
+export function decideIssue(chapterId: string, input: z.infer<typeof DecideIssueSchema>): void {
+  db().transaction(() => {
+    const chapter = db().prepare(`SELECT revision FROM chapters WHERE id = ?`).get(chapterId) as { revision: number } | undefined;
+    if (!chapter) throw new PostError("That chapter does not exist", 404);
+    if (input.status === "open") {
+      db().prepare(`DELETE FROM review_items WHERE chapter_id = ? AND kind = ? AND fingerprint = ?`).run(chapterId, input.kind, input.fingerprint);
+      return;
+    }
+    db()
+      .prepare(
+        `INSERT INTO review_items (id, chapter_id, kind, fingerprint, status, revision, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (chapter_id, kind, fingerprint) DO UPDATE SET status = excluded.status, revision = excluded.revision, decided_at = excluded.decided_at`,
+      )
+      .run(newId(), chapterId, input.kind, input.fingerprint, input.status, chapter.revision, Date.now());
+  })();
 }
