@@ -16,11 +16,11 @@ import { LIMITS } from "@/lib/limits";
 import { EDIT_MODELS, editTuning, usableLoras } from "@/lib/comfy/editModels";
 import { combinePrompts } from "@/lib/ai/imagePrompt";
 import { familyProblems } from "@/lib/comfy/drawModels";
-import { drawPresetFor, drawPresetSummary, presetName, usesFamily, type LoraSetting } from "@/lib/comfy/presets";
+import { drawPresetFor, drawPresetSummary, presetName, usesFamily } from "@/lib/comfy/presets";
 import type { StartPicture } from "@/lib/comfy/startPicture";
 import { readEdit, readLoras, readRedraw, stateKey, writeEdit, writeLoras, writeRedraw } from "@/lib/comfy/editingState";
 import { applyLoraOverrides, hasLoraOverrides, resetLoraOverrides, setLoraOverride, type LoraOverrides } from "@/lib/comfy/loraOverrides";
-import NumberInput from "./NumberInput";
+import LoraToggles from "./LoraToggles";
 import { listCheckpoints } from "@/lib/comfy/client";
 import { denoiseOf, madeWithText, maskOf, refsOf, type JobInput } from "@/lib/comfy/makeJob";
 import { MAX_REFERENCES, storedOf, type Reference } from "@/lib/comfy/references";
@@ -96,70 +96,6 @@ function otherSettings(made: MadeWith | null, now: ComfySettings, redraw: number
     text.push(`strength ${made.denoise}`);
   }
   return text.length ? { size, strength, text: text.join(", ") } : null;
-}
-
-/**
- * A preset's LoRAs on the Illustrate page: an on/off box and a strength for each. `stack` is the preset's
- * stack with this page's changes applied (`applyLoraOverrides`); a change here is only for this page, kept in
- * this browser, and never changes the preset in Settings (that is the Change link). `onChange` gets the
- * LoRA's place in the stack, `changed` says whether the page has changes, and `onReset` drops them.
- * `available` is what ComfyUI lists, or null when that isn't known yet.
- */
-function LoraToggles({
-  stack,
-  available,
-  href,
-  changed,
-  onChange,
-  onReset,
-}: {
-  stack: LoraSetting[];
-  available: string[] | null;
-  href?: string;
-  changed: boolean;
-  onChange: (index: number, patch: { on?: boolean; strength?: number }) => void;
-  onReset: () => void;
-}) {
-  return (
-    <div className="edit-lora-toggles" role="group" aria-label="LoRAs">
-      <span className="meta">LoRAs:</span>
-      {stack.map((l, i) => {
-        const name = (l.name.split(/[\\/]/).pop() ?? l.name).replace(/\.safetensors$/i, "");
-        const gone = available !== null && !available.includes(l.name);
-        return (
-          <span key={i} className="inline-label" title={gone ? `ComfyUI doesn't list ${l.name}, so it isn't used` : l.name}>
-            <label className="inline-label">
-              <input type="checkbox" checked={l.on} onChange={(e) => onChange(i, { on: e.target.checked })} />
-              <span className={gone ? "error" : undefined}>
-                {name}
-                {gone && " – missing"}
-              </span>
-            </label>
-            <NumberInput
-              aria-label={`Strength of ${name}`}
-              title="Strength: 1 is full, lower is weaker (only for this page; the preset keeps its own)"
-              min={-4}
-              max={4}
-              step={0.05}
-              value={l.strength}
-              onChange={(v) => v !== null && onChange(i, { strength: v })}
-              style={{ width: "5rem" }}
-            />
-          </span>
-        );
-      })}
-      {changed && (
-        <button type="button" className="secondary" onClick={onReset} title="Go back to the on/off and strengths the preset has in Settings">
-          Reset LoRAs to preset
-        </button>
-      )}
-      {href && (
-        <Link href={href} className="meta">
-          Change
-        </Link>
-      )}
-    </div>
-  );
 }
 
 type Props = {
@@ -327,7 +263,7 @@ export default function ComfyGenerate({
   // This chapter's (or cover's) jobs being made, oldest first. The app's picture queue holds them, so they go on when the page is left.
   const pictureQueue = usePictureQueue();
   const { stop, listen } = pictureQueue;
-  const queue = useMemo(() => pictureQueue.jobs.filter((j) => targetKey(j) === at && j.state === "making"), [pictureQueue.jobs, at]);
+  const queue = useMemo(() => pictureQueue.jobs.filter((j) => targetKey(j) === at && j.state === "making" && !j.session), [pictureQueue.jobs, at]);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Painting the part of the starting picture to redraw. Whether the drawing preset's workflow can do it, the mask

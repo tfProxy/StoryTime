@@ -1,6 +1,8 @@
-import { deleteSession, isSessionId, loadSession, newSession, newSessionId, originalOf, pruneSessions, readSession, saveSession, serializeSession, SESSION_KEY, MAX_SESSION_BYTES } from "../../src/lib/refine/session.ts";
+import { readTag } from "../../src/lib/comfy/jobTag.ts";
+import { maskId, maskUsed, paintUsed, sentPictureKey, sentPrompts } from "../../src/lib/refine/send.ts";
+import { addResults, MAX_RESULTS, deleteSession, isSessionId, loadSession, newSession, newSessionId, originalOf, pruneSessions, readSession, saveSession, serializeSession, SESSION_KEY, MAX_SESSION_BYTES } from "../../src/lib/refine/session.ts";
 import { DEFAULT_TOOLS, readTools } from "../../src/lib/refine/tools.ts";
-import { addPaintStroke, commit, redo, setMask, undo } from "../../src/lib/refineHistory.ts";
+import { addPaintStroke, commit, initialRefineState, redo, setMask, undo } from "../../src/lib/refineHistory.ts";
 import type { PaintStroke } from "../../src/lib/paint.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
@@ -111,3 +113,56 @@ ok(JSON.stringify(readTools(null)) === JSON.stringify(DEFAULT_TOOLS), "no stored
 const t = readTools({ color: "#ABC", size: 99999, softness: -2, opacity: "x", maskSize: 30 });
 ok(t.color === "#aabbcc" && t.size === 2000 && t.softness === 0 && t.opacity === DEFAULT_TOOLS.opacity && t.maskSize === 30, "stored tools are cleaned");
 ok(readTools({ color: "red" }).color === DEFAULT_TOOLS.color, "a bad colour falls back");
+const t2 = readTools({ strengths: { test: 0.3, bad: "x", low: 0, "": 1 }, queueCount: 4 });
+ok(JSON.stringify(t2.strengths) === JSON.stringify({ test: 0.3, low: 0.05 }) && t2.queueCount === 4, "the last strength per drawing preset and Pictures per click are read back, cleaned");
+ok(readTools({ queueCount: 3 }).queueCount === null && readTools({}).queueCount === null && Object.keys(readTools({ strengths: [1] }).strengths).length === 0, "a Pictures per click that isn't offered, or no strengths, give the defaults");
+
+// results and the Prompt panel's fields
+const res = (n: number) => ({ image: { filename: `r${n}.png`, subfolder: "StoryTime/s1", type: "output" }, prompt: `p${n}`, negative: "", seed: n, madeFrom: "original", at: n });
+const fresh = newSession({ target, original, prompt: "a lamp", negative: "dark", now: 0, id: "dddddddddddd" });
+ok(fresh.results.length === 0 && fresh.sourcePrompt === "a lamp" && fresh.sourceNegative === "dark" && fresh.sourceAlways === undefined, "a new session has no results and keeps the picture's prompt as its Reset source");
+ok(newSession({ target, original, now: 0, id: "eeeeeeeeeeee" }).sourcePrompt === undefined, "a picture with no prompt leaves the source for the panel to work out");
+let list = addResults([], [res(1), res(2)]);
+list = addResults(list, [res(2), res(3)]);
+ok(list.map((r) => r.seed).join() === "1,2,3", "a result already in the list isn't added twice");
+let many = addResults([], Array.from({ length: MAX_RESULTS + 5 }, (_, i) => res(i)));
+ok(many.length === MAX_RESULTS && many[0].seed === 5 && many.at(-1)?.seed === MAX_RESULTS + 4, "the list is capped, the oldest dropped");
+const kept = fakeStorage();
+const withFields = { ...fresh, sourceAlways: "gold", boxPrompt: "typed", boxNegative: "", boxAlways: "silver", loraChanges: { test: { "0": { name: "a.safetensors", strength: 0.3 } } }, results: [res(1)] };
+saveSession(withFields, kept);
+const reloaded = loadSession(withFields.id, kept)!;
+ok(reloaded.sourceAlways === "gold" && reloaded.boxPrompt === "typed" && reloaded.boxNegative === "" && reloaded.boxAlways === "silver" && reloaded.results.length === 1 && reloaded.results[0].madeFrom === "original", "the Prompt panel's fields and the results are saved and read back");
+ok(reloaded.loraChanges?.test?.["0"]?.strength === 0.3, "the LoRA changes made on this screen are kept");
+const legacy = JSON.parse(JSON.stringify(fresh));
+delete legacy.results;
+delete legacy.sourcePrompt;
+const old2 = readSession(legacy)!;
+ok(Array.isArray(old2.results) && old2.results.length === 0 && old2.sourcePrompt === undefined && old2.loraChanges === undefined, "a session saved before results existed reads with none");
+const damaged = readSession({ ...JSON.parse(JSON.stringify(withFields)), results: [res(1), { image: { filename: "" } }, "x", { ...res(2), seed: "no" }], loraChanges: "x", boxPrompt: 4 })!;
+ok(damaged.results.length === 1 && damaged.loraChanges === undefined && damaged.boxPrompt === undefined, "damaged results, LoRA changes and boxes are dropped one by one");
+
+// what Go sends
+const draw = { prompt: "masterpiece", negative: "blurry", promptStyle: "tags" } as const;
+const sent = sentPrompts(draw, "gold light", "a lamp", "dark");
+ok(sent.prompt === "masterpiece, gold light, a lamp" && sent.negative === "dark, blurry", "the prompt is preset text, Always add, then the box; the negative box then the preset's");
+const plain = sentPrompts({ prompt: "", negative: "", promptStyle: "tags" }, "", "a lamp,  ", "dark");
+ok(plain.prompt === "a lamp,  " && plain.negative === "dark", "with nothing to add the boxes are used as typed");
+ok(sentPrompts(draw, "", "masterpiece, a lamp", "").prompt === "masterpiece, a lamp", "text the box already has isn't repeated");
+{
+const st = initialRefineState("original");
+ok(!paintUsed(st) && maskUsed(st) === null, "an empty editor uses no paint and no mask");
+const painted = addPaintStroke(st, stroke(1));
+ok(paintUsed(painted) && !paintUsed({ ...painted, paintVisible: false }), "paint is used only while it is visible");
+const k1 = sentPictureKey("sess", painted);
+ok(k1 === sentPictureKey("sess", { ...painted }) && k1 !== sentPictureKey("sess", addPaintStroke(painted, stroke(2))) && k1 !== sentPictureKey("sess", st), "the same picture and paint give the same key, other paint another");
+ok(sentPictureKey("sess", { ...painted, paintVisible: false }) === sentPictureKey("sess", st) && k1 !== sentPictureKey("other", painted), "hidden paint is the clean picture's key; another session another key");
+const ms = { strokes: [{ tool: "brush" as const, size: 10, points: [[1, 2, 0.5] as [number, number, number]] }], softness: 0, inverted: false };
+ok(maskUsed({ ...st, mask: ms }) === ms && maskUsed({ ...st, mask: ms, maskVisible: false }) === null && maskUsed({ ...st, mask: { ...ms, strokes: [] } }) === null, "a mask is used only when it is visible and has strokes");
+ok(maskId(ms) === maskId({ ...ms }) && maskId(ms) !== maskId({ ...ms, softness: 4 }) && maskId(ms) !== maskId({ ...ms, inverted: true }) && maskId(ms) !== maskId({ ...ms, strokes: [] }), "a mask's id changes with its strokes, soft edge and inversion, and is otherwise stable");
+}
+
+// the job tag carries the session
+const jtag = { chapterId: "c1", storyId: "s1", clientId: "storytime-x", job: { prompt: "a lamp", negative: "", checkpoint: "a", width: 8, height: 8, seed: 1, count: 1, moment: "start", temporary: true }, session: "abcdef123456", base: "original" };
+const read = readTag({ storytime: jtag });
+ok(read?.session === "abcdef123456" && read.base === "original" && read.job.temporary === true, "a job tag reads back the Refine session and base");
+ok(readTag({ storytime: { ...jtag, session: 5 } }) === null && readTag({ storytime: { ...jtag, session: undefined, base: undefined } })?.session === undefined, "a damaged session in a tag is refused; no session is fine");

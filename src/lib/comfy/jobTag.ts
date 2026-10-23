@@ -37,6 +37,9 @@ export type JobTag = {
   job: JobRecord;
   /** The StoryTime that queued it (`GET /api/instance`); jobs from before this have none. */
   instance?: string;
+  /** Made for a Refine screen's session (its id) and from this base picture of it: the queue hands the pictures to that screen only. */
+  session?: string;
+  base?: string;
 };
 
 /** What the tag's job was made for. */
@@ -64,5 +67,15 @@ export function readTag(extra: unknown): JobTag | null {
   if (j.mask !== undefined && j.mask !== null && (!isString(j.mask) || j.mask.length === 0 || j.mask.length > 300)) return null;
   if (j.temporary !== undefined && j.temporary !== true) return null;
   if (j.refs !== undefined && !(Array.isArray(j.refs) && j.refs.length <= 4 && j.refs.every(isStoredReference))) return null;
-  return { chapterId: t.chapterId, ...(isString(t.entryId) && { entryId: t.entryId }), storyId: t.storyId, clientId: t.clientId, job: j as JobRecord, ...(isString(t.instance) && { instance: t.instance }) };
+  if ((t.session !== undefined && !isString(t.session)) || (t.base !== undefined && !isString(t.base))) return null;
+  return {
+    chapterId: t.chapterId,
+    ...(isString(t.entryId) && { entryId: t.entryId }),
+    storyId: t.storyId,
+    clientId: t.clientId,
+    job: j as JobRecord,
+    ...(isString(t.instance) && { instance: t.instance }),
+    ...(isString(t.session) && { session: t.session }),
+    ...(isString(t.base) && { base: t.base }),
+  };
 }

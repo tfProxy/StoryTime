@@ -7,6 +7,8 @@ import { readPaintStrokes } from "../paint";
 import type { MaskState, MaskStroke } from "../mask";
 import { startHistory, type History, type RefineState } from "../refineHistory";
 import type { PictureTarget, SavedSlot } from "../pictureTarget";
+import { parseLoras } from "../comfy/editingState";
+import type { LoraOverrides } from "../comfy/loraOverrides";
 
 /** Where a session's picture is fetched from again: one of ComfyUI's, a saved header/footer/cover (at the version it had), or a codex picture. */
 export type StoredOriginal =
@@ -27,8 +29,43 @@ export type RefineSession = {
   negative?: string;
   /** The page's LoRA overrides when the session started (`readLoras`), kept as stored. */
   loras: unknown;
+  /**
+   * What Reset puts back in the Prompt panel's boxes: the picture the session works from (the original's prompt, and
+   * later an applied result's own). Undefined until the panel has worked it out (the session had no prompt, so the
+   * story page's draft is asked), and `sourceAlways` is the chapter's "Always include" text.
+   */
+  sourcePrompt?: string;
+  sourceNegative?: string;
+  sourceAlways?: string;
+  /** What the Prompt panel's boxes hold now (undefined: still the source). The Always add box is this session's own copy, never written back. */
+  boxPrompt?: string;
+  boxNegative?: string;
+  boxAlways?: string;
+  /** The LoRA switches and strengths changed on this screen, by preset id (`loraOverrides.ts`); undefined = still the page's (`loras`). Never written to the page or the preset. */
+  loraChanges?: LoraOverrides;
+  /** The pictures made from here, oldest first (at most MAX_RESULTS); the images stay in ComfyUI. */
+  results: RefineResult[];
   history: History<RefineState>;
 };
+
+/** One picture a Refine job made. `madeFrom` is the id of the base picture the job started from. */
+export type RefineResult = { image: ComfyImage; prompt: string; negative: string; seed: number; madeFrom: string; at: number };
+
+export const MAX_RESULTS = 60;
+
+const resultKey = (r: RefineResult) => `${r.image.type}/${r.image.subfolder}/${r.image.filename}`;
+
+/** The results with `added` after them (a picture already there is skipped), the oldest dropped beyond MAX_RESULTS. */
+export function addResults(results: RefineResult[], added: RefineResult[]): RefineResult[] {
+  const have = new Set(results.map(resultKey));
+  const next = [...results];
+  for (const r of added) {
+    if (have.has(resultKey(r))) continue;
+    have.add(resultKey(r));
+    next.push(r);
+  }
+  return next.slice(-MAX_RESULTS);
+}
 
 export const SESSION_PREFIX = "storytime.refine.";
 export const SESSION_KEY = (id: string) => `${SESSION_PREFIX}${id}`;
@@ -67,6 +104,9 @@ export function newSession(init: { target: PictureTarget; original: StoredOrigin
     ...(init.prompt ? { prompt: init.prompt } : {}),
     ...(init.negative ? { negative: init.negative } : {}),
     loras: init.loras ?? null,
+    // The source is known now when the picture has a prompt; otherwise the Prompt panel looks the story page's draft up.
+    ...(init.prompt ? { sourcePrompt: init.prompt, sourceNegative: init.negative ?? "" } : {}),
+    results: [],
     history: startHistory<RefineState>({ base: ORIGINAL_BASE, paint: [], mask: { strokes: [], softness: 0, inverted: false }, paintVisible: true, maskVisible: true }),
   };
 }
@@ -136,6 +176,22 @@ export function readHistory(v: unknown): History<RefineState> | null {
   return { past: list(v.past), present, future: list(v.future) };
 }
 
+function readResult(v: unknown): RefineResult | null {
+  if (!isObject(v) || !isObject(v.image)) return null;
+  const im = v.image;
+  if (typeof im.filename !== "string" || !im.filename || typeof im.subfolder !== "string" || typeof im.type !== "string") return null;
+  if (typeof v.prompt !== "string" || typeof v.negative !== "string" || !isNum(v.seed) || typeof v.madeFrom !== "string" || !isNum(v.at)) return null;
+  return { image: { filename: im.filename, subfolder: im.subfolder, type: im.type }, prompt: v.prompt, negative: v.negative, seed: v.seed, madeFrom: v.madeFrom, at: v.at };
+}
+
+/** Stored results, defensively; a session saved before results existed has none. */
+export function readResults(v: unknown): RefineResult[] {
+  if (!Array.isArray(v)) return [];
+  return v.map(readResult).filter((r): r is RefineResult => r !== null).slice(-MAX_RESULTS);
+}
+
+const optStr = (v: unknown) => (typeof v === "string" ? v : undefined);
+
 /** A session read back from stored JSON; null when it is not a usable session. */
 export function readSession(v: unknown): RefineSession | null {
   if (!isObject(v) || !isSessionId(v.id)) return null;
@@ -152,6 +208,14 @@ export function readSession(v: unknown): RefineSession | null {
     ...(typeof v.prompt === "string" && v.prompt ? { prompt: v.prompt } : {}),
     ...(typeof v.negative === "string" && v.negative ? { negative: v.negative } : {}),
     loras: v.loras ?? null,
+    ...(optStr(v.sourcePrompt) !== undefined && { sourcePrompt: optStr(v.sourcePrompt) }),
+    ...(optStr(v.sourceNegative) !== undefined && { sourceNegative: optStr(v.sourceNegative) }),
+    ...(optStr(v.sourceAlways) !== undefined && { sourceAlways: optStr(v.sourceAlways) }),
+    ...(optStr(v.boxPrompt) !== undefined && { boxPrompt: optStr(v.boxPrompt) }),
+    ...(optStr(v.boxNegative) !== undefined && { boxNegative: optStr(v.boxNegative) }),
+    ...(optStr(v.boxAlways) !== undefined && { boxAlways: optStr(v.boxAlways) }),
+    ...(isObject(v.loraChanges) && { loraChanges: parseLoras(v.loraChanges) }),
+    results: readResults(v.results),
     history,
   };
 }

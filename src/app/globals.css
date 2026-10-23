@@ -3117,6 +3117,78 @@ button.refine-icon[aria-pressed="true"] {
   font-family: ui-monospace, monospace;
 }
 
+/* The Prompt panel: each box has Clear and Reset beside its name. */
+.refine-box {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.refine-box-buttons {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+.refine-panel .edit-lora-toggles button {
+  min-height: 2.5rem;
+}
+
+.refine-box-buttons button {
+  min-height: 2.5rem;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.refine-panel .queue-row {
+  align-items: stretch;
+}
+
+.refine-panel .queue-row .queue-button {
+  min-height: 2.75rem;
+  font-weight: 600;
+}
+
+/* The Results panel: small tiles, newest first, after the places kept for pictures being made. */
+.refine-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.refine-result {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+}
+
+.refine-result img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.refine-result-pending {
+  gap: 0.3rem;
+  align-content: center;
+  background: linear-gradient(100deg, var(--line) 30%, color-mix(in srgb, var(--line) 55%, var(--card)) 50%, var(--line) 70%);
+  background-size: 300% 100%;
+}
+
+.refine-result-pending button {
+  min-height: 2.5rem;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.8rem;
+}
+
 .refine-bar {
   position: sticky;
   bottom: 0;

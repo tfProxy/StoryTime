@@ -88,8 +88,10 @@ export function readEdit(chapterId: string): StoredEdit | null {
 export const writeEdit = (chapterId: string, edit: StoredEdit) => write("edit", chapterId, edit);
 
 /** The LoRA switches and strengths changed on the page (never the preset's own), by preset id; see `loraOverrides.ts`. */
-export function readLoras(chapterId: string): LoraOverrides {
-  const v = read("loras", chapterId);
+export const readLoras = (chapterId: string): LoraOverrides => parseLoras(read("loras", chapterId));
+
+/** LoRA overrides read defensively from stored JSON (anything unusable is left out). */
+export function parseLoras(v: unknown): LoraOverrides {
   const out: LoraOverrides = {};
   if (!isObject(v)) return out;
   for (const [preset, rows] of Object.entries(v)) {

@@ -35,6 +35,9 @@ export type QueueJob = Queued & PictureTarget & {
   endedAt?: number;
   /** Recorded as not seen yet, so it is marked seen once shown or dismissed. */
   unseen?: boolean;
+  /** Made for a Refine screen's session (its id), from that session's base picture: only that screen is given its pictures (see `listenSession`). */
+  session?: string;
+  base?: string;
 };
 
 /** What a job's end hands on. */
@@ -43,6 +46,12 @@ type Ended = { pictures: Picture[]; warning?: string; unseen?: boolean } | { err
 /** What an open page (a chapter's, or the cover's) is told: each finished job's pictures, and how a job ended when there is something to say. */
 export type ChapterListener = {
   onPictures: (pictures: Picture[]) => void;
+  onStatus: (status: { ok: boolean; text: string }) => void;
+};
+
+/** A Refine screen's listener: the same as a page's, and `onPictures` also says which base picture the job started from. */
+export type SessionListener = {
+  onPictures: (pictures: Picture[], info: { base: string }) => void;
   onStatus: (status: { ok: boolean; text: string }) => void;
 };
 
@@ -61,6 +70,12 @@ type QueueApi = {
   dismiss: (key: string) => void;
   /** The target's page is open: hands it the jobs that ended while it wasn't, then each as it ends. Returns the way to stop. */
   listen: (target: PictureTarget, listener: ChapterListener) => () => void;
+  /**
+   * A Refine screen is open: it is handed the pictures of the jobs made for its session (`JobInput.session`) that
+   * ended while it wasn't listening (this tab only), then each as it ends. A session's jobs never reach a page's
+   * `listen`er, are never "ready" in the header, and are recorded in the job log as temporary like any other. Returns the way to stop.
+   */
+  listenSession: (sessionId: string, listener: SessionListener) => () => void;
 };
 
 const QueueContext = createContext<QueueApi | null>(null);
@@ -191,6 +206,10 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
   const uploads = useRef<UploadCache["current"]>(null);
   // The pages open now, by `targetKey`.
   const listeners = useRef(new Map<string, ChapterListener>());
+  // The Refine screens open now, by session id; and what a session's jobs ended with while its screen wasn't listening
+  // (kept in memory only, out of the job list, so the header never shows them).
+  const sessionListeners = useRef(new Map<string, SessionListener>());
+  const parked = useRef(new Map<string, { base: string; pictures?: Picture[]; message?: string }[]>());
   // ComfyUI jobs already picked up, made here or found in ComfyUI.
   const picked = useRef(new Set<string>());
 
@@ -200,6 +219,25 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
       controls.current.delete(key);
       const job = jobsRef.current.find((j) => j.key === key);
       if (!job) return;
+      if (job.session) {
+        // A Refine job belongs to its screen alone: never to the target's page, never kept as "ready".
+        const sl = sessionListeners.current.get(job.session);
+        if ("stopped" in result || "gone" in result) {
+          if ("stopped" in result) sl?.onStatus({ ok: true, text: "Stopped." });
+        } else {
+          const pictures = "pictures" in result ? result.pictures : undefined;
+          const message = "error" in result ? result.error : result.warning;
+          if (sl) {
+            if (pictures) sl.onPictures(pictures, { base: job.base ?? "" });
+            if (message) sl.onStatus({ ok: false, text: message });
+          } else {
+            // The screen isn't open (yet): its pictures wait here for it, briefly (the job log has them as temporary).
+            const list = parked.current.get(job.session) ?? [];
+            parked.current.set(job.session, [...list, { base: job.base ?? "", pictures, message }].slice(-20));
+          }
+        }
+        return update((prev) => prev.filter((j) => j.key !== key));
+      }
       const listener = listeners.current.get(targetKey(job));
       if ("stopped" in result || "gone" in result) {
         if ("stopped" in result) listener?.onStatus({ ok: true, text: "Stopped." });
@@ -297,7 +335,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
       controls.current.set(key, { promptId: null, ctl: new AbortController(), url: input.comfy.url });
       const next: Gathering = { key, target, input, count: 1, timer: setTimeout(() => void send(next), GATHER_MS) };
       gathering.current = next;
-      update((prev) => [...prev, { ...view, ...(input.temporary && { temporary: true }), key, count: 1, progress: { stage: "gathering" }, ...target, state: "making" }]);
+      update((prev) => [...prev, { ...view, ...(input.temporary && { temporary: true }), ...(input.session && { session: input.session, base: input.base ?? "" }), key, count: 1, progress: { stage: "gathering" }, ...target, state: "making" }]);
     },
     [patch, send, update],
   );
@@ -350,6 +388,19 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
     [update],
   );
 
+  const listenSession = useCallback((sessionId: string, listener: SessionListener) => {
+    sessionListeners.current.set(sessionId, listener);
+    const waiting = parked.current.get(sessionId);
+    parked.current.delete(sessionId);
+    for (const w of waiting ?? []) {
+      if (w.pictures) listener.onPictures(w.pictures, { base: w.base });
+      if (w.message) listener.onStatus({ ok: false, text: w.message });
+    }
+    return () => {
+      if (sessionListeners.current.get(sessionId) === listener) sessionListeners.current.delete(sessionId);
+    };
+  }, []);
+
   /** Shows a job found in ComfyUI's queue like one asked for here, and records it when it finishes. */
   const resume = useCallback(
     (url: string, found: TaggedJob) => {
@@ -379,6 +430,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
           editModel: job.edit_model ?? null,
           moment: job.moment,
           ...(job.temporary && { temporary: true }),
+          ...(found.tag.session && { session: found.tag.session, base: found.tag.base ?? "" }),
         },
       ]);
       finish(key, { target, url, promptId: found.promptId, clientId, record: job, signal: ctl.signal }).then(
@@ -391,7 +443,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
 
   /** A finished job that wasn't made in this tab: handed to its chapter's page if it is open, else kept. */
   const keep = useCallback(
-    (job: Omit<Queued, "key" | "progress"> & PictureTarget, result: Ended) => {
+    (job: Omit<Queued, "key" | "progress"> & PictureTarget & { session?: string; base?: string }, result: Ended) => {
       const key = `job-${randomSeed().toString(36)}`;
       update((prev) => [...prev, { ...job, key, progress: { stage: "loading" }, state: "making" }]);
       ended(key, result);
@@ -411,6 +463,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
           ...target, count: job.count, prompt: job.prompt, negative: job.negative, checkpoint: job.checkpoint, width: job.width, height: job.height,
           denoise: job.denoise ?? null, source: job.source ?? null, mask: job.mask ?? null, refs: job.refs ?? [], instruction: job.instruction ?? null, editModel: job.edit_model ?? null, moment: job.moment,
           ...(job.temporary && { temporary: true }),
+          ...(found.tag.session && { session: found.tag.session, base: found.tag.base ?? "" }),
         },
         result,
       );
@@ -488,7 +541,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
     return () => document.removeEventListener("visibilitychange", again);
   }, [comfyUrl, scan, loadUnseen]);
 
-  const api = useMemo(() => ({ jobs, ask, stop, dismiss, listen }), [jobs, ask, stop, dismiss, listen]);
+  const api = useMemo(() => ({ jobs, ask, stop, dismiss, listen, listenSession }), [jobs, ask, stop, dismiss, listen, listenSession]);
   return <QueueContext.Provider value={api}>{children}</QueueContext.Provider>;
 }
 

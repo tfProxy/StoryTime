@@ -1,5 +1,6 @@
 // The Refine screen's tools and the brush settings kept between sessions (`storytime.refine.tools`).
 import { MAX_PAINT_SIZE, MIN_PAINT_SIZE, normalizeHex } from "../paint";
+import { QUEUE_COUNTS } from "../settingsSchema";
 import { TOOLS_KEY_NAME } from "./session";
 
 export type RefineTool = "paint-brush" | "airbrush" | "paint-eraser" | "eyedropper" | "mask-brush" | "mask-eraser" | "mask-lasso";
@@ -18,6 +19,10 @@ export type ToolSettings = {
   opacity: number;
   /** Mask brush diameter in picture pixels; null = a size that suits the picture. */
   maskSize: number | null;
+  /** The strength last used for a Refine job, by drawing preset id; a preset not here starts at its own Redraw strength. */
+  strengths: Record<string, number>;
+  /** The Pictures per click last chosen here; null = the Illustrate page's setting (`settings.comfy.queueCount`). */
+  queueCount: number | null;
 };
 
 /** The mask brush's starting size, its largest, and the largest soft edge, for a picture of this size (as in the old mask editor). */
@@ -25,7 +30,7 @@ export const defaultMaskSize = (w: number, h: number) => Math.max(4, Math.round(
 export const maxMaskSize = (w: number, h: number) => Math.max(8, Math.round(Math.max(w, h) / 4));
 export const maxSoftEdge = (w: number, h: number) => Math.max(4, Math.round(Math.max(w, h) / 20));
 
-export const DEFAULT_TOOLS: ToolSettings = { color: "#e53935", size: 48, softness: 0.4, opacity: 1, maskSize: null };
+export const DEFAULT_TOOLS: ToolSettings = { color: "#e53935", size: 48, softness: 0.4, opacity: 1, maskSize: null, strengths: {}, queueCount: null };
 
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -40,7 +45,16 @@ export function readTools(raw: unknown): ToolSettings {
     softness: isNum(o.softness) ? clamp(o.softness, 0, 1) : d.softness,
     opacity: isNum(o.opacity) ? clamp(o.opacity, 0.05, 1) : d.opacity,
     maskSize: isNum(o.maskSize) ? clamp(o.maskSize, 1, MAX_PAINT_SIZE) : null,
+    strengths: readStrengths(o.strengths),
+    queueCount: isNum(o.queueCount) && (QUEUE_COUNTS as readonly number[]).includes(o.queueCount) ? o.queueCount : null,
   };
+}
+
+function readStrengths(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return out;
+  for (const [id, v] of Object.entries(raw)) if (id && isNum(v)) out[id] = clamp(v, 0.05, 1);
+  return out;
 }
 
 export function loadTools(): ToolSettings {

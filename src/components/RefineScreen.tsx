@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import RefineCanvas, { type RefineCanvasHandle } from "./RefineCanvas";
 import { MaskPanel, PaintPanel } from "./refine/RefinePanels";
+import RefinePromptPanel from "./refine/RefinePromptPanel";
+import RefineResults from "./refine/RefineResults";
+import { usePictureQueue } from "./PictureQueue";
 import { RedoIcon, UndoIcon } from "./refine/RefineIcons";
 import { useSettings } from "@/lib/settings";
 import { targetHref } from "@/lib/pictureTarget";
@@ -24,7 +27,7 @@ import {
   type History,
   type RefineState,
 } from "@/lib/refineHistory";
-import { deleteSession, loadSession, pruneSessions, saveSession, type RefineSession } from "@/lib/refine/session";
+import { addResults, deleteSession, loadSession, pruneSessions, saveSession, type RefineSession } from "@/lib/refine/session";
 import { pictureOfOriginal } from "@/lib/refine/original";
 import { defaultMaskSize, DEFAULT_TOOLS, loadTools, maxMaskSize, maxSoftEdge, saveTools, type RefineTool, type ToolSettings } from "@/lib/refine/tools";
 
@@ -55,6 +58,9 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
   const [softPreview, setSoftPreview] = useState<number | null>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
   const [loadError, setLoadError] = useState("");
+  const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
+  const queue = usePictureQueue();
+  const { listenSession, stop } = queue;
   const canvas = useRef<RefineCanvasHandle>(null);
   const sessionRef = useRef<RefineSession | null>(null);
   const historyRef = useRef<History<RefineState> | null>(null);
@@ -97,7 +103,30 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
     historyRef.current = history;
     const t = setTimeout(saveNow, SAVE_MS);
     return () => clearTimeout(t);
-  }, [history, saveNow]);
+  }, [history, session, saveNow]);
+  // A change to the session itself (the prompt boxes, the LoRAs, the results).
+  const patchSession = useCallback((f: (s: RefineSession) => RefineSession) => {
+    const s = sessionRef.current;
+    if (!s) return;
+    const next = f(s);
+    sessionRef.current = next;
+    setSession(next);
+  }, []);
+  // The pictures this session's jobs make come here, and to no other page (see `listenSession`).
+  useEffect(() => {
+    if (phase !== "ready") return;
+    return listenSession(sessionId, {
+      onPictures: (pictures, { base }) => {
+        const at = Date.now();
+        patchSession((s) => ({
+          ...s,
+          results: addResults(s.results, pictures.map((p) => ({ image: p.image, prompt: p.prompt, negative: p.negative, seed: p.seed, madeFrom: base, at }))),
+        }));
+        setStatus((st) => (st?.text === "Queued…" ? null : st));
+      },
+      onStatus: setStatus,
+    });
+  }, [phase, sessionId, listenSession, patchSession]);
   useEffect(() => {
     window.addEventListener("pagehide", saveNow);
     return () => {
@@ -129,7 +158,14 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [doUndo, doRedo]);
 
-  const picture = useMemo(() => (session ? pictureOfOriginal(session.original, session.target, comfy.url) : null), [session, comfy.url]);
+  // Depends on the original and the target only, so a change to the prompt boxes doesn't make the canvas load the picture again.
+  const original = session?.original;
+  const sessionTarget = session?.target;
+  const picture = useMemo(() => (original && sessionTarget ? pictureOfOriginal(original, sessionTarget, comfy.url) : null), [original, sessionTarget, comfy.url]);
+  const pending = useMemo(
+    () => queue.jobs.filter((j) => j.session === sessionId && j.state === "making").map((j) => ({ key: j.key, count: j.count, stop: () => stop(j.key) })),
+    [queue.jobs, sessionId, stop],
+  );
 
   function cancel() {
     if (!session) return;
@@ -221,6 +257,19 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
             visible={present.paintVisible}
             onToggleVisible={() => change(togglePaintVisible)}
           />
+          <RefinePromptPanel
+            session={session}
+            onSession={patchSession}
+            present={present}
+            canvas={canvas}
+            picture={picture}
+            dims={dims}
+            tools={tools}
+            onTools={setTools}
+            status={status}
+            onStatus={setStatus}
+          />
+          <RefineResults results={session.results} pending={pending} comfyUrl={comfy.url} />
         </div>
         <div className="refine-bar" role="group" aria-label="Undo and finish">
           <button type="button" className="refine-icon secondary" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!canUndo(history)} onClick={doUndo}>
