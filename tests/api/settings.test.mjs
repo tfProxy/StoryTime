@@ -107,6 +107,7 @@ const comfyIn = {
   height: 1024,
   coverWidth: 768,
   coverHeight: 1344,
+  sizeScale: 0.9,
   count: 2,
   drawPresets: [
     draw("ink", { workflow: '{"1":{"class_type":"X","inputs":{}}}', loras: [ink, hero], sampler: { steps: 25, sampler: "euler_ancestral" }, denoise: 0.3 }),
