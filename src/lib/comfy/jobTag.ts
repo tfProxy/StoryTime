@@ -22,6 +22,8 @@ export type JobRecord = {
   edit_model?: string;
   /** The reference pictures it was made with (at most 4); left out when there were none. */
   refs?: StoredReference[];
+  /** Made by the Refine screen: the log keeps it out of the Illustrate page unless asked for or pinned; left out for an ordinary job. */
+  temporary?: true;
 };
 
 export type JobTag = {
@@ -60,6 +62,7 @@ export function readTag(extra: unknown): JobTag | null {
   if ((j.source !== undefined && !isString(j.source)) || (j.instruction !== undefined && !isString(j.instruction)) || (j.edit_model !== undefined && !isString(j.edit_model))) return null;
   if (j.denoise !== undefined && j.denoise !== null && !isNumber(j.denoise)) return null;
   if (j.mask !== undefined && j.mask !== null && (!isString(j.mask) || j.mask.length === 0 || j.mask.length > 300)) return null;
+  if (j.temporary !== undefined && j.temporary !== true) return null;
   if (j.refs !== undefined && !(Array.isArray(j.refs) && j.refs.length <= 4 && j.refs.every(isStoredReference))) return null;
   return { chapterId: t.chapterId, ...(isString(t.entryId) && { entryId: t.entryId }), storyId: t.storyId, clientId: t.clientId, job: j as JobRecord, ...(isString(t.instance) && { instance: t.instance }) };
 }

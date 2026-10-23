@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties, type HTMLAttributes, type KeyboardEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type HTMLAttributes, type KeyboardEvent, type PointerEvent } from "react";
 import type { LoadedPrompt } from "./ImagePromptPanel";
 import { markJobsSeen } from "./PictureQueue";
 import { picturesOf, type PendingJob, type Picture, type PromptToLoad, type StartMode, type StartRequest } from "./pictures";
@@ -124,6 +124,16 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
       return [...made.filter((m) => !listed.has(m.key)), ...prev.map((p) => (byKey.has(p.key) ? again(p) : p))];
     });
   }
+  // Pictures loaded from the log on request (the temporary ones): added as they are, those listed already left alone.
+  const addLoaded = useCallback(
+    (loaded: Picture[]) =>
+      setPictures((prev) => {
+        const listed = new Set(prev.map((p) => p.key));
+        const more = loaded.filter((p) => !listed.has(p.key));
+        return more.length ? [...prev, ...more].sort((a, b) => b.madeAt - a.madeAt) : prev;
+      }),
+    [],
+  );
   // Any change to a picture (pinning, trashing…) means it has been looked at, so it is no longer marked new.
   const changePicture = (key: string, patch: Partial<Picture>) => setPictures((prev) => prev.map((p) => (p.key === key ? { ...p, isNew: false, ...patch } : p)));
   const clearFresh = () => setPictures((prev) => prev.map((p) => (p.fresh ? { ...p, fresh: false } : p)));
@@ -180,6 +190,6 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
 
   return {
     comfy, editModels, blocked, loaded, load, refRequest, start, setStart: chooseStart, mask, setMask, paintNonce, startMode, setStartMode, startFrom,
-    pictures, addPictures, changePicture, clearFresh, pending, setPending, dock, setDock, gridProps, resizerProps,
+    pictures, addPictures, addLoaded, changePicture, clearFresh, pending, setPending, dock, setDock, gridProps, resizerProps,
   };
 }

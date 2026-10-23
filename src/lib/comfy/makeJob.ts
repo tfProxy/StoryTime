@@ -29,6 +29,8 @@ export type JobInput = {
   start: StartPicture | null;
   /** The painted part of the starting picture to redraw (Redraw only; ignored by an edit); null for the whole picture. */
   mask?: PaintedArea | null;
+  /** A temporary job (the Refine screen's): recorded as temporary, so the Illustrate page leaves its pictures out unless asked for or pinned. */
+  temporary?: boolean;
   /** An edit of the starting picture by instruction, with the model to make it; null to redraw it or make new pictures. */
   edit: {
     check: EditCheck;
@@ -75,7 +77,7 @@ export const sameJob = (a: JobInput) =>
     a.start && !a.edit ? a.redraw : null, maskOf(a)?.id ?? null,
     a.edit?.check.model.id ?? null, a.edit?.instruction ?? null,
     a.edit?.strength ?? null, a.edit?.fast ?? null, a.edit?.loras ?? null, a.edit?.tuning ?? null, a.edit?.textEncoderDevice ?? null, a.seed,
-    refsOf(a).map((r) => [r.key, r.role, r.weight]),
+    refsOf(a).map((r) => [r.key, r.role, r.weight]), !!a.temporary,
   ]);
 
 /** A mask's upload to ComfyUI, kept (by the mask object, which changes whenever the mask does) so the next job with it doesn't send it again. */
@@ -247,6 +249,7 @@ export async function queueJob(
     ...(maskName && { mask: maskName }),
     ...(refs.length > 0 && { refs: storedOf(refs) }),
     ...(edit && { instruction: edit.instruction, edit_model: edit.check.model.id }),
+    ...(input.temporary && { temporary: true as const }),
   };
   if (signal.aborted) throw new DOMException("Stopped", "AbortError");
   // A text model on the same machine lets go of the graphics memory first (never holds the job up for long).

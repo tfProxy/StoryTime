@@ -113,6 +113,7 @@ export default function PictureWorkspace({ target, jobs, titles, versions, made,
             comfyUrl={comfy.url}
             pictures={w.pictures}
             onChange={w.changePicture}
+            onLoaded={w.addLoaded}
             onClear={w.clearFresh}
             pending={w.pending}
             onStart={(image, mode) => w.startFrom(fromComfyImage(comfy.url, image), mode)}

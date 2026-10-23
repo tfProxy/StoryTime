@@ -151,6 +151,7 @@ function picturesOfJob(chapterId: string | null, jobId: string | null, promptId:
     instruction: record.instruction ?? null,
     editModel: record.edit_model ?? null,
     moment: record.moment,
+    ...(record.temporary && { temporary: true }),
     chapterId,
     madeAt: Date.now(),
     batch: images.length,
@@ -213,6 +214,8 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
         if (text) listener.onStatus({ ok: false, text });
         return update((prev) => prev.filter((j) => j.key !== key));
       }
+      // A temporary job's pictures are for the screen that asked; with it gone they aren't "ready" in the header.
+      if (job.temporary && "pictures" in result) return update((prev) => prev.filter((j) => j.key !== key));
       patch(key, "error" in result
         ? { state: "failed", message: result.error, endedAt: Date.now() }
         : { state: "done", pictures: result.pictures, message: result.warning, unseen: result.unseen, endedAt: Date.now() });
@@ -223,7 +226,8 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
   /** Records a finished job: as not seen yet when its page isn't open. */
   const record = useCallback(
     (target: PictureTarget, promptId: string, job: JobRecord, images: ComfyImage[]) =>
-      recordPictures(target, promptId, job, images, !listeners.current.has(targetKey(target))),
+      // A temporary job is never new: it isn't offered in the header's queue.
+      recordPictures(target, promptId, job, images, !job.temporary && !listeners.current.has(targetKey(target))),
     [],
   );
 
@@ -293,7 +297,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
       controls.current.set(key, { promptId: null, ctl: new AbortController(), url: input.comfy.url });
       const next: Gathering = { key, target, input, count: 1, timer: setTimeout(() => void send(next), GATHER_MS) };
       gathering.current = next;
-      update((prev) => [...prev, { ...view, key, count: 1, progress: { stage: "gathering" }, ...target, state: "making" }]);
+      update((prev) => [...prev, { ...view, ...(input.temporary && { temporary: true }), key, count: 1, progress: { stage: "gathering" }, ...target, state: "making" }]);
     },
     [patch, send, update],
   );
@@ -374,6 +378,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
           instruction: job.instruction ?? null,
           editModel: job.edit_model ?? null,
           moment: job.moment,
+          ...(job.temporary && { temporary: true }),
         },
       ]);
       finish(key, { target, url, promptId: found.promptId, clientId, record: job, signal: ctl.signal }).then(
@@ -405,6 +410,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
         {
           ...target, count: job.count, prompt: job.prompt, negative: job.negative, checkpoint: job.checkpoint, width: job.width, height: job.height,
           denoise: job.denoise ?? null, source: job.source ?? null, mask: job.mask ?? null, refs: job.refs ?? [], instruction: job.instruction ?? null, editModel: job.edit_model ?? null, moment: job.moment,
+          ...(job.temporary && { temporary: true }),
         },
         result,
       );
