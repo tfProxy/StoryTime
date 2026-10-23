@@ -204,7 +204,7 @@ await show("Tags", false);
 await until(async () => (await outlineNow()).tags === false, "Tags to be turned off");
 seen = await look();
 ok(!(await page.locator(".outline-page").innerText()).includes(tagName), "with Tags off the outline has no tags");
-// the later tag tests expect the library to start empty
+// The tag library is shared by every test file that runs after this one, so take the tag back out.
 await fetch(`${BASE}/api/tags/${tag.id}`, { method: "DELETE" });
 
 // downloads
