@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import CodexAiScan from "@/components/CodexAiScan";
+import IssueActions from "@/components/IssueActions";
 import StoryTagSwitches from "@/components/StoryTagSwitches";
 import TagScan from "@/components/TagScan";
 import TagSuggestions from "@/components/TagSuggestions";
@@ -66,30 +67,52 @@ export default async function ReviewPage({
 
   function issuesPanel(storyId: string) {
     const all = reviewIssues(storyId);
-    const issues = chosen ? all.filter((i) => i.chapterId === chosen.id) : all;
+    const scoped = chosen ? all.filter((i) => i.chapterId === chosen.id) : all;
+    const issues = scoped.filter((i) => i.status === "open");
+    const later = scoped.filter((i) => i.status === "later");
+    const dismissed = scoped.filter((i) => i.status === "dismissed");
     const path = chosen ? getPath(chosen.id) : [];
+    const item = (i: (typeof all)[number], actions: ("later" | "dismissed" | "open" | "undo")[], fix: boolean) => (
+      <li key={`${i.chapterId}-${i.kind}-${i.fingerprint}`}>
+        <Link href={`/c/${i.chapterId}`}>{i.title}</Link>
+        <br />
+        {i.message} {fix && <Link href={`/c/${i.chapterId}/summary`}>Fix the summary</Link>}
+        <IssueActions chapterId={i.chapterId} kind={i.kind} fingerprint={i.fingerprint} actions={actions} />
+      </li>
+    );
     return (
       <>
         <h2>Summaries</h2>
         {issues.length === 0 ? (
-          <p>{chosen ? "This chapter's summary looks fine." : "Every chapter has a summary that matches its latest text."}</p>
+          <p>
+            {later.length + dismissed.length > 0
+              ? "Nothing left to deal with here."
+              : chosen
+                ? "This chapter's summary looks fine."
+                : "Every chapter has a summary that matches its latest text."}
+          </p>
         ) : (
           <>
-            <ul>
-              {issues.map((i) => (
-                <li key={`${i.chapterId}-${i.kind}`}>
-                  <Link href={`/c/${i.chapterId}`}>{i.title}</Link>
-                  <br />
-                  {i.message} <Link href={`/c/${i.chapterId}/summary`}>Fix the summary</Link>
-                </li>
-              ))}
-            </ul>
+            <ul>{issues.map((i) => item(i, ["later", "dismissed"], true))}</ul>
             {!chosen && issues.length >= 2 && (
               <p>
                 <Link href={`/s/${storyId}/summaries`}>Redo all the AI summaries</Link>
               </p>
             )}
           </>
+        )}
+        {later.length > 0 && (
+          <>
+            <h3>Later</h3>
+            <ul>{later.map((i) => item(i, ["open", "dismissed"], true))}</ul>
+          </>
+        )}
+        {dismissed.length > 0 && (
+          <details>
+            <summary>Dismissed ({dismissed.length})</summary>
+            <p className="meta">A dismissed issue comes back if the chapter is edited.</p>
+            <ul>{dismissed.map((i) => item(i, ["undo"], false))}</ul>
+          </details>
         )}
 
         <h2>Codex</h2>

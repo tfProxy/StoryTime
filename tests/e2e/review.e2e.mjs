@@ -63,6 +63,29 @@ try {
   await page.waitForURL(new RegExp(`/review\\?chapter=${noSummary}$`));
   ok(await page.getByText(/Showing .*Missing one.* only/).isVisible(), "the marker opens the review page filtered to that chapter");
 
+  // Later / Dismiss / Undo on the filtered page for "Missing one".
+  const fix = page.getByRole("link", { name: "Fix the summary" });
+  const btn = (n) => page.getByRole("button", { name: n, exact: true });
+  await btn("Later").click();
+  await page.getByRole("heading", { name: "Later", level: 3 }).waitFor();
+  ok((await page.getByRole("heading", { name: "Later", level: 3 }).isVisible()) && (await page.locator("li", { hasText: "Missing one" }).count()) === 1, "Later moves the issue under a Later heading");
+  ok((await page.getByText("Nothing left to deal with here.").isVisible()), "…and the open list says nothing is left, not that the summary is fine");
+  await btn("Back to the list").click();
+  await page.getByRole("heading", { name: "Later", level: 3 }).waitFor({ state: "detached" });
+  ok((await fix.count()) === 1 && (await btn("Dismiss").count()) === 1, "Back to the list returns it to the open issues");
+  await btn("Dismiss").click();
+  await page.getByText("Dismissed (1)").waitFor();
+  ok((await fix.count()) === 0 && (await page.getByText("Dismissed (1)").isVisible()), "Dismiss removes it from the list and counts it under Dismissed (1)");
+  await page.getByText("Dismissed (1)").click();
+  ok(await page.getByText("A dismissed issue comes back if the chapter is edited.").isVisible(), "the Dismissed section explains that an edit brings it back");
+  await page.goto(`${BASE}/s/${s.story_id}/outline`);
+  ok((await marker("Missing one").count()) === 0 && (await marker("Stale one").count()) === 1, "a dismissed issue no longer shows the outline marker");
+  await page.goto(`${BASE}/s/${s.story_id}/review?chapter=${noSummary}`);
+  await page.getByText("Dismissed (1)").click();
+  await btn("Undo").click();
+  await fix.waitFor();
+  ok((await fix.count()) === 1 && (await page.getByText("Dismissed (1)").count()) === 0, "Undo brings the issue back");
+
   // Turn the marker off in settings.
   await putSettings({ ...(settingsBefore ?? {}), outline: { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, ...(settingsBefore?.outline ?? {}), review: false } });
   await page.goto(`${BASE}/s/${s.story_id}/outline`);
