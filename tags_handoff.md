@@ -4,19 +4,19 @@ Written 2026-10-22 at the end of a cloud session, for the next agent picking up 
 
 ## Where things stand
 
-- **Stages 1 and 2 of 5 are built and on `main`.** CI passed on every commit; the last is `e1e5edd`.
+- **Stages 1 and 2 of 5 are built and on `main`**, including dismissing issues (added 2026-10-23). CI passed on every commit.
 - **Stage 1:** the Review page, free summary checks, the codex scan on the Review page, and the outline marker.
 - **Stage 2:**
   - The shared tag library in Settings, with AI help writing rules and "Try it".
   - Event tags suggested by the AI and approved by the author.
   - Tagging by hand.
   - A per-story switch for each tag.
+  - Later, Dismiss and Undo on Review issues (migration 29).
 - **Not built:**
-  - Dismissing review items (needs the review items table).
+  - The Intentional action (it comes with the stage 3 continuity checks).
   - Branch scope for Find tags.
   - Stages 3 to 5.
   - Everything in "Planned but not in TODO" below.
-- The first line of the TODO section still says "Not built." That is out of date; fix it when you next touch TODO.
 
 ## Working with the owner
 
@@ -128,13 +128,18 @@ Written 2026-10-22 at the end of a cloud session, for the next agent picking up 
 
 ## What's next, in order
 
-### 1. Review items table and dismissing (finishes stage 2)
+### 1. Review items table and dismissing (done 2026-10-23)
 
-- A migration for `review_items`: id, story_id, chapter_id, kind, fingerprint, status (`open`, `dismissed`, `intentional`, `later`), payload JSON, chapter revision, created_at, decided_at.
-- The fingerprint is a hash of kind + chapter + the quoted text. A dismissed item stays hidden until the chapter's revision changes.
-- The free summary checks stay computed, not stored. Only the decisions on them need rows. That keeps `reviewIssues` cheap.
-- **Actions:** Dismiss and Later on every issue. Intentional adds a codex note at that chapter (a `codex.ts` op), so later checks see it.
-- `issueCounts` and the outline marker must leave out dismissed and later items.
+- **Built:** migration 29 adds `review_items(id, chapter_id, kind, fingerprint, status dismissed|later|intentional, revision, note, decided_at)`, unique on (chapter_id, kind, fingerprint).
+  - The table stores only decisions. Issues are still worked out when asked for.
+  - A decision counts only while `revision` equals the chapter's revision, so an edit brings the issue back.
+- **Library:** `reviewIssues` returns `fingerprint` and `status` (`open`, `later` or `dismissed`; `intentional` reads as dismissed for now). `issueCounts`, and so the outline marker, counts only open issues. `decideIssue` records a decision, or undoes one when given status `open`.
+- **API:** `PUT /api/chapters/:id/review {kind, fingerprint?, status}`.
+- **UI:** on the Issues tab, open issues have Later and Dismiss. A "Later" heading holds put-off issues, with Back to the list. Dismissed issues are in a folded "Dismissed (N)" section, with Undo. The buttons are in `src/components/IssueActions.tsx`.
+- **For stage 3:**
+  - Continuity issues need a real fingerprint: a short hash of kind and the quoted text(s), so several issues on one chapter stay apart.
+  - Add the **Intentional** button. It should write a codex note at that chapter (a `codex.ts` op) and save status `intentional` with the note.
+  - Add the new kinds to `ISSUE_KINDS` in `review.ts`.
 
 ### 2. Branch scope for Find tags
 
@@ -179,7 +184,6 @@ Written 2026-10-22 at the end of a cloud session, for the next agent picking up 
 
 ## Planned but not in TODO
 
-- The "Not built." line in the TODO section is stale (see above).
 - The short label field, the per-tag "show to readers" flag, and the `chapter_tag_checks` (or facts) record that lets a re-scan skip unchanged chapters.
 - Deciding whether to fold tagging into the stage 3 fact pass, to save AI calls.
 - Branch scope for Find tags, and asking whether it means the path or the subtree.
