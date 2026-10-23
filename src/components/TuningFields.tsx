@@ -7,14 +7,15 @@ import NumberInput from "./NumberInput";
 const COMMON_SAMPLERS = ["euler", "euler_ancestral", "heun", "dpm_2", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_3m_sde", "dpmpp_sde", "ddim", "uni_pc", "res_multistep", "lcm"];
 const COMMON_SCHEDULERS = ["simple", "normal", "karras", "exponential", "sgm_uniform", "beta", "ddim_uniform"];
 
-export type Tuning = { steps: number; cfg: number; sampler: string; scheduler: string; shift?: number; guidance?: number };
-type NumberKey = "steps" | "cfg" | "shift" | "guidance";
+export type Tuning = { steps: number; cfg: number; sampler: string; scheduler: string; shift?: number; guidance?: number; upscale?: number };
+type NumberKey = "steps" | "cfg" | "shift" | "guidance" | "upscale";
 
 const LABELS: Record<NumberKey, { label: string; hint: string }> = {
   steps: { label: "Steps", hint: "More is slower and usually a little cleaner." },
   cfg: { label: "CFG", hint: "How strongly the prompt or instruction is followed; too high looks burnt." },
   shift: { label: "Shift", hint: "Higher spends more of the steps on the big shapes; lower on detail." },
   guidance: { label: "Guidance", hint: "How closely the instruction is followed." },
+  upscale: { label: "Upscale", hint: "Scales the picture up this many times and redraws it lightly, which adds detail and grain. 1 turns it off; the pictures come out this many times bigger." },
 };
 
 /** A number setting, kept within its limits, with its default beside it. */
@@ -81,7 +82,7 @@ export default function TuningFields({
   /** A note under the fields, such as what Fast changes. */
   children?: React.ReactNode;
 }) {
-  const extras = (["shift", "guidance"] as const).filter((k) => defaults[k] !== undefined);
+  const extras = (["shift", "guidance", "upscale"] as const).filter((k) => defaults[k] !== undefined);
   return (
     <div className="tuning">
       <div className="tuning-grid">

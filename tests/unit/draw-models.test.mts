@@ -13,7 +13,7 @@ import type { Workflow } from "../../src/lib/comfy/workflow.ts";
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 
 type Files = { unet?: string[]; clip?: string[]; vae?: string[] };
-const TYPES = ["stable_diffusion", "sd3", "qwen_image", "lumina2", "chroma"];
+const TYPES = ["stable_diffusion", "sd3", "qwen_image", "lumina2", "chroma", "krea2"];
 
 /**
  * What ComfyUI says about every node the check asks about. `gguf` adds ComfyUI-GGUF's loaders (which list every
@@ -258,6 +258,37 @@ ok(qc.ready && wf["1"].class_type === "UnetLoaderGGUF" && wf["1"].inputs.unet_na
 const qcpu = familyPresetCheck(checkDrawFamilies(info(qg, { gguf: true, ggufDevice: true })), { family: "qwen-image", files: { model: "Qwen-Image-Q4_K_S.gguf" } })!;
 ok(qcpu.ready && qcpu.devices.join() === "default,cpu" && buildDraw(qcpu, { ...P, textEncoderDevice: "cpu" })["2"].inputs.device === "cpu", "…the ordinary text encoder keeps the cpu device");
 ok(byId(checkDrawFamilies(info({ ...qg, clip: ["Qwen2.5-VL-7B-Instruct-mmproj-F16.gguf"] }, { gguf: true })), "qwen-image").parts[1].file === null, "…and a Qwen 2.5 VL mmproj file is not a text encoder");
+
+// ---- Krea 2 (Kroma) ----
+const kFiles: Files = {
+  unet: ["kroma-v0.3.1-turbo-opd.safetensors", "z_image_turbo_bf16.safetensors", "Chroma1-HD.safetensors"],
+  clip: ["qwen3vl_4b_bf16.safetensors", "qwen_3_4b.safetensors", "t5xxl_fp8_e4m3fn_scaled.safetensors"],
+  vae: ["wan_2.1_vae.safetensors", "ae.safetensors"],
+};
+checks = checkDrawFamilies(info(kFiles));
+const k = byId(checks, "krea2");
+ok(k.ready && k.files.model === "kroma-v0.3.1-turbo-opd.safetensors" && k.files.textEncoder === "qwen3vl_4b_bf16.safetensors" && k.files.vae === "wan_2.1_vae.safetensors", "Krea 2: its three files are found by name among the other families' files");
+ok(byId(checks, "zimage").files.textEncoder === "qwen_3_4b.safetensors" && byId(checks, "chroma").files.model === "Chroma1-HD.safetensors", "…and the other families don't pick them up (Qwen 3 VL isn't Qwen 3 4B; Kroma isn't Chroma)");
+ok(!byId(checkDrawFamilies(info(kFiles, { types: TYPES.filter((t) => t !== "krea2") })), "krea2").ready, "…ComfyUI without the krea2 text encoder type isn't ready");
+wf = buildDraw(k, { ...P, seed: 9 });
+ok(wf["2"].class_type === "CLIPLoader" && wf["2"].inputs.type === "krea2" && wf["1"].class_type === "UNETLoader" && wf["3"].inputs.vae_name === "wan_2.1_vae.safetensors", "Krea 2: a krea2 CLIPLoader, the Kroma model and the Wan VAE");
+const first = only(wf, "KSampler");
+ok(first.inputs.steps === 8 && first.inputs.cfg === 1 && first.inputs.sampler_name === "euler" && first.inputs.scheduler === "simple" && first.inputs.denoise === 1, "…8 steps of euler simple at CFG 1");
+const kneg = target(wf, first.inputs.negative);
+ok(kneg?.class_type === "ConditioningZeroOut" && target(wf, kneg.inputs.conditioning) === target(wf, first.inputs.positive), "…and the negative is the positive zeroed out");
+const refine = wf["42"], up = wf["40"];
+ok(up.class_type === "ImageScaleBy" && up.inputs.scale_by === 2 && up.inputs.upscale_method === "lanczos" && up.inputs.image[0] === "20", "…the picture is then scaled up 2x with lanczos");
+ok(wf["41"].inputs.pixels[0] === "40" && refine.inputs.latent_image[0] === "41" && refine.inputs.steps === 4 && refine.inputs.sampler_name === "res_multistep" && refine.inputs.scheduler === "beta" && refine.inputs.denoise === 0.14 && refine.inputs.seed === 9, "…encoded again and redrawn by a second sampler (4 steps, denoise 0.14, same seed)");
+ok(only(wf, "SaveImage").inputs.images[0] === "43" && wf["43"].inputs.samples[0] === "42", "…and the saved pictures are the second decode");
+wf = buildDraw(k, { ...P, tuning: drawTuning(drawModel("krea2")!, { upscale: 1 }) });
+ok(!wf["40"] && !wf["42"] && only(wf, "SaveImage").inputs.images[0] === "20", "an Upscale of 1 skips the second pass");
+wf = buildDraw(k, { ...P, image: "start.png", denoise: 0.5 });
+ok(!wf["40"] && only(wf, "KSampler").inputs.denoise === 0.5, "Redraw skips it too");
+wf = buildDraw(k, { ...P, loras: [{ name: "AmateurSlider-KREA2_v1.safetensors", strength: 1.1 }] });
+const kl = only(wf, "LoraLoaderModelOnly");
+ok(kl.inputs.strength_model === 1.1 && wf["8"].inputs.model[0] === idOf(wf, "LoraLoaderModelOnly") && wf["42"].inputs.model[0] === idOf(wf, "LoraLoaderModelOnly"), "the Amateur slider is a LoRA of the preset, used by both samplers");
+ok(drawKnobs(drawModel("krea2")!).join() === "upscale" && drawTuning(drawModel("krea2")!, { upscale: 1.5, shift: 3 }).upscale === 1.5 && drawTuning(drawModel("krea2")!, { shift: 3 }).shift === undefined, "Upscale is Krea 2's own setting, and other families' settings are left out");
+ok(parsed({ ...oldPreset, family: "krea2", sampler: { upscale: 9 } }).sampler.upscale === undefined && parsed({ ...oldPreset, family: "krea2", sampler: { upscale: 1.5 } }).sampler.upscale === 1.5, "the upscale is kept in the preset's settings within 1 to 4");
 
 // A preset of one family never uses another's check.
 ok(familyPresetCheck(checkDrawFamilies(info(cFiles)), { family: "chroma", files: {} })!.model.id === "chroma" && drawPresetSummary({ ...zp, family: "flux", files: {}, loras: [] }) === "Flux · model found by name", "the summary names the preset's own family");

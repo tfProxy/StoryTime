@@ -191,6 +191,7 @@ export const TUNING_LIMITS = {
   cfg: { min: 0, max: 30, step: 0.1 },
   shift: { min: 0, max: 20, step: 0.1 },
   guidance: { min: 0, max: 30, step: 0.1 },
+  upscale: { min: 1, max: 4, step: 0.25 },
   strength: { min: 0.05, max: 1, step: 0.05 },
 } as const;
 
@@ -247,7 +248,7 @@ const drawPresetSchema = z.object({
   textEncoderDevice: z.enum(TEXT_ENCODER_DEVICES).catch("default"),
   workflow: z.string().max(500_000).catch(""),
   loras: loraList,
-  sampler: samplerSchema.extend({ shift: tuned("shift"), guidance: tuned("guidance") }).transform(setOnly).catch({}),
+  sampler: samplerSchema.extend({ shift: tuned("shift"), guidance: tuned("guidance"), upscale: tuned("upscale") }).transform(setOnly).catch({}),
   denoise: z.number().min(0.05).max(1).catch(DEFAULT_DENOISE),
 });
 const editPresetSchema = z.object({

@@ -37,7 +37,7 @@ become presets. Each checkpoint your stories used becomes a drawing preset named
 and each story uses the one with its checkpoint. Each edit model gets a "Default" preset with its
 LoRA stack, Fast box and settings.
 
-## Newer models (Z-Image, Flux, Chroma, Qwen-Image)
+## Newer models (Z-Image, Flux, Chroma, Qwen-Image, Krea 2)
 
 A drawing preset draws with an all-in-one SDXL-style checkpoint by default (Model type **Checkpoint**).
 Newer models don't come as one file: they are a **diffusion model**, a **text encoder** (Flux has two) and a
@@ -59,6 +59,9 @@ the preset's card still overrides everything.)
 | Qwen-Image | `models/diffusion_models` | `qwen_image_fp8_e4m3fn.safetensors` | [Comfy-Org/Qwen-Image_ComfyUI](https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/tree/main/split_files) |
 | | `models/text_encoders` | `qwen_2.5_vl_7b_fp8_scaled.safetensors` | the same repository |
 | | `models/vae` | `qwen_image_vae.safetensors` | the same repository |
+| Krea 2 (Kroma) | `models/diffusion_models` | `kroma-v0.3.1-turbo-opd.safetensors` | [lodestones/Kroma](https://huggingface.co/lodestones/Kroma/tree/main), or Krea 2 itself |
+| | `models/text_encoders` | `qwen3vl_4b_bf16.safetensors` | [Comfy-Org/Qwen3-VL](https://huggingface.co/Comfy-Org/Qwen3-VL/tree/main/text_encoders) |
+| | `models/vae` | `wan_2.1_vae.safetensors` | [Comfy-Org/Wan_2.2_ComfyUI_Repackaged](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/vae) |
 
 Qwen-Image's text encoder and VAE are the ones the Qwen edit tab uses, so if you set that up
 (step 3 of [Edit models in ComfyUI](#edit-models-in-comfyui)) you already have them. The model is a
@@ -93,6 +96,19 @@ you chose a `.gguf` file and ComfyUI can't load it.
 
 A picture's log entry and **Info** show the model file (and LoRAs). LoRAs for these presets go on the
 model only; use LoRAs made for the same model (a Z-Image LoRA for Z-Image).
+
+### Krea 2 (Kroma)
+
+Photographic, and quick: 8 steps of Euler at CFG 1, so like Z-Image the **negative prompt does nothing**.
+It follows [the Kroma / Krea 2 workflow](https://gabrielx.com/comfyui-kroma-chroma-krea-2-simple-workflow-with-amateur-slider-and-2x-upscale/):
+a text-to-image picture is scaled up 2x (lanczos) and redrawn lightly by a second sampler (4 steps of
+`res_multistep` beta at a denoise of 0.14, which adds detail and grain; ComfyUI has `res_multistep`
+itself, no custom node). The pictures therefore come out twice the size you choose; set **Upscale**
+under Advanced to 1 to skip that pass, or to another number to scale by that. Redraw (from a starting
+picture) never does the second pass. The **Amateur slider** is a LoRA, not a setting: download
+`AmateurSlider-KREA2_v1.safetensors` into `models/loras` and add it to the preset's LoRAs (1.1 looks
+amateur; negative values look more polished, down to -2). The text encoder type is `krea2`, which needs
+a recent ComfyUI.
 
 ### Z-Image Turbo
 

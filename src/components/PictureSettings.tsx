@@ -691,7 +691,7 @@ function DrawPresetFields({ preset, setup, onChange }: { preset: DrawPreset; set
       />
       <details className="advanced">
         <summary>
-          Advanced: steps, CFG, sampler{model && model.defaults.shift !== undefined ? ", shift" : ""}{model && model.defaults.guidance !== undefined ? ", guidance" : ""}
+          Advanced: steps, CFG, sampler{model && model.defaults.shift !== undefined ? ", shift" : ""}{model && model.defaults.guidance !== undefined ? ", guidance" : ""}{model && model.defaults.upscale !== undefined ? ", upscale" : ""}
         </summary>
         {summary.builtin ? (
           <TuningFields
