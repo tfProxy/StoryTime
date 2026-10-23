@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { copyText } from "@/lib/copyText";
-import { pictureDetails, pictureMarkdown, type Picture, type StartMode } from "./pictures";
+import { pictureDetails, pictureMarkdown, type Picture, type StartRequest } from "./pictures";
 
 type Props = {
   picture: Picture;
@@ -12,7 +12,7 @@ type Props = {
   /** Puts the picture's prompt and settings back in the prompt boxes. */
   onLoadPrompt?: () => void;
   /** Makes new pictures starting from this one: redrawn from the prompt, or edited by instruction. */
-  onStart?: (mode: StartMode) => void;
+  onStart?: (mode: StartRequest) => void;
   /** Why it can't be edited by instruction now (no edit model installed), or null. */
   editBlocked?: string | null;
 };
@@ -120,6 +120,9 @@ export default function PictureInfo({ picture, titles, onClose, onLoadPrompt, on
                 title={editBlocked ?? "Change this picture by telling an edit model what to change"}
               >
                 Edit this
+              </button>
+              <button type="button" className="secondary" onClick={() => onStart("refine")} title="Paint on this picture and mask the parts to change">
+                Refine…
               </button>
             </>
           )}

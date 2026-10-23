@@ -15,9 +15,9 @@ export type StartMode = "redraw" | "edit";
 /**
  * What choosing a picture's ☰ menu item asks for: a Redraw or an Edit, a Redraw that opens the mask editor
  * ("Change part of this…"), or the picture added to the References ("Use as reference"), which leaves the
- * starting picture alone.
+ * starting picture alone, or the Refine screen ("Refine…"), which opens a session for the picture.
  */
-export type StartRequest = StartMode | "paint" | "reference";
+export type StartRequest = StartMode | "paint" | "reference" | "refine";
 
 /** The shared settings a picture was made with, which "Load prompt" offers to use again. */
 export type MadeWith = { checkpoint: string; width: number; height: number; denoise: number | null };

@@ -12,7 +12,9 @@ import { chapterIdOf, entryIdOf, targetOfIds, type PictureSlot, type PictureTarg
 import { fromComfyImage, fromSaved, type StartPicture } from "@/lib/comfy/startPicture";
 import { asReference, type ReferenceRole } from "@/lib/comfy/references";
 import type { RefRequest } from "./useReferences";
-import { readStart, stateKey, writeStart } from "@/lib/comfy/editingState";
+import { readLoras, readStart, stateKey, writeStart } from "@/lib/comfy/editingState";
+import { newSession, originalOf, saveSession } from "@/lib/refine/session";
+import { useRouter } from "next/navigation";
 
 /** The narrowest the controls column can be dragged to, the widest as a share of the page, and the handle's width (see .column-resizer). */
 const MIN_CONTROLS = 320;
@@ -39,6 +41,7 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
   const [maskOf, setMaskOf] = useState<{ startKey: string; area: PaintedArea } | null>(null);
   const [paintNonce, setPaintNonce] = useState(0);
   const mask = maskOf && start && maskOf.startKey === start.key ? maskOf.area : null;
+  const router = useRouter();
   const comfy = useSettings().comfy;
   const editModels = useEditModels(comfy.url);
   const blocked = editBlocked(editModels, comfy.editPresets);
@@ -101,6 +104,18 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
 
   /** `as` says what a picture added to the References is called and what it shows (a codex entry's picture knows). */
   function startFrom(picture: StartPicture, request: StartRequest, as?: { label: string; role: ReferenceRole }) {
+    if (request === "refine") {
+      // Not a starting picture: a Refine session is made for the picture and the Refine screen opens.
+      const original = originalOf(picture);
+      const made = picture.image && pictures.find((p) => p.image.filename === picture.image!.filename && p.image.subfolder === picture.image!.subfolder);
+      const session = original && newSession({ target, original, prompt: made?.prompt, negative: made?.negative, loras: readLoras(kept) });
+      if (!session || !saveSession(session)) {
+        window.alert("Couldn't open the Refine screen: this picture can't be fetched again, or the browser won't keep the session.");
+        return;
+      }
+      router.push(`/refine/${session.id}`);
+      return;
+    }
     if (request === "reference") {
       // Not a starting picture: the picture joins the References, where the prompt panel takes it from here.
       const label = as?.label ?? (picture.slot === "header" ? "Header" : picture.slot === "footer" ? "Footer" : picture.slot === "cover" ? "Cover" : "Picture");

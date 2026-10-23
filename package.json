@@ -17,6 +17,7 @@
     "better-sqlite3": "^13.0.3",
     "next": "16.4.0",
     "react": "19.3.0",
+    "react-colorful": "5.6.1",
     "react-dom": "19.3.0",
     "zod": "^4.6.7"
   },
