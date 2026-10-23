@@ -300,6 +300,12 @@ h1 {
   margin: 0 0 1rem;
 }
 
+/* Tags under a chapter's title: smaller than the meta line below them. */
+.chapter-tags {
+  font-size: 0.8rem;
+  margin: -0.5rem 0 0.5rem;
+}
+
 .crumbs {
   display: flex;
   flex-wrap: wrap;

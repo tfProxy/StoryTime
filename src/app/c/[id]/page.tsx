@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getChoices, getPath, getStory } from "@/lib/stories";
+import { appliedTagNames } from "@/lib/tags";
 import Prose from "@/components/Prose";
 import EditLink from "@/components/EditLink";
 import AddChoice from "@/components/AddChoice";
@@ -26,6 +27,7 @@ export default async function ChapterPage({
   if (!story) notFound();
   const choices = getChoices(chapter.id);
   const images = chapterImageVersions([chapter.id]).get(chapter.id)!;
+  const tagNames = appliedTagNames(story.id, chapter.id).get(chapter.id) ?? [];
 
   return (
     <>
@@ -36,7 +38,7 @@ export default async function ChapterPage({
         </p>
       )}
       <nav className="crumbs" aria-label="Path so far">
-        <Link href={`/s/${story.id}`}>{story.title}</Link>
+        <Link href={`/s/${story.id}/outline`}>{story.title}</Link>
         {path.map((p, i) => (
           <span key={p.id}>
             ›{" "}
@@ -50,6 +52,7 @@ export default async function ChapterPage({
       </nav>
 
       <h1>{chapter.title}</h1>
+      {tagNames.length > 0 && <p className="meta chapter-tags">[{tagNames.join(", ")}]</p>}
       {chapter.edited_at && (
         <p className="meta">
           <Link href={`/c/${chapter.id}/history`}>edited {new Date(chapter.edited_at).toISOString().slice(0, 10)}</Link>
