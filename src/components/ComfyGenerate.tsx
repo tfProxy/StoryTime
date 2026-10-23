@@ -493,7 +493,7 @@ export default function ComfyGenerate({
             for (let i = 0; i < queueCount; i++) ask();
           }}
           disabled={editing ? !chosen || !instruction.trim() : !drawn.trim()}
-          title={`Each click queues ${queueCount === 1 ? "one picture" : `${queueCount} pictures`}. Quick clicks with nothing changed in between go to ComfyUI as one job.`}
+          title={`Each click queues ${queueCount === 1 ? "one picture" : `${queueCount} pictures`}. ${comfy.batchClicks ? "Quick clicks with nothing changed in between go to ComfyUI as one job." : "Each click goes to ComfyUI as its own job (batching is off in Settings › Drawing)."}`}
         >
           Queue
         </button>

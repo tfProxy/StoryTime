@@ -315,13 +315,15 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
   /**
    * One more picture. Clicks with the same target (chapter or cover), prompt and settings, each within
    * GATHER_MS of the last, are gathered into one job (up to MAX_BATCH pictures); a click with anything
-   * changed sends the job being gathered at once and starts another.
+   * changed sends the job being gathered at once and starts another. With Settings › Drawing's batching
+   * off, each click is sent at once.
    */
   const ask = useCallback(
     ({ input, view, ...asked }: AskRequest) => {
       const target = targetOf(asked);
       const g = gathering.current;
-      if (g && targetKey(g.target) === targetKey(target) && sameJob(g.input) === sameJob(input) && g.count < MAX_BATCH) {
+      const gathers = input.comfy.batchClicks;
+      if (gathers && g && targetKey(g.target) === targetKey(target) && sameJob(g.input) === sameJob(input) && g.count < MAX_BATCH) {
         g.count += 1;
         clearTimeout(g.timer);
         g.timer = setTimeout(() => void send(g), GATHER_MS);
@@ -333,7 +335,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
       }
       const key = `job-${randomSeed().toString(36)}`;
       controls.current.set(key, { promptId: null, ctl: new AbortController(), url: input.comfy.url });
-      const next: Gathering = { key, target, input, count: 1, timer: setTimeout(() => void send(next), GATHER_MS) };
+      const next: Gathering = { key, target, input, count: 1, timer: setTimeout(() => void send(next), gathers ? GATHER_MS : 0) };
       gathering.current = next;
       update((prev) => [...prev, { ...view, ...(input.temporary && { temporary: true }), ...(input.session && { session: input.session, base: input.base ?? "" }), key, count: 1, progress: { stage: "gathering" }, ...target, state: "making" }]);
     },

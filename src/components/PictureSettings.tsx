@@ -764,6 +764,15 @@ export function DrawingSettings({
   };
   return (
     <div className="settings-section">
+      <section id="picture-batching" className="settings-section">
+        <h2>Queue</h2>
+        <label className="inline-label">
+          <input type="checkbox" checked={comfy.batchClicks} onChange={(e) => onChange({ batchClicks: e.target.checked })} /> Batch quick clicks of Queue into one job
+        </label>
+        <p className="meta" style={{ margin: 0 }}>
+          On: clicks of Queue made quickly, with nothing changed in between, go to ComfyUI as one job. Off: each click is its own job, for models that don&apos;t batch (such as Krea 2). This applies to every drawing preset.
+        </p>
+      </section>
       <SetupSection id="setup-drawing" comfy={comfy} setup={setup} onConnections={onConnections} />
       <section id="drawing-presets" className="settings-section">
         <h2>Drawing presets</h2>

@@ -51,7 +51,7 @@ type Status = { kind: "ok" | "error"; text: string };
 const TABS = [
   { id: "connections", label: "Connections", holds: ["comfyui"] },
   { id: "writing", label: "Writing", holds: ["models"] },
-  { id: "drawing", label: "Drawing", holds: ["setup-drawing", "drawing-presets", "pictures", "picture-setup", "redraw"] },
+  { id: "drawing", label: "Drawing", holds: ["picture-batching", "setup-drawing", "drawing-presets", "pictures", "picture-setup", "redraw"] },
   { id: "edit-qwen-image-edit", label: "Qwen edit", holds: ["setup-qwen-image-edit", "qwen-image-edit-presets", "edit-loras"] },
   { id: "edit-flux-kontext", label: "Flux edit", holds: ["setup-flux-kontext", "flux-kontext-presets"] },
   { id: "outline", label: "Outline", holds: [] },

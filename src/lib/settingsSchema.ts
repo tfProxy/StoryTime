@@ -141,6 +141,8 @@ export type ComfySettings = {
   picturesOldestFirst: boolean;
   /** How many pictures one click of Queue asks for (one of `QUEUE_COUNTS`). */
   queueCount: number;
+  /** Quick clicks of Queue with nothing changed in between go to ComfyUI as one job; off, each click is its own job. */
+  batchClicks: boolean;
 };
 
 /** The numbers of pictures one click of Queue can ask for. */
@@ -156,7 +158,7 @@ export const DEFAULT_SETTINGS: Settings = {
   outline: DEFAULT_OUTLINE,
   imagePromptStyle: "tags",
   imagePromptModel: null,
-  comfy: { url: "", width: 1344, height: 768, coverWidth: 832, coverHeight: 1216, sizeScale: 1, count: 4, drawPresets: DEFAULT_DRAW_PRESETS, editPresets: DEFAULT_EDIT_PRESETS, editPreset: "qwen-image-edit", picturesOldestFirst: false, queueCount: 1 },
+  comfy: { url: "", width: 1344, height: 768, coverWidth: 832, coverHeight: 1216, sizeScale: 1, count: 4, drawPresets: DEFAULT_DRAW_PRESETS, editPresets: DEFAULT_EDIT_PRESETS, editPreset: "qwen-image-edit", picturesOldestFirst: false, queueCount: 1, batchClicks: true },
 };
 
 // Each field falls back to its default when missing or invalid, so partial files still
@@ -341,6 +343,7 @@ const settingsSchema = z.object({
           .number()
           .refine((n) => (QUEUE_COUNTS as readonly number[]).includes(n))
           .catch(1),
+        batchClicks: z.boolean().catch(true),
       }),
     )
     .catch(DEFAULT_SETTINGS.comfy),
