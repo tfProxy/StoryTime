@@ -138,6 +138,8 @@ r = await call("PUT", "/api/settings", { ...conns, comfy: withEdit({ textEncoder
 ok(r.json.settings.comfy.editPresets[0].textEncoderDevice === "default", "…and a device that isn't one of the choices falls back to the default");
 r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ promptStyle: "natural" }) });
 ok(r.json.settings.comfy.drawPresets[0].promptStyle === "natural", "a drawing preset keeps its prompt style");
+r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ promptStyle: "booru" }) });
+ok(r.json.settings.comfy.drawPresets[0].promptStyle === "booru", "a drawing preset keeps the booru tags style");
 r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ promptStyle: "poetry" }) });
 ok(r.json.settings.comfy.drawPresets[0].promptStyle === "tags", "an unknown prompt style on a preset falls back to tags");
 r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ prompt: "masterpiece", negative: "lowres" }) });

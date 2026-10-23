@@ -78,7 +78,7 @@ export type Settings = {
   autoSuggestChoices: boolean;
   /** What the outline shows after each chapter's name. */
   outline: OutlineOptions;
-  /** How picture prompts are written: comma-separated tags (SDXL, Pony, SD 1.5) or plain sentences (Flux, SD3). */
+  /** How picture prompts are written: tags (SDXL, SD 1.5), booru tags (Illustrious, NoobAI, Pony) or plain sentences (Flux, SD3). */
   imagePromptStyle: ImagePromptStyle;
   /** Model that writes picture prompts on the Illustrate page; null uses the cheaper default. */
   imagePromptModel: ModelRef | null;
@@ -86,7 +86,7 @@ export type Settings = {
   comfy: ComfySettings;
 };
 
-export type ImagePromptStyle = "tags" | "natural";
+export type ImagePromptStyle = "tags" | "booru" | "natural";
 
 /** The parts of the [...] section after each chapter's name in the outline; each is shown unless turned off. */
 export type OutlineOptions = {
@@ -234,7 +234,7 @@ const partFiles = z
 const drawPresetSchema = z.object({
   id: presetIdSchema,
   name: presetNameSchema,
-  promptStyle: z.enum(["tags", "natural"]).catch("tags"),
+  promptStyle: z.enum(["tags", "booru", "natural"]).catch("tags"),
   prompt: z.string().max(4000).catch(""),
   negative: z.string().max(4000).catch(""),
   // Presets saved before model families are checkpoint presets.
@@ -318,7 +318,7 @@ const settingsSchema = z.object({
       tags: z.boolean().catch(false),
     })
     .catch(DEFAULT_OUTLINE),
-  imagePromptStyle: z.enum(["tags", "natural"]).catch("tags"),
+  imagePromptStyle: z.enum(["tags", "booru", "natural"]).catch("tags"),
   imagePromptModel: refSchema.nullable().catch(null),
   comfy: z
     .preprocess(

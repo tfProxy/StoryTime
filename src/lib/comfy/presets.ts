@@ -17,11 +17,15 @@ export const MAX_PRESETS = 40;
 /** The Redraw strength a new drawing preset starts with. */
 export const DEFAULT_DENOISE = 0.55;
 
-/** How picture prompts are written: comma-separated tags (SDXL, Pony, SD 1.5) or plain sentences (Flux, SD3). */
-export type PromptStyle = "tags" | "natural";
+/**
+ * How picture prompts are written: comma-separated tags and short phrases (SDXL, SD 1.5), Danbooru
+ * and e621 tags only (Illustrious, NoobAI, Pony), or plain sentences (Flux, SD3).
+ */
+export type PromptStyle = "tags" | "booru" | "natural";
 
 export const PROMPT_STYLE_NAMES: Record<PromptStyle, string> = {
-  tags: "Tags (SDXL, Pony, SD 1.5)",
+  tags: "Tags (SDXL, SD 1.5)",
+  booru: "Booru tags (Illustrious, NoobAI, Pony)",
   natural: "Sentences (Flux, SD3)",
 };
 
