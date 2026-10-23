@@ -228,18 +228,15 @@ try {
 
   // ---- Qwen's Lightning LoRA ----
   const fastBox = page.getByRole("checkbox", { name: /^Fast/ });
-  ok(await fastBox.count() === 0, "without the Lightning LoRA there is no Fast box");
+  ok(await fastBox.count() === 0, "there is no Fast box on the Illustrate page");
   comfy.setMode({ files: { ...EDIT_FILES, loras: [LIGHTNING_LORA] } });
   await page.reload();
   await showAll();
   await choose(items.first(), "Edit this");
   await thumb.waitFor();
   await modelMenu.selectOption("qwen-image-edit");
-  await fastBox.waitFor();
-  ok(await fastBox.isChecked() && (await fastBox.locator("..").innerText()).includes("Fast (Lightning, 4 steps)"), "with the LoRA installed, Qwen has a Fast box, on, saying its steps");
-  await modelMenu.selectOption("flux-kontext");
-  ok(await fastBox.count() === 0, "…which Kontext doesn't have");
-  await modelMenu.selectOption("qwen-image-edit");
+  await instruction.waitFor();
+  ok(await fastBox.count() === 0, "with the LoRA installed, the Instruct panel still has no Fast box (Fast is set in Settings)");
   await instruction.fill("make it night");
   mark = comfy.calls.length;
   let before = await items.count();
@@ -251,9 +248,18 @@ try {
   log = (await jobs())[0];
   ok(log.checkpoint === `qwen_image_edit_2509_fp8_e4m3fn.safetensors + ${LIGHTNING_LORA}`, "…the job log keeps both files");
   ok((await page.locator(".chapter-pictures").innerText()).includes("Qwen-Image-Edit · fast · 1296 × 816"), "…and its caption says it was fast");
-  await fastBox.uncheck();
-  await until(async () => (await editPresetNow("qwen-image-edit")).fast === false, "the Fast box to be saved");
-  ok(true, "turning Fast off is saved in the preset");
+  // Fast comes only from the preset: turn it off there, as Settings does.
+  const setFast = async (fast) => {
+    const s = (await call("GET", "/api/settings")).settings;
+    await putSettings({ ...s, comfy: { ...s.comfy, editPresets: s.comfy.editPresets.map((p) => (p.id === "qwen-image-edit" ? { ...p, fast } : p)) } });
+  };
+  await setFast(false);
+  await page.reload();
+  await showAll();
+  await choose(items.first(), "Edit this");
+  await thumb.waitFor();
+  await modelMenu.selectOption("qwen-image-edit");
+  await instruction.fill("make it night");
   mark = comfy.calls.length;
   before = await items.count();
   await makeEdit.click();
@@ -261,7 +267,12 @@ try {
   wf = prompts(mark)[0];
   ok(nodes(wf, "LoraLoaderModelOnly").length === 0 && nodes(wf, "KSampler")[0].inputs.steps === 20, "with Fast off, the edit runs the 20 steps without the LoRA");
   ok((await jobs())[0].checkpoint === "qwen_image_edit_2509_fp8_e4m3fn.safetensors", "…and the log keeps only the model's file");
-  await fastBox.check();
+  await setFast(true);
+  await page.reload();
+  await showAll();
+  await choose(items.first(), "Edit this");
+  await thumb.waitFor();
+  await modelMenu.selectOption("qwen-image-edit");
   if (process.env.E2E_SCREENSHOT_DIR) {
     await page.waitForTimeout(300);
     await page.locator(".edit-panel").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-edit-fast-1000.png` });
@@ -336,7 +347,10 @@ try {
   await thumb.waitFor();
   await modelMenu.selectOption("qwen-image-edit");
   await toggles.getByRole("checkbox").first().waitFor();
-  ok((await toggles.innerText()).includes("hero (-0.5)") && (await toggles.innerText()).includes("ink (0.8)") && await toggles.getByRole("checkbox").count() === 2, "the Edit tab lists the model's LoRAs with their strengths, each with a box");
+  const strengthOf = (n) => toggles.getByLabel(`Strength of ${n}`);
+  const resetLoras = page.getByRole("button", { name: "Reset LoRAs to preset" });
+  ok((await toggles.innerText()).includes("hero") && (await toggles.innerText()).includes("ink") && await toggles.getByRole("checkbox").count() === 2 && await strengthOf("hero").inputValue() === "-0.5" && await strengthOf("ink").inputValue() === "0.8", "the Edit tab lists the model's LoRAs, each with a box and a strength");
+  ok(await resetLoras.count() === 0, "…and no Reset while the page has no changes");
   ok(await strength.inputValue() === "0.7", "the Edit tab's strength starts at the model's default from Settings");
   await instruction.fill("in his ink style");
   mark = comfy.calls.length;
@@ -351,15 +365,34 @@ try {
   ok(log.checkpoint.endsWith(" + hero.safetensors (-0.5) + styles/ink.safetensors (0.8)"), "the job log keeps each LoRA with its strength");
   ok((await page.locator(".chapter-pictures").innerText()).includes("Qwen-Image-Edit · fast · 2 LoRAs"), "…and the caption says how many LoRAs it used");
 
+  // Changes here are for this page only: the preset in Settings keeps its own.
+  const presetStack = JSON.stringify([{ name: "hero.safetensors", strength: -0.5, on: true }, { name: "styles/ink.safetensors", strength: 0.8, on: true }]);
   await toggles.getByRole("checkbox", { name: /hero/ }).uncheck();
-  await until(async () => (await savedStack())[0].on === false, "the box to be saved");
-  ok(true, "switching a LoRA off on the Edit tab saves it");
+  await strengthOf("ink").fill("0.3");
+  await resetLoras.waitFor();
   mark = comfy.calls.length;
   before = await items.count();
   await makeEdit.click();
   await until(async () => (await items.count()) === before + 1 && (await ready()), "the edit with one LoRA");
   wf = prompts(mark)[0];
-  ok(loraNodes() === `${LIGHTNING_LORA}@1,styles/ink.safetensors@0.8`, "…and the next edit leaves it out");
+  ok(loraNodes() === `${LIGHTNING_LORA}@1,styles/ink.safetensors@0.3`, "switching a LoRA off and changing another's strength changes the next edit");
+  ok(JSON.stringify(await savedStack()) === presetStack, "…but the preset in Settings is not changed");
+  await page.reload();
+  await showAll();
+  await choose(items.first(), "Edit this");
+  await thumb.waitFor();
+  await modelMenu.selectOption("qwen-image-edit");
+  await resetLoras.waitFor();
+  ok(!(await toggles.getByRole("checkbox", { name: /hero/ }).isChecked()) && await strengthOf("ink").inputValue() === "0.3", "the changes come back after a refresh");
+  await resetLoras.click();
+  ok(await toggles.getByRole("checkbox", { name: /hero/ }).isChecked() && await strengthOf("hero").inputValue() === "-0.5" && await strengthOf("ink").inputValue() === "0.8" && await resetLoras.count() === 0, "Reset LoRAs to preset puts the preset's boxes and strengths back, and goes away");
+  await instruction.fill("in his ink style");
+  mark = comfy.calls.length;
+  before = await items.count();
+  await makeEdit.click();
+  await until(async () => (await items.count()) === before + 1 && (await ready()), "the edit after Reset");
+  wf = prompts(mark)[0];
+  ok(loraNodes() === `${LIGHTNING_LORA}@1,hero.safetensors@-0.5,styles/ink.safetensors@0.8`, "…and the next edit uses the preset's LoRAs again");
 
   comfy.setMode({ files: { ...EDIT_FILES, loras: [LIGHTNING_LORA, "hero.safetensors"] } });
   await page.reload();
@@ -368,14 +401,14 @@ try {
   await thumb.waitFor();
   await modelMenu.selectOption("qwen-image-edit");
   await page.getByText("ComfyUI doesn't list styles/ink.safetensors, so edits go ahead without it.").waitFor();
-  ok((await toggles.innerText()).includes("ink (0.8) – missing"), "a LoRA ComfyUI no longer has is marked missing, with a warning");
+  ok((await toggles.innerText()).includes("ink – missing"), "a LoRA ComfyUI no longer has is marked missing, with a warning");
   await instruction.fill("night");
   mark = comfy.calls.length;
   before = await items.count();
   await makeEdit.click();
   await until(async () => (await items.count()) === before + 1 && (await ready()), "the edit without the missing LoRA");
   wf = prompts(mark)[0];
-  ok(loraNodes() === `${LIGHTNING_LORA}@1`, "…and the edit goes ahead without it");
+  ok(loraNodes() === `${LIGHTNING_LORA}@1,hero.safetensors@-0.5`, "…and the edit goes ahead without it");
   if (process.env.E2E_SCREENSHOT_DIR) {
     await page.locator(".edit-panel").screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-edit-loras-1000.png` });
   }

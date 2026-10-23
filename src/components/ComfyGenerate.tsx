@@ -13,12 +13,14 @@ import { drawPresetFamily, drawPresetIpAdapter, editBlocked, usableEditPresets, 
 import AutoTextarea from "./AutoTextarea";
 import { usePictureQueue } from "./PictureQueue";
 import { LIMITS } from "@/lib/limits";
-import { EDIT_MODELS, editTuning, lightningSteps, usableLoras } from "@/lib/comfy/editModels";
+import { EDIT_MODELS, editTuning, usableLoras } from "@/lib/comfy/editModels";
 import { combinePrompts } from "@/lib/ai/imagePrompt";
 import { familyProblems } from "@/lib/comfy/drawModels";
-import { drawPresetFor, drawPresetSummary, presetName, usesFamily, type DrawPreset, type EditPreset, type LoraSetting } from "@/lib/comfy/presets";
+import { drawPresetFor, drawPresetSummary, presetName, usesFamily, type LoraSetting } from "@/lib/comfy/presets";
 import type { StartPicture } from "@/lib/comfy/startPicture";
-import { readEdit, readRedraw, stateKey, writeEdit, writeRedraw } from "@/lib/comfy/editingState";
+import { readEdit, readLoras, readRedraw, stateKey, writeEdit, writeLoras, writeRedraw } from "@/lib/comfy/editingState";
+import { applyLoraOverrides, hasLoraOverrides, resetLoraOverrides, setLoraOverride, type LoraOverrides } from "@/lib/comfy/loraOverrides";
+import NumberInput from "./NumberInput";
 import { listCheckpoints } from "@/lib/comfy/client";
 import { denoiseOf, madeWithText, maskOf, refsOf, type JobInput } from "@/lib/comfy/makeJob";
 import { MAX_REFERENCES, storedOf, type Reference } from "@/lib/comfy/references";
@@ -97,25 +99,60 @@ function otherSettings(made: MadeWith | null, now: ComfySettings, redraw: number
 }
 
 /**
- * The on/off boxes of a preset's LoRAs, on the Illustrate page (switching one changes the preset in
- * Settings). `available` is what ComfyUI lists, or null when that isn't known yet.
+ * A preset's LoRAs on the Illustrate page: an on/off box and a strength for each. `stack` is the preset's
+ * stack with this page's changes applied (`applyLoraOverrides`); a change here is only for this page, kept in
+ * this browser, and never changes the preset in Settings (that is the Change link). `onChange` gets the
+ * LoRA's place in the stack, `changed` says whether the page has changes, and `onReset` drops them.
+ * `available` is what ComfyUI lists, or null when that isn't known yet.
  */
-function LoraToggles({ stack, available, href, onChange }: { stack: LoraSetting[]; available: string[] | null; href?: string; onChange: (stack: LoraSetting[]) => void }) {
+function LoraToggles({
+  stack,
+  available,
+  href,
+  changed,
+  onChange,
+  onReset,
+}: {
+  stack: LoraSetting[];
+  available: string[] | null;
+  href?: string;
+  changed: boolean;
+  onChange: (index: number, patch: { on?: boolean; strength?: number }) => void;
+  onReset: () => void;
+}) {
   return (
     <div className="edit-lora-toggles" role="group" aria-label="LoRAs">
       <span className="meta">LoRAs:</span>
       {stack.map((l, i) => {
-        const name = l.name.split(/[\\/]/).pop()!;
+        const name = (l.name.split(/[\\/]/).pop() ?? l.name).replace(/\.safetensors$/i, "");
         const gone = available !== null && !available.includes(l.name);
         return (
-          <label key={i} className="inline-label" title={gone ? `ComfyUI doesn't list ${l.name}, so it isn't used` : `${l.name} at strength ${l.strength}`}>
-            <input type="checkbox" checked={l.on} onChange={(e) => onChange(stack.map((x, j) => (j === i ? { ...x, on: e.target.checked } : x)))} />
-            <span className={gone ? "error" : undefined}>
-              {name.replace(/\.safetensors$/i, "")} ({l.strength}){gone && " – missing"}
-            </span>
-          </label>
+          <span key={i} className="inline-label" title={gone ? `ComfyUI doesn't list ${l.name}, so it isn't used` : l.name}>
+            <label className="inline-label">
+              <input type="checkbox" checked={l.on} onChange={(e) => onChange(i, { on: e.target.checked })} />
+              <span className={gone ? "error" : undefined}>
+                {name}
+                {gone && " – missing"}
+              </span>
+            </label>
+            <NumberInput
+              aria-label={`Strength of ${name}`}
+              title="Strength: 1 is full, lower is weaker (only for this page; the preset keeps its own)"
+              min={-4}
+              max={4}
+              step={0.05}
+              value={l.strength}
+              onChange={(v) => v !== null && onChange(i, { strength: v })}
+              style={{ width: "5rem" }}
+            />
+          </span>
         );
       })}
+      {changed && (
+        <button type="button" className="secondary" onClick={onReset} title="Go back to the on/off and strengths the preset has in Settings">
+          Reset LoRAs to preset
+        </button>
+      )}
       {href && (
         <Link href={href} className="meta">
           Change
@@ -228,6 +265,8 @@ export default function ComfyGenerate({
   const [redrawFor, setRedrawFor] = useState<{ preset: string; value: number } | null>(null);
   // The instruction and changed strengths are kept in this browser, so a refresh brings them back.
   const [editKept, setEditKept] = useState(false);
+  // LoRAs switched off or at another strength on this page, by preset id. They never change the preset in Settings.
+  const [loraChanges, setLoraChanges] = useState<LoraOverrides>({});
   /* eslint-disable react-hooks/set-state-in-effect -- browser storage can only be read after the page is shown, so the server and browser draw the same first page */
   useEffect(() => {
     const saved = readEdit(kept);
@@ -237,6 +276,7 @@ export default function ComfyGenerate({
     }
     const redraw = readRedraw(kept);
     setRedrawFor(redraw && { preset: redraw.preset, value: redraw.strength });
+    setLoraChanges(readLoras(kept));
     setEditKept(true);
   }, [kept]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -252,7 +292,8 @@ export default function ComfyGenerate({
   const negative = draw.negative.trim() ? combinePrompts(draw.promptStyle, boxNegative, draw.negative) : boxNegative;
   // The drawing preset's LoRAs switched on, and those of them ComfyUI doesn't list (when it is known what it lists).
   const loraFiles = editModels.state === "done" ? editModels.loras : null;
-  const drawUsable = usableLoras(draw.loras, loraFiles ?? draw.loras.map((l) => l.name));
+  const drawStack = applyLoraOverrides(draw.loras, loraChanges, draw.id);
+  const drawUsable = usableLoras(drawStack, loraFiles ?? draw.loras.map((l) => l.name));
   // A preset of a model family (Z-Image, Flux…) draws with the files ComfyUI has for it, not a checkpoint.
   const fromFamily = usesFamily(draw);
   const familyCheck = drawPresetFamily(editModels, draw);
@@ -275,12 +316,13 @@ export default function ComfyGenerate({
     if (!editKept) return;
     writeEdit(kept, { instruction, strength: strengthFor?.value ?? 1, model: strengthFor?.model });
     writeRedraw(kept, redrawFor && { preset: redrawFor.preset, strength: redrawFor.value });
-  }, [editKept, kept, instruction, strengthFor, redrawFor]);
-  // The chosen model's speed-up file, when ComfyUI has one, and whether edits use it.
+    writeLoras(kept, loraChanges);
+  }, [editKept, kept, instruction, strengthFor, redrawFor, loraChanges]);
+  // The chosen model's speed-up file, when ComfyUI has one, and whether edits use it (the edit preset's Fast box, in Settings).
   const speedUp = chosen?.files.speedUp ?? null;
   const fast = speedUp !== null && !!editPreset?.fast;
   // The edit preset's LoRA stack, and the LoRAs of it an edit uses now.
-  const loraStack = editPreset?.loras ?? [];
+  const loraStack = editPreset ? applyLoraOverrides(editPreset.loras, loraChanges, editPreset.id) : [];
   const { loras: editLoras, missing: missingLoras } = usableLoras(loraStack, chosen?.loras ?? []);
   // This chapter's (or cover's) jobs being made, oldest first. The app's picture queue holds them, so they go on when the page is left.
   const pictureQueue = usePictureQueue();
@@ -380,10 +422,6 @@ export default function ComfyGenerate({
   }
 
   const set = (patch: Partial<ComfySettings>) => void saveSettings({ ...settings, comfy: { ...settings.comfy, ...patch } });
-  /** Changes a drawing or edit preset in Settings (switching a LoRA, Fast). */
-  const changeDraw = (patch: Partial<DrawPreset>) => set({ drawPresets: comfy.drawPresets.map((p) => (p.id === draw.id ? { ...p, ...patch } : p)) });
-  const changeEdit = (patch: Partial<EditPreset>) =>
-    editPreset && set({ editPresets: comfy.editPresets.map((p) => (p.id === editPreset.id ? { ...p, ...patch } : p)) });
 
   const other = otherSettings(loaded?.settings ?? null, comfy, redrawStrength);
   const size = sizes.find((s) => s.width === comfy.width && s.height === comfy.height);
@@ -633,18 +671,19 @@ export default function ComfyGenerate({
                   <p className="meta" style={{ margin: 0 }}>
                     {chosen.model.name}: {chosen.model.blurb}
                   </p>
-                  {speedUp && (
-                    <label className="inline-label" title={`Uses ${speedUp}: ${lightningSteps(speedUp)} steps instead of ${tuning?.steps}, with a little less detail`}>
-                      <input type="checkbox" checked={editPreset.fast} onChange={(e) => changeEdit({ fast: e.target.checked })} />
-                      Fast ({chosen.model.speedUp?.name ?? "speed-up"}, {lightningSteps(speedUp)} steps)
-                    </label>
-                  )}
                   {loraStack.length === 0 ? (
                     <p className="meta" style={{ margin: 0 }}>
                       No LoRAs in this preset. <Link href={`/settings#preset-${editPreset.id}`}>Add some in Settings</Link>
                     </p>
                   ) : (
-                    <LoraToggles stack={loraStack} available={chosen.loras} href={`/settings#preset-${editPreset.id}`} onChange={(loras) => changeEdit({ loras })} />
+                    <LoraToggles
+                      stack={loraStack}
+                      available={chosen.loras}
+                      href={`/settings#preset-${editPreset.id}`}
+                      changed={hasLoraOverrides(editPreset.loras, loraChanges, editPreset.id)}
+                      onChange={(i, patch) => setLoraChanges((all) => setLoraOverride(all, editPreset.id, editPreset.loras, i, patch))}
+                      onReset={() => setLoraChanges((all) => resetLoraOverrides(all, editPreset.id))}
+                    />
                   )}
                   {missingLoras.length > 0 && (
                     <p className="error" style={{ margin: 0 }}>
@@ -764,7 +803,15 @@ export default function ComfyGenerate({
               <SettingsIcon />
             </Link>
           </div>
-          {draw.loras.length > 0 && <LoraToggles stack={draw.loras} available={loraFiles} onChange={(loras) => changeDraw({ loras })} />}
+          {draw.loras.length > 0 && (
+            <LoraToggles
+              stack={drawStack}
+              available={loraFiles}
+              changed={hasLoraOverrides(draw.loras, loraChanges, draw.id)}
+              onChange={(i, patch) => setLoraChanges((all) => setLoraOverride(all, draw.id, draw.loras, i, patch))}
+              onReset={() => setLoraChanges((all) => resetLoraOverrides(all, draw.id))}
+            />
+          )}
           {drawUsable.missing.length > 0 && (
             <p className="error" style={{ margin: 0 }}>
               ComfyUI doesn&apos;t list {drawUsable.missing.join(", ")}, so pictures are drawn without {drawUsable.missing.length === 1 ? "it" : "them"}.

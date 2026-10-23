@@ -91,9 +91,9 @@ try {
   ok(await until(async () => (await chapterPreset()) === "ink", "the chapter's preset to be saved"), "choosing another preset saves it for the chapter");
   ok((await call("GET", `/api/stories/${storyId}`)).draw_preset === "plain", "…leaving the story's as it was");
   const loraBoxes = page.locator(".draw-preset").getByRole("group", { name: "LoRAs" });
-  ok((await page.locator(".draw-preset").getByRole("link", { name: "Change preset in Settings" }).getAttribute("title")).includes("fake_sdxl_a · 1 LoRA") && (await loraBoxes.innerText()).includes("ink (0.8)"), "the panel says what the preset draws with, and lists its LoRAs with a box each");
+  ok((await page.locator(".draw-preset").getByRole("link", { name: "Change preset in Settings" }).getAttribute("title")).includes("fake_sdxl_a · 1 LoRA") && (await loraBoxes.innerText()).includes("ink") && await loraBoxes.getByLabel("Strength of ink").inputValue() === "0.8", "the panel says what the preset draws with, and lists its LoRAs with a box and a strength each");
   wf = await makeOne();
-  const lora = nodes(wf, "LoraLoader")[0];
+  let lora = nodes(wf, "LoraLoader")[0];
   ok(nodes(wf, "CheckpointLoaderSimple")[0].inputs.ckpt_name === "fake_sdxl_a.safetensors" && lora?.inputs.lora_name === "styles/ink.safetensors" && lora.inputs.strength_model === 0.8 && lora.inputs.strength_clip === 0.8, "its pictures are drawn with its checkpoint and its LoRA, at its strength");
   ok(JSON.stringify(nodes(wf, "KSampler")[0].inputs.model) === JSON.stringify([Object.entries(wf).find(([, n]) => n === lora)[0], 0]) && nodes(wf, "KSampler")[0].inputs.steps === 12, "…the sampler using the LoRA's model, with the preset's steps");
   const log = (await jobs())[0];
@@ -103,13 +103,29 @@ try {
   await page.reload();
   await drawMenu.waitFor();
   ok(await drawMenu.inputValue() === "ink", "after a refresh the chapter still uses its own preset");
+  const resetLoras = page.getByRole("button", { name: "Reset LoRAs to preset" });
+  const presetLora = async () => JSON.stringify((await settingsNow()).drawPresets[0].loras);
+  const presetLoraBefore = await presetLora();
+  ok(await resetLoras.count() === 0, "with no changes there is no Reset LoRAs button");
   await loraBoxes.getByRole("checkbox").uncheck();
-  ok(await until(async () => (await settingsNow()).drawPresets[0].loras[0].on === false, "the LoRA to be switched off"), "switching a LoRA off here saves it in the preset");
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("boats in a harbour");
   wf = await makeOne();
-  ok(nodes(wf, "LoraLoader").length === 0, "…and the next picture leaves it out");
+  ok(nodes(wf, "LoraLoader").length === 0, "switching a LoRA off here leaves it out of the next picture");
+  await page.waitForTimeout(600);
+  ok(await presetLora() === presetLoraBefore, "…without changing the preset in Settings");
+  await page.reload();
+  await drawMenu.waitFor();
+  ok(!(await loraBoxes.getByRole("checkbox").isChecked()), "…and it stays off after a refresh");
   await loraBoxes.getByRole("checkbox").check();
-  await until(async () => (await settingsNow()).drawPresets[0].loras[0].on === true, "the LoRA to be on again");
+  await loraBoxes.getByLabel("Strength of ink").fill("0.35");
+  await resetLoras.waitFor();
+  wf = await makeOne();
+  lora = nodes(wf, "LoraLoader")[0];
+  ok(lora?.inputs.strength_model === 0.35 && lora.inputs.strength_clip === 0.35 && await presetLora() === presetLoraBefore, "a strength changed here is sent with the next picture, and the preset keeps 0.8");
+  await resetLoras.click();
+  ok(await loraBoxes.getByLabel("Strength of ink").inputValue() === "0.8" && await resetLoras.count() === 0, "Reset LoRAs to preset puts the preset's strength back");
+  wf = await makeOne();
+  ok(nodes(wf, "LoraLoader")[0]?.inputs.strength_model === 0.8, "…and the next picture uses it");
 
   // ---- Redraw starts at the preset's strength ----
   await items.first().getByRole("button", { name: "More" }).click();
@@ -136,7 +152,7 @@ try {
   ok(await editMenu.locator("option", { hasText: "Gone" }).evaluate((o) => o.disabled), "…but not one whose chosen model file ComfyUI doesn't list");
   await editMenu.selectOption("night");
   ok(await until(async () => (await strength.inputValue()) === "0.6", "the Night preset's strength"), "a preset's strength is where the Edit tab starts");
-  ok((await page.getByRole("group", { name: "LoRAs" }).innerText()).includes("hero (0.5)"), "…and its LoRAs are listed");
+  ok((await page.getByRole("group", { name: "LoRAs" }).innerText()).includes("hero") && await page.getByLabel("Strength of hero").inputValue() === "0.5", "…and its LoRAs are listed");
   await page.getByRole("textbox", { name: "What to change" }).fill("make it night");
   wf = await makeOne();
   ok(nodes(wf, "LoraLoaderModelOnly").map((n) => n.inputs.lora_name).join() === "hero.safetensors" && nodes(wf, "KSampler")[0].inputs.denoise === 0.6, "an edit uses the chosen preset's LoRAs and strength");
