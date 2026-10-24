@@ -276,7 +276,7 @@ Split this task in two commits if it gets large: first the marks (items 1 and 2,
 
 ---
 
-## Milestone 4: Fill missing pictures (standalone; can start after task 1.1 is on `main`)
+## Milestone 4: Fill missing pictures (its own page; after milestone 1, since it uses the runs and the writing queue)
 
 Read `docs/illustrate.md` before starting (`CLAUDE.md` requires it) and add a bullet to it describing this feature in the same change.
 
