@@ -36,6 +36,8 @@ export const WriteTaskSchema = z.object({
   depth: z.number().int().min(1).max(100),
   choices: z.object({ given: z.array(text(LIMITS.label).min(1)).max(LIMITS.choices), suggest: z.number().int().min(0).max(LIMITS.choices) }),
   plannedBy: taskId.optional(),
+  parentChapterId: z.string().min(1).max(100).optional(),
+  planned: z.array(z.object({ label: text(LIMITS.label), direction: text(LIMITS.premise) })).max(LIMITS.choices).optional(),
   expand: z.boolean(),
   status: taskStatus,
   chapterId: z.string().min(1).max(100).optional(),

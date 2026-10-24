@@ -58,6 +58,7 @@ export function planFill(tree: PlanNode, opts: RunOptions): RunTask[] {
           depth,
           choices: { given: [], suggest: endChoices },
           plannedBy: planId,
+          parentChapterId: node.id,
           expand: false,
           status: "todo",
         };

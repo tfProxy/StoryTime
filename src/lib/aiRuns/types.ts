@@ -26,6 +26,10 @@ export type WriteTask = {
   choices: { given: string[]; suggest: number };
   /** The plan task that writes this task's `direction`; the task waits for it (Fill). */
   plannedBy?: string;
+  /** The chapter this one continues from, when it exists already (Fill, Grow the tree); a `fromTask` slot reads it from that task. */
+  parentChapterId?: string;
+  /** What the plan said happens after each of this chapter's choices (D22), kept so later chapters start from it. */
+  planned?: { label: string; direction: string }[];
   /** Grow the tree: queue a task for each of the new chapter's choices (milestone 2). */
   expand: boolean;
   status: TaskStatus;

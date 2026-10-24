@@ -251,6 +251,8 @@ The picture queue becomes the app's one work queue (D14), still holding only pic
 
 ### Task 1.3: the runner (after 1.1 and 1.2)
 
+(Done in task 1.3. Choices made: the runner and its parts take injectable `deps` (`fetch`, `stream`) so they are tested against a fake server and AI; `WriteTask` gained `parentChapterId` (set by `planFill`, so a task knows the chapter it continues from) and `planned`; a plan task fails (rather than writing without a plan) when its reply can't be read, while the plan for a chapter's new choices falls back to the given choices; `finish` only ends a run (status done/stopped/paused/queued) and `retryTask`/`skipTask` claim the lease themselves and leave the run paused for the caller to resume; in group mode, plans run when nothing can be written at the lowest open depth. Not tried against a real model.)
+
 **Files:** `src/lib/aiRuns/writeChapter.ts`, `src/lib/aiRuns/runner.ts`, `src/lib/aiRuns/api.ts` (fetch helpers for the routes), `tests/unit/ai-runs-runner.test.mts`. Don't change `ChapterEditor.tsx` (sharing its code is a separate refactor; ask the owner first).
 
 1. **`writeOneChapter(settings, { context, label, direction, choices, options, signal, onText, onStatus })`** → `{ title, body, choices: string[], summary?, path_summary? }`:
