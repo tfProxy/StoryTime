@@ -8,7 +8,7 @@ import CodexPictureCard from "./CodexPictureCard";
 import CodexPromptPanel from "./CodexPromptPanel";
 import PictureWorkspace from "./PictureWorkspace";
 
-type Props = Omit<ComponentProps<typeof CodexPromptPanel>, "loaded" | "refRequest" | "pinned" | "start" | "onClearStart" | "startMode" | "onStartMode" | "paint" | "editModels" | "onPictures" | "onQueue" | "dock"> & {
+type Props = Omit<ComponentProps<typeof CodexPromptPanel>, "loaded" | "refRequest" | "pinned" | "start" | "onClearStart" |"editModels" | "onPictures" | "onQueue" | "dock"> & {
   /** Every chapter's title in the story, by chapter id. */
   titles: Record<string, string>;
   /** The entry's picture as of the chapter the page was opened from (or from the start), or null. */
@@ -43,9 +43,6 @@ export default function CodexWorkspace({ titles, current, from, jobs, ...panel }
           refRequest={w.refRequest}
           pinned={w.pinned}
           start={w.start}
-          startMode={w.startMode}
-          onStartMode={w.setStartMode}
-          paint={{ mask: w.mask, onMask: w.setMask, nonce: w.paintNonce }}
           editModels={w.editModels}
           onClearStart={w.onClearStart}
           onPictures={w.addPictures}

@@ -1,8 +1,9 @@
-// Image to image on the Illustrate page: "Redraw from this" on a new picture, a saved header and a past picture,
-// the Strength slider, the starting picture uploaded to (the fake) ComfyUI, the workflow that is queued, what the
-// job log keeps, Clear, and the errors. The fake ComfyUI refuses a LoadImage for a picture that wasn't uploaded.
+// The starting picture of the Illustrate page's Instruct panel: "Instruct changes" on a new picture, a saved header
+// and a past picture, the Strength slider, the starting picture uploaded to (the fake) ComfyUI, the workflow that is
+// queued, what the job log keeps, Stop editing, and the errors. The fake ComfyUI refuses a LoadImage for a picture
+// that wasn't uploaded. (Redrawing a picture, and painting an area, are on the Refine screen: refine-*.e2e.mjs.)
 import { comfySettings, launch } from "./browser.mjs";
-import { startFakeComfy } from "./fakeComfy.mjs";
+import { EDIT_FILES, startFakeComfy } from "./fakeComfy.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const COMFY_PORT = 3557;
@@ -19,7 +20,7 @@ const until = async (fn, what, tries = 100) => {
 const story = await call("POST", "/api/stories", { title: "Variations", chapter: { title: "The lamp", body: "The keeper lit the lamp.", choices: [] } });
 const chapterId = story.chapter_id;
 const before = (await call("GET", "/api/settings")).settings;
-const comfy = await startFakeComfy({ port: COMFY_PORT, steps: 2, stepDelay: 60, startDelay: 100 });
+const comfy = await startFakeComfy({ port: COMFY_PORT, steps: 2, stepDelay: 60, startDelay: 100, files: EDIT_FILES });
 await putSettings({ ...(before ?? {}), comfy: comfySettings({ url: comfy.url, checkpoint: "fake_sdxl_a.safetensors" }) });
 
 const browser = await launch();
@@ -31,22 +32,24 @@ const makeButton = page.getByRole("button", { name: "Queue", exact: true });
 const items = page.locator(".candidates li.picture-tile");
 const thumb = page.getByRole("img", { name: "Starting picture" });
 const strength = page.getByRole("slider", { name: "Strength" });
+const instruction = page.getByRole("textbox", { name: "What to change" });
 const sizeMenu = page.getByLabel("Size", { exact: true });
 const prompts = (from = 0) => comfy.calls.slice(from).filter((c) => c.method === "POST" && c.path === "/prompt").map((c) => c.body.prompt);
 const uploads = (from = 0) => comfy.calls.slice(from).filter((c) => c.method === "POST" && c.path === "/upload/image");
 const nodes = (wf, type) => Object.values(wf).filter((n) => n.class_type === type);
 const jobs = async () => (await call("GET", `/api/picture-jobs?chapter=${chapterId}`)).jobs;
-// Two quick clicks: one job of two pictures.
+// No job is still being made (each running job shows its progress as a status).
+const ready = async () => (await page.locator(".comfy-pending-tile [role=status]").count()) === 0;
+// Two quick clicks with no starting picture: one job of two pictures.
 const makeTwo = async () => {
   await makeButton.click();
   await makeButton.click();
 };
+// One click: one picture, once the picture count reaches `total`.
 const make = async (total) => {
-  await makeTwo();
+  await makeButton.click();
   await until(async () => (await items.count()) === total && (await ready()), `${total} pictures`, 150);
 };
-// No job is still being made (each running job shows its progress as a status).
-const ready = async () => (await page.locator(".comfy-pending-tile [role=status]").count()) === 0;
 const settingsNow = async () => (await call("GET", "/api/settings")).settings.comfy;
 
 try {
@@ -55,22 +58,26 @@ try {
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("a keeper beside a lamp");
   await page.getByRole("textbox", { name: "Negative prompt", exact: true }).fill("blurry");
 
-  // Redraw from this is in a picture's ☰ menu.
-  const startFrom = async (tile) => {
+  // Instruct changes is in a picture's ☰ menu (once ComfyUI has said it has an edit model).
+  const startFrom = async (tile, item = "Instruct changes") => {
     await tile.getByRole("button", { name: "More" }).click();
-    await tile.getByRole("menuitem", { name: "Redraw from this" }).click();
+    const entry = tile.getByRole("menuitem", { name: item });
+    await until(async () => (await entry.getAttribute("aria-disabled")) === null, `${item} to be offered`);
+    await entry.click();
   };
 
   // ---- plain pictures first ----
   ok(await thumb.count() === 0 && await strength.count() === 0, "with nothing chosen there is no starting picture and no Strength slider");
-  ok(await page.locator(".edit-panel.edit-collapsed").count() === 1 && await page.getByRole("tab", { name: "Redraw" }).isDisabled() && await page.getByRole("tab", { name: "Instruct" }).isDisabled(), "the Edit section is collapsed, with its tabs off, while there is no picture to edit");
-  await make(2);
+  ok(await page.locator(".edit-panel.edit-collapsed").count() === 1 && await page.locator(".edit-panel").getByRole("heading", { name: "Instruct" }).isVisible() && await page.getByRole("tab").count() === 0, "the Instruct section is collapsed (heading only, no Redraw or Instruct tabs) while there is no picture");
+  await makeTwo();
+  await until(async () => (await items.count()) === 2 && (await ready()), "2 pictures", 150);
   ok(prompts().length === 1 && nodes(prompts()[0], "EmptyLatentImage").length === 1 && nodes(prompts()[0], "LoadImage").length === 0 && uploads().length === 0, "pictures made with no starting picture use the empty latent image and upload nothing");
 
   // ---- start from a new picture ----
   await startFrom(items.first());
   await thumb.waitFor();
-  ok(await strength.isVisible() && await strength.inputValue() === "0.55", "Redraw from this shows the picture and a Strength slider at 0.55");
+  await instruction.waitFor();
+  ok(await strength.isVisible() && await strength.inputValue() === "1", "Instruct changes shows the picture and a Strength slider at full strength");
   ok(await page.getByText("Low stays close to the picture").count() === 0 && await page.locator(".strength-ends").innerText() === "Low\nHigh", "…with its ends labelled Low and High instead of a line of explanation");
   ok(await sizeMenu.isDisabled(), "…and the Size menu is off, as the size comes from the picture");
   const clickedSrc = await items.first().locator("img").getAttribute("src");
@@ -80,72 +87,55 @@ try {
   const stopBox = await page.getByRole("button", { name: "Stop editing" }).boundingBox();
   const strengthBox = await strength.boundingBox();
   ok(thumbBox.y + thumbBox.height <= strengthBox.y && stopBox.y > strengthBox.y, "…and the picture is above the settings, with Stop editing at the bottom of the section");
-  ok(await page.getByText(/The prompt above isn't used/).count() === 0, "…without the long note about the prompt");
+  ok(await page.getByText(/The prompt above isn't used/).count() === 0 && await page.getByRole("button", { name: "Paint area" }).count() === 0 && await page.getByRole("textbox", { name: "Redraw prompt (optional)" }).count() === 0, "…without the long note about the prompt, and with nothing of the old Redraw (no Paint area, no Redraw prompt)");
+  ok(await makeButton.isDisabled(), "Queue waits for an instruction");
 
+  await instruction.fill("add a red scarf");
   await strength.fill("0.3");
-  const keptRedraw = () => page.evaluate((id) => localStorage.getItem(`storytime.illustrate.redraw.${id}`), chapterId);
-  ok(await until(async () => JSON.parse((await keptRedraw()) ?? "null")?.strength === 0.3, "the strength to be kept"), "moving the slider keeps the strength for this chapter, in this browser");
-  ok(JSON.parse(await keptRedraw()).preset === "test" && (await settingsNow()).drawPresets[0].denoise === 0.55, "…for the drawing preset, whose own default in Settings stays as it was");
   const mark = comfy.calls.length;
-  await make(4);
-  ok(uploads(mark).length === 1, "making pictures uploads the starting picture to ComfyUI once");
+  await make(3);
+  ok(uploads(mark).length === 1, "making a picture uploads the starting picture to ComfyUI once");
   const wf = prompts(mark)[0];
   const load = nodes(wf, "LoadImage")[0];
   ok(load && /^storytime-start-.*\.png$/.test(load.inputs.image), `the workflow loads the uploaded picture (${load?.inputs.image})`);
-  ok(nodes(wf, "KSampler")[0].inputs.denoise === 0.3 && nodes(wf, "RepeatLatentBatch")[0].inputs.amount === 2 && nodes(wf, "EmptyLatentImage").length === 0, "…at the chosen strength, as a batch of 2, with no empty latent image");
-  ok(nodes(wf, "VAEEncode").length === 1 && nodes(wf, "CLIPTextEncode").some((n) => n.inputs.text === "a keeper beside a lamp"), "…encoded by the VAE, with the prompt still set");
+  ok(nodes(wf, "KSampler")[0].inputs.denoise === 0.3 && nodes(wf, "EmptyLatentImage").length === 0 && nodes(wf, "TextEncodeQwenImageEditPlus").some((n) => n.inputs.prompt === "add a red scarf"), "…at the chosen strength, with the instruction and no empty latent image");
   const log = await jobs();
-  ok(log[0].denoise === 0.3 && log[0].source === "comfy:StoryTime_1_0.png" && log[0].width === 96 && log[0].height === 60, `the job log keeps the strength, the source and the picture's own size (${log[0].denoise}, ${log[0].source}, ${log[0].width}x${log[0].height})`);
+  ok(log[0].denoise === 0.3 && log[0].source === "comfy:StoryTime_1_0.png" && log[0].instruction === "add a red scarf", `the job log keeps the strength, the source and the instruction (${log[0].denoise}, ${log[0].source})`);
   ok(log[1].denoise === null && log[1].source === null, "…and the plain job before it has neither");
-
-  // ---- a prompt of its own for the redraw ----
-  const altBox = page.getByRole("textbox", { name: "Redraw prompt (optional)" });
-  ok(await altBox.inputValue() === "", "Redraw has a prompt box of its own, empty at first");
-  await page.getByRole("textbox", { name: "Always include (this chapter)" }).fill("red scarf");
-  await page.getByRole("button", { name: "Copy main prompt" }).click();
-  ok(await altBox.inputValue() === "red scarf, a keeper beside a lamp" || (await altBox.inputValue()).includes("red scarf") && (await altBox.inputValue()).includes("a keeper beside a lamp"), "Copy main prompt puts the main prompt in it, with the always-included text");
-  await altBox.fill("a keeper beside a lamp, at night");
-  const altMark = comfy.calls.length;
-  await make(6);
-  const altSent = nodes(prompts(altMark)[0], "CLIPTextEncode").map((n) => n.inputs.text);
-  ok(altSent.includes("a keeper beside a lamp, at night") && !altSent.some((t) => t.includes("red scarf")), "a redraw with its own prompt sends it as typed, without the always-included text");
-  await altBox.fill("");
-  await page.getByRole("textbox", { name: "Always include (this chapter)" }).fill("");
 
   // ---- the same picture again is not sent again ----
   const again = comfy.calls.length;
-  await make(8);
-  ok(uploads(again).length === 0 && nodes(prompts(again)[0], "LoadImage")[0].inputs.image === load.inputs.image, "Make more from the same picture reuses the upload");
+  await make(4);
+  ok(uploads(again).length === 0 && nodes(prompts(again)[0], "LoadImage")[0].inputs.image === load.inputs.image, "Making another from the same picture reuses the upload");
 
   // ---- from a saved picture ----
-  await items.first().getByRole("button", { name: "More" }).click();
-  await items.first().getByRole("menuitem", { name: "Use as header picture" }).click();
+  await items.nth(2).getByRole("button", { name: "More" }).click();
+  await items.nth(2).getByRole("menuitem", { name: "Use as header picture" }).click();
   await page.getByText("Saved as the header picture.").waitFor();
   const header = page.locator(".image-editor", { has: page.getByRole("heading", { name: "Header picture" }) });
   await header.locator("img.image-editor-preview").waitFor();
-  await header.getByRole("button", { name: "More" }).click();
-  await header.getByRole("menuitem", { name: "Redraw from this" }).click();
+  await startFrom(header);
   await until(async () => ((await thumb.getAttribute("src")) ?? "").includes(`/api/chapters/${chapterId}/images/header`), "the thumbnail to be the saved header");
-  ok(true, "Redraw from this on the saved header makes it the starting picture");
+  ok(true, "Instruct changes on the saved header makes it the starting picture");
   const savedMark = comfy.calls.length;
   // two jobs from it share one upload
-  await makeTwo();
-  await until(() => prompts(savedMark).length === 1, "the first job to be sent");
-  await make(12);
+  await make(5);
+  await make(6);
   ok(uploads(savedMark).length === 1 && prompts(savedMark).length === 2 && (await jobs())[0].source === `saved:${chapterId}:header`, "…two jobs from it upload it once, and the log says it came from the saved header");
   const footerCard = page.locator(".image-editor", { has: page.getByRole("heading", { name: "Footer picture" }) });
   await footerCard.getByRole("button", { name: "More" }).click();
-  ok(await footerCard.getByRole("menuitem", { name: "Upload picture" }).count() === 1 && await footerCard.getByRole("menuitem", { name: "Redraw from this" }).count() === 0, "an empty slot has no Redraw from this");
+  ok(await footerCard.getByRole("menuitem", { name: "Upload picture" }).count() === 1 && await footerCard.getByRole("menuitem", { name: "Instruct changes" }).count() === 0, "an empty slot has no Instruct changes");
   await page.keyboard.press("Escape");
 
   // ---- clear ----
   await page.getByRole("button", { name: "Stop editing" }).click();
   ok(await thumb.count() === 0 && await strength.count() === 0 && await sizeMenu.isEnabled(), "Stop editing removes it and the Size menu works again");
+  ok(await page.locator(".edit-panel.edit-collapsed").count() === 1, "…and the Instruct section is collapsed again");
   const clearMark = comfy.calls.length;
   await makeTwo();
   await until(() => prompts(clearMark).length === 1, "a job");
   ok(nodes(prompts(clearMark)[0], "EmptyLatentImage").length === 1 && nodes(prompts(clearMark)[0], "LoadImage").length === 0, "pictures made afterwards are from the prompt alone again");
-  await until(async () => (await items.count()) === 14 && (await ready()), "fourteen pictures", 150);
+  await until(async () => (await items.count()) === 8 && (await ready()), "eight pictures", 150);
 
   // ---- from a past picture ----
   await page.goto(`${BASE}/c/${chapterId}/illustrate`);
@@ -159,19 +149,20 @@ try {
   ok((await page.locator(".chapter-pictures").innerText()).includes("strength 0.3"), "an earlier picture made from a picture says its strength");
   await startFrom(pastTiles.nth(1));
   await thumb.waitFor();
-  ok(((await thumb.getAttribute("src")) ?? "").includes("/view?"), "Redraw from this on a past picture makes it the starting picture");
+  ok(((await thumb.getAttribute("src")) ?? "").includes("/view?"), "Instruct changes on a past picture makes it the starting picture");
   await page.getByRole("group", { name: "Show" }).getByRole("button", { name: /^Pinned & new/ }).click();
   ok(await page.locator(".picture-tile.editing").count() === 1, "a past picture being edited shows in Pinned & new, tagged Editing, though it isn't pinned");
 
   // ---- errors ----
   comfy.setMode({ fail: "upload" });
   const failMark = comfy.calls.length;
-  await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("a keeper beside a lamp");
+  await instruction.fill("add a red scarf");
   await makeButton.click();
   await page.getByText(/ComfyUI wouldn't take the starting picture/).waitFor();
   ok(prompts(failMark).length === 0 && await makeButton.isEnabled(), "when ComfyUI won't take the picture, the page says so, queues nothing and is ready again");
   comfy.setMode({ fail: null });
 
+  // ---- a drawing preset's workflow that can't start from a picture doesn't matter to Instruct ----
   const noStart = JSON.stringify({ "1": { class_type: "CLIPTextEncode", inputs: { text: "{{prompt}}" } }, "2": { class_type: "KSampler", inputs: { seed: "{{seed}}", positive: ["1", 0] } }, "9": { class_type: "SaveImage", inputs: { images: ["2", 0], filename_prefix: "StoryTime" } } });
   const now = await settingsNow();
   await putSettings({ ...(await call("GET", "/api/settings")).settings, comfy: { ...now, drawPresets: now.drawPresets.map((p) => ({ ...p, workflow: noStart })) } });
@@ -180,10 +171,12 @@ try {
   await showAll();
   await startFrom(pastTiles.first());
   await thumb.waitFor();
-  const refusedMark = comfy.calls.length;
+  await instruction.fill("add a red scarf");
+  const okMark = comfy.calls.length;
   await makeButton.click();
-  await page.getByText(/Your workflow can't start from a picture/).waitFor();
-  ok(prompts(refusedMark).length === 0, "a workflow that can't start from a picture says so, without being sent to ComfyUI");
+  await until(() => prompts(okMark).length === 1, "the edit to be sent");
+  ok(nodes(prompts(okMark)[0], "LoadImage").length === 1, "an edit is sent whatever the drawing preset's workflow can do (it uses the edit model's own workflow)");
+  await until(async () => await ready(), "the edit to finish", 150);
 
   // ---- Settings says whether the workflow can ----
   await page.goto(`${BASE}/settings#preset-test`);

@@ -43,21 +43,20 @@ export function InUseBadge({ inUse, editing = false, isNew = false }: { inUse: P
 export type MenuItem = { label: string; title?: string; run?: () => void; href?: string; icon?: () => React.JSX.Element; disabled?: boolean };
 
 /**
- * The ☰ menu's two ways to start from a picture: redraw it from the prompt at a strength, or edit it by
- * instruction. `editBlocked` says why editing can't be used now (no edit model installed), or is null.
+ * The ☰ menu's ways to start from a picture: change it by instruction with an edit model, use it as a
+ * reference, or refine it. `editBlocked` says why Instruct changes can't be used now (no edit model
+ * installed), or is null.
  */
 export function startItems(start: (mode: StartRequest) => void, editBlocked: string | null): MenuItem[] {
   return [
-    { label: "Redraw from this", title: "Make new pictures from the prompt, starting from this one", run: () => start("redraw") },
-    { label: "Change part of this…", title: "Paint the part of this picture to redraw, and leave the rest as it is", run: () => start("paint") },
-    { label: "Use as reference", title: "Add this picture to the References, to keep a character, item, place or style the same", run: () => start("reference") },
-    { label: "Refine…", title: "Paint on this picture and mask the parts to change", run: () => start("refine") },
     {
-      label: "Edit this",
+      label: "Instruct changes",
       title: editBlocked ?? "Change this picture by telling an edit model what to change",
       disabled: editBlocked !== null,
-      run: () => start("edit"),
+      run: () => start("instruct"),
     },
+    { label: "Use as reference", title: "Add this picture to the References, to keep a character, item, place or style the same", run: () => start("reference") },
+    { label: "Refine…", title: "Paint on this picture and mask the parts to change", run: () => start("refine") },
   ];
 }
 

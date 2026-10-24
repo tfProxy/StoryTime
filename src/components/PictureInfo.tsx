@@ -11,7 +11,7 @@ type Props = {
   onClose: () => void;
   /** Puts the picture's prompt and settings back in the prompt boxes. */
   onLoadPrompt?: () => void;
-  /** Makes new pictures starting from this one: redrawn from the prompt, or edited by instruction. */
+  /** Starts from this picture: changed by instruction (Instruct changes), or opened in the Refine screen. */
   onStart?: (mode: StartRequest) => void;
   /** Why it can't be edited by instruction now (no edit model installed), or null. */
   editBlocked?: string | null;
@@ -33,7 +33,7 @@ export default function PictureInfo({ picture, titles, onClose, onLoadPrompt, on
     const back = document.activeElement as HTMLElement | null;
     const d = dialog.current;
     if (d && !d.open) d.showModal();
-    // Without scrolling: Load prompt, Redraw from this and Edit this scroll up to the prompt as Info closes.
+    // Without scrolling: Load prompt and Instruct changes scroll up to the prompt as Info closes.
     return () => back?.focus({ preventScroll: true });
   }, []);
 
@@ -109,17 +109,14 @@ export default function PictureInfo({ picture, titles, onClose, onLoadPrompt, on
           )}
           {onStart && (
             <>
-              <button type="button" className="secondary" onClick={() => onStart("redraw")} title="Make new pictures from the prompt, starting from this one">
-                Redraw from this
-              </button>
               <button
                 type="button"
                 className="secondary"
-                onClick={() => onStart("edit")}
+                onClick={() => onStart("instruct")}
                 disabled={editBlocked !== null}
                 title={editBlocked ?? "Change this picture by telling an edit model what to change"}
               >
-                Edit this
+                Instruct changes
               </button>
               <button type="button" className="secondary" onClick={() => onStart("refine")} title="Paint on this picture and mask the parts to change">
                 Refine…

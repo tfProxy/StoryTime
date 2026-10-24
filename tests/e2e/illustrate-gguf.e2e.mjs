@@ -62,7 +62,7 @@ try {
   await cpu.check();
   ok(await until(async () => (await presetNow()).files.model === GGUF && (await presetNow()).textEncoderDevice === "cpu", "the preset to be saved"), "the preset keeps the .gguf model and the CPU choice");
 
-  // ---- Edit this ----
+  // ---- Instruct changes ----
   await page.goto(`${BASE}/c/${chapterId}/illustrate`);
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("a smith at the forge");
   const queue = page.getByRole("button", { name: "Queue", exact: true });
@@ -70,8 +70,8 @@ try {
   const items = page.locator(".candidates li.picture-tile");
   await until(async () => (await items.count()) === 1 && (await page.locator(".comfy-pending-tile [role=status]").count()) === 0, "a picture");
   await items.first().getByRole("button", { name: "More" }).click();
-  const edit = items.first().getByRole("menu").getByRole("menuitem", { name: "Edit this" });
-  await until(async () => (await edit.getAttribute("aria-disabled")) === null, "Edit this to be offered");
+  const edit = items.first().getByRole("menu").getByRole("menuitem", { name: "Instruct changes" });
+  await until(async () => (await edit.getAttribute("aria-disabled")) === null, "Instruct changes to be offered");
   await edit.click();
   await page.getByRole("textbox", { name: "What to change" }).fill("remove the logo on his shirt");
   const mark = comfy.calls.length;

@@ -8,7 +8,7 @@ import { saveSettings, useSettings } from "@/lib/settings";
 import { QUEUE_COUNTS, type ComfySettings } from "@/lib/settingsSchema";
 import { chapterIdOf, entryIdOf, presetApi, targetKey, targetOfIds, targetWord, type PictureMoment, type PictureTarget } from "@/lib/pictureTarget";
 import type { LoadedPrompt } from "./ImagePromptPanel";
-import type { JobProgress, MadeWith, PendingJob, Picture, StartMode } from "./pictures";
+import type { JobProgress, MadeWith, PendingJob, Picture } from "./pictures";
 import { drawPresetFamily, drawPresetIpAdapter, editBlocked, usableEditPresets, type EditModels } from "./useEditModels";
 import AutoTextarea from "./AutoTextarea";
 import { usePictureQueue } from "./PictureQueue";
@@ -18,19 +18,17 @@ import { combinePrompts } from "@/lib/ai/imagePrompt";
 import { familyProblems } from "@/lib/comfy/drawModels";
 import { drawPresetFor, drawPresetSummary, presetName, usesFamily } from "@/lib/comfy/presets";
 import type { StartPicture } from "@/lib/comfy/startPicture";
-import { readEdit, readLoras, readRedraw, stateKey, writeEdit, writeLoras, writeRedraw } from "@/lib/comfy/editingState";
+import { readEdit, readLoras, stateKey, writeEdit, writeLoras } from "@/lib/comfy/editingState";
 import { applyLoraOverrides, hasLoraOverrides, resetLoraOverrides, setLoraOverride, type LoraOverrides } from "@/lib/comfy/loraOverrides";
 import LoraToggles from "./LoraToggles";
 import { listCheckpoints } from "@/lib/comfy/client";
-import { denoiseOf, madeWithText, maskOf, refsOf, type JobInput } from "@/lib/comfy/makeJob";
+import { denoiseOf, madeWithText, refsOf, type JobInput } from "@/lib/comfy/makeJob";
 import { MAX_REFERENCES, storedOf, type Reference } from "@/lib/comfy/references";
 import { editRefLimit } from "@/lib/comfy/makeJob";
 import { ipAdapterProblem } from "@/lib/comfy/ipAdapter";
 import type { RefChoice } from "@/lib/comfy/referenceChoices";
 import References from "./References";
 import { describeWorkflow, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
-import type { PaintedArea } from "@/lib/mask";
-import { MaskPainter, useMaskPreview } from "./StartMask";
 
 /** Sizes that suit SDXL (about one megapixel), tallest to widest. */
 const SIZES: { name: string; width: number; height: number }[] = [
@@ -78,24 +76,13 @@ function SizeColumns({ name, width, height }: { name: string; width: number; hei
 /**
  * Where the settings a loaded picture was made with differ from the current ones: the change to make and
  * how to describe it, or null when they match. The size is shared by every story, so it changes only when
- * the author asks. A picture made from a starting picture took that picture's size, so only its strength is
- * offered. (The checkpoint and LoRAs are the drawing preset's, so they aren't offered here.)
+ * the author asks. A picture made from a starting picture took that picture's size, so nothing is offered
+ * for it. (The checkpoint and LoRAs are the drawing preset's, so they aren't offered here.)
  */
-function otherSettings(made: MadeWith | null, now: ComfySettings, redraw: number): { size: Partial<ComfySettings>; strength: number | null; text: string } | null {
+function otherSettings(made: MadeWith | null, now: ComfySettings): { size: Partial<ComfySettings>; text: string } | null {
   if (!made) return null;
-  const size: Partial<ComfySettings> = {};
-  let strength: number | null = null;
-  const text: string[] = [];
-  if (made.denoise === null && (made.width !== now.width || made.height !== now.height)) {
-    size.width = made.width;
-    size.height = made.height;
-    text.push(`${made.width} × ${made.height}`);
-  }
-  if (made.denoise !== null && made.denoise !== redraw) {
-    strength = made.denoise;
-    text.push(`strength ${made.denoise}`);
-  }
-  return text.length ? { size, strength, text: text.join(", ") } : null;
+  if (made.denoise !== null || (made.width === now.width && made.height === now.height)) return null;
+  return { size: { width: made.width, height: made.height }, text: `${made.width} × ${made.height}` };
 }
 
 type Props = {
@@ -116,11 +103,6 @@ type Props = {
   /** The picture new pictures start from (image to image), or null to make them from the prompt alone. */
   start?: StartPicture | null;
   onClearStart?: () => void;
-  /** Whether the starting picture is redrawn from the prompt (at a strength) or edited by instruction, and how to switch. */
-  startMode?: StartMode;
-  onStartMode?: (mode: StartMode) => void;
-  /** Redrawing only a painted part of the starting picture: the painted area (or null), how to set or clear it, and a number that goes up when the mask editor should open. */
-  paint?: PaintProps;
   /** Which edit models ComfyUI can run. */
   editModels?: EditModels;
   /** Called with each finished job's pictures. */
@@ -156,26 +138,14 @@ function workflowCanRefs(workflow: string): boolean {
   }
 }
 
-/** Whether a drawing preset's workflow ("" is the built-in one) can redraw only a painted part of a picture. */
-function workflowCanMask(workflow: string): boolean {
-  try {
-    return describeWorkflow(parseWorkflow(workflow)).mask;
-  } catch {
-    return false;
-  }
-}
-
-/** The painted area of the starting picture (or null), how to set or clear it, and a number that goes up when the mask editor should open. */
-export type PaintProps = { mask: PaintedArea | null; onMask: (area: PaintedArea | null) => void; nonce: number };
-
 /**
- * Makes pictures from the prompt on the ComfyUI machine, or from a starting picture: redrawn from the
- * prompt at a strength, or edited by an instruction with an edit model. The jobs go to the app's picture
+ * Makes pictures from the prompt on the ComfyUI machine, or, with a starting picture, edits it by an
+ * instruction with an edit model (Instruct). The jobs go to the app's picture
  * queue (`PictureQueue`), so they go on when the page is left; the chapter's pictures go to `onPictures`.
  */
 export default function ComfyGenerate({
   target, storyPreset, chapterPreset: savedPreset, moment, prompt: boxPrompt, negative: boxNegative, fixedPrompt = "", loaded = null, start = null, onClearStart,
-  startMode = "redraw", onStartMode, paint, editModels = { state: "checking" }, onPictures, onQueue, onChapterPreset, dock = null, refs, onRefs, refChoices, styleRef = null,
+  editModels ={ state: "checking" }, onPictures, onQueue, onChapterPreset, dock = null, refs, onRefs, refChoices, styleRef = null,
 }: Props) {
   // The target is rebuilt each render, so what effects depend on is its ids.
   const { storyId } = target;
@@ -198,14 +168,10 @@ export default function ComfyGenerate({
   const queueCount = comfy.queueCount;
   // What to change, when editing the starting picture by instruction.
   const [instruction, setInstruction] = useState("");
-  // A prompt for redrawing the starting picture in place of the main one (empty: the main prompt is used).
-  const [altPrompt, setAltPrompt] = useState("");
   // How closely an edit follows the starting picture: 1 lets the model change it freely, lower keeps it closer.
   // It starts at the edit preset's default strength (Settings); a change here is for that preset, until another is chosen.
   const [strengthFor, setStrengthFor] = useState<{ model: string; value: number } | null>(null);
-  // The same for Redraw, from the drawing preset's default.
-  const [redrawFor, setRedrawFor] = useState<{ preset: string; value: number } | null>(null);
-  // The instruction and changed strengths are kept in this browser, so a refresh brings them back.
+  // The instruction and changed strength are kept in this browser, so a refresh brings them back.
   const [editKept, setEditKept] = useState(false);
   // LoRAs switched off or at another strength on this page, by preset id. They never change the preset in Settings.
   const [loraChanges, setLoraChanges] = useState<LoraOverrides>({});
@@ -216,8 +182,6 @@ export default function ComfyGenerate({
       setInstruction(saved.instruction);
       setStrengthFor(saved.model ? { model: saved.model, value: saved.strength } : null);
     }
-    const redraw = readRedraw(kept);
-    setRedrawFor(redraw && { preset: redraw.preset, value: redraw.strength });
     setLoraChanges(readLoras(kept));
     setEditKept(true);
   }, [kept]);
@@ -227,7 +191,6 @@ export default function ComfyGenerate({
   const [chapterPreset, setChapterPreset] = useState(savedPreset);
   const storyDraw = drawPresetFor(comfy.drawPresets, storyPreset);
   const draw = drawPresetFor(comfy.drawPresets, chapterPreset, storyPreset);
-  const redrawStrength = redrawFor?.preset === draw.id ? redrawFor.value : draw.denoise;
   // What is drawn: the prompt boxes with the drawing preset's text and the chapter's always-included text added.
   // With nothing to add, the boxes are used as typed.
   const prompt = draw.prompt.trim() || fixedPrompt.trim() ? combinePrompts(draw.promptStyle, draw.prompt, fixedPrompt, boxPrompt) : boxPrompt;
@@ -240,9 +203,8 @@ export default function ComfyGenerate({
   const fromFamily = usesFamily(draw);
   const familyCheck = drawPresetFamily(editModels, draw);
 
-  const editing = start !== null && startMode === "edit";
-  // What a redraw sends: its own prompt as typed (nothing added to it), else the main prompt with the added text.
-  const drawn = start !== null && !editing && altPrompt.trim() ? altPrompt : prompt;
+  // With a starting picture the job is an Instruct edit.
+  const editing = start !== null;
   const blocked = editBlocked(editModels, comfy.editPresets);
   // The edit preset: the one last chosen, if ComfyUI has its files, else the first that it has them for.
   const usablePresets = usableEditPresets(editModels, comfy.editPresets);
@@ -257,9 +219,8 @@ export default function ComfyGenerate({
   useEffect(() => {
     if (!editKept) return;
     writeEdit(kept, { instruction, strength: strengthFor?.value ?? 1, model: strengthFor?.model });
-    writeRedraw(kept, redrawFor && { preset: redrawFor.preset, strength: redrawFor.value });
     writeLoras(kept, loraChanges);
-  }, [editKept, kept, instruction, strengthFor, redrawFor, loraChanges]);
+  }, [editKept, kept, instruction, strengthFor, loraChanges]);
   // The chosen model's speed-up file, when ComfyUI has one, and whether edits use it (the edit preset's Fast box, in Settings).
   const speedUp = chosen?.files.speedUp ?? null;
   const fast = speedUp !== null && !!editPreset?.fast;
@@ -271,23 +232,6 @@ export default function ComfyGenerate({
   const { stop, listen } = pictureQueue;
   const queue = useMemo(() => pictureQueue.jobs.filter((j) => targetKey(j) === at && j.state === "making" && !j.session), [pictureQueue.jobs, at]);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
-
-  // Painting the part of the starting picture to redraw. Whether the drawing preset's workflow can do it, the mask
-  // editor being open, and "Change part of this…" (a new `paint.nonce`) asking for it to open.
-  const mask = paint?.mask ?? null;
-  const canMask = workflowCanMask(draw.workflow);
-  const [painting, setPainting] = useState(false);
-  const [seenNonce, setSeenNonce] = useState(paint?.nonce ?? 0);
-  if ((paint?.nonce ?? 0) !== seenNonce) {
-    setSeenNonce(paint?.nonce ?? 0);
-    if (start && canMask) setPainting(true);
-  }
-  const failPaint = () => {
-    setPainting(false);
-    setStatus({ ok: false, text: "Couldn't load the starting picture to paint on." });
-  };
-  const preview = useMaskPreview(mask);
-  const maskPercent = Math.max(1, Math.round(preview.coverage * 100));
 
   // The Pictures panel shows the jobs, newest first, among the pictures.
   useEffect(() => {
@@ -365,7 +309,7 @@ export default function ComfyGenerate({
 
   const set = (patch: Partial<ComfySettings>) => void saveSettings({ ...settings, comfy: { ...settings.comfy, ...patch } });
 
-  const other = otherSettings(loaded?.settings ?? null, comfy, redrawStrength);
+  const other = otherSettings(loaded?.settings ?? null, comfy);
   const size = sizes.find((s) => s.width === baseComfy.width && s.height === baseComfy.height);
 
   /**
@@ -386,7 +330,7 @@ export default function ComfyGenerate({
     }
     const input: JobInput = {
       // An edit follows the instruction alone, so the preset's and chapter's text isn't added to it.
-      prompt: (editing ? boxPrompt : drawn).trim(),
+      prompt: (editing ? boxPrompt : prompt).trim(),
       // Edits follow the instruction alone.
       negative: editing ? "" : negative.trim(),
       moment,
@@ -394,9 +338,8 @@ export default function ComfyGenerate({
       draw,
       drawLoras: drawUsable.loras,
       family: fromFamily ? familyCheck : null,
-      redraw: redrawStrength,
+      redraw: draw.denoise,
       start,
-      mask: editing ? null : mask,
       edit: editing && chosen && tuning ? { check: chosen, instruction: instruction.trim(), strength: editStrength, fast, loras: editLoras, tuning, textEncoderDevice: editPreset?.textEncoderDevice ?? "default" } : null,
       seed: fixedSeed ?? (reuseSeed && loadedSeed !== null ? loadedSeed : null),
       refs: sentRefs,
@@ -413,7 +356,7 @@ export default function ComfyGenerate({
         height: comfy.height,
         denoise: denoiseOf(input),
         source: start?.source ?? null,
-        mask: maskOf(input)?.id ?? null,
+        mask: null,
         refs: storedOf(refsOf(input)),
         instruction: input.edit?.instruction ?? null,
         editModel: input.edit?.check.model.id ?? null,
@@ -492,7 +435,7 @@ export default function ComfyGenerate({
             // Each is one more picture for the job being gathered, as if clicked quickly.
             for (let i = 0; i < queueCount; i++) ask();
           }}
-          disabled={editing ? !chosen || !instruction.trim() : !drawn.trim()}
+          disabled={editing ? !chosen || !instruction.trim() : !prompt.trim()}
           title={`Each click queues ${queueCount === 1 ? "one picture" : `${queueCount} pictures`}. ${comfy.batchClicks ? "Quick clicks with nothing changed in between go to ComfyUI as one job." : "Each click goes to ComfyUI as its own job (batching is off in Settings › Drawing)."}`}
         >
           Queue
@@ -521,7 +464,7 @@ export default function ComfyGenerate({
     </div>
   );
 
-  // The Strength slider, the same for Redraw and Instruct; its ends are labelled.
+  // The Instruct Strength slider; its ends are labelled.
   const strength = (value: number, onChange: (v: number) => void) => (
     <label className="strength">
       Strength {value.toFixed(2)}
@@ -563,9 +506,9 @@ export default function ComfyGenerate({
         editLimit={editing && chosen ? { model: chosen.model.name, count: editRefLimit(chosen.model.id) } : null}
       />
     )}
-    {/* Editing the starting picture: a section of its own, collapsed (with its tabs off) while there is no picture to edit. */}
+    {/* Instruct: changing the starting picture by instruction. A section of its own, collapsed while there is no picture. */}
     <section className={`ai-panel edit-panel${start ? "" : " edit-collapsed"}`}>
-      <h2>Edit</h2>
+      <h2>Instruct</h2>
       {start && (
         <div className="start-picture">
           <div className="start-picture-frame">
@@ -573,40 +516,12 @@ export default function ComfyGenerate({
               {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
               <img src={start.thumb} alt="Starting picture" />
             </a>
-            {/* eslint-disable-next-line @next/next/no-img-element -- a small picture made here */}
-            {!editing && preview.url && <img className="start-picture-mask" src={preview.url} alt="The part to redraw, tinted" />}
           </div>
         </div>
       )}
-      <div className="row start-modes" role="tablist" aria-label="What to do with it">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={!editing}
-          className={editing ? "secondary" : undefined}
-          onClick={() => onStartMode?.("redraw")}
-          disabled={!start}
-          title="Make new pictures from the prompt, starting from this one"
-        >
-          Redraw
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={editing}
-          className={editing ? undefined : "secondary"}
-          onClick={() => onStartMode?.("edit")}
-          disabled={!start || (!editing && blocked !== null)}
-          title={start ? (blocked ?? "Change this picture by telling an edit model what to change") : undefined}
-        >
-          Instruct
-        </button>
-      </div>
       {start && (
-        <div className="start-picture-controls" role="tabpanel">
-            {editing && mask && <p className="meta" style={{ margin: 0 }}>The painted area is only used by Redraw for now.</p>}
-            {editing ? (
-              chosen && editPreset ? (
+        <div className="start-picture-controls">
+            {chosen && editPreset ? (
                 <>
                   <label className="row" style={{ gap: "0.4rem" }}>
                     Preset
@@ -669,61 +584,7 @@ export default function ComfyGenerate({
                 <p className="error" style={{ margin: 0 }}>
                   {blocked ?? "No edit model is ready."} <Link href="/settings#setup-qwen-image-edit">Settings</Link>
                 </p>
-              )
-            ) : (
-              <>
-                <p className="meta" style={{ margin: 0 }}>The new pictures are its size, drawn with the preset below.</p>
-                <div className="alt-prompt">
-                  <div className="field-head">
-                    <label htmlFor="redraw-prompt">Redraw prompt (optional)</label>
-                    <button type="button" className="secondary" onClick={() => setAltPrompt(prompt)} disabled={!prompt.trim()} title="Put the main prompt here, with the always-included text, to change it for this redraw">
-                      Copy main prompt
-                    </button>
-                  </div>
-                  <AutoTextarea
-                    id="redraw-prompt"
-                    className="two-lines"
-                    rows={2}
-                    style={{ fontFamily: "inherit" }}
-                    maxLength={LIMITS.picturePrompt}
-                    placeholder="Empty: the main prompt is used"
-                    value={altPrompt}
-                    onChange={(e) => setAltPrompt(e.target.value)}
-                  />
-                </div>
-                {paint &&
-                  (mask ? (
-                    <div className="start-mask">
-                      <p style={{ margin: 0 }}>Redrawing only the painted area ({maskPercent}%).</p>
-                      <div className="row start-mask-buttons">
-                        <button type="button" className="secondary" onClick={() => setPainting(true)}>
-                          Change painted area
-                        </button>
-                        <button type="button" className="secondary" onClick={() => paint.onMask(null)}>
-                          Clear painted area
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="start-mask">
-                      <button
-                        type="button"
-                        className="secondary"
-                        disabled={!canMask}
-                        onClick={() => setPainting(true)}
-                        title={
-                          canMask
-                            ? "Paint the part of the picture to redraw, and leave the rest as it is"
-                            : "This drawing preset's workflow can't redraw only part of a picture. Add {{mask}} to it in Settings, or use the built-in workflow."
-                        }
-                      >
-                        Paint area
-                      </button>
-                    </div>
-                  ))}
-                {strength(redrawStrength, (value) => setRedrawFor({ preset: draw.id, value }))}
-              </>
-            )}
+              )}
         </div>
       )}
       {start && (
@@ -731,22 +592,10 @@ export default function ComfyGenerate({
           Stop editing
         </button>
       )}
-      {!start && <p className="meta" style={{ margin: 0 }}>Choose a picture to redraw or instruct.</p>}
+      {!start && <p className="meta" style={{ margin: 0 }}>Choose a picture to change by instruction.</p>}
     </section>
     <section className="ai-panel comfy-generate">
       <h2>Model Settings</h2>
-      {painting && start && paint && !editing && (
-        <MaskPainter
-          src={start.thumb}
-          initial={mask}
-          onDone={(area) => {
-            paint.onMask(area);
-            setPainting(false);
-          }}
-          onCancel={() => setPainting(false)}
-          onFail={failPaint}
-        />
-      )}
       {!editing && (
         <div className="draw-preset">
           <div className="row" style={{ gap: "0.4rem", flexWrap: "nowrap" }}>
@@ -790,7 +639,6 @@ export default function ComfyGenerate({
               const { width, height } = other.size;
               if (width && height) set(isCover ? { coverWidth: width, coverHeight: height, sizeScale: 1 } : { width, height, sizeScale: 1 });
               setScaleText("1");
-              if (other.strength !== null) setRedrawFor({ preset: draw.id, value: other.strength });
             }}
           >
             Use its settings

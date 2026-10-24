@@ -54,3 +54,15 @@ const caption = (checkpoint: string, editModel: string | null = null) => picture
 ok(caption("sdxl/juggernaut.safetensors") === "sdxl/juggernaut · 1344 × 768", "a picture's caption names its checkpoint and size");
 ok(caption("juggernaut.safetensors + styles/ink.safetensors (0.8) + hero.safetensors (-0.5)") === "juggernaut · 2 LoRAs · 1344 × 768", "…and counts a drawing preset's LoRAs");
 ok(caption("qwen.safetensors + a.safetensors (1)", "qwen-image-edit") === "Qwen-Image-Edit · 1 LoRA · 1344 × 768", "…as it does an edit's");
+
+// ---- a picture redrawn in a painted area only (earlier pictures, and the Refine screen's) ----
+const painted = { ...base, source: "comfy:StoryTime/s1/c1/a.png", denoise: 0.5, mask: "storytime-mask-1.png" };
+ok(value(painted, "Area") === "painted part only" && value(base, "Area") === undefined, "Info says “Area: painted part only” for a picture made with a mask, and nothing otherwise");
+ok(pictureCaption(painted).includes("painted area") && pictureCaption(painted).includes("strength 0.5") && !pictureCaption(base).includes("painted area"), "…and its caption says “painted area” and the strength");
+
+// ---- temporary pictures: only an unpinned one is labelled temporary ----
+const temp = { ...base, temporary: true, mark: null };
+ok(pictureCaption(temp).includes("temporary") && value(temp, "Temporary") !== undefined, "an unpinned temporary picture says “temporary” in its caption and in Info");
+const kept = { ...temp, mark: "pinned" as const };
+ok(!pictureCaption(kept).includes("temporary") && value(kept, "Temporary") === undefined, "a pinned temporary picture (an accepted Refine result) is a kept picture: no “temporary” label");
+ok(pictureCaption({ ...temp, mark: "rejected" }).includes("temporary"), "…while a rejected one still is");

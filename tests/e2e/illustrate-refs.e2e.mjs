@@ -155,7 +155,7 @@ try {
   // ---- Use as reference, an upload, and the limit of four ----
   await tiles.first().getByRole("button", { name: "More" }).click();
   const menu = await tiles.first().getByRole("menuitem").allInnerTexts();
-  ok(menu.indexOf("Use as reference") > menu.indexOf("Change part of this…") && menu.indexOf("Use as reference") < menu.indexOf("Edit this"), "the ☰ menu has Use as reference after Change part of this…");
+  ok(menu.indexOf("Use as reference") > menu.indexOf("Instruct changes") && menu.indexOf("Use as reference") < menu.indexOf("Refine…"), "the ☰ menu has Use as reference after Instruct changes and before Refine…");
   await tiles.first().getByRole("menuitem", { name: "Use as reference" }).click();
   await until(async () => (await rows.count()) === 2, "the picture to be added");
   ok(await rows.nth(1).getByLabel("Label of reference 2").inputValue() === "Picture" && await rows.nth(1).locator("img").getAttribute("src") !== "", "Use as reference adds the picture");

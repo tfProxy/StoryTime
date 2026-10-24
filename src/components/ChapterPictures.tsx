@@ -41,7 +41,7 @@ type Props = {
   onClear: () => void;
   /** The jobs being made, newest first; they show at the top, a place kept for each of their pictures. */
   pending?: PendingJob[];
-  /** Called to make new pictures starting from one of these: redrawn from the prompt, or edited by instruction. */
+  /** Called to start from one of these: change it by instruction, use it as a reference, or refine it. */
   onStart: (image: ComfyImage, mode: StartRequest) => void;
   /** Why pictures can't be edited by instruction now (no edit model installed), or null. */
   editBlocked?: string | null;
@@ -60,7 +60,7 @@ type Props = {
  * those, to restore one (they are stored with the mark "rejected"). "Other chapters" lists what was made for the rest of the story.
  */
 export default function ChapterPictures({ target, titles, comfyUrl, pictures, onChange, onLoaded, onClear, pending: allPending = [], onStart, editBlocked = null, onLoadPrompt, used, starting = null, codexFrom = null }: Props) {
-  /** The picture being edited or redrawn. */
+  /** The picture being changed by instruction. */
   const isStarting = (p: Picture) => starting !== null && starting === comfySource(p.image);
   /** The pictures the first view always shows, as if pinned: the chapter's header and footer, and the starting picture. */
   const kept = (p: Picture) => inUse(p).length > 0 || isStarting(p);
@@ -177,7 +177,7 @@ export default function ChapterPictures({ target, titles, comfyUrl, pictures, on
       prompt: p.prompt,
       negative: p.negative,
       seed: p.seed,
-      // An edit's strength is not the Redraw strength, so it isn't offered back.
+      // An edit's strength is not a drawing strength, so it isn't offered back.
       settings: { checkpoint: p.checkpoint, width: p.width, height: p.height, denoise: p.editModel ? null : p.denoise },
       moment: p.moment,
       refs: p.refs ?? [],

@@ -10,14 +10,12 @@ import { referenceText, type StoredReference } from "@/lib/comfy/references";
 /** "1 LoRA", "3 LoRAs", or nothing for none. */
 const loraCount = (n: number) => (n === 0 ? false : n === 1 ? "1 LoRA" : `${n} LoRAs`);
 
-/** How a starting picture is used: redrawn from the prompt at a strength, or edited by instruction. */
-export type StartMode = "redraw" | "edit";
 /**
- * What choosing a picture's ☰ menu item asks for: a Redraw or an Edit, a Redraw that opens the mask editor
- * ("Change part of this…"), or the picture added to the References ("Use as reference"), which leaves the
- * starting picture alone, or the Refine screen ("Refine…"), which opens a session for the picture.
+ * What choosing a picture's ☰ menu item asks for: the picture as the Instruct starting picture ("Instruct
+ * changes"), the picture added to the References ("Use as reference"), which leaves the starting picture
+ * alone, or the Refine screen ("Refine…"), which opens a session for the picture.
  */
-export type StartRequest = StartMode | "paint" | "reference" | "refine";
+export type StartRequest = "instruct" | "reference" | "refine";
 
 /** The shared settings a picture was made with, which "Load prompt" offers to use again. */
 export type MadeWith = { checkpoint: string; width: number; height: number; denoise: number | null };
@@ -111,7 +109,7 @@ export function picturesOf(jobs: PictureJob[]): Picture[] {
 }
 
 /** What tells pictures from the same prompt apart: the settings, and the seed when `withSeed` (the list under the pictures leaves it out; Info has it). */
-export function pictureCaption(c: { seed: number; checkpoint: string; width: number; height: number; denoise: number | null; mask?: string | null; editModel?: string | null; temporary?: boolean }, withSeed = false): string {
+export function pictureCaption(c: { seed: number; checkpoint: string; width: number; height: number; denoise: number | null; mask?: string | null; editModel?: string | null; temporary?: boolean; mark?: PictureMark | null }, withSeed = false): string {
   // The files come after the model's or checkpoint's, joined by " + ": an edit's speed-up, and the LoRAs (each with its strength).
   const [main, ...extras] = c.checkpoint.split(" + ");
   return [
@@ -122,7 +120,8 @@ export function pictureCaption(c: { seed: number; checkpoint: string; width: num
     withSeed && `seed ${c.seed}`,
     c.denoise !== null && `strength ${c.denoise}`,
     c.mask && "painted area",
-    c.temporary && "temporary",
+    // A pinned temporary picture (an accepted Refine result) is a kept picture.
+    c.temporary && c.mark !== "pinned" && "temporary",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -172,7 +171,7 @@ export function pictureDetails(p: Picture, titles: Record<string, string>): Pict
     ...(p.denoise !== null ? [{ label: "Strength (denoise)", value: String(p.denoise) }] : []),
     ...(p.mask ? [{ label: "Area", value: "painted part only" }] : []),
     ...(p.refs?.length ? [{ label: "References", value: p.refs.map(referenceText).join(", ") }] : []),
-    ...(p.temporary ? [{ label: "Temporary", value: "Refine (shown only on request, unless pinned)" }] : []),
+    ...(p.temporary && p.mark !== "pinned" ? [{ label: "Temporary", value: "Refine (shown only on request, unless pinned)" }] : []),
     { label: "File", value: `${filePath(p.image)} (ComfyUI ${p.image.type})` },
   ];
 }

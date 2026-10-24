@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useState, type CSSProperties, type HTMLAttributes, type KeyboardEvent, type PointerEvent } from "react";
 import type { LoadedPrompt } from "./ImagePromptPanel";
 import { markJobsSeen } from "./PictureQueue";
-import { picturesOf, type PendingJob, type Picture, type PromptToLoad, type StartMode, type StartRequest } from "./pictures";
-import { newMaskId, type PaintedArea } from "@/lib/mask";
+import { picturesOf, type PendingJob, type Picture, type PromptToLoad, type StartRequest } from "./pictures";
 import { editBlocked, useEditModels } from "./useEditModels";
 import { useSettings } from "@/lib/settings";
 import type { PictureJob } from "@/lib/pictureJobs";
@@ -24,7 +23,7 @@ const HANDLE_PX = 16;
 /**
  * What a page that makes pictures (a chapter's Illustrate page, the story's cover page) keeps for its two
  * columns: the prompt loaded from a picture (each load carries a number, so loading the same prompt twice
- * still counts as a new request), the starting picture and whether it is redrawn or edited (kept in this
+ * still counts as a new request), the starting picture for the Instruct edit (kept in this
  * browser), the pictures (those made earlier, then those made on this visit), the jobs being made, and
  * the width the controls column was dragged to. `versions` are the saved pictures' versions, which a
  * starting picture may be.
@@ -33,14 +32,8 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
   const [loaded, setLoaded] = useState<LoadedPrompt | null>(null);
   // A picture chosen with "Use as reference", for the prompt panel to add to its References (a new `nonce` for each).
   const [refRequest, setRefRequest] = useState<RefRequest | null>(null);
-  // The picture new pictures start from, when one is chosen, and whether it is redrawn or edited.
+  // The picture the Instruct edit starts from, when one is chosen.
   const [start, setStart] = useState<StartPicture | null>(null);
-  const [startMode, setStartMode] = useState<StartMode>("redraw");
-  // The painted part of the starting picture to redraw (Redraw only), kept with the picture it was painted on,
-  // and a number that goes up each time "Change part of this…" asks the mask editor to open.
-  const [maskOf, setMaskOf] = useState<{ startKey: string; area: PaintedArea } | null>(null);
-  const [paintNonce, setPaintNonce] = useState(0);
-  const mask = maskOf && start && maskOf.startKey === start.key ? maskOf.area : null;
   const router = useRouter();
   const comfy = useSettings().comfy;
   const editModels = useEditModels(comfy.url);
@@ -51,7 +44,7 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
   useEffect(() => markJobsSeen(jobs.filter((j) => j.seen_at === null).map((j) => j.id)), [jobs]);
   // The jobs being made, newest first, shown among the pictures.
   const [pending, setPending] = useState<PendingJob[]>([]);
-  // The starting picture and mode are kept in this browser, so a refresh brings them back. They are read once
+  // The starting picture is kept in this browser, so a refresh brings it back. It is read once
   // ComfyUI's address is known (the settings load after the page), and written only after that.
   const kept = stateKey(target);
   // The target is rebuilt each render, so what is used below is its ids.
@@ -67,34 +60,14 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
     let picture: StartPicture | null = null;
     if (saved?.image) picture = fromComfyImage(comfy.url, saved.image);
     else if (saved?.slot && version) picture = fromSaved(targetOfIds(storyId, chapterId, entryId), saved.slot, version);
-    if (picture) {
-      setStart(picture);
-      if (saved) setStartMode(saved.mode);
-      if (saved?.mask) setMaskOf({ startKey: picture.key, area: { ...saved.mask, id: newMaskId() } });
-    }
+    if (picture) setStart(picture);
     setRestored(true);
   }, [restored, comfy.url, kept, storyId, chapterId, entryId, versions]);
   /* eslint-enable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!restored) return;
-    const { strokes, softness, inverted, width, height } = mask ?? { strokes: [], softness: 0, inverted: false, width: 0, height: 0 };
-    writeStart(
-      kept,
-      start && (start.image || start.slot)
-        ? { mode: startMode, image: start.image, slot: start.slot, ...(mask && { mask: { strokes, softness, inverted, width, height } }) }
-        : null,
-    );
-  }, [restored, kept, start, startMode, mask]);
-
-  /** Chooses (or, with null, clears) the starting picture. A different picture drops the painted area. */
-  function chooseStart(picture: StartPicture | null) {
-    setStart(picture);
-    setMaskOf(null);
-  }
-  /** Sets (or, with null, clears) the painted area of the current starting picture. */
-  function setMask(area: PaintedArea | null) {
-    setMaskOf(area && start ? { startKey: start.key, area } : null);
-  }
+    writeStart(kept, start && (start.image || start.slot) ? { mode: "edit", image: start.image, slot: start.slot } : null);
+  }, [restored, kept, start]);
 
   function load(p: PromptToLoad) {
     setLoaded({ ...p, nonce: (loaded?.nonce ?? 0) + 1 });
@@ -123,9 +96,7 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
       document.getElementById("picture-references")?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
-    chooseStart(picture);
-    setStartMode(request === "paint" ? "redraw" : request);
-    if (request === "paint") setPaintNonce((n) => n + 1);
+    setStart(picture);
     document.getElementById("picture-prompt")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -204,7 +175,7 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
   };
 
   return {
-    comfy, editModels, blocked, loaded, load, refRequest, start, setStart: chooseStart, mask, setMask, paintNonce, startMode, setStartMode, startFrom,
+    comfy, editModels, blocked, loaded, load, refRequest, start, setStart, startFrom,
     pictures, addPictures, addLoaded, changePicture, clearFresh, pending, setPending, dock, setDock, gridProps, resizerProps,
   };
 }

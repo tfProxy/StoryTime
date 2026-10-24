@@ -15,9 +15,9 @@ import { useReferences, type RefRequest } from "./useReferences";
 import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
 import PromptFields from "./PromptFields";
-import ComfyGenerate, { type PaintProps } from "./ComfyGenerate";
+import ComfyGenerate from "./ComfyGenerate";
 import { StoryPicturesLine, type IllustratedStory, type LoadedPrompt } from "./ImagePromptPanel";
-import type { PendingJob, Picture, StartMode } from "./pictures";
+import type { PendingJob, Picture } from "./pictures";
 import type { EditModels } from "./useEditModels";
 import { EMPTY_CODEX, useCodexDraft } from "./usePictureDraft";
 
@@ -42,9 +42,6 @@ type Props = {
   loaded?: LoadedPrompt | null;
   start?: StartPicture | null;
   onClearStart?: () => void;
-  startMode?: StartMode;
-  onStartMode?: (mode: StartMode) => void;
-  paint?: PaintProps;
   editModels?: EditModels;
   onPictures?: (pictures: Picture[]) => void;
   onQueue?: (jobs: PendingJob[]) => void;
@@ -57,7 +54,7 @@ type Props = {
  * it. The boxes are kept on the server (see `useCodexDraft`).
  */
 export default function CodexPromptPanel({
-  story, entry, asOf, entryPreset, draft = null, pool, refRequest = null, pinned = [], loaded = null, start = null, onClearStart, startMode, onStartMode, paint, editModels, onPictures, onQueue, dock = null,
+  story, entry, asOf, entryPreset, draft = null, pool, refRequest = null, pinned = [], loaded = null, start = null, onClearStart, editModels, onPictures, onQueue, dock = null,
 }: Props) {
   const settings = useSettings();
   const [boxes, setBoxes] = useState<CodexDraft>(() => ({ ...EMPTY_CODEX, ...draft }));
@@ -176,9 +173,6 @@ export default function CodexPromptPanel({
         refChoices={choices}
         styleRef={story.style_ref ? restoreReference(story.style_ref, { pool, comfyUrl: settings.comfy.url }) : null}
         start={start}
-        startMode={startMode}
-        onStartMode={onStartMode}
-        paint={paint}
         editModels={editModels}
         onPictures={onPictures}
         onQueue={onQueue}

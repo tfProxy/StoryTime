@@ -28,7 +28,7 @@ Which drawing preset a picture uses:
    story's (marked "the story's"). Choosing another is saved for that chapter only; choosing the
    story's again makes the chapter follow the story.
 
-The edit presets are chosen on the Illustrate page's Edit tab, from one menu that lists each model's
+The edit presets are chosen in the Illustrate page's Instruct section, from one menu that lists each model's
 presets under its name; the last one used is remembered.
 
 Upgrading from a version without presets: the first time StoryTime starts, your picture settings
@@ -104,8 +104,8 @@ It follows [the Kroma / Krea 2 workflow](https://gabrielx.com/comfyui-kroma-chro
 a text-to-image picture is scaled up 2x (lanczos) and redrawn lightly by a second sampler (4 steps of
 `res_multistep` beta at a denoise of 0.14, which adds detail and grain; ComfyUI has `res_multistep`
 itself, no custom node). The pictures therefore come out twice the size you choose; set **Upscale**
-under Advanced to 1 to skip that pass, or to another number to scale by that. Redraw (from a starting
-picture) never does the second pass. The **Amateur slider** is a LoRA, not a setting: download
+under Advanced to 1 to skip that pass, or to another number to scale by that. A redraw from a
+picture (on the Refine screen) never does the second pass. The **Amateur slider** is a LoRA, not a setting: download
 `AmateurSlider-KREA2_v1.safetensors` into `models/loras` and add it to the preset's LoRAs (1.1 looks
 amateur; negative values look more polished, down to -2). The text encoder type is `krea2`, which needs
 a recent ComfyUI.
@@ -210,17 +210,12 @@ Style references ignore both and always run to the end.
 
 ## Edit models in ComfyUI
 
-On a chapter's Illustrate page, a picture's ☰ menu has two ways to start from it:
-
-- **Redraw from this** makes new pictures from the prompt, starting from the picture, with a
-  Strength slider (low keeps it close, high changes more).
-- **Edit this** changes the picture by following an instruction, such as "remove the logo on his
-  shirt" or "add more smoke around him". The prompt isn't used. Each click makes one edit with a new
-  seed, and **Edit this** on an edit carries on from it.
-
-Both open the same starting picture, on the Redraw or the Edit tab, and you can switch tabs. Edits
-need one of two edit models on your ComfyUI machine. **Edit this** stays greyed out until ComfyUI
-has at least one of them.
+On a chapter's Illustrate page, a picture's ☰ menu has **Instruct changes**, which changes the
+picture by following an instruction, such as "remove the logo on his shirt" or "add more smoke
+around him". The prompt isn't used. Each click makes one edit with a new seed, and **Instruct
+changes** on an edit carries on from it. (To paint on a picture, mask a part of it and redraw only
+that, use **Refine…** in the same menu.) Edits need one of two edit models on your ComfyUI machine.
+**Instruct changes** stays greyed out until ComfyUI has at least one of them.
 
 | Model | Good at | Download size | Graphics card |
 | --- | --- | --- | --- |
@@ -277,7 +272,7 @@ edit is several times faster. It gives up a little fine detail; the 8-step versi
 - StoryTime reads the number of steps from the file name (`4steps`, `8steps`). If you put several
   in `loras`, it uses one whose name has the same release number as the model (such as 2509), and
   otherwise the 4-step one above.
-- Once the LoRA is installed, the Edit tab shows a **Fast (Lightning, 4 steps)** box under the preset
+- Once the LoRA is installed, the Instruct section shows a **Fast (Lightning, 4 steps)** box under the preset
   menu when a Qwen-Image-Edit preset is chosen, and each Qwen preset in **Settings › Qwen edit** has
   the same box. It starts ticked; untick it for the full steps when you want the most detail. The
   choice is kept with the preset. Pictures made fast say "fast" in their caption, and Info lists the
@@ -366,7 +361,7 @@ a fine-tuned model can. Open the preset's card in Settings (Qwen edit or Flux ed
   they are the checkpoint's own unless you choose one.
 
 Leave a choice on "Found by its name" to keep using the usual file. If ComfyUI no longer lists a chosen
-file, the card says so and the Edit tab greys the preset out. The job log and a picture's Info name
+file, the card says so and the Instruct section greys the preset out. The job log and a picture's Info name
 the model or checkpoint used.
 
 Some fine-tunes to try:
@@ -432,10 +427,10 @@ Each edit preset also has:
   graphics card's, so the card has room for the model. Reading the instruction is a little slower. It
   uses the `device` choice of ComfyUI's text encoder loader; where the loader in use has none (some
   GGUF loaders), the card says it doesn't apply and nothing is sent.
-- **Default strength:** where the Edit tab's Strength slider starts for that preset. At 1 the model
+- **Default strength:** where the Instruct section's Strength slider starts for that preset. At 1 the model
   follows the instruction freely. Lower, it starts from the picture with less noise on it, so more of
   the picture stays as it was, but too low and the change may not happen at all. You can still move
-  the slider on the Edit tab for the edits at hand; it is kept for that chapter, in that browser,
+  the slider in the Instruct section for the edits at hand; it is kept for that chapter, in that browser,
   until you choose another preset.
 - **Advanced**, folded away: steps, CFG, sampler and scheduler, plus **Shift** for Qwen-Image-Edit
   and **Guidance** for FLUX.1 Kontext. Each shows its default next to it. The sampler and scheduler
@@ -454,14 +449,14 @@ With **Fast** on, Qwen edits use the Lightning LoRA's steps (4 or 8) at CFG 1 in
 CFG above; the sampler, scheduler and shift still apply.
 
 Drawing presets work the same way for pictures made from a prompt: the **Redraw strength** (where
-the Redraw tab's slider starts; moving the slider there is kept for that chapter, in that browser)
+the Refine screen's Strength slider starts; it remembers the last strength you used for each preset)
 and, under Advanced, the built-in SDXL workflow's steps (30), CFG (6), sampler (dpmpp_2m) and
 scheduler (karras). A workflow of your own, pasted under **Workflow** in the preset's card, keeps its
 own sampler settings; change them in ComfyUI and export it again.
 
 ### Using reference pictures in an edit
 
-On the Edit tab, the References section above the instruction lets you add pictures that show the
+In the Instruct section, the References section above the instruction lets you add pictures that show the
 model what to take: a character's face, an outfit, a prop. The starting picture is always the one
 that is changed; references are only looked at. (Edits don't use IP-Adapter, and a reference's
 Role and weight settings don't matter here. Only which pictures are in the list, and their order.)
@@ -493,9 +488,9 @@ use a reference that shows only that thing.
 
 - Say what to change, not the whole scene: "remove the logo on his shirt", "make it night",
   "add more smoke around him", "change her coat to red".
-- Change one thing at a time, and use **Edit this** on the result for the next change. Every pass
+- Change one thing at a time, and use **Instruct changes** on the result for the next change. Every pass
   softens the picture a little, so a long chain of edits slowly loses detail.
 - Edits keep the picture's shape at about one megapixel (a 1344 × 768 picture comes back at
   1360 × 768).
 - An edit doesn't use the drawing preset's checkpoint or the story's art style, so a strong style change can drift from
-  the rest of the story. Redraw at a low strength brings it back.
+  the rest of the story. Refining the picture at a low strength brings it back.

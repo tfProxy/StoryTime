@@ -1,6 +1,6 @@
-// Editing a picture by instruction on the Illustrate page: "Edit this" in a picture's ☰ menu (off until
-// ComfyUI has an edit model), the Settings "Check setup" report, the Redraw and Edit tabs sharing one
-// starting picture, the workflows queued for Qwen-Image-Edit and FLUX.1 Kontext, what the job log keeps,
+// Editing a picture by instruction on the Illustrate page: "Instruct changes" in a picture's ☰ menu (off until
+// ComfyUI has an edit model), the Settings "Check setup" report, the Instruct panel and its starting picture,
+// the workflows queued for Qwen-Image-Edit and FLUX.1 Kontext, what the job log keeps,
 // editing an edit, and a ComfyUI missing a node. The fake ComfyUI lists the model files it is given.
 import { comfySettings, launch } from "./browser.mjs";
 import { EDIT_FILES, LIGHTNING_LORA, startFakeComfy } from "./fakeComfy.mjs";
@@ -31,10 +31,8 @@ page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true
 const items = page.locator(".candidates li.picture-tile");
 const thumb = page.getByRole("img", { name: "Starting picture" });
 const strength = page.getByRole("slider", { name: "Strength" });
-const redrawTab = page.getByRole("tab", { name: "Redraw" });
-const editTab = page.getByRole("tab", { name: "Instruct" });
 const modelMenu = page.getByLabel("Edit preset");
-// The presets the Edit tab offers (each model's Default has the model's id), and those that can be chosen.
+// The presets the Instruct panel offers (each model's Default has the model's id), and those that can be chosen.
 const offered = () => modelMenu.locator("option").evaluateAll((os) => os.map((o) => o.value).join("|"));
 const choosable = () => modelMenu.locator("option:not([disabled])").evaluateAll((os) => os.map((o) => o.value).join("|"));
 // Settings: the tab shown, its setup check, and an edit preset in the saved settings.
@@ -66,9 +64,10 @@ try {
   await makeEdit.click();
   await until(async () => (await items.count()) === 1 && (await ready()), "a picture");
   let menu = await openMenu(items.first());
-  const editItem = menu.getByRole("menuitem", { name: "Edit this" });
+  const editItem = menu.getByRole("menuitem", { name: "Instruct changes" });
   await until(async () => /No edit model is installed/.test((await editItem.getAttribute("title")) ?? ""), "the edit check to finish");
-  ok(await editItem.getAttribute("aria-disabled") === "true", "with no edit model in ComfyUI, Edit this is in the menu but can't be chosen");
+  ok(await editItem.getAttribute("aria-disabled") === "true", "with no edit model in ComfyUI, Instruct changes is in the menu but can't be chosen");
+  ok((await menu.getByRole("menuitem").allInnerTexts()).every((t) => !/Redraw from this|Change part of this|Edit this/.test(t)), "…and the old Redraw from this, Change part of this… and Edit this items are gone");
   ok(/Check setup/.test(await editItem.getAttribute("title")), "…and its tooltip points at Settings' Check setup");
   await editItem.click({ force: true });
   ok(await thumb.count() === 0, "…choosing it does nothing");
@@ -128,33 +127,28 @@ try {
   ok((await report.innerText()).includes("ComfyUI doesn't have the nodes TextEncodeQwenImageEditPlus. Update ComfyUI."), "a missing node makes its model not ready, and says to update ComfyUI");
   comfy.setMode({ missingNodes: [] });
 
-  // ---- Edit this ----
+  // ---- Instruct changes ----
   await page.goto(`${BASE}/c/${chapterId}/illustrate`);
   await showAll();
   menu = await openMenu(items.first());
-  await until(async () => (await menu.getByRole("menuitem", { name: "Edit this" }).getAttribute("aria-disabled")) === null, "Edit this to be offered");
-  await menu.getByRole("menuitem", { name: "Edit this" }).click();
+  await until(async () => (await menu.getByRole("menuitem", { name: "Instruct changes" }).getAttribute("aria-disabled")) === null, "Instruct changes to be offered");
+  ok(await menu.getByRole("menuitem", { name: "Instruct changes" }).getAttribute("title") === "Change this picture by telling an edit model what to change", "Instruct changes explains itself in its tooltip");
+  await menu.getByRole("menuitem", { name: "Instruct changes" }).click();
   await thumb.waitFor();
-  ok(await editTab.getAttribute("aria-selected") === "true" && await strength.inputValue() === "1", "Edit this shows the picture with the Edit tab chosen and a Strength slider at full strength");
+  ok(await page.locator(".edit-panel").getByRole("heading", { name: "Instruct" }).isVisible() && await page.getByRole("tab").count() === 0 && await strength.inputValue() === "1", "Instruct changes shows the picture in the Instruct panel (no Redraw tab) with a Strength slider at full strength");
+  ok(await page.getByRole("button", { name: "Paint area" }).count() === 0 && await page.getByRole("textbox", { name: "Redraw prompt (optional)" }).count() === 0, "…and nothing of the old Redraw: no Paint area, no Redraw prompt");
   const groups = await modelMenu.locator("optgroup").evaluateAll((gs) => gs.map((g) => g.label).join("|"));
   ok(groups === "Qwen-Image-Edit|FLUX.1 Kontext" && (await offered()) === "qwen-image-edit|flux-kontext" && await modelMenu.inputValue() === "qwen-image-edit", "…the edit presets are offered under their models, Qwen's first as last used");
   ok(await makeEdit.isDisabled(), "…and Queue waits for an instruction");
   const startSrc = await thumb.getAttribute("src");
 
-  // the tabs share the starting picture
-  await redrawTab.click();
-  ok(await strength.isVisible() && await thumb.getAttribute("src") === startSrc && await makeEdit.isVisible(), "the Redraw tab shows the Strength slider for the same picture");
-  await editTab.click();
   await instruction.fill("remove the logo on his shirt");
-  await redrawTab.click();
-  await editTab.click();
-  ok(await instruction.inputValue() === "remove the logo on his shirt", "…and going back to Edit keeps the instruction");
 
   let mark = comfy.calls.length;
   await makeEdit.click();
   await until(async () => (await items.count()) === 2 && (await ready()), "the edit");
   let wf = prompts(mark)[0];
-  ok(nodes(wf, "UNETLoader")[0]?.inputs.unet_name === "qwen_image_edit_2509_fp8_e4m3fn.safetensors" && nodes(wf, "CLIPLoader")[0]?.inputs.clip_name === "qwen_2.5_vl_7b_fp8_scaled.safetensors", "Queue in the Edit tab queues the Qwen workflow with the files ComfyUI has");
+  ok(nodes(wf, "UNETLoader")[0]?.inputs.unet_name === "qwen_image_edit_2509_fp8_e4m3fn.safetensors" && nodes(wf, "CLIPLoader")[0]?.inputs.clip_name === "qwen_2.5_vl_7b_fp8_scaled.safetensors", "Queue in the Instruct panel queues the Qwen workflow with the files ComfyUI has");
   ok(nodes(wf, "TextEncodeQwenImageEditPlus").some((n) => n.inputs.prompt === "remove the logo on his shirt") && nodes(wf, "CheckpointLoaderSimple").length === 0, "…with the instruction, and no checkpoint");
   ok(/^storytime-start-/.test(nodes(wf, "LoadImage")[0].inputs.image) && nodes(wf, "ImageScale")[0].inputs.width === 1296 && nodes(wf, "ImageScale")[0].inputs.height === 816, "…starting from the uploaded picture, scaled to about a megapixel (96 × 60 → 1296 × 816)");
   let log = (await jobs())[0];
@@ -168,7 +162,7 @@ try {
   await info.waitFor();
   const infoText = await info.innerText();
   ok(infoText.includes("Edit instruction") && infoText.includes("remove the logo on his shirt") && infoText.includes("Qwen-Image-Edit (qwen_image_edit_2509_fp8_e4m3fn.safetensors)"), "Info shows the instruction and the edit model with its file");
-  ok(await info.getByRole("button", { name: "Redraw from this" }).isVisible() && await info.getByRole("button", { name: "Edit this" }).isEnabled(), "…and offers Redraw from this and Edit this");
+  ok(await info.getByRole("button", { name: "Instruct changes" }).isEnabled() && await info.getByRole("button", { name: "Refine…" }).isVisible() && await info.getByRole("button", { name: "Redraw from this" }).count() === 0, "…and offers Instruct changes and Refine… (no Redraw from this)");
   await info.getByRole("button", { name: "Close" }).click();
 
   // ---- the other model ----
@@ -185,17 +179,15 @@ try {
   ok(nodes(wf, "ReferenceLatent").length === 1 && nodes(wf, "DualCLIPLoader")[0].inputs.clip_name2 === "t5xxl_fp8_e4m3fn_scaled.safetensors" && nodes(wf, "CLIPTextEncode")[0].inputs.text === "remove the logo on his shirt", "with FLUX.1 Kontext, its workflow is queued with its files and the instruction");
   ok((await jobs())[0].edit_model === "flux-kontext", "…and the log says so");
 
-  // ---- editing an edit, and redrawing ----
-  await choose(items.first(), "Edit this");
+  // ---- editing an edit ----
+  await choose(items.first(), "Instruct changes");
   await until(async () => (await thumb.getAttribute("src")) !== startSrc, "the edit to become the starting picture");
-  ok(await editTab.getAttribute("aria-selected") === "true" && await instruction.inputValue() === "remove the logo on his shirt", "Edit this on an edit makes it the starting picture, still on the Edit tab");
+  ok(await instruction.inputValue() === "remove the logo on his shirt", "Instruct changes on an edit makes it the starting picture, keeping the instruction");
   await instruction.fill("add more smoke around him");
   mark = comfy.calls.length;
   await makeEdit.click();
   await until(async () => (await items.count()) === 4 && (await ready()), "the second edit");
   ok((await jobs())[0].instruction === "add more smoke around him" && (await jobs())[0].source === "comfy:StoryTime_3_0.png", "…so edits can follow one another");
-  await choose(items.first(), "Redraw from this");
-  ok(await redrawTab.getAttribute("aria-selected") === "true" && await strength.isVisible(), "Redraw from this chooses the Redraw tab");
 
   // ---- a saved picture ----
   await choose(items.first(), "Use as header picture");
@@ -203,9 +195,9 @@ try {
   const header = page.locator(".image-editor", { has: page.getByRole("heading", { name: "Header picture" }) });
   await header.locator("img.image-editor-preview").waitFor();
   await header.getByRole("button", { name: "More" }).click();
-  await header.getByRole("menuitem", { name: "Edit this" }).click();
+  await header.getByRole("menuitem", { name: "Instruct changes" }).click();
   await until(async () => ((await thumb.getAttribute("src")) ?? "").includes(`/api/chapters/${chapterId}/images/header`), "the header to become the starting picture");
-  ok(await editTab.getAttribute("aria-selected") === "true", "the saved header's Edit this starts from it on the Edit tab");
+  ok(await instruction.isVisible(), "the saved header's Instruct changes starts from it in the Instruct panel");
 
   // ---- a refresh keeps the editing ----
   await instruction.fill("add a red scarf");
@@ -213,13 +205,14 @@ try {
   await page.reload();
   await thumb.waitFor();
   ok(((await thumb.getAttribute("src")) ?? "").includes(`/api/chapters/${chapterId}/images/header`), "after a refresh the starting picture is still the saved header");
-  await until(async () => (await editTab.getAttribute("aria-selected")) === "true" && (await instruction.inputValue()) === "add a red scarf", "the Edit tab and its text to come back");
+  await until(async () => (await instruction.inputValue()) === "add a red scarf", "the Instruct text to come back");
   ok(await strength.inputValue() === "0.4", "…with the same Strength");
-  await redrawTab.click();
+  // A start kept by an earlier version in Redraw mode (with a painted area) still loads, as the Instruct starting picture.
+  await page.evaluate((id) => localStorage.setItem(`storytime.illustrate.start.${id}`, JSON.stringify({ mode: "redraw", slot: "header", mask: { strokes: [], softness: 0, inverted: false, width: 96, height: 60 } })), chapterId);
   await page.reload();
   await thumb.waitFor();
-  await until(async () => (await redrawTab.getAttribute("aria-selected")) === "true", "the Redraw tab to come back");
-  ok(true, "…and a refresh in Redraw stays in Redraw");
+  await instruction.waitFor();
+  ok(((await thumb.getAttribute("src")) ?? "").includes(`/api/chapters/${chapterId}/images/header`) && await instruction.isVisible(), "a starting picture stored in the old Redraw mode still loads, as the Instruct starting picture");
   await page.getByRole("button", { name: "Stop editing" }).click();
   await page.reload();
   await page.getByRole("heading", { name: "Model Settings" }).waitFor();
@@ -232,7 +225,7 @@ try {
   comfy.setMode({ files: { ...EDIT_FILES, loras: [LIGHTNING_LORA] } });
   await page.reload();
   await showAll();
-  await choose(items.first(), "Edit this");
+  await choose(items.first(), "Instruct changes");
   await thumb.waitFor();
   await modelMenu.selectOption("qwen-image-edit");
   await instruction.waitFor();
@@ -256,7 +249,7 @@ try {
   await setFast(false);
   await page.reload();
   await showAll();
-  await choose(items.first(), "Edit this");
+  await choose(items.first(), "Instruct changes");
   await thumb.waitFor();
   await modelMenu.selectOption("qwen-image-edit");
   await instruction.fill("make it night");
@@ -270,7 +263,7 @@ try {
   await setFast(true);
   await page.reload();
   await showAll();
-  await choose(items.first(), "Edit this");
+  await choose(items.first(), "Instruct changes");
   await thumb.waitFor();
   await modelMenu.selectOption("qwen-image-edit");
   if (process.env.E2E_SCREENSHOT_DIR) {
@@ -281,7 +274,7 @@ try {
   // ---- the author's LoRA stack ----
   const toggles = page.getByRole("group", { name: "LoRAs" });
   const noLoras = page.locator(".edit-panel").getByText("No LoRAs in this preset.");
-  ok(await noLoras.isVisible() && await page.locator(".edit-panel").getByRole("link", { name: "Add some in Settings" }).getAttribute("href") === "/settings#preset-qwen-image-edit", "with no stack, the Edit tab says so and links to the preset in Settings");
+  ok(await noLoras.isVisible() && await page.locator(".edit-panel").getByRole("link", { name: "Add some in Settings" }).getAttribute("href") === "/settings#preset-qwen-image-edit", "with no stack, the Instruct panel says so and links to the preset in Settings");
   const userLoras = ["styles/ink.safetensors", "hero.safetensors"];
   comfy.setMode({ files: { ...EDIT_FILES, loras: [LIGHTNING_LORA, ...userLoras] } });
   await page.locator(".edit-panel").getByRole("link", { name: "Add some in Settings" }).click();
@@ -314,7 +307,7 @@ try {
   ok((await qwenCard.innerText()).includes("Fast with the Lightning LoRA (4 steps at CFG 1") && await qwenCard.getByRole("checkbox", { name: /^Fast/ }).isChecked(), "with the LoRA installed, the preset's Fast box is on and says its steps");
   await qwenCard.getByLabel("Default strength").fill("0.7");
   await until(async () => (await tuningNow()).strength === 0.7, "the default strength to be saved");
-  ok(true, "the preset sets the Edit tab's default strength");
+  ok(true, "the preset sets the Instruct panel's default strength");
   const qAdvanced = qwenCard.locator("details.advanced", { hasText: "Advanced: steps" });
   await qAdvanced.getByText("Advanced: steps, CFG, sampler, shift").click();
   ok((await qAdvanced.getByLabel(/^Steps/).inputValue()) === "20" && (await qAdvanced.getByLabel(/^CFG/).inputValue()) === "2.5" && (await qAdvanced.getByLabel(/^Shift/).inputValue()) === "3", "Advanced shows Qwen's steps, CFG and shift (20, 2.5, 3)");
@@ -343,7 +336,7 @@ try {
 
   await page.goto(`${BASE}/c/${chapterId}/illustrate`);
   await showAll();
-  await choose(items.first(), "Edit this");
+  await choose(items.first(), "Instruct changes");
   await thumb.waitFor();
   await modelMenu.selectOption("qwen-image-edit");
   await toggles.getByRole("checkbox").first().waitFor();
@@ -351,7 +344,7 @@ try {
   const resetLoras = page.getByRole("button", { name: "Reset LoRAs to preset" });
   ok((await toggles.innerText()).includes("hero") && (await toggles.innerText()).includes("ink") && await toggles.getByRole("checkbox").count() === 2 && await strengthOf("hero").inputValue() === "-0.5" && await strengthOf("ink").inputValue() === "0.8", "the Edit tab lists the model's LoRAs, each with a box and a strength");
   ok(await resetLoras.count() === 0, "…and no Reset while the page has no changes");
-  ok(await strength.inputValue() === "0.7", "the Edit tab's strength starts at the model's default from Settings");
+  ok(await strength.inputValue() === "0.7", "the Instruct panel's strength starts at the model's default from Settings");
   await instruction.fill("in his ink style");
   mark = comfy.calls.length;
   before = await items.count();
@@ -379,7 +372,7 @@ try {
   ok(JSON.stringify(await savedStack()) === presetStack, "…but the preset in Settings is not changed");
   await page.reload();
   await showAll();
-  await choose(items.first(), "Edit this");
+  await choose(items.first(), "Instruct changes");
   await thumb.waitFor();
   await modelMenu.selectOption("qwen-image-edit");
   await resetLoras.waitFor();
@@ -397,7 +390,7 @@ try {
   comfy.setMode({ files: { ...EDIT_FILES, loras: [LIGHTNING_LORA, "hero.safetensors"] } });
   await page.reload();
   await showAll();
-  await choose(items.first(), "Edit this");
+  await choose(items.first(), "Instruct changes");
   await thumb.waitFor();
   await modelMenu.selectOption("qwen-image-edit");
   await page.getByText("ComfyUI doesn't list styles/ink.safetensors, so edits go ahead without it.").waitFor();
@@ -419,7 +412,7 @@ try {
   await page.reload();
   await showAll();
   ok(await page.getByRole("list", { name: /^Pictures from “Edit: / }).count() >= 1, "after coming back, the pictures made by editing are listed under All");
-  await choose(items.first(), "Edit this");
+  await choose(items.first(), "Instruct changes");
   await thumb.waitFor();
   ok((await choosable()) === "flux-kontext" && await modelMenu.inputValue() === "flux-kontext", "the presets of a model whose node ComfyUI lacks can't be chosen");
   ok((await modelMenu.locator("optgroup").first().getAttribute("label")) === "Qwen-Image-Edit (not installed)", "…and its group says it isn't installed");

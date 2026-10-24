@@ -32,7 +32,7 @@ type Props = {
   saver: PictureSaver;
   /** Called to bring back the prompt and settings a picture was made with. */
   onLoadPrompt: (picture: Picture) => void;
-  /** Called to make new pictures starting from one of these: redrawn from the prompt, or edited by instruction. */
+  /** Called to start from one of these: change it by instruction, use it as a reference, or refine it. */
   onStart: (image: ComfyImage, mode: StartRequest) => void;
   /** Why they can't be edited by instruction now, or null. */
   editBlocked: string | null;

@@ -20,14 +20,14 @@ export type JobInput = {
   negative: string;
   moment: PictureMoment;
   comfy: ComfySettings;
-  /** The drawing preset, its LoRAs that are switched on and in ComfyUI, and the Redraw strength (for new pictures and Redraw). */
+  /** The drawing preset, its LoRAs that are switched on and in ComfyUI, and the redraw strength (the preset's, or the Refine screen's). */
   draw: DrawPreset;
   drawLoras: EditLora[];
   /** What ComfyUI has for the drawing preset's model family and the files it chose; null for a checkpoint preset, one with a workflow of its own, or before ComfyUI has answered. */
   family: FamilyCheck | null;
   redraw: number;
   start: StartPicture | null;
-  /** The painted part of the starting picture to redraw (Redraw only; ignored by an edit); null for the whole picture. */
+  /** The painted part of the starting picture to redraw (the Refine screen's; ignored by an edit); null for the whole picture. */
   mask?: PaintedArea | null;
   /** A temporary job (the Refine screen's): recorded as temporary, so the Illustrate page leaves its pictures out unless asked for or pinned. */
   temporary?: boolean;
@@ -69,7 +69,7 @@ export const denoiseOf = (i: JobInput) => (i.edit ? (i.edit.strength < 1 ? i.edi
 export const madeWithText = (i: JobInput) =>
   i.edit ? editFilesText(i.edit.check, i.edit.fast, i.edit.loras) : drawFilesText(i.family?.files.model ?? i.draw.checkpoint, i.drawLoras);
 
-/** The mask a job really uses: only a Redraw from a starting picture has one. */
+/** The mask a job really uses: only a redraw from a starting picture (the Refine screen's) has one. */
 export const maskOf = (i: JobInput) => (i.start && !i.edit ? i.mask ?? null : null);
 
 /** What has to match for a click to join the job being gathered. */

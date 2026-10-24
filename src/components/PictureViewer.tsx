@@ -25,7 +25,7 @@ type Props = {
   onLoadPrompt: (picture: Picture) => void;
   /** Shows everything the picture was made with (the Info popup, over the viewer). */
   onInfo: (picture: Picture) => void;
-  /** Makes new pictures starting from the one shown: redrawn from the prompt, or edited by instruction. */
+  /** Starts from the one shown: change it by instruction, use it as a reference, or refine it. */
   onStart?: (picture: Picture, mode: StartRequest) => void;
   /** Why it can't be edited by instruction now, or null. */
   editBlocked?: string | null;

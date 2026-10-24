@@ -276,7 +276,7 @@ function EditReport({ check, model }: { check: ComfyCheck; model: EditModel }) {
     <div className="comfy-check" role="status">
       <p style={{ margin: 0 }}>Connected to ComfyUI {check.version}.</p>
       <p style={{ margin: 0 }} className={e.ready ? "ok" : "error"}>
-        <strong>{e.model.name}</strong>: {e.ready ? "ready." : "not ready, so Edit this doesn't offer it."}
+        <strong>{e.model.name}</strong>: {e.ready ? "ready." : "not ready, so Instruct changes doesn't offer it."}
       </p>
       <ul>
         {e.parts.map((p) => (
@@ -535,7 +535,7 @@ function FamilyFiles({
   );
 }
 
-/** One drawing preset's settings: name, model type and files, Redraw strength, LoRAs, sampler and workflow. */
+/** One drawing preset's settings: name, model type and files, Redraw strength (the Refine screen's default), LoRAs, sampler and workflow. */
 function DrawPresetFields({ preset, setup, onChange }: { preset: DrawPreset; setup: PictureSetup; onChange: (patch: Partial<DrawPreset>) => void }) {
   const summary = workflowSummary(preset);
   const { loras, samplers, schedulers } = lists(setup.models);
@@ -678,7 +678,7 @@ function DrawPresetFields({ preset, setup, onChange }: { preset: DrawPreset; set
         </span>
       </label>
       <StrengthField label="Redraw strength" value={preset.denoise} onChange={(denoise) => onChange({ denoise })}>
-        Where the Redraw tab&apos;s strength starts. Low keeps the picture close; high changes more.
+        Where the Refine screen&apos;s strength starts. Low keeps the picture close; high changes more.
       </StrengthField>
       <LoraStack
         label={presetName(preset)}
@@ -777,7 +777,7 @@ export function DrawingSettings({
       <section id="drawing-presets" className="settings-section">
         <h2>Drawing presets</h2>
         <p className="meta" style={{ margin: 0 }}>
-          How new pictures are drawn, and redrawn from a picture: the checkpoint, its LoRAs and the sampler. Each story chooses its
+          How new pictures are drawn, and redrawn on the Refine screen: the checkpoint, its LoRAs and the sampler. Each story chooses its
           preset on its details page (stories that choose none use the top one), and a chapter can choose another on the Illustrate page.
         </p>
         {presets.map((p, i) => (
@@ -940,7 +940,7 @@ function ModelFiles({ preset, model, setup, onChange }: { preset: EditPreset; mo
             </p>
           ) : (
             <p className="error" style={{ margin: 0 }}>
-              {problems.join(" ")} Edit this doesn&apos;t offer this preset until it does.
+              {problems.join(" ")} Instruct changes doesn&apos;t offer this preset until it does.
             </p>
           ))}
         {setup.models.state !== "done" && <p className="meta" style={{ margin: 0 }}>The files are listed once ComfyUI answers.</p>}
@@ -995,7 +995,7 @@ function EditPresetFields({ preset, model, setup, onChange }: { preset: EditPres
         </label>
       )}
       <StrengthField label="Default strength" value={strength} onChange={(v) => setTuning({ strength: v })}>
-        Where the Edit tab&apos;s strength starts. 1 lets the model follow the instruction freely; lower starts from the
+        Where the Instruct panel&apos;s strength starts. 1 lets the model follow the instruction freely; lower starts from the
         picture with less noise, so more of it stays as it was (too low and the change may not happen).
       </StrengthField>
       <LoraStack label={presetName(preset)} madeFor={model.name} stack={preset.loras} available={loras} onChange={(stack) => onChange({ loras: stack })}>
@@ -1052,7 +1052,7 @@ export function EditSettings({
       <section id={`${modelId}-presets`} className="settings-section">
         <h2>{model.name} presets</h2>
         <p className="meta" style={{ margin: 0 }}>
-          {model.blurb} Each preset has its own LoRAs and settings; choose one on the Illustrate page&apos;s Edit tab.
+          {model.blurb} Each preset has its own LoRAs and settings; choose one in the Instruct panel on the Illustrate page.
         </p>
         {installed !== null && (
           <p className={installed ? "ok" : "error"} style={{ margin: 0 }}>

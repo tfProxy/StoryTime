@@ -20,7 +20,7 @@ The tests use a fake. Before building more on this, try once on the real machine
 4. **Scale / upscale pass.** A Scale menu (1×, 1.5×) that resizes the starting picture before re-drawing it. Left out for now.
 5. **Import from ComfyUI's history** (`GET /history?max_items=200`) for pictures made before the log existed or in ComfyUI itself. Take entries tagged `storytime` or whose files start with `StoryTime`; the prompt can be read back from the stored workflow (`prompt[2]`) with the node-finding in `workflow.ts`. Not built.
 6. **Pictures from other stories** as one more view beside Other chapters. Left out unless asked.
-7. **Inpainting** (redrawing only a painted part of a picture). Phase 1 is done: Redraw takes a painted area (Paint area, or Change part of this… in a picture's ☰ menu; see `docs/illustrate.md`). Still to do:
+7. **Inpainting** (redrawing only a painted part of a picture). Phase 1 is done: the Refine screen (**Refine…** in a picture's ☰ menu) takes a painted mask and redraws only that; the Illustrate page's old Redraw tab and Paint area are gone (see `docs/illustrate.md`). Still to do:
    - Phase 2: edit models with a mask: run the edit, then paste back only the masked area.
    - Phase 3: zoom-in crop and stitch for small areas, so a small painted area is drawn at full resolution.
    - Phase 4: Flux Fill and outpainting (extending a picture past its edges).

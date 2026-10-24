@@ -26,7 +26,7 @@ type Props = {
   made?: ImageMade | null;
   /** Called with `made` when the author asks to bring its prompt back. */
   onLoadPrompt?: (made: ImageMade) => void;
-  /** Called with the saved picture's version to make new pictures starting from it: redrawn, or edited by instruction. */
+  /** Called with the saved picture's version to start from it: change it by instruction, use it as a reference, or refine it. */
   onStart?: (version: number, mode: StartRequest) => void;
   /** Why it can't be edited by instruction now, or null. */
   editBlocked?: string | null;

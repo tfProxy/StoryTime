@@ -1434,18 +1434,6 @@ textarea.two-lines {
   line-height: 1.4;
 }
 
-.alt-prompt {
-  display: grid;
-  gap: 0.25rem;
-}
-
-.alt-prompt .field-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
 .strength-ends {
   display: flex;
   justify-content: space-between;
@@ -1459,41 +1447,9 @@ textarea.two-lines {
   min-width: 0;
 }
 
-/* The thumbnail with the painted area tinted over it (the same box, so they line up). */
 .start-picture-frame {
   position: relative;
   width: 100%;
-}
-
-.start-picture .start-picture-frame img.start-picture-mask {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  max-width: none;
-  max-height: none;
-  background: transparent;
-  pointer-events: none; /* clicks go to the picture's link */
-  opacity: 0.6;
-  pointer-events: none;
-}
-
-/* Paint area, or the painted area's line and its two buttons: comfortable to tap, and wrapping rather than overflowing. */
-.start-mask {
-  display: grid;
-  gap: 0.4rem;
-  justify-items: start;
-  min-width: 0;
-}
-
-.start-mask-buttons {
-  gap: 0.4rem;
-  flex-wrap: wrap;
-}
-
-.start-mask button {
-  min-height: 2.75rem;
-  padding-inline: 0.9rem;
 }
 
 .strength {
@@ -1507,7 +1463,7 @@ textarea.two-lines {
   min-width: 0;
 }
 
-/* Redraw or Instruct: two tabs side by side, the chosen one filled. */
+/* Side-by-side tab buttons (the References picker's tabs). */
 .start-modes {
   gap: 0.35rem;
 }
@@ -2799,196 +2755,6 @@ button.link-button {
   text-decoration: underline;
   font: inherit;
   cursor: pointer;
-}
-
-/* ---- mask editor (MaskEditor.tsx): a full-screen dialog to paint the area of a picture to redraw ---- */
-dialog.mask-editor {
-  width: 100vw;
-  height: 100dvh;
-  max-width: none;
-  max-height: none;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  overflow: hidden;
-  background: #111;
-  color: #eee;
-}
-
-dialog.mask-editor[open] {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-}
-
-dialog.mask-editor::backdrop {
-  background: rgb(0 0 0 / 0.85);
-}
-
-.mask-editor button {
-  min-width: 2.75rem;
-  min-height: 2.75rem;
-  padding: 0.35rem 0.7rem;
-  font-size: 0.9rem;
-  border: 1px solid #555;
-  border-radius: 6px;
-  background: #222;
-  color: #eee;
-}
-
-.mask-editor button:disabled {
-  opacity: 0.45;
-}
-
-.mask-editor button[aria-pressed="true"] {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-fg);
-}
-
-.mask-editor .mask-done {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-fg);
-  font-weight: 600;
-}
-
-.mask-stage {
-  position: relative;
-  min-height: 0;
-  overflow: hidden;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-  cursor: crosshair;
-}
-
-.mask-frame {
-  position: absolute;
-  top: 0;
-  left: 0;
-  transform-origin: 0 0;
-}
-
-.mask-frame img,
-.mask-frame canvas {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
-.mask-cursor {
-  position: absolute;
-  top: 0;
-  left: 0;
-  box-sizing: border-box;
-  border: 2px solid #fff;
-  border-radius: 50%;
-  box-shadow: 0 0 0 1px #000, inset 0 0 0 1px #000;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s;
-}
-
-.mask-editor .mask-fit {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  background: rgb(0 0 0 / 0.7);
-}
-
-.mask-confirm {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-content: center;
-  gap: 0.75rem;
-  background: rgb(0 0 0 / 0.7);
-  text-align: center;
-}
-
-.mask-confirm p {
-  margin: 0;
-  font-size: 1.1rem;
-}
-
-.mask-confirm div {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: center;
-}
-
-.mask-bar {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.5rem 0.75rem;
-  padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
-  background: #1a1a1a;
-  border-top: 1px solid #333;
-  max-height: 55dvh;
-  overflow-y: auto;
-}
-
-.mask-row,
-.mask-more {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  align-items: center;
-}
-
-.mask-row > button {
-  flex: 1 1 0;
-}
-
-.mask-slider {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  min-height: 2.75rem;
-  flex: 1 1 100%;
-  font-size: 0.9rem;
-}
-
-.mask-slider input {
-  flex: 1;
-  min-width: 0;
-  height: 2.75rem;
-  margin: 0;
-  accent-color: var(--accent);
-}
-
-.mask-actions {
-  margin-top: 0.1rem;
-}
-
-@media (min-aspect-ratio: 1/1) and (min-width: 40rem) {
-  dialog.mask-editor[open] {
-    grid-template-rows: none;
-    grid-template-columns: minmax(0, 1fr) 14rem;
-  }
-
-  .mask-bar {
-    max-height: none;
-    height: 100dvh;
-    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
-    border-top: 0;
-    border-left: 1px solid #333;
-  }
-
-  .mask-actions {
-    margin-top: auto;
-  }
-
-  /* The side bar is narrow: two buttons to a line, so their names fit. */
-  .mask-row > button {
-    flex: 1 1 5.5rem;
-    padding-inline: 0.4rem;
-  }
 }
 
 /* ---- The Refine screen (/refine/<session>) ---- */

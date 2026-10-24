@@ -102,16 +102,7 @@ try {
   ok((await page.getByRole("dialog").innerText()).includes(ZGGUF), "Info shows the model file");
   await page.keyboard.press("Escape");
 
-  // ---- Redraw from a picture ----
-  await items.first().getByRole("button", { name: "More" }).click();
-  await items.first().getByRole("menuitem", { name: "Redraw from this" }).click();
-  await page.getByRole("slider", { name: "Strength" }).waitFor();
-  const mark2 = comfy.calls.length;
-  await queue.click();
-  await until(async () => prompts(mark2).length === 1, "the redraw to be queued");
-  const redraw = prompts(mark2)[0];
-  ok(nodes(redraw, "LoadImage").length === 1 && nodes(redraw, "ImageScale").length === 1 && nodes(redraw, "VAEEncode").length === 1 && nodes(redraw, "RepeatLatentBatch").length === 1 && nodes(redraw, "EmptySD3LatentImage").length === 0, "Redraw starts from the picture: LoadImage, ImageScale, VAEEncode, RepeatLatentBatch");
-  ok(nodes(redraw, "KSampler")[0].inputs.denoise === 0.55, "…at the preset's Redraw strength");
+  // (A family workflow redrawing a picture, with and without a mask, is checked in tests/unit/draw-models.test.mts and by the Refine screen's tests.)
 
   // ---- Flux ----
   const chooseType = async (family) => {

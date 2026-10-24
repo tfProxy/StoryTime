@@ -135,7 +135,7 @@ export type ComfySettings = {
   drawPresets: DrawPreset[];
   /** Edit presets, each for one edit model; every edit model has at least one. */
   editPresets: EditPreset[];
-  /** The edit preset last used on the Illustrate page's Edit tab (an id from `editPresets`). */
+  /** The edit preset last used in the Illustrate page's Instruct panel (an id from `editPresets`). */
   editPreset: string;
   /** The Pictures panel lists the oldest first (the newest at the bottom) instead of the newest first. */
   picturesOldestFirst: boolean;

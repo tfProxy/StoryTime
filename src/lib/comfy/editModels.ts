@@ -49,11 +49,11 @@ export type EditParams = {
 export const EDIT_REFS = { qwen: 2, kontext: 1 } as const;
 
 /**
- * What an edit model runs with: the sampler's settings, the default strength the Edit tab starts at, and
+ * What an edit model runs with: the sampler's settings, the default strength the Instruct panel starts at, and
  * the settings only some models have (Qwen's shift, Kontext's guidance).
  */
 export type EditTuning = SamplerTuning & {
-  /** The Edit tab's strength to start with (see EditParams.denoise). */
+  /** The Instruct panel's strength to start with (see EditParams.denoise). */
   strength: number;
   /** Qwen: ModelSamplingAuraFlow's shift. Higher spends more of the steps on the big shapes. */
   shift?: number;

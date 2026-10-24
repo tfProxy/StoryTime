@@ -63,7 +63,7 @@ export type DrawPreset = {
   loras: LoraSetting[];
   /** The built-in workflow's sampler settings that were changed; the rest are the family's defaults (BUILTIN_SAMPLER's for a checkpoint). */
   sampler: Partial<DrawTuning>;
-  /** The strength the Redraw tab starts at: how far a redraw may change the picture, 0.05 to 1. */
+  /** The strength the Refine screen starts at: how far a redraw may change the picture, 0.05 to 1. */
   denoise: number;
 };
 
@@ -85,7 +85,7 @@ export type EditPreset = {
   textEncoderDevice: TextEncoderDevice;
   /** Applied in order, after the speed-up. */
   loras: LoraSetting[];
-  /** The model's settings that were changed, including the Edit tab's starting strength; the rest are the model's defaults. */
+  /** The model's settings that were changed, including the Instruct panel's starting strength; the rest are the model's defaults. */
   tuning: Partial<EditTuning>;
 };
 

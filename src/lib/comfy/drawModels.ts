@@ -343,7 +343,7 @@ export const DRAW_MODELS: DrawModel[] = [
     parts: [
       {
         key: "model", label: "Qwen-Image model", folder: "diffusion_models", loader: "UNETLoader", input: "unet_name",
-        // Not Qwen-Image-Edit, the editing model made from it (the Edit tabs use that one).
+        // Not Qwen-Image-Edit, the editing model made from it (Instruct uses that one).
         recommended: "qwen_image_fp8_e4m3fn.safetensors", match: /^(?!.*edit).*qwen[-_ ]?image/i, output: 0, gguf: UNET_GGUF,
       },
       QWEN_TEXT_ENCODER,

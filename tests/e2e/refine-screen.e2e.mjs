@@ -78,7 +78,7 @@ try {
 
   await tiles.first().getByRole("button", { name: "More" }).click();
   const menu = await tiles.first().getByRole("menuitem").allInnerTexts();
-  ok(menu.includes("Refine…") && menu.includes("Redraw from this") && menu.includes("Change part of this…"), `the ☰ menu offers Refine… and keeps the old items (${menu.join(" | ")})`);
+  ok(menu.includes("Refine…") && menu.includes("Instruct changes") && menu.includes("Use as reference") && !menu.includes("Redraw from this") && !menu.includes("Change part of this…") && !menu.includes("Edit this"), `the ☰ menu offers Refine… and Instruct changes, and no longer Redraw from this, Change part of this… or Edit this (${menu.join(" | ")})`);
   await tiles.first().getByRole("menuitem", { name: "Refine…" }).click();
   await page.waitForURL(/\/refine\/[a-z0-9]+$/);
   made.push(sessionId());

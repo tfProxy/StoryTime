@@ -1,6 +1,6 @@
 // Named picture presets: a story's drawing preset (Story details), a chapter's own (Illustrate page), each
-// preset's checkpoint, LoRAs and Redraw strength in the workflow that is queued, the edit presets on the
-// Edit tab, and the preset cards in Settings. Against the fake ComfyUI.
+// preset's checkpoint and LoRAs in the workflow that is queued, the edit presets on the
+// Instruct panel, and the preset cards in Settings. Against the fake ComfyUI.
 import fs from "node:fs";
 import { comfySettings, launch } from "./browser.mjs";
 import { EDIT_FILES, startFakeComfy } from "./fakeComfy.mjs";
@@ -127,31 +127,22 @@ try {
   wf = await makeOne();
   ok(nodes(wf, "LoraLoader")[0]?.inputs.strength_model === 0.8, "…and the next picture uses it");
 
-  // ---- Redraw starts at the preset's strength ----
-  await items.first().getByRole("button", { name: "More" }).click();
-  await items.first().getByRole("menuitem", { name: "Redraw from this" }).click();
-  await strength.waitFor();
-  ok(await strength.inputValue() === "0.4", "Redraw's strength starts at the preset's Redraw strength");
+  // ---- choosing the drawing preset (a preset's Redraw strength is the Refine screen's default: see refine-generate) ----
   await drawMenu.selectOption("plain");
-  ok(await until(async () => (await strength.inputValue()) === "0.55", "the strength to follow the preset"), "…and follows the preset chosen");
   ok(await until(async () => (await chapterPreset()) === null, "the chapter to follow the story"), "choosing the story's own preset again makes the chapter follow the story");
   await drawMenu.selectOption("ink");
-  await strength.fill("0.25");
   wf = await makeOne();
-  ok(nodes(wf, "KSampler")[0].inputs.denoise === 0.25 && nodes(wf, "LoraLoader").length === 1, "a redraw uses the strength moved here, and the preset's LoRAs");
-  await page.reload();
-  await strength.waitFor();
-  ok(await strength.inputValue() === "0.25", "…and the moved strength comes back after a refresh");
+  ok(nodes(wf, "LoraLoader").length === 1 && nodes(wf, "EmptyLatentImage").length === 1, "pictures made with no starting picture use the chosen preset's LoRAs and the empty latent image");
 
   // ---- edit presets ----
   await items.first().getByRole("button", { name: "More" }).click();
-  await items.first().getByRole("menuitem", { name: "Edit this" }).click();
+  await items.first().getByRole("menuitem", { name: "Instruct changes" }).click();
   const editMenu = page.getByLabel("Edit preset");
   await editMenu.waitFor();
-  ok((await editMenu.locator("option").allInnerTexts()).join("|") === "Default|Night|Gone (files missing)|Default", "the Edit tab offers each model's presets");
+  ok((await editMenu.locator("option").allInnerTexts()).join("|") === "Default|Night|Gone (files missing)|Default", "the Instruct panel offers each model's presets");
   ok(await editMenu.locator("option", { hasText: "Gone" }).evaluate((o) => o.disabled), "…but not one whose chosen model file ComfyUI doesn't list");
   await editMenu.selectOption("night");
-  ok(await until(async () => (await strength.inputValue()) === "0.6", "the Night preset's strength"), "a preset's strength is where the Edit tab starts");
+  ok(await until(async () => (await strength.inputValue()) === "0.6", "the Night preset's strength"), "a preset's strength is where the Instruct panel starts");
   ok((await page.getByRole("group", { name: "LoRAs" }).innerText()).includes("hero") && await page.getByLabel("Strength of hero").inputValue() === "0.5", "…and its LoRAs are listed");
   await page.getByRole("textbox", { name: "What to change" }).fill("make it night");
   wf = await makeOne();

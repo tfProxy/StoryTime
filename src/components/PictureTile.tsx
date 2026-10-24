@@ -20,9 +20,9 @@ type Props = {
   saver: PictureSaver;
   /** The slots this picture is saved in now (the chapter's header, footer, or both). */
   inUse?: PictureSlot[];
-  /** It is the starting picture now (being edited or redrawn): it is highlighted and tagged. */
+  /** It is the starting picture now (being changed by instruction): it is highlighted and tagged. */
   editing?: boolean;
-  /** Called to make new pictures starting from this one: redrawn from the prompt, or edited by instruction. */
+  /** Called to start from this one: change it by instruction, use it as a reference, or refine it. */
   onStart?: (image: ComfyImage, mode: StartRequest) => void;
   /** Why it can't be edited by instruction now (no edit model installed), or null. */
   editBlocked?: string | null;
