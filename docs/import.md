@@ -180,11 +180,12 @@ Tests: one browser file (`tests/e2e/import-branch.e2e.mjs`), deleting what it cr
 
 Two ways, both keeping the original (`chapter_sources.original`, and the normal revision history, since a rewrite goes through `editChapter`, which saves the old text as a revision):
 
-1. **In the app (AI from the browser, like every AI call here).** On an imported chapter: **Rewrite…** with a choice of
-   - *Rewrite in the story's style*: same events and choices, new prose, using the story's style notes and the codex as the writing AI does;
-   - *Condense to a summary*: a short beat summary that becomes the chapter text, for the owner (or the AI) to write out later.
-   And **Rewrite the branch…** on the outline: does each imported chapter below, one at a time, showing progress, stoppable, skipping chapters already rewritten. Prompts live with the other prompts in `src/lib/ai/prompts.ts`; tests use `useMockAi`.
-2. **With Claude Code, from the file.** The owner asks Claude Code to fill `summary` (or a new optional `rewrite` field) in a branch file before posting. If `rewrite` is set, the server imports it as the chapter body and keeps `body` as `original`. Nothing else is needed in the app for this.
+1. **In the app (AI from the browser, like every AI call here).** The owner chose summary-then-write (see the answers below):
+   - *Condense to a summary*: on an imported chapter, the AI turns the original into a short beat summary (what happens, who, what changes, how it ends) that becomes the chapter text.
+   - *Write out from the summary*: the AI writes a full chapter from that summary, using the story's style notes, the codex and the path so far, the way the writing AI already does. Its result goes through `editChapter` like any edit.
+   - Both have a "whole branch" version on the outline: each imported chapter below, one at a time (parents first, so the path so far is already written), showing progress, stoppable, skipping chapters already done.
+   - Whether a chapter is "original", "summary" or "written" can be a `state` column on `chapter_sources` so the branch version knows what to do next. Prompts live with the other prompts in `src/lib/ai/prompts.ts`; tests use `useMockAi`.
+2. **With Claude Code, from the file.** The owner asks Claude Code to fill an optional `rewrite` field in a branch file before posting (for now, a condensed summary). If `rewrite` is set, the server imports it as the chapter body and keeps `body` as `original`. Nothing else is needed in the app for this.
 
 Choice labels are kept as they are in both ways *(default)*.
 
@@ -210,13 +211,18 @@ Some sites let two choices lead to the same chapter, or a choice lead back up (a
 
 ## Open questions for the owner
 
-1. **The BE archive:** which site exactly (its address), and what a chapter URL looks like there.
-2. **Fixture pages:** can you save 4 or 5 pages from each site into `tests/fixtures/import/<site>/` (a first chapter, a middle one, one with an unwritten choice, one with many choices, a not-found page)? A cloud session can't reach the sites, so the parsers have to be written from saved pages. Or run the build session on your PC.
-3. **Logins:** do any pages you want need you to be logged in on either site?
+Answered 2026-10-24:
+
+- **Logins:** none needed on either site. Drop `--cookie` from stage 1 unless a page turns out to need it.
+- **Fixture pages:** stage 1 is built in a session on the owner's Windows PC, where the sites load. That session saves the fixture pages itself (a `--save-fixtures <dir>` flag on the scraper that copies fetched pages into `tests/fixtures/import/<site>/` is fine), then writes the parsers from them. Fixtures are committed so later cloud sessions can run the tests without the sites.
+- **More than 12 choices:** keep the first 12 and warn, listing the dropped labels.
+- **"Summary version to be rewritten":** the chapter text becomes a short summary, and the AI writes it out in full later. Stage 4 builds only that way: *Condense to a summary* and *Write out from the summary*; "rewrite in the story's style" is left out.
+
+Still open:
+
+1. **The BE archive:** which site exactly (its address), and what a chapter URL looks like there. The PC session can find out by looking, but confirm with the owner first.
 4. **Where the scraper runs:** your PC (script, then post to the NAS), or the NAS itself, or both?
-5. **More than 12 choices:** keep the first 12 with a warning, raise the limit for imported chapters, or raise it everywhere?
 6. **Choices off the path:** in path mode, keep the other choices as open choices (default), or drop them?
 7. **Dates:** keep the site's date as the chapter's date (default), or use the import date?
-8. **"Summary version to be rewritten":** a short summary as the chapter text that the AI later writes out in full, or the AI rewriting the full text in your style directly, or both?
 9. **Where the Import buttons go** (stage 3): the story list and an open choice on the chapter reading page, or somewhere else?
 10. **Attribution:** show "From <site>, by <author>" with a link on imported chapters (default), or keep it hidden in the data only?
