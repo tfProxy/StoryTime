@@ -121,6 +121,7 @@ const comfyIn = {
   editPreset: "kontext-a",
   picturesOldestFirst: false,
   queueCount: 1,
+  batchClicks: false,
 };
 /** comfyIn with the first drawing preset (or the one at `i`) changed. */
 const withDraw = (patch, i = 0) => ({ ...comfyIn, drawPresets: comfyIn.drawPresets.map((p, j) => (j === i ? { ...p, ...patch } : p)) });
@@ -168,6 +169,8 @@ r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, queueCou
 ok(r.json.settings.comfy.queueCount === 5, "the number of pictures one Queue click asks for is kept");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, queueCount: 3 } });
 ok(r.json.settings.comfy.queueCount === 1, "…and a number that is not on the menu (1, 2, 4, 5, 8) means 1");
+r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, batchClicks: "no" } });
+ok(r.json.settings.comfy.batchClicks === true, "batching quick clicks: anything but true or false means on");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, drawPresets: [], editPresets: [] } });
 let c = r.json.settings.comfy;
 ok(
