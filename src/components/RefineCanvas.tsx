@@ -34,6 +34,11 @@ export type RefineCanvasHandle = {
 type Props = {
   /** The working picture. Give the component a `key` of the picture's key: a different picture is a new canvas. */
   picture: StartPicture | null;
+  /**
+   * A result being reviewed: it is shown in place of the working picture, the paint and mask layers and the brush are
+   * hidden and nothing can be drawn (zoom and pan still work). Give a new object for each picture.
+   */
+  preview?: StartPicture | null;
   state: RefineState;
   tool: RefineTool;
   settings: ToolSettings;
@@ -77,9 +82,10 @@ const isMaskTool = (t: RefineTool) => t === "mask-brush" || t === "mask-eraser" 
  * draws; two fingers pinch and pan; a pen cancels touch (palm rejection). Strokes are drawn live and then
  * handed to the screen, which keeps them in its undo history; the layers are redrawn from the state.
  */
-export default function RefineCanvas({ picture, state, tool, settings, softPreview = null, onPaintStroke, onMaskStroke, onPickColor, onUndo, onLoaded, onError, ref }: Props) {
+export default function RefineCanvas({ picture, preview = null, state, tool, settings, softPreview = null, onPaintStroke, onMaskStroke, onPickColor, onUndo, onLoaded, onError, ref }: Props) {
   const stageEl = useRef<HTMLDivElement>(null);
   const baseCanvas = useRef<HTMLCanvasElement>(null);
+  const previewCanvas = useRef<HTMLCanvasElement>(null);
   const paintCanvas = useRef<HTMLCanvasElement>(null);
   const maskCanvas = useRef<HTMLCanvasElement>(null);
   const cursorEl = useRef<HTMLDivElement>(null);
@@ -87,13 +93,15 @@ export default function RefineCanvas({ picture, state, tool, settings, softPrevi
   const previewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const [loaded, setLoaded] = useState<{ bitmap: ImageBitmap; w: number; h: number } | null>(null);
+  const [previewLoaded, setPreviewLoaded] = useState<{ pic: StartPicture; bitmap: ImageBitmap } | null>(null);
   const [stage, setStage] = useState<Size>(EMPTY_SIZE);
   const [view, setViewState] = useState<View>({ scale: 1, tx: 0, ty: 0 });
   const w = loaded?.w ?? 0;
   const h = loaded?.h ?? 0;
 
   // What the pointer handlers read between renders.
-  const latest = useRef({ state, tool, settings, w, h, onPaintStroke, onMaskStroke, onPickColor, onUndo });
+  const previewing = preview !== null;
+  const latest = useRef({ state, tool, settings, w, h, previewing, onPaintStroke, onMaskStroke, onPickColor, onUndo });
   const viewRef = useRef(view);
   const stageRef = useRef(stage);
   const live = useRef<Live | null>(null);
@@ -107,8 +115,46 @@ export default function RefineCanvas({ picture, state, tool, settings, softPrevi
   const frameRef = useRef(frame);
 
   useEffect(() => {
-    latest.current = { state, tool, settings, w, h, onPaintStroke, onMaskStroke, onPickColor, onUndo };
+    latest.current = { state, tool, settings, w, h, previewing, onPaintStroke, onMaskStroke, onPickColor, onUndo };
   });
+
+  // A result being reviewed is loaded here (the working picture stays loaded under it).
+  useEffect(() => {
+    if (!preview) return;
+    let alive = true;
+    // The bitmap is not closed: the previous result stays on show until the next one has loaded.
+    preview
+      .blob()
+      .then((blob) => createImageBitmap(blob))
+      .then((bm) => {
+        if (alive) setPreviewLoaded({ pic: preview, bitmap: bm });
+        else bm.close();
+      })
+      .catch((e) => {
+        if (alive) onError?.(e instanceof Error ? e.message : "Couldn't load the picture.");
+      });
+    return () => {
+      alive = false;
+    };
+    // onError is only called, never depended on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview]);
+  // Leaving review forgets the picture, so the next review never starts by showing the last one.
+  if (!preview && previewLoaded) setPreviewLoaded(null);
+  const shownPreview = preview ? (previewLoaded?.bitmap ?? null) : null;
+  const previewReady = !!preview && previewLoaded?.pic === preview;
+  useEffect(() => {
+    const ctx = previewCanvas.current?.getContext("2d");
+    if (ctx && shownPreview) ctx.drawImage(shownPreview, 0, 0);
+  }, [shownPreview]);
+  // Reviewing starts: a stroke in progress is dropped and the brush ring goes.
+  useEffect(() => {
+    if (!previewing) return;
+    dropStroke();
+    placeCursor(0, 0, false);
+    // dropStroke and placeCursor only use refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewing]);
 
   const setView = useCallback((v: View) => {
     viewRef.current = v;
@@ -244,7 +290,7 @@ export default function RefineCanvas({ picture, state, tool, settings, softPrevi
     if (!c) return;
     c.style.width = c.style.height = `${diameter}px`;
     c.style.transform = `translate(${sx - diameter / 2}px, ${sy - diameter / 2}px)`;
-    c.style.opacity = visible ? String(opacity) : "0";
+    c.style.opacity = visible && !latest.current.previewing ? String(opacity) : "0";
   }
 
   function previewDiameter(pictureDiameter: number) {
@@ -373,6 +419,8 @@ export default function RefineCanvas({ picture, state, tool, settings, softPrevi
   }
 
   function beginStroke(e: React.PointerEvent) {
+    // Reviewing a result: nothing is drawn (two fingers still pinch and pan).
+    if (latest.current.previewing) return;
     const { tool: t, settings: s, w: pw, h: ph } = latest.current;
     const pt = pointFrom(e);
     const base: Live = { id: e.pointerId, tap: true, drawn: 0, t0: performance.now(), pos: pt, exact: false };
@@ -539,6 +587,10 @@ export default function RefineCanvas({ picture, state, tool, settings, softPrevi
       ref={stageEl}
       className="refine-stage"
       data-ready={loaded ? "1" : "0"}
+      data-previewing={previewing ? "true" : "false"}
+      data-preview-key={preview?.key ?? ""}
+      data-preview-ready={previewReady ? "1" : "0"}
+      data-picture-key={picture?.key ?? ""}
       data-tool={tool}
       data-strokes={state.paint.length}
       data-mask-strokes={state.mask.strokes.length}
@@ -563,6 +615,7 @@ export default function RefineCanvas({ picture, state, tool, settings, softPrevi
             aria-hidden="true"
             style={{ opacity: state.maskVisible ? 0.5 : 0, filter: blurPx > 0 ? `blur(${blurPx}px)` : undefined }}
           />
+          {shownPreview && <canvas ref={previewCanvas} data-layer="preview" width={shownPreview.width} height={shownPreview.height} aria-hidden="true" />}
         </div>
       )}
       <div ref={cursorEl} className="refine-cursor" aria-hidden="true" />

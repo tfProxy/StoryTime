@@ -56,9 +56,11 @@ type MaskProps = {
   onInvert: () => void;
   visible: boolean;
   onToggleVisible: () => void;
+  /** Every control is off (a result is being reviewed). */
+  disabled?: boolean;
 };
 
-export function MaskPanel({ tool, onTool, size, maxSize, onSize, softness, maxSoft, onSoftPreview, onSoftCommit, inverted, onInvert, visible, onToggleVisible }: MaskProps) {
+export function MaskPanel({ tool, onTool, size, maxSize, onSize, softness, maxSoft, onSoftPreview, onSoftCommit, inverted, onInvert, visible, onToggleVisible, disabled = false }: MaskProps) {
   const [draft, setDraft] = useState<number | null>(null);
   const draftRef = useRef<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -84,7 +86,7 @@ export function MaskPanel({ tool, onTool, size, maxSize, onSize, softness, maxSo
   }
 
   return (
-    <section className="refine-panel" aria-label="Mask">
+    <fieldset className="refine-panel" aria-label="Mask" disabled={disabled} data-locked={disabled ? "true" : undefined}>
       <h2>Mask</h2>
       <ToolRow buttons={MASK_BUTTONS} active={tool} onTool={onTool} />
       <Slider label="Mask brush size" min={2} max={maxSize} value={Math.min(size, maxSize)} onInput={onSize} />
@@ -115,7 +117,7 @@ export function MaskPanel({ tool, onTool, size, maxSize, onSize, softness, maxSo
         }}
         onBlur={flush}
       />
-    </section>
+    </fieldset>
   );
 }
 
@@ -140,15 +142,17 @@ type PaintProps = {
   onColor: (hex: string) => void;
   visible: boolean;
   onToggleVisible: () => void;
+  /** Every control is off (a result is being reviewed). */
+  disabled?: boolean;
 };
 
-export function PaintPanel({ tool, onTool, size, maxSize, onSize, softness, onSoftness, opacity, onOpacity, color, onColor, visible, onToggleVisible }: PaintProps) {
+export function PaintPanel({ tool, onTool, size, maxSize, onSize, softness, onSoftness, opacity, onOpacity, color, onColor, visible, onToggleVisible, disabled = false }: PaintProps) {
   // The hex box keeps what is being typed until it is a colour.
   // (`hex` is the colour the text made; once the colour is something else, the box shows the colour again.)
   const [typed, setTyped] = useState<{ text: string; hex: string | null } | null>(null);
   const shown = typed && (typed.hex === null || typed.hex === color) ? typed.text : color;
   return (
-    <section className="refine-panel" aria-label="Paint">
+    <fieldset className="refine-panel" aria-label="Paint" disabled={disabled} data-locked={disabled ? "true" : undefined}>
       <h2>Paint</h2>
       <ToolRow buttons={PAINT_BUTTONS} active={tool} onTool={onTool} />
       <Slider label="Paint size" min={1} max={maxSize} value={Math.min(size, maxSize)} onInput={onSize} />
@@ -176,6 +180,6 @@ export function PaintPanel({ tool, onTool, size, maxSize, onSize, softness, onSo
           </button>
         </div>
       </div>
-    </section>
+    </fieldset>
   );
 }

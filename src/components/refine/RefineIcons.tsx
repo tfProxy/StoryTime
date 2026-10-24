@@ -111,6 +111,24 @@ export function UndoIcon() {
   );
 }
 
+/** A chevron pointing left (the previous result). */
+export function PreviousIcon() {
+  return (
+    <svg {...svg}>
+      <path d="m15 5-7 7 7 7" />
+    </svg>
+  );
+}
+
+/** A chevron pointing right (the next result). */
+export function NextIcon() {
+  return (
+    <svg {...svg}>
+      <path d="m9 5 7 7-7 7" />
+    </svg>
+  );
+}
+
 export function RedoIcon() {
   return (
     <svg {...svg}>

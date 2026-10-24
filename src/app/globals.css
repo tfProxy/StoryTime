@@ -3189,6 +3189,114 @@ button.refine-icon[aria-pressed="true"] {
   font-size: 0.8rem;
 }
 
+/* A tile is a button filling its cell; the selected one has a ring; the one that is the working picture has a badge. */
+button.refine-result-pick {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.refine-result[data-selected="true"] {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.refine-result[data-in-use="true"] {
+  border-color: #2e7d32;
+}
+
+.refine-result-badge {
+  position: absolute;
+  left: 0.25rem;
+  bottom: 0.25rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: #2e7d32;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+/* Reviewing a result: the buttons over the picture's edges, and Apply / Discard under it. */
+.refine-viewer {
+  position: relative;
+  min-width: 0;
+}
+
+button.refine-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 3.5rem;
+  min-height: 0;
+  padding: 0;
+  background: rgb(0 0 0 / 0.65);
+  border-color: transparent;
+  color: #fff;
+}
+
+button.refine-nav:disabled {
+  opacity: 0.3;
+}
+
+.refine-nav-previous {
+  left: 0.4rem;
+}
+
+.refine-nav-next {
+  right: 0.4rem;
+}
+
+.refine-review {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.refine-review button {
+  flex: 1 1 0;
+  min-height: 2.75rem;
+  font-weight: 600;
+}
+
+.refine-review .refine-apply {
+  background: #2e7d32;
+  border-color: #2e7d32;
+  color: #fff;
+}
+
+.refine-stage[data-previewing="true"] {
+  cursor: default;
+}
+
+/* A result on show: the paint and mask are not drawn over it. */
+.refine-stage[data-previewing="true"] canvas[data-layer="paint"],
+.refine-stage[data-previewing="true"] canvas[data-layer="mask"] {
+  visibility: hidden !important;
+}
+
+fieldset.refine-panel {
+  min-width: 0;
+  margin: 0;
+}
+
+fieldset.refine-panel:disabled {
+  opacity: 0.5;
+}
+
 .refine-bar {
   position: sticky;
   bottom: 0;
@@ -3330,5 +3438,11 @@ button.refine-fit {
   .refine-stage {
     height: calc(100dvh - 10rem);
     min-height: 24rem;
+  }
+
+  /* Apply / Discard under the picture take room from it, so they stay on the screen. */
+  .refine-picture:has(.refine-review) .refine-stage {
+    height: calc(100dvh - 10rem - 3.75rem);
+    min-height: 20rem;
   }
 }

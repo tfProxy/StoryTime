@@ -8,7 +8,8 @@
 //   comfy.url        "http://localhost:3555"
 //   comfy.calls      every request received: { method, path, query, body } (body parsed when it is JSON)
 //   comfy.uploaded(name)   the bytes of a picture uploaded with POST /upload/image (a Buffer)
-//   comfy.setMode({ steps, stepDelay, startDelay, ws, fail, checkpoints })
+//   comfy.setMode({ steps, stepDelay, startDelay, ws, fail, checkpoints, viewSizes })   viewSizes: { "<file name>": [w, h] } makes /view answer that picture at another size than 96 x 60
+//                  (a picture uploaded to the input folder is answered with the uploaded bytes)
 //   comfy.addJob({ extra, state, count })   a job somebody else made (another StoryTime, a tool); see below
 //   await comfy.close()
 //
@@ -54,8 +55,7 @@ const chunk = (type, data) => {
 };
 
 /** A valid PNG, 96 x 60 pixels, in a colour that depends on `index`, so the pictures can be told apart. */
-export function makePng(index) {
-  const w = 96, h = 60;
+export function makePng(index, w = 96, h = 60) {
   const colors = [[220, 70, 60], [60, 140, 220], [70, 180, 90], [230, 190, 50], [160, 90, 200], [60, 190, 190], [240, 130, 60], [120, 120, 120]];
   const [r, g, b] = colors[index % colors.length];
   const raw = Buffer.alloc(h * (1 + w * 3));
@@ -130,7 +130,7 @@ export const SCHEDULERS = ["simple", "normal", "karras", "beta"];
 export const LIGHTNING_LORA = "Qwen-Image-Edit-2509-Lightning-4steps-V1.0-bf16.safetensors";
 
 export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.safetensors", "fake_sdxl_b.safetensors"], ws = true, steps = 4, stepDelay = 120, startDelay = 300, fail = null, version = "0.3.99", files = {}, missingNodes = [], gguf = false, tokenizerOptions = false, ipAdapter = false } = {}) {
-  const mode = { checkpoints, ws, steps, stepDelay, startDelay, fail, version, files, missingNodes, gguf, tokenizerOptions, ipAdapter };
+  const mode = { checkpoints, ws, steps, stepDelay, startDelay, fail, version, files, missingNodes, gguf, tokenizerOptions, ipAdapter, viewSizes: {} };
   const known = (name) => NODES.includes(name) || (mode.ipAdapter && IPADAPTER_NODES.includes(name)) || (mode.gguf && GGUF_NODES.includes(name)) || (mode.tokenizerOptions && OPTIONAL_NODES.includes(name));
   // The ordinary loaders never list .gguf files when the GGUF nodes are there; the GGUF ones list them (and the rest of their folder).
   const folder = (name) => (mode.files[name] ?? []).filter((f) => !mode.gguf || !isGguf(f));
@@ -325,10 +325,16 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
         return json(200, history[id] ? { [id]: history[id] } : {});
       }
       if (p === "/view") {
-        const index = Number(/_(\d+)\.png$/.exec(url.searchParams.get("filename") ?? "")?.[1] ?? 0);
+        const filename = url.searchParams.get("filename") ?? "";
+        const index = Number(/_(\d+)\.png$/.exec(filename)?.[1] ?? 0);
         res.statusCode = 200;
         res.setHeader("content-type", "image/png");
-        return res.end(makePng(index));
+        // A picture uploaded to the input folder comes back as it was uploaded.
+        const sub = url.searchParams.get("subfolder");
+        const up = url.searchParams.get("type") === "input" ? uploadFiles.get(sub ? `${sub}/${filename}` : filename) : undefined;
+        if (up) return res.end(up);
+        const [w, h] = mode.viewSizes[filename] ?? [96, 60];
+        return res.end(makePng(index, w, h));
       }
       if (p === "/queue" && req.method === "POST") {
         // Like ComfyUI, deleting only takes waiting jobs off the queue; a running one needs /interrupt.

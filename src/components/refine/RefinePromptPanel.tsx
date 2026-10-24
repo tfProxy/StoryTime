@@ -20,7 +20,7 @@ import type { StartPicture } from "@/lib/comfy/startPicture";
 import { describeWorkflow, parseWorkflow } from "@/lib/comfy/workflow";
 import type { PaintedArea } from "@/lib/mask";
 import type { RefineState } from "@/lib/refineHistory";
-import type { RefineSession } from "@/lib/refine/session";
+import { appliedSource, type RefineSession } from "@/lib/refine/session";
 import { maskId, maskUsed, sentPictureKey, sentPrompts } from "@/lib/refine/send";
 import type { ToolSettings } from "@/lib/refine/tools";
 
@@ -132,6 +132,8 @@ type Props = {
   onTools: (change: (t: ToolSettings) => ToolSettings) => void;
   status: { ok: boolean; text: string } | null;
   onStatus: (s: { ok: boolean; text: string } | null) => void;
+  /** A result is on show: Go is off. */
+  locked?: boolean;
 };
 
 /**
@@ -139,7 +141,7 @@ type Props = {
  * what the Illustrate page would use, and changing it never changes the page's boxes, the chapter's Always include
  * text, the page's LoRA changes or the drawing preset.
  */
-export default function RefinePromptPanel({ session, onSession, present, canvas, picture, dims, tools, onTools, status, onStatus }: Props) {
+export default function RefinePromptPanel({ session, onSession, present, canvas, picture, dims, tools, onTools, status, onStatus, locked = false }: Props) {
   const settings = useSettings();
   const comfy = settings.comfy;
   const editModels = useEditModels(comfy.url);
@@ -174,8 +176,10 @@ export default function RefinePromptPanel({ session, onSession, present, canvas,
     }));
   }, [ctx, sourceKnown, onSession]);
 
-  const sourcePrompt = session.sourcePrompt ?? session.prompt ?? "";
-  const sourceNegative = session.sourceNegative ?? session.negative ?? "";
+  // The working picture's own text when it is an applied result, else the original's (worked out from the base, so Undo changes it too).
+  const applied = appliedSource(session, present.base);
+  const sourcePrompt = applied?.prompt ?? session.sourcePrompt ?? session.prompt ?? "";
+  const sourceNegative = applied?.negative ?? session.sourceNegative ?? session.negative ?? "";
   const sourceAlways = session.sourceAlways ?? "";
   const boxPrompt = session.boxPrompt ?? sourcePrompt;
   const boxNegative = session.boxNegative ?? sourceNegative;
@@ -200,7 +204,8 @@ export default function RefinePromptPanel({ session, onSession, present, canvas,
 
   // Why Go can't be used, or null.
   let blocked: string | null = null;
-  if (!dims || !picture) blocked = "The picture isn't loaded yet.";
+  if (locked) blocked = "A result is on show: Apply it or Discard it, or select it again to go back to editing.";
+  else if (!dims || !picture) blocked = "The picture isn't loaded yet.";
   else if (!ctx) blocked = "Loading the drawing preset…";
   else if (!comfy.url) blocked = "Add your ComfyUI machine in Settings first.";
   else if (!boxPrompt.trim()) blocked = "Write a prompt first.";

@@ -45,15 +45,59 @@ export type RefineSession = {
   loraChanges?: LoraOverrides;
   /** The pictures made from here, oldest first (at most MAX_RESULTS); the images stay in ComfyUI. */
   results: RefineResult[];
+  /**
+   * Every working picture the history can reach, by the id `RefineState.base` holds: the original (`ORIGINAL_BASE`) and
+   * each result that was applied (`resultBaseId`). Kept so a reload and Undo can fetch the picture again.
+   */
+  bases: Record<string, StoredBase>;
   history: History<RefineState>;
 };
+
+/** One working picture: where to fetch it again, and the prompt and negative that made it when known. */
+export type StoredBase = { original: StoredOriginal; prompt?: string; negative?: string };
+
+/** The base id of an applied result (the same result always has the same id). */
+export const resultBaseId = (image: ComfyImage) => `result:${image.type}/${image.subfolder}/${image.filename}`;
+
+/** The base `id` names; the original picture when it is unknown. */
+export function baseOf(session: Pick<RefineSession, "bases" | "original" | "prompt" | "negative">, id: string): StoredBase {
+  return session.bases[id] ?? { original: session.original, ...(session.prompt !== undefined && { prompt: session.prompt }), ...(session.negative !== undefined && { negative: session.negative }) };
+}
+
+/**
+ * The text Reset in the Prompt panel goes back to for the working picture `base`: an applied result's own prompt and
+ * negative, else null (the original picture's `sourcePrompt` / `sourceNegative` apply). Worked out from the base, so Undo
+ * and Redo of an Apply change it with the picture.
+ */
+export function appliedSource(session: Pick<RefineSession, "bases">, base: string): { prompt: string; negative: string } | null {
+  if (base === ORIGINAL_BASE) return null;
+  const b = session.bases[base];
+  return b && b.prompt !== undefined ? { prompt: b.prompt, negative: b.negative ?? "" } : null;
+}
 
 /** One picture a Refine job made. `madeFrom` is the id of the base picture the job started from. */
 export type RefineResult = { image: ComfyImage; prompt: string; negative: string; seed: number; madeFrom: string; at: number };
 
 export const MAX_RESULTS = 60;
 
-const resultKey = (r: RefineResult) => `${r.image.type}/${r.image.subfolder}/${r.image.filename}`;
+/** Names a result (the same picture always has the same key). */
+export const resultKey = (r: RefineResult) => `${r.image.type}/${r.image.subfolder}/${r.image.filename}`;
+
+/** The results as the tray shows them, newest first; Previous and Next go along this order. */
+export const trayOrder = (results: RefineResult[]): RefineResult[] => [...results].reverse();
+
+/** The result before/after `key` in the tray (null at the ends or when `key` isn't there). */
+export function neighbour(results: RefineResult[], key: string, step: -1 | 1): RefineResult | null {
+  const tray = trayOrder(results);
+  const i = tray.findIndex((r) => resultKey(r) === key);
+  return i < 0 ? null : (tray[i + step] ?? null);
+}
+
+/** The results without `key`, and the key to select now: the next in the tray, else the previous, else null (no result left). */
+export function discardResult(results: RefineResult[], key: string): { results: RefineResult[]; next: string | null } {
+  const after = neighbour(results, key, 1) ?? neighbour(results, key, -1);
+  return { results: results.filter((r) => resultKey(r) !== key), next: after ? resultKey(after) : null };
+}
 
 /** The results with `added` after them (a picture already there is skipped), the oldest dropped beyond MAX_RESULTS. */
 export function addResults(results: RefineResult[], added: RefineResult[]): RefineResult[] {
@@ -107,6 +151,7 @@ export function newSession(init: { target: PictureTarget; original: StoredOrigin
     // The source is known now when the picture has a prompt; otherwise the Prompt panel looks the story page's draft up.
     ...(init.prompt ? { sourcePrompt: init.prompt, sourceNegative: init.negative ?? "" } : {}),
     results: [],
+    bases: { [ORIGINAL_BASE]: { original: init.original, ...(init.prompt ? { prompt: init.prompt, negative: init.negative ?? "" } : {}) } },
     history: startHistory<RefineState>({ base: ORIGINAL_BASE, paint: [], mask: { strokes: [], softness: 0, inverted: false }, paintVisible: true, maskVisible: true }),
   };
 }
@@ -190,6 +235,21 @@ export function readResults(v: unknown): RefineResult[] {
   return v.map(readResult).filter((r): r is RefineResult => r !== null).slice(-MAX_RESULTS);
 }
 
+/** Stored bases, defensively; the original is always there (a session saved before bases existed has only it). */
+export function readBases(v: unknown, original: StoredOriginal, prompt?: string, negative?: string): Record<string, StoredBase> {
+  const out: Record<string, StoredBase> = {};
+  if (isObject(v)) {
+    for (const [id, b] of Object.entries(v)) {
+      if (!isObject(b) || id === ORIGINAL_BASE) continue;
+      const o = readOriginal(b.original);
+      if (!o) continue;
+      out[id] = { original: o, ...(typeof b.prompt === "string" && { prompt: b.prompt }), ...(typeof b.negative === "string" && { negative: b.negative }) };
+    }
+  }
+  out[ORIGINAL_BASE] = { original, ...(prompt ? { prompt, negative: negative ?? "" } : {}) };
+  return out;
+}
+
 const optStr = (v: unknown) => (typeof v === "string" ? v : undefined);
 
 /** A session read back from stored JSON; null when it is not a usable session. */
@@ -199,6 +259,8 @@ export function readSession(v: unknown): RefineSession | null {
   const original = readOriginal(v.original);
   const history = readHistory(v.history);
   if (!target || !original || !history || !isNum(v.createdAt)) return null;
+  const prompt = typeof v.prompt === "string" && v.prompt ? v.prompt : undefined;
+  const negative = typeof v.negative === "string" && v.negative ? v.negative : undefined;
   return {
     id: v.id,
     target,
@@ -216,6 +278,7 @@ export function readSession(v: unknown): RefineSession | null {
     ...(optStr(v.boxAlways) !== undefined && { boxAlways: optStr(v.boxAlways) }),
     ...(isObject(v.loraChanges) && { loraChanges: parseLoras(v.loraChanges) }),
     results: readResults(v.results),
+    bases: readBases(v.bases, original, prompt, negative),
     history,
   };
 }

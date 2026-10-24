@@ -16,6 +16,7 @@ import type { PaintStroke } from "@/lib/paint";
 import {
   addMaskStroke,
   addPaintStroke,
+  applyResult,
   canRedo,
   canUndo,
   commit,
@@ -27,8 +28,11 @@ import {
   type History,
   type RefineState,
 } from "@/lib/refineHistory";
-import { addResults, deleteSession, loadSession, pruneSessions, saveSession, type RefineSession } from "@/lib/refine/session";
+import { addResults, appliedSource, baseOf, deleteSession, discardResult, loadSession, neighbour, pruneSessions, resultBaseId, resultKey, saveSession, type RefineSession } from "@/lib/refine/session";
 import { pictureOfOriginal } from "@/lib/refine/original";
+import { baseForResult } from "@/lib/refine/apply";
+import { fromComfyImage } from "@/lib/comfy/startPicture";
+import { NextIcon, PreviousIcon } from "./refine/RefineIcons";
 import { defaultMaskSize, DEFAULT_TOOLS, loadTools, maxMaskSize, maxSoftEdge, saveTools, type RefineTool, type ToolSettings } from "@/lib/refine/tools";
 
 /** How long a change waits before the session is saved (it is also saved when the page is left). */
@@ -59,6 +63,9 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
   const [loadError, setLoadError] = useState("");
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
+  /** The result on show in the main window (its `resultKey`), or null while editing. Not part of the undo history and not kept. */
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [applying, setApplying] = useState(false);
   const queue = usePictureQueue();
   const { listenSession, stop } = queue;
   const canvas = useRef<RefineCanvasHandle>(null);
@@ -140,10 +147,19 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
   const doUndo = useCallback(() => setHistory((h) => (h ? undo(h) : h)), []);
   const doRedo = useCallback(() => setHistory((h) => (h ? redo(h) : h)), []);
 
-  // Ctrl/Cmd+Z, Shift+Ctrl/Cmd+Z and Ctrl+Y, unless typing in a field.
+  // The result on show (null when it is gone, e.g. discarded).
+  const results = session?.results;
+  const selected = useMemo(() => (selectedKey && results ? (results.find((r) => resultKey(r) === selectedKey) ?? null) : null), [selectedKey, results]);
+  const reviewing = selected !== null;
+  const previousResult = selected && results ? neighbour(results, selectedKey!, -1) : null;
+  const nextResult = selected && results ? neighbour(results, selectedKey!, 1) : null;
+  const selectedImage = selected?.image;
+  const preview = useMemo(() => (selectedImage && comfy.url ? fromComfyImage(comfy.url, selectedImage) : null), [selectedImage, comfy.url]);
+
+  // Ctrl/Cmd+Z, Shift+Ctrl/Cmd+Z and Ctrl+Y, unless typing in a field or looking at a result.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || typingInField(e.target)) return;
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || typingInField(e.target) || reviewing) return;
       const k = e.key.toLowerCase();
       if (k === "z") {
         e.preventDefault();
@@ -156,10 +172,26 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [doUndo, doRedo]);
+  }, [doUndo, doRedo, reviewing]);
 
-  // Depends on the original and the target only, so a change to the prompt boxes doesn't make the canvas load the picture again.
-  const original = session?.original;
+  // ← and → go to the previous and next result while one is on show (not while typing in a field).
+  useEffect(() => {
+    if (!selectedKey || !results) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key !== "ArrowLeft" && e.key !== "ArrowRight") || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || typingInField(e.target)) return;
+      // A slider or select uses the arrows itself.
+      if (e.target instanceof HTMLElement && (e.target.tagName === "SELECT" || (e.target as HTMLInputElement).type === "range")) return;
+      const to = neighbour(results, selectedKey, e.key === "ArrowLeft" ? -1 : 1);
+      e.preventDefault();
+      if (to) setSelectedKey(resultKey(to));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedKey, results]);
+
+  // Depends on the working picture's origin and the target only, so a change to the prompt boxes doesn't make the canvas load the picture again.
+  const presentBase = present?.base;
+  const original = session && presentBase ? baseOf(session, presentBase).original : undefined;
   const sessionTarget = session?.target;
   const picture = useMemo(() => (original && sessionTarget ? pictureOfOriginal(original, sessionTarget, comfy.url) : null), [original, sessionTarget, comfy.url]);
   const pending = useMemo(
@@ -173,6 +205,53 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
     left.current = true;
     deleteSession(session.id);
     router.push(targetHref(session.target));
+  }
+
+  /** Makes the result on show the working picture (one undo step) and goes back to editing. */
+  async function apply() {
+    const r = selected;
+    const s = sessionRef.current;
+    const h = historyRef.current;
+    if (!r || !s || !h || !dims || applying) return;
+    const id = resultBaseId(r.image);
+    setApplying(true);
+    setStatus(null);
+    try {
+      let entry = s.bases[id];
+      // A result of another size is resampled to the working picture's size and uploaded (once per result).
+      if (!entry) entry = { original: await baseForResult(comfy.url, r.image, dims), prompt: r.prompt, negative: r.negative };
+      const stored = entry;
+      patchSession((cur) => {
+        // The boxes keep the text typed now: while they showed the source, they would change with it.
+        const src = appliedSource(cur, (historyRef.current ?? h).present.base);
+        return {
+          ...cur,
+          bases: cur.bases[id] ? cur.bases : { ...cur.bases, [id]: stored },
+          boxPrompt: cur.boxPrompt ?? src?.prompt ?? cur.sourcePrompt ?? cur.prompt ?? "",
+          boxNegative: cur.boxNegative ?? src?.negative ?? cur.sourceNegative ?? cur.negative ?? "",
+        };
+      });
+      setHistory((cur) => {
+        if (!cur) return cur;
+        // Applying the picture that is already the working one, with no paint on it, changes nothing.
+        if (cur.present.base === id && cur.present.paint.length === 0) return cur;
+        return commit(cur, applyResult(cur.present, id));
+      });
+      setSelectedKey(null);
+    } catch (e) {
+      setStatus({ ok: false, text: e instanceof Error ? e.message : "Couldn't use that picture." });
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  /** Removes the result on show from the tray (not undoable) and shows the next one, else the previous, else goes back to editing. */
+  function discard() {
+    if (!selected) return;
+    const key = resultKey(selected);
+    const gone = discardResult(session!.results, key);
+    patchSession((cur) => ({ ...cur, results: discardResult(cur.results, key).results }));
+    setSelectedKey(gone.next);
   }
 
   const onPaintStroke = useCallback(
@@ -204,6 +283,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
     );
   }
 
+  const inUse = session.results.find((r) => resultBaseId(r.image) === present.base) ?? null;
   const w = dims?.w ?? 1024;
   const h = dims?.h ?? 1024;
   const maskSize = tools.maskSize ?? defaultMaskSize(w, h);
@@ -237,6 +317,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
             onInvert={() => change((s) => setMask(s, { inverted: !s.mask.inverted }))}
             visible={present.maskVisible}
             onToggleVisible={() => change(toggleMaskVisible)}
+            disabled={reviewing}
           />
           <PaintPanel
             tool={tool}
@@ -256,6 +337,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
             onColor={(color) => setTools((t) => ({ ...t, color }))}
             visible={present.paintVisible}
             onToggleVisible={() => change(togglePaintVisible)}
+            disabled={reviewing}
           />
           <RefinePromptPanel
             session={session}
@@ -268,14 +350,22 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
             onTools={setTools}
             status={status}
             onStatus={setStatus}
+            locked={reviewing}
           />
-          <RefineResults results={session.results} pending={pending} comfyUrl={comfy.url} />
+          <RefineResults
+            results={session.results}
+            pending={pending}
+            comfyUrl={comfy.url}
+            selectedKey={selected ? selectedKey : null}
+            onSelect={setSelectedKey}
+            inUseKey={inUse ? resultKey(inUse) : null}
+          />
         </div>
         <div className="refine-bar" role="group" aria-label="Undo and finish">
-          <button type="button" className="refine-icon secondary" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!canUndo(history)} onClick={doUndo}>
+          <button type="button" className="refine-icon secondary" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={reviewing || !canUndo(history)} onClick={doUndo}>
             <UndoIcon />
           </button>
-          <button type="button" className="refine-icon secondary" aria-label="Redo" title="Redo (Shift+Ctrl+Z)" disabled={!canRedo(history)} onClick={doRedo}>
+          <button type="button" className="refine-icon secondary" aria-label="Redo" title="Redo (Shift+Ctrl+Z)" disabled={reviewing || !canRedo(history)} onClick={doRedo}>
             <RedoIcon />
           </button>
           <button type="button" className="refine-accept" disabled title="Not available yet">
@@ -298,10 +388,12 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
             </p>
           )
         )}
+        <div className="refine-viewer">
         <RefineCanvas
           key={picture?.key ?? "none"}
           ref={canvas}
           picture={picture}
+          preview={preview}
           state={present}
           tool={tool}
           settings={tools}
@@ -313,6 +405,41 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
           onLoaded={setDims}
           onError={setLoadError}
         />
+        {reviewing && (
+          <>
+            <button
+              type="button"
+              className="refine-nav refine-nav-previous"
+              aria-label="Previous result"
+              title="Previous result (←)"
+              disabled={!previousResult}
+              onClick={() => previousResult && setSelectedKey(resultKey(previousResult))}
+            >
+              <PreviousIcon />
+            </button>
+            <button
+              type="button"
+              className="refine-nav refine-nav-next"
+              aria-label="Next result"
+              title="Next result (→)"
+              disabled={!nextResult}
+              onClick={() => nextResult && setSelectedKey(resultKey(nextResult))}
+            >
+              <NextIcon />
+            </button>
+          </>
+        )}
+        </div>
+        {reviewing && (
+          <div className="refine-review" role="group" aria-label="This result">
+            <button type="button" className="refine-apply" aria-label="Apply this result" title="Make this the working picture" disabled={applying || !dims} onClick={apply}>
+              {applying ? "Applying…" : "Apply"}
+            </button>
+            <button type="button" className="refine-discard secondary" aria-label="Discard this result" title="Remove this result from the list" disabled={applying} onClick={discard}>
+              Discard
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
