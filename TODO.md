@@ -62,6 +62,7 @@ Give a picture job up to four reference pictures (a character, an item, a place,
 
 ## Also planned (from the pictures plan)
 
+- **Batching quick Queue clicks per model.** Settings › Drawing has one global checkbox, "Batch quick clicks of Queue into one job" (`comfy.batchClicks`, on by default). Make it a per-model setting instead: some models batch and some don't (Krea 2 doesn't), so it should live with the drawing preset or model family (`src/lib/comfy/drawModels.ts`), with the global checkbox removed or kept as the default. Not started.
 - **Consistent characters:**
   - A per-character "look" as a fixed tag string taken from the codex (the reference picture is planned above).
   - A LoRA per story could be a workflow setting.
