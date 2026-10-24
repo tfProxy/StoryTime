@@ -50,8 +50,16 @@ export type RefineSession = {
    * each result that was applied (`resultBaseId`). Kept so a reload and Undo can fetch the picture again.
    */
   bases: Record<string, StoredBase>;
+  /** What Accept has already done for the picture it is saving, so trying again after an error doesn't record it twice (`accept.ts`). */
+  accepting?: AcceptRecord;
   history: History<RefineState>;
 };
+
+/**
+ * Accept's progress for one picture (`sig` names the base and the visible paint). `promptId` is the synthetic ComfyUI
+ * job id the new log record is made under; `image` is set once the picture is in ComfyUI, `jobId` once it is in the log.
+ */
+export type AcceptRecord = { sig: string; promptId: string; image?: ComfyImage; jobId?: string };
 
 /** One working picture: where to fetch it again, and the prompt and negative that made it when known. */
 export type StoredBase = { original: StoredOriginal; prompt?: string; negative?: string };
@@ -279,8 +287,23 @@ export function readSession(v: unknown): RefineSession | null {
     ...(isObject(v.loraChanges) && { loraChanges: parseLoras(v.loraChanges) }),
     results: readResults(v.results),
     bases: readBases(v.bases, original, prompt, negative),
+    ...(readAccepting(v.accepting) && { accepting: readAccepting(v.accepting)! }),
     history,
   };
+}
+
+/** Stored Accept progress, defensively. */
+export function readAccepting(v: unknown): AcceptRecord | null {
+  if (!isObject(v) || !isStr(v.sig) || !isStr(v.promptId)) return null;
+  const im = isObject(v.image) ? v.image : null;
+  const image = im && isStr(im.filename) && typeof im.subfolder === "string" && isStr(im.type) ? { filename: im.filename, subfolder: im.subfolder, type: im.type } : undefined;
+  return { sig: v.sig, promptId: v.promptId, ...(image && { image }), ...(isStr(v.jobId) && { jobId: v.jobId }) };
+}
+
+/** The ComfyUI picture an applied result's base id names (`resultBaseId`), or null for the original or an unknown id. */
+export function imageOfResultBase(id: string): ComfyImage | null {
+  const m = /^result:([^/]+)\/(.*)\/([^/]+)$/.exec(id);
+  return m ? { type: m[1], subfolder: m[2], filename: m[3] } : null;
 }
 
 // ---- keeping it ----

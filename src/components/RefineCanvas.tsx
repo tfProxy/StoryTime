@@ -39,6 +39,8 @@ type Props = {
    * hidden and nothing can be drawn (zoom and pan still work). Give a new object for each picture.
    */
   preview?: StartPicture | null;
+  /** Nothing can be drawn (the picture is being saved); zoom and pan still work. */
+  frozen?: boolean;
   state: RefineState;
   tool: RefineTool;
   settings: ToolSettings;
@@ -82,7 +84,7 @@ const isMaskTool = (t: RefineTool) => t === "mask-brush" || t === "mask-eraser" 
  * draws; two fingers pinch and pan; a pen cancels touch (palm rejection). Strokes are drawn live and then
  * handed to the screen, which keeps them in its undo history; the layers are redrawn from the state.
  */
-export default function RefineCanvas({ picture, preview = null, state, tool, settings, softPreview = null, onPaintStroke, onMaskStroke, onPickColor, onUndo, onLoaded, onError, ref }: Props) {
+export default function RefineCanvas({ picture, preview = null, frozen = false, state, tool, settings, softPreview = null, onPaintStroke, onMaskStroke, onPickColor, onUndo, onLoaded, onError, ref }: Props) {
   const stageEl = useRef<HTMLDivElement>(null);
   const baseCanvas = useRef<HTMLCanvasElement>(null);
   const previewCanvas = useRef<HTMLCanvasElement>(null);
@@ -101,7 +103,7 @@ export default function RefineCanvas({ picture, preview = null, state, tool, set
 
   // What the pointer handlers read between renders.
   const previewing = preview !== null;
-  const latest = useRef({ state, tool, settings, w, h, previewing, onPaintStroke, onMaskStroke, onPickColor, onUndo });
+  const latest = useRef({ state, tool, settings, w, h, previewing, frozen, onPaintStroke, onMaskStroke, onPickColor, onUndo });
   const viewRef = useRef(view);
   const stageRef = useRef(stage);
   const live = useRef<Live | null>(null);
@@ -115,7 +117,7 @@ export default function RefineCanvas({ picture, preview = null, state, tool, set
   const frameRef = useRef(frame);
 
   useEffect(() => {
-    latest.current = { state, tool, settings, w, h, previewing, onPaintStroke, onMaskStroke, onPickColor, onUndo };
+    latest.current = { state, tool, settings, w, h, previewing, frozen, onPaintStroke, onMaskStroke, onPickColor, onUndo };
   });
 
   // A result being reviewed is loaded here (the working picture stays loaded under it).
@@ -420,7 +422,7 @@ export default function RefineCanvas({ picture, preview = null, state, tool, set
 
   function beginStroke(e: React.PointerEvent) {
     // Reviewing a result: nothing is drawn (two fingers still pinch and pan).
-    if (latest.current.previewing) return;
+    if (latest.current.previewing || latest.current.frozen) return;
     const { tool: t, settings: s, w: pw, h: ph } = latest.current;
     const pt = pointFrom(e);
     const base: Live = { id: e.pointerId, tap: true, drawn: 0, t0: performance.now(), pos: pt, exact: false };

@@ -47,10 +47,11 @@ try {
   const attr = (name) => stage.getAttribute(name);
   const stored = () => page.evaluate((id) => JSON.parse(localStorage.getItem(`storytime.refine.${id}`) ?? "null"), sessionId);
   const settle = () => page.waitForTimeout(700); // the session is saved a moment after a change
-  const selectedIndex = async () => {
-    const sel = page.locator('[data-result-index][data-selected="true"]');
-    return (await sel.count()) === 1 ? Number(await sel.getAttribute("data-result-index")) : null;
-  };
+  // One evaluation, so the selection can't go away between counting it and reading it.
+  const selectedIndex = () => page.evaluate(() => {
+    const sel = document.querySelectorAll('[data-result-index][data-selected="true"]');
+    return sel.length === 1 ? Number(sel[0].getAttribute("data-result-index")) : null;
+  });
   const pixel = (layer, fx, fy) => page.evaluate(([l, x, y]) => {
     const c = document.querySelector(`canvas[data-layer=${l}]`);
     return c ? [...c.getContext("2d").getImageData(Math.floor(c.width * x), Math.floor(c.height * y), 1, 1).data] : null;
@@ -118,7 +119,7 @@ try {
   ok((await page.locator("canvas[data-layer=paint]").evaluate((c) => getComputedStyle(c).visibility)) === "hidden" && (await page.locator("canvas[data-layer=mask]").evaluate((c) => getComputedStyle(c).visibility)) === "hidden", "the paint and mask layers are hidden while it is on show");
   ok(await btn("Mask brush").isDisabled() && await btn("Paint brush").isDisabled() && await slider("Paint size").isDisabled() && await btn("Show mask").isDisabled() && await btn("Invert mask").isDisabled(), "the Mask and Paint tools are off");
   ok(await btn("Undo").isDisabled() && await btn("Redo").isDisabled() && await btn("Go").isDisabled() && (await btn("Go").getAttribute("title")).includes("Apply it or Discard it"), "Undo, Redo and Go are off (Go says why)");
-  ok(await btn("Accept").isDisabled(), "Accept is still off");
+  ok(await btn("Accept").isDisabled() && (await btn("Accept").getAttribute("title")) === "Apply or deselect the result first", "Accept is off while a result is on show (and says why)");
   await drag(0.2, 0.7, 0.8, 0.7);
   ok((await strokes()) === 1 && (await maskStrokes()) === 1, "dragging on the picture draws nothing");
   const f0 = await frame();

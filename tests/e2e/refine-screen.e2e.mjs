@@ -1,7 +1,7 @@
 // The Refine screen (/refine/<session>): opened from a picture's ☰ menu → Refine…; paint, airbrush, paint eraser and
 // eyedropper on a paint layer; a mask (brush, eraser, lasso, invert, soft edge); show/hide for each; undo and redo;
-// the session kept in this browser (reload restores everything); pen pressure and palm rejection; Accept is off for
-// now; Cancel asks first when there are changes, deletes the session and goes back; and nothing scrolls sideways at
+// the session kept in this browser (reload restores everything); pen pressure and palm rejection; Accept is on (its
+// behaviour is in refine-accept.e2e.mjs); Cancel asks first when there are changes, deletes the session and goes back; and nothing scrolls sideways at
 // 390 px. The picture comes from the fake ComfyUI; the session lives only in the browser's localStorage.
 import { comfySettings, launch } from "./browser.mjs";
 import { startFakeComfy } from "./fakeComfy.mjs";
@@ -90,7 +90,7 @@ try {
   ok((await stats("base")).w === 96, "the working picture is loaded at its own size");
 
   // ================= layout =================
-  ok(await btn("Accept").isDisabled() && (await btn("Accept").getAttribute("title")) === "Not available yet", "Accept is there but off (“Not available yet”)");
+  ok(await btn("Accept").isEnabled() && (await btn("Accept").getAttribute("title")) === "Keep this picture and go back", "Accept is there and on once the picture is loaded (tests/e2e/refine-accept.e2e.mjs covers what it does)");
   ok(await btn("Undo").isDisabled() && await btn("Redo").isDisabled(), "Undo and Redo start off");
   const lay = await page.evaluate(() => {
     const r = (s) => document.querySelector(s).getBoundingClientRect();

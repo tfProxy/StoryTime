@@ -3324,6 +3324,12 @@ fieldset.refine-panel:disabled {
   color: #fff;
 }
 
+.refine-bar .refine-accept-error {
+  flex: 1 1 100%;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .refine-bar .refine-cancel {
   background: transparent;
   border-color: #c0392b;

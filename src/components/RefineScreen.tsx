@@ -31,6 +31,7 @@ import {
 import { addResults, appliedSource, baseOf, deleteSession, discardResult, loadSession, neighbour, pruneSessions, resultBaseId, resultKey, saveSession, type RefineSession } from "@/lib/refine/session";
 import { pictureOfOriginal } from "@/lib/refine/original";
 import { baseForResult } from "@/lib/refine/apply";
+import { acceptPicture } from "@/lib/refine/accept";
 import { fromComfyImage } from "@/lib/comfy/startPicture";
 import { NextIcon, PreviousIcon } from "./refine/RefineIcons";
 import { defaultMaskSize, DEFAULT_TOOLS, loadTools, maxMaskSize, maxSoftEdge, saveTools, type RefineTool, type ToolSettings } from "@/lib/refine/tools";
@@ -66,6 +67,9 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
   /** The result on show in the main window (its `resultKey`), or null while editing. Not part of the undo history and not kept. */
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
+  /** Accept is saving the picture (editing is off), and why the last try failed. */
+  const [accepting, setAccepting] = useState(false);
+  const [acceptError, setAcceptError] = useState("");
   const queue = usePictureQueue();
   const { listenSession, stop } = queue;
   const canvas = useRef<RefineCanvasHandle>(null);
@@ -159,7 +163,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
   // Ctrl/Cmd+Z, Shift+Ctrl/Cmd+Z and Ctrl+Y, unless typing in a field or looking at a result.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || typingInField(e.target) || reviewing) return;
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || typingInField(e.target) || reviewing || accepting) return;
       const k = e.key.toLowerCase();
       if (k === "z") {
         e.preventDefault();
@@ -172,7 +176,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [doUndo, doRedo, reviewing]);
+  }, [doUndo, doRedo, reviewing, accepting]);
 
   // ← and → go to the previous and next result while one is on show (not while typing in a field).
   useEffect(() => {
@@ -205,6 +209,42 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
     left.current = true;
     deleteSession(session.id);
     router.push(targetHref(session.target));
+  }
+
+  /**
+   * Keeps what the author sees (see `acceptPicture`) and goes back to the target's page. With nothing changed it just
+   * leaves. An error is shown beside the button and the session stays; trying again continues where it stopped.
+   */
+  async function accept() {
+    const s = sessionRef.current;
+    const hist = historyRef.current;
+    if (!s || !hist || accepting || applying || reviewing) return;
+    setAccepting(true);
+    setAcceptError("");
+    try {
+      await acceptPicture({
+        session: s,
+        present: hist.present,
+        comfyUrl: comfy.url,
+        size: dims,
+        source: picture?.source ?? null,
+        flatten: () => {
+          const cv = canvas.current;
+          if (!cv) throw new Error("The picture isn't loaded yet.");
+          return cv.getFlattened();
+        },
+        remember: (rec) => {
+          patchSession((cur) => ({ ...cur, accepting: rec }));
+          saveNow();
+        },
+      });
+      left.current = true;
+      deleteSession(s.id);
+      router.push(targetHref(s.target));
+    } catch (e) {
+      setAcceptError(e instanceof Error && e.message ? e.message : "Couldn't save the picture.");
+      setAccepting(false);
+    }
   }
 
   /** Makes the result on show the working picture (one undo step) and goes back to editing. */
@@ -293,7 +333,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
     <div className="refine-page" data-session={session.id}>
       <header className="refine-head">
         <h1>Refine picture</h1>
-        <button type="button" className="secondary" onClick={cancel} aria-label="Cancel and go back" title="Leave without changing anything">
+        <button type="button" className="secondary" disabled={accepting} onClick={cancel} aria-label="Cancel and go back" title="Leave without changing anything">
           Cancel
         </button>
       </header>
@@ -317,7 +357,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
             onInvert={() => change((s) => setMask(s, { inverted: !s.mask.inverted }))}
             visible={present.maskVisible}
             onToggleVisible={() => change(toggleMaskVisible)}
-            disabled={reviewing}
+            disabled={reviewing || accepting}
           />
           <PaintPanel
             tool={tool}
@@ -337,7 +377,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
             onColor={(color) => setTools((t) => ({ ...t, color }))}
             visible={present.paintVisible}
             onToggleVisible={() => change(togglePaintVisible)}
-            disabled={reviewing}
+            disabled={reviewing || accepting}
           />
           <RefinePromptPanel
             session={session}
@@ -350,30 +390,41 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
             onTools={setTools}
             status={status}
             onStatus={setStatus}
-            locked={reviewing}
+            locked={reviewing || accepting}
           />
           <RefineResults
             results={session.results}
             pending={pending}
             comfyUrl={comfy.url}
             selectedKey={selected ? selectedKey : null}
-            onSelect={setSelectedKey}
+            onSelect={(k) => !accepting && setSelectedKey(k)}
             inUseKey={inUse ? resultKey(inUse) : null}
           />
         </div>
         <div className="refine-bar" role="group" aria-label="Undo and finish">
-          <button type="button" className="refine-icon secondary" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={reviewing || !canUndo(history)} onClick={doUndo}>
+          <button type="button" className="refine-icon secondary" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={reviewing || accepting || !canUndo(history)} onClick={doUndo}>
             <UndoIcon />
           </button>
-          <button type="button" className="refine-icon secondary" aria-label="Redo" title="Redo (Shift+Ctrl+Z)" disabled={reviewing || !canRedo(history)} onClick={doRedo}>
+          <button type="button" className="refine-icon secondary" aria-label="Redo" title="Redo (Shift+Ctrl+Z)" disabled={reviewing || accepting || !canRedo(history)} onClick={doRedo}>
             <RedoIcon />
           </button>
-          <button type="button" className="refine-accept" disabled title="Not available yet">
-            Accept
+          <button
+            type="button"
+            className="refine-accept"
+            disabled={reviewing || accepting || applying || !dims || !!loadError}
+            title={reviewing ? "Apply or deselect the result first" : "Keep this picture and go back"}
+            onClick={accept}
+          >
+            {accepting ? "Saving…" : "Accept"}
           </button>
-          <button type="button" className="refine-cancel" onClick={cancel} title="Throw this away and go back">
+          <button type="button" className="refine-cancel" disabled={accepting} onClick={cancel} title="Throw this away and go back">
             Cancel
           </button>
+          {acceptError && (
+            <p className="error refine-accept-error" role="alert">
+              {acceptError}
+            </p>
+          )}
         </div>
       </div>
       <div className="refine-picture">
@@ -394,6 +445,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
           ref={canvas}
           picture={picture}
           preview={preview}
+          frozen={accepting}
           state={present}
           tool={tool}
           settings={tools}
