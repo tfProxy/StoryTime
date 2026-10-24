@@ -68,7 +68,7 @@ Give a picture job up to four reference pictures (a character, an item, a place,
 
 ## Story review: checks and tags (agreed with the owner, 2026-10-22)
 
-An AI review that suggests fixes and tags for the owner to approve, kept out of the writing flow. Run by hand at first (one chapter, one branch, or the whole story), automatic later. Stages 1 and 2 are built.
+An AI review that suggests fixes and tags for the owner to approve, kept out of the writing flow. Run by hand at first (one chapter, one branch, or the whole story), automatic later. Stages 1 and 2 are built, and Find tags can read one chapter, the way to it, everything after it, or the whole story.
 
 **Decisions so far**
 - A separate **Review** page per story (story menu, e.g. `/s/<id>/review`) with two tabs: **Issues** and **Tags**. The only sign of it elsewhere is an optional marker on outline chapters with open items, which opens Review filtered to that chapter; a setting hides the markers.
