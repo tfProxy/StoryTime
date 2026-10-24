@@ -10,6 +10,10 @@ The tests use a fake. Before building more on this, try once on the real machine
 2. Start from a picture with the built-in workflow, then with your own exported workflow (with and without `{{image}}`). Check the upload (`/upload/image`, `type=input`) works through your CORS setup, and that a 1344 × 768 start picture fits in memory.
 3. A workflow with `KSamplerAdvanced` has no `denoise` input, so StoryTime says it can't start from a picture. See whether that matters to you.
 
+## Import branches from other story sites (planned 2026-10-24)
+
+Scrape a path or a branch from cyoc.net, the BE archive and later other sites into a branch file, then import it into a new story or under a choice. The plan, stages and open questions are in `docs/import.md`; the owner's answers to its questions come first.
+
 ## Next steps, roughly in order of usefulness
 
 1. **The rest of the Illustrate plan** (agreed with the owner; the layout, prompt grouping, Load prompt from any picture, the job queue, remembered prompts, pin / reject and the full-size viewer are done):

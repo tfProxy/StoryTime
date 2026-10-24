@@ -6,7 +6,7 @@ A single-writer branching-story app: Next.js (read `AGENTS.md` above first), Rea
 
 ## Docs
 
-- Before changing the Illustrate page or anything in `src/lib/comfy/`, read `docs/illustrate.md` (how it works). Do not read the other files in `docs/` unless asked: `docs/pictures.md` and `docs/unraid.md` are setup guides for the owner. Planned work is in `TODO.md`.
+- Before changing the Illustrate page or anything in `src/lib/comfy/`, read `docs/illustrate.md` (how it works). Before working on importing from other story sites (`scripts/import*`, `importBranch`), read `docs/import.md`. Do not read the other files in `docs/` unless asked: `docs/pictures.md` and `docs/unraid.md` are setup guides for the owner. Planned work is in `TODO.md`.
 - When behaviour that `docs/illustrate.md` describes changes, update it in the same change.
 
 ## File editing
