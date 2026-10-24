@@ -97,7 +97,7 @@ try {
   ok(await page.getByRole("tab", { name: "Connections" }).getAttribute("aria-selected") === "true", "the link opens Settings on its Connections tab");
   ok(await page.getByRole("tab", { name: "Drawing" }).getAttribute("aria-selected") === "false" && !(await page.locator("#preset-test").isVisible()), "…with the other tabs hidden");
   await openSettings();
-  ok((await page.getByRole("tab").allInnerTexts()).join() === "Connections,Writing,Drawing,Qwen edit,Flux edit,Outline,Tags,Backup", "Settings has Connections, Writing, Drawing, Qwen edit, Flux edit, Outline, Tags and Backup tabs");
+  ok((await page.getByRole("tab").allInnerTexts()).join() === "Connections,Writing,Drawing,Qwen edit,Flux edit,Queue,Outline,Tags,Backup", "Settings has Connections, Writing, Drawing, Qwen edit, Flux edit, Queue, Outline, Tags and Backup tabs");
   ok(await page.getByRole("tab", { name: "Connections" }).getAttribute("aria-selected") === "true", "…and opens on Connections");
   await page.getByRole("tab", { name: "Drawing" }).click();
   ok(page.url().endsWith("/settings#drawing") && (await page.getByRole("tabpanel").getAttribute("id")) === "panel-drawing", "a tab shows its panel alone, and puts its name in the address");

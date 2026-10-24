@@ -84,7 +84,22 @@ export type Settings = {
   imagePromptModel: ModelRef | null;
   /** The ComfyUI machine that makes pictures, and the choices last used on the Illustrate page. */
   comfy: ComfySettings;
+  /** How the work queue (pictures and writing) shares the machine. */
+  queue: QueueSettings;
 };
+
+export type QueueSettings = {
+  /** "turns": the AI model and ComfyUI are on one machine, so only one kind runs at a time; "together": different machines. */
+  sharing: "turns" | "together";
+  /** Taking turns: switch to the other kind after this many minutes of the same kind (1-120). */
+  switchMinutes: number;
+  /** Taking turns: and/or after this many items of the same kind; 0 = no item limit (0-100). */
+  switchItems: number;
+  /** Among picture jobs held back in StoryTime, those for the drawing preset last sent go first. */
+  groupPictures: boolean;
+};
+
+export const DEFAULT_QUEUE: QueueSettings = { sharing: "turns", switchMinutes: 10, switchItems: 0, groupPictures: true };
 
 export type ImagePromptStyle = "tags" | "booru" | "natural";
 
@@ -159,6 +174,7 @@ export const DEFAULT_SETTINGS: Settings = {
   imagePromptStyle: "tags",
   imagePromptModel: null,
   comfy: { url: "", width: 1344, height: 768, coverWidth: 832, coverHeight: 1216, sizeScale: 1, count: 4, drawPresets: DEFAULT_DRAW_PRESETS, editPresets: DEFAULT_EDIT_PRESETS, editPreset: "qwen-image-edit", picturesOldestFirst: false, queueCount: 1, batchClicks: true },
+  queue: DEFAULT_QUEUE,
 };
 
 // Each field falls back to its default when missing or invalid, so partial files still
@@ -347,6 +363,15 @@ const settingsSchema = z.object({
       }),
     )
     .catch(DEFAULT_SETTINGS.comfy),
+  // Settings saved before the queue section existed have none: every field falls back to its default.
+  queue: z
+    .object({
+      sharing: z.enum(["turns", "together"]).catch(DEFAULT_QUEUE.sharing),
+      switchMinutes: z.number().int().min(1).max(120).catch(DEFAULT_QUEUE.switchMinutes),
+      switchItems: z.number().int().min(0).max(100).catch(DEFAULT_QUEUE.switchItems),
+      groupPictures: z.boolean().catch(DEFAULT_QUEUE.groupPictures),
+    })
+    .catch(DEFAULT_QUEUE),
 });
 
 /** At most MAX_PRESETS of a kind, each id once. */

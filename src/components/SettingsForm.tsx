@@ -54,6 +54,7 @@ const TABS = [
   { id: "drawing", label: "Drawing", holds: ["picture-batching", "setup-drawing", "drawing-presets", "pictures", "picture-setup", "redraw"] },
   { id: "edit-qwen-image-edit", label: "Qwen edit", holds: ["setup-qwen-image-edit", "qwen-image-edit-presets", "edit-loras"] },
   { id: "edit-flux-kontext", label: "Flux edit", holds: ["setup-flux-kontext", "flux-kontext-presets"] },
+  { id: "queue", label: "Queue", holds: [] },
   { id: "outline", label: "Outline", holds: [] },
   { id: "tags", label: "Tags", holds: [] },
   { id: "backup", label: "Backup", holds: [] },
@@ -640,6 +641,73 @@ export default function SettingsForm() {
           <EditSettings modelId={m} comfy={settings.comfy} setup={pictureSetup} onChange={updateComfy} onConnections={() => openTab("connections")} />
         </div>
       ))}
+
+      <div {...panel("queue")}>
+        <section className="settings-section">
+          <h2>Queue</h2>
+          <h3>Writing and pictures</h3>
+          <p className="meta">
+            Take turns when the AI model and ComfyUI run on the same machine, so they don&apos;t run out of memory.
+          </p>
+          <label className="inline-label">
+            <input
+              type="radio"
+              name="queue-sharing"
+              style={{ width: "auto" }}
+              checked={settings.queue.sharing === "turns"}
+              onChange={() => update({ queue: { ...settings.queue, sharing: "turns" } })}
+            />
+            <span>Take turns (same machine)</span>
+          </label>
+          <label className="inline-label">
+            <input
+              type="radio"
+              name="queue-sharing"
+              style={{ width: "auto" }}
+              checked={settings.queue.sharing === "together"}
+              onChange={() => update({ queue: { ...settings.queue, sharing: "together" } })}
+            />
+            <span>At the same time (different machines)</span>
+          </label>
+          {settings.queue.sharing === "turns" && (
+            <>
+              <label>
+                Switch after <small>(minutes of the same kind of work, 1–120)</small>
+                <NumberInput
+                  min={1}
+                  max={120}
+                  integer
+                  value={settings.queue.switchMinutes}
+                  onChange={(switchMinutes) => switchMinutes !== null && update({ queue: { ...settings.queue, switchMinutes } })}
+                />
+              </label>
+              <label>
+                and after <small>(items of the same kind, 0–100; 0 = no item limit)</small>
+                <NumberInput
+                  min={0}
+                  max={100}
+                  integer
+                  value={settings.queue.switchItems}
+                  onChange={(switchItems) => switchItems !== null && update({ queue: { ...settings.queue, switchItems } })}
+                />
+              </label>
+            </>
+          )}
+          <h3>Pictures</h3>
+          <label className="inline-label" style={{ alignItems: "flex-start" }}>
+            <input
+              type="checkbox"
+              style={{ marginTop: "0.2rem" }}
+              checked={settings.queue.groupPictures}
+              onChange={(e) => update({ queue: { ...settings.queue, groupPictures: e.target.checked } })}
+            />
+            <span>
+              Group pictures by drawing preset{" "}
+              <small>(waiting jobs for the preset last sent go first, so ComfyUI swaps checkpoints less)</small>
+            </span>
+          </label>
+        </section>
+      </div>
 
       <div {...panel("outline")}>
         <section className="settings-section">

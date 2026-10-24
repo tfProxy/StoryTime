@@ -148,6 +148,8 @@ The picture queue becomes the app's one work queue (D14), still holding only pic
 
 ### Task 0.2: the Queue settings and grouping pictures (after 0.1)
 
+(Done in task 0.2: `settings.queue`, the Settings › Queue tab, `orderHeldPictures` in `schedule.ts` with unit tests, `tests/e2e/settings-queue.e2e.mjs`. The rule is written and tested but not called by the provider; task 1.4 calls it when the queue holds jobs back.)
+
 **Files:** `src/lib/settingsSchema.ts`, `src/components/SettingsForm.tsx`, `src/lib/workQueue/schedule.ts`, `src/components/WorkQueue.tsx`, unit tests, a browser test.
 
 - `settings.queue`: `{ sharing: "turns" | "together" (default "turns"), switchMinutes: number (default 10, 1–120), switchItems: number (default 0 = no limit, 0–100), groupPictures: boolean (default true) }`. Settings saved before have none: read them as the defaults (see how `outline` is filled). A **Queue** section in Settings (look at how the Outline section is laid out), with a line under Writing and pictures: "Take turns when the AI model and ComfyUI run on the same machine, so they don't run out of memory."
