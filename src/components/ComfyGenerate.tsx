@@ -11,7 +11,7 @@ import type { LoadedPrompt } from "./ImagePromptPanel";
 import type { JobProgress, MadeWith, PendingJob, Picture } from "./pictures";
 import { drawPresetFamily, drawPresetIpAdapter, editBlocked, usableEditPresets, type EditModels } from "./useEditModels";
 import AutoTextarea from "./AutoTextarea";
-import { usePictureQueue } from "./PictureQueue";
+import { usePictureQueue } from "./WorkQueue";
 import { LIMITS } from "@/lib/limits";
 import { EDIT_MODELS, editTuning, usableLoras } from "@/lib/comfy/editModels";
 import { combinePrompts } from "@/lib/ai/imagePrompt";
@@ -141,7 +141,7 @@ function workflowCanRefs(workflow: string): boolean {
 /**
  * Makes pictures from the prompt on the ComfyUI machine, or, with a starting picture, edits it by an
  * instruction with an edit model (Instruct). The jobs go to the app's picture
- * queue (`PictureQueue`), so they go on when the page is left; the chapter's pictures go to `onPictures`.
+ * queue (`WorkQueue`), so they go on when the page is left; the chapter's pictures go to `onPictures`.
  */
 export default function ComfyGenerate({
   target, storyPreset, chapterPreset: savedPreset, moment, prompt: boxPrompt, negative: boxNegative, fixedPrompt = "", loaded = null, start = null, onClearStart,
@@ -314,7 +314,7 @@ export default function ComfyGenerate({
 
   /**
    * One click asks for one picture. The picture queue gathers quick clicks with the same prompt and
-   * settings into one job (see `PictureQueue`).
+   * settings into one job (see `WorkQueue`).
    */
   function ask() {
     setStatus(null);

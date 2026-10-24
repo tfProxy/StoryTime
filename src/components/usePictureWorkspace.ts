@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type CSSProperties, type HTMLAttributes, type KeyboardEvent, type PointerEvent } from "react";
 import type { LoadedPrompt } from "./ImagePromptPanel";
-import { markJobsSeen } from "./PictureQueue";
+import { markJobsSeen } from "./WorkQueue";
 import { picturesOf, type PendingJob, type Picture, type PromptToLoad, type StartRequest } from "./pictures";
 import { editBlocked, useEditModels } from "./useEditModels";
 import { useSettings } from "@/lib/settings";

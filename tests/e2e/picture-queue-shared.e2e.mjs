@@ -54,7 +54,7 @@ const context = await browser.newContext({ viewport: { width: 1000, height: 1200
 const page = await context.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 const badge = page.locator(".site-header .picture-queue-button");
-const panel = page.getByRole("region", { name: "Picture jobs" });
+const panel = page.getByRole("region", { name: "Queue" });
 const recorded = async () => (await call("GET", `/api/picture-jobs?chapter=${chapterId}`)).jobs.map((j) => j.prompt).sort();
 
 try {

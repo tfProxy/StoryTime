@@ -184,10 +184,10 @@ try {
   const badge = page.locator(".site-header .picture-queue-button");
   await badge.waitFor();
   await badge.click();
-  const row = page.getByRole("region", { name: "Picture jobs" }).getByRole("listitem", { name: /^Zephyr \(codex\): (being made|ready)$/ });
+  const row = page.getByRole("region", { name: "Queue" }).getByRole("listitem", { name: /^Zephyr \(codex\): (being made|ready)$/ });
   await row.waitFor();
   ok((await row.innerText()).includes("Codex pictures saga"), "the header's job list calls the job “Zephyr (codex)”, with the story's title");
-  const ready = page.getByRole("region", { name: "Picture jobs" }).getByRole("listitem", { name: "Zephyr (codex): ready" });
+  const ready = page.getByRole("region", { name: "Queue" }).getByRole("listitem", { name: "Zephyr (codex): ready" });
   await ready.waitFor({ timeout: 20000 });
   ok((await ready.getByRole("link", { name: "Open", exact: true }).getAttribute("href")) === `/s/${storyId}/codex/${zephyr}`, "…and its Open link is the codex page");
   comfy.setMode({ steps: 2, stepDelay: 50 });

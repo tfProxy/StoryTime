@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import PictureQueueProvider from "@/components/PictureQueue";
-import PictureQueueStatus from "@/components/PictureQueueStatus";
+import WorkQueueProvider from "@/components/WorkQueue";
+import WorkQueueStatus from "@/components/WorkQueueStatus";
 import SiteMenu from "@/components/SiteMenu";
 import "./globals.css";
 
@@ -15,18 +15,18 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en">
       <body>
         {/* Holds the picture jobs for the whole app, so they go on while pages change. */}
-        <PictureQueueProvider>
+        <WorkQueueProvider>
           <header className="site-header">
             <Link href="/" className="brand">
               StoryTime
             </Link>
             <div className="header-tools">
-              <PictureQueueStatus />
+              <WorkQueueStatus />
               <SiteMenu />
             </div>
           </header>
           <main>{children}</main>
-        </PictureQueueProvider>
+        </WorkQueueProvider>
       </body>
     </html>
   );

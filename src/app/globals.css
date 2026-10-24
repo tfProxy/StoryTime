@@ -58,7 +58,7 @@ a {
   position: relative;
 }
 
-/* The picture queue in the header (PictureQueueStatus). */
+/* The picture queue in the header (WorkQueueStatus). */
 .picture-queue-button {
   display: inline-flex;
   align-items: center;

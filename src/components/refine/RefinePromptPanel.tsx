@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import AutoTextarea from "../AutoTextarea";
 import LoraToggles from "../LoraToggles";
-import { usePictureQueue } from "../PictureQueue";
+import { usePictureQueue } from "../WorkQueue";
 import { drawPresetFamily, drawPresetIpAdapter, useEditModels } from "../useEditModels";
 import type { RefineCanvasHandle } from "../RefineCanvas";
 import { useSettings } from "@/lib/settings";

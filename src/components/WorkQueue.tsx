@@ -1,7 +1,8 @@
 "use client";
 
-// The picture queue: every job asked of ComfyUI, for any chapter, kept for the whole app rather than one
-// page, so a job goes on (and is recorded) when the author moves to another page. It lives in the root
+// The work queue (for now it holds picture jobs only): every job asked of ComfyUI, for any chapter, kept for
+// the whole app rather than one page, so a job goes on (and is recorded) when the author moves to another page.
+// What to send when is decided by `nextActions` (src/lib/workQueue/schedule.ts). It lives in the root
 // layout, which stays while pages change. The Illustrate page asks it for jobs and shows its own chapter's;
 // a chapter's finished jobs are handed to its page when it is open, and kept until it is opened otherwise.
 // After a refresh it finds StoryTime's jobs in ComfyUI's queue and history again (by their tags).
@@ -14,6 +15,7 @@ import { queueJob, sameJob, type JobInput, type UploadCache } from "@/lib/comfy/
 import { randomSeed } from "@/lib/comfy/workflow";
 import type { PictureJob } from "@/lib/pictureJobs";
 import { chapterIdOf, chapterTarget, codexTarget, coverTarget, targetKey, targetOfIds, type PictureTarget } from "@/lib/pictureTarget";
+import { nextActions, type ReadyPicture } from "@/lib/workQueue/schedule";
 import { picturesOf, type PendingJob, type Picture } from "./pictures";
 
 /** How long after the last click a job is sent, so quick clicks with the same settings make one job. */
@@ -61,7 +63,13 @@ export type AskRequest = PictureTarget & {
   view: Omit<Queued, "key" | "count" | "progress">;
 };
 
-type QueueApi = {
+/** A picture job as an item of the work queue. */
+export type PictureItem = QueueJob & { type: "picture" };
+
+/** Everything the work queue holds (later work adds other kinds). */
+export type WorkItem = PictureItem;
+
+export type QueueApi = {
   /** Oldest first. */
   jobs: QueueJob[];
   ask: (req: AskRequest) => void;
@@ -78,12 +86,25 @@ type QueueApi = {
   listenSession: (sessionId: string, listener: SessionListener) => () => void;
 };
 
-const QueueContext = createContext<QueueApi | null>(null);
+/** The work queue: its items, and the picture functions. */
+export type WorkQueueApi = Omit<QueueApi, "jobs"> & {
+  /** Oldest first. */
+  items: WorkItem[];
+};
 
-export function usePictureQueue(): QueueApi {
+const QueueContext = createContext<WorkQueueApi | null>(null);
+
+export function useWorkQueue(): WorkQueueApi {
   const api = useContext(QueueContext);
-  if (!api) throw new Error("usePictureQueue needs a PictureQueueProvider above it");
+  if (!api) throw new Error("useWorkQueue needs a WorkQueueProvider above it");
   return api;
+}
+
+/** The picture jobs of the work queue, as the pages that draw pictures use them. */
+export function usePictureQueue(): QueueApi {
+  const { items, ask, stop, dismiss, listen, listenSession } = useWorkQueue();
+  const jobs = useMemo(() => items.filter((i): i is PictureItem => i.type === "picture"), [items]);
+  return useMemo(() => ({ jobs, ask, stop, dismiss, listen, listenSession }), [jobs, ask, stop, dismiss, listen, listenSession]);
 }
 
 /** The job's chapter isn't in this StoryTime (deleted meanwhile, or the job is another StoryTime's). */
@@ -183,7 +204,7 @@ type Gathering = { key: string; target: PictureTarget; input: JobInput; count: n
 const targetOf = (t: PictureTarget): PictureTarget =>
   t.kind === "chapter" ? chapterTarget(t.storyId, t.chapterId) : t.kind === "cover" ? coverTarget(t.storyId) : codexTarget(t.storyId, t.entryId);
 
-export default function PictureQueueProvider({ children }: { children: ReactNode }) {
+export default function WorkQueueProvider({ children }: { children: ReactNode }) {
   const settings = useSettings();
   const comfyUrl = settings.comfy.url;
   // The AI connections as they are now, for the callbacks below (which outlive a render).
@@ -191,18 +212,22 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
   useEffect(() => {
     connectionsRef.current = settings.connections;
   }, [settings.connections]);
-  const [jobs, setJobs] = useState<QueueJob[]>([]);
-  // The same list, for the callbacks below (which outlive a render).
-  const jobsRef = useRef<QueueJob[]>([]);
-  const update = useCallback((change: (prev: QueueJob[]) => QueueJob[]) => {
+  const [items, setItems] = useState<WorkItem[]>([]);
+  // The same list, for the callbacks below (which outlive a render). Only picture items so far.
+  const jobsRef = useRef<PictureItem[]>([]);
+  const update = useCallback((change: (prev: PictureItem[]) => PictureItem[]) => {
     jobsRef.current = change(jobsRef.current);
-    setJobs(jobsRef.current);
+    setItems(jobsRef.current);
   }, []);
-  const patch = useCallback((key: string, p: Partial<QueueJob>) => update((prev) => prev.map((j) => (j.key === key ? ({ ...j, ...p } as QueueJob) : j))), [update]);
+  const patch = useCallback((key: string, p: Partial<QueueJob>) => update((prev) => prev.map((j) => (j.key === key ? ({ ...j, ...p } as PictureItem) : j))), [update]);
   // What Stop needs for each job being made.
   const controls = useRef(new Map<string, { promptId: string | null; ctl: AbortController; url: string }>());
   // The newest job, while clicks can still add pictures to it.
   const gathering = useRef<Gathering | null>(null);
+  // Jobs that finished gathering and wait for `nextActions` to send them, in the order they became ready.
+  const ready = useRef<(ReadyPicture & { g: Gathering })[]>([]);
+  // Keys of jobs sent to ComfyUI and not ended yet.
+  const inFlight = useRef(new Set<string>());
   const uploads = useRef<UploadCache["current"]>(null);
   // The pages open now, by `targetKey`.
   const listeners = useRef(new Map<string, ChapterListener>());
@@ -217,6 +242,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
   const ended = useCallback(
     (key: string, result: Ended) => {
       controls.current.delete(key);
+      inFlight.current.delete(key);
       const job = jobsRef.current.find((j) => j.key === key);
       if (!job) return;
       if (job.session) {
@@ -286,12 +312,14 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
     [ended],
   );
 
-  /** Sends a gathered job: no more clicks join it. Queues it on ComfyUI and waits for its pictures. */
+  /** Sends a ready job: queues it on ComfyUI and waits for its pictures. */
   const send = useCallback(
     async (g: Gathering) => {
-      if (gathering.current === g) gathering.current = null;
       const control = controls.current.get(g.key);
-      if (!control) return;
+      if (!control) {
+        inFlight.current.delete(g.key);
+        return;
+      }
       try {
         const made = await queueJob(g.input, g.count, { ...g.target, instance: await getInstanceId() }, {
           signal: control.ctl.signal,
@@ -312,6 +340,33 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
     [ended, failed, finish, patch],
   );
 
+  /** Asks `nextActions` what to do with the ready jobs and does it: a job to send leaves `ready` and counts as in flight. */
+  const pump = useCallback(() => {
+    const actions = nextActions({
+      ready: ready.current.map(({ key, targetKey, drawPreset, readyAt }) => ({ key, targetKey, drawPreset, readyAt })),
+      inFlight: [...inFlight.current],
+    });
+    for (const action of actions) {
+      const at = ready.current.findIndex((r) => r.key === action.key);
+      if (at < 0) continue;
+      const [{ g }] = ready.current.splice(at, 1);
+      inFlight.current.add(g.key);
+      void send(g);
+    }
+  }, [send]);
+
+  /** A gathered job is closed (its timer ran out, or a different click came): no more clicks join it, and it waits to be sent. */
+  const markReady = useCallback(
+    (g: Gathering) => {
+      if (gathering.current === g) gathering.current = null;
+      clearTimeout(g.timer);
+      if (ready.current.some((r) => r.key === g.key)) return;
+      ready.current.push({ key: g.key, targetKey: targetKey(g.target), drawPreset: g.input.draw.id ?? null, readyAt: Date.now(), g });
+      pump();
+    },
+    [pump],
+  );
+
   /**
    * One more picture. Clicks with the same target (chapter or cover), prompt and settings, each within
    * GATHER_MS of the last, are gathered into one job (up to MAX_BATCH pictures); a click with anything
@@ -326,20 +381,17 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
       if (gathers && g && targetKey(g.target) === targetKey(target) && sameJob(g.input) === sameJob(input) && g.count < MAX_BATCH) {
         g.count += 1;
         clearTimeout(g.timer);
-        g.timer = setTimeout(() => void send(g), GATHER_MS);
+        g.timer = setTimeout(() => markReady(g), GATHER_MS);
         return patch(g.key, { count: g.count });
       }
-      if (g) {
-        clearTimeout(g.timer);
-        void send(g);
-      }
+      if (g) markReady(g);
       const key = `job-${randomSeed().toString(36)}`;
       controls.current.set(key, { promptId: null, ctl: new AbortController(), url: input.comfy.url });
-      const next: Gathering = { key, target, input, count: 1, timer: setTimeout(() => void send(next), gathers ? GATHER_MS : 0) };
+      const next: Gathering = { key, target, input, count: 1, timer: setTimeout(() => markReady(next), gathers ? GATHER_MS : 0) };
       gathering.current = next;
-      update((prev) => [...prev, { ...view, ...(input.temporary && { temporary: true }), ...(input.session && { session: input.session, base: input.base ?? "" }), key, count: 1, progress: { stage: "gathering" }, ...target, state: "making" }]);
+      update((prev) => [...prev, { type: "picture", ...view, ...(input.temporary && { temporary: true }), ...(input.session && { session: input.session, base: input.base ?? "" }), key, count: 1, progress: { stage: "gathering" }, ...target, state: "making" }]);
     },
-    [patch, send, update],
+    [markReady, patch, update],
   );
 
   const stop = useCallback(
@@ -349,6 +401,12 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
         // Not sent yet: just drop it.
         clearTimeout(g.timer);
         gathering.current = null;
+        return ended(key, { stopped: true });
+      }
+      const waiting = ready.current.findIndex((r) => r.key === key);
+      if (waiting >= 0) {
+        // Ready but not sent yet: drop it the same way.
+        ready.current.splice(waiting, 1);
         return ended(key, { stopped: true });
       }
       const c = controls.current.get(key);
@@ -414,6 +472,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
       update((prev) => [
         ...prev,
         {
+          type: "picture",
           key,
           ...target,
           state: "making",
@@ -447,7 +506,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
   const keep = useCallback(
     (job: Omit<Queued, "key" | "progress"> & PictureTarget & { session?: string; base?: string }, result: Ended) => {
       const key = `job-${randomSeed().toString(36)}`;
-      update((prev) => [...prev, { ...job, key, progress: { stage: "loading" }, state: "making" }]);
+      update((prev) => [...prev, { type: "picture", ...job, key, progress: { stage: "loading" }, state: "making" }]);
       ended(key, result);
     },
     [ended, update],
@@ -543,7 +602,7 @@ export default function PictureQueueProvider({ children }: { children: ReactNode
     return () => document.removeEventListener("visibilitychange", again);
   }, [comfyUrl, scan, loadUnseen]);
 
-  const api = useMemo(() => ({ jobs, ask, stop, dismiss, listen, listenSession }), [jobs, ask, stop, dismiss, listen, listenSession]);
+  const api = useMemo(() => ({ items, ask, stop, dismiss, listen, listenSession }), [items, ask, stop, dismiss, listen, listenSession]);
   return <QueueContext.Provider value={api}>{children}</QueueContext.Provider>;
 }
 

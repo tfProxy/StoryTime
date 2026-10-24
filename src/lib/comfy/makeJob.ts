@@ -1,5 +1,5 @@
 // Turning what the author asked for on the Illustrate page into a job on ComfyUI: checking it, uploading
-// the starting picture, filling the workflow and queueing it. The picture queue (`PictureQueue`) calls it
+// the starting picture, filling the workflow and queueing it. The picture queue (`WorkQueue`) calls it
 // and then waits for the pictures. Browser code, no React.
 import { chapterIdOf, entryIdOf, type PictureMoment, type PictureTarget } from "../pictureTarget";
 import type { ComfySettings } from "../settingsSchema";
@@ -238,7 +238,7 @@ export async function queueJob(
         });
   const denoise = from ? denoiseOf(input) : null;
   // Everything the log records about the job. It goes to ComfyUI with the job too, so a page opened while
-  // the job is being made can find it again (see `PictureQueue`).
+  // the job is being made can find it again (see `WorkQueue`).
   const record: JobRecord = {
     prompt,
     negative,

@@ -164,7 +164,7 @@ try {
   await page.waitForURL(`${BASE}/`);
   await badge.waitFor();
   await badge.click();
-  const panel = page.getByRole("region", { name: "Picture jobs" });
+  const panel = page.getByRole("region", { name: "Queue" });
   const row = panel.getByRole("listitem", { name: /^Cover: (being made|ready)$/ });
   await row.waitFor();
   ok(true, "on the story list the header's job list has a row named Cover");

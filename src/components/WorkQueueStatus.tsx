@@ -11,7 +11,7 @@ import { useSettings } from "@/lib/settings";
 import { imageUrl } from "@/lib/comfy/client";
 import { chapterTarget, codexTarget, coverTarget, targetHref, targetKey, type PictureTarget } from "@/lib/pictureTarget";
 import { progressText } from "./pictures";
-import { usePictureQueue, type QueueJob } from "./PictureQueue";
+import { usePictureQueue, type QueueJob } from "./WorkQueue";
 
 type Labels = Record<string, { title: string; story_title: string }>;
 
@@ -67,7 +67,7 @@ function useTitleCount(count: number) {
   }, [count]);
 }
 
-export default function PictureQueueStatus() {
+export default function WorkQueueStatus() {
   const { jobs, stop, dismiss } = usePictureQueue();
   const comfyUrl = useSettings().comfy.url;
   const [open, setOpen] = useState(false);
@@ -129,7 +129,7 @@ export default function PictureQueueStatus() {
         {failed.length > 0 && <span className="picture-queue-part error">⚠ {failed.length}</span>}
       </button>
       {open && (
-        <div className="picture-queue-panel" role="region" aria-label="Picture jobs">
+        <div className="picture-queue-panel" role="region" aria-label="Queue">
           <ul className="picture-queue-list">
             {newest.map((j) => (
               <JobRow key={j.key} job={j} label={labels[targetKey(j)]} comfyUrl={comfyUrl} onStop={() => stop(j.key)} onDismiss={() => dismiss(j.key)} />

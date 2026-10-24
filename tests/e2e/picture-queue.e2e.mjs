@@ -30,7 +30,7 @@ page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true
 
 const header = page.locator(".site-header");
 const badge = header.locator(".picture-queue-button");
-const panel = page.getByRole("region", { name: "Picture jobs" });
+const panel = page.getByRole("region", { name: "Queue" });
 const tiles = page.locator(".candidates li.picture-tile");
 const posted = () => comfy.calls.filter((c) => c.method === "POST" && c.path === "/prompt").length;
 const toStoryList = async () => {

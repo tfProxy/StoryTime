@@ -7,7 +7,7 @@ import RefineCanvas, { type RefineCanvasHandle } from "./RefineCanvas";
 import { MaskPanel, PaintPanel } from "./refine/RefinePanels";
 import RefinePromptPanel from "./refine/RefinePromptPanel";
 import RefineResults from "./refine/RefineResults";
-import { usePictureQueue } from "./PictureQueue";
+import { usePictureQueue } from "./WorkQueue";
 import { RedoIcon, UndoIcon } from "./refine/RefineIcons";
 import { useSettings } from "@/lib/settings";
 import { targetHref } from "@/lib/pictureTarget";
