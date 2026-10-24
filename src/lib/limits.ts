@@ -9,4 +9,7 @@ export const LIMITS = {
   summary: 5000,
   label: 200,
   choices: 12,
+  /** Most chapters one AI run may write, and most tasks (writing, planning, pictures) it may hold. */
+  runChapters: 200,
+  runTasks: 2000,
 };

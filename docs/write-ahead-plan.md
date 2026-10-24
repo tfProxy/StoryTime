@@ -177,6 +177,8 @@ The picture queue becomes the app's one work queue (D14), still holding only pic
 
 ### Task 1.1: server (no UI)
 
+(Done in task 1.1. Choices made: `needsReview`'s flag is `options.reviewedDepths` (`reviewRun` adds the level it checked, so the runner doesn't stop there again); `reviewRun` takes `tasks: [{id, label?, direction?, remove?}]`; `getSubtree` depths are relative, chapters one level past the limit are stubs with `choices: []`; run lists carry `leased`, and `GET /api/ai-runs` needs `unfinished=1` or `finished=1`.)
+
 **Files:** `src/lib/db.ts` (migration 31), `src/lib/aiRuns.ts` (new), `src/lib/stories.ts`, `src/lib/tree.ts`, `src/lib/limits.ts`, `scripts/adminCore.mjs`, new routes, `tests/api/ai-runs.test.mjs` (new), `tests/api/admin-cli.test.mjs`.
 
 1. **Migration 31** (append to `MIGRATIONS` with a numbered comment like the others). The `mode` check already lists all four modes so later milestones need no table rebuild:
@@ -228,6 +230,8 @@ The picture queue becomes the app's one work queue (D14), still holding only pic
 **Check:** shared code (db.ts, migration): `npx tsc --noEmit`, `npx next build`, `npm test`, and the whole browser suite (`E2E_EXECUTABLE=/opt/pw-browsers/chromium npm run test:e2e` in a cloud session).
 
 ### Task 1.2: types and the Fill planner (pure code; can run beside 1.1)
+
+(Done in task 1.2, a separate commit. Choices made: `applyPlan(tasks, plan, guidance = "")`; `nextTask` returns `{task, tasks}`; `parseIdeas(text, max = 6)` takes a limit, use 12 for plan steps; `planFill` has its own minimal `PlanNode` tree type; depths in tasks are relative to the start chapter; `estimateFill` requests = chapters × 3 + plan tasks.)
 
 **Files:** `src/lib/aiRuns/types.ts`, `src/lib/aiRuns/plan.ts`, `src/lib/ai/prompts.ts` (one addition), `tests/unit/ai-runs-plan.test.mts`, `tests/unit/prompts.test.mts`.
 

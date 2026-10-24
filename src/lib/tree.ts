@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { getStory } from "./stories";
+import { aiMarkOf, getChapter, getStory, type AiMark } from "./stories";
 
 export type TreeNode = {
   id: string;
@@ -7,6 +7,8 @@ export type TreeNode = {
   depth: number;
   edited: boolean;
   summary: string | null;
+  /** Written by an AI run (and whether the author reviewed it); null when the author wrote it. */
+  ai: AiMark;
   /** Choices on this chapter; `child` is null while the choice is still unwritten. */
   choices: { id: string; label: string; child: TreeNode | null }[];
 };
@@ -18,6 +20,8 @@ type ChapterRow = {
   parent_choice_id: string | null;
   edited_at: number | null;
   summary: string | null;
+  ai_run_id: string | null;
+  ai_reviewed_at: number | null;
 };
 
 export type StoryChapter = {
@@ -59,10 +63,25 @@ export function getStoryChapters(storyId: string): StoryChapter[] {
 export function getStoryTree(storyId: string): TreeNode | null {
   const story = getStory(storyId);
   if (!story?.root_chapter_id) return null;
+  return buildTree(storyId, story.root_chapter_id, Infinity, 0);
+}
 
+/**
+ * The chapter as a tree with its descendants down to `maxDepth` levels below it (0 = just the chapter). Depths
+ * are relative: the chapter is 0. Every chapter down to the limit lists its choices, and a written one's child
+ * is there too; the children one level past the limit are stubs (`choices: []`), so a choice written below the
+ * limit is never mistaken for an unwritten one.
+ */
+export function getSubtree(chapterId: string, maxDepth: number): TreeNode | null {
+  const chapter = getChapter(chapterId);
+  if (!chapter) return null;
+  return buildTree(chapter.story_id, chapterId, maxDepth, chapter.depth);
+}
+
+function buildTree(storyId: string, rootId: string, maxDepth: number, baseDepth: number): TreeNode | null {
   const chapters = db()
     .prepare(
-      `SELECT id, title, depth, parent_choice_id, edited_at, summary
+      `SELECT id, title, depth, parent_choice_id, edited_at, summary, ai_run_id, ai_reviewed_at
          FROM chapters WHERE story_id = ?`,
     )
     .all(storyId) as ChapterRow[];
@@ -87,15 +106,17 @@ export function getStoryTree(storyId: string): TreeNode | null {
   const build = (c: ChapterRow): TreeNode => ({
     id: c.id,
     title: c.title,
-    depth: c.depth,
+    depth: c.depth - baseDepth,
     edited: c.edited_at !== null,
     summary: c.summary,
-    choices: (choicesOf.get(c.id) ?? []).map((ch) => {
+    ai: aiMarkOf(c),
+    // Chapters one level past the limit are only stubs: they say a choice is written, with no choices of their own.
+    choices: c.depth - baseDepth > maxDepth ? [] : (choicesOf.get(c.id) ?? []).map((ch) => {
       const child = childOfChoice.get(ch.id);
       return { id: ch.id, label: ch.label, child: child ? build(child) : null };
     }),
   });
 
-  const root = chapters.find((c) => c.id === story.root_chapter_id);
+  const root = chapters.find((c) => c.id === rootId);
   return root ? build(root) : null;
 }

@@ -66,9 +66,26 @@ ok(r.code === 0 && /Deleted 2 chapters/.test(r.out), "deleting a choice deletes 
 ok((await api("GET", `/api/chapters/${grand}`)).status === 404 && (await api("GET", `/api/chapters/${great}`)).status === 404, "both chapters are gone");
 ok((await api("GET", `/api/chapters/${root}`)).json.choices.length === 0, "the choice is gone");
 
+// AI runs go with the chapter they started from, or with their story
+{
+  const runsOf = (where, ...args) => { const d = new Database(DB, { readonly: true }); try { return d.prepare(`SELECT COUNT(*) AS n FROM ai_runs WHERE ${where}`).get(...args).n; } finally { d.close(); } };
+  const mk = async (story_id, start_chapter_id) => (await api("POST", "/api/ai-runs", { story_id, start_chapter_id, mode: "fill", options: {}, tasks: [] })).json.id;
+  const sub = (await api("POST", "/api/chapters", { parent_chapter_id: root, new_choice_label: "Run", title: "Run child", body: "run child" })).json.chapter_id;
+  const keep = await mk(s.json.story_id, root);
+  const gone = await mk(s.json.story_id, sub);
+  ok(Boolean(keep && gone), "two runs were made for the story");
+  r = cli("delete", "chapter", sub, "--yes");
+  ok(r.code === 0 && runsOf("id = ?", gone) === 0 && runsOf("id = ?", keep) === 1, "deleting a chapter deletes the runs that started from it, and keeps the others");
+}
+
 // deleting a story takes all of its contents
 r = cli("delete", "story", s.json.story_id, "--yes");
 ok(r.code === 0 && /Deleted 1 chapter/.test(r.out), "delete a story: " + r.out.trim());
+{
+  const d = new Database(DB, { readonly: true });
+  ok(d.prepare(`SELECT COUNT(*) AS n FROM ai_runs WHERE story_id = ?`).get(s.json.story_id).n === 0, "…and its AI runs");
+  d.close();
+}
 ok((await api("GET", `/api/stories/${s.json.story_id}`)).status === 404, "the story is gone");
 ok(!(await hasPicture(root, "footer")), "…and so are its chapters' pictures");
 ok(await jobsOf(root) === 0 && (await api("GET", `/api/picture-jobs?story=${s.json.story_id}`)).json.jobs.length === 0, "…and its picture jobs");

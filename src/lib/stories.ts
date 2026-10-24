@@ -38,7 +38,17 @@ export type Chapter = {
   revision: number;
   edited_at: number | null;
   edit_note: string | null;
+  /** The AI run that wrote it; null when the author did. */
+  ai_run_id: string | null;
+  /** When the author marked an AI-written chapter reviewed; null until then. */
+  ai_reviewed_at: number | null;
 };
+
+/** Whether the AI wrote a chapter, and if so whether the author has reviewed it (D3a). null = written by the author. */
+export type AiMark = null | "unreviewed" | "reviewed";
+
+export const aiMarkOf = (c: { ai_run_id: string | null; ai_reviewed_at: number | null }): AiMark =>
+  c.ai_run_id === null ? null : c.ai_reviewed_at === null ? "unreviewed" : "reviewed";
 
 export type Choice = {
   id: string;
@@ -47,6 +57,8 @@ export type Choice = {
   posted_at: number;
   /** Id of the child chapter, or null if the slot is still unwritten. */
   child_chapter_id: string | null;
+  /** The child chapter's AI mark (null when unwritten or written by the author). */
+  child_ai: AiMark;
 };
 
 export type Revision = {
@@ -88,6 +100,8 @@ export const NewChapterSchema = z
     choice_id: z.string().min(1).optional(),
     parent_chapter_id: z.string().min(1).optional(),
     new_choice_label: required(LIMITS.label).optional(),
+    /** The AI run writing this chapter (of the same story): marks it "Written by AI, not reviewed". */
+    ai_run_id: z.string().min(1).optional(),
   })
   .refine(
     (v) => (v.choice_id !== undefined) !== (v.parent_chapter_id !== undefined && v.new_choice_label !== undefined),
@@ -201,7 +215,7 @@ export function getStory(id: string): Story | undefined {
 }
 
 const CHAPTER_COLS = `c.id, c.story_id, c.parent_choice_id, c.depth, c.title, c.body, c.summary, c.path_summary,
-  c.posted_at, c.revision, c.edited_at, c.edit_note`;
+  c.posted_at, c.revision, c.edited_at, c.edit_note, c.ai_run_id, c.ai_reviewed_at`;
 
 export function getChapter(id: string): Chapter | undefined {
   return db()
@@ -231,15 +245,33 @@ export function storyTitles(ids: string[]): Record<string, string> {
 }
 
 export function getChoices(chapterId: string): Choice[] {
-  return db()
+  const rows = db()
     .prepare(
-      `SELECT ch.id, ch.parent_chapter_id, ch.label, ch.posted_at,
-              (SELECT c.id FROM chapters c WHERE c.parent_choice_id = ch.id) AS child_chapter_id
-         FROM choices ch
+      `SELECT ch.id, ch.parent_chapter_id, ch.label, ch.posted_at, c.id AS child_chapter_id, c.ai_run_id, c.ai_reviewed_at
+         FROM choices ch LEFT JOIN chapters c ON c.parent_choice_id = ch.id
         WHERE ch.parent_chapter_id = ?
         ORDER BY ch.posted_at, ch.rowid`,
     )
-    .all(chapterId) as Choice[];
+    .all(chapterId) as (Omit<Choice, "child_ai"> & { ai_run_id: string | null; ai_reviewed_at: number | null })[];
+  return rows.map(({ ai_run_id, ai_reviewed_at, ...choice }) => ({ ...choice, child_ai: aiMarkOf({ ai_run_id, ai_reviewed_at }) }));
+}
+
+/** Marks an AI-written chapter reviewed (those already reviewed, and chapters the author wrote, keep as they are). Returns how many were marked. */
+export function markReviewed(chapterId: string): { marked: number } {
+  if (!getChapter(chapterId)) throw new PostError("That chapter does not exist", 404);
+  const { changes } = db().prepare(`UPDATE chapters SET ai_reviewed_at = ? WHERE id = ? AND ai_run_id IS NOT NULL AND ai_reviewed_at IS NULL`).run(now(), chapterId);
+  return { marked: changes };
+}
+
+/** Marks this chapter and every AI chapter on its way from the story's start reviewed. */
+export function markPathReviewed(chapterId: string): { marked: number } {
+  const path = getPath(chapterId);
+  if (path.length === 0) throw new PostError("That chapter does not exist", 404);
+  const ids = path.map((c) => c.id);
+  const { changes } = db()
+    .prepare(`UPDATE chapters SET ai_reviewed_at = ? WHERE id IN (${ids.map(() => "?").join(",")}) AND ai_run_id IS NOT NULL AND ai_reviewed_at IS NULL`)
+    .run(now(), ...ids);
+  return { marked: changes };
 }
 
 /** The choice that leads into this chapter (null for a story's first chapter). */
@@ -378,11 +410,16 @@ export function createChapter(input: z.infer<typeof NewChapterSchema>): Posted {
       throw new PostError("That chapter does not exist", 404);
     }
 
+    if (input.ai_run_id !== undefined) {
+      const run = db().prepare(`SELECT story_id FROM ai_runs WHERE id = ?`).get(input.ai_run_id) as { story_id: string } | undefined;
+      if (!run || run.story_id !== parentChapter.story_id) throw new PostError("ai_run_id: that is not a run of this story", 400);
+    }
+
     try {
       db()
         .prepare(
-          `INSERT INTO chapters (id, story_id, parent_choice_id, depth, title, body, summary, path_summary, posted_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO chapters (id, story_id, parent_choice_id, depth, title, body, summary, path_summary, posted_at, ai_run_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           chapterId,
@@ -394,6 +431,7 @@ export function createChapter(input: z.infer<typeof NewChapterSchema>): Posted {
           input.summary ?? null,
           input.path_summary ?? null,
           t,
+          input.ai_run_id ?? null,
         );
     } catch (e) {
       if (e instanceof Error && "code" in e && String(e.code).startsWith("SQLITE_CONSTRAINT")) {

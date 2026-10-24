@@ -529,6 +529,31 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE picture_jobs ADD COLUMN temporary INTEGER NOT NULL DEFAULT 0;
   `,
+  // 31: AI runs (write ahead, fill missing pictures; see ./aiRuns): a run's task list is kept on the server so it
+  // can be resumed, with a lease so only one tab runs it. A chapter written by a run points at it (ai_run_id) and
+  // carries when the owner marked it reviewed.
+  `
+  CREATE TABLE ai_runs (
+    id               TEXT PRIMARY KEY,
+    story_id         TEXT NOT NULL REFERENCES stories(id),
+    start_chapter_id TEXT,
+    mode             TEXT NOT NULL CHECK (mode IN ('fill', 'tree', 'arc', 'pictures')),
+    options          TEXT NOT NULL,
+    tasks            TEXT NOT NULL,
+    status           TEXT NOT NULL CHECK (status IN ('ready', 'queued', 'running', 'review', 'paused', 'done', 'stopped')),
+    review_depth     INTEGER,
+    finished_at      INTEGER,
+    error            TEXT,
+    version          INTEGER NOT NULL DEFAULT 1,
+    lease_token      TEXT,
+    lease_until      INTEGER,
+    created_at       INTEGER NOT NULL,
+    updated_at       INTEGER NOT NULL
+  );
+  CREATE INDEX ai_runs_story ON ai_runs(story_id, created_at);
+  ALTER TABLE chapters ADD COLUMN ai_run_id TEXT;
+  ALTER TABLE chapters ADD COLUMN ai_reviewed_at INTEGER;
+  `,
 ];
 
 function open(): Database.Database {

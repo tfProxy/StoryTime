@@ -142,6 +142,9 @@ export function deleteItem(db, kind, id) {
     if (kind === "story") codex = db.prepare(`DELETE FROM codex_ops WHERE story_id = ?`).run(id).changes;
     else if (kind === "codex_op") codex = db.prepare(`DELETE FROM codex_ops WHERE id = ?`).run(id).changes;
     else if (chapterIds.length) codex = db.prepare(`DELETE FROM codex_ops WHERE anchor_chapter_id IN (${marks})`).run(...chapterIds).changes;
+    // AI runs go with their story, or with the chapter they started from (or one below it).
+    if (kind === "story") db.prepare(`DELETE FROM ai_runs WHERE story_id = ?`).run(id);
+    else if (chapterIds.length) db.prepare(`DELETE FROM ai_runs WHERE start_chapter_id IN (${marks})`).run(...chapterIds);
     if (chapterIds.length) {
       db.prepare(`DELETE FROM chapter_revisions WHERE chapter_id IN (${marks})`).run(...chapterIds);
       db.prepare(`DELETE FROM chapter_images WHERE chapter_id IN (${marks})`).run(...chapterIds);
