@@ -12,9 +12,10 @@ Written 2026-10-22 at the end of a cloud session, for the next agent picking up 
   - Tagging by hand.
   - A per-story switch for each tag.
   - Later, Dismiss and Undo on Review issues (migration 29).
+  - Branch scope for Find tags (The way here, From here on).
 - **Not built:**
   - The Intentional action (it comes with the stage 3 continuity checks).
-  - Branch scope for Find tags.
+  - Skipping chapters already checked at their current revision.
   - Stages 3 to 5.
   - Everything in "Planned but not in TODO" below.
 
@@ -143,9 +144,8 @@ Written 2026-10-22 at the end of a cloud session, for the next agent picking up 
 
 ### 2. Branch scope for Find tags
 
-- `TagScan` offers "this chapter" and "the whole story" only. Add "this branch": the chapters on the root-to-chapter path, plus optionally that chapter's subtree. Ask the owner which.
-- Use the path helpers in `codex.ts` and `tree.ts`.
-- Skip chapters whose tags were already checked at their current revision. The data is there: a row's revision equals the chapter's revision. This needs a "checked at revision" record per chapter, because a chapter with no suggestions has no row. Either add a small `chapter_tag_checks(chapter_id, revision, checked_at)` table in the same migration as `review_items`, or fold it into the stage 3 facts table.
+- **Done.** With a chapter chosen, `TagScan` offers This chapter, The way here (first chapter to this one), From here on (this one and every chapter below it) and The whole story. Each option shows only when it covers more than the chapter itself. Everything but This chapter uses the cheaper model. The path and subtree are worked out in `TagScan.tsx` from `parent_id`.
+- Still to do: skip chapters whose tags were already checked at their current revision. The data is there: a row's revision equals the chapter's revision. This needs a "checked at revision" record per chapter, because a chapter with no suggestions has no row. Either add a small `chapter_tag_checks(chapter_id, revision, checked_at)` table in the same migration as `review_items`, or fold it into the stage 3 facts table.
 
 ### 3. Stage 3: facts, continuity and state tags
 
@@ -186,7 +186,6 @@ Written 2026-10-22 at the end of a cloud session, for the next agent picking up 
 
 - The short label field, the per-tag "show to readers" flag, and the `chapter_tag_checks` (or facts) record that lets a re-scan skip unchanged chapters.
 - Deciding whether to fold tagging into the stage 3 fact pass, to save AI calls.
-- Branch scope for Find tags, and asking whether it means the path or the subtree.
 - Showing on the Tagged list which tags were added by hand and which by the AI (`source` is stored but not shown).
 - Showing stale approved tags (chapter edited after approval) with a "check again" action. The `stale` flag exists; only suggestions show it today.
 - Offering the Next.js security upgrade to the owner as its own change.

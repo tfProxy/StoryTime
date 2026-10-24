@@ -254,6 +254,7 @@ export default async function ReviewPage({
             title: c.title,
             body: c.body,
             revision: c.revision,
+            parent_id: c.parent_id,
             decided: decidedBy.get(c.id) ?? [],
           }))}
           tags={enabled.map((t) => ({

@@ -116,6 +116,23 @@ try {
   ok(horseCalls() === before, "the decided chapter is not read again");
   ok(await page.getByText(/1 chapter was skipped/).isVisible(), "it says how many were skipped");
 
+  // Branch scopes.
+  await page.goto(reviewUrl(s.story_id, `?tab=tags&chapter=${s.chapter_id}`));
+  ok((await page.getByRole("radio", { name: /From here on \(2 chapters/ }).count()) === 1, "the first chapter offers From here on, counting its chapters");
+  ok((await page.getByRole("radio", { name: /The way here/ }).count()) === 0, "…but not The way here (it is the first chapter)");
+  await page.goto(reviewUrl(s.story_id, `?tab=tags&chapter=${horse}`));
+  ok((await page.getByRole("radio", { name: /From here on/ }).count()) === 0, "a last chapter has no From here on");
+  const startCalls = () => calls.filter((c) => c.user.includes('Chapter to read: "Start"')).length;
+  const startBefore = startCalls();
+  const horseBefore = horseCalls();
+  const cheapBefore = calls.filter((c) => c.model === "cheap").length;
+  await page.getByRole("radio", { name: /The way here \(2 chapters/ }).check();
+  await page.getByText("One AI call per chapter, using your cheaper model.").waitFor();
+  await page.getByRole("button", { name: "Find tags" }).click();
+  await page.getByText(/Read 1 chapter; found 0 new suggestions\. 1 chapter was skipped/).waitFor();
+  ok(startCalls() === startBefore + 1 && horseCalls() === horseBefore, "The way here reads the chapters leading to this one, skipping decided ones");
+  ok(calls.filter((c) => c.model === "cheap").length === cheapBefore + 1, "…with the cheaper model");
+
   // Reject and add as example (a suggestion posted directly on the first chapter).
   const startRev = 1;
   await post(`/api/chapters/${s.chapter_id}/tags/suggest`, {
