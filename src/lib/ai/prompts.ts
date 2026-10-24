@@ -452,7 +452,7 @@ export function parseChoiceLabel(text: string): string {
   return first.replace(/["'”’]+$/, "").replace(/\.$/, "").trim();
 }
 
-export function parseIdeas(text: string): Idea[] {
+export function parseIdeas(text: string, max = 6): Idea[] {
   const arr = text.match(/\[[\s\S]*\]/);
   if (!arr) return [];
   try {
@@ -464,10 +464,82 @@ export function parseIdeas(text: string): Idea[] {
         direction: typeof x?.direction === "string" ? x.direction.trim() : "",
       }))
       .filter((x) => x.choice)
-      .slice(0, 6);
+      .slice(0, max);
   } catch {
     return [];
   }
+}
+
+export const SYSTEM_PLAN_STEPS = `You help write branching stories. You reply with a JSON array and nothing else.`;
+
+/**
+ * A plan step (write-ahead runs): for a chapter that was just written, what happens in the chapter each
+ * of `labels` leads to (planned together so they differ in kind), plus `add` new choices with their plans.
+ * `ctx.path` is the story up to but not including `chapter`. Reply: a JSON array of {choice, direction},
+ * the given labels first, in order, unchanged; read it with `parseIdeas(text, 12)` and `matchSteps`.
+ * With only `add` (no labels) it suggests the choices for a new chapter.
+ */
+export function planStepsPrompt(
+  ctx: StoryContext,
+  chapter: { title: string; body: string },
+  labels: string[],
+  add: number,
+  contextTokens: number,
+): string {
+  const quote = (l: string) => `“${l}”`;
+  const parts = [
+    storyHeader(ctx, Math.floor(budgetFor(contextTokens) * 0.6), chapter.body),
+    `Here is the chapter that was just written:\n# ${chapter.title || "Untitled"}\n\n${chapter.body}`,
+  ];
+  const other = (ctx.siblingChoices ?? []).filter((s) => !labels.includes(s));
+  let ask = "";
+  if (labels.length) {
+    ask +=
+      `These choices are offered at its end: ${labels.map(quote).join(", ")}.` +
+      `\nFor each, say in one or two sentences what happens in the chapter it leads to, so the chapters differ in kind (tone, risk, or which character drives the chapter) and none repeats another.`;
+  }
+  if (add > 0) {
+    ask += (ask ? "\nThen suggest" : "Suggest") + ` ${add} new choice${add === 1 ? "" : "s"} to offer as well, with what happens after each.`;
+    const avoid = [...labels, ...other];
+    if (avoid.length) ask += ` Do not repeat or closely echo these: ${avoid.map(quote).join(", ")}.`;
+    ask += ` ${CHOICE_QUALITY} Each new choice is a short action or decision, under 12 words, written as button text.`;
+  }
+  const total = labels.length + add;
+  ask +=
+    `\nReply with only a JSON array of ${total} object${total === 1 ? "" : "s"} like [{"choice":"...","direction":"..."}]` +
+    (labels.length ? `, the given choices first, in the order above, with "choice" exactly as written above, then any new ones.` : `.`);
+  parts.push(ask);
+  return parts.join("\n\n");
+}
+
+export type PlanStep = { label: string; direction: string; isNew: boolean };
+
+/**
+ * Pairs a plan step's reply with the given labels. Each label takes the reply item with the same text
+ * (ignoring case and quotes) if there is one, else the item at the same position; a label with no plan
+ * gets an empty direction. Items left over are new choices, in order.
+ */
+export function matchSteps(labels: string[], ideas: Idea[]): PlanStep[] {
+  const norm = (s: string) => s.toLowerCase().replace(/[\s"'“”‘’.!?]+/g, " ").trim();
+  const used = new Set<number>();
+  const found: (number | null)[] = labels.map((l) => {
+    const i = ideas.findIndex((x, k) => !used.has(k) && norm(x.choice) === norm(l));
+    if (i >= 0) used.add(i);
+    return i >= 0 ? i : null;
+  });
+  const steps: PlanStep[] = labels.map((label, n) => {
+    let i = found[n];
+    // No text match: take the item at the same position if nothing else claimed it and it isn't another label's text.
+    if (i === null && n < ideas.length && !used.has(n) && !labels.some((l) => norm(l) === norm(ideas[n].choice))) {
+      i = n;
+      used.add(n);
+    }
+    return { label, direction: i === null ? "" : ideas[i].direction, isNew: false };
+  });
+  ideas.forEach((x, k) => {
+    if (!used.has(k)) steps.push({ label: x.choice, direction: x.direction, isNew: true });
+  });
+  return steps;
 }
 
 /** Splits "# Title\n\nbody" output. While streaming, the title may not be complete yet. */

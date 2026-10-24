@@ -1,4 +1,4 @@
-import { parseBracketNotes, parseInstruction, SYSTEM_CHAPTER, refinePrompt, passageRefinePrompt, choicesPrompt, buildStorySoFar, parseChapterOutput, parseChoices, generatePrompt, estimateTokens, explainCodex, buildCodexBlock, ideasPrompt, parseIdeas, parseChoiceLabel } from "../../src/lib/ai/prompts.ts";
+import { parseBracketNotes, parseInstruction, SYSTEM_CHAPTER, refinePrompt, passageRefinePrompt, choicesPrompt, buildStorySoFar, parseChapterOutput, parseChoices, generatePrompt, estimateTokens, explainCodex, buildCodexBlock, ideasPrompt, parseIdeas, parseChoiceLabel, planStepsPrompt, matchSteps, SYSTEM_PLAN_STEPS } from "../../src/lib/ai/prompts.ts";
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const ch = (n: number, extra: any = {}) => ({ title: `Ch${n}`, body: `body${n} `.repeat(200), summary: null, path_summary: null, ...extra });
 const path = [1,2,3,4,5,6].map((n) => ch(n));
@@ -104,3 +104,32 @@ ok(s.includes(`Earlier in the story:\nROLLING-${rollingAt + 1}`) && !s.includes(
 ok(parseChoiceLabel('"Follow the stranger inside."\nExtra') === "Follow the stranger inside", "choice label: first line, quotes and full stop removed");
 ok(parseChoiceLabel("- Run away") === "Run away" && parseChoiceLabel("") === "", "choice label: bullets and empty replies");
 ok(parseChoiceLabel("Follow the stranger. Then run away.") === "Follow the stranger", "choice label: only the first sentence");
+
+// Plan step prompt and reply matching
+const planCtx = { storyTitle: "T", premise: "P", path: [ch(1)], choiceLabel: "Go" };
+const pp = planStepsPrompt(planCtx, { title: "Door", body: "It creaked." }, ["Open it", "Run away"], 2, 8000);
+ok(pp.includes("“Open it”") && pp.includes("“Run away”") && pp.includes("It creaked.") && pp.includes("Premise: P"), "plan prompt: names every label and the chapter");
+ok(pp.includes("suggest 2 new choices") && pp.includes("array of 4 objects"), "plan prompt: asks for `add` more and the right number of items");
+ok(!planStepsPrompt(planCtx, { title: "Door", body: "x" }, ["a"], 0, 8000).includes("new choice"), "plan prompt: no extras asked for when add is 0");
+const addOnly = planStepsPrompt(planCtx, { title: "Door", body: "x" }, [], 3, 8000);
+ok(addOnly.includes("Suggest 3 new choices") && addOnly.includes("array of 3 objects") && !addOnly.includes("offered at its end"), "plan prompt: add only, for a new chapter's choices");
+ok(planStepsPrompt({ ...planCtx, style: "No gore." }, { title: "D", body: "x" }, ["a"], 0, 8000).includes("No gore."), "plan prompt: style notes included");
+ok(SYSTEM_PLAN_STEPS.includes("JSON array"), "plan system prompt asks for JSON");
+ok(parseIdeas(JSON.stringify(Array.from({ length: 9 }, (_, i) => ({ choice: `c${i}`, direction: "d" })))).length === 6 && parseIdeas(JSON.stringify(Array.from({ length: 9 }, (_, i) => ({ choice: `c${i}`, direction: "d" }))), 12).length === 9, "parseIdeas keeps 6 by default and more when asked");
+
+const idea = (choice: string, direction: string) => ({ choice, direction });
+let m = matchSteps(["a", "b"], [idea("a", "A!"), idea("b", "B!")]);
+ok(JSON.stringify(m) === JSON.stringify([{ label: "a", direction: "A!", isNew: false }, { label: "b", direction: "B!", isNew: false }]), "matchSteps: in order");
+m = matchSteps(["a", "b"], [idea("b", "B!"), idea("a", "A!")]);
+ok(m[0].label === "a" && m[0].direction === "A!" && m[1].direction === "B!" && m.length === 2, "matchSteps: reordered, matched by text");
+m = matchSteps(["a", "b", "c"], [idea("a", "A!"), idea("c", "C!")]);
+ok(m.length === 3 && m[1].label === "b" && m[1].direction === "" && m[2].direction === "C!", "matchSteps: a missing plan gives an empty direction");
+m = matchSteps(["a"], [idea("a", "A!"), idea("x", "X!"), idea("y", "Y!")]);
+ok(m.length === 3 && m[1].isNew && m[1].label === "x" && m[2].isNew && m[2].direction === "Y!" && !m[0].isNew, "matchSteps: extras are new choices");
+m = matchSteps(["Open it"], [idea("Open the door", "D!")]);
+ok(m[0].label === "Open it" && m[0].direction === "D!" && m.length === 1, "matchSteps: the AI reworded a label, so it pairs by position");
+m = matchSteps(["a"], [idea("“A.”", "A!")]);
+ok(m[0].direction === "A!" && m.length === 1, "matchSteps: quotes and punctuation are ignored");
+m = matchSteps([], [idea("x", "X!"), idea("y", "Y!")]);
+ok(m.length === 2 && m.every((s) => s.isNew), "matchSteps: with no labels every item is new");
+ok(matchSteps(["a", "b"], []).every((s) => s.direction === "" && !s.isNew), "matchSteps: an empty reply gives empty directions");
