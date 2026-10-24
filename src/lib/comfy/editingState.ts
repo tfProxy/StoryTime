@@ -4,6 +4,7 @@
 import type { PictureSlot, PictureTarget } from "../pictureTarget";
 import type { MaskState, MaskStroke } from "../mask";
 import type { ComfyImage } from "./client";
+import type { LoraOverride, LoraOverrides } from "./loraOverrides";
 
 /** What the stored values are kept under: the chapter's id (as before covers), `cover-<story id>` or `codex-<entry id>`. */
 export const stateKey = (t: PictureTarget) => (t.kind === "chapter" ? t.chapterId : t.kind === "cover" ? `cover-${t.storyId}` : `codex-${t.entryId}`);
@@ -85,6 +86,30 @@ export function readEdit(chapterId: string): StoredEdit | null {
 }
 
 export const writeEdit = (chapterId: string, edit: StoredEdit) => write("edit", chapterId, edit);
+
+/** The LoRA switches and strengths changed on the page (never the preset's own), by preset id; see `loraOverrides.ts`. */
+export const readLoras = (chapterId: string): LoraOverrides => parseLoras(read("loras", chapterId));
+
+/** LoRA overrides read defensively from stored JSON (anything unusable is left out). */
+export function parseLoras(v: unknown): LoraOverrides {
+  const out: LoraOverrides = {};
+  if (!isObject(v)) return out;
+  for (const [preset, rows] of Object.entries(v)) {
+    if (!preset || !isObject(rows)) continue;
+    const mine: Record<string, LoraOverride> = {};
+    for (const [index, o] of Object.entries(rows)) {
+      if (!/^\d{1,2}$/.test(index) || !isObject(o) || typeof o.name !== "string" || !o.name) continue;
+      const row: LoraOverride = { name: o.name };
+      if (typeof o.on === "boolean") row.on = o.on;
+      if (isNum(o.strength)) row.strength = Math.min(4, Math.max(-4, o.strength));
+      if (row.on !== undefined || row.strength !== undefined) mine[index] = row;
+    }
+    if (Object.keys(mine).length > 0) out[preset] = mine;
+  }
+  return out;
+}
+
+export const writeLoras = (chapterId: string, loras: LoraOverrides) => write("loras", chapterId, Object.keys(loras).length > 0 ? loras : null);
 
 /** The Redraw tab's strength when it was moved from the drawing preset's default, and the preset it was moved for. */
 export type StoredRedraw = { preset: string; strength: number };

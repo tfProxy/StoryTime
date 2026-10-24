@@ -17,7 +17,7 @@ import {
 import { redrawOnlyMask, type SamplerTuning, type Workflow } from "./workflow";
 
 /** "checkpoint" is the SDXL-style all-in-one checkpoint of the built-in workflow; the rest are families of separate files. */
-export const DRAW_FAMILIES = ["checkpoint", "zimage", "flux", "chroma", "qwen-image"] as const;
+export const DRAW_FAMILIES = ["checkpoint", "zimage", "flux", "chroma", "qwen-image", "krea2"] as const;
 export type DrawFamily = (typeof DRAW_FAMILIES)[number];
 export type ModelFamily = Exclude<DrawFamily, "checkpoint">;
 
@@ -28,6 +28,7 @@ export const FAMILY_NAMES: Record<DrawFamily, string> = {
   flux: "Flux",
   chroma: "Chroma",
   "qwen-image": "Qwen-Image",
+  krea2: "Krea 2 (Kroma)",
 };
 
 /** What a family's sampler runs with: the usual settings, and the ones only some families have. */
@@ -36,6 +37,8 @@ export type DrawTuning = SamplerTuning & {
   shift?: number;
   /** FluxGuidance (Flux), how closely the prompt is followed. */
   guidance?: number;
+  /** Krea 2: how much a text-to-image picture is scaled up and lightly redrawn (a second, 4 step pass); 1 is off. */
+  upscale?: number;
 };
 
 export type DrawParams = {
@@ -215,6 +218,53 @@ function qwenImageWorkflow(files: Record<string, string>, p: DrawParams): Workfl
   };
 }
 
+// ---- Krea 2 (Kroma) ----
+
+/** Kroma's defaults, as in its published workflow: 8 steps of Euler at CFG 1, then a 2x upscale (see `krea2Workflow`). */
+const KREA2_DEFAULTS: DrawTuning = { steps: 8, cfg: 1, sampler: "euler", scheduler: "simple", upscale: 2 };
+
+/** The upscale pass's settings in that workflow: 4 steps of res_multistep beta at a denoise of 0.14. */
+const KREA2_REFINE = { steps: 4, sampler: "res_multistep", scheduler: "beta", denoise: 0.14 };
+
+/**
+ * Krea 2 and its fine-tune Kroma: Qwen 3 VL 4B as the text encoder (type krea2), the Wan 2.1 VAE, and no negative
+ * prompt (the negative is the positive zeroed out, at CFG 1). A text-to-image picture is then scaled up
+ * (lanczos), encoded again and lightly redrawn by a second sampler, as in the published workflow; Redraw
+ * pictures and an upscale of 1 skip that pass.
+ */
+function krea2Workflow(files: Record<string, string>, p: DrawParams): Workflow {
+  const t = p.tuning ?? KREA2_DEFAULTS;
+  const chain = loraChain(["1", 0], null, p.loras);
+  const start = startLatent(p);
+  const wf: Workflow = {
+    "1": unetLoader(files),
+    "2": { class_type: "CLIPLoader", inputs: { clip_name: files.textEncoder, type: "krea2", device: p.textEncoderDevice ?? "default" } },
+    "3": vaeLoader(files),
+    ...chain.nodes,
+    "6": { class_type: "CLIPTextEncode", inputs: { clip: ["2", 0], text: p.prompt } },
+    "7": { class_type: "ConditioningZeroOut", inputs: { conditioning: ["6", 0] } },
+    ...start.nodes,
+    ...sampleAndSave(p, t, { model: chain.model, positive: ["6", 0], negative: ["7", 0], latent: start.latent }),
+  };
+  const scale = t.upscale ?? KREA2_DEFAULTS.upscale!;
+  if (!p.image && scale > 1) {
+    Object.assign(wf, {
+      "40": { class_type: "ImageScaleBy", inputs: { image: ["20", 0], upscale_method: "lanczos", scale_by: scale } },
+      "41": { class_type: "VAEEncode", inputs: { pixels: ["40", 0], vae: ["3", 0] } },
+      "42": {
+        class_type: "KSampler",
+        inputs: {
+          seed: p.seed, steps: KREA2_REFINE.steps, cfg: 1, sampler_name: KREA2_REFINE.sampler, scheduler: KREA2_REFINE.scheduler,
+          denoise: KREA2_REFINE.denoise, model: chain.model, positive: ["6", 0], negative: ["7", 0], latent_image: ["41", 0],
+        },
+      },
+      "43": { class_type: "VAEDecode", inputs: { samples: ["42", 0], vae: ["3", 0] } },
+    });
+    wf["21"].inputs.images = ["43", 0];
+  }
+  return wf;
+}
+
 const SAMPLE: DrawParams = { prompt: "x", negative: "x", seed: 1, count: 1, width: 1024, height: 1024, prefix: "StoryTime" };
 
 /** Every node a family's workflows use, text to image and Redraw. */
@@ -306,12 +356,37 @@ export const DRAW_MODELS: DrawModel[] = [
     negativeUsed: true,
     build: qwenImageWorkflow,
   },
+  {
+    id: "krea2",
+    name: "Krea 2 (Kroma)",
+    blurb: "Krea 2 and its Kroma fine-tune: photographic, 8 steps, and no negative prompt. Pictures are scaled up 2x and lightly redrawn by default (Upscale under Advanced; 1 turns it off). The Amateur slider is a LoRA: add AmateurSlider-KREA2 below (about 1.1; negative is more polished).",
+    parts: [
+      {
+        key: "model", label: "Krea 2 / Kroma model", folder: "diffusion_models", loader: "UNETLoader", input: "unet_name",
+        recommended: "kroma-v0.3.1-turbo-opd.safetensors", match: /kroma|krea/i, output: 0, gguf: UNET_GGUF,
+      },
+      {
+        key: "textEncoder", label: "Qwen 3 VL 4B text encoder", folder: "text_encoders", loader: "CLIPLoader", input: "clip_name",
+        recommended: "qwen3vl_4b_bf16.safetensors", match: /qwen[-_]?3[-_]?vl[-_]?4b/i, output: 1, gguf: { loader: "CLIPLoaderGGUF", input: "clip_name" },
+      },
+      {
+        key: "vae", label: "Wan 2.1 VAE", folder: "vae", loader: "VAELoader", input: "vae_name",
+        recommended: "wan_2.1_vae.safetensors", match: /wan[-_]?2\.1[-_]?vae/i, output: 2,
+      },
+    ],
+    nodes: nodesFor(krea2Workflow),
+    optionalNodes: [],
+    options: [{ node: "CLIPLoader", input: "type", value: "krea2" }],
+    defaults: KREA2_DEFAULTS,
+    negativeUsed: false,
+    build: krea2Workflow,
+  },
 ];
 
 export const drawModel = (family: string): DrawModel | undefined => DRAW_MODELS.find((m) => m.id === family);
 
 /** The settings a family has beyond the sampler's, from its defaults. */
-export const drawKnobs = (model: DrawModel) => (["shift", "guidance"] as const).filter((k) => model.defaults[k] !== undefined);
+export const drawKnobs = (model: DrawModel) => (["shift", "guidance", "upscale"] as const).filter((k) => model.defaults[k] !== undefined);
 
 /**
  * What a family runs with: its defaults with the settings changed in Settings (`changed`). Settings it

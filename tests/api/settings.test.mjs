@@ -69,8 +69,9 @@ r = await call("PUT", "/api/settings", { ...conns, autoSuggestChoices: true });
 ok(r.json.settings.autoSuggestChoices === true && (await call("GET", "/api/settings")).json.settings.autoSuggestChoices === true, "…and can be turned on");
 
 // ---- the outline's parts ----
-const allOutline = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, review: true };
-ok(JSON.stringify((await call("GET", "/api/settings")).json.settings.outline) === JSON.stringify(allOutline), "every part of the outline is shown unless turned off");
+// Tags are the one part that starts off.
+const allOutline = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, review: true, tags: false };
+ok(JSON.stringify((await call("GET", "/api/settings")).json.settings.outline) === JSON.stringify(allOutline), "the outline's parts are shown unless turned off, and tags are off until turned on");
 r = await call("PUT", "/api/settings", { ...conns, outline: { ...allOutline, readToHere: false, illustrate: false } });
 ok(JSON.stringify(r.json.settings.outline) === JSON.stringify({ ...allOutline, readToHere: false, illustrate: false }) && (await call("GET", "/api/settings")).json.settings.outline.readToHere === false, "parts turned off are kept");
 r = await call("PUT", "/api/settings", { ...conns, outline: { summary: false } });
@@ -106,6 +107,7 @@ const comfyIn = {
   height: 1024,
   coverWidth: 768,
   coverHeight: 1344,
+  sizeScale: 0.9,
   count: 2,
   drawPresets: [
     draw("ink", { workflow: '{"1":{"class_type":"X","inputs":{}}}', loras: [ink, hero], sampler: { steps: 25, sampler: "euler_ancestral" }, denoise: 0.3 }),
@@ -119,6 +121,7 @@ const comfyIn = {
   editPreset: "kontext-a",
   picturesOldestFirst: false,
   queueCount: 1,
+  batchClicks: false,
 };
 /** comfyIn with the first drawing preset (or the one at `i`) changed. */
 const withDraw = (patch, i = 0) => ({ ...comfyIn, drawPresets: comfyIn.drawPresets.map((p, j) => (j === i ? { ...p, ...patch } : p)) });
@@ -137,6 +140,8 @@ r = await call("PUT", "/api/settings", { ...conns, comfy: withEdit({ textEncoder
 ok(r.json.settings.comfy.editPresets[0].textEncoderDevice === "default", "…and a device that isn't one of the choices falls back to the default");
 r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ promptStyle: "natural" }) });
 ok(r.json.settings.comfy.drawPresets[0].promptStyle === "natural", "a drawing preset keeps its prompt style");
+r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ promptStyle: "booru" }) });
+ok(r.json.settings.comfy.drawPresets[0].promptStyle === "booru", "a drawing preset keeps the booru tags style");
 r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ promptStyle: "poetry" }) });
 ok(r.json.settings.comfy.drawPresets[0].promptStyle === "tags", "an unknown prompt style on a preset falls back to tags");
 r = await call("PUT", "/api/settings", { ...conns, comfy: withDraw({ prompt: "masterpiece", negative: "lowres" }) });
@@ -164,6 +169,8 @@ r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, queueCou
 ok(r.json.settings.comfy.queueCount === 5, "the number of pictures one Queue click asks for is kept");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, queueCount: 3 } });
 ok(r.json.settings.comfy.queueCount === 1, "…and a number that is not on the menu (1, 2, 4, 5, 8) means 1");
+r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, batchClicks: "no" } });
+ok(r.json.settings.comfy.batchClicks === true, "batching quick clicks: anything but true or false means on");
 r = await call("PUT", "/api/settings", { ...conns, comfy: { ...comfyIn, drawPresets: [], editPresets: [] } });
 let c = r.json.settings.comfy;
 ok(

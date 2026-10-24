@@ -190,6 +190,23 @@ const [chDl] = await Promise.all([page.waitForEvent("download"), page.getByRole(
 const chText = fs.readFileSync(await chDl.path(), "utf8");
 ok(chText.includes("## 1. Level 0") && chText.includes("## 5. Level 4") && chText.includes("*The end.*"), "a chapter page can export the route to it");
 
+// tags: under the chapter's title, and in the outline once Settings shows them
+const tagName = `Mild ${Date.now()}`;
+const tag = await post("/api/tags", { name: tagName, applies: "when it is mild", not_applies: "when it is not" });
+await post(`/api/chapters/${ids[1]}/tags`, { tag_id: tag.id, value: null });
+await page.goto(`${BASE}/c/${ids[1]}`);
+ok((await page.locator(".chapter-tags").innerText()) === `[${tagName}]` && (await page.locator(".crumbs a").first().getAttribute("href")) === `/s/${s.story_id}/outline`, "a chapter shows its approved tags in brackets under the title, and the story name links to the outline");
+await show("Tags", true);
+await until(async () => (await outlineNow()).tags === true, "Tags to be turned on");
+await page.goto(outlineUrl);
+ok((await page.locator(".outline-actions", { hasText: `[${tagName}]` }).count()) === 1, "with Tags on the outline shows each chapter's tags in their own brackets");
+await show("Tags", false);
+await until(async () => (await outlineNow()).tags === false, "Tags to be turned off");
+seen = await look();
+ok(!(await page.locator(".outline-page").innerText()).includes(tagName), "with Tags off the outline has no tags");
+// The tag library is shared by every test file that runs after this one, so take the tag back out.
+await fetch(`${BASE}/api/tags/${tag.id}`, { method: "DELETE" });
+
 // downloads
 await page.goto(BASE);
 await menu().click();

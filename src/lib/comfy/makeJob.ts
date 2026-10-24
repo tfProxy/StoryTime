@@ -29,6 +29,11 @@ export type JobInput = {
   start: StartPicture | null;
   /** The painted part of the starting picture to redraw (Redraw only; ignored by an edit); null for the whole picture. */
   mask?: PaintedArea | null;
+  /** A temporary job (the Refine screen's): recorded as temporary, so the Illustrate page leaves its pictures out unless asked for or pinned. */
+  temporary?: boolean;
+  /** The Refine session that asked (its id) and the session's base picture the job starts from: the queue gives the pictures to that screen only, never to the target's page. */
+  session?: string;
+  base?: string;
   /** An edit of the starting picture by instruction, with the model to make it; null to redraw it or make new pictures. */
   edit: {
     check: EditCheck;
@@ -75,7 +80,7 @@ export const sameJob = (a: JobInput) =>
     a.start && !a.edit ? a.redraw : null, maskOf(a)?.id ?? null,
     a.edit?.check.model.id ?? null, a.edit?.instruction ?? null,
     a.edit?.strength ?? null, a.edit?.fast ?? null, a.edit?.loras ?? null, a.edit?.tuning ?? null, a.edit?.textEncoderDevice ?? null, a.seed,
-    refsOf(a).map((r) => [r.key, r.role, r.weight]),
+    refsOf(a).map((r) => [r.key, r.role, r.weight]), !!a.temporary, a.session ?? null,
   ]);
 
 /** A mask's upload to ComfyUI, kept (by the mask object, which changes whenever the mask does) so the next job with it doesn't send it again. */
@@ -247,12 +252,13 @@ export async function queueJob(
     ...(maskName && { mask: maskName }),
     ...(refs.length > 0 && { refs: storedOf(refs) }),
     ...(edit && { instruction: edit.instruction, edit_model: edit.check.model.id }),
+    ...(input.temporary && { temporary: true as const }),
   };
   if (signal.aborted) throw new DOMException("Stopped", "AbortError");
   // A text model on the same machine lets go of the graphics memory first (never holds the job up for long).
   await hooks.beforeQueue?.();
   if (signal.aborted) throw new DOMException("Stopped", "AbortError");
-  const promptId = await queuePrompt(comfy.url, workflow, clientId, { storytime: { chapterId: chapterIdOf(ids), ...(ids.kind === "codex" && { entryId: ids.entryId }), storyId: ids.storyId, clientId, job: record, ...(ids.instance && { instance: ids.instance }) } satisfies JobTag });
+  const promptId = await queuePrompt(comfy.url, workflow, clientId, { storytime: { chapterId: chapterIdOf(ids), ...(ids.kind === "codex" && { entryId: ids.entryId }), storyId: ids.storyId, clientId, job: record, ...(ids.instance && { instance: ids.instance }), ...(input.session && { session: input.session }), ...(input.session && input.base && { base: input.base }) } satisfies JobTag });
   hooks.onPromptId(promptId);
   // Stopped while it was being queued: take it off ComfyUI's queue again.
   if (signal.aborted) {

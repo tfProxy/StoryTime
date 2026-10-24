@@ -185,6 +185,15 @@ export function chapterTags(storyId: string, opts: { chapterId?: string } = {}):
   return rows.map(toChapterTag);
 }
 
+/** The names of the tags each chapter has approved (not suggested or rejected), keyed by chapter id, in chapterTags' order. */
+export function appliedTagNames(storyId: string, chapterId?: string): Map<string, string[]> {
+  const names = new Map<string, string[]>();
+  for (const t of chapterTags(storyId, { chapterId })) {
+    if (t.status === "approved") names.set(t.chapter_id, [...(names.get(t.chapter_id) ?? []), t.tag_name]);
+  }
+  return names;
+}
+
 function chapterTagRow(id: string): ChapterTag | undefined {
   const r = db().prepare(`${CHAPTER_TAG_SELECT} WHERE ct.id = ?`).get(id) as ChapterTagRow | undefined;
   return r && toChapterTag(r);

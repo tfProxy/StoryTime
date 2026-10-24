@@ -78,7 +78,7 @@ export type Settings = {
   autoSuggestChoices: boolean;
   /** What the outline shows after each chapter's name. */
   outline: OutlineOptions;
-  /** How picture prompts are written: comma-separated tags (SDXL, Pony, SD 1.5) or plain sentences (Flux, SD3). */
+  /** How picture prompts are written: tags (SDXL, SD 1.5), booru tags (Illustrious, NoobAI, Pony) or plain sentences (Flux, SD3). */
   imagePromptStyle: ImagePromptStyle;
   /** Model that writes picture prompts on the Illustrate page; null uses the cheaper default. */
   imagePromptModel: ModelRef | null;
@@ -86,7 +86,7 @@ export type Settings = {
   comfy: ComfySettings;
 };
 
-export type ImagePromptStyle = "tags" | "natural";
+export type ImagePromptStyle = "tags" | "booru" | "natural";
 
 /** The parts of the [...] section after each chapter's name in the outline; each is shown unless turned off. */
 export type OutlineOptions = {
@@ -102,6 +102,8 @@ export type OutlineOptions = {
   illustrate: boolean;
   /** A marker on chapters with something to check, linking to the Review page. */
   review: boolean;
+  /** The chapter's approved tags, in brackets of their own after the other parts. */
+  tags: boolean;
 };
 
 export const OUTLINE_PARTS = [
@@ -111,9 +113,11 @@ export const OUTLINE_PARTS = [
   { id: "footerPicture", label: "Footer picture", hint: "the same for the footer picture" },
   { id: "illustrate", label: "Illustrate", hint: "a paintbrush that opens the chapter's Illustrate page" },
   { id: "review", label: "Review marker", hint: "a ⚠ count on chapters with something to check or tags waiting for your approval, which opens the Review page" },
+  { id: "tags", label: "Tags", hint: "the chapter's approved tags, e.g. [tf, tg], in brackets after the others" },
 ] as const satisfies readonly { id: keyof OutlineOptions; label: string; hint: string }[];
 
-export const DEFAULT_OUTLINE: OutlineOptions = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, review: true };
+// Tags are off until chosen, so an outline does not change when this first comes in.
+export const DEFAULT_OUTLINE: OutlineOptions = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, review: true, tags: false };
 
 export type ComfySettings = {
   /** Where ComfyUI is, e.g. https://comfy.example.ts.net; "" when there is none. */
@@ -123,6 +127,8 @@ export type ComfySettings = {
   /** The size of cover pictures, chosen on the cover page (taller than wide by default, like a book). */
   coverWidth: number;
   coverHeight: number;
+  /** Multiplies the chosen size (chapters and cover) when a picture is asked for, rounded to 16; 1 = as chosen. */
+  sizeScale: number;
   /** How many pictures to make at once. No longer used by the Illustrate page, which makes one per click. */
   count: number;
   /** Drawing presets (new pictures and Redraw); never empty. The first is the default for stories that choose none. */
@@ -135,6 +141,8 @@ export type ComfySettings = {
   picturesOldestFirst: boolean;
   /** How many pictures one click of Queue asks for (one of `QUEUE_COUNTS`). */
   queueCount: number;
+  /** Quick clicks of Queue with nothing changed in between go to ComfyUI as one job; off, each click is its own job. */
+  batchClicks: boolean;
 };
 
 /** The numbers of pictures one click of Queue can ask for. */
@@ -150,7 +158,7 @@ export const DEFAULT_SETTINGS: Settings = {
   outline: DEFAULT_OUTLINE,
   imagePromptStyle: "tags",
   imagePromptModel: null,
-  comfy: { url: "", width: 1344, height: 768, coverWidth: 832, coverHeight: 1216, count: 4, drawPresets: DEFAULT_DRAW_PRESETS, editPresets: DEFAULT_EDIT_PRESETS, editPreset: "qwen-image-edit", picturesOldestFirst: false, queueCount: 1 },
+  comfy: { url: "", width: 1344, height: 768, coverWidth: 832, coverHeight: 1216, sizeScale: 1, count: 4, drawPresets: DEFAULT_DRAW_PRESETS, editPresets: DEFAULT_EDIT_PRESETS, editPreset: "qwen-image-edit", picturesOldestFirst: false, queueCount: 1, batchClicks: true },
 };
 
 // Each field falls back to its default when missing or invalid, so partial files still
@@ -187,6 +195,7 @@ export const TUNING_LIMITS = {
   cfg: { min: 0, max: 30, step: 0.1 },
   shift: { min: 0, max: 20, step: 0.1 },
   guidance: { min: 0, max: 30, step: 0.1 },
+  upscale: { min: 1, max: 4, step: 0.25 },
   strength: { min: 0.05, max: 1, step: 0.05 },
 } as const;
 
@@ -229,7 +238,7 @@ const partFiles = z
 const drawPresetSchema = z.object({
   id: presetIdSchema,
   name: presetNameSchema,
-  promptStyle: z.enum(["tags", "natural"]).catch("tags"),
+  promptStyle: z.enum(["tags", "booru", "natural"]).catch("tags"),
   prompt: z.string().max(4000).catch(""),
   negative: z.string().max(4000).catch(""),
   // Presets saved before model families are checkpoint presets.
@@ -243,7 +252,7 @@ const drawPresetSchema = z.object({
   textEncoderDevice: z.enum(TEXT_ENCODER_DEVICES).catch("default"),
   workflow: z.string().max(500_000).catch(""),
   loras: loraList,
-  sampler: samplerSchema.extend({ shift: tuned("shift"), guidance: tuned("guidance") }).transform(setOnly).catch({}),
+  sampler: samplerSchema.extend({ shift: tuned("shift"), guidance: tuned("guidance"), upscale: tuned("upscale") }).transform(setOnly).catch({}),
   denoise: z.number().min(0.05).max(1).catch(DEFAULT_DENOISE),
 });
 const editPresetSchema = z.object({
@@ -310,9 +319,10 @@ const settingsSchema = z.object({
       footerPicture: z.boolean().catch(true),
       illustrate: z.boolean().catch(true),
       review: z.boolean().catch(true),
+      tags: z.boolean().catch(false),
     })
     .catch(DEFAULT_OUTLINE),
-  imagePromptStyle: z.enum(["tags", "natural"]).catch("tags"),
+  imagePromptStyle: z.enum(["tags", "booru", "natural"]).catch("tags"),
   imagePromptModel: refSchema.nullable().catch(null),
   comfy: z
     .preprocess(
@@ -323,6 +333,7 @@ const settingsSchema = z.object({
         height: z.number().int().min(64).max(4096).catch(DEFAULT_SETTINGS.comfy.height),
         coverWidth: z.number().int().min(64).max(4096).catch(DEFAULT_SETTINGS.comfy.coverWidth),
         coverHeight: z.number().int().min(64).max(4096).catch(DEFAULT_SETTINGS.comfy.coverHeight),
+        sizeScale: z.number().min(0.5).max(2).catch(1),
         count: z.number().int().min(1).max(8).catch(DEFAULT_SETTINGS.comfy.count),
         drawPresets: listOf(drawPresetSchema),
         editPresets: listOf(editPresetSchema),
@@ -332,6 +343,7 @@ const settingsSchema = z.object({
           .number()
           .refine((n) => (QUEUE_COUNTS as readonly number[]).includes(n))
           .catch(1),
+        batchClicks: z.boolean().catch(true),
       }),
     )
     .catch(DEFAULT_SETTINGS.comfy),

@@ -13,12 +13,14 @@ import { drawPresetFamily, drawPresetIpAdapter, editBlocked, usableEditPresets, 
 import AutoTextarea from "./AutoTextarea";
 import { usePictureQueue } from "./PictureQueue";
 import { LIMITS } from "@/lib/limits";
-import { EDIT_MODELS, editTuning, lightningSteps, usableLoras } from "@/lib/comfy/editModels";
+import { EDIT_MODELS, editTuning, usableLoras } from "@/lib/comfy/editModels";
 import { combinePrompts } from "@/lib/ai/imagePrompt";
 import { familyProblems } from "@/lib/comfy/drawModels";
-import { drawPresetFor, drawPresetSummary, presetName, usesFamily, type DrawPreset, type EditPreset, type LoraSetting } from "@/lib/comfy/presets";
+import { drawPresetFor, drawPresetSummary, presetName, usesFamily } from "@/lib/comfy/presets";
 import type { StartPicture } from "@/lib/comfy/startPicture";
-import { readEdit, readRedraw, stateKey, writeEdit, writeRedraw } from "@/lib/comfy/editingState";
+import { readEdit, readLoras, readRedraw, stateKey, writeEdit, writeLoras, writeRedraw } from "@/lib/comfy/editingState";
+import { applyLoraOverrides, hasLoraOverrides, resetLoraOverrides, setLoraOverride, type LoraOverrides } from "@/lib/comfy/loraOverrides";
+import LoraToggles from "./LoraToggles";
 import { listCheckpoints } from "@/lib/comfy/client";
 import { denoiseOf, madeWithText, maskOf, refsOf, type JobInput } from "@/lib/comfy/makeJob";
 import { MAX_REFERENCES, storedOf, type Reference } from "@/lib/comfy/references";
@@ -94,35 +96,6 @@ function otherSettings(made: MadeWith | null, now: ComfySettings, redraw: number
     text.push(`strength ${made.denoise}`);
   }
   return text.length ? { size, strength, text: text.join(", ") } : null;
-}
-
-/**
- * The on/off boxes of a preset's LoRAs, on the Illustrate page (switching one changes the preset in
- * Settings). `available` is what ComfyUI lists, or null when that isn't known yet.
- */
-function LoraToggles({ stack, available, href, onChange }: { stack: LoraSetting[]; available: string[] | null; href?: string; onChange: (stack: LoraSetting[]) => void }) {
-  return (
-    <div className="edit-lora-toggles" role="group" aria-label="LoRAs">
-      <span className="meta">LoRAs:</span>
-      {stack.map((l, i) => {
-        const name = l.name.split(/[\\/]/).pop()!;
-        const gone = available !== null && !available.includes(l.name);
-        return (
-          <label key={i} className="inline-label" title={gone ? `ComfyUI doesn't list ${l.name}, so it isn't used` : `${l.name} at strength ${l.strength}`}>
-            <input type="checkbox" checked={l.on} onChange={(e) => onChange(stack.map((x, j) => (j === i ? { ...x, on: e.target.checked } : x)))} />
-            <span className={gone ? "error" : undefined}>
-              {name.replace(/\.safetensors$/i, "")} ({l.strength}){gone && " – missing"}
-            </span>
-          </label>
-        );
-      })}
-      {href && (
-        <Link href={href} className="meta">
-          Change
-        </Link>
-      )}
-    </div>
-  );
 }
 
 type Props = {
@@ -214,7 +187,13 @@ export default function ComfyGenerate({
   const settings = useSettings();
   // A cover has a size of its own (Settings keeps both), so choosing one doesn't change the chapters'.
   const isCover = target.kind === "cover";
-  const comfy = isCover ? { ...settings.comfy, width: settings.comfy.coverWidth, height: settings.comfy.coverHeight } : settings.comfy;
+  const baseComfy = isCover ? { ...settings.comfy, width: settings.comfy.coverWidth, height: settings.comfy.coverHeight } : settings.comfy;
+  // The size sent is the chosen size times the multiplier (to a multiple of 16, which the models want).
+  const sizeScale = settings.comfy.sizeScale;
+  const scaled = (n: number) => (sizeScale === 1 ? n : Math.max(64, Math.round((n * sizeScale) / 16) * 16));
+  const comfy = { ...baseComfy, width: scaled(baseComfy.width), height: scaled(baseComfy.height) };
+  // What is typed in the multiplier box; the setting only follows a valid number.
+  const [scaleText, setScaleText] = useState(String(sizeScale));
   const sizes = isCover ? COVER_SIZES : SIZES;
   const queueCount = comfy.queueCount;
   // What to change, when editing the starting picture by instruction.
@@ -228,6 +207,8 @@ export default function ComfyGenerate({
   const [redrawFor, setRedrawFor] = useState<{ preset: string; value: number } | null>(null);
   // The instruction and changed strengths are kept in this browser, so a refresh brings them back.
   const [editKept, setEditKept] = useState(false);
+  // LoRAs switched off or at another strength on this page, by preset id. They never change the preset in Settings.
+  const [loraChanges, setLoraChanges] = useState<LoraOverrides>({});
   /* eslint-disable react-hooks/set-state-in-effect -- browser storage can only be read after the page is shown, so the server and browser draw the same first page */
   useEffect(() => {
     const saved = readEdit(kept);
@@ -237,6 +218,7 @@ export default function ComfyGenerate({
     }
     const redraw = readRedraw(kept);
     setRedrawFor(redraw && { preset: redraw.preset, value: redraw.strength });
+    setLoraChanges(readLoras(kept));
     setEditKept(true);
   }, [kept]);
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -252,7 +234,8 @@ export default function ComfyGenerate({
   const negative = draw.negative.trim() ? combinePrompts(draw.promptStyle, boxNegative, draw.negative) : boxNegative;
   // The drawing preset's LoRAs switched on, and those of them ComfyUI doesn't list (when it is known what it lists).
   const loraFiles = editModels.state === "done" ? editModels.loras : null;
-  const drawUsable = usableLoras(draw.loras, loraFiles ?? draw.loras.map((l) => l.name));
+  const drawStack = applyLoraOverrides(draw.loras, loraChanges, draw.id);
+  const drawUsable = usableLoras(drawStack, loraFiles ?? draw.loras.map((l) => l.name));
   // A preset of a model family (Z-Image, Flux…) draws with the files ComfyUI has for it, not a checkpoint.
   const fromFamily = usesFamily(draw);
   const familyCheck = drawPresetFamily(editModels, draw);
@@ -275,17 +258,18 @@ export default function ComfyGenerate({
     if (!editKept) return;
     writeEdit(kept, { instruction, strength: strengthFor?.value ?? 1, model: strengthFor?.model });
     writeRedraw(kept, redrawFor && { preset: redrawFor.preset, strength: redrawFor.value });
-  }, [editKept, kept, instruction, strengthFor, redrawFor]);
-  // The chosen model's speed-up file, when ComfyUI has one, and whether edits use it.
+    writeLoras(kept, loraChanges);
+  }, [editKept, kept, instruction, strengthFor, redrawFor, loraChanges]);
+  // The chosen model's speed-up file, when ComfyUI has one, and whether edits use it (the edit preset's Fast box, in Settings).
   const speedUp = chosen?.files.speedUp ?? null;
   const fast = speedUp !== null && !!editPreset?.fast;
   // The edit preset's LoRA stack, and the LoRAs of it an edit uses now.
-  const loraStack = editPreset?.loras ?? [];
+  const loraStack = editPreset ? applyLoraOverrides(editPreset.loras, loraChanges, editPreset.id) : [];
   const { loras: editLoras, missing: missingLoras } = usableLoras(loraStack, chosen?.loras ?? []);
   // This chapter's (or cover's) jobs being made, oldest first. The app's picture queue holds them, so they go on when the page is left.
   const pictureQueue = usePictureQueue();
   const { stop, listen } = pictureQueue;
-  const queue = useMemo(() => pictureQueue.jobs.filter((j) => targetKey(j) === at && j.state === "making"), [pictureQueue.jobs, at]);
+  const queue = useMemo(() => pictureQueue.jobs.filter((j) => targetKey(j) === at && j.state === "making" && !j.session), [pictureQueue.jobs, at]);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Painting the part of the starting picture to redraw. Whether the drawing preset's workflow can do it, the mask
@@ -380,13 +364,9 @@ export default function ComfyGenerate({
   }
 
   const set = (patch: Partial<ComfySettings>) => void saveSettings({ ...settings, comfy: { ...settings.comfy, ...patch } });
-  /** Changes a drawing or edit preset in Settings (switching a LoRA, Fast). */
-  const changeDraw = (patch: Partial<DrawPreset>) => set({ drawPresets: comfy.drawPresets.map((p) => (p.id === draw.id ? { ...p, ...patch } : p)) });
-  const changeEdit = (patch: Partial<EditPreset>) =>
-    editPreset && set({ editPresets: comfy.editPresets.map((p) => (p.id === editPreset.id ? { ...p, ...patch } : p)) });
 
   const other = otherSettings(loaded?.settings ?? null, comfy, redrawStrength);
-  const size = sizes.find((s) => s.width === comfy.width && s.height === comfy.height);
+  const size = sizes.find((s) => s.width === baseComfy.width && s.height === baseComfy.height);
 
   /**
    * One click asks for one picture. The picture queue gathers quick clicks with the same prompt and
@@ -461,7 +441,7 @@ export default function ComfyGenerate({
         <select
           className="size-select"
           aria-label="Size"
-          value={`${comfy.width}x${comfy.height}`}
+          value={`${baseComfy.width}x${baseComfy.height}`}
           onChange={(e) => {
             const [width, height] = e.target.value.split("x").map(Number);
             set(isCover ? { coverWidth: width, coverHeight: height } : { width, height });
@@ -473,8 +453,8 @@ export default function ComfyGenerate({
           {/* The closed menu shows the chosen option's columns (customizable select; other browsers ignore this). */}
           <button type="button">{createElement("selectedcontent")}</button>
           {!size && (
-            <option value={`${comfy.width}x${comfy.height}`}>
-              <SizeColumns name="Custom" width={comfy.width} height={comfy.height} />
+            <option value={`${baseComfy.width}x${baseComfy.height}`}>
+              <SizeColumns name="Custom" width={baseComfy.width} height={baseComfy.height} />
             </option>
           )}
           {sizes.map((s) => (
@@ -483,6 +463,26 @@ export default function ComfyGenerate({
             </option>
           ))}
         </select>
+      </label>
+      <label className="row" style={{ gap: "0.4rem" }} title={start ? "Pictures made from a starting picture are its size" : "Multiplies the chosen size, to a multiple of 16 (0.5 to 2)"}>
+        ×
+        <input
+          type="number"
+          aria-label="Scale by"
+          min={0.5}
+          max={2}
+          step={0.05}
+          value={scaleText}
+          onChange={(e) => {
+            setScaleText(e.target.value);
+            const n = Number(e.target.value);
+            if (e.target.value.trim() !== "" && n >= 0.5 && n <= 2) set({ sizeScale: Math.round(n * 100) / 100 });
+          }}
+          onBlur={() => setScaleText(String(sizeScale))}
+          disabled={start !== null}
+          style={{ width: "5rem" }}
+        />
+        <span className="meta">{comfy.width} × {comfy.height}</span>
       </label>
       <div className="queue-row">
         <button
@@ -493,7 +493,7 @@ export default function ComfyGenerate({
             for (let i = 0; i < queueCount; i++) ask();
           }}
           disabled={editing ? !chosen || !instruction.trim() : !drawn.trim()}
-          title={`Each click queues ${queueCount === 1 ? "one picture" : `${queueCount} pictures`}. Quick clicks with nothing changed in between go to ComfyUI as one job.`}
+          title={`Each click queues ${queueCount === 1 ? "one picture" : `${queueCount} pictures`}. ${comfy.batchClicks ? "Quick clicks with nothing changed in between go to ComfyUI as one job." : "Each click goes to ComfyUI as its own job (batching is off in Settings › Drawing)."}`}
         >
           Queue
         </button>
@@ -633,18 +633,19 @@ export default function ComfyGenerate({
                   <p className="meta" style={{ margin: 0 }}>
                     {chosen.model.name}: {chosen.model.blurb}
                   </p>
-                  {speedUp && (
-                    <label className="inline-label" title={`Uses ${speedUp}: ${lightningSteps(speedUp)} steps instead of ${tuning?.steps}, with a little less detail`}>
-                      <input type="checkbox" checked={editPreset.fast} onChange={(e) => changeEdit({ fast: e.target.checked })} />
-                      Fast ({chosen.model.speedUp?.name ?? "speed-up"}, {lightningSteps(speedUp)} steps)
-                    </label>
-                  )}
                   {loraStack.length === 0 ? (
                     <p className="meta" style={{ margin: 0 }}>
                       No LoRAs in this preset. <Link href={`/settings#preset-${editPreset.id}`}>Add some in Settings</Link>
                     </p>
                   ) : (
-                    <LoraToggles stack={loraStack} available={chosen.loras} href={`/settings#preset-${editPreset.id}`} onChange={(loras) => changeEdit({ loras })} />
+                    <LoraToggles
+                      stack={loraStack}
+                      available={chosen.loras}
+                      href={`/settings#preset-${editPreset.id}`}
+                      changed={hasLoraOverrides(editPreset.loras, loraChanges, editPreset.id)}
+                      onChange={(i, patch) => setLoraChanges((all) => setLoraOverride(all, editPreset.id, editPreset.loras, i, patch))}
+                      onReset={() => setLoraChanges((all) => resetLoraOverrides(all, editPreset.id))}
+                    />
                   )}
                   {missingLoras.length > 0 && (
                     <p className="error" style={{ margin: 0 }}>
@@ -764,7 +765,15 @@ export default function ComfyGenerate({
               <SettingsIcon />
             </Link>
           </div>
-          {draw.loras.length > 0 && <LoraToggles stack={draw.loras} available={loraFiles} onChange={(loras) => changeDraw({ loras })} />}
+          {draw.loras.length > 0 && (
+            <LoraToggles
+              stack={drawStack}
+              available={loraFiles}
+              changed={hasLoraOverrides(draw.loras, loraChanges, draw.id)}
+              onChange={(i, patch) => setLoraChanges((all) => setLoraOverride(all, draw.id, draw.loras, i, patch))}
+              onReset={() => setLoraChanges((all) => resetLoraOverrides(all, draw.id))}
+            />
+          )}
           {drawUsable.missing.length > 0 && (
             <p className="error" style={{ margin: 0 }}>
               ComfyUI doesn&apos;t list {drawUsable.missing.join(", ")}, so pictures are drawn without {drawUsable.missing.length === 1 ? "it" : "them"}.
@@ -779,7 +788,8 @@ export default function ComfyGenerate({
             className="secondary"
             onClick={() => {
               const { width, height } = other.size;
-              if (width && height) set(isCover ? { coverWidth: width, coverHeight: height } : { width, height });
+              if (width && height) set(isCover ? { coverWidth: width, coverHeight: height, sizeScale: 1 } : { width, height, sizeScale: 1 });
+              setScaleText("1");
               if (other.strength !== null) setRedrawFor({ preset: draw.id, value: other.strength });
             }}
           >

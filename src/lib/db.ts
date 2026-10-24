@@ -524,6 +524,11 @@ export const MIGRATIONS: string[] = [
     UNIQUE (chapter_id, kind, fingerprint)
   );
   `,
+  // 30: a temporary picture job (made by the Refine screen's inpainting): the Illustrate page and the picture
+  // queue leave it out unless the author asks for it, or one of its pictures is pinned (see ./pictureJobs).
+  `
+  ALTER TABLE picture_jobs ADD COLUMN temporary INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 function open(): Database.Database {

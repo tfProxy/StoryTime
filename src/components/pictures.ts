@@ -15,9 +15,9 @@ export type StartMode = "redraw" | "edit";
 /**
  * What choosing a picture's ☰ menu item asks for: a Redraw or an Edit, a Redraw that opens the mask editor
  * ("Change part of this…"), or the picture added to the References ("Use as reference"), which leaves the
- * starting picture alone.
+ * starting picture alone, or the Refine screen ("Refine…"), which opens a session for the picture.
  */
-export type StartRequest = StartMode | "paint" | "reference";
+export type StartRequest = StartMode | "paint" | "reference" | "refine";
 
 /** The shared settings a picture was made with, which "Load prompt" offers to use again. */
 export type MadeWith = { checkpoint: string; width: number; height: number; denoise: number | null };
@@ -64,6 +64,8 @@ export type Picture = {
   instruction: string | null;
   editModel: string | null;
   moment: PictureMoment | null;
+  /** Made by the Refine screen: hidden (see `inView`) unless pinned or the Pictures panel's switch is on. */
+  temporary?: boolean;
   /** The chapter it was made for, or null for the story's cover. */
   chapterId: string | null;
   /** When its job finished (ms since 1970). */
@@ -97,6 +99,7 @@ export function picturesOf(jobs: PictureJob[]): Picture[] {
       instruction: job.instruction ?? null,
       editModel: job.edit_model ?? null,
       moment: job.moment,
+      ...(job.temporary && { temporary: true }),
       chapterId: job.chapter_id,
       madeAt: job.created_at,
       batch: job.images.length,
@@ -108,7 +111,7 @@ export function picturesOf(jobs: PictureJob[]): Picture[] {
 }
 
 /** What tells pictures from the same prompt apart: the settings, and the seed when `withSeed` (the list under the pictures leaves it out; Info has it). */
-export function pictureCaption(c: { seed: number; checkpoint: string; width: number; height: number; denoise: number | null; mask?: string | null; editModel?: string | null }, withSeed = false): string {
+export function pictureCaption(c: { seed: number; checkpoint: string; width: number; height: number; denoise: number | null; mask?: string | null; editModel?: string | null; temporary?: boolean }, withSeed = false): string {
   // The files come after the model's or checkpoint's, joined by " + ": an edit's speed-up, and the LoRAs (each with its strength).
   const [main, ...extras] = c.checkpoint.split(" + ");
   return [
@@ -119,6 +122,7 @@ export function pictureCaption(c: { seed: number; checkpoint: string; width: num
     withSeed && `seed ${c.seed}`,
     c.denoise !== null && `strength ${c.denoise}`,
     c.mask && "painted area",
+    c.temporary && "temporary",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -168,6 +172,7 @@ export function pictureDetails(p: Picture, titles: Record<string, string>): Pict
     ...(p.denoise !== null ? [{ label: "Strength (denoise)", value: String(p.denoise) }] : []),
     ...(p.mask ? [{ label: "Area", value: "painted part only" }] : []),
     ...(p.refs?.length ? [{ label: "References", value: p.refs.map(referenceText).join(", ") }] : []),
+    ...(p.temporary ? [{ label: "Temporary", value: "Refine (shown only on request, unless pinned)" }] : []),
     { label: "File", value: `${filePath(p.image)} (ComfyUI ${p.image.type})` },
   ];
 }
@@ -207,7 +212,7 @@ export function progressText(p: JobProgress): string {
 }
 
 /** What a run of pictures shares: the prompts and the settings they were made with. */
-type MadeFrom = Pick<Picture, "prompt" | "negative" | "checkpoint" | "width" | "height" | "denoise" | "source" | "mask" | "refs" | "instruction" | "editModel" | "moment">;
+type MadeFrom = Pick<Picture, "prompt" | "negative" | "checkpoint" | "width" | "height" | "denoise" | "source" | "mask" | "refs" | "instruction" | "editModel" | "moment" | "temporary">;
 
 /** A job still being made, with a place kept for each of its pictures. */
 export type PendingJob = MadeFrom & { key: string; count: number; progress: JobProgress; stop: () => void };
@@ -217,7 +222,7 @@ export type PendingJob = MadeFrom & { key: string; count: number; progress: JobP
  * only counts for pictures made from the prompt alone.
  */
 const settingsOf = (m: MadeFrom) =>
-  JSON.stringify([m.prompt, m.negative, m.checkpoint, m.moment, m.source, m.denoise, m.mask, m.instruction, m.editModel, (m.refs ?? []).map((r) => [r.source, r.role, r.weight]), m.source ? null : [m.width, m.height]]);
+  JSON.stringify([m.prompt, m.negative, m.checkpoint, m.moment, m.source, m.denoise, m.mask, m.instruction, m.editModel, (m.refs ?? []).map((r) => [r.source, r.role, r.weight]), !!m.temporary, m.source ? null : [m.width, m.height]]);
 
 /** A run of pictures made one after another with the same settings: its jobs still being made, then its pictures. */
 export type PictureRun = { key: string; pending: PendingJob[]; pictures: Picture[] };
@@ -246,8 +251,15 @@ export function timeline(pending: PendingJob[], pictures: Picture[]): PictureRun
 /** The gallery's views: pinned and new pictures, every picture but the trashed ones, and the trashed ones (marked "rejected"). */
 export type PictureView = "shortlist" | "all" | "rejected";
 
-/** `inUse`: the picture is the chapter's header or footer now, or the one being edited, so the first view shows it as if it were pinned. */
-export function inView(p: Picture, view: PictureView, inUse = false): boolean {
+/** A temporary picture (or job being made) shows only when the author asked for them, or the picture is pinned (kept). */
+export const hiddenTemporary = (p: { temporary?: boolean; mark?: PictureMark | null }, includeTemporary: boolean): boolean => !!p.temporary && !includeTemporary && p.mark !== "pinned";
+
+/**
+ * `inUse`: the picture is the chapter's header or footer now, or the one being edited, so the first view shows it as if it were pinned.
+ * `includeTemporary`: the "Include temporary inpainting images" switch; without it a temporary picture shows in no view unless pinned.
+ */
+export function inView(p: Picture, view: PictureView, inUse = false, includeTemporary = false): boolean {
+  if (hiddenTemporary(p, includeTemporary)) return false;
   if (view === "rejected") return p.mark === "rejected";
   if (view === "all") return p.mark !== "rejected";
   return inUse || p.mark === "pinned" || (p.fresh && p.mark === null);

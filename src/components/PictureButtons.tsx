@@ -51,6 +51,7 @@ export function startItems(start: (mode: StartRequest) => void, editBlocked: str
     { label: "Redraw from this", title: "Make new pictures from the prompt, starting from this one", run: () => start("redraw") },
     { label: "Change part of this…", title: "Paint the part of this picture to redraw, and leave the rest as it is", run: () => start("paint") },
     { label: "Use as reference", title: "Add this picture to the References, to keep a character, item, place or style the same", run: () => start("reference") },
+    { label: "Refine…", title: "Paint on this picture and mask the parts to change", run: () => start("refine") },
     {
       label: "Edit this",
       title: editBlocked ?? "Change this picture by telling an edit model what to change",

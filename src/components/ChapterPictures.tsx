@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ComfyImage } from "@/lib/comfy/client";
-import type { PictureMark } from "@/lib/pictureJobs";
+import type { PictureJob, PictureMark } from "@/lib/pictureJobs";
 import type { PictureSlot, PictureTarget } from "@/lib/pictureTarget";
 import PictureTile from "./PictureTile";
 import OtherChapterPictures from "./OtherChapterPictures";
@@ -10,7 +10,7 @@ import PictureViewer from "./PictureViewer";
 import PictureInfo from "./PictureInfo";
 import { usePictureSaver } from "./usePictureSaver";
 import { saveSettings, useSettings } from "@/lib/settings";
-import { inView, pictureCaption, progressText, timeline, type PendingJob, type Picture, type PictureView, type PromptToLoad, type StartRequest } from "./pictures";
+import { hiddenTemporary, inView, pictureCaption, picturesOf, progressText, timeline, type PendingJob, type Picture, type PictureView, type PromptToLoad, type StartRequest } from "./pictures";
 
 const SHOWN_PROMPT = 80;
 
@@ -35,6 +35,8 @@ type Props = {
   pictures: Picture[];
   /** Changes one picture (by key) in the page's list. */
   onChange: (key: string, patch: Partial<Picture>) => void;
+  /** Adds pictures loaded from the log (the temporary ones, when asked for) to the page's list. */
+  onLoaded?: (pictures: Picture[]) => void;
   /** Stops showing this visit's unpinned pictures with the pinned ones. */
   onClear: () => void;
   /** The jobs being made, newest first; they show at the top, a place kept for each of their pictures. */
@@ -57,12 +59,41 @@ type Props = {
  * and footer (as if pinned) and those made on this visit, so coming back shows only the pinned ones; "All" every one but the trashed; and "Trashed"
  * those, to restore one (they are stored with the mark "rejected"). "Other chapters" lists what was made for the rest of the story.
  */
-export default function ChapterPictures({ target, titles, comfyUrl, pictures, onChange, onClear, pending = [], onStart, editBlocked = null, onLoadPrompt, used, starting = null, codexFrom = null }: Props) {
+export default function ChapterPictures({ target, titles, comfyUrl, pictures, onChange, onLoaded, onClear, pending: allPending = [], onStart, editBlocked = null, onLoadPrompt, used, starting = null, codexFrom = null }: Props) {
   /** The picture being edited or redrawn. */
   const isStarting = (p: Picture) => starting !== null && starting === comfySource(p.image);
   /** The pictures the first view always shows, as if pinned: the chapter's header and footer, and the starting picture. */
   const kept = (p: Picture) => inUse(p).length > 0 || isStarting(p);
   const [view, setView] = useState<View>("shortlist");
+  // Temporary (Refine) pictures are left out unless this is on (not remembered). The switch shows only when there are some to show.
+  const [includeTemp, setIncludeTemp] = useState(false);
+  const [storyHasTemp, setStoryHasTemp] = useState(false);
+  const { storyId } = target;
+  useEffect(() => {
+    let live = true;
+    fetch(`/api/picture-jobs?story=${encodeURIComponent(storyId)}&temporary=hidden&limit=1`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { jobs?: unknown[] } | null) => live && setStoryHasTemp(!!d?.jobs?.length))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [storyId]);
+  // Switched on: this target's temporary jobs are loaded into the page's list.
+  const ownQuery = target.kind === "chapter" ? `chapter=${encodeURIComponent(target.chapterId)}` : target.kind === "cover" ? `cover=${encodeURIComponent(storyId)}` : `story=${encodeURIComponent(storyId)}&entry=${encodeURIComponent(target.entryId)}`;
+  useEffect(() => {
+    if (!includeTemp) return;
+    let live = true;
+    fetch(`/api/picture-jobs?${ownQuery}&temporary=only&limit=200`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { jobs?: PictureJob[] } | null) => live && d?.jobs && onLoaded?.(picturesOf(d.jobs)))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [includeTemp, ownQuery, onLoaded]);
+  const pending = allPending.filter((j) => !hiddenTemporary(j, includeTemp));
+  const showTempSwitch = storyHasTemp || pictures.some((p) => p.temporary && p.mark !== "pinned") || allPending.some((j) => j.temporary);
   const [status, setStatus] = useState<Status | null>(null);
   // The picture shown full size, if any.
   const [viewing, setViewing] = useState<string | null>(null);
@@ -84,8 +115,8 @@ export default function ChapterPictures({ target, titles, comfyUrl, pictures, on
   // The order is the person's choice, kept in Settings so it is the same on every device. Other chapters is always newest first.
   const oldestFirst = settings.comfy.picturesOldestFirst && view !== "other";
 
-  const count = (v: PictureView) => pictures.filter((p) => inView(p, v, kept(p))).length;
-  const shown = view === "other" ? [] : pictures.filter((p) => inView(p, view, kept(p)));
+  const count = (v: PictureView) => pictures.filter((p) => inView(p, v, kept(p), includeTemp)).length;
+  const shown = view === "other" ? [] : pictures.filter((p) => inView(p, view, kept(p), includeTemp));
   // New pictures arrive in Pinned & new and All, so there the jobs being made join the run they continue;
   // elsewhere they show on their own at the top.
   const joined = view === "shortlist" || view === "all";
@@ -106,7 +137,7 @@ export default function ChapterPictures({ target, titles, comfyUrl, pictures, on
 
   /** A mark changed in the viewer: when it takes the picture out of this view, the viewer moves on to the next one. */
   function markInViewer(p: Picture, next: PictureMark | null) {
-    if (view !== "other" && !inView({ ...p, mark: next }, view, kept(p))) {
+    if (view !== "other" && !inView({ ...p, mark: next }, view, kept(p), includeTemp)) {
       const at = ordered.findIndex((q) => q.key === p.key);
       const after = ordered[at + 1] ?? ordered[at - 1] ?? null;
       setViewing(after?.key ?? null);
@@ -114,7 +145,7 @@ export default function ChapterPictures({ target, titles, comfyUrl, pictures, on
     void mark(p, next);
   }
   // The header, footer and starting picture stay in this view, so clearing doesn't hide them.
-  const clearable = pictures.some((p) => p.fresh && p.mark === null && !kept(p));
+  const clearable = pictures.some((p) => p.fresh && p.mark === null && !kept(p) && !hiddenTemporary(p, includeTemp));
   const VIEWS: { view: View; label: string }[] = [
     { view: "shortlist", label: `Pinned & new (${count("shortlist")})` },
     { view: "all", label: `All (${count("all")})` },
@@ -195,6 +226,12 @@ export default function ChapterPictures({ target, titles, comfyUrl, pictures, on
           </div>
         </div>
       </div>
+      {showTempSwitch && (
+        <label className="meta" style={{ display: "flex", gap: "0.4rem", alignItems: "center", margin: 0 }}>
+          <input type="checkbox" checked={includeTemp} onChange={(e) => setIncludeTemp(e.target.checked)} />
+          Include temporary inpainting images
+        </label>
+      )}
       {status && (
         <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>
           {status.text}
@@ -249,6 +286,7 @@ export default function ChapterPictures({ target, titles, comfyUrl, pictures, on
           onStart={onStart}
           editBlocked={editBlocked}
           onInfo={setInfo}
+          includeTemporary={includeTemp}
         />
       ) : (
         shown.length === 0 && !(joined && pending.length > 0) && <p className="meta" style={{ margin: 0 }}>{empty()}</p>

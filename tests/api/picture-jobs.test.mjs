@@ -274,3 +274,57 @@ ok(r.json.jobs.length > 0 && r.json.jobs.every((j) => j.chapter_id === two), "no
   ok(typeof again.seen_at === "number", "…and keeps when it was seen");
   ok((await call("POST", "/api/picture-jobs/seen", { ids: "x" })).status === 400, "seen refuses ids that aren't a list");
 }
+
+// ---- temporary jobs (the Refine screen's) ----
+{
+  const s2 = (await call("POST", "/api/stories", { title: "Temporary jobs", chapter: { title: "Only", body: "x", choices: [] } })).json;
+  const ch = s2.chapter_id;
+  const tj = (n, extra = {}) => ({ ...job(ch, 200 + n, extra), images: [{ filename: `T_${n}.png`, subfolder: "", type: "output" }], count: 1 });
+  const plain = (await call("POST", "/api/picture-jobs", tj(1))).json;
+  const temp = (await call("POST", "/api/picture-jobs", tj(2, { temporary: true, unseen: true }))).json;
+  ok(plain.temporary === false && temp.temporary === true, "a job is recorded as temporary only when asked, and says so");
+  ok((await call("POST", "/api/picture-jobs", tj(3, { temporary: "yes" }))).status === 400, "…and temporary must be true or false");
+  const ids = async (q) => (await call("GET", `/api/picture-jobs?${q}`)).json.jobs.map((j) => j.id);
+  const forms = { chapter: `chapter=${ch}`, story: `story=${s2.story_id}`, "story but a chapter": `story=${s2.story_id}&not_chapter=${one}`, "story's chapters": `story=${s2.story_id}&chapters=1` };
+  for (const [name, q] of Object.entries(forms)) {
+    ok((await ids(q)).join() === plain.id && (await ids(`${q}&temporary=1`)).join() === `${temp.id},${plain.id}`, `the ${name} listing leaves a temporary job out unless temporary=1`);
+  }
+  ok((await ids(`chapter=${ch}&temporary=only`)).join() === temp.id && (await ids(`chapter=${ch}&temporary=hidden`)).join() === temp.id, "temporary=only and temporary=hidden list just the temporary job");
+  const cover = (await call("POST", "/api/picture-jobs", { story_id: s2.story_id, moment: "cover", prompt_id: "tc1", prompt: "c", width: 8, height: 8, seed: 1, count: 1, temporary: true, images: [{ filename: "C.png", subfolder: "", type: "output" }] })).json;
+  ok((await ids(`cover=${s2.story_id}`)).length === 0 && (await ids(`cover=${s2.story_id}&temporary=1`)).join() === cover.id, "a temporary cover job is left out of the cover listing too");
+
+  // unseen and known
+  ok(temp.seen_at === null && !(await call("GET", "/api/picture-jobs?unseen=1")).json.jobs.some((j) => j.id === temp.id), "an unseen temporary job is never in the ready list");
+  const known = (await call("POST", "/api/picture-jobs/known", { prompt_ids: ["p202", "p999"] })).json.known;
+  ok(known.join() === "p202", "the queue still counts a temporary job as known (not recorded twice)");
+  ok((await call("POST", "/api/picture-jobs", tj(2, { temporary: true }))).json.id === temp.id, "…and recording it again returns the first record");
+  ok((await call("POST", "/api/picture-jobs/seen", { ids: [temp.id] })).json.seen === 1, "…and it can be marked seen");
+
+  // pinned counts as kept
+  ok((await call("PUT", `/api/picture-jobs/${temp.id}/mark`, { index: 0, mark: "rejected" })).status === 200 && (await ids(`chapter=${ch}`)).join() === plain.id, "a rejected temporary picture stays hidden");
+  await call("PUT", `/api/picture-jobs/${temp.id}/mark`, { index: 0, mark: "pinned" });
+  const kept = await call("GET", `/api/picture-jobs?chapter=${ch}`);
+  ok(kept.json.jobs.map((j) => j.id).join() === `${temp.id},${plain.id}` && kept.json.jobs[0].temporary === true && kept.json.jobs[0].marks[0] === "pinned", "a temporary job with a pinned picture is listed as usual (and still says it is temporary)");
+  ok((await ids(`chapter=${ch}&temporary=hidden`)).length === 0, "…and no longer counts as hidden");
+  await call("PUT", `/api/picture-jobs/${temp.id}/mark`, { index: 0, mark: null });
+  ok((await ids(`chapter=${ch}`)).join() === plain.id, "…until it is unpinned");
+
+  // paging with the filter: 5 ordinary and 4 temporary, interleaved
+  const mix = [];
+  for (let n = 10; n < 19; n++) mix.push((await call("POST", "/api/picture-jobs", tj(n, { temporary: n % 2 === 0 }))).json);
+  const visible = mix.filter((j) => !j.temporary).map((j) => j.id).reverse();
+  const walk = async (extra) => {
+    const out = [];
+    let before = null, pages = 0;
+    do {
+      const p = (await call("GET", `/api/picture-jobs?chapter=${ch}&limit=2${extra}${before ? `&before=${before}` : ""}`)).json;
+      out.push(...p.jobs.map((j) => j.id));
+      before = p.next;
+      pages++;
+    } while (before && pages < 20);
+    return out;
+  };
+  const paged = await walk("");
+  ok(paged.join() === [...visible, plain.id].join(), "paging with limit=2 skips the temporary jobs and still reaches every other one once");
+  ok((await walk("&temporary=1")).length === paged.length + 1 + mix.filter((j) => j.temporary).length,"…and with temporary=1 reaches the temporary ones too");
+}

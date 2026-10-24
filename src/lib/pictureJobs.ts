@@ -45,6 +45,8 @@ export const NewJobSchema = z
     images: z.array(JobImage).min(1).max(64),
     /** Finished while its chapter's Illustrate page wasn't open, so its pictures are new until they are seen. */
     unseen: z.boolean().optional(),
+    /** Made by the Refine screen: left out of listings unless asked for, or until a picture is pinned. */
+    temporary: z.boolean().optional(),
   })
   .refine((j) => !j.chapter_id !== !j.story_id, { message: "give the chapter, or for a cover the story", path: ["chapter_id"] })
   .refine((j) => !j.story_id === (j.moment !== "cover" && j.moment !== "codex"), { message: "a cover or codex job is given its story, and its moment is cover or codex", path: ["moment"] })
@@ -78,6 +80,8 @@ export type PictureJob = {
   refs: z.infer<typeof StoredRefSchema>[] | null;
   instruction: string | null;
   edit_model: string | null;
+  /** A temporary (Refine) job: listed only on request, unless one of its pictures is pinned. */
+  temporary: boolean;
   images: z.infer<typeof JobImage>[];
   /** Each picture's mark, in the order of `images`: pinned, rejected, or null. */
   marks: (PictureMark | null)[];
@@ -89,7 +93,7 @@ export type PictureJob = {
 export const PICTURE_MARKS = ["pinned", "rejected"] as const;
 export type PictureMark = (typeof PICTURE_MARKS)[number];
 
-type Row = Omit<PictureJob, "images" | "marks" | "refs"> & { images: string; refs: string | null; seq: number };
+type Row = Omit<PictureJob, "images" | "marks" | "refs" | "temporary"> & { images: string; refs: string | null; seq: number; temporary: number };
 
 /** The jobs of the rows, with each picture's mark. */
 function toJobs(rows: Row[]): PictureJob[] {
@@ -100,18 +104,20 @@ function toJobs(rows: Row[]): PictureJob[] {
       .all(...rows.map((r) => r.id)) as { job_id: string; image_index: number; mark: PictureMark }[];
     for (const m of found) marks.set(`${m.job_id}:${m.image_index}`, m.mark);
   }
-  return rows.map(({ seq, images, refs, ...job }) => {
+  return rows.map(({ seq, images, refs, temporary, ...job }) => {
     void seq; // only the cursor for paging uses it
     const list = JSON.parse(images) as PictureJob["images"];
-    return { ...job, refs: refs ? (JSON.parse(refs) as PictureJob["refs"]) : null, images: list, marks: list.map((_, i) => marks.get(`${job.id}:${i}`) ?? null) };
+    return { ...job, temporary: temporary === 1, refs: refs ? (JSON.parse(refs) as PictureJob["refs"]) : null, images: list, marks: list.map((_, i) => marks.get(`${job.id}:${i}`) ?? null) };
   });
 }
 
 const toJob = (row: Row) => toJobs([row])[0];
 
 const COLUMNS = `rowid AS seq, id, story_id, chapter_id, entry_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
-                 moment, source, denoise, mask, refs, instruction, edit_model, images, created_at, seen_at`;
+                 moment, source, denoise, mask, refs, instruction, edit_model, temporary, images, created_at, seen_at`;
 
+/** A temporary job counts as kept, and is listed like any other, once one of its pictures is pinned. */
+const HIDDEN_TEMPORARY = `temporary = 1 AND NOT EXISTS (SELECT 1 FROM picture_marks m WHERE m.job_id = picture_jobs.id AND m.mark = 'pinned')`;
 /**
  * Records a finished job for a chapter, or (given a story instead) for the story's cover, or for one of its
  * codex entries (given the entry too). Recording the same ComfyUI job again returns the first record.
@@ -142,14 +148,14 @@ export function recordPictureJob(input: NewJob): PictureJob {
   db()
     .prepare(
       `INSERT INTO picture_jobs (id, story_id, chapter_id, entry_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
-                                 moment, source, denoise, mask, refs, instruction, edit_model, images, created_at, seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                 moment, source, denoise, mask, refs, instruction, edit_model, images, created_at, seen_at, temporary)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id, storyId, chapterId, entryId, input.prompt_id, input.prompt, input.negative, input.checkpoint,
       input.width, input.height, input.seed, input.count, input.moment ?? null, input.source ?? null,
       input.denoise ?? null, input.mask ?? null, input.refs?.length ? JSON.stringify(input.refs) : null, input.instruction ?? null, input.edit_model ?? null, JSON.stringify(input.images), now,
-      input.unseen ? null : now,
+      input.unseen ? null : now, input.temporary ? 1 : 0,
     );
   return toJob(db().prepare(`SELECT ${COLUMNS} FROM picture_jobs WHERE id = ?`).get(id) as Row);
 }
@@ -158,11 +164,12 @@ export function recordPictureJob(input: NewJob): PictureJob {
  * A page of the log, newest first, for a story, one chapter, or the story's cover. For a story,
  * `notChapter` leaves one chapter out and `chaptersOnly` leaves the cover's jobs out (leaving out a
  * chapter leaves them out too). `before` is the cursor from the previous page; `next` is the cursor for
- * the page after this one, or null at the end.
+ * the page after this one, or null at the end. Temporary jobs are left out unless `temporary` is "include"
+ * ("only" lists just those, "hidden" just those a normal listing leaves out) or one of their pictures is pinned.
  */
 export function listPictureJobs(
   where: { story: string; notChapter?: string; chaptersOnly?: boolean } | { chapter: string } | { cover: string } | { codex: string; entry: string },
-  page: { before?: number; limit: number },
+  page: { before?: number; limit: number; temporary?: "include" | "only" | "hidden" },
 ): { jobs: PictureJob[]; next: number | null } {
   const [filter, ...values] =
     "story" in where
@@ -178,6 +185,7 @@ export function listPictureJobs(
   const rows = db()
     .prepare(
       `SELECT ${COLUMNS} FROM picture_jobs WHERE ${filter} ${not ? "AND chapter_id != ?" : ""} ${chaptersOnly ? "AND chapter_id IS NOT NULL" : ""}
+         ${page.temporary === "only" ? "AND temporary = 1" : page.temporary === "hidden" ? `AND ${HIDDEN_TEMPORARY}` : page.temporary ? "" : `AND NOT (${HIDDEN_TEMPORARY})`}
          AND rowid < ? ORDER BY rowid DESC LIMIT ?`,
     )
     .all(...values, ...(not ? [not] : []), page.before ?? Number.MAX_SAFE_INTEGER, page.limit + 1) as Row[];
@@ -193,6 +201,7 @@ const CHAPTER_JOBS = 1000;
 export function chapterPictureJobs(chapterId: string): PictureJob[] {
   return listPictureJobs({ chapter: chapterId }, { limit: CHAPTER_JOBS }).jobs;
 }
+// (The three lists below leave out temporary jobs too, unless one of their pictures is pinned.)
 
 /** The story's cover jobs, newest first (the most recent 1000), with their marks: what its cover page shows. */
 export function coverPictureJobs(storyId: string): PictureJob[] {
@@ -207,10 +216,10 @@ export function codexPictureJobs(storyId: string, entryId: string): PictureJob[]
 // How many new jobs the picture queue in the header is given.
 const UNSEEN_JOBS = 50;
 
-/** The jobs whose pictures haven't been seen yet, in every story, newest first (the latest 50). */
+/** The jobs whose pictures haven't been seen yet, in every story, newest first (the latest 50); never a temporary job. */
 export function unseenPictureJobs(): PictureJob[] {
   const rows = db()
-    .prepare(`SELECT ${COLUMNS} FROM picture_jobs WHERE seen_at IS NULL ORDER BY created_at DESC, rowid DESC LIMIT ?`)
+    .prepare(`SELECT ${COLUMNS} FROM picture_jobs WHERE seen_at IS NULL AND temporary = 0 ORDER BY created_at DESC, rowid DESC LIMIT ?`)
     .all(UNSEEN_JOBS) as Row[];
   return toJobs(rows);
 }

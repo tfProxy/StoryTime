@@ -38,14 +38,16 @@ type Props = {
   editBlocked: string | null;
   /** Shows everything a picture was made with. */
   onInfo: (picture: Picture) => void;
+  /** Also list temporary (Refine) pictures. */
+  includeTemporary?: boolean;
 };
 
 /**
  * Pictures made for the story's other chapters (for the cover, all of them), grouped by chapter and then by
  * job, newest first, a page at a time. Any of them can be used here, started from, or have its prompt brought back.
  */
-export default function OtherChapterPictures({ target, titles, comfyUrl, saver, onLoadPrompt, onStart, editBlocked, onInfo }: Props) {
-  const query = othersQuery(target);
+export default function OtherChapterPictures({ target, titles, comfyUrl, saver, onLoadPrompt, onStart, editBlocked, onInfo, includeTemporary = false }: Props) {
+  const query = othersQuery(target) + (includeTemporary ? "&temporary=1" : "");
   const [jobs, setJobs] = useState<PictureJob[]>([]);
   const [next, setNext] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);

@@ -138,7 +138,7 @@ try {
   ok(Math.abs(frame.x + frame.width - (marksBox.x + marksBox.width)) < 12 && Math.abs(marksBox.y - frame.y) < 12, "…on the picture's top right corner");
   ok(Math.abs(frame.width / frame.height - shown) < 0.02, "…which is the picture's own shape");
   await viewer.getByRole("button", { name: "More" }).click();
-  ok((await viewer.getByRole("menuitem").allInnerTexts()).join("|") === "Use as header picture|Use as footer picture|Redraw from this|Change part of this…|Use as reference|Edit this|Load prompt|Info|Open in a new tab", "its ☰ menu has Use as header and footer, Redraw from this, Change part of this…, Use as reference, Edit this, Load prompt, Info and Open in a new tab");
+  ok((await viewer.getByRole("menuitem").allInnerTexts()).join("|") === "Use as header picture|Use as footer picture|Redraw from this|Change part of this…|Use as reference|Refine…|Edit this|Load prompt|Info|Open in a new tab", "its ☰ menu has Use as header and footer, Redraw from this, Change part of this…, Use as reference, Refine…, Edit this, Load prompt, Info and Open in a new tab");
   await page.keyboard.press("Escape");
   ok(await viewer.getByRole("menu").count() === 0 && await viewer.isVisible(), "Esc closes the menu, not the viewer");
   const viewedPrompt = await viewer.locator(".viewer-prompt").innerText();

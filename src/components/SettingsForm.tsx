@@ -51,7 +51,7 @@ type Status = { kind: "ok" | "error"; text: string };
 const TABS = [
   { id: "connections", label: "Connections", holds: ["comfyui"] },
   { id: "writing", label: "Writing", holds: ["models"] },
-  { id: "drawing", label: "Drawing", holds: ["setup-drawing", "drawing-presets", "pictures", "picture-setup", "redraw"] },
+  { id: "drawing", label: "Drawing", holds: ["picture-batching", "setup-drawing", "drawing-presets", "pictures", "picture-setup", "redraw"] },
   { id: "edit-qwen-image-edit", label: "Qwen edit", holds: ["setup-qwen-image-edit", "qwen-image-edit-presets", "edit-loras"] },
   { id: "edit-flux-kontext", label: "Flux edit", holds: ["setup-flux-kontext", "flux-kontext-presets"] },
   { id: "outline", label: "Outline", holds: [] },
@@ -645,8 +645,8 @@ export default function SettingsForm() {
         <section className="settings-section">
           <h2>Outline</h2>
           <p className="meta">
-            What the outline of a story shows after each chapter&apos;s name, in the square brackets. Untick a part to
-            hide it from every outline.
+            What the outline of a story shows after each chapter&apos;s name, in the square brackets (tags get brackets of
+            their own). Untick a part to hide it from every outline.
           </p>
           {OUTLINE_PARTS.map((part) => (
             <label key={part.id} className="inline-label" style={{ alignItems: "flex-start" }}>

@@ -7,6 +7,7 @@
 //   const comfy = await startFakeComfy({ port: 3555, checkpoints: ["a.safetensors"], steps: 4 });
 //   comfy.url        "http://localhost:3555"
 //   comfy.calls      every request received: { method, path, query, body } (body parsed when it is JSON)
+//   comfy.uploaded(name)   the bytes of a picture uploaded with POST /upload/image (a Buffer)
 //   comfy.setMode({ steps, stepDelay, startDelay, ws, fail, checkpoints })
 //   comfy.addJob({ extra, state, count })   a job somebody else made (another StoryTime, a tool); see below
 //   await comfy.close()
@@ -168,6 +169,7 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
   const calls = [];
   const jobs = new Map(); // prompt_id -> job
   const uploads = new Set(); // names of pictures uploaded with POST /upload/image
+  const uploadFiles = new Map(); // name -> the uploaded file's bytes
   const history = {};
   const sockets = new Map(); // client id -> socket
   const conns = new Set();
@@ -271,7 +273,11 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
       return res.end();
     }
     let data = "";
-    req.on("data", (c) => (data += c));
+    const raw = [];
+    req.on("data", (c) => {
+      data += c;
+      raw.push(c);
+    });
     req.on("end", () => {
       let body = null;
       if (data) {
@@ -297,6 +303,12 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
         let name = given;
         while (uploads.has(name)) name = name.replace(/(\(\d+\))?(\.\w+)$/, (_, n, ext) => `(${n ? Number(n.slice(1, -1)) + 1 : 1})${ext}`);
         uploads.add(name);
+        // Keep the file's bytes (the part of the multipart body after the headers, before the closing boundary), for `uploaded(name)`.
+        const all = Buffer.concat(raw);
+        const boundary = /boundary=(.+)$/.exec(String(req.headers["content-type"] ?? ""))?.[1];
+        const from = all.indexOf("\r\n\r\n", all.indexOf('name="image"'));
+        const to = boundary ? all.lastIndexOf(`\r\n--${boundary}`) : -1;
+        if (from >= 0 && to > from) uploadFiles.set(name, all.subarray(from + 4, to));
         return json(200, { name, subfolder: "", type: "input" });
       }
       if (p === "/prompt" && req.method === "POST") {
@@ -373,6 +385,8 @@ export async function startFakeComfy({ port = 3555, checkpoints = ["fake_sdxl_a.
   return {
     url: `http://localhost:${port}`,
     calls,
+    /** The bytes of a picture uploaded with POST /upload/image (a Buffer), by the name ComfyUI gave it; undefined when unknown. */
+    uploaded: (name) => uploadFiles.get(name),
     /** Changes how the fake behaves from now on. */
     setMode: (patch) => Object.assign(mode, patch),
     /**

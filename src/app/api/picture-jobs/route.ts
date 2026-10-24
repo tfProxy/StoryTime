@@ -10,7 +10,8 @@ const bad = (error: string) => Response.json({ error }, { status: 400 });
 // for one chapter, ?cover=<story id> for the story's cover, or ?story=<id>&entry=<entry id> for one codex
 // entry's. Each job lists its pictures' marks
 // (pinned, rejected or null). Page through with ?before=<next from the last page> and ?limit= (1 to 200,
-// default 50). ?unseen=1 instead lists the jobs whose pictures haven't been seen yet, in every story (the latest 50).
+// default 50). ?unseen=1 instead lists the jobs whose pictures haven't been seen yet, in every story (the latest 50;
+// never a temporary job).
 export async function GET(request: Request) {
   const q = new URL(request.url).searchParams;
   if (q.get("unseen") === "1") return Response.json({ jobs: unseenPictureJobs(), next: null });
@@ -31,7 +32,11 @@ export async function GET(request: Request) {
     : chapter
       ? { chapter }
       : { cover: cover! };
-  return Response.json(listPictureJobs(where, { before, limit }));
+  // Temporary (Refine) jobs are left out unless one of their pictures is pinned; ?temporary=1 lists them too, ?temporary=only just those.
+  // ?temporary=hidden lists just the ones a normal listing leaves out.
+  const t = q.get("temporary");
+  const temporary = t === "only" || t === "hidden" ? t : t === "1" ? "include" : undefined;
+  return Response.json(listPictureJobs(where, { before, limit, temporary }));
 }
 
 // Records a finished job: the prompt and settings, and where ComfyUI put the pictures.
