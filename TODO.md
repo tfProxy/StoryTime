@@ -2,6 +2,10 @@
 
 Planned work, with what you need to know to start. Finished work isn't listed; the code and tests describe it. How the Illustrate page works is in `docs/illustrate.md`: read it before touching that page.
 
+## Write ahead: the AI writes several chapters (planned 2026-10-24)
+
+Reach a goal in N chapters, fill open choices, or grow the tree to a depth and width. The staged plan, with the decisions to confirm, is in `docs/write-ahead-plan.md`. Not started.
+
 ## Not yet checked against a real ComfyUI
 
 The tests use a fake. Before building more on this, try once on the real machine and write down what differs:
