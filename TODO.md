@@ -2,9 +2,9 @@
 
 Planned work, with what you need to know to start. Finished work isn't listed; the code and tests describe it. How the Illustrate page works is in `docs/illustrate.md`: read it before touching that page.
 
-## Write ahead: the AI writes several chapters (planned 2026-10-24)
+## AI runs: write ahead and fill missing pictures (agreed with the owner, 2026-10-24)
 
-Reach a goal in N chapters, fill open choices, or grow the tree to a depth and width. The staged plan, with the decisions to confirm, is in `docs/write-ahead-plan.md`. Not started.
+The AI writes many chapters (fill open choices, grow the tree to a depth and width, reach a goal in N chapters) or makes the missing header and footer pictures of a branch or story. Four milestones, each shipped to main on its own, with the decisions, are in `docs/write-ahead-plan.md`. Not started.
 
 ## Not yet checked against a real ComfyUI
 
