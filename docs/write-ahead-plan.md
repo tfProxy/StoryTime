@@ -15,11 +15,15 @@ From a chapter, the AI does many steps without the owner doing each one:
 
 | # | Question | Decision |
 |---|---|---|
-| D1 | Order | Milestone 1, Fill open choices, builds the shared parts (runs, runner, writing queue, marks). After it, the rest can come in any order: 2 Grow the tree, 3 Reach a goal, 4 Fill missing pictures, 5 the writing page's Generate in the queue. Suggested: 1, 5, 2, 3, 4. |
-| D14 | Writing queue | Like the picture queue (`src/components/PictureQueue.tsx`): an app-wide `WritingQueueProvider` in the root layout, so work goes on while the owner moves to other pages of the app. A full reload or closed tab still stops it; runs resume from the server (Resume, never by themselves). |
-| D15 | What the queue holds | Write-ahead and picture runs, and the writing page's **Generate** (milestone 5): leave the page mid-chapter and it finishes into the draft. Revise and passage rewrites stay on the page as now. |
-| D16 | Several at once | One writing item at a time, in the order started. A single Generate goes before a run's next chapter (the run waits after the chapter it is on), so it isn't stuck behind a long run. Picture runs have a lane of their own (ComfyUI) beside writing. |
-| D17 | Header | A pen button of its own beside the pictures button (`PictureQueueStatus`): a spinner and count while working, "N ready"; it opens a list of items with progress, Stop, Resume and Open. |
+| D1 | Order | **Milestone 0** first: the picture queue becomes the one **work queue**, with pictures behaving exactly as now. Then milestone 1, Fill open choices, which adds writing to it (runs, runner, the take-turns settings, marks). After that any order: 2 Grow the tree, 3 Reach a goal, 4 Fill missing pictures, 5 the writing page's Generate in the queue. Suggested: 0, 1, 5, 2, 3, 4. |
+| D14 | One work queue | Pictures and writing are **one queue, in code and on screen** (the owner chose a full merge): the picture queue (`src/components/PictureQueue.tsx`) becomes `WorkQueue`, app-wide in the root layout, holding picture jobs and writing items, so work goes on while the owner moves to other pages of the app. A full reload or closed tab still stops writing; runs resume from the server (Resume, never by themselves). |
+| D15 | What the queue holds | Picture jobs (as now), write-ahead and picture runs, and the writing page's **Generate** (milestone 5): leave the page mid-chapter and it finishes into the draft. Revise and passage rewrites stay on the page as now. |
+| D16 | Order inside writing | One writing request at a time, in the order started. A single Generate goes before a run's next chapter (the run waits after the chapter it is on), so it isn't stuck behind a long run. |
+| D17 | Header | **One** queue button (today's pictures button, `PictureQueueStatus`) for everything: a spinner and count while working, "N ready", ⚠ for failed or paused items. Its list has the picture jobs and the writing items together, newest first, each with its own buttons (picture jobs as now; writing: Stop, Resume, Open, Dismiss). |
+| D18 | Sharing the machine | A setting, **Settings › Queue › Writing and pictures**: "Take turns (same machine)" or "At the same time (different machines)". The owner's machine runs both, so **take turns** is the default. Taking turns: while ComfyUI has one of our jobs, no AI request starts, and while an AI request runs, no picture job is sent to ComfyUI. |
+| D19 | How turns switch | **Finish a batch, then switch**: keep doing the kind that has the machine while it has waiting work, until the batch limit (Settings › Queue: "Switch after" N minutes, default 10, and/or N items, default 0 = no item limit), then let the other kind go if it has waiting work. The existing memory settings (a connection's `freeComfy`, Ollama's `freeForPictures`) do the unloading; the queue only decides the order. |
+| D20 | Models inside a run | A run setting, **Models**: "Use the writing model for everything" (choices and summaries too, so a local server never swaps models) or "Group by model" (default): the chapters at one level are written first with the writing model, then their summaries and choices with the cheaper one, then the next level. Plain "one chapter at a time" stays available as a third choice. |
+| D21 | Grouping pictures | Among picture jobs waiting their turn (not yet sent to ComfyUI), those for the drawing preset (checkpoint) of the last job sent go first, so ComfyUI swaps checkpoints less; each target's (chapter's) own jobs keep their order. A Settings › Queue checkbox, on by default. |
 | D2 | Where it starts | The chapter reading page's ☰ menu (`PageMenu` in `src/app/c/[id]/page.tsx`): **Write ahead with AI…** opens `/c/<id>/write-ahead`. No button under the choices, nothing on the outline. |
 | D3 | Review | Chapters are posted straight away, marked "Written by AI, not reviewed" until the owner presses **Mark reviewed**. Editing or reading a chapter doesn't count as reviewing it. |
 | D3a | The AI mark | A **robot icon**, everywhere an AI-written chapter appears: in the chapter page's meta line, on the choice card that leads to it (the parent chapter's "What happens next?"), and in the outline. The mark **stays after review**: unreviewed is a filled, accent-coloured robot (title "Written by AI, not reviewed"); reviewed is a quiet outline robot in the muted colour (title "Written by AI"). Only chapters are marked, not the unwritten choices a run adds. In the outline it is a new part, **AI-written**, in Settings › Outline, **on by default**. |
@@ -27,7 +31,7 @@ From a chapter, the AI does many steps without the owner doing each one:
 | D5 | Choices on the last chapters written | 3 unwritten choices suggested by the AI (a run setting, 0–6), so the story doesn't end there. |
 | D6 | Choices along a Reach a goal chain | Only the next step's choice; "Other choices along the way" (0–3, default 0) adds AI-suggested unwritten ones. |
 | D7 | Size limits | At most 200 chapters per run (`LIMITS.runChapters`), depth 1–8, choices per chapter 1–6, Reach a goal 1–20 chapters. Over 20 chapters asks to confirm. |
-| D8 | Requests at once | One at a time (a local Ollama can't run several). |
+| D8 | Requests at once | One AI request at a time (a local Ollama can't run several). |
 | D9 | Codex | Not updated by a run. The run page says so. |
 | D10 | Pictures: which one is used | One picture per slot, saved as the header/footer straight away. No choosing. |
 | D11 | Pictures: which slots | A run setting: Header, Footer, or Both (default Header). |
@@ -35,7 +39,7 @@ From a chapter, the AI does many steps without the owner doing each one:
 
 ## How it works (all milestones)
 
-- **AI calls run in the browser** (`src/lib/ai/client.ts`; keys never reach the server), and so do ComfyUI calls. Work is held by the app-wide **writing queue** (D14), so it goes on across pages of the app while the tab is open. To survive a reload or closed tab, **a run's task list is kept on the server** (`ai_runs`) and can be resumed.
+- **AI calls run in the browser** (`src/lib/ai/client.ts`; keys never reach the server), and so do ComfyUI calls. Work is held by the app-wide **work queue** (D14), so it goes on across pages of the app while the tab is open, and the queue decides when writing and pictures each get the machine (D18–D21). To survive a reload or closed tab, **a run's task list is kept on the server** (`ai_runs`) and can be resumed.
 - A run is a **list of tasks**. A planner (pure functions) turns the owner's choices into tasks; the **runner** does one task at a time and saves the list after each; the queue calls it task by task, so a Generate can go in between (D16).
 - A written chapter is posted with the existing `POST /api/chapters`, as the writing page posts one (title, body, choices, summary, path_summary), plus the run's id for the D3 mark. Writing it repeats the writing page's steps from `ChapterEditor.tsx` without its UI: older path summaries (`neededSummaryIndex` + `ensurePathSummaries`), `generatePrompt` with `SYSTEM_CHAPTER` streamed with `streamChat` (main model), `parseChapterOutput`, choices with `choicesPrompt` (cheap model), `summarizeChapter` (cheap model; a failure doesn't stop the post).
 - Counts grow fast: 3 choices × 5 levels is 3 + 9 + 27 + 81 + 243 = 363 chapters, about 3 AI requests each. The form shows the count before starting and refuses over the limit.
@@ -53,7 +57,8 @@ export type Slot =
   | { kind: "new"; parentChapterId: string; label: string }    // a new choice on an existing chapter (arc)
   | { kind: "fromTask"; taskId: string; choiceIndex: number }; // the n-th choice an earlier task's chapter was posted with (arc)
 
-export type TaskStatus = "todo" | "done" | "failed" | "skipped";
+/** `written`: posted, its summaries and suggested choices still to come (D20 "Group by model"). */
+export type TaskStatus = "todo" | "written" | "done" | "failed" | "skipped";
 
 export type WriteTask = {
   kind: "write";
@@ -76,7 +81,7 @@ export type WriteTask = {
 export type ChoicesTask = { kind: "choices"; id: string; chapterId: string; depth: number; want: number; status: TaskStatus; error?: string };
 
 /** Fill missing pictures (milestone 4): one picture for one slot of one chapter. */
-export type PictureTask = { kind: "picture"; id: string; chapterId: string; slot: "header" | "footer"; status: TaskStatus; jobId?: string; error?: string };
+export type PictureTask = { kind: "picture"; id: string; chapterId: string; slot: "header" | "footer"; status: TaskStatus; prompt?: string; negative?: string; jobId?: string; error?: string };
 
 export type RunTask = WriteTask | ChoicesTask | PictureTask;
 
@@ -87,6 +92,7 @@ export type RunOptions = {
   suggestModel?: ModelRef | null; // choices, summaries and picture prompts; null = the default cheap model
   guidance?: string;              // added to every chapter's direction ([bracket notes] allowed)
   endChoices?: number;            // D5
+  models?: "group" | "writing" | "each"; // D20, default "group"
   scope?: "children" | "below";   // fill, and pictures ("below" = this chapter and everything under it)
   maxDepth?: number; breadth?: number;                         // tree
   objective?: string; chapters?: number; alternatives?: number; // arc
@@ -95,7 +101,7 @@ export type RunOptions = {
   useRefs?: boolean;              // D12, default false
 };
 
-/** `queued`: waiting its turn in a tab's writing queue. `running` with a lapsed lease means the tab that ran it is gone. */
+/** `queued`: waiting its turn in a tab's work queue. `running` with a lapsed lease means the tab that ran it is gone. */
 export type RunStatus = "ready" | "queued" | "running" | "paused" | "done" | "stopped";
 
 export type AiRun = {
@@ -106,6 +112,31 @@ export type AiRun = {
   created_at: number; updated_at: number;
 };
 ```
+
+---
+
+## Milestone 0: one work queue (ship to `main` when done; pictures work exactly as now)
+
+The picture queue becomes the app's one work queue (D14), still holding only picture jobs, so this milestone can be checked against the existing picture tests before any writing is added. Read `docs/illustrate.md` first (`CLAUDE.md` requires it: the picture queue is described under **The picture queue**) and update that bullet in the same change.
+
+### Task 0.1: rename and reshape, no change in behaviour
+
+**Files:** `src/components/PictureQueue.tsx` → `src/components/WorkQueue.tsx`, `src/components/PictureQueueStatus.tsx` → `src/components/WorkQueueStatus.tsx`, `src/app/layout.tsx`, every importer of `usePictureQueue` (grep), `docs/illustrate.md`, `src/app/globals.css` if class names change.
+
+- `WorkQueueProvider` and `useWorkQueue()`. Its items are a tagged union, `{kind: "picture", ...today's QueueJob}` for now (task 1.4 adds `"run"`, milestone 5 `"generate"`). Keep `usePictureQueue()` as a thin hook over it with exactly today's API (`jobs`, `ask`, `stop`, `dismiss`, `listen`, `listenSession`), so `ComfyGenerate`, the Refine screen and the other callers don't change.
+- Pull the decision of what to do next into a pure module, `src/lib/workQueue/schedule.ts`: `nextActions(state, settings) → Action[]` (for now: which gathered picture jobs to send to ComfyUI; today that is "all of them, at once"). The provider does what it returns. This is where task 1.4 and D18–D21 go, and it is unit-testable.
+- The header button and list: same look, same behaviour; the list's region is renamed "Queue" (today "Picture jobs"; update the two picture-queue browser files for the new name and nothing else).
+- **Check:** shared code (root layout): `npx tsc --noEmit`, `npx next build`, `npm test`, the whole browser suite (every `illustrate-*`, `picture-queue*`, `refine-*` and `cover-make` file must pass unchanged apart from the region name), one phone and one desktop screenshot of the header list. A unit test for `schedule.ts` that today's rule holds.
+
+### Task 0.2: the Queue settings and grouping pictures (after 0.1)
+
+**Files:** `src/lib/settingsSchema.ts`, `src/components/SettingsForm.tsx`, `src/lib/workQueue/schedule.ts`, `src/components/WorkQueue.tsx`, unit tests, a browser test.
+
+- `settings.queue`: `{ sharing: "turns" | "together" (default "turns"), switchMinutes: number (default 10, 1–120), switchItems: number (default 0 = no limit, 0–100), groupPictures: boolean (default true) }`. Settings saved before have none: read them as the defaults (see how `outline` is filled). A **Queue** section in Settings (look at how the Outline section is laid out), with a line under Writing and pictures: "Take turns when the AI model and ComfyUI run on the same machine, so they don't run out of memory."
+- **Grouping pictures (D21):** jobs only wait in StoryTime when the queue holds them back (task 1.4: taking turns). With nothing to wait for, jobs still go straight to ComfyUI as today, so this milestone changes nothing visible unless pictures are held. Write the rule now in `schedule.ts` with unit tests (held jobs of the last-sent preset first, a target's own jobs in order); the provider uses it from task 1.4.
+- **Check:** settings schema is shared code: `npx tsc --noEmit`, `npx next build`, `npm test`, the whole browser suite, a screenshot of the Settings › Queue section at phone width.
+
+**Then ship milestone 0.**
 
 ---
 
@@ -183,30 +214,39 @@ export type AiRun = {
    - `SYSTEM_CHAPTER` + `generatePrompt(ctx, direction, options.length ?? "medium", settings.contextTokens)`, `streamChat` with `role: "main"`, `model: options.model`; `parseChapterOutput`; no title → `label`; an empty body throws.
    - Choices: `given`, then if `suggest > 0` `choicesPrompt` with the cheap model (`completeChat`, `parseChoices`), trimmed to `suggest`; drop blanks and repeats; at most `LIMITS.choices`. A failed suggestion leaves just `given`.
    - Summaries: `summarizeChapter` with `previous` = the parent's `path_summary`; a failure leaves them out.
-2. **The runner works one task at a time** so the writing queue (task 1.4) can put other work in between: `claim(runId, token)`, `runNextTask(run, { settings, token, signal, onEvent }) → { run, more: boolean }` (does one task and saves the run), and `finish(run, status)`. Later milestones add their task kinds to `runNextTask`.
-   - The caller makes the token and claims the run; `runNextTask` sets `running` and renews the lease every 30 s while working.
+2. **The runner works one step at a time** so the work queue (task 1.4) can put other work in between and give the machine to pictures: `claim(runId, token)`, `runNextStep(run, { settings, token, signal, onEvent }) → { run, more: boolean }` (does one step and saves the run), and `finish(run, status)`. Split `writeOneChapter` so each part can be called on its own: `writeText` (main model), `suggestFor` (choices), `summarize`. Later milestones add their task kinds to `runNextStep`.
+   - The caller makes the token and claims the run; `runNextStep` sets `running` and renews the lease every 30 s while working.
+   - **Models (D20)**, from `options.models`:
+     - `"each"`: a step is a whole task, as described below (text, choices, summaries, post).
+     - `"writing"`: the same, with `suggestModel` replaced by `model`, so every request uses the writing model.
+     - `"group"` (default): a step is one request. While any `todo` task at the lowest depth with work left can be written, write it with the main model and post it **without** suggested choices or summaries (given choices only; status `written`). When none can, take the `written` tasks at that depth one by one with the cheap model: summaries (`PUT /api/chapters/<id>/summary`, as `BulkSummaries.tsx` does), then the suggested choices (`POST /api/chapters/<id>/choices` per label, then `GET /context` for their ids), then `done`. Then the next depth. A child is never written before its parent is `done`, so its prompt has the parent's summary.
    - `nextTask` picks the task. For a write task: `resolveSlot`; `GET /context` of the parent. **Don't write twice after a crash:** if the choice already has a chapter, or (new slot) the parent has a written choice with that label, mark the task done with that chapter. Otherwise `writeOneChapter`, then `POST /api/chapters` with `choice_id` (or `parent_chapter_id` + `new_choice_label`), `choices`, the summaries, `codex_changes: []` and `ai_run_id`. A 409 "already written" counts as done (read `/context` again for the id).
    - After each task: set `done`, `chapterId`, `choiceIds`, then `PATCH` the run.
    - A failure: try the task once more; a second failure marks it `failed` with the error, pauses the run and returns. Stop (abort) pauses. No `todo` left → `done`.
    - `onEvent`: task started, streamed text, status lines, task done, paused/done, errors.
    - `retryTask(runId, taskId)` (failed → todo) and `skipTask` (→ skipped) PATCH the run.
-3. **Unit test** with a fake `fetch` and fake AI replies (see `tests/unit/ai-client.test.mts` for faking the client): two fill tasks post two chapters with `ai_run_id`; a task left `todo` after its chapter was posted isn't posted again; an AI call failing twice pauses the run with the task failed.
+3. **Unit test** with a fake `fetch` and fake AI replies (see `tests/unit/ai-client.test.mts` for faking the client): two fill tasks post two chapters with `ai_run_id`; a task left `todo` after its chapter was posted isn't posted again; an AI call failing twice pauses the run with the task failed; with `"group"` the requests go main, main, cheap, cheap… (record the model of each fake call); with `"writing"` every call uses the writing model; a `written` task left after a reload gets its summaries and choices, not a second chapter.
 
 **Check:** `npx tsc --noEmit`, `npm test`.
 
-### Task 1.4: the writing queue (after 1.3)
+### Task 1.4: writing in the work queue, and taking turns (after 1.3 and milestone 0)
 
-**Files:** `src/components/WritingQueue.tsx` (new: `WritingQueueProvider`, `useWritingQueue()`), `src/components/WritingQueueStatus.tsx` (new), `src/app/layout.tsx`, `src/components/PictureQueue.tsx` (only the tab title, below), `src/app/globals.css`, `tests/e2e/writing-queue.e2e.mjs` (new). Read `PictureQueue.tsx` and `PictureQueueStatus.tsx` first and follow their shape (provider, `listen` returning an unsubscribe, the header button and its `role=region` list).
+**Files:** `src/components/WorkQueue.tsx`, `src/components/WorkQueueStatus.tsx`, `src/lib/workQueue/schedule.ts`, `docs/illustrate.md` (the picture queue bullet: how pictures now wait their turn), `src/app/globals.css`, `tests/unit/work-queue-schedule.test.mts`, `tests/e2e/work-queue.e2e.mjs` (new).
 
-1. **Provider** in the root layout beside `PictureQueueProvider`. State, in memory: items, oldest first. An item is a run (`{kind: "run", runId, storyTitle, startTitle, mode, done, total, current?: label, state: "waiting" | "working" | "paused" | "done" | "failed" | "elsewhere", error?}`); milestone 5 adds `{kind: "generate", ...}`.
-2. **API:** `startRun(runId)` (adds it, sets the run `queued` on the server, claims it when its turn comes), `stopRun(runId)` (aborts the current request; the run is `paused`), `resumeRun(runId)`, `dismiss(id)`, `listenRun(runId, listener) → unsubscribe` (the run page gets the streamed text, status lines and task updates while it is open). Errors and pauses are kept on the item for the header.
-3. **The loop (D16):** one item works at a time in the text lane: the oldest waiting `generate` first, else the oldest waiting run; a run calls `runNextTask` once, then goes back to the end of the choice, so a Generate waiting goes next. Picture runs (milestone 4) get a second lane of their own that works beside the text lane.
-4. **On opening the app** (and when it comes back into view, at most every 10 s, like the picture queue): `GET /api/ai-runs?unfinished=1`. Runs not in this tab's list are added: `leased` ones as "elsewhere" ("Running in another tab or browser", no buttons but Open), the others as "paused" with **Resume**. Nothing starts by itself.
-5. **Header** (`WritingQueueStatus`, beside the pictures button, hidden when empty): a pen icon with a spinner and the number working or waiting, "N ready" for finished items, ⚠ for failed or paused ones. It opens a list (`role=region` "Writing"): per item the story and start chapter, the mode in words ("Fill open choices"), "12 of 39", the current choice, and Stop / Resume / Open (the run page) / Dismiss; **Clear finished**. The tab title: today the picture queue writes "StoryTime (2)"; make it the sum of picture jobs and writing items working (one small shared helper, or the writing queue tells the picture queue its count; don't let the two overwrite each other).
-6. **Closing the tab** while something is working asks first (`beforeunload`, as `ChapterEditor.tsx` does).
-7. **e2e** `tests/e2e/writing-queue.e2e.mjs` (a slow fake AI that streams over a few seconds): start a run through the API and `startRun` (the run page comes in task 1.5; drive the queue from a small test hook only if there is no other way, and say so), go to another page of the app: the header shows it working and it finishes; two runs go one after the other; Stop then Resume; after a reload the run shows as paused with Resume; a second tab shows it as running elsewhere.
+1. **Run items:** `{kind: "run", runId, storyTitle, startTitle, mode, done, total, current?: label, state: "waiting" | "working" | "paused" | "done" | "failed" | "elsewhere", error?}`, in memory beside the picture jobs; milestone 5 adds `{kind: "generate", ...}`.
+2. **API** on `useWorkQueue()`: `startRun(runId)` (adds it, sets the run `queued` on the server, claims it when its turn comes), `stopRun(runId)` (aborts the current request; the run is `paused`), `resumeRun(runId)`, `dismiss(id)` (shared with picture jobs), `listenRun(runId, listener) → unsubscribe` (the run page gets streamed text, status lines and task updates while it is open). Errors and pauses stay on the item for the header.
+3. **The schedule** (`schedule.ts`, pure, unit-tested; the provider does what it says):
+   - **Writing among itself (D16):** one writing step at a time: the oldest waiting `generate` first, else the oldest waiting run, which does one `runNextStep` and goes back in line.
+   - **Writing and pictures (D18):** with `sharing: "together"`, writing goes on and picture jobs are sent to ComfyUI as soon as asked (as today). With `"turns"`, the machine belongs to one kind at a time: **pictures** while any of our jobs is in ComfyUI (sent and not finished); **writing** while a writing step runs. A gathered picture job is held in StoryTime ("Waiting its turn" on its place and in the header) while writing has the machine, and writing waits while pictures have it.
+   - **Switching (D19):** when one kind has the machine and the other has waiting work, the holder keeps it until its batch limit (`switchMinutes` since it took the machine, or `switchItems` writing steps / picture jobs, whichever comes first) or until it has nothing waiting; then it finishes what is in flight (the writing step; the jobs already in ComfyUI) and the other kind takes over. Picture jobs asked for meanwhile wait unless pictures hold the machine. With only one kind waiting, it just goes on.
+   - **Grouping pictures (D21):** when held jobs are released, `groupPictures` sends those of the last-sent drawing preset first, keeping each target's order.
+   - Unit tests for each rule, with a fake clock.
+4. **On opening the app** (and when it comes back into view, at most every 10 s, as the picture queue already checks ComfyUI): `GET /api/ai-runs?unfinished=1`. Runs not in this tab's list are added: `leased` ones as "elsewhere" ("Running in another tab or browser", Open only), the others as "paused" with **Resume**. Nothing starts by itself. A picture job found running in ComfyUI on opening counts as pictures holding the machine.
+5. **Header** (the one queue button, D17): writing items join the list, newest first with the picture jobs: the story and start chapter, the mode in words ("Fill open choices"), "12 of 39", the current choice, Stop / Resume / Open (the run page) / Dismiss. The button's count and the tab title count both kinds. When turns are on and something is held, a line at the top of the list says which kind has the machine and why ("Writing until 14:20, then 3 pictures").
+6. **Closing the tab** while writing is working or pictures are held asks first (`beforeunload`, as `ChapterEditor.tsx` does).
+7. **e2e** `tests/e2e/work-queue.e2e.mjs` with a slow fake AI and the fake ComfyUI (`tests/e2e/fakeComfy.mjs`): a run started through the API and `startRun` (the run page comes in task 1.5; use a small test hook only if there is no other way, and say so) keeps going when moving to another page; two runs go one after the other; Stop then Resume; after a reload the run shows as paused; a second tab shows it as elsewhere. Turns: with a run writing, a Queue click on the Illustrate page is held (ComfyUI gets nothing) until the batch limit (set `switchItems` to 1 for the test), then the picture goes and the next chapter waits for it; with `"together"` both go at once.
 
-**Check:** the root layout changed, so the whole browser suite, plus `npx tsc --noEmit`, `npx next build`, `npm test`, and phone and desktop screenshots of the header with the list open.
+**Check:** shared code: the whole browser suite (picture tests included), `npx tsc --noEmit`, `npx next build`, `npm test`, phone and desktop screenshots of the header list with a run and a held picture in it.
 
 ### Task 1.5: the page and the review mark (after 1.4)
 
@@ -220,7 +260,7 @@ Split this task in two commits if it gets large: first the marks (items 1 and 2,
    - In the outline: a new part `aiWritten` in `OutlineOptions`, `OUTLINE_PARTS` (label "AI-written", hint "a robot on chapters the AI wrote by itself, filled until you mark them reviewed") and `DEFAULT_OUTLINE` (on). Check that settings saved before this, which have no `aiWritten`, read it as on (see how the schema fills the other parts). Shown in the outline's `[...]` section like the other parts (look at how `review` is done in `src/app/s/[id]/outline/page.tsx`). `settingsSchema.ts` is shared code, so run the whole browser suite.
 2. **Review on the chapter page:** for an unreviewed AI chapter, `AiReviewNotice` at the top: "Written by AI, not reviewed yet." with **Mark reviewed** and, when chapters above it on the path are unreviewed too, **Mark this path reviewed**; after marking, `router.refresh()` (the notice goes, the robot turns to the reviewed look). A **Write ahead with AI…** item in `PageMenu` (D2).
 3. **Page `/c/<id>/write-ahead`** (`?run=<id>` shows that run): crumbs back to the chapter, heading "Write ahead with AI", the chapter's title. Loads the story, the subtree (depth 8), and earlier runs from this chapter. An unfinished run is offered first: "A run from here is unfinished: 12 of 39 written. Resume / Stop it".
-4. **Form** (`WriteAhead.tsx`), built so milestones 2 and 3 can add their modes as more options in the same picker (radio group "What to write"): for now only **Fill open choices**: "This chapter's open choices (k)" or "Every open choice below this chapter (m)". With none, say so. **Settings for every chapter** (a `<details>`, closed): Length (default medium), Writing model and Model for choices and summaries (`ModelPicker`, as on the writing page), Guidance for every chapter (textarea), Choices on each new chapter (0–6, default 3). **Estimate:** "Writes 7 chapters, about 21 AI requests, one at a time." Over 20 asks to confirm; over the limit the button is off with the reason. A `PromptButton` ("View prompt") for the first chapter's prompt. Starting: `planFill`, `POST /api/ai-runs`, `router.replace(?run=<id>)`, `useWritingQueue().startRun(id)`. With another item working, the run shows "Waiting its turn (1 ahead)".
+4. **Form** (`WriteAhead.tsx`), built so milestones 2 and 3 can add their modes as more options in the same picker (radio group "What to write"): for now only **Fill open choices**: "This chapter's open choices (k)" or "Every open choice below this chapter (m)". With none, say so. **Settings for every chapter** (a `<details>`, closed): Length (default medium), Writing model and Model for choices and summaries (`ModelPicker`, as on the writing page), Guidance for every chapter (textarea), Choices on each new chapter (0–6, default 3), **Models** (D20: "Group by model, fewer model loads" (default), "Use the writing model for everything", "One chapter at a time"). **Estimate:** "Writes 7 chapters, about 21 AI requests, one at a time." Over 20 asks to confirm; over the limit the button is off with the reason. A `PromptButton` ("View prompt") for the first chapter's prompt. Starting: `planFill`, `POST /api/ai-runs`, `router.replace(?run=<id>)`, `useWorkQueue().startRun(id)`. With another item working, the run shows "Waiting its turn (1 ahead)".
 5. **Progress** (`AiRunProgress.tsx`): a view of the queue's item (`listenRun`), falling back to the run as saved on the server when this tab's queue doesn't have it. "3 of 7 written. Now: “Run away”", the status line, a collapsible live preview, **Stop** / **Resume** (through the queue), and the task list (written ones link to `/c/<id>`; failed ones show the error with **Try again** / **Skip**). A note: "This runs in this browser tab: you can use other pages of StoryTime meanwhile, but keep the tab open. On a phone, keep the screen on." While the queue is working, it asks for a screen wake lock (`navigator.wakeLock.request("screen")` in try/catch, released when idle; put this in the provider, task 1.4, if it isn't there yet). A paused run doesn't restart by itself on load. Done: "Wrote 7 chapters, marked not reviewed. Mark all reviewed · Open in outline", and the D9 note.
 6. **e2e** `tests/e2e/write-ahead.e2e.mjs` with its own fake AI on port 3222 (copy the server from `tests/e2e/chapters.e2e.mjs`); `useMockAi` and `restore()` at the end. Cover: Fill on a chapter with two unwritten choices writes both, and the chapter page then shows both as written, each card with the unreviewed robot; the new chapter shows the notice and the robot in its meta line, and the outline shows the robot; Mark reviewed removes the notice and turns the robot to the reviewed look in all three places; unticking AI-written in Settings › Outline hides it in the outline only; a chapter the owner wrote has no robot; Stop, reload, Resume finishes without duplicates.
 
@@ -276,7 +316,7 @@ Split this task in two commits if it gets large: first the marks (items 1 and 2,
 
 ---
 
-## Milestone 4: Fill missing pictures (its own page; after milestone 1, since it uses the runs and the writing queue)
+## Milestone 4: Fill missing pictures (its own page; after milestone 1, since it uses the runs and the work queue)
 
 Read `docs/illustrate.md` before starting (`CLAUDE.md` requires it) and add a bullet to it describing this feature in the same change.
 
@@ -297,7 +337,7 @@ For each `PictureTask`:
 1. Skip it (done) if the slot already has a picture (it was made by hand meanwhile).
 2. **Prompt:** `writeImagePrompt` (`src/lib/ai/imagePrompt.ts`) with the chapter's path and codex from `/context`, `moment` start for a header and end for a footer, `direction: ""`, the chapter's drawing preset's `promptStyle` and its always-include text as `fixed` (see `picture-preset` and `picture-fixed` routes). Save the result as that moment's prompt boxes (`PUT /api/chapters/:id/picture-draft`) so the Illustrate page shows what was used.
 3. **Job:** build the `JobInput` exactly as `ComfyGenerate.ask` does for one picture of a text-to-image job (`grep -n "ask" src/components/ComfyGenerate.tsx`): `combinePrompts` of the preset prompt, the always-include text and the prompt, the story's art style (`withArtStyle`), the preset's negative, the chapter's or story's preset (`drawPresetFor`), its LoRAs, the family check, size from settings, count 1, no starting picture, no edit. References only when `useRefs` is on and the preset can use them (`ipAdapterProblem`, `describeWorkflow(...).refs`): the story's style picture, and for a footer the chapter's saved header; otherwise none and no error. Factor the shared part out of `ComfyGenerate` only if it is small and the Illustrate tests still pass; otherwise write a separate builder and say so in the commit.
-4. Send it through the app's picture queue (`usePictureQueue().ask`) so it is recorded in the job log and shows in the header. Route its pictures back to the runner the way the Refine screen does (`JobInput.session` = `pictures:<run id>`, `listenSession`), not marked temporary. Wait for it. The picture run itself is an item in the writing queue's **picture lane** (task 1.4, D16), so it goes on beside writing. Its short prompt requests (step 2) may then overlap a chapter being written; that is accepted.
+4. Send it through the app's picture queue (`usePictureQueue().ask`) so it is recorded in the job log and shows in the header. Route its pictures back to the runner the way the Refine screen does (`JobInput.session` = `pictures:<run id>`, `listenSession`), not marked temporary. Wait for it. The picture run is a run item in the work queue, and its steps are of two kinds for the schedule (task 1.4): the prompt (step 2) is **writing** (an AI request), the job is **pictures**. So with turns on, a picture run writes a batch of prompts while writing has the machine and draws them while pictures have it, rather than switching every picture: let the runner write prompts ahead (up to the batch limit) and keep them on the tasks (`prompt`, `negative` fields on `PictureTask`), then send the jobs together, grouped by preset (D21).
 5. **Save** the picture as the slot, as `usePictureSaver` does (`PUT /api/chapters/:id/images/:slot?job=<id>&index=0` with the image), which also pins it. Store `jobId` on the task.
 6. A failure (AI, ComfyUI, the save) retries once, then pauses the run with the error, as for chapters. On resume after a reload, a task whose job finished while the page was closed may make a second picture; accept that and note it in `docs/illustrate.md`.
 
@@ -309,7 +349,7 @@ For each `PictureTask`:
 
 ## Milestone 5: the writing page's Generate in the queue (ship when done; any time after milestone 1)
 
-Today **Generate chapter** on the writing page (`runAi("generate")` in `src/components/ChapterEditor.tsx`) streams into the page's own state, so leaving the page stops it. Move that one action into the writing queue (D15) so it finishes into the draft wherever the owner goes. Revise and passage rewrites stay as they are. `ChapterEditor.tsx` is large: grep for the functions named here and read only those parts (`CLAUDE.md`).
+Today **Generate chapter** on the writing page (`runAi("generate")` in `src/components/ChapterEditor.tsx`) streams into the page's own state, so leaving the page stops it. Move that one action into the work queue (D15) so it finishes into the draft wherever the owner goes. Revise and passage rewrites stay as they are. `ChapterEditor.tsx` is large: grep for the functions named here and read only those parts (`CLAUDE.md`).
 
 ### Task 5.1: applying a generated chapter to a draft (pure code)
 
@@ -322,7 +362,7 @@ Today **Generate chapter** on the writing page (`runAi("generate")` in `src/comp
 
 ### Task 5.2: Generate through the queue (after 5.1)
 
-**Files:** `src/components/WritingQueue.tsx`, `src/components/WritingQueueStatus.tsx`, `src/components/ChapterEditor.tsx`, `tests/e2e/writing-queue.e2e.mjs`.
+**Files:** `src/components/WorkQueue.tsx`, `src/components/WorkQueueStatus.tsx`, `src/lib/workQueue/schedule.ts`, `src/components/ChapterEditor.tsx`, `tests/e2e/work-queue.e2e.mjs`. A Generate is a writing step for the schedule (D18, D19), so with turns on it can wait for pictures; the writing page then shows "Waiting for pictures to finish (2 left)" with Stop.
 
 1. **Queue item** `{kind: "generate", key: draftKey, href: resumeHref, label: draftLabel, request: PromptParts, model, context: StoryContext, after: {choiceText: boolean, suggestChoices: boolean}, text: string, state}`, in memory like the runs. `generate(item)`, `stopGenerate(key)`, `listenDraft(key, {onText, onDone, onError}) → unsubscribe` (a listener that joins late first gets the text so far). It goes before waiting runs (D16).
 2. **Doing it:** `streamChat` as `runAi` does now; then, as `runAi` does, the choice text (`fillChoiceText`'s request, cheap model) when `after.choiceText`, and the suggested choices (`choicesRequest`) when `after.suggestChoices`. Move the request builders the queue needs out of the component if they are tied to its state (pass `ready` context and the draft in).
@@ -331,13 +371,14 @@ Today **Generate chapter** on the writing page (`runAi("generate")` in `src/comp
 5. **Header:** the item shows as "Writing “<draft label>”…" with Stop, then "Ready" with **Open** (the draft's `href`) and Dismiss; a failed one with its error.
 6. **e2e** (slow fake AI): Generate, go to the story list mid-stream, the header shows it working; come back: the draft has the whole chapter, the previous text as the earlier version, and the choice text filled; Generate, stay on the page: works as today (the `chapters` and `drafts` browser files must still pass); a Generate waits for no run: with a run going, it goes next.
 
-**Check:** `npx tsc --noEmit`, `npx next build`, `npm test`, `node tests/run.mjs e2e chapters drafts writing-queue write-ahead`, screenshots of the writing page while generating and of the header list, desktop and phone. Then **ship milestone 5.**
+**Check:** `npx tsc --noEmit`, `npx next build`, `npm test`, `node tests/run.mjs e2e chapters drafts work-queue write-ahead`, screenshots of the writing page while generating and of the header list, desktop and phone. Then **ship milestone 5.**
 
 ---
 
 ## Later (ask the owner first)
 
-- Revise and passage rewrites through the writing queue too.
+- Revise and passage rewrites through the work queue too.
+- Other AI work through the queue (writing picture prompts on the Illustrate page, Find tags, codex scans), so it takes turns too. Until then those requests don't wait for pictures.
 
 - Codex: run the codex scan (`src/lib/ai/codexAi.ts`) on each written chapter and keep its proposals for review.
 - An in-app "delete the chapters this run wrote" (the app has no delete, on purpose; today it is `scripts/admin.mjs delete chapter <id> --yes`).

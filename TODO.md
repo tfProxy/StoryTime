@@ -4,7 +4,7 @@ Planned work, with what you need to know to start. Finished work isn't listed; t
 
 ## AI runs: write ahead and fill missing pictures (agreed with the owner, 2026-10-24)
 
-The AI writes many chapters (fill open choices, grow the tree to a depth and width, reach a goal in N chapters) or makes the missing header and footer pictures of a branch or story. Four milestones, each shipped to main on its own, with the decisions, are in `docs/write-ahead-plan.md`. Not started.
+The AI writes many chapters (fill open choices, grow the tree to a depth and width, reach a goal in N chapters) or makes the missing header and footer pictures of a branch or story, through one work queue for pictures and writing that takes turns on a shared machine. The milestones (0 to 5, each shipped to main on its own) and the decisions are in `docs/write-ahead-plan.md`. Not started.
 
 ## Not yet checked against a real ComfyUI
 
