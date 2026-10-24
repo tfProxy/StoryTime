@@ -6,20 +6,20 @@
 // in the tab's title ("StoryTime (2)").
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSettings } from "@/lib/settings";
 import { imageUrl } from "@/lib/comfy/client";
 import { chapterTarget, codexTarget, coverTarget, targetHref, targetKey, type PictureTarget } from "@/lib/pictureTarget";
 import { progressText } from "./pictures";
-import { usePictureQueue, type QueueJob } from "./WorkQueue";
+import { usePictureQueue, useWorkQueue, type QueueJob } from "./WorkQueue";
 
-type Labels = Record<string, { title: string; story_title: string }>;
+export type Labels = Record<string, { title: string; story_title: string }>;
 
-const MOMENTS = { start: "Chapter start", end: "Chapter end" } as const;
-const pictures = (n: number) => `${n} ${n === 1 ? "picture" : "pictures"}`;
+export const MOMENTS = { start: "Chapter start", end: "Chapter end" } as const;
+export const pictures = (n: number) => `${n} ${n === 1 ? "picture" : "pictures"}`;
 
 /** The titles of the chapters (and the stories, for covers) the jobs are for, by `targetKey`, fetched as new ones turn up. */
-function useLabels(targets: PictureTarget[]): Labels {
+export function useLabels(targets: PictureTarget[]): Labels {
   const [labels, setLabels] = useState<Labels>({});
   const asked = useRef(new Set<string>());
   const key = [...new Set(targets.map(targetKey))].sort().join(" ");
@@ -69,6 +69,7 @@ function useTitleCount(count: number) {
 
 export default function WorkQueueStatus() {
   const { jobs, stop, dismiss } = usePictureQueue();
+  const { paused } = useWorkQueue();
   const comfyUrl = useSettings().comfy.url;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -102,9 +103,10 @@ export default function WorkQueueStatus() {
   }, [open]);
 
   // Every hook is above this.
-  if (jobs.length === 0) return null;
+  if (jobs.length === 0 && !paused) return null;
 
   const said = [
+    paused && "paused",
     making.length > 0 && `${making.length} being made`,
     done.length > 0 && `${done.length} ready`,
     failed.length > 0 && `${failed.length} failed`,
@@ -114,6 +116,7 @@ export default function WorkQueueStatus() {
   return (
     <div className="picture-queue" ref={ref}>
       <button type="button" className="picture-queue-button" aria-label={label} title={label} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        {paused && <span className="picture-queue-part">Paused</span>}
         {making.length > 0 && (
           <span className="picture-queue-part">
             <span className="picture-queue-spinner" aria-hidden="true" />
@@ -140,13 +143,19 @@ export default function WorkQueueStatus() {
               Clear finished
             </button>
           )}
+          <Link href="/queue" className="picture-queue-open">
+            Open queue
+          </Link>
         </div>
       )}
     </div>
   );
 }
 
-function JobRow({ job, label, comfyUrl, onStop, onDismiss }: { job: QueueJob; label?: { title: string; story_title: string }; comfyUrl: string; onStop: () => void; onDismiss: () => void }) {
+/** One job of the header list and the queue page. `note` replaces the progress line of a job being made; `extra` is shown at the end. */
+export function JobRow({
+  job, label, comfyUrl, onStop, onDismiss, note, extra,
+}: { job: QueueJob; label?: { title: string; story_title: string }; comfyUrl: string; onStop: () => void; onDismiss: () => void; note?: string; extra?: ReactNode }) {
   const href = targetHref(job);
   const title = job.kind === "cover" ? "Cover" : (label?.title ?? (job.kind === "codex" ? "A codex entry" : "A chapter"));
   return (
@@ -162,7 +171,7 @@ function JobRow({ job, label, comfyUrl, onStop, onDismiss }: { job: QueueJob; la
         <>
           <div className="picture-queue-line">
             <span className="meta">
-              {pictures(job.count)} · {progressText(job.progress)}
+              {pictures(job.count)} · {note ?? progressText(job.progress)}
             </span>
             <button type="button" className="picture-queue-text-button" onClick={onStop}>
               Stop
@@ -202,6 +211,7 @@ function JobRow({ job, label, comfyUrl, onStop, onDismiss }: { job: QueueJob; la
           </div>
         </>
       )}
+      {extra}
     </li>
   );
 }

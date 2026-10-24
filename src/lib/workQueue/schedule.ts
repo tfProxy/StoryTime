@@ -2,13 +2,25 @@
 // The provider (`src/components/WorkQueue.tsx`) builds the state, calls `nextActions` and does what it returns.
 
 /** A picture job that has finished gathering clicks and can be sent to ComfyUI. */
-export type ReadyPicture = { key: string; targetKey: string; drawPreset: string | null; readyAt: number };
+export type ReadyPicture = {
+  key: string;
+  targetKey: string;
+  drawPreset: string | null;
+  readyAt: number;
+  /** The owner moved the waiting jobs by hand (Move up/down, Do next): such jobs keep the order they were given, which beats grouping. */
+  moved?: boolean;
+};
 
 export type ScheduleState = {
-  /** Jobs ready to send, in the order they became ready. */
+  /** Jobs ready to send. Moved jobs are in the order the owner gave; the others are ordered by `nextActions`. */
   ready: ReadyPicture[];
   /** Keys of jobs sent to ComfyUI and not finished yet. */
   inFlight: string[];
+  /** Pause queue: nothing new is sent (what is running finishes). */
+  paused?: boolean;
+  /** The drawing preset of the last job sent, and whether to group by it (Settings › Queue). */
+  lastPreset?: string | null;
+  group?: boolean;
 };
 
 export type Action = { kind: "sendPicture"; key: string };
@@ -43,10 +55,42 @@ export function orderHeldPictures(held: ReadyPicture[], lastPreset: string | nul
   return out;
 }
 
-/** What the queue should do now. Today's rule: send every ready picture job at once, in the order it became ready. */
+/**
+ * The order the ready jobs will go in, which the queue page shows as Waiting: jobs the owner moved by hand first,
+ * in the order given, then the rest as `orderHeldPictures` puts them. A job never ends up before an earlier job
+ * of its own target.
+ */
+export function waitingOrder(ready: ReadyPicture[], lastPreset: string | null = null, group = false): ReadyPicture[] {
+  const moved = ready.filter((r) => r.moved);
+  return [...moved, ...orderHeldPictures(ready.filter((r) => !r.moved), lastPreset, group)];
+}
+
+/**
+ * What the queue should do now: while paused, nothing; otherwise send every ready picture job at once, in the
+ * order of `waitingOrder` (so, with nothing moved or grouped, the order they became ready).
+ */
 export function nextActions(state: ScheduleState): Action[] {
-  return state.ready
-    .map((job, i) => ({ job, i }))
-    .sort((a, b) => a.job.readyAt - b.job.readyAt || a.i - b.i)
-    .map(({ job }) => ({ kind: "sendPicture", key: job.key }));
+  if (state.paused) return [];
+  return waitingOrder(state.ready, state.lastPreset ?? null, state.group ?? false).map((job) => ({ kind: "sendPicture", key: job.key }));
+}
+
+/**
+ * The waiting jobs (as `waitingOrder` gives them) after the owner moves one, every job marked as moved so the
+ * order is theirs from then on. "up"/"down" swap with the neighbour, unless that is a job of the same target
+ * (a target's own jobs keep their order); "next" takes the job, with the earlier jobs of its own target, to the
+ * front. Returns the same order when the move isn't possible. Pure: returns a new array.
+ */
+export function moveWaiting(order: ReadyPicture[], key: string, how: "up" | "down" | "next"): ReadyPicture[] {
+  const at = order.findIndex((r) => r.key === key);
+  const list = order.map((r) => ({ ...r }));
+  if (at < 0) return list;
+  const result = (l: ReadyPicture[]) => l.map((r) => ({ ...r, moved: true }));
+  if (how === "next") {
+    const front = list.filter((r, i) => i === at || (i < at && r.targetKey === list[at].targetKey));
+    return result([...front, ...list.filter((r) => !front.includes(r))]);
+  }
+  const to = how === "up" ? at - 1 : at + 1;
+  if (to < 0 || to >= list.length || list[to].targetKey === list[at].targetKey) return list;
+  [list[at], list[to]] = [list[to], list[at]];
+  return result(list);
 }

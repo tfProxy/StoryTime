@@ -43,6 +43,7 @@ export default function SiteMenu() {
         <div id="page-menu-codex-slot" className="menu-group" />
         <div className="menu-group">
           <Link href="/drafts">Drafts</Link>
+          <Link href="/queue">Queue</Link>
           <Link href="/settings">Settings</Link>
         </div>
       </div>

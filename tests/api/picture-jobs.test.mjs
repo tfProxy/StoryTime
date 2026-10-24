@@ -328,3 +328,26 @@ ok(r.json.jobs.length > 0 && r.json.jobs.every((j) => j.chapter_id === two), "no
   ok(paged.join() === [...visible, plain.id].join(), "paging with limit=2 skips the temporary jobs and still reaches every other one once");
   ok((await walk("&temporary=1")).length === paged.length + 1 + mix.filter((j) => j.temporary).length,"…and with temporary=1 reaches the temporary ones too");
 }
+
+// ---- the log across every story (the queue page's History) ----
+{
+  const s3 = (await call("POST", "/api/stories", { title: "History story", chapter: { title: "Only", body: "x", choices: [] } })).json;
+  const hj = (n, extra = {}) => ({ ...job(s3.chapter_id, 500 + n, extra), images: [{ filename: `H_${n}.png`, subfolder: "", type: "output" }], count: 1 });
+  const a = (await call("POST", "/api/picture-jobs", hj(1))).json;
+  const hidden = (await call("POST", "/api/picture-jobs", hj(2, { temporary: true }))).json;
+  const b = (await call("POST", "/api/picture-jobs", hj(3))).json;
+  const recent = await call("GET", "/api/picture-jobs?recent=1&limit=2");
+  ok(recent.status === 200 && recent.json.jobs.map((j) => j.id).join() === `${b.id},${a.id}`, "recent=1 lists the newest jobs of every story first, leaving out a temporary job");
+  ok(recent.json.jobs[0].story_id === s3.story_id && recent.json.jobs[0].images.length === 1 && typeof recent.json.jobs[0].created_at === "number", "…each with its story, pictures and time");
+  ok(recent.json.next !== null, "…and a cursor for the next page");
+  const seen = [];
+  let before = "";
+  for (let i = 0; i < 100; i++) {
+    const page = (await call("GET", `/api/picture-jobs?recent=1&limit=3${before}`)).json;
+    seen.push(...page.jobs.map((j) => j.id));
+    if (page.next === null) break;
+    before = `&before=${page.next}`;
+  }
+  ok(new Set(seen).size === seen.length && seen.includes(a.id) && seen.includes(b.id) && !seen.includes(hidden.id), "paging with before reaches every job once and never the temporary one");
+  ok((await call("GET", "/api/picture-jobs?recent=1&limit=0")).status === 400 && (await call("GET", "/api/picture-jobs?recent=1&before=x")).status === 400, "…and refuses a bad limit or before");
+}

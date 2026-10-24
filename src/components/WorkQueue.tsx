@@ -6,7 +6,7 @@
 // layout, which stays while pages change. The Illustrate page asks it for jobs and shows its own chapter's;
 // a chapter's finished jobs are handed to its page when it is open, and kept until it is opened otherwise.
 // After a refresh it finds StoryTime's jobs in ComfyUI's queue and history again (by their tags).
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useSettings } from "@/lib/settings";
 import { freeOllamaForPictures } from "@/lib/ai/ollama";
 import { cancelPrompt, listTaggedJobs, waitForPictures, type ComfyImage, type Progress, type TaggedJob } from "@/lib/comfy/client";
@@ -15,7 +15,7 @@ import { queueJob, sameJob, type JobInput, type UploadCache } from "@/lib/comfy/
 import { randomSeed } from "@/lib/comfy/workflow";
 import type { PictureJob } from "@/lib/pictureJobs";
 import { chapterIdOf, chapterTarget, codexTarget, coverTarget, targetKey, targetOfIds, type PictureTarget } from "@/lib/pictureTarget";
-import { nextActions, type ReadyPicture } from "@/lib/workQueue/schedule";
+import { moveWaiting, nextActions, waitingOrder, type ReadyPicture } from "@/lib/workQueue/schedule";
 import { picturesOf, type PendingJob, type Picture } from "./pictures";
 
 /** How long after the last click a job is sent, so quick clicks with the same settings make one job. */
@@ -90,6 +90,42 @@ export type QueueApi = {
 export type WorkQueueApi = Omit<QueueApi, "jobs"> & {
   /** Oldest first. */
   items: WorkItem[];
+  /** Keys of the jobs that finished gathering and wait to be sent, in the order they will go (what the queue page shows as Waiting). */
+  waiting: string[];
+  /** Pause queue: nothing new is sent, what is running finishes. Kept in this browser. */
+  paused: boolean;
+  setPaused: (paused: boolean) => void;
+  /** Moves a waiting job; ignored for a job that isn't waiting (it is gathering, or ComfyUI has it). */
+  move: (key: string, how: "up" | "down" | "next") => void;
+};
+
+// Pause queue is kept in this browser (localStorage, which may be unavailable), so a reload stays paused.
+const PAUSE_KEY = "storytime-queue-paused";
+let pausedNow: boolean | null = null;
+const pauseListeners = new Set<() => void>();
+const isPaused = () => {
+  if (pausedNow === null) {
+    try {
+      pausedNow = localStorage.getItem(PAUSE_KEY) === "1";
+    } catch {
+      pausedNow = false;
+    }
+  }
+  return pausedNow;
+};
+const writePaused = (paused: boolean) => {
+  pausedNow = paused;
+  try {
+    if (paused) localStorage.setItem(PAUSE_KEY, "1");
+    else localStorage.removeItem(PAUSE_KEY);
+  } catch {
+    // paused until the tab closes
+  }
+  pauseListeners.forEach((l) => l());
+};
+const watchPaused = (cb: () => void) => {
+  pauseListeners.add(cb);
+  return () => void pauseListeners.delete(cb);
 };
 
 const QueueContext = createContext<WorkQueueApi | null>(null);
@@ -226,6 +262,19 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
   const gathering = useRef<Gathering | null>(null);
   // Jobs that finished gathering and wait for `nextActions` to send them, in the order they became ready.
   const ready = useRef<(ReadyPicture & { g: Gathering })[]>([]);
+  // The drawing preset of the last job sent, and the grouping setting, for the order the ready jobs go in.
+  const lastPreset = useRef<string | null>(null);
+  const groupRef = useRef(settings.queue.groupPictures);
+  useEffect(() => {
+    groupRef.current = settings.queue.groupPictures;
+  }, [settings.queue.groupPictures]);
+  // The ready jobs' keys in the order they will go, for the queue page.
+  const [waiting, setWaiting] = useState<string[]>([]);
+  const syncWaiting = useCallback(() => {
+    const order = waitingOrder(ready.current, lastPreset.current, groupRef.current).map((r) => r.key);
+    setWaiting((prev) => (prev.length === order.length && prev.every((k, i) => k === order[i]) ? prev : order));
+  }, []);
+  const paused = useSyncExternalStore(watchPaused, isPaused, () => false);
   // Keys of jobs sent to ComfyUI and not ended yet.
   const inFlight = useRef(new Set<string>());
   const uploads = useRef<UploadCache["current"]>(null);
@@ -343,17 +392,42 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
   /** Asks `nextActions` what to do with the ready jobs and does it: a job to send leaves `ready` and counts as in flight. */
   const pump = useCallback(() => {
     const actions = nextActions({
-      ready: ready.current.map(({ key, targetKey, drawPreset, readyAt }) => ({ key, targetKey, drawPreset, readyAt })),
+      ready: ready.current.map(({ key, targetKey, drawPreset, readyAt, moved }) => ({ key, targetKey, drawPreset, readyAt, moved })),
       inFlight: [...inFlight.current],
+      paused: isPaused(),
+      lastPreset: lastPreset.current,
+      group: groupRef.current,
     });
     for (const action of actions) {
       const at = ready.current.findIndex((r) => r.key === action.key);
       if (at < 0) continue;
-      const [{ g }] = ready.current.splice(at, 1);
+      const [{ g, drawPreset }] = ready.current.splice(at, 1);
       inFlight.current.add(g.key);
+      lastPreset.current = drawPreset;
       void send(g);
     }
-  }, [send]);
+    syncWaiting();
+  }, [send, syncWaiting]);
+
+  const setPaused = useCallback(
+    (value: boolean) => {
+      writePaused(value);
+      if (!value) pump();
+    },
+    [pump],
+  );
+
+  const move = useCallback(
+    (key: string, how: "up" | "down" | "next") => {
+      const order = waitingOrder(ready.current, lastPreset.current, groupRef.current);
+      const moved = moveWaiting(order, key, how);
+      if (moved.every((r, i) => r.key === order[i].key)) return;
+      const byKey = new Map(ready.current.map((r) => [r.key, r]));
+      ready.current = moved.map((r) => ({ ...byKey.get(r.key)!, moved: true }));
+      syncWaiting();
+    },
+    [syncWaiting],
+  );
 
   /** A gathered job is closed (its timer ran out, or a different click came): no more clicks join it, and it waits to be sent. */
   const markReady = useCallback(
@@ -403,10 +477,11 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
         gathering.current = null;
         return ended(key, { stopped: true });
       }
-      const waiting = ready.current.findIndex((r) => r.key === key);
-      if (waiting >= 0) {
+      const held = ready.current.findIndex((r) => r.key === key);
+      if (held >= 0) {
         // Ready but not sent yet: drop it the same way.
-        ready.current.splice(waiting, 1);
+        ready.current.splice(held, 1);
+        syncWaiting();
         return ended(key, { stopped: true });
       }
       const c = controls.current.get(key);
@@ -414,7 +489,7 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
       if (c.promptId) void cancelPrompt(c.url, c.promptId);
       c.ctl.abort();
     },
-    [ended],
+    [ended, syncWaiting],
   );
 
   const dismiss = useCallback(
@@ -602,7 +677,10 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
     return () => document.removeEventListener("visibilitychange", again);
   }, [comfyUrl, scan, loadUnseen]);
 
-  const api = useMemo(() => ({ items, ask, stop, dismiss, listen, listenSession }), [items, ask, stop, dismiss, listen, listenSession]);
+  const api = useMemo(
+    () => ({ items, ask, stop, dismiss, listen, listenSession, waiting, paused, setPaused, move }),
+    [items, ask, stop, dismiss, listen, listenSession, waiting, paused, setPaused, move],
+  );
   return <QueueContext.Provider value={api}>{children}</QueueContext.Provider>;
 }
 

@@ -198,6 +198,28 @@ a {
   text-align: left;
 }
 
+.picture-queue-open {
+  display: block;
+  padding: 0.55rem 0.8rem;
+  border-top: 1px solid var(--line);
+}
+
+/* The queue page's lists use the header list's rows, in a card of their own. */
+.queue-page-list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.picture-queue-text-button:disabled {
+  color: var(--muted, inherit);
+  opacity: 0.5;
+  cursor: default;
+}
+
 .site-menu > summary {
   cursor: pointer;
   list-style: none;

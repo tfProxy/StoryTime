@@ -224,6 +224,15 @@ export function unseenPictureJobs(): PictureJob[] {
   return toJobs(rows);
 }
 
+/** A page of the log across every story, newest first, for the queue page's History: never a temporary job unless one of its pictures is pinned. `next` pages on like `listPictureJobs`. */
+export function recentPictureJobs(page: { before?: number; limit: number }): { jobs: PictureJob[]; next: number | null } {
+  const rows = db()
+    .prepare(`SELECT ${COLUMNS} FROM picture_jobs WHERE NOT (${HIDDEN_TEMPORARY}) AND rowid < ? ORDER BY rowid DESC LIMIT ?`)
+    .all(page.before ?? Number.MAX_SAFE_INTEGER, page.limit + 1) as Row[];
+  const shown = rows.slice(0, page.limit);
+  return { jobs: toJobs(shown), next: rows.length > page.limit ? shown[shown.length - 1].seq : null };
+}
+
 export const SeenJobsSchema = z.object({ ids: z.array(z.string().min(1).max(100)).max(1000) });
 
 /** Marks these jobs' pictures as seen (those already seen keep their time). */

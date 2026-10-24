@@ -158,6 +158,8 @@ The picture queue becomes the app's one work queue (D14), still holding only pic
 
 ### Task 0.3: the queue page (after 0.2)
 
+(Done in task 0.3, for pictures only: the page, Pause/Resume, moving, History and its API. Writing items, runs and “which kind has the machine” join in task 1.4.)
+
 **Files:** `src/app/queue/page.tsx` (new), `src/components/QueuePage.tsx` (new), `src/components/WorkQueue.tsx`, `src/components/WorkQueueStatus.tsx`, `src/lib/workQueue/schedule.ts`, `src/components/SiteMenu.tsx`, `src/app/api/picture-jobs/route.ts` (History), `tests/e2e/queue-page.e2e.mjs` (new), `docs/illustrate.md`.
 
 `/queue` (D24), titled "Queue", linked as **Open queue** at the bottom of the header list and from the site menu. Built from the queue's own state, so it shows what this tab is doing; task 1.4 adds the writing items and runs from other tabs.

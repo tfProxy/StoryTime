@@ -1,4 +1,4 @@
-import { nextActions, orderHeldPictures, type ReadyPicture } from "../../src/lib/workQueue/schedule.ts";
+import { moveWaiting, nextActions, orderHeldPictures, waitingOrder, type ReadyPicture } from "../../src/lib/workQueue/schedule.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 
@@ -54,3 +54,34 @@ ok(DEFAULT_QUEUE.sharing === "turns" && DEFAULT_QUEUE.switchMinutes === 10 && DE
 ok(same(parseSettings({ queue: { sharing: "together", switchMinutes: 30, switchItems: 5, groupPictures: false } }).queue, { sharing: "together", switchMinutes: 30, switchItems: 5, groupPictures: false }), "saved queue settings are kept");
 ok(same(parseSettings({ queue: { sharing: "x", switchMinutes: 500, switchItems: -1, groupPictures: "no" } }).queue, DEFAULT_QUEUE), "broken queue values fall back to the defaults");
 ok(parseSettings({ queue: { switchMinutes: 5 } }).queue.sharing === "turns", "a partly saved queue fills the rest");
+
+// Pause: nothing new is sent.
+ok(nextActions({ ready, inFlight: [], paused: true }).length === 0, "while paused nothing is sent");
+ok(nextActions({ ready, inFlight: [], paused: false }).length === 3, "not paused sends as usual");
+
+// nextActions follows the grouping and the moves.
+ok(nextActions({ ready: held, inFlight: [], lastPreset: "fast", group: true }).map((a) => a.key).join() === "b1,d1,a1,c1,b2", "sending follows the grouping when it is on");
+ok(nextActions({ ready: held, inFlight: [], lastPreset: "fast", group: false }).map((a) => a.key).join() === "a1,b1,c1,b2,d1", "…and the ready order when it is off");
+
+// Moving by hand.
+const order = waitingOrder(held, null, false);
+const up = moveWaiting(order, "c1", "up");
+ok(keys(up) === "a1,c1,b1,b2,d1", "Move up swaps with the job before it");
+ok(up.every((j) => j.moved), "…and every waiting job is marked as moved");
+ok(keys(moveWaiting(up, "b2", "up")) === "a1,c1,b1,b2,d1", "Move up can't pass an earlier job of the same target");
+ok(keys(moveWaiting(up, "b1", "down")) === "a1,c1,b1,b2,d1", "…nor Move down past a later job of the same target");
+ok(keys(moveWaiting(order, "a1", "up")) === "a1,b1,c1,b2,d1", "the first job can't move up");
+ok(keys(moveWaiting(order, "b1", "down")) === "a1,c1,b1,b2,d1", "Move down swaps with the job after it");
+ok(keys(moveWaiting(order, "b1", "down").filter(() => true)) === keys(moveWaiting(order, "c1", "up")), "…the same as moving its neighbour up");
+ok(keys(moveWaiting(order, "d1", "down")) === "a1,b1,c1,b2,d1", "the last job can't move down");
+ok(keys(moveWaiting(order, "d1", "next")) === "d1,a1,b1,c1,b2", "Do next puts the job first");
+ok(keys(moveWaiting(order, "b2", "next")) === "b1,b2,a1,c1,d1", "Do next brings the target's earlier jobs along, in order");
+ok(keys(moveWaiting(order, "nope", "next")) === keys(order), "an unknown job changes nothing");
+const before2 = JSON.stringify(order);
+moveWaiting(order, "d1", "next");
+ok(JSON.stringify(order) === before2, "moving does not change its input");
+
+// Moved jobs beat grouping and keep their order; new jobs come after them, grouped.
+const manual = moveWaiting(order, "d1", "next");
+const withNew = [...manual, job("e1", "chapter:e", "slow", 6), job("f1", "chapter:f", "fast", 7)];
+ok(keys(waitingOrder(withNew, "fast", true)) === "d1,a1,b1,c1,b2,f1,e1", "moved jobs keep their order before the rest, which are grouped");
