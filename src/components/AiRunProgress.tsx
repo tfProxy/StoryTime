@@ -185,7 +185,7 @@ export default function AiRunProgress({ runId, chapterId, backHref, backLabel }:
             ) : (
               <span>Marked {marked} reviewed.</span>
             )}{" "}
-            · <Link href={`/s/${run.story_id}/outline`}>Open in outline</Link>
+            · <Link href={`/s/${run.story_id}/outline`}>Open in outline</Link> · <Link href={`/s/${run.story_id}/pictures?run=${runId}`}>Make pictures for these chapters</Link>
           </p>
           <p className="meta">The codex isn&apos;t updated by a run. Add what changed from the codex panel on each chapter.</p>
         </div>

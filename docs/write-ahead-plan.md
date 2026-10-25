@@ -388,6 +388,8 @@ Read `docs/illustrate.md` before starting (`CLAUDE.md` requires it) and add a bu
 - `planPictures(chapters, opts)`: chapters (with their saved header and footer versions, from `chapterImageVersions`) in outline order (parents first), one `PictureTask` per missing slot chosen (D11).
 - The form: Scope (whole story / from a chapter / a run's chapters), Slots (Header, Footer, Both; default Header), **Use reference pictures** (off; D12) with a line saying the preset must support them, Model for prompts (`ModelPicker`, cheap). The estimate: "Makes 14 pictures, one at a time, with 14 prompt requests." Start creates a run with `mode: "pictures"`, `start_chapter_id` null for the whole story. Progress uses `AiRunProgress`, showing a thumbnail per finished task linked to the chapter's Illustrate page.
 
+(Done in task 4.1. The page also offers `?run=<id>` (a write-ahead run's chapters) and links to it from a finished run; `PictureTask` gained `label`; a picture run is shown at `?picrun=<id>`.)
+
 ### Task 4.2: the picture runner
 
 **Files:** `src/lib/aiRuns/pictures.ts` (new), `src/lib/aiRuns/runner.ts`, possibly `src/components/PictureQueue.tsx`, tests.
@@ -403,6 +405,8 @@ For each `PictureTask`:
 **Tests:** unit tests for `planPictures` and the job input builder; e2e `tests/e2e/missing-pictures.e2e.mjs` with the fake ComfyUI (`tests/e2e/fakeComfy.mjs`) and fake AI: a story of three chapters, one with a header, fills the other two headers; Both fills footers too; the references box off sends no IP-Adapter nodes; Stop and Resume. Run the `illustrate-*` and `picture-queue*` browser files too if `ComfyGenerate` or `PictureQueue` changed.
 
 **Check:** as task 1.5 plus those files, then **ship milestone 4.**
+
+(Done in task 4.2. Choices made: the runner writes prompts only (ahead by 2) and the work queue drives the drawing through a `pictures:<run id>` session, so turns sharing can't deadlock; results are saved by the provider and written into the run between steps; a failed job is retried once, then fails the run.)
 
 ---
 
