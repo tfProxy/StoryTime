@@ -16,7 +16,10 @@ import { randomSeed } from "@/lib/comfy/workflow";
 import type { PictureJob } from "@/lib/pictureJobs";
 import { chapterIdOf, chapterTarget, codexTarget, coverTarget, targetKey, targetOfIds, type PictureTarget } from "@/lib/pictureTarget";
 import { moveWaiting, schedule, waitingOrder, type Holder, type ReadyPicture } from "@/lib/workQueue/schedule";
-import { ApiError, getRun } from "@/lib/aiRuns/api";
+import { ApiError, getRun, patchRun as patchRunApi } from "@/lib/aiRuns/api";
+import { buildPictureJob, loadModels, loadSetup, savePicture } from "@/lib/aiRuns/pictures";
+import { denoiseOf, madeWithText, refsOf } from "@/lib/comfy/makeJob";
+import { storedOf } from "@/lib/comfy/references";
 import { claim, finish as finishRun, runNextStep, type RunEvent } from "@/lib/aiRuns/runner";
 import type { AiRun, RunMode } from "@/lib/aiRuns/types";
 import { withPathSummaries } from "@/lib/aiRuns/writeChapter";
@@ -68,6 +71,8 @@ export type ChapterListener = {
 export type SessionListener = {
   onPictures: (pictures: Picture[], info: { base: string }) => void;
   onStatus: (status: { ok: boolean; text: string }) => void;
+  /** A job of the session failed (`base` is the one it was asked with); Make missing pictures retries it once. */
+  onFailed?: (base: string, message: string) => void;
 };
 
 /** What a page asks for: one more picture for its target, made with `input`; `view` is how its place looks meanwhile. */
@@ -432,6 +437,7 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
           if (sl) {
             if (pictures) sl.onPictures(pictures, { base: job.base ?? "" });
             if (message) sl.onStatus({ ok: false, text: message });
+            if ("error" in result) sl.onFailed?.(job.base ?? "", result.error);
           } else {
             // The screen isn't open (yet): its pictures wait here for it, briefly (the job log has them as temporary).
             const list = parked.current.get(job.session) ?? [];
@@ -465,18 +471,19 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
 
   /** Records a finished job: as not seen yet when its page isn't open. */
   const record = useCallback(
-    (target: PictureTarget, promptId: string, job: JobRecord, images: ComfyImage[]) =>
-      // A temporary job is never new: it isn't offered in the header's queue.
-      recordPictures(target, promptId, job, images, !job.temporary && !listeners.current.has(targetKey(target))),
+    (target: PictureTarget, promptId: string, job: JobRecord, images: ComfyImage[], session?: string) =>
+      // A temporary job is never new: it isn't offered in the header's queue. Nor is a session's job (Make missing pictures
+      // saves its picture itself).
+      recordPictures(target, promptId, job, images, !job.temporary && !session && !listeners.current.has(targetKey(target))),
     [],
   );
 
   /** Waits for a job ComfyUI has queued, records it and hands on its pictures. */
   const finish = useCallback(
-    async (key: string, job: { target: PictureTarget; url: string; promptId: string; clientId: string; record: JobRecord; signal: AbortSignal }) => {
+    async (key: string, job: { target: PictureTarget; url: string; promptId: string; clientId: string; record: JobRecord; signal: AbortSignal; session?: string }) => {
       const images = await waitForPictures(job.url, job.promptId, job.clientId, (progress: Progress) => patch(key, { progress }), job.signal);
       if (images.length === 0) throw new Error("ComfyUI finished but sent back no pictures. Does the workflow end in a Save Image node?");
-      return record(job.target, job.promptId, job.record, images);
+      return record(job.target, job.promptId, job.record, images, job.session);
     },
     [patch, record],
   );
@@ -510,7 +517,7 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
           },
         });
         posted?.();
-        ended(g.key, await finish(g.key, { target: g.target, url: g.input.comfy.url, signal: control.ctl.signal, ...made }));
+        ended(g.key, await finish(g.key, { target: g.target, url: g.input.comfy.url, signal: control.ctl.signal, session: g.input.session, ...made }));
       } catch (e) {
         posted?.();
         failed(g.key, e);
@@ -611,14 +618,21 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
   }, [settings]);
   // What Stop needs for the run being worked on, and the run pages listening.
   const runControl = useRef(new Map<string, AbortController>());
+  // Each run as last saved here, and (defined further down) what drives the pictures of a Fill missing pictures run.
+  const latestRuns = useRef(new Map<string, AiRun>());
+  const pictureTickRef = useRef<(runId: string) => void>(() => {});
+  const flushPicturesRef = useRef<(runId: string) => Promise<void>>(async () => {});
+  const stopPicturesRef = useRef<(runId: string) => void>(() => {});
   const runListeners = useRef(new Map<string, Set<RunListener>>());
   const plainFetch = useCallback((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init), []);
 
   /** The run as last saved: the item's counts, and the run pages listening. */
   const applyRun = useCallback(
     (run: AiRun) => {
-      const writes = run.tasks.filter((t) => t.kind === "write");
-      patchRunItem(run.id, { done: writes.filter((t) => t.status === "done" || t.status === "written").length, total: writes.length });
+      latestRuns.current.set(run.id, run);
+      // A chapter run counts its chapters; a picture run its pictures.
+      const parts = run.tasks.filter((t) => t.kind === (run.mode === "pictures" ? "picture" : "write"));
+      patchRunItem(run.id, { done: parts.filter((t) => t.status === "done" || (t.kind === "write" && t.status === "written")).length, total: parts.length });
       runListeners.current.get(run.id)?.forEach((l) => l.onRun(run));
     },
     [patchRunItem],
@@ -645,6 +659,8 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
       patchRunItem(runId, { state: "waiting", error: undefined, note: undefined });
       if (!writingQueue.current.includes(runId)) writingQueue.current.push(runId);
       pumpRef.current();
+      // A picture run that has prompts written already (after a reload) has them drawn.
+      pictureTickRef.current(runId);
     },
     [applyRun, patchRunItem, plainFetch],
   );
@@ -694,9 +710,12 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
           signal: ctl.signal,
           onEvent: (e) => onRunEvent(runId, e),
           deps: { fetch: plainFetch },
+          // Fill missing pictures: how many prompts may be written ahead of the drawing. With turns that is a whole batch.
+          promptsAhead: queueSettings.current.sharing === "turns" ? Math.max(2, queueSettings.current.switchItems || 4) : 2,
         });
         applyRun(out.run);
-        if (out.more) {
+        if (out.idle) patchRunItem(runId, { state: "working", current: "Drawing pictures" });
+        else if (out.more) {
           patchRunItem(runId, { state: "waiting" });
           writingQueue.current.push(runId);
         } else if (out.run.status === "done") patchRunItem(runId, { state: "done", current: undefined });
@@ -710,6 +729,8 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
         writingActive.current = null;
         runControl.current.delete(runId);
         pumpRef.current();
+        // Pictures finished during the step are put on the run now, and written prompts are asked for.
+        void flushPicturesRef.current(runId).then(() => pictureTickRef.current(runId));
       }
     },
     [applyRun, onRunEvent, patchRunItem, plainFetch],
@@ -717,7 +738,17 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
 
   const stopRun = useCallback(
     (runId: string) => {
+      stopPicturesRef.current(runId);
       if (writingActive.current === runId) return runControl.current.get(runId)?.abort();
+      if (runItemsRef.current.find((r) => r.runId === runId)?.state === "working" && !writingQueue.current.includes(runId)) {
+        // Waiting for pictures (Fill missing pictures): the jobs are stopped; the run is paused.
+        patchRunItem(runId, { state: "paused", current: undefined });
+        void claim(runId, TAB_TOKEN, { fetch: plainFetch })
+          .then((run) => finishRun(run, "paused", TAB_TOKEN, { fetch: plainFetch }))
+          .then(applyRun)
+          .catch(() => {});
+        return;
+      }
       if (!writingQueue.current.includes(runId)) return;
       writingQueue.current = writingQueue.current.filter((id) => id !== runId);
       patchRunItem(runId, { state: "paused" });
@@ -1135,7 +1166,7 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
           ...(found.tag.session && { session: found.tag.session, base: found.tag.base ?? "" }),
         },
       ]);
-      finish(key, { target, url, promptId: found.promptId, clientId, record: job, signal: ctl.signal }).then(
+      finish(key, { target, url, promptId: found.promptId, clientId, record: job, signal: ctl.signal, session: found.tag.session }).then(
         (result) => ended(key, result),
         (e) => failed(key, e),
       );
@@ -1243,6 +1274,166 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
     document.addEventListener("visibilitychange", again);
     return () => document.removeEventListener("visibilitychange", again);
   }, [comfyUrl, scan, loadUnseen, loadRuns]);
+
+  // ---- Fill missing pictures: the run writes prompts (writing steps); the drawing goes through the picture queue ----
+  // What each picture run has asked for, retried once, and finished but not yet put on the run.
+  const pictureRuns = useRef(
+    new Map<string, { asked: Set<string>; retried: Set<string>; results: { taskId: string; jobId?: string; error?: string }[]; listening: boolean; flushing: boolean }>(),
+  );
+  const pictureState = (runId: string) => {
+    let s = pictureRuns.current.get(runId);
+    if (!s) pictureRuns.current.set(runId, (s = { asked: new Set(), retried: new Set(), results: [], listening: false, flushing: false }));
+    return s;
+  };
+
+  /** Puts the pictures finished since the last step on the run (done, or failed after a retry), and ends the run when none are left. Waits while the run is in a step of its own, which saves it. */
+  const flushPictures = useCallback(
+    async (runId: string) => {
+      const s = pictureState(runId);
+      if (s.results.length === 0 || s.flushing || writingActive.current === runId) return;
+      s.flushing = true;
+      const batch = s.results.splice(0);
+      try {
+        const run = await claim(runId, TAB_TOKEN, { fetch: plainFetch });
+        const tasks = run.tasks.map((t) => {
+          const r = t.kind === "picture" ? batch.find((x) => x.taskId === t.id) : undefined;
+          return r ? ({ ...t, status: r.error ? "failed" : "done", ...(r.jobId && { jobId: r.jobId }), error: r.error } as typeof t) : t;
+        });
+        const failed = batch.find((b) => b.error);
+        const settled = !tasks.some((t) => t.status === "todo" || t.status === "written");
+        const saved = await patchRunApi(plainFetch, runId, {
+          token: TAB_TOKEN,
+          version: run.version,
+          tasks,
+          status: failed ? "paused" : settled ? "done" : "running",
+          error: failed?.error ?? null,
+        });
+        applyRun(saved);
+        if (failed) {
+          stopPicturesRef.current(runId);
+          writingQueue.current = writingQueue.current.filter((id) => id !== runId);
+          patchRunItem(runId, { state: "failed", error: failed.error, current: undefined });
+        } else if (settled) patchRunItem(runId, { state: "done", current: undefined });
+      } catch (e) {
+        patchRunItem(runId, { state: "failed", error: e instanceof Error ? e.message : String(e) });
+      } finally {
+        s.flushing = false;
+      }
+    },
+    [applyRun, patchRunItem, plainFetch],
+  );
+
+  /** One picture's drawing job failed: it is tried once more, then the run stops with the error. */
+  const pictureFailed = useCallback((runId: string, taskId: string, message: string) => {
+    const s = pictureState(runId);
+    s.asked.delete(taskId);
+    if (!s.retried.has(taskId)) {
+      s.retried.add(taskId);
+      return pictureTickRef.current(runId);
+    }
+    s.results.push({ taskId, error: message });
+    void flushPicturesRef.current(runId);
+  }, []);
+
+  /** A picture is drawn: it is saved as the chapter's header or footer (which also pins it), then put on the run. */
+  const pictureMade = useCallback(
+    async (runId: string, taskId: string, pictures: Picture[]) => {
+      const run = latestRuns.current.get(runId);
+      const task = run?.tasks.find((t) => t.id === taskId);
+      const first = pictures[0];
+      if (!run || !task || task.kind !== "picture" || !first) return;
+      try {
+        await savePicture(plainFetch, settingsRef.current.comfy.url, task, first.image, first.jobId, first.index);
+        pictureState(runId).results.push({ taskId, jobId: first.jobId ?? undefined });
+        await flushPicturesRef.current(runId);
+      } catch (e) {
+        pictureFailed(runId, taskId, e instanceof Error ? e.message : String(e));
+      }
+      pictureTickRef.current(runId);
+    },
+    [pictureFailed, plainFetch],
+  );
+
+  /** Asks the picture queue for the picture of a task whose prompt is written. */
+  const askPicture = useCallback(
+    async (run: AiRun, task: Extract<AiRun["tasks"][number], { kind: "picture" }>) => {
+      try {
+        const settingsNow = settingsRef.current;
+        const setup = await loadSetup(plainFetch, task.chapterId);
+        const models = await loadModels(settingsNow.comfy.url);
+        const built = buildPictureJob(settingsNow, setup, task, { prompt: task.prompt ?? "", negative: task.negative ?? "" }, models, run.options, `pictures:${run.id}`);
+        if ("problem" in built) throw new Error(built.problem);
+        const { input } = built.job;
+        ask({
+          ...chapterTarget(setup.story.id, task.chapterId),
+          input,
+          view: {
+            prompt: input.prompt,
+            negative: input.negative,
+            checkpoint: madeWithText(input),
+            width: input.comfy.width,
+            height: input.comfy.height,
+            denoise: denoiseOf(input),
+            source: null,
+            mask: null,
+            refs: storedOf(refsOf(input)),
+            instruction: null,
+            editModel: null,
+            moment: input.moment,
+          },
+        });
+      } catch (e) {
+        pictureFailed(run.id, task.id, e instanceof Error ? e.message : String(e));
+      }
+    },
+    [ask, pictureFailed, plainFetch],
+  );
+
+  /** Looks at a picture run: has the pictures of prompts that are written asked for, and puts the run back in line for more prompts when there is room. */
+  const pictureTick = useCallback(
+    (runId: string) => {
+      const run = latestRuns.current.get(runId);
+      if (!run || run.mode !== "pictures" || run.status === "done" || run.status === "stopped") return;
+      const item = runItemsRef.current.find((r) => r.runId === runId);
+      if (!item || item.state === "paused" || item.state === "failed" || item.state === "done" || item.state === "elsewhere") return;
+      const s = pictureState(runId);
+      if (!s.listening) {
+        s.listening = true;
+        listenSession(`pictures:${runId}`, {
+          onPictures: (pictures, { base }) => void pictureMade(runId, base, pictures),
+          onStatus: () => {},
+          onFailed: (base, message) => pictureFailed(runId, base, message),
+        });
+      }
+      for (const t of run.tasks) {
+        if (t.kind === "picture" && t.status === "written" && !s.asked.has(t.id)) {
+          s.asked.add(t.id);
+          void askPicture(run, t);
+        }
+      }
+      const todo = run.tasks.some((t) => t.status === "todo");
+      const written = run.tasks.filter((t) => t.status === "written").length;
+      const ahead = queueSettings.current.sharing === "turns" ? Math.max(2, queueSettings.current.switchItems || 4) : 2;
+      if (todo && written < ahead && !writingQueue.current.includes(runId) && writingActive.current !== runId) {
+        writingQueue.current.push(runId);
+        patchRunItem(runId, { state: "waiting", current: undefined });
+        pumpRef.current();
+      }
+    },
+    [askPicture, listenSession, patchRunItem, pictureFailed, pictureMade],
+  );
+
+  /** Stop: the run's pictures being made are stopped, and what was asked for is asked again when the run goes on. */
+  const stopPictures = useCallback((runId: string) => {
+    const s = pictureState(runId);
+    s.asked.clear();
+    for (const j of jobsRef.current) if (j.session === `pictures:${runId}` && j.state === "making") stop(j.key);
+  }, [stop]);
+  useEffect(() => {
+    pictureTickRef.current = pictureTick;
+    flushPicturesRef.current = flushPictures;
+    stopPicturesRef.current = stopPictures;
+  }, [pictureTick, flushPictures, stopPictures]);
 
   // Closing the tab while writing goes on, or pictures are held back here, loses that work: ask first.
   useEffect(() => {

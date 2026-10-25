@@ -40,6 +40,8 @@ function makeServer(opts: { options: RunOptions; open: string[]; written?: strin
     }
     return out;
   };
+  const images = new Set<string>();
+  const pictureDrafts: { chapterId: string; prompt: string; negative: string; scene: string; moment: string }[] = [];
   const log = { posts: [] as { body: any }[], summaries: [] as { id: string; summary: string }[], choiceAdds: [] as string[], patches: 0 };
   const tree = (c: Ch): PlanNode => ({ id: c.id, depth: c.depth, choices: choices.filter((x) => x.parent === c.id).map((x) => ({ id: x.id, label: x.label, child: childOf(x.id) ? tree(childOf(x.id)!) : null })) });
 
@@ -100,6 +102,14 @@ function makeServer(opts: { options: RunOptions; open: string[]; written?: strin
       if (["review", "paused", "done", "stopped"].includes(state.run!.status)) state.token = null;
       return reply(200, JSON.parse(JSON.stringify(state.run)));
     }
+    if (url === "/api/stories/s1") return reply(200, { id: "s1", title: "Tale", premise: "A premise", art_style: "", draw_preset: null, style_ref: null });
+    if ((m = url.match(/^\/api\/chapters\/([^/]+)\/picture-preset$/))) return reply(200, { draw_preset: null });
+    if ((m = url.match(/^\/api\/chapters\/([^/]+)\/picture-fixed$/))) return reply(200, { fixed: "" });
+    if ((m = url.match(/^\/api\/chapters\/([^/]+)\/picture-draft$/)) && method === "PUT") {
+      pictureDrafts.push({ chapterId: m[1], ...body });
+      return reply(200, { ok: true });
+    }
+    if ((m = url.match(/^\/api\/chapters\/([^/]+)\/images\/(header|footer)$/)) && method === "HEAD") return new Response(null, { status: images.has(`${m[1]}:${m[2]}`) ? 200 : 404 });
     return reply(404, { error: `unexpected ${method} ${url}` });
   };
 
@@ -108,7 +118,7 @@ function makeServer(opts: { options: RunOptions; open: string[]; written?: strin
     id: runId, story_id: "s1", start_chapter_id: root.id, mode: opts.tasks ? "arc" : opts.tree ? "tree" : "fill", options: opts.options, tasks: opts.tasks ? opts.tasks(root.id) : opts.tree ? planTree(tree(root), opts.options) : planFill(tree(root), { scope: "children", endChoices: 2, ...opts.options }),
     status: "ready", review_depth: null, error: null, version: 1, finished_at: null, created_at: 1, updated_at: 1,
   };
-  return { fetch: fetchFake, state, chapters, choices, log, root, open, pre, childOf, runId, tree, addCh, addChoice };
+  return { fetch: fetchFake, state, chapters, choices, log, root, open, pre, childOf, runId, tree, addCh, addChoice, images, pictureDrafts };
 }
 
 type Call = { kind: "chapter" | "plan" | "summary"; role?: string; model?: string; message: string };
@@ -359,4 +369,49 @@ for (const models of ["each", "group"] as const) {
   ok(prompts[0].includes("part 1 of 3") && prompts[1].includes("part 2 of 3") && prompts[2].includes("This chapter reaches that goal."), `${models}: each chapter is written from its place in the chain`);
   ok(s.choices.filter((c) => c.parent === chain[0].id)[0].label === "Take the tunnel" && s.choices.filter((c) => c.parent === chain[0].id).length === 2, `${models}: a chapter's first choice is the next step, with one more suggested`);
   ok(s.choices.filter((c) => c.parent === chain[2].id).length === 1, `${models}: the last chapter gets the end choices`);
+}
+
+// ---- Fill missing pictures: the prompt step ----
+{
+  const s = makeServer({ options: { slots: "both", suggestModel: SMALL }, open: [], tasks: () => [] });
+  const c2 = s.addCh("Second", 1, null), c3 = s.addCh("Third", 1, null);
+  const mk = (id: string, chapterId: string, slot: "header" | "footer", label: string): RunTask => ({ kind: "picture", id, chapterId, slot, label, status: "todo" });
+  s.state.run = { ...s.state.run!, mode: "pictures", start_chapter_id: null, options: { slots: "both", suggestModel: SMALL }, tasks: [mk("t1", s.root.id, "header", "Root"), mk("t2", c2.id, "header", "Second"), mk("t3", c3.id, "header", "Third"), mk("t4", c3.id, "footer", "Third")] };
+  s.images.add(`${c3.id}:header`);
+  const written: string[] = [];
+  const writePrompt = async (_s: unknown, o: any) => { written.push(`${o.moment}:${o.model?.model}`); return { scene: `Scene ${written.length}`, prompt: `prompt ${written.length}`, negative: "neg" }; };
+  const deps = { fetch: s.fetch, stream: makeAi().stream as any, renewMs: 1e9, writePrompt: writePrompt as any };
+  let run = await claim(s.runId, token, { fetch: s.fetch });
+  let r = await runNextStep(run, { settings, token, promptsAhead: 2, deps });
+  ok(r.more && !r.idle && r.run.tasks[0].status === "written" && (r.run.tasks[0] as any).prompt === "prompt 1" && (r.run.tasks[0] as any).negative === "neg", "a picture task's prompt is written and kept on the task; it is then `written`");
+  ok(s.pictureDrafts.length === 1 && s.pictureDrafts[0].chapterId === s.root.id && s.pictureDrafts[0].prompt === "prompt 1" && s.pictureDrafts[0].scene === "Scene 1" && s.pictureDrafts[0].moment === "start", "…and saved as that moment's prompt boxes for the Illustrate page");
+  ok(written[0] === "start:small", "…written with the model for prompts, for the chapter's start (a header)");
+  r = await runNextStep(r.run, { settings, token, promptsAhead: 2, deps });
+  ok(r.idle === true && !r.more && r.run.status === "running" && r.run.tasks[1].status === "written" && r.run.tasks[2].status === "todo", "two prompts ahead, then the run is idle, waiting for pictures, not paused");
+  ok(written.length === 2, "…no third prompt is written yet");
+  // One picture is drawn (the queue marks its task done); the run goes on.
+  const drawn = { ...r.run, tasks: r.run.tasks.map((t) => (t.id === "t1" ? { ...t, status: "done" as const } : t)) } as AiRun;
+  s.state.run = { ...drawn, version: drawn.version + 1 };
+  run = await claim(s.runId, token, { fetch: s.fetch });
+  r = await runNextStep(run, { settings, token, promptsAhead: 2, deps });
+  ok(r.run.tasks[2].status === "done" && r.run.tasks[2] && (r.run.tasks[2] as any).prompt === undefined && written.length === 2, "a slot that has its picture by now is done without a prompt");
+  r = await runNextStep(r.run, { settings, token, promptsAhead: 2, deps });
+  ok(r.run.tasks[3].status === "written" && (r.run.tasks[3] as any).prompt === "prompt 3" && written[2] === "end:small", "the next prompt is written when there is room, a footer for the chapter's end");
+  ok(r.idle === true, "…and the run waits for the pictures again");
+  // The run is done when every picture is.
+  const all = { ...r.run, tasks: r.run.tasks.map((t) => ({ ...t, status: "done" as const })) } as AiRun;
+  s.state.run = { ...all, version: all.version + 1 };
+  run = await claim(s.runId, token, { fetch: s.fetch });
+  r = await runNextStep(run, { settings, token, promptsAhead: 2, deps });
+  ok(!r.more && r.run.status === "done", "with every picture done the run ends done");
+}
+{
+  // A failing prompt is tried once more, then the run pauses with the error.
+  const s = makeServer({ options: { slots: "header" }, open: [], tasks: () => [] });
+  s.state.run = { ...s.state.run!, mode: "pictures", start_chapter_id: null, tasks: [{ kind: "picture", id: "t1", chapterId: s.root.id, slot: "header", label: "Root", status: "todo" }] };
+  let tries = 0;
+  const deps = { fetch: s.fetch, stream: makeAi().stream as any, renewMs: 1e9, writePrompt: (async () => { tries++; throw new Error("the model is down"); }) as any };
+  const run = await claim(s.runId, token, { fetch: s.fetch });
+  const r = await runNextStep(run, { settings, token, deps });
+  ok(tries === 2 && r.run.status === "paused" && (r.run.tasks[0] as any).status === "failed" && r.run.error === "the model is down", "a prompt that fails twice fails the task and pauses the run");
 }

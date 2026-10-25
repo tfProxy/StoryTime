@@ -328,3 +328,32 @@ export function planArc(startChapterId: string, steps: ArcStep[], opts: RunOptio
 export function estimateArc(steps: ArcStep[]): { chapters: number; requests: number } {
   return { chapters: steps.length, requests: steps.length * 3 + 1 };
 }
+
+// ---- Fill missing pictures ----
+
+/** A chapter as the picture planner sees it: in outline order (parents first), with which pictures it already has. */
+export type PictureChapter = { id: string; title: string; hasHeader: boolean; hasFooter: boolean };
+
+/**
+ * Fill missing pictures (D10, D11): one picture task for each slot of each chapter that has none, among the slots
+ * the run makes (`slots`: header, footer or both, default header). A chapter's header comes before its footer, and
+ * chapters stay in the order given.
+ */
+export function planPictures(chapters: PictureChapter[], opts: RunOptions): RunTask[] {
+  const slots = opts.slots ?? "header";
+  const tasks: RunTask[] = [];
+  for (const c of chapters) {
+    for (const slot of ["header", "footer"] as const) {
+      if (slots !== "both" && slots !== slot) continue;
+      if (slot === "header" ? c.hasHeader : c.hasFooter) continue;
+      tasks.push({ kind: "picture", id: newTaskId(tasks), chapterId: c.id, slot, label: c.title, status: "todo" });
+    }
+  }
+  return tasks;
+}
+
+/** What a Fill missing pictures run costs: one prompt request and one picture each, one at a time. */
+export function estimatePictures(tasks: RunTask[]): { pictures: number; requests: number } {
+  const pictures = tasks.filter((t) => t.kind === "picture").length;
+  return { pictures, requests: pictures };
+}

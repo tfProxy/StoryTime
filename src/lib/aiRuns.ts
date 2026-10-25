@@ -65,6 +65,7 @@ export const PictureTaskSchema = z.object({
   id: taskId,
   chapterId: z.string().min(1).max(100),
   slot: z.enum(["header", "footer"]),
+  label: text(LIMITS.title).optional(),
   status: taskStatus,
   prompt: text(LIMITS.picturePrompt).optional(),
   negative: text(LIMITS.picturePrompt).optional(),
@@ -357,4 +358,9 @@ export function markRunReviewed(id: string): { marked: number } {
   rowOf(id);
   const { changes } = db().prepare(`UPDATE chapters SET ai_reviewed_at = ? WHERE ai_run_id = ? AND ai_reviewed_at IS NULL`).run(Date.now(), id);
   return { marked: changes };
+}
+
+/** The ids of the chapters a run wrote (the ones marked with it). */
+export function chapterIdsOfRun(runId: string): string[] {
+  return (db().prepare(`SELECT id FROM chapters WHERE ai_run_id = ?`).all(runId) as { id: string }[]).map((r) => r.id);
 }

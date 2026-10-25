@@ -114,6 +114,7 @@ export default async function ChapterPage({
         <EditLink chapterId={chapter.id} />
         <Link href={`/c/${chapter.id}/write-ahead`}>Write ahead with AI…</Link>
         <Link href={`/c/${chapter.id}/illustrate`}>Illustrate chapter</Link>
+        <Link href={`/s/${story.id}/pictures?from=${chapter.id}`}>Make missing pictures…</Link>
         <Link href={`/c/${chapter.id}/path`}>Read this path</Link>
         <details className="menu-sub">
           <summary>Export</summary>

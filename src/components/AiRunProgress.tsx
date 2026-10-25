@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { getRun } from "@/lib/aiRuns/api";
 import { retryTask, skipTask, type RunEvent } from "@/lib/aiRuns/runner";
-import type { AiRun, WriteTask } from "@/lib/aiRuns/types";
+import type { AiRun, PictureTask, WriteTask } from "@/lib/aiRuns/types";
 import { useWorkQueue, type RunItem } from "./WorkQueue";
 
 const plainFetch = (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init);
@@ -17,7 +17,7 @@ const STATUS_WORDS: Record<string, string> = { todo: "to do", written: "written,
 
 type Edit = { label?: string; direction?: string; remove?: boolean };
 
-export default function AiRunProgress({ runId, chapterId }: { runId: string; chapterId: string }) {
+export default function AiRunProgress({ runId, chapterId, backHref, backLabel }: { runId: string; chapterId?: string; backHref?: string; backLabel?: string }) {
   const { items, stopRun, startRun, listenRun } = useWorkQueue();
   const [run, setRun] = useState<AiRun | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -62,8 +62,12 @@ export default function AiRunProgress({ runId, chapterId }: { runId: string; cha
 
   if (!run) return <p className="meta">{problem ?? "Loading the run…"}</p>;
 
+  const isPictures = run.mode === "pictures";
+  const pics = run.tasks.filter((t): t is PictureTask => t.kind === "picture");
   const writes = run.tasks.filter((t): t is WriteTask => t.kind === "write");
-  const done = writes.filter((t) => t.status === "done" || t.status === "written").length;
+  // Chapters posted (waiting for their summaries counts), or pictures saved.
+  const done = isPictures ? pics.filter((t) => t.status === "done").length : writes.filter((t) => t.status === "done" || t.status === "written").length;
+  const total = isPictures ? pics.length : writes.length;
   const failedPlans = run.tasks.filter((t) => t.kind === "plan" && t.status === "failed");
   const elsewhere = item?.state === "elsewhere" || (!item && run.leased);
   const finished = run.status === "done" || run.status === "stopped";
@@ -111,7 +115,7 @@ export default function AiRunProgress({ runId, chapterId }: { runId: string; cha
   return (
     <section className="ai-run" aria-label="Run progress">
       <h2>
-        {done} of {writes.length} written{item?.state === "working" && item.current ? <>. Now: “{item.current}”</> : null}
+        {done} of {total} {isPictures ? "pictures made" : "written"}{item?.state === "working" && item.current ? <>. Now: {isPictures ? item.current : <>“{item.current}”</>}</> : null}
       </h2>
       <p aria-live="polite">{stateLine}</p>
       {(run.error || item?.error) && !finished && <p className="error">{item?.error ?? run.error}</p>}
@@ -157,7 +161,15 @@ export default function AiRunProgress({ runId, chapterId }: { runId: string; cha
         </section>
       )}
 
-      {finished && (
+      {finished && isPictures && (
+        <div className="ai-run-done">
+          <p>
+            {run.status === "done" ? `Made ${done} ${done === 1 ? "picture" : "pictures"}, saved as the chapters' pictures.` : `Stopped after ${done} of ${total}; the pictures made are saved.`} ·{" "}
+            <Link href={`/s/${run.story_id}/outline`}>Open in outline</Link>
+          </p>
+        </div>
+      )}
+      {finished && !isPictures && (
         <div className="ai-run-done">
           <p>
             {run.status === "done" ? `Wrote ${done} ${done === 1 ? "chapter" : "chapters"}, marked not reviewed.` : `Stopped after ${done} of ${writes.length}; what was written is marked not reviewed.`}{" "}
@@ -179,8 +191,31 @@ export default function AiRunProgress({ runId, chapterId }: { runId: string; cha
         </div>
       )}
 
-      <h3>Chapters</h3>
+      <h3>{isPictures ? "Pictures" : "Chapters"}</h3>
       <ol className="ai-run-tasks">
+        {pics.map((t) => (
+          <li key={t.id} className={`ai-run-task ai-run-task-${t.status}`}>
+            <div>
+              <Link href={`/c/${t.chapterId}/illustrate`}>{t.label ?? "A chapter"}</Link> <span className="meta">· {t.slot} · {t.status === "written" ? "prompt written, drawing" : STATUS_WORDS[t.status]}</span>
+            </div>
+            {t.status === "done" && (
+              <Link href={`/c/${t.chapterId}/illustrate`} className="picture-queue-thumbs" aria-label={`The ${t.slot} picture of “${t.label ?? "the chapter"}”`}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- served by StoryTime */}
+                <img src={`/api/chapters/${t.chapterId}/images/${t.slot}${run.updated_at ? `?v=${run.updated_at}` : ""}`} alt="" loading="lazy" />
+              </Link>
+            )}
+            {t.status === "failed" && (
+              <>
+                <p className="error">{t.error}</p>
+                <div className="row" style={{ gap: "0.75rem" }}>
+                  <button type="button" className="picture-queue-text-button" disabled={busy || goingHere} onClick={() => void act(async () => { await retryTask(runId, t.id, token); await startRun(runId); })}>Try again</button>
+                  <button type="button" className="picture-queue-text-button" disabled={busy || goingHere} onClick={() => void act(() => skipTask(runId, t.id, token))}>Skip</button>
+                </div>
+              </>
+            )}
+            {t.status === "skipped" && t.error && <div className="meta">{t.error}</div>}
+          </li>
+        ))}
         {writes.map((t) => (
           <li key={t.id} className={`ai-run-task ai-run-task-${t.status}`}>
             <div>
@@ -214,7 +249,7 @@ export default function AiRunProgress({ runId, chapterId }: { runId: string; cha
         This runs in this browser tab: you can use other pages of StoryTime meanwhile, but keep the tab open. On a phone, keep the screen on.
       </p>
       <p>
-        <Link href={`/c/${chapterId}`}>Back to the chapter</Link>
+        <Link href={backHref ?? `/c/${chapterId}`}>{backLabel ?? "Back to the chapter"}</Link>
       </p>
     </section>
   );

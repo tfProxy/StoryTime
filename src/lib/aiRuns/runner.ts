@@ -18,7 +18,9 @@ import {
 } from "./api";
 import { LIMITS } from "../limits";
 import { applyPlan, expandAfter, needsReview, nextTask, resolveSlot, withGuidance } from "./plan";
-import type { AiRun, PlanTask, RunStatus, RunTask, WriteTask } from "./types";
+import type { writeImagePrompt } from "../ai/imagePrompt";
+import { hasPicture, loadSetup, writePicturePrompt } from "./pictures";
+import type { AiRun, PictureTask, PlanTask, RunStatus, RunTask, WriteTask } from "./types";
 import { planNext, storyContextOf, summarize, withPathSummaries, writeOneChapter, writeText, type PlannedChoice, type Stream } from "./writeChapter";
 
 /** How often a run renews its lease while a step works (the server lets it lapse after two minutes). */
@@ -32,9 +34,18 @@ export type RunEvent =
   | { type: "state"; status: RunStatus; error?: string }
   | { type: "error"; taskId: string; message: string };
 
-export type RunnerDeps = { fetch?: Fetch; stream?: Stream; renewMs?: number };
+export type RunnerDeps = { fetch?: Fetch; stream?: Stream; renewMs?: number; writePrompt?: typeof writeImagePrompt };
+
+/**
+ * What a step did: the run as saved, and whether another step can follow. `idle`: nothing more can be written for now
+ * but the run isn't over, because it is waiting for pictures to be drawn (Fill missing pictures); the queue takes it up
+ * again when one is done.
+ */
+export type StepResult = { run: AiRun; more: boolean; idle?: boolean };
 
 export type StepEnv = {
+  /** Fill missing pictures: how many pictures may have their prompt written and not be drawn yet (default 2). */
+  promptsAhead?: number;
   settings: Settings;
   /** This tab's lease token: made by the caller, and the one it claimed the run with. */
   token: string;
@@ -84,7 +95,7 @@ export async function skipTask(runId: string, taskId: string, token: string, dep
   return patchRun(fetcher(deps), run.id, { token, version: run.version, tasks, status: run.status === "running" ? "paused" : run.status });
 }
 
-type Pick = { kind: "plan" | "write" | "finish"; task: RunTask };
+type Pick = { kind: "plan" | "write" | "finish" | "prompt"; task: RunTask };
 
 /** Whether the task's dependencies are all done: its plan, and for a `fromTask` slot the task it follows. */
 function ready(list: RunTask[], t: RunTask): boolean {
@@ -98,7 +109,13 @@ function ready(list: RunTask[], t: RunTask): boolean {
  * (main model), then finish each (summary, planned choices: cheap model), plan tasks wherever nothing can be
  * written; the others do a task at a time, in the order of the list, a chapter's text, choices and summaries together.
  */
-function pickStep(run: AiRun, list: RunTask[]): Pick | null {
+function pickStep(run: AiRun, list: RunTask[], ahead = 2): Pick | null {
+  if (run.mode === "pictures") {
+    // The prompt of the next picture, while not too many are written and waiting to be drawn; drawing is the queue's.
+    const todo = list.find((t): t is PictureTask => t.kind === "picture" && t.status === "todo");
+    const waiting = list.filter((t) => t.kind === "picture" && t.status === "written").length;
+    return todo && waiting < ahead ? { kind: "prompt", task: todo } : null;
+  }
   const writes = list.filter((t): t is WriteTask => t.kind === "write");
   const written = writes.filter((t) => t.status === "written");
   const todoPlans = list.filter((t): t is PlanTask => t.kind === "plan" && t.status === "todo" && ready(list, t));
@@ -141,7 +158,7 @@ const replace = (tasks: RunTask[], next: RunTask) => tasks.map((t) => (t.id === 
  * task failed twice, or it was stopped), or waiting for the owner to check a level's plans (D23). The run's lease
  * is renewed every 30 s while the step works.
  */
-export async function runNextStep(run: AiRun, env: StepEnv): Promise<{ run: AiRun; more: boolean }> {
+export async function runNextStep(run: AiRun, env: StepEnv): Promise<StepResult> {
   const f = fetcher(env.deps);
   const timer = setInterval(() => void claimRunLease(f, run.id, env.token).catch(() => {}), env.deps?.renewMs ?? RENEW_MS);
   try {
@@ -151,7 +168,7 @@ export async function runNextStep(run: AiRun, env: StepEnv): Promise<{ run: AiRu
   }
 }
 
-async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<{ run: AiRun; more: boolean }> {
+async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<StepResult> {
   const { token, signal, onEvent } = env;
   let run = start;
   const save = async (change: { tasks?: RunTask[]; status?: RunStatus; review_depth?: number | null; error?: string | null }) => {
@@ -162,8 +179,13 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<{ run: AiRun;
 
   if (run.status !== "running") await save({ status: "running", error: null });
   const { tasks: list } = nextTask(run.tasks);
-  const picked = pickStep(run, list);
+  const picked = pickStep(run, list, env.promptsAhead);
 
+  if (!picked && run.mode === "pictures" && list.some(unfinished)) {
+    // Prompts are written as far ahead as allowed: the rest waits for pictures to be drawn.
+    if (list !== run.tasks) await save({ tasks: list });
+    return { run, more: false, idle: true };
+  }
   if (!picked) {
     const status = list.some(unfinished) ? "paused" : "done";
     const error = status === "paused" ? "No step can go: the rest is waiting for something that did not finish." : null;
@@ -181,8 +203,8 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<{ run: AiRun;
   }
 
   const { task } = picked;
-  const phase = picked.kind === "plan" ? "planning" : picked.kind === "write" ? "writing" : "finishing";
-  const label = task.kind === "write" ? task.label : task.kind === "plan" ? "Plan the choices" : "";
+  const phase = picked.kind === "plan" ? "planning" : picked.kind === "write" || picked.kind === "prompt" ? "writing" : "finishing";
+  const label = task.kind === "write" ? task.label : task.kind === "plan" ? "Plan the choices" : task.kind === "picture" ? `Prompt for “${task.label ?? "a chapter"}” (${task.slot})` : "";
   let tasks = list;
   let failure: unknown = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -225,11 +247,14 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<{ run: AiRun;
   const settled = !tasks.some(unfinished);
   await save({ tasks, status: settled ? "done" : "running", error: null });
   if (settled) state("done");
-  return { run, more: !settled };
+  // A pictures run with its prompts written as far ahead as allowed waits for the pictures.
+  const idle = !settled && run.mode === "pictures" && !pickStep(run, nextTask(tasks).tasks, env.promptsAhead);
+  return { run, more: !settled && !idle, ...(idle && { idle }) };
 }
 
 /** Does the step's work; returns the task list with the task updated (and the tasks it planned, for a plan). Posts and adds choices on the server; the caller saves the run. */
 async function doStep(picked: Pick, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
+  if (picked.kind === "prompt") return doPrompt(picked.task as PictureTask, run, list, env, f);
   if (picked.kind === "plan") return doPlan(picked.task as PlanTask, run, list, env, f);
   if (picked.kind === "finish") return doFinish(picked.task as WriteTask, run, list, env, f);
   return doWrite(picked.task as WriteTask, run, list, env, f);
@@ -388,4 +413,13 @@ async function doFinish(task: WriteTask, run: AiRun, list: RunTask[], env: StepE
     planned: planned.map((p) => ({ label: p.label, direction: p.direction })),
     error: undefined,
   } as RunTask);
+}
+
+/** Fill missing pictures: the prompt for one picture. The picture itself is drawn through the picture queue, which has the run's `written` tasks asked of it. A slot that has its picture by now is simply done. */
+async function doPrompt(task: PictureTask, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
+  if (await hasPicture(f, task.chapterId, task.slot)) return replace(list, { ...task, status: "done", error: undefined });
+  env.onEvent?.({ type: "status", text: `Writing the picture prompt for “${task.label ?? "the chapter"}”…` });
+  const setup = await loadSetup(f, task.chapterId);
+  const written = await writePicturePrompt(env.settings, f, setup, task, run.options, { write: env.deps?.writePrompt, signal: env.signal });
+  return replace(list, { ...task, status: "written", prompt: written.prompt, negative: written.negative, error: undefined });
 }

@@ -27,6 +27,20 @@ export type EditModels =
     }
   | { state: "error"; message: string };
 
+/** What `modelChecksFor` found, as the state the Illustrate page and Make missing pictures work from. */
+export function toEditModels({ edits: checks, families, ipAdapters }: Awaited<ReturnType<typeof modelChecksFor>>): Extract<EditModels, { state: "done" }> {
+  return {
+    state: "done",
+    ready: checks.filter((c) => c.ready),
+    checks,
+    families,
+    ipAdapters,
+    loras: checks[0]?.loras ?? [],
+    samplers: checks[0]?.samplers ?? [],
+    schedulers: checks[0]?.schedulers ?? [],
+  };
+}
+
 /**
  * Which edit models the ComfyUI machine can run, asked once per address. With `fresh` (a number), ComfyUI
  * is asked again rather than remembering an earlier answer, and again each time the number changes, as
@@ -39,22 +53,7 @@ export function useEditModels(url: string, fresh?: number): EditModels {
     let live = true;
     if (fresh !== undefined) forgetEditModels();
     modelChecksFor(url).then(
-      ({ edits: checks, families, ipAdapters }) =>
-        live &&
-        setFound({
-          url,
-          fresh,
-          result: {
-            state: "done",
-            ready: checks.filter((c) => c.ready),
-            checks,
-            families,
-            ipAdapters,
-            loras: checks[0]?.loras ?? [],
-            samplers: checks[0]?.samplers ?? [],
-            schedulers: checks[0]?.schedulers ?? [],
-          },
-        }),
+      (found) => live && setFound({ url, fresh, result: toEditModels(found) }),
       (e) => live && setFound({ url, fresh, result: { state: "error", message: e instanceof Error ? e.message : String(e) } }),
     );
     return () => {

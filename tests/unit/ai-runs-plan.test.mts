@@ -1,4 +1,4 @@
-import { applyPlan, estimateArc, planArc, estimateFill, estimateTree, expandAfter, planTree, needsReview, newTaskId, nextTask, planFill, resolveSlot, withGuidance, type PlanNode } from "../../src/lib/aiRuns/plan.ts";
+import { applyPlan, estimatePictures, planPictures, estimateArc, planArc, estimateFill, estimateTree, expandAfter, planTree, needsReview, newTaskId, nextTask, planFill, resolveSlot, withGuidance, type PlanNode } from "../../src/lib/aiRuns/plan.ts";
 import type { PlanTask, RunTask, WriteTask } from "../../src/lib/aiRuns/types.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
@@ -179,4 +179,21 @@ ok(!needsReview(run(true, planned.map((x) => ({ ...x, status: "done" as const })
   ok(planArc("R0", [], { objective: "x" }).length === 0, "no steps give no tasks");
   const single = planArc("R0", [steps[0]], { objective: "Goal", endChoices: 3 }) as WriteTask[];
   ok(single.length === 1 && single[0].direction.includes("part 1 of 1") && single[0].direction.includes("reaches that goal") && single[0].choices.suggest === 3, "a single chapter reaches the goal at once");
+}
+
+// ---- Fill missing pictures ----
+{
+  const chs = [
+    { id: "A", title: "Alpha", hasHeader: false, hasFooter: false },
+    { id: "B", title: "Beta", hasHeader: true, hasFooter: false },
+    { id: "C", title: "Gamma", hasHeader: false, hasFooter: true },
+  ];
+  const desc = (t: RunTask[]) => t.map((x) => (x.kind === "picture" ? `${x.chapterId}.${x.slot}` : "?")).join();
+  ok(desc(planPictures(chs, {})) === "A.header,C.header", "planPictures: headers by default, only for chapters without one, in outline order");
+  ok(desc(planPictures(chs, { slots: "footer" })) === "A.footer,B.footer", "…footers only");
+  ok(desc(planPictures(chs, { slots: "both" })) === "A.header,A.footer,B.footer,C.header", "…both: each chapter's header before its footer, skipping what exists");
+  const p = planPictures(chs, { slots: "both" });
+  ok(p.every((t) => t.kind === "picture" && t.status === "todo") && new Set(p.map((t) => t.id)).size === p.length && (p[0] as { label?: string }).label === "Alpha", "…tasks are todo with their own ids and the chapter's title");
+  ok(planPictures(chs.map((c) => ({ ...c, hasHeader: true, hasFooter: true })), { slots: "both" }).length === 0, "nothing is planned when every picture exists");
+  ok(estimatePictures(p).pictures === 4 && estimatePictures(p).requests === 4, "estimate: a picture and a prompt request each");
 }

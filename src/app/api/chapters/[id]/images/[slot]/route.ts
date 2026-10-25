@@ -22,6 +22,13 @@ export async function GET(request: Request, ctx: Ctx) {
   return new Response(new Uint8Array(image.bytes), { headers: { ...headers, "Content-Type": image.type } });
 }
 
+// Whether the chapter has this picture: 200 or 404, with no body (Make missing pictures asks before it draws one).
+export async function HEAD(_request: Request, ctx: Ctx) {
+  const { id, slot } = await ctx.params;
+  if (!isImageSlot(slot)) return new Response(null, { status: 404 });
+  return new Response(null, { status: getChapterImage(id, slot) ? 200 : 404 });
+}
+
 // Replace the picture. The body is the image itself (PNG, JPEG, GIF or WebP). ?job=<id> says which
 // picture job made it, so its prompt is kept with the picture, and &index=<n> which of the job's pictures
 // it is (ignored when it isn't one of them).

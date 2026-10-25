@@ -146,6 +146,7 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
         </ul>
       </SummaryProvider>
       <PageMenu>
+        <Link href={`/s/${story.id}/pictures`}>Make missing pictures</Link>
         <Link href={`/s/${story.id}/review`}>Review the story</Link>
         <Link href={`/s/${story.id}/summaries`}>Redo the AI summaries</Link>
       </PageMenu>
