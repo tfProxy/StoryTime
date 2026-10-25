@@ -84,6 +84,7 @@ function Node({
         via={via}
         show={show}
         tags={tagNames.get(node.id) ?? []}
+        ai={node.ai}
       >
         {links.length > 0 && links.flatMap((l, i) => (i === 0 ? [l] : [", ", l]))}
       </NodeSummary>

@@ -70,7 +70,7 @@ ok(r.json.settings.autoSuggestChoices === true && (await call("GET", "/api/setti
 
 // ---- the outline's parts ----
 // Tags are the one part that starts off.
-const allOutline = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, review: true, tags: false };
+const allOutline = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, review: true, aiWritten: true, tags: false };
 ok(JSON.stringify((await call("GET", "/api/settings")).json.settings.outline) === JSON.stringify(allOutline), "the outline's parts are shown unless turned off, and tags are off until turned on");
 r = await call("PUT", "/api/settings", { ...conns, outline: { ...allOutline, readToHere: false, illustrate: false } });
 ok(JSON.stringify(r.json.settings.outline) === JSON.stringify({ ...allOutline, readToHere: false, illustrate: false }) && (await call("GET", "/api/settings")).json.settings.outline.readToHere === false, "parts turned off are kept");
@@ -78,6 +78,12 @@ r = await call("PUT", "/api/settings", { ...conns, outline: { summary: false } }
 ok(JSON.stringify(r.json.settings.outline) === JSON.stringify({ ...allOutline, summary: false }), "a part not mentioned stays on");
 r = await call("PUT", "/api/settings", { ...conns, outline: { summary: "no", headerPicture: 0, footerPicture: null } });
 ok(JSON.stringify(r.json.settings.outline) === JSON.stringify(allOutline), "a part that isn't true or false is left on");
+r = await call("PUT", "/api/settings", { ...conns, outline: { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, review: true, tags: true } });
+ok(r.json.settings.outline.aiWritten === true && r.json.settings.outline.tags === true, "settings saved before AI-written existed read it as on");
+r = await call("PUT", "/api/settings", { ...conns, outline: { ...allOutline, aiWritten: false } });
+ok(r.json.settings.outline.aiWritten === false && (await call("GET", "/api/settings")).json.settings.outline.aiWritten === false, "AI-written can be turned off");
+r = await call("PUT", "/api/settings", { ...conns, outline: { aiWritten: "no" } });
+ok(r.json.settings.outline.aiWritten === true, "…and a value that isn't true or false is left on");
 r = await call("PUT", "/api/settings", { ...conns, outline: "off" });
 ok(JSON.stringify(r.json.settings.outline) === JSON.stringify(allOutline), "outline settings of the wrong kind are ignored");
 r = await call("PUT", "/api/settings", { ...conns, outline: allOutline });

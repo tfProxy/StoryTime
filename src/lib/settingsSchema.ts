@@ -117,6 +117,8 @@ export type OutlineOptions = {
   illustrate: boolean;
   /** A marker on chapters with something to check, linking to the Review page. */
   review: boolean;
+  /** A robot on chapters the AI wrote, filled until they are marked reviewed. */
+  aiWritten: boolean;
   /** The chapter's approved tags, in brackets of their own after the other parts. */
   tags: boolean;
 };
@@ -128,11 +130,12 @@ export const OUTLINE_PARTS = [
   { id: "footerPicture", label: "Footer picture", hint: "the same for the footer picture" },
   { id: "illustrate", label: "Illustrate", hint: "a paintbrush that opens the chapter's Illustrate page" },
   { id: "review", label: "Review marker", hint: "a ⚠ count on chapters with something to check or tags waiting for your approval, which opens the Review page" },
+  { id: "aiWritten", label: "AI-written", hint: "a robot on chapters the AI wrote by itself, filled until you mark them reviewed" },
   { id: "tags", label: "Tags", hint: "the chapter's approved tags, e.g. [tf, tg], in brackets after the others" },
 ] as const satisfies readonly { id: keyof OutlineOptions; label: string; hint: string }[];
 
 // Tags are off until chosen, so an outline does not change when this first comes in.
-export const DEFAULT_OUTLINE: OutlineOptions = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, review: true, tags: false };
+export const DEFAULT_OUTLINE: OutlineOptions = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, review: true, aiWritten: true, tags: false };
 
 export type ComfySettings = {
   /** Where ComfyUI is, e.g. https://comfy.example.ts.net; "" when there is none. */
@@ -335,6 +338,7 @@ const settingsSchema = z.object({
       footerPicture: z.boolean().catch(true),
       illustrate: z.boolean().catch(true),
       review: z.boolean().catch(true),
+      aiWritten: z.boolean().catch(true),
       tags: z.boolean().catch(false),
     })
     .catch(DEFAULT_OUTLINE),
