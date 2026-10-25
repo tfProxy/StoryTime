@@ -5,7 +5,9 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { chapterImageUrl, type ImageSlot, type ImageVersions } from "@/lib/imageSlots";
 import type { OutlineOptions } from "@/lib/settingsSchema";
+import type { AiMark as AiMarkState } from "@/lib/stories";
 import { BrushIcon, FooterIcon, HeaderIcon } from "./PictureIcons";
+import AiMark from "./AiMark";
 
 // Summaries in the outline: each chapter has its own toggle, and one button shows or hides them all.
 // `n` counts how often "all" was pressed, so a chapter opened or closed by hand follows the next press.
@@ -96,6 +98,7 @@ export function NodeSummary({
   via,
   show,
   tags,
+  ai = null,
   children,
 }: {
   chapterId: string;
@@ -105,6 +108,8 @@ export function NodeSummary({
   via: string | null;
   show: OutlineOptions;
   tags: string[];
+  /** Whether the AI wrote the chapter, and whether it is reviewed; shown when "AI-written" is on. */
+  ai?: AiMarkState;
   children?: ReactNode;
 }) {
   const { open: allOpen, n } = useContext(Ctx);
@@ -135,7 +140,8 @@ export function NodeSummary({
     );
   }
   if (children) words.push(<span key="read">{children}</span>);
-  const hasIcons = header !== null || footer !== null || show.illustrate;
+  const aiMark = show.aiWritten ? ai : null;
+  const hasIcons = header !== null || footer !== null || show.illustrate || aiMark !== null;
   return (
     <>
       {(words.length > 0 || hasIcons) && (
@@ -144,6 +150,11 @@ export function NodeSummary({
           {words.flatMap((w, i) => (i === 0 ? [w] : [", ", w]))}
           {hasIcons && (
             <span className="outline-icons">
+              {aiMark !== null && (
+                <span className="outline-action outline-icon outline-ai">
+                  <AiMark mark={aiMark} />
+                </span>
+              )}
               {header !== null && <PictureButton chapterId={chapterId} title={title} slot="header" version={header} />}
               {footer !== null && <PictureButton chapterId={chapterId} title={title} slot="footer" version={footer} />}
               {show.illustrate && (

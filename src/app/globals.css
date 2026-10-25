@@ -3307,3 +3307,44 @@ button.refine-fit {
     min-height: 20rem;
   }
 }
+
+/* ---- The AI mark and the review notice (write-ahead task 1.5, part 1) ---- */
+.ai-mark {
+  vertical-align: -0.25em;
+  flex: none;
+}
+
+.ai-mark-unreviewed {
+  color: var(--accent);
+}
+
+.ai-mark-reviewed {
+  color: var(--muted);
+}
+
+.chapter-ai {
+  white-space: nowrap;
+}
+
+.choice-ai {
+  float: right;
+  margin-left: 0.5rem;
+}
+
+.outline-ai {
+  cursor: default;
+}
+
+.ai-review-notice {
+  margin-bottom: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.ai-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

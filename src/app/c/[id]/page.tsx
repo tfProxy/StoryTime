@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getChoices, getPath, getStory } from "@/lib/stories";
+import { aiMarkOf, getChoices, getPath, getStory } from "@/lib/stories";
+import AiMark from "@/components/AiMark";
+import AiReviewNotice from "@/components/AiReviewNotice";
 import { appliedTagNames } from "@/lib/tags";
 import Prose from "@/components/Prose";
 import EditLink from "@/components/EditLink";
@@ -25,6 +27,7 @@ export default async function ChapterPage({
   const chapter = path[path.length - 1];
   const story = getStory(chapter.story_id);
   if (!story) notFound();
+  const ai = aiMarkOf(chapter);
   const choices = getChoices(chapter.id);
   const images = chapterImageVersions([chapter.id]).get(chapter.id)!;
   const tagNames = appliedTagNames(story.id, chapter.id).get(chapter.id) ?? [];
@@ -36,6 +39,9 @@ export default async function ChapterPage({
           Chapter posted. Want the codex to catch up with what happened?{" "}
           <Link href={`/c/${chapter.id}/codex?review=1`}>Review codex for this chapter</Link>
         </p>
+      )}
+      {ai === "unreviewed" && (
+        <AiReviewNotice chapterId={chapter.id} pathUnreviewed={path.slice(0, -1).filter((p) => aiMarkOf(p) === "unreviewed").length} />
       )}
       <nav className="crumbs" aria-label="Path so far">
         <Link href={`/s/${story.id}/outline`}>{story.title}</Link>
@@ -53,9 +59,17 @@ export default async function ChapterPage({
 
       <h1>{chapter.title}</h1>
       {tagNames.length > 0 && <p className="meta chapter-tags">[{tagNames.join(", ")}]</p>}
-      {chapter.edited_at && (
-        <p className="meta">
-          <Link href={`/c/${chapter.id}/history`}>edited {new Date(chapter.edited_at).toISOString().slice(0, 10)}</Link>
+      {(chapter.edited_at || ai) && (
+        <p className="meta chapter-meta">
+          {ai && (
+            <span className="chapter-ai">
+              <AiMark mark={ai} /> posted {new Date(chapter.posted_at).toISOString().slice(0, 10)}
+            </span>
+          )}
+          {ai && chapter.edited_at && " · "}
+          {chapter.edited_at && (
+            <Link href={`/c/${chapter.id}/history`}>edited {new Date(chapter.edited_at).toISOString().slice(0, 10)}</Link>
+          )}
         </p>
       )}
       <ChapterImage chapterId={chapter.id} slot="header" version={images.header} />
@@ -71,6 +85,11 @@ export default async function ChapterPage({
                 <path d="M4 5.5C6.5 4.5 9.5 4.5 12 6c2.5-1.5 5.5-1.5 8-.5v13c-2.5-1-5.5-1-8 .5-2.5-1.5-5.5-1.5-8-.5z M12 6v13" />
               </svg>
               {c.label}
+              {c.child_ai && (
+                <span className="choice-ai">
+                  <AiMark mark={c.child_ai} />
+                </span>
+              )}
             </Link>
           ) : (
             <Link key={c.id} href={`/c/${chapter.id}/write?choice=${c.id}`} className="card choice-unwritten" title="Not written yet. Write it?">
@@ -93,6 +112,7 @@ export default async function ChapterPage({
         codexGroup={<Link href={`/c/${chapter.id}/summary`}>{chapter.summary && chapter.path_summary ? "Summary" : "Summary (missing)"}</Link>}
       >
         <EditLink chapterId={chapter.id} />
+        <Link href={`/c/${chapter.id}/write-ahead`}>Write ahead with AI…</Link>
         <Link href={`/c/${chapter.id}/illustrate`}>Illustrate chapter</Link>
         <Link href={`/c/${chapter.id}/path`}>Read this path</Link>
         <details className="menu-sub">
