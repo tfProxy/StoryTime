@@ -143,7 +143,7 @@ Each task is one commit unless it says otherwise. Each task lists what to do, wh
 
 ### Phase 0: make the shared code run in Node (no visible change)
 
-**0.1 Self fetch.** Add `src/lib/worker/selfFetch.ts`: `export const selfFetch: Fetch = (input, init) => fetch(typeof input === "string" && input.startsWith("/") ? `${selfBase()}${input}` : input, init)`, with `selfBase()` = `process.env.STORYTIME_SELF_URL ?? \`http://127.0.0.1:${process.env.PORT ?? 3737}\``. Unit test: relative and absolute URLs. Check: `npx tsc --noEmit`, `node tests/run.mjs unit`.
+**0.1 Self fetch (done).** Add `src/lib/worker/selfFetch.ts`: `export const selfFetch: Fetch = (input, init) => fetch(typeof input === "string" && input.startsWith("/") ? `${selfBase()}${input}` : input, init)`, with `selfBase()` = `process.env.STORYTIME_SELF_URL ?? \`http://127.0.0.1:${process.env.PORT ?? 3737}\``. Unit test: relative and absolute URLs. Check: `npx tsc --noEmit`, `node tests/run.mjs unit`.
 
 **0.2 Move edit-model helpers out of components.** `src/lib/aiRuns/pictures.ts` imports `drawPresetFamily`, `drawPresetIpAdapter`, `toEditModels`, `EditModels` from `src/components/useEditModels`. Move those (pure, non-hook) exports into `src/lib/comfy/editModelsData.ts` (or into `editModels.ts` if they fit there), re-export them from `useEditModels` so other imports keep working, and change `pictures.ts` to import from `src/lib`. Then `grep -rn "components/" src/lib` must print nothing. Check: tsc, `npx next build`, unit tests, `node tests/run.mjs e2e missing-pictures illustrate-families`.
 
