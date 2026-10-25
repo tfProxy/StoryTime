@@ -382,27 +382,24 @@ for (const models of ["each", "group"] as const) {
   const writePrompt = async (_s: unknown, o: any) => { written.push(`${o.moment}:${o.model?.model}`); return { scene: `Scene ${written.length}`, prompt: `prompt ${written.length}`, negative: "neg" }; };
   const deps = { fetch: s.fetch, stream: makeAi().stream as any, renewMs: 1e9, writePrompt: writePrompt as any };
   let run = await claim(s.runId, token, { fetch: s.fetch });
-  let r = await runNextStep(run, { settings, token, promptsAhead: 2, deps });
+  let r = await runNextStep(run, { settings, token, deps });
   ok(r.more && !r.idle && r.run.tasks[0].status === "written" && (r.run.tasks[0] as any).prompt === "prompt 1" && (r.run.tasks[0] as any).negative === "neg", "a picture task's prompt is written and kept on the task; it is then `written`");
   ok(s.pictureDrafts.length === 1 && s.pictureDrafts[0].chapterId === s.root.id && s.pictureDrafts[0].prompt === "prompt 1" && s.pictureDrafts[0].scene === "Scene 1" && s.pictureDrafts[0].moment === "start", "…and saved as that moment's prompt boxes for the Illustrate page");
   ok(written[0] === "start:small", "…written with the model for prompts, for the chapter's start (a header)");
-  r = await runNextStep(r.run, { settings, token, promptsAhead: 2, deps });
-  ok(r.idle === true && !r.more && r.run.status === "running" && r.run.tasks[1].status === "written" && r.run.tasks[2].status === "todo", "two prompts ahead, then the run is idle, waiting for pictures, not paused");
-  ok(written.length === 2, "…no third prompt is written yet");
-  // One picture is drawn (the queue marks its task done); the run goes on.
-  const drawn = { ...r.run, tasks: r.run.tasks.map((t) => (t.id === "t1" ? { ...t, status: "done" as const } : t)) } as AiRun;
-  s.state.run = { ...drawn, version: drawn.version + 1 };
-  run = await claim(s.runId, token, { fetch: s.fetch });
-  r = await runNextStep(run, { settings, token, promptsAhead: 2, deps });
-  ok(r.run.tasks[2].status === "done" && r.run.tasks[2] && (r.run.tasks[2] as any).prompt === undefined && written.length === 2, "a slot that has its picture by now is done without a prompt");
-  r = await runNextStep(r.run, { settings, token, promptsAhead: 2, deps });
-  ok(r.run.tasks[3].status === "written" && (r.run.tasks[3] as any).prompt === "prompt 3" && written[2] === "end:small", "the next prompt is written when there is room, a footer for the chapter's end");
-  ok(r.idle === true, "…and the run waits for the pictures again");
+  r = await runNextStep(r.run, { settings, token, deps });
+  ok(r.more && r.run.tasks[1].status === "written" && written.length === 2, "every prompt is written before any picture is drawn: the second one follows at once");
+  r = await runNextStep(r.run, { settings, token, deps });
+  ok(r.run.tasks[2].status === "done" && (r.run.tasks[2] as any).prompt === undefined && written.length === 2, "a slot that has its picture by now is done without a prompt");
+  r = await runNextStep(r.run, { settings, token, deps });
+  ok(r.run.tasks[3].status === "written" && (r.run.tasks[3] as any).prompt === "prompt 3" && written[2] === "end:small", "…and a footer's prompt is for the chapter's end");
+  r = await runNextStep(r.run, { settings, token, deps });
+  ok(r.idle === true && !r.more && r.run.status === "running", "with every prompt written the run is idle, waiting for the pictures, not paused");
+  ok(written.length === 3, "…and no prompt is written twice");
   // The run is done when every picture is.
   const all = { ...r.run, tasks: r.run.tasks.map((t) => ({ ...t, status: "done" as const })) } as AiRun;
   s.state.run = { ...all, version: all.version + 1 };
   run = await claim(s.runId, token, { fetch: s.fetch });
-  r = await runNextStep(run, { settings, token, promptsAhead: 2, deps });
+  r = await runNextStep(run, { settings, token, deps });
   ok(!r.more && r.run.status === "done", "with every picture done the run ends done");
 }
 {
