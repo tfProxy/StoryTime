@@ -4,7 +4,7 @@
 // shows in the header; this file only prepares and finishes it.
 import { combinePrompts, withArtStyle, withoutGiven, writeImagePrompt, type ImagePrompt } from "../ai/imagePrompt";
 import { fetchImage, type ComfyImage } from "../comfy/client";
-import { drawPresetFamily, drawPresetIpAdapter, toEditModels, type EditModels } from "../../components/useEditModels";
+import { drawPresetFamily, drawPresetIpAdapter, toEditModels, type EditModels } from "../comfy/editModelsData";
 import { modelChecksFor } from "../comfy/check";
 import { familyProblems } from "../comfy/drawModels";
 import { usableLoras } from "../comfy/editModels";
