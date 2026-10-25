@@ -11,7 +11,15 @@ import { useSettings } from "@/lib/settings";
 import { imageUrl } from "@/lib/comfy/client";
 import { chapterTarget, codexTarget, coverTarget, targetHref, targetKey, type PictureTarget } from "@/lib/pictureTarget";
 import { progressText } from "./pictures";
-import { usePictureQueue, useWorkQueue, type QueueJob } from "./WorkQueue";
+import { machineNote } from "@/lib/workQueue/schedule";
+import { usePictureQueue, useWorkQueue, type QueueJob, type RunItem } from "./WorkQueue";
+
+/** The kinds of AI run, in words. */
+export const MODE_WORDS = { fill: "Fill open choices", tree: "Grow the tree", arc: "Reach a goal", pictures: "Fill missing pictures" } as const;
+
+/** Where a run's page is (the page that shows its tasks, review and results). */
+export const runHref = (run: Pick<RunItem, "runId" | "storyId" | "startChapterId" | "mode">) =>
+  run.mode === "pictures" || !run.startChapterId ? `/s/${run.storyId}/details?run=${run.runId}` : `/c/${run.startChapterId}/write-ahead?run=${run.runId}`;
 
 export type Labels = Record<string, { title: string; story_title: string }>;
 
@@ -69,16 +77,33 @@ function useTitleCount(count: number) {
 
 export default function WorkQueueStatus() {
   const { jobs, stop, dismiss } = usePictureQueue();
-  const { paused } = useWorkQueue();
-  const comfyUrl = useSettings().comfy.url;
+  const { paused, items, stopRun, resumeRun, machine } = useWorkQueue();
+  const settings = useSettings();
+  const comfyUrl = settings.comfy.url;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const labels = useLabels(jobs);
+  const runs = useMemo(() => items.filter((i): i is RunItem => i.type === "run").sort((a, b) => b.addedAt - a.addedAt), [items]);
+  const runsGoing = runs.filter((r) => r.state === "working" || r.state === "waiting");
+  const runsPaused = runs.filter((r) => r.state === "paused");
+  const runsElsewhere = runs.filter((r) => r.state === "elsewhere");
+  const runsDone = runs.filter((r) => r.state === "done");
+  const runsFailed = runs.filter((r) => r.state === "failed");
   const making = jobs.filter((j) => j.state === "making");
   const done = jobs.filter((j) => j.state === "done");
   const failed = jobs.filter((j) => j.state === "failed");
   const newest = useMemo(() => [...jobs].reverse(), [jobs]);
-  useTitleCount(making.length);
+  const going = making.length + runsGoing.length;
+  const ready = done.length + runsDone.length;
+  const bad = failed.length + runsFailed.length;
+  useTitleCount(going);
+  const note = machineNote({
+    ...machine,
+    sharing: settings.queue.sharing,
+    switchMinutes: settings.queue.switchMinutes,
+    switchItems: settings.queue.switchItems,
+    timeText: (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+  });
 
   // Closes after moving to another page.
   const pathname = usePathname();
@@ -103,43 +128,51 @@ export default function WorkQueueStatus() {
   }, [open]);
 
   // Every hook is above this.
-  if (jobs.length === 0 && !paused) return null;
+  if (jobs.length === 0 && runs.length === 0 && !paused) return null;
 
   const said = [
     paused && "paused",
-    making.length > 0 && `${making.length} being made`,
-    done.length > 0 && `${done.length} ready`,
-    failed.length > 0 && `${failed.length} failed`,
+    going > 0 && `${going} ${runs.length > 0 ? "going" : "being made"}`,
+    runsPaused.length > 0 && `${runsPaused.length} paused`,
+    runsElsewhere.length > 0 && `${runsElsewhere.length} in another tab`,
+    ready > 0 && `${ready} ready`,
+    bad > 0 && `${bad} failed`,
   ].filter(Boolean);
-  const label = `Pictures: ${said.join(", ")}`;
+  const label = `${runs.length > 0 ? "Queue" : "Pictures"}: ${said.join(", ")}`;
 
   return (
     <div className="picture-queue" ref={ref}>
       <button type="button" className="picture-queue-button" aria-label={label} title={label} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         {paused && <span className="picture-queue-part">Paused</span>}
-        {making.length > 0 && (
+        {going > 0 && (
           <span className="picture-queue-part">
             <span className="picture-queue-spinner" aria-hidden="true" />
-            {making.length}
+            {going}
           </span>
         )}
-        {done.length > 0 && (
+        {runsPaused.length > 0 && <span className="picture-queue-part">⏸ {runsPaused.length}</span>}
+        {runsElsewhere.length > 0 && <span className="picture-queue-part">↗ {runsElsewhere.length}</span>}
+        {ready > 0 && (
           <span className="picture-queue-part">
             <span className="picture-queue-dot" aria-hidden="true" />
-            {done.length} ready
+            {ready} ready
           </span>
         )}
-        {failed.length > 0 && <span className="picture-queue-part error">⚠ {failed.length}</span>}
+        {bad > 0 && <span className="picture-queue-part error">⚠ {bad}</span>}
       </button>
       {open && (
         <div className="picture-queue-panel" role="region" aria-label="Queue">
+          {note && <p className="meta picture-queue-note">{note}</p>}
           <ul className="picture-queue-list">
+            {runs.map((r) => (
+              <RunRow key={r.key} run={r} onStop={() => stopRun(r.runId)} onResume={() => void resumeRun(r.runId)} onDismiss={() => dismiss(r.key)} />
+            ))}
             {newest.map((j) => (
               <JobRow key={j.key} job={j} label={labels[targetKey(j)]} comfyUrl={comfyUrl} onStop={() => stop(j.key)} onDismiss={() => dismiss(j.key)} />
             ))}
           </ul>
-          {done.length + failed.length > 1 && (
-            <button type="button" className="picture-queue-text-button picture-queue-clear" onClick={() => [...done, ...failed].forEach((j) => dismiss(j.key))}>
+          {ready + bad > 1 && (
+            <button type="button" className="picture-queue-text-button picture-queue-clear" onClick={() => [...done, ...failed, ...runsDone, ...runsFailed].forEach((j) => dismiss(j.key))}>
               Clear finished
             </button>
           )}
@@ -212,6 +245,50 @@ export function JobRow({
         </>
       )}
       {extra}
+    </li>
+  );
+}
+
+const RUN_STATE = { waiting: "waiting its turn", working: "writing", paused: "paused", done: "finished", failed: "failed", elsewhere: "running in another tab or browser" } as const;
+
+/** One AI run in the header list and the queue page. */
+export function RunRow({ run, onStop, onResume, onDismiss }: { run: RunItem; onStop: () => void; onResume: () => void; onDismiss: () => void }) {
+  const href = runHref(run);
+  const title = run.startTitle ? `${run.storyTitle} · ${run.startTitle}` : run.storyTitle;
+  const going = run.state === "working" || run.state === "waiting";
+  return (
+    <li className={`picture-queue-job picture-queue-run picture-queue-${run.state}`} aria-label={`${MODE_WORDS[run.mode]}, ${title}: ${RUN_STATE[run.state]}`}>
+      <div className="picture-queue-head">
+        <Link href={href}>{MODE_WORDS[run.mode]}</Link>
+        <span className="meta">{title}</span>
+      </div>
+      <div className="picture-queue-line">
+        <span className="meta">
+          {run.done} of {run.total} · {run.state === "working" && run.current ? `writing “${run.current}”` : RUN_STATE[run.state]}
+        </span>
+        <span className="row" style={{ gap: "0.75rem" }}>
+          {going && (
+            <button type="button" className="picture-queue-text-button" onClick={onStop}>
+              Stop
+            </button>
+          )}
+          {(run.state === "paused" || run.state === "failed") && (
+            <button type="button" className="picture-queue-text-button" onClick={onResume}>
+              Resume
+            </button>
+          )}
+        </span>
+      </div>
+      {run.note && <p className="meta picture-queue-message">{run.note}</p>}
+      {run.error && <p className="error picture-queue-message">{run.error}</p>}
+      <div className="picture-queue-line">
+        <Link href={href}>Open</Link>
+        {!going && run.state !== "elsewhere" && (
+          <button type="button" className="picture-queue-text-button" onClick={onDismiss}>
+            Dismiss
+          </button>
+        )}
+      </div>
     </li>
   );
 }

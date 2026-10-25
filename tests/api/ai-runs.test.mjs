@@ -79,6 +79,7 @@ await call("PATCH", `/api/ai-runs/${live}`, { token: A, version: 1, status: "que
 r = await call("GET", "/api/ai-runs?unfinished=1");
 const unf = r.json.runs.find((x) => x.id === live);
 ok(r.status === 200 && unf && unf.story_title === "Runs tale" && unf.start_title === "Root" && unf.counts.total === 2 && !("tasks" in unf), "unfinished lists a queued run with its story and start chapter titles and counts");
+ok(unf.chapters.total === 1 && unf.chapters.done === 0, "…and how many chapters it writes (write tasks), and how many are done");
 ok(!r.json.runs.some((x) => x.id === run), "…and leaves out a finished one");
 ok(unf.leased === true, "…and says whether another tab holds it");
 r = await call("GET", "/api/ai-runs?finished=1&limit=1");

@@ -15,7 +15,10 @@ import { queueJob, sameJob, type JobInput, type UploadCache } from "@/lib/comfy/
 import { randomSeed } from "@/lib/comfy/workflow";
 import type { PictureJob } from "@/lib/pictureJobs";
 import { chapterIdOf, chapterTarget, codexTarget, coverTarget, targetKey, targetOfIds, type PictureTarget } from "@/lib/pictureTarget";
-import { moveWaiting, nextActions, waitingOrder, type ReadyPicture } from "@/lib/workQueue/schedule";
+import { moveWaiting, schedule, waitingOrder, type Holder, type ReadyPicture } from "@/lib/workQueue/schedule";
+import { ApiError, getRun } from "@/lib/aiRuns/api";
+import { claim, finish as finishRun, runNextStep, type RunEvent } from "@/lib/aiRuns/runner";
+import type { AiRun, RunMode } from "@/lib/aiRuns/types";
 import { picturesOf, type PendingJob, type Picture } from "./pictures";
 
 /** How long after the last click a job is sent, so quick clicks with the same settings make one job. */
@@ -66,8 +69,39 @@ export type AskRequest = PictureTarget & {
 /** A picture job as an item of the work queue. */
 export type PictureItem = QueueJob & { type: "picture" };
 
+/** What the queue shows of an AI run (write ahead). The run itself, and its task list, live on the server. */
+export type RunItem = {
+  type: "run";
+  /** `run:<runId>`, for Dismiss. */
+  key: string;
+  runId: string;
+  storyId: string;
+  storyTitle: string;
+  startChapterId: string | null;
+  startTitle: string;
+  mode: RunMode;
+  /** Chapters written, of how many. */
+  done: number;
+  total: number;
+  /** What it is on now: the choice being written. */
+  current?: string;
+  /** `waiting`: its turn hasn't come; `elsewhere`: going in another tab or browser (Open only). */
+  state: "waiting" | "working" | "paused" | "done" | "failed" | "elsewhere";
+  error?: string;
+  /** Why it is paused, when it isn't the author's doing ("Plan ready to check"). */
+  note?: string;
+  addedAt: number;
+};
+
 /** Everything the work queue holds (later work adds other kinds). */
-export type WorkItem = PictureItem;
+export type WorkItem = PictureItem | RunItem;
+
+/** What a run page listening to its run is told while it works. */
+export type RunListener = {
+  onEvent: (event: RunEvent) => void;
+  /** The run as last saved (after each step). */
+  onRun: (run: AiRun) => void;
+};
 
 export type QueueApi = {
   /** Oldest first. */
@@ -97,7 +131,21 @@ export type WorkQueueApi = Omit<QueueApi, "jobs"> & {
   setPaused: (paused: boolean) => void;
   /** Moves a waiting job; ignored for a job that isn't waiting (it is gathering, or ComfyUI has it). */
   move: (key: string, how: "up" | "down" | "next") => void;
+  /** Puts a run in the queue (it goes `queued` on the server and is claimed when its turn comes). */
+  startRun: (runId: string) => Promise<void>;
+  /** Stops the run's current request; the run is paused. */
+  stopRun: (runId: string) => void;
+  /** Puts a paused or failed run back in line. */
+  resumeRun: (runId: string) => Promise<void>;
+  /** A run page is open: it is told what the run does while it does it. Returns the way to stop. */
+  listenRun: (runId: string, listener: RunListener) => () => void;
+  /** Who has the machine when taking turns, and what waits: for the header's line. */
+  machine: { holder: Holder; waitingPictures: number; waitingWriting: number };
 };
+
+/** This tab's id for the leases on AI runs (new at every page load, so a reload is another tab as far as the server knows). */
+const TAB_TOKEN: string =
+  typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `tab-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
 
 // Pause queue is kept in this browser (localStorage, which may be unavailable), so a reload stays paused.
 const PAUSE_KEY = "storytime-queue-paused";
@@ -248,8 +296,8 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
   useEffect(() => {
     connectionsRef.current = settings.connections;
   }, [settings.connections]);
-  const [items, setItems] = useState<WorkItem[]>([]);
-  // The same list, for the callbacks below (which outlive a render). Only picture items so far.
+  const [items, setItems] = useState<PictureItem[]>([]);
+  // The same list, for the callbacks below (which outlive a render). The picture items; runs are kept apart (`runItems`).
   const jobsRef = useRef<PictureItem[]>([]);
   const update = useCallback((change: (prev: PictureItem[]) => PictureItem[]) => {
     jobsRef.current = change(jobsRef.current);
@@ -275,6 +323,19 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
     setWaiting((prev) => (prev.length === order.length && prev.every((k, i) => k === order[i]) ? prev : order));
   }, []);
   const paused = useSyncExternalStore(watchPaused, isPaused, () => false);
+  // Writing: the runs waiting for a step (oldest first), and the run whose step is going now.
+  const writingQueue = useRef<string[]>([]);
+  const writingActive = useRef<string | null>(null);
+  // Who has the machine when taking turns (D18, D19), kept by `schedule`; and what the Queue settings say.
+  const holderRef = useRef<Holder>(null);
+  const queueSettings = useRef(settings.queue);
+  useEffect(() => {
+    queueSettings.current = settings.queue;
+  }, [settings.queue]);
+  const [machine, setMachine] = useState<WorkQueueApi["machine"]>({ holder: null, waitingPictures: 0, waitingWriting: 0 });
+  // The functions defined after `pump`, which `pump` and `ended` call.
+  const pumpRef = useRef<() => void>(() => {});
+  const runStepRef = useRef<(runId: string) => void>(() => {});
   // Keys of jobs sent to ComfyUI and not ended yet.
   const inFlight = useRef(new Set<string>());
   const uploads = useRef<UploadCache["current"]>(null);
@@ -292,6 +353,8 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
     (key: string, result: Ended) => {
       controls.current.delete(key);
       inFlight.current.delete(key);
+      // The machine may be free for the other kind now.
+      queueMicrotask(() => pumpRef.current());
       const job = jobsRef.current.find((j) => j.key === key);
       if (!job) return;
       if (job.session) {
@@ -391,14 +454,27 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
 
   /** Asks `nextActions` what to do with the ready jobs and does it: a job to send leaves `ready` and counts as in flight. */
   const pump = useCallback(() => {
-    const actions = nextActions({
+    const q = queueSettings.current;
+    const plan = schedule({
       ready: ready.current.map(({ key, targetKey, drawPreset, readyAt, moved }) => ({ key, targetKey, drawPreset, readyAt, moved })),
       inFlight: [...inFlight.current],
       paused: isPaused(),
       lastPreset: lastPreset.current,
       group: groupRef.current,
+      writing: { waiting: writingQueue.current, active: writingActive.current !== null },
+      sharing: q.sharing,
+      switchMinutes: q.switchMinutes,
+      switchItems: q.switchItems,
+      now: Date.now(),
+      holder: holderRef.current,
     });
-    for (const action of actions) {
+    holderRef.current = plan.holder;
+    for (const action of plan.actions) {
+      if (action.kind === "startWriting") {
+        writingQueue.current = writingQueue.current.filter((id) => id !== action.id);
+        runStepRef.current(action.id);
+        continue;
+      }
       const at = ready.current.findIndex((r) => r.key === action.key);
       if (at < 0) continue;
       const [{ g, drawPreset }] = ready.current.splice(at, 1);
@@ -406,8 +482,19 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
       lastPreset.current = drawPreset;
       void send(g);
     }
+    // Jobs still held while taking turns say so on their place and in the header.
+    if (q.sharing === "turns" && !isPaused()) {
+      for (const r of ready.current) {
+        const job = jobsRef.current.find((j) => j.key === r.key);
+        if (job && job.progress.stage === "gathering") patch(r.key, { progress: { stage: "held" } });
+      }
+    }
     syncWaiting();
-  }, [send, syncWaiting]);
+    setMachine({ holder: holderRef.current, waitingPictures: ready.current.length, waitingWriting: writingQueue.current.length });
+  }, [patch, send, syncWaiting]);
+  useEffect(() => {
+    pumpRef.current = pump;
+  }, [pump]);
 
   const setPaused = useCallback(
     (value: boolean) => {
@@ -428,6 +515,196 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
     },
     [syncWaiting],
   );
+
+  // ---- AI runs (write ahead): the queue does one step of a run at a time and puts it back in line ----
+  const [runItems, setRunItems] = useState<RunItem[]>([]);
+  const runItemsRef = useRef<RunItem[]>([]);
+  const updateRuns = useCallback((change: (prev: RunItem[]) => RunItem[]) => {
+    runItemsRef.current = change(runItemsRef.current);
+    setRunItems(runItemsRef.current);
+  }, []);
+  const patchRunItem = useCallback(
+    (runId: string, p: Partial<RunItem>) => updateRuns((prev) => prev.map((r) => (r.runId === runId ? { ...r, ...p } : r))),
+    [updateRuns],
+  );
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+  // What Stop needs for the run being worked on, and the run pages listening.
+  const runControl = useRef(new Map<string, AbortController>());
+  const runListeners = useRef(new Map<string, Set<RunListener>>());
+  const plainFetch = useCallback((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init), []);
+
+  /** The run as last saved: the item's counts, and the run pages listening. */
+  const applyRun = useCallback(
+    (run: AiRun) => {
+      const writes = run.tasks.filter((t) => t.kind === "write");
+      patchRunItem(run.id, { done: writes.filter((t) => t.status === "done").length, total: writes.length });
+      runListeners.current.get(run.id)?.forEach((l) => l.onRun(run));
+    },
+    [patchRunItem],
+  );
+
+  const onRunEvent = useCallback(
+    (runId: string, event: RunEvent) => {
+      if (event.type === "task" && event.label) patchRunItem(runId, { current: event.label });
+      runListeners.current.get(runId)?.forEach((l) => l.onEvent(event));
+    },
+    [patchRunItem],
+  );
+
+  /** Takes the run, sets it `queued` on the server and puts it in line for its next step. */
+  const enqueue = useCallback(
+    async (runId: string) => {
+      try {
+        const run = await claim(runId, TAB_TOKEN, { fetch: plainFetch });
+        applyRun(await finishRun(run, "queued", TAB_TOKEN, { fetch: plainFetch }, null));
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 409) return patchRunItem(runId, { state: "elsewhere", error: undefined, note: undefined });
+        return patchRunItem(runId, { state: "failed", error: e instanceof Error ? e.message : String(e) });
+      }
+      patchRunItem(runId, { state: "waiting", error: undefined, note: undefined });
+      if (!writingQueue.current.includes(runId)) writingQueue.current.push(runId);
+      pumpRef.current();
+    },
+    [applyRun, patchRunItem, plainFetch],
+  );
+
+  const startRun = useCallback(
+    async (runId: string) => {
+      const existing = runItemsRef.current.find((r) => r.runId === runId);
+      if (existing) {
+        if (existing.state === "working" || existing.state === "waiting") return;
+        patchRunItem(runId, { state: "waiting" });
+        return enqueue(runId);
+      }
+      const run = await getRun(plainFetch, runId);
+      let labels: Record<string, { title: string; story_title: string }> = {};
+      if (run.start_chapter_id) {
+        const res = await fetch(`/api/chapters/labels?ids=${encodeURIComponent(run.start_chapter_id)}`).catch(() => null);
+        labels = res?.ok ? ((await res.json()) as { labels: typeof labels }).labels : {};
+      }
+      const label = run.start_chapter_id ? labels[run.start_chapter_id] : undefined;
+      const writes = run.tasks.filter((t) => t.kind === "write");
+      updateRuns((prev) => [
+        ...prev.filter((r) => r.runId !== runId),
+        {
+          type: "run", key: `run:${runId}`, runId, storyId: run.story_id, storyTitle: label?.story_title ?? "A story", startChapterId: run.start_chapter_id,
+          startTitle: label?.title ?? "", mode: run.mode, done: writes.filter((t) => t.status === "done").length, total: writes.length,
+          state: "waiting", addedAt: Date.now(),
+        },
+      ]);
+      await enqueue(runId);
+    },
+    [enqueue, patchRunItem, plainFetch, updateRuns],
+  );
+
+  /** One step of the run, then back in line (or paused, done, failed). */
+  const runStep = useCallback(
+    async (runId: string) => {
+      writingActive.current = runId;
+      const ctl = new AbortController();
+      runControl.current.set(runId, ctl);
+      patchRunItem(runId, { state: "working", error: undefined, note: undefined });
+      setMachine((m) => ({ ...m, waitingWriting: writingQueue.current.length }));
+      try {
+        const run = await claim(runId, TAB_TOKEN, { fetch: plainFetch });
+        const out = await runNextStep(run, {
+          settings: settingsRef.current,
+          token: TAB_TOKEN,
+          signal: ctl.signal,
+          onEvent: (e) => onRunEvent(runId, e),
+          deps: { fetch: plainFetch },
+        });
+        applyRun(out.run);
+        if (out.more) {
+          patchRunItem(runId, { state: "waiting" });
+          writingQueue.current.push(runId);
+        } else if (out.run.status === "done") patchRunItem(runId, { state: "done", current: undefined });
+        else if (out.run.status === "review") patchRunItem(runId, { state: "paused", note: "Plan ready to check", current: undefined });
+        else if (out.run.error && !ctl.signal.aborted) patchRunItem(runId, { state: "failed", error: out.run.error, current: undefined });
+        else patchRunItem(runId, { state: "paused", current: undefined });
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 409) patchRunItem(runId, { state: "elsewhere", current: undefined });
+        else patchRunItem(runId, { state: "failed", error: e instanceof Error ? e.message : String(e), current: undefined });
+      } finally {
+        writingActive.current = null;
+        runControl.current.delete(runId);
+        pumpRef.current();
+      }
+    },
+    [applyRun, onRunEvent, patchRunItem, plainFetch],
+  );
+  useEffect(() => {
+    runStepRef.current = (id) => void runStep(id);
+  }, [runStep]);
+
+  const stopRun = useCallback(
+    (runId: string) => {
+      if (writingActive.current === runId) return runControl.current.get(runId)?.abort();
+      if (!writingQueue.current.includes(runId)) return;
+      writingQueue.current = writingQueue.current.filter((id) => id !== runId);
+      patchRunItem(runId, { state: "paused" });
+      pumpRef.current();
+      void claim(runId, TAB_TOKEN, { fetch: plainFetch })
+        .then((run) => finishRun(run, "paused", TAB_TOKEN, { fetch: plainFetch }))
+        .then(applyRun)
+        .catch(() => {
+          // the run stays queued on the server; it shows as paused here
+        });
+    },
+    [applyRun, patchRunItem, plainFetch],
+  );
+
+  const resumeRun = useCallback(
+    async (runId: string) => {
+      const item = runItemsRef.current.find((r) => r.runId === runId);
+      if (!item || item.state === "working" || item.state === "waiting") return;
+      patchRunItem(runId, { state: "waiting", error: undefined, note: undefined });
+      await enqueue(runId);
+    },
+    [enqueue, patchRunItem],
+  );
+
+  const listenRun = useCallback((runId: string, listener: RunListener) => {
+    const set = runListeners.current.get(runId) ?? new Set<RunListener>();
+    set.add(listener);
+    runListeners.current.set(runId, set);
+    return () => void set.delete(listener);
+  }, []);
+
+  /** Runs the server lists as unfinished that this tab doesn't have: going in another tab ("elsewhere"), or paused here to resume. Nothing starts by itself. */
+  const loadRuns = useCallback(async () => {
+    try {
+      const res = await fetch("/api/ai-runs?unfinished=1", { cache: "no-store" });
+      if (!res.ok) return;
+      const { runs } = (await res.json()) as {
+        runs: { id: string; story_id: string; start_chapter_id: string | null; mode: RunMode; leased: boolean; error: string | null; story_title?: string; start_title?: string | null; chapters: { done: number; total: number } }[];
+      };
+      const listed = new Map(runs.map((r) => [r.id, r]));
+      updateRuns((prev) => {
+        // Runs of other tabs that have gone from the list are dropped; the ones still there follow their lease.
+        const kept = prev
+          .filter((r) => !((r.state === "elsewhere" || r.state === "paused") && !listed.has(r.runId)))
+          .map((r) => {
+            const found = listed.get(r.runId);
+            return found && (r.state === "elsewhere" || r.state === "paused") ? { ...r, state: found.leased ? ("elsewhere" as const) : ("paused" as const) } : r;
+          });
+        const known = new Set(kept.map((r) => r.runId));
+        const added: RunItem[] = runs
+          .filter((r) => !known.has(r.id))
+          .map((r) => ({
+            type: "run", key: `run:${r.id}`, runId: r.id, storyId: r.story_id, storyTitle: r.story_title ?? "A story", startChapterId: r.start_chapter_id,
+            startTitle: r.start_title ?? "", mode: r.mode, done: r.chapters.done, total: r.chapters.total, state: r.leased ? "elsewhere" : "paused",
+            ...(r.error && !r.leased && { error: r.error }), addedAt: Date.now(),
+          }));
+        return [...kept, ...added];
+      });
+    } catch {
+      // asked again when the app next comes into view
+    }
+  }, [updateRuns]);
 
   /** A gathered job is closed (its timer ran out, or a different click came): no more clicks join it, and it waits to be sent. */
   const markReady = useCallback(
@@ -494,12 +771,16 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
 
   const dismiss = useCallback(
     (key: string) => {
+      if (key.startsWith("run:")) {
+        // A run that is going or waiting can't be dismissed (Stop it first).
+        return updateRuns((prev) => prev.filter((r) => r.key !== key || r.state === "working" || r.state === "waiting"));
+      }
       const job = jobsRef.current.find((j) => j.key === key && j.state !== "making");
       if (!job) return;
       if (job.unseen) markJobsSeen(jobIdsOf(job.pictures));
       update((prev) => prev.filter((j) => j !== job));
     },
-    [update],
+    [update, updateRuns],
   );
 
   const listen = useCallback(
@@ -544,6 +825,8 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
       const key = `job-${randomSeed().toString(36)}`;
       const ctl = new AbortController();
       controls.current.set(key, { promptId: found.promptId, ctl, url });
+      // A job found in ComfyUI counts as pictures holding the machine (taking turns).
+      inFlight.current.add(key);
       update((prev) => [
         ...prev,
         {
@@ -666,6 +949,7 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
   useEffect(() => {
     const look = async () => {
       lastScan.current = Date.now();
+      void loadRuns();
       await loadUnseen();
       if (comfyUrl) await scan(comfyUrl);
     };
@@ -675,12 +959,30 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
     };
     document.addEventListener("visibilitychange", again);
     return () => document.removeEventListener("visibilitychange", again);
-  }, [comfyUrl, scan, loadUnseen]);
+  }, [comfyUrl, scan, loadUnseen, loadRuns]);
 
+  // Closing the tab while writing goes on, or pictures are held back here, loses that work: ask first.
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if (writingActive.current !== null || ready.current.length > 0) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, []);
+
+  const allItems = useMemo<WorkItem[]>(() => [...items, ...runItems], [items, runItems]);
   const api = useMemo(
-    () => ({ items, ask, stop, dismiss, listen, listenSession, waiting, paused, setPaused, move }),
-    [items, ask, stop, dismiss, listen, listenSession, waiting, paused, setPaused, move],
+    () => ({ items: allItems, ask, stop, dismiss, listen, listenSession, waiting, paused, setPaused, move, startRun, stopRun, resumeRun, listenRun, machine }),
+    [allItems, ask, stop, dismiss, listen, listenSession, waiting, paused, setPaused, move, startRun, stopRun, resumeRun, listenRun, machine],
   );
+  // For the browser tests: the run page that starts runs comes later, so a test page asks for the queue itself.
+  useEffect(() => {
+    const w = window as unknown as { __STORYTIME_TEST__?: boolean; __storytimeQueue?: unknown };
+    if (w.__STORYTIME_TEST__) w.__storytimeQueue = api;
+  }, [api]);
   return <QueueContext.Provider value={api}>{children}</QueueContext.Provider>;
 }
 

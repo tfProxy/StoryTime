@@ -198,6 +198,12 @@ a {
   text-align: left;
 }
 
+.picture-queue-note {
+  margin: 0;
+  padding: 0.5rem 0.8rem;
+  border-bottom: 1px solid var(--line);
+}
+
 .picture-queue-open {
   display: block;
   padding: 0.55rem 0.8rem;

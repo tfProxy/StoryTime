@@ -687,5 +687,6 @@ function briefProgress(p: JobProgress): string {
   if (p.stage === "queued") return p.ahead ? `waiting, ${p.ahead} ahead` : "starting";
   if (p.stage === "uploading") return "sending the picture";
   if (p.stage === "gathering") return "about to send";
+  if (p.stage === "held") return "waiting its turn";
   return "loading the pictures";
 }

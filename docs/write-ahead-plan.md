@@ -278,6 +278,8 @@ The picture queue becomes the app's one work queue (D14), still holding only pic
 
 ### Task 1.4: writing in the work queue, and taking turns (after 1.3 and milestone 0)
 
+(Done in task 1.4. Choices made: run items are kept apart from the picture list in the provider and joined in `items`; `GET /api/ai-runs?unfinished=1` rows now carry `chapters: {done, total}` for “12 of 39”; the queue page lists runs too; a header count part for runs in another tab (`↗`); the test hook is `window.__storytimeQueue`, set when `window.__STORYTIME_TEST__` is set before the app loads; the header's run row links to `/c/<start>/write-ahead?run=<id>`, which task 1.5 builds. The `Generate` item (D16, milestone 5) isn't there yet, so writing is runs only.)
+
 **Files:** `src/components/WorkQueue.tsx`, `src/components/WorkQueueStatus.tsx`, `src/lib/workQueue/schedule.ts`, `docs/illustrate.md` (the picture queue bullet: how pictures now wait their turn), `src/app/globals.css`, `tests/unit/work-queue-schedule.test.mts`, `tests/e2e/work-queue.e2e.mjs` (new).
 
 1. **Run items:** `{type: "run", runId, storyTitle, startTitle, mode, done, total, current?: label, state: "waiting" | "working" | "paused" | "done" | "failed" | "elsewhere", error?}`, in memory beside the picture jobs (`WorkItem` in `WorkQueue.tsx`; `jobsRef`/`update` hold only picture items today, so widen them to `WorkItem` and keep `usePictureQueue()` filtering to pictures); milestone 5 adds `{type: "generate", ...}`.

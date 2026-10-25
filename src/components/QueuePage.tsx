@@ -8,8 +8,8 @@ import { useSettings } from "@/lib/settings";
 import { imageUrl } from "@/lib/comfy/client";
 import type { PictureJob } from "@/lib/pictureJobs";
 import { targetHref, targetKey, targetOfIds } from "@/lib/pictureTarget";
-import { useWorkQueue, usePictureQueue, type QueueJob } from "./WorkQueue";
-import { JobRow, MOMENTS, pictures, useLabels, type Labels } from "./WorkQueueStatus";
+import { useWorkQueue, usePictureQueue, type QueueJob, type RunItem } from "./WorkQueue";
+import { JobRow, MOMENTS, RunRow, pictures, useLabels, type Labels } from "./WorkQueueStatus";
 
 const HISTORY_PAGE = 20;
 
@@ -18,7 +18,7 @@ const titleOf = (job: { kind: QueueJob["kind"] }, label?: Labels[string]) =>
 
 export default function QueuePage() {
   const { jobs, stop, dismiss } = usePictureQueue();
-  const { waiting, paused, setPaused, move } = useWorkQueue();
+  const { waiting, paused, setPaused, move, items, stopRun, resumeRun, machine } = useWorkQueue();
   const comfyUrl = useSettings().comfy.url;
 
   const [history, setHistory] = useState<PictureJob[]>([]);
@@ -65,6 +65,14 @@ export default function QueuePage() {
   const done = jobs.filter((j) => j.state === "done");
   const failed = jobs.filter((j) => j.state === "failed");
 
+  const runs = items.filter((i): i is RunItem => i.type === "run").sort((a, b) => b.addedAt - a.addedAt);
+  const runsWorking = runs.filter((r) => r.state === "working");
+  const runsWaiting = runs.filter((r) => r.state === "waiting");
+  const runsPaused = runs.filter((r) => r.state === "paused" || r.state === "elsewhere");
+  const runsDone = runs.filter((r) => r.state === "done");
+  const runsFailed = runs.filter((r) => r.state === "failed");
+  const runRow = (r: RunItem) => <RunRow key={r.key} run={r} onStop={() => stopRun(r.runId)} onResume={() => void resumeRun(r.runId)} onDismiss={() => dismiss(r.key)} />;
+
   const row = (j: QueueJob, extra?: React.ReactNode, note?: string) => (
     <JobRow key={j.key} job={j} label={labels[targetKey(j)]} comfyUrl={comfyUrl} onStop={() => stop(j.key)} onDismiss={() => dismiss(j.key)} note={note} extra={extra} />
   );
@@ -72,7 +80,9 @@ export default function QueuePage() {
   return (
     <>
       <h1>Queue</h1>
-      <p className="meta">Pictures have the machine. What is being made and what waits, in the order it will go.</p>
+      <p className="meta">
+        {machine.holder?.kind === "writing" ? "Writing has the machine." : "Pictures have the machine."} What is being made and what waits, in the order it will go.
+      </p>
 
       <div className="row" style={{ alignItems: "center" }}>
         <button type="button" className={paused ? "" : "secondary"} onClick={() => setPaused(!paused)}>
@@ -86,22 +96,26 @@ export default function QueuePage() {
 
       <section aria-label="Working">
         <h2>Working</h2>
-        {working.length === 0 ? (
+        {working.length + runsWorking.length === 0 ? (
           <p className="meta">Nothing is being made.</p>
         ) : (
           <>
-            <p className="meta">ComfyUI has these jobs, so they can&apos;t be moved.</p>
-            <ul className="queue-page-list">{working.map((j) => row(j))}</ul>
+            {working.length > 0 && <p className="meta">ComfyUI has these jobs, so they can&apos;t be moved.</p>}
+            <ul className="queue-page-list">
+              {runsWorking.map(runRow)}
+              {working.map((j) => row(j))}
+            </ul>
           </>
         )}
       </section>
 
       <section aria-label="Waiting">
         <h2>Waiting</h2>
-        {waitingJobs.length + gathering.length === 0 ? (
+        {waitingJobs.length + gathering.length + runsWaiting.length === 0 ? (
           <p className="meta">Nothing is waiting.</p>
         ) : (
           <ul className="queue-page-list">
+            {runsWaiting.map(runRow)}
             {waitingJobs.map((j, i) =>
               row(
                 j,
@@ -126,17 +140,39 @@ export default function QueuePage() {
 
       <section aria-label="Finished">
         <h2>Finished</h2>
-        {done.length === 0 ? <p className="meta">Nothing has finished lately.</p> : <ul className="queue-page-list">{done.map((j) => row(j))}</ul>}
-        {done.length + failed.length > 1 && (
-          <button type="button" className="secondary" onClick={() => [...done, ...failed].forEach((j) => dismiss(j.key))}>
+        {done.length + runsDone.length === 0 ? (
+          <p className="meta">Nothing has finished lately.</p>
+        ) : (
+          <ul className="queue-page-list">
+            {runsDone.map(runRow)}
+            {done.map((j) => row(j))}
+          </ul>
+        )}
+        {done.length + failed.length + runsDone.length + runsFailed.length > 1 && (
+          <button type="button" className="secondary" onClick={() => [...done, ...failed, ...runsDone, ...runsFailed].forEach((j) => dismiss(j.key))}>
             Clear finished
           </button>
         )}
       </section>
 
+      {runsPaused.length > 0 && (
+        <section aria-label="Paused">
+          <h2>Paused</h2>
+          <p className="meta">Runs that stopped, or are going in another tab or browser. Nothing starts by itself: Resume puts one back in line.</p>
+          <ul className="queue-page-list">{runsPaused.map(runRow)}</ul>
+        </section>
+      )}
+
       <section aria-label="Failed">
         <h2>Failed</h2>
-        {failed.length === 0 ? <p className="meta">Nothing has failed.</p> : <ul className="queue-page-list">{failed.map((j) => row(j))}</ul>}
+        {failed.length + runsFailed.length === 0 ? (
+          <p className="meta">Nothing has failed.</p>
+        ) : (
+          <ul className="queue-page-list">
+            {runsFailed.map(runRow)}
+            {failed.map((j) => row(j))}
+          </ul>
+        )}
       </section>
 
       <section aria-label="History">

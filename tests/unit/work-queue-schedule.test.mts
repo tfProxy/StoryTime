@@ -1,4 +1,4 @@
-import { moveWaiting, nextActions, orderHeldPictures, waitingOrder, type ReadyPicture } from "../../src/lib/workQueue/schedule.ts";
+import { batchUsedUp, machineNote, moveWaiting, nextActions, orderHeldPictures, schedule, waitingOrder, type Holder, type ReadyPicture } from "../../src/lib/workQueue/schedule.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 
@@ -85,3 +85,59 @@ ok(JSON.stringify(order) === before2, "moving does not change its input");
 const manual = moveWaiting(order, "d1", "next");
 const withNew = [...manual, job("e1", "chapter:e", "slow", 6), job("f1", "chapter:f", "fast", 7)];
 ok(keys(waitingOrder(withNew, "fast", true)) === "d1,a1,b1,c1,b2,f1,e1", "moved jobs keep their order before the rest, which are grouped");
+
+// ---- writing and pictures sharing the machine (D16, D18, D19) ----
+const MIN = 60_000;
+const pics = [job("p1", "chapter:a", "x", 1), job("p2", "chapter:b", "x", 2), job("p3", "chapter:c", "x", 3)];
+const kinds = (state: Parameters<typeof schedule>[0]) => schedule(state).actions.map((a) => (a.kind === "sendPicture" ? a.key : `W:${a.id}`)).join();
+const base = { ready: pics, inFlight: [] as string[], sharing: "turns" as const, switchMinutes: 10, switchItems: 0, now: 0 };
+
+// Together: everything goes at once; one writing step at a time.
+ok(kinds({ ...base, sharing: "together", writing: { waiting: ["r1", "r2"], active: false } }) === "p1,p2,p3,W:r1", "together: every picture job is sent and the first waiting run starts");
+ok(kinds({ ...base, sharing: "together", writing: { waiting: ["r2"], active: true } }) === "p1,p2,p3", "together: only one writing step at a time");
+ok(kinds({ ...base, ready: [], sharing: "together", writing: { waiting: ["r1"], active: true }, inFlight: ["j"] }) === "", "together: nothing new while a step runs and nothing is ready");
+ok(kinds({ ...base, sharing: undefined, writing: { waiting: ["r1"], active: false } }) === "p1,p2,p3,W:r1", "without a sharing setting both go at once");
+ok(kinds({ ...base, paused: true, writing: { waiting: ["r1"], active: false } }) === "", "paused: nothing starts, writing included");
+
+// Turns: one kind at a time.
+ok(kinds({ ...base, writing: { waiting: ["r1"], active: true } }) === "", "turns: while a writing step runs no picture job is sent");
+ok(kinds({ ...base, inFlight: ["j"], writing: { waiting: ["r1"], active: false } }) === "p1,p2,p3", "turns: while pictures are in ComfyUI no writing step starts (and more pictures may go)");
+ok(schedule({ ...base, inFlight: ["j"], writing: { waiting: ["r1"], active: false } }).holder?.kind === "pictures", "…a job found in ComfyUI counts as pictures holding the machine");
+ok(kinds({ ...base, writing: { waiting: ["r1"], active: false } }) === "p1,p2,p3", "turns: idle with nothing held, pictures go first");
+ok(kinds({ ...base, ready: [], writing: { waiting: ["r1", "r2"], active: false } }) === "W:r1", "turns: only writing waiting, the first run goes");
+ok(kinds({ ...base, writing: { waiting: [], active: false } }) === "p1,p2,p3", "turns: only pictures waiting, they all go");
+
+// Switching.
+const writingHolds = (since: number, count: number): Holder => ({ kind: "writing", since, count });
+const picturesHold = (since: number, count: number): Holder => ({ kind: "pictures", since, count });
+ok(kinds({ ...base, now: 5 * MIN, holder: writingHolds(0, 3), writing: { waiting: ["r1"], active: false } }) === "W:r1", "writing keeps the machine inside its batch, pictures waiting");
+ok(schedule({ ...base, now: 5 * MIN, holder: writingHolds(0, 3), writing: { waiting: ["r1"], active: false } }).holder?.count === 4, "…and counts the step it starts");
+ok(kinds({ ...base, now: 10 * MIN, holder: writingHolds(0, 3), writing: { waiting: ["r1"], active: false } }) === "p1,p2,p3", "after switchMinutes the pictures take over");
+const handed = schedule({ ...base, now: 10 * MIN, holder: writingHolds(0, 3), writing: { waiting: ["r1"], active: false } }).holder!;
+ok(handed.kind === "pictures" && handed.since === 10 * MIN && handed.count === 3, "…and the new holder starts its own batch (time and count)");
+ok(kinds({ ...base, switchItems: 2, now: MIN, holder: writingHolds(0, 2), writing: { waiting: ["r1"], active: false } }) === "p1,p2", "after switchItems writing steps the pictures take over, up to their own batch of 2 while writing waits");
+ok(kinds({ ...base, ready: pics.slice(0, 1), switchItems: 2, now: MIN, holder: writingHolds(0, 2), writing: { waiting: ["r1"], active: false } }) === "p1", "…fewer if fewer are ready");
+ok(kinds({ ...base, switchItems: 2, now: MIN, holder: picturesHold(0, 0), writing: { waiting: ["r1"], active: false } }) === "p1,p2", "pictures send only up to their batch while writing waits");
+ok(kinds({ ...base, switchItems: 2, now: MIN, holder: picturesHold(0, 2), writing: { waiting: ["r1"], active: false } }) === "W:r1", "when the pictures' batch is used up writing takes over");
+ok(kinds({ ...base, inFlight: ["j"], switchItems: 2, now: MIN, holder: picturesHold(0, 2), writing: { waiting: ["r1"], active: false } }) === "", "…the pictures in flight finish first, and no more are sent");
+ok(kinds({ ...base, ready: [], now: 99 * MIN, holder: writingHolds(0, 99), writing: { waiting: ["r1"], active: false } }) === "W:r1", "a holder with a used-up batch keeps going when the other kind has nothing waiting");
+ok(kinds({ ...base, now: 99 * MIN, holder: writingHolds(0, 99), writing: { waiting: [], active: false } }) === "p1,p2,p3", "…and when it has nothing waiting the other kind goes");
+ok(batchUsedUp(writingHolds(0, 0), { now: 10 * MIN, switchMinutes: 10, switchItems: 0 }) && !batchUsedUp(writingHolds(0, 50), { now: MIN, switchMinutes: 10, switchItems: 0 }), "no item limit when switchItems is 0; the time limit alone works");
+
+// Grouping when held jobs are released.
+const mixed = [job("a", "chapter:a", "slow", 1), job("b", "chapter:b", "fast", 2), job("c", "chapter:c", "slow", 3)];
+ok(kinds({ ...base, ready: mixed, group: true, lastPreset: "fast", writing: { waiting: ["r1"], active: false } }) === "b,a,c", "released jobs go with the last-sent preset first");
+ok(kinds({ ...base, ready: mixed, group: true, lastPreset: "fast", switchItems: 1, writing: { waiting: ["r1"], active: false } }) === "b", "…and a batch limit cuts the grouped order, not the ready order");
+
+// The input is not changed.
+const frozen = { ...base, holder: writingHolds(0, 1), writing: { waiting: ["r1"], active: false } };
+const snapshot = JSON.stringify(frozen);
+schedule(frozen);
+ok(JSON.stringify(frozen) === snapshot, "schedule does not change its input");
+
+// The header's line.
+const note = (extra: Partial<Parameters<typeof machineNote>[0]>) => machineNote({ holder: writingHolds(0, 1), sharing: "turns", switchMinutes: 20, switchItems: 0, waitingPictures: 3, waitingWriting: 0, timeText: (ms) => `t${ms / MIN}`, ...extra });
+ok(note({}) === "Writing until t20, then 3 picture jobs", "the note says who has the machine, until when and what is next");
+ok(note({ switchItems: 5 }) === "Writing until t20 or 4 more steps, then 3 picture jobs", "…with the item limit");
+ok(note({ holder: picturesHold(0, 0), waitingPictures: 0, waitingWriting: 2 }) === "Pictures until t20, then 2 writing items", "…for pictures too");
+ok(note({ waitingPictures: 0 }) === null && note({ sharing: "together" }) === null && note({ holder: null }) === null, "…and nothing when nothing waits, or not taking turns");

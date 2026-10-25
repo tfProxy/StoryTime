@@ -200,10 +200,11 @@ export function pictureMarkdown(p: Picture, titles: Record<string, string>): str
 }
 
 /** A job's progress, or "gathering" while more clicks can still be added to it. */
-export type JobProgress = Progress | { stage: "gathering" };
+export type JobProgress = Progress | { stage: "gathering" } | { stage: "held" };
 
 export function progressText(p: JobProgress): string {
   if (p.stage === "gathering") return "Click again for more pictures in this job…";
+  if (p.stage === "held") return "Waiting its turn: the AI model has the machine…";
   if (p.stage === "uploading") return "Sending the starting picture to ComfyUI…";
   if (p.stage === "queued") return p.ahead ? `Waiting in ComfyUI's queue (${p.ahead} ahead)…` : "Starting…";
   if (p.stage === "running") return `Step ${p.value} of ${p.max}…`;

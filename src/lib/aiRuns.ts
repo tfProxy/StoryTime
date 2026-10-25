@@ -120,7 +120,13 @@ export type AiRun = {
 };
 
 /** A run in a list: its task counts instead of the tasks. */
-export type AiRunSummary = Omit<AiRun, "tasks"> & { counts: TaskCounts; story_title?: string; start_title?: string | null };
+export type AiRunSummary = Omit<AiRun, "tasks"> & {
+  counts: TaskCounts;
+  /** The chapters the run writes (its write tasks): how many are done, of how many. */
+  chapters: { done: number; total: number };
+  story_title?: string;
+  start_title?: string | null;
+};
 
 export const NewRunSchema = z
   .object({
@@ -196,7 +202,8 @@ function toRun(row: Row): AiRun {
 
 function toSummary(row: Row & { story_title?: string; start_title?: string | null }): AiRunSummary {
   const { tasks, ...run } = toRun(row);
-  return { ...run, counts: countTasks(tasks), ...(row.story_title !== undefined && { story_title: row.story_title }), ...(row.start_title !== undefined && { start_title: row.start_title }) };
+  const writes = tasks.filter((t) => t.kind === "write");
+  return { ...run, counts: countTasks(tasks), chapters: { done: writes.filter((t) => t.status === "done").length, total: writes.length }, ...(row.story_title !== undefined && { story_title: row.story_title }), ...(row.start_title !== undefined && { start_title: row.start_title }) };
 }
 
 function rowOf(id: string): Row {
