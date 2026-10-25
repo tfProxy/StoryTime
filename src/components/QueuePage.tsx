@@ -8,8 +8,8 @@ import { useSettings } from "@/lib/settings";
 import { imageUrl } from "@/lib/comfy/client";
 import type { PictureJob } from "@/lib/pictureJobs";
 import { targetHref, targetKey, targetOfIds } from "@/lib/pictureTarget";
-import { useWorkQueue, usePictureQueue, type QueueJob, type RunItem } from "./WorkQueue";
-import { JobRow, MOMENTS, RunRow, pictures, useLabels, type Labels } from "./WorkQueueStatus";
+import { useWorkQueue, usePictureQueue, type GenerateItem, type QueueJob, type RunItem } from "./WorkQueue";
+import { GenerateRow, JobRow, MOMENTS, RunRow, pictures, useLabels, type Labels } from "./WorkQueueStatus";
 
 const HISTORY_PAGE = 20;
 
@@ -18,7 +18,7 @@ const titleOf = (job: { kind: QueueJob["kind"] }, label?: Labels[string]) =>
 
 export default function QueuePage() {
   const { jobs, stop, dismiss } = usePictureQueue();
-  const { waiting, paused, setPaused, move, items, stopRun, resumeRun, machine } = useWorkQueue();
+  const { waiting, paused, setPaused, move, items, stopRun, resumeRun, stopGenerate, machine } = useWorkQueue();
   const comfyUrl = useSettings().comfy.url;
 
   const [history, setHistory] = useState<PictureJob[]>([]);
@@ -71,6 +71,12 @@ export default function QueuePage() {
   const runsPaused = runs.filter((r) => r.state === "paused" || r.state === "elsewhere");
   const runsDone = runs.filter((r) => r.state === "done");
   const runsFailed = runs.filter((r) => r.state === "failed");
+  const gens = items.filter((i): i is GenerateItem => i.type === "generate").sort((a, b) => b.addedAt - a.addedAt);
+  const genRow = (g: GenerateItem) => <GenerateRow key={g.key} item={g} onStop={() => stopGenerate(g.draftKey)} onDismiss={() => dismiss(g.key)} />;
+  const gensWorking = gens.filter((g) => g.state === "working");
+  const gensWaiting = gens.filter((g) => g.state === "waiting");
+  const gensDone = gens.filter((g) => g.state === "done");
+  const gensFailed = gens.filter((g) => g.state === "failed");
   const runRow = (r: RunItem) => <RunRow key={r.key} run={r} onStop={() => stopRun(r.runId)} onResume={() => void resumeRun(r.runId)} onDismiss={() => dismiss(r.key)} />;
 
   const row = (j: QueueJob, extra?: React.ReactNode, note?: string) => (
@@ -96,12 +102,13 @@ export default function QueuePage() {
 
       <section aria-label="Working">
         <h2>Working</h2>
-        {working.length + runsWorking.length === 0 ? (
+        {working.length + runsWorking.length + gensWorking.length === 0 ? (
           <p className="meta">Nothing is being made.</p>
         ) : (
           <>
             {working.length > 0 && <p className="meta">ComfyUI has these jobs, so they can&apos;t be moved.</p>}
             <ul className="queue-page-list">
+              {gensWorking.map(genRow)}
               {runsWorking.map(runRow)}
               {working.map((j) => row(j))}
             </ul>
@@ -111,10 +118,11 @@ export default function QueuePage() {
 
       <section aria-label="Waiting">
         <h2>Waiting</h2>
-        {waitingJobs.length + gathering.length + runsWaiting.length === 0 ? (
+        {waitingJobs.length + gathering.length + runsWaiting.length + gensWaiting.length === 0 ? (
           <p className="meta">Nothing is waiting.</p>
         ) : (
           <ul className="queue-page-list">
+            {gensWaiting.map(genRow)}
             {runsWaiting.map(runRow)}
             {waitingJobs.map((j, i) =>
               row(
@@ -140,16 +148,17 @@ export default function QueuePage() {
 
       <section aria-label="Finished">
         <h2>Finished</h2>
-        {done.length + runsDone.length === 0 ? (
+        {done.length + runsDone.length + gensDone.length === 0 ? (
           <p className="meta">Nothing has finished lately.</p>
         ) : (
           <ul className="queue-page-list">
+            {gensDone.map(genRow)}
             {runsDone.map(runRow)}
             {done.map((j) => row(j))}
           </ul>
         )}
-        {done.length + failed.length + runsDone.length + runsFailed.length > 1 && (
-          <button type="button" className="secondary" onClick={() => [...done, ...failed, ...runsDone, ...runsFailed].forEach((j) => dismiss(j.key))}>
+        {done.length + failed.length + runsDone.length + runsFailed.length + gensDone.length + gensFailed.length > 1 && (
+          <button type="button" className="secondary" onClick={() => [...done, ...failed, ...runsDone, ...runsFailed, ...gensDone, ...gensFailed].forEach((j) => dismiss(j.key))}>
             Clear finished
           </button>
         )}
@@ -165,10 +174,11 @@ export default function QueuePage() {
 
       <section aria-label="Failed">
         <h2>Failed</h2>
-        {failed.length + runsFailed.length === 0 ? (
+        {failed.length + runsFailed.length + gensFailed.length === 0 ? (
           <p className="meta">Nothing has failed.</p>
         ) : (
           <ul className="queue-page-list">
+            {gensFailed.map(genRow)}
             {runsFailed.map(runRow)}
             {failed.map((j) => row(j))}
           </ul>

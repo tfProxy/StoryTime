@@ -19,6 +19,16 @@ import { moveWaiting, schedule, waitingOrder, type Holder, type ReadyPicture } f
 import { ApiError, getRun } from "@/lib/aiRuns/api";
 import { claim, finish as finishRun, runNextStep, type RunEvent } from "@/lib/aiRuns/runner";
 import type { AiRun, RunMode } from "@/lib/aiRuns/types";
+import { withPathSummaries } from "@/lib/aiRuns/writeChapter";
+import { completeChat, streamChat } from "@/lib/ai/client";
+import {
+  choiceLabelPrompt, choicesPrompt, generatePrompt, parseChapterOutput, parseChoiceLabel, parseChoices, SYSTEM_CHAPTER, SYSTEM_CHOICE_LABEL, SYSTEM_CHOICES,
+  type Length, type StoryContext,
+} from "@/lib/ai/prompts";
+import { DraftConflict, getDraft, saveDraft, type Draft } from "@/lib/drafts";
+import { applyAfterGenerate, applyGenerated, isBegun } from "@/lib/generatedDraft";
+import { LIMITS } from "@/lib/limits";
+import type { ModelRef } from "@/lib/settingsSchema";
 import { picturesOf, type PendingJob, type Picture } from "./pictures";
 
 /** How long after the last click a job is sent, so quick clicks with the same settings make one job. */
@@ -93,8 +103,54 @@ export type RunItem = {
   addedAt: number;
 };
 
+/** What the writing page asks the queue to generate: everything the request needs, so it can finish with the page gone. */
+export type GenerateRequest = {
+  /** The draft's key (`fill:<choice id>` and so on): one Generate per draft. */
+  key: string;
+  /** Where the draft is written, for Open. */
+  href: string;
+  label: string;
+  /** The story so far, as it is now (the older chapters are summarized first if the prompt needs it). */
+  ctx: StoryContext;
+  direction: string;
+  length: Length;
+  model: ModelRef | null;
+  suggestModel: ModelRef | null;
+  /** After the chapter: make the choice text for the previous chapter, and suggest choices for this one. */
+  after: { choiceText: boolean; suggestChoices: boolean };
+  /** The draft's title and text when it started, which applying the new text keeps as the previous version. */
+  base: { title: string; body: string };
+  /** The draft as the page has it, to start from when the server has none saved yet. */
+  draft: Draft;
+};
+
+/** A Generate from the writing page, as an item of the queue (D15). The text itself is kept apart, for `listenDraft`. */
+export type GenerateItem = {
+  type: "generate";
+  /** `gen:<draft key>`, for Dismiss. */
+  key: string;
+  draftKey: string;
+  href: string;
+  label: string;
+  state: "waiting" | "working" | "done" | "failed";
+  /** Why it waits ("Waiting for pictures to finish (2 left)"). */
+  note?: string;
+  error?: string;
+  /** Kept with an error that lost the text, so it can be copied. */
+  text?: string;
+  addedAt: number;
+};
+
+/** What a writing page open on a draft is told while its Generate goes on. */
+export type DraftListener = {
+  /** The text so far (all of it, each time), and the draft's text when the Generate started. */
+  onText: (text: string, base: { title: string; body: string }) => void;
+  onDone: (after: { choiceLabel?: string; suggestions?: string[] }) => void;
+  onError: (message: string) => void;
+};
+
 /** Everything the work queue holds (later work adds other kinds). */
-export type WorkItem = PictureItem | RunItem;
+export type WorkItem = PictureItem | RunItem | GenerateItem;
 
 /** What a run page listening to its run is told while it works. */
 export type RunListener = {
@@ -139,6 +195,12 @@ export type WorkQueueApi = Omit<QueueApi, "jobs"> & {
   resumeRun: (runId: string) => Promise<void>;
   /** A run page is open: it is told what the run does while it does it. Returns the way to stop. */
   listenRun: (runId: string, listener: RunListener) => () => void;
+  /** Hands a Generate to the queue (it goes before waiting runs, D16). A Generate already going for that draft is left alone. */
+  generate: (request: GenerateRequest) => void;
+  /** Stops it: what was written so far stays in the draft. */
+  stopGenerate: (draftKey: string) => void;
+  /** The writing page for the draft is open: it is told the text as it comes (a page that joins late first gets the text so far) and applies it to its own draft. Returns the way to stop. */
+  listenDraft: (draftKey: string, listener: DraftListener) => () => void;
   /** Who has the machine when taking turns, and what waits: for the header's line. */
   machine: { holder: Holder; waitingPictures: number; waitingWriting: number };
 };
@@ -336,6 +398,8 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
   // The functions defined after `pump`, which `pump` and `ended` call.
   const pumpRef = useRef<() => void>(() => {});
   const runStepRef = useRef<(runId: string) => void>(() => {});
+  // The jobs being sent, in line: each starts once the one before is queued on ComfyUI.
+  const sendChain = useRef<Promise<void>>(Promise.resolve());
   // Keys of jobs sent to ComfyUI and not ended yet.
   const inFlight = useRef(new Set<string>());
   const uploads = useRef<UploadCache["current"]>(null);
@@ -426,10 +490,11 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
 
   /** Sends a ready job: queues it on ComfyUI and waits for its pictures. */
   const send = useCallback(
-    async (g: Gathering) => {
+    async (g: Gathering, posted?: () => void) => {
       const control = controls.current.get(g.key);
       if (!control) {
         inFlight.current.delete(g.key);
+        posted?.();
         return;
       }
       try {
@@ -444,8 +509,10 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
             picked.current.add(id);
           },
         });
+        posted?.();
         ended(g.key, await finish(g.key, { target: g.target, url: g.input.comfy.url, signal: control.ctl.signal, ...made }));
       } catch (e) {
+        posted?.();
         failed(g.key, e);
       }
     },
@@ -480,7 +547,8 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
       const [{ g, drawPreset }] = ready.current.splice(at, 1);
       inFlight.current.add(g.key);
       lastPreset.current = drawPreset;
-      void send(g);
+      // One after another, each once the one before is queued on ComfyUI, so ComfyUI gets them in the order chosen.
+      sendChain.current = sendChain.current.then(() => new Promise<void>((resolve) => void send(g, resolve)));
     }
     // Jobs still held while taking turns say so on their place and in the header.
     if (q.sharing === "turns" && !isPaused()) {
@@ -636,9 +704,6 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
     },
     [applyRun, onRunEvent, patchRunItem, plainFetch],
   );
-  useEffect(() => {
-    runStepRef.current = (id) => void runStep(id);
-  }, [runStep]);
 
   const stopRun = useCallback(
     (runId: string) => {
@@ -706,8 +771,183 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
     }
   }, [updateRuns]);
 
+  // ---- Generate from the writing page: a writing step that finishes into the draft wherever the author goes (D15) ----
+  const [genItems, setGenItems] = useState<GenerateItem[]>([]);
+  const genItemsRef = useRef<GenerateItem[]>([]);
+  const updateGens = useCallback((change: (prev: GenerateItem[]) => GenerateItem[]) => {
+    genItemsRef.current = change(genItemsRef.current);
+    setGenItems(genItemsRef.current);
+  }, []);
+  const patchGen = useCallback(
+    (draftKey: string, p: Partial<GenerateItem>) => updateGens((prev) => prev.map((g) => (g.draftKey === draftKey ? { ...g, ...p } : g))),
+    [updateGens],
+  );
+  // What each Generate needs while it goes: its request, the text so far, the pages listening, and how to stop it.
+  const gens = useRef(new Map<string, { req: GenerateRequest; text: string; listeners: Set<DraftListener>; ctl: AbortController | null }>());
+
+  /** Puts the text into the draft on the server (when no page is listening to do it), once more if the draft changed meanwhile. */
+  const saveGenerated = useCallback(async (g: { req: GenerateRequest }, text: string, after?: { choiceLabel?: string; suggestions?: string[] }) => {
+    const { req } = g;
+    for (let attempt = 0; ; attempt++) {
+      const stored = await getDraft(req.key);
+      const d: Draft = stored ?? { ...req.draft, updatedAt: 0 };
+      let next = applyGenerated(d, parseChapterOutput(text), { continued: isBegun(d, req.base) });
+      if (after) next = applyAfterGenerate(next, after);
+      try {
+        await saveDraft(next, d.updatedAt);
+        return;
+      } catch (e) {
+        if (!(e instanceof DraftConflict) || attempt >= 1) throw e;
+      }
+    }
+  }, []);
+
+  /** One Generate: summarize the story so far if the prompt needs it, stream the chapter, then the choice text and suggested choices. */
+  const runGenerate = useCallback(
+    async (draftKey: string) => {
+      const g = gens.current.get(draftKey);
+      if (!g) return;
+      const { req } = g;
+      const settingsNow = settingsRef.current;
+      writingActive.current = `gen:${draftKey}`;
+      const ctl = new AbortController();
+      g.ctl = ctl;
+      patchGen(draftKey, { state: "working", note: undefined });
+      let lastSave = 0;
+      const tell = (fn: (l: DraftListener) => void) => g.listeners.forEach(fn);
+      try {
+        const ready = await withPathSummaries(settingsNow, req.ctx, ctl.signal);
+        const message = generatePrompt(ready, req.direction, req.length, settingsNow.contextTokens);
+        for await (const piece of streamChat(settingsNow, { system: SYSTEM_CHAPTER, messages: [{ role: "user", content: message }], role: "main", model: req.model, signal: ctl.signal })) {
+          g.text += piece;
+          if (g.listeners.size > 0) tell((l) => l.onText(g.text, req.base));
+          else if (Date.now() - lastSave > 3000) {
+            lastSave = Date.now();
+            await saveGenerated(g, g.text);
+          }
+        }
+        const chapter = parseChapterOutput(g.text);
+        const after: { choiceLabel?: string; suggestions?: string[] } = {};
+        if (chapter.body.trim()) {
+          const shown = { title: chapter.title ?? "", body: chapter.body };
+          if (req.after.choiceText) {
+            try {
+              const reply = await completeChat(settingsNow, {
+                system: SYSTEM_CHOICE_LABEL,
+                messages: [{ role: "user", content: choiceLabelPrompt({ ...ready, choiceLabel: null }, shown, settingsNow.contextTokens) }],
+                role: "cheap", model: req.suggestModel, maxTokens: 60, signal: ctl.signal,
+              });
+              const label = parseChoiceLabel(reply).slice(0, LIMITS.label);
+              if (label) after.choiceLabel = label;
+            } catch (e) {
+              if (e instanceof DOMException && e.name === "AbortError") throw e;
+            }
+          }
+          if (req.after.suggestChoices) {
+            try {
+              const reply = await completeChat(settingsNow, {
+                system: SYSTEM_CHOICES,
+                messages: [{ role: "user", content: choicesPrompt(ready, shown, [], settingsNow.contextTokens) }],
+                role: "cheap", model: req.suggestModel, maxTokens: 400, signal: ctl.signal,
+              });
+              const found = parseChoices(reply);
+              if (found.length) after.suggestions = found;
+            } catch (e) {
+              if (e instanceof DOMException && e.name === "AbortError") throw e;
+            }
+          }
+        }
+        if (g.listeners.size > 0) {
+          tell((l) => l.onText(g.text, req.base));
+          tell((l) => l.onDone(after));
+        } else await saveGenerated(g, g.text, after);
+        patchGen(draftKey, { state: "done" });
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") {
+          // Stopped: what was written stays in the draft.
+          if (g.text && g.listeners.size === 0) await saveGenerated(g, g.text).catch(() => {});
+          updateGens((prev) => prev.filter((x) => x.draftKey !== draftKey));
+        } else {
+          if (g.text && g.listeners.size === 0 && !(e instanceof DraftConflict)) await saveGenerated(g, g.text).catch(() => {});
+          const msg = e instanceof DraftConflict ? "The draft was changed elsewhere; the generated text is kept in the list." : e instanceof Error ? e.message : String(e);
+          tell((l) => l.onError(msg));
+          patchGen(draftKey, { state: "failed", error: msg, ...(e instanceof DraftConflict && { text: g.text }) });
+        }
+      } finally {
+        g.ctl = null;
+        writingActive.current = null;
+        if (g.listeners.size === 0) g.text = "";
+        pumpRef.current();
+      }
+    },
+    [patchGen, saveGenerated, updateGens],
+  );
+  useEffect(() => {
+    runStepRef.current = (id) => (id.startsWith("gen:") ? void runGenerate(id.slice(4)) : void runStep(id));
+  }, [runGenerate, runStep]);
+
+  const generate = useCallback(
+    (req: GenerateRequest) => {
+      const existing = genItemsRef.current.find((g) => g.draftKey === req.key);
+      if (existing && (existing.state === "waiting" || existing.state === "working")) return;
+      gens.current.set(req.key, { req, text: "", listeners: gens.current.get(req.key)?.listeners ?? new Set(), ctl: null });
+      updateGens((prev) => [
+        ...prev.filter((g) => g.draftKey !== req.key),
+        { type: "generate", key: `gen:${req.key}`, draftKey: req.key, href: req.href, label: req.label, state: "waiting", addedAt: Date.now() },
+      ]);
+      // A Generate goes before the runs' next chapters (D16), after any Generate already waiting.
+      const queue = writingQueue.current;
+      const at = queue.findLastIndex((id) => id.startsWith("gen:")) + 1;
+      queue.splice(at, 0, `gen:${req.key}`);
+      pumpRef.current();
+    },
+    [updateGens],
+  );
+
+  const stopGenerate = useCallback(
+    (draftKey: string) => {
+      const g = gens.current.get(draftKey);
+      if (writingActive.current === `gen:${draftKey}`) return g?.ctl?.abort();
+      writingQueue.current = writingQueue.current.filter((id) => id !== `gen:${draftKey}`);
+      updateGens((prev) => prev.filter((x) => x.draftKey !== draftKey));
+      pumpRef.current();
+    },
+    [updateGens],
+  );
+
+  const listenDraft = useCallback((draftKey: string, listener: DraftListener) => {
+    const g = gens.current.get(draftKey);
+    if (!g) {
+      // Nothing is generating yet: remember the listener for a Generate that starts from this page.
+      gens.current.set(draftKey, { req: undefined as unknown as GenerateRequest, text: "", listeners: new Set([listener]), ctl: null });
+    } else g.listeners.add(listener);
+    const mine = gens.current.get(draftKey)!;
+    // Joining a Generate that is already going: the text so far first.
+    if (mine.req && mine.text && genItemsRef.current.find((x) => x.draftKey === draftKey)?.state === "working") listener.onText(mine.text, mine.req.base);
+    return () => {
+      const cur = gens.current.get(draftKey);
+      cur?.listeners.delete(listener);
+      if (cur && !cur.req && cur.listeners.size === 0) gens.current.delete(draftKey);
+    };
+  }, []);
+
+  // A waiting Generate says why: the step going now, or pictures in ComfyUI while taking turns.
+  const waitingGens = genItems.filter((g) => g.state === "waiting").length;
+  useEffect(() => {
+    if (waitingGens === 0) return;
+    const say = () => {
+      const pics = inFlight.current.size;
+      const note =
+        queueSettings.current.sharing === "turns" && pics > 0 ? `Waiting for pictures to finish (${pics} left)` : writingActive.current ? "Waiting for the step in progress" : undefined;
+      updateGens((prev) => prev.map((g) => (g.state === "waiting" && g.note !== note ? { ...g, note } : g)));
+    };
+    say();
+    const t = setInterval(say, 1000);
+    return () => clearInterval(t);
+  }, [waitingGens, updateGens]);
+
   // While a run is writing or waiting, ask for a screen wake lock (a phone that sleeps stops the tab); let go when idle.
-  const writingNow = runItems.some((r) => r.state === "working" || r.state === "waiting");
+  const writingNow = runItems.some((r) => r.state === "working" || r.state === "waiting") || genItems.some((g) => g.state === "working" || g.state === "waiting");
   useEffect(() => {
     if (!writingNow) return;
     let lock: WakeLockSentinel | null = null;
@@ -799,6 +1039,11 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
 
   const dismiss = useCallback(
     (key: string) => {
+      if (key.startsWith("gen:")) {
+        // A Generate that is waiting or going can't be dismissed (Stop it first).
+        genItemsRef.current = genItemsRef.current.filter((g) => g.key !== key || g.state === "working" || g.state === "waiting");
+        return setGenItems(genItemsRef.current);
+      }
       if (key.startsWith("run:")) {
         // A run that is going or waiting can't be dismissed (Stop it first).
         return updateRuns((prev) => prev.filter((r) => r.key !== key || r.state === "working" || r.state === "waiting"));
@@ -1001,10 +1246,10 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
     return () => window.removeEventListener("beforeunload", warn);
   }, []);
 
-  const allItems = useMemo<WorkItem[]>(() => [...items, ...runItems], [items, runItems]);
+  const allItems = useMemo<WorkItem[]>(() => [...items, ...runItems, ...genItems], [items, runItems, genItems]);
   const api = useMemo(
-    () => ({ items: allItems, ask, stop, dismiss, listen, listenSession, waiting, paused, setPaused, move, startRun, stopRun, resumeRun, listenRun, machine }),
-    [allItems, ask, stop, dismiss, listen, listenSession, waiting, paused, setPaused, move, startRun, stopRun, resumeRun, listenRun, machine],
+    () => ({ items: allItems, ask, stop, dismiss, listen, listenSession, waiting, paused, setPaused, move, startRun, stopRun, resumeRun, listenRun, generate, stopGenerate, listenDraft, machine }),
+    [allItems, ask, stop, dismiss, listen, listenSession, waiting, paused, setPaused, move, startRun, stopRun, resumeRun, listenRun, generate, stopGenerate, listenDraft, machine],
   );
   // For the browser tests: the run page that starts runs comes later, so a test page asks for the queue itself.
   useEffect(() => {

@@ -36,6 +36,18 @@ export function applyGenerated(d: Draft, text: { title: string | null; body: str
 }
 
 /**
+ * Whether a Generate that started from `base` (the draft's title and text at that moment) has already been begun in
+ * this draft, so further text of it is `continued`. A draft that was empty has nothing to keep; otherwise the
+ * previous text is the last entry in undo. This lets the writing page and the work queue each apply the text
+ * without telling each other what they did.
+ */
+export function isBegun(d: Draft, base: { title: string; body: string }): boolean {
+  if (!base.title && !base.body) return true;
+  const last = d.undo[d.undo.length - 1];
+  return !!last && last.title === base.title && last.body === base.body;
+}
+
+/**
  * What follows a Generate: the choice text for the previous chapter, only when the author hasn't written any, and
  * suggested choices for this chapter's ending, only when the author hasn't typed any choices.
  */

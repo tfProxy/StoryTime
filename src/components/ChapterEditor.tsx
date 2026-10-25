@@ -34,7 +34,8 @@ import {
 import type { PathChapter } from "@/lib/ai/codexAi";
 import { draftOps, foldCodex, isDraftEntry, type CodexOp } from "@/lib/codex";
 import { deleteDraft, DraftConflict, emptyDraft, getDraft, saveDraft, type Draft } from "@/lib/drafts";
-import { pushUndo, startVersion } from "@/lib/generatedDraft";
+import { applyAfterGenerate, applyGenerated, isBegun, pushUndo, startVersion } from "@/lib/generatedDraft";
+import { useWorkQueue, type GenerateItem } from "./WorkQueue";
 import Prose from "./Prose";
 import AutoTextarea from "./AutoTextarea";
 import CodexPanel from "./CodexPanel";
@@ -133,7 +134,11 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const router = useRouter();
   const settings = useSettings();
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [busy, setBusy] = useState<null | "generate" | "refine" | "choices" | "ideas" | "summary" | "label" | "post">(null);
+  const [localBusy, setBusy] = useState<null | "generate" | "refine" | "choices" | "ideas" | "summary" | "label" | "post">(null);
+  // A Generate lives in the work queue (so it goes on if the author leaves the page): the page is busy while that item is.
+  const { items: queued, generate, stopGenerate, listenDraft } = useWorkQueue();
+  const generating = queued.find((i): i is GenerateItem => i.type === "generate" && i.draftKey === draftKey && (i.state === "waiting" || i.state === "working"));
+  const busy = localBusy ?? (generating ? "generate" : null);
   // The idea being turned into a choice on the previous chapter ("page:index"), with the text being edited.
   const [promoting, setPromoting] = useState<{ key: string; text: string } | null>(null);
   const [promoteBusy, setPromoteBusy] = useState(false);
@@ -300,6 +305,20 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     return () => window.removeEventListener("beforeunload", warn);
   }, []);
 
+  // A Generate in the queue puts its text into this draft as it comes (the queue saves it itself when no page is open).
+  const draftReady = draft !== null;
+  useEffect(() => {
+    if (!draftReady) return;
+    return listenDraft(draftKey, {
+      onText: (text, base) => {
+        setReading(true);
+        setDraft((d) => (d ? applyGenerated(d, parseChapterOutput(text), { continued: isBegun(d, base) }) : d));
+      },
+      onDone: (after) => setDraft((d) => (d ? applyAfterGenerate(d, after) : d)),
+      onError: (message) => setError(message),
+    });
+  }, [draftKey, draftReady, listenDraft]);
+
   if (!draft) return <p className="meta">Loading draft…</p>;
 
   // Working state kept in the draft, so it survives a reload.
@@ -431,8 +450,42 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     };
   }
 
+  /** Generate goes to the work queue, which finishes it into this draft wherever the author goes. */
+  function startGenerate() {
+    if (!draft) return;
+    setError(null);
+    setLastAction("generate");
+    setReading(true);
+    setSelection(null);
+    generate({
+      key: draftKey,
+      href: resumeHref,
+      label: draftLabel,
+      ctx,
+      direction: draft.prompt,
+      length,
+      model: writeModel,
+      suggestModel,
+      after: {
+        // A new branch needs choice text; if the author hasn't written any, make it from the chapter.
+        choiceText: (target.kind === "new" || target.kind === "fill") && !draft.newChoiceLabel.trim(),
+        // With the setting on, offer choices for the ending too, unless the author has already written some.
+        suggestChoices: settings.autoSuggestChoices && !draft.choices.some((c) => c.trim()),
+      },
+      base: { title: draft.title, body: draft.body },
+      draft,
+    });
+  }
+
+  /** Stops what is going: a Generate in the queue, or this page's own request. */
+  function stopWork() {
+    if (generating) stopGenerate(draftKey);
+    else abortRef.current?.abort();
+  }
+
   async function runAi(kind: "generate" | "refine") {
     if (!draft) return;
+    if (kind === "generate") return startGenerate();
     setError(null);
     const ctl = new AbortController();
     abortRef.current = ctl;
@@ -445,7 +498,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     const after = picked ? draft.body.slice(picked.end) : "";
     setSelection(null);
     let text = "";
-    let suggestFor: { title: string; body: string } | null = null;
     try {
       const ready = await prepareContext(ctl.signal);
       const request = chapterRequest(kind, ready, picked);
@@ -470,16 +522,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
         }
       }
       if (kind === "refine") patch({ instruction: "" });
-      // A new branch needs choice text; if the author hasn't written any, make it from the chapter.
-      if (kind === "generate" && (target.kind === "new" || target.kind === "fill") && !draft.newChoiceLabel.trim()) {
-        const chapter = parseChapterOutput(text);
-        if (chapter.body.trim()) await fillChoiceText({ title: chapter.title ?? "", body: chapter.body }, ready, ctl.signal);
-      }
-      // With the setting on, offer choices for the ending too, unless the author has already written some.
-      if (kind === "generate" && settings.autoSuggestChoices && !draft.choices.some((c) => c.trim())) {
-        const chapter = parseChapterOutput(text);
-        if (chapter.body.trim()) suggestFor = { title: chapter.title ?? "", body: chapter.body };
-      }
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) {
         setError(e instanceof Error ? e.message : String(e));
@@ -487,7 +529,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     } finally {
       setBusy(null);
     }
-    if (suggestFor) await suggestChoices(suggestFor, true);
   }
 
   /** One sentence of choice text, written by the cheaper model: from the chapter, or from the previous chapter alone when there is no draft. */
@@ -507,16 +548,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       signal,
     });
     return parseChoiceLabel(reply).slice(0, LIMITS.label);
-  }
-
-  /** Best effort: a failure just leaves the choice text for the author to write. */
-  async function fillChoiceText(chapter: { title: string; body: string }, ready: StoryContext, signal: AbortSignal) {
-    try {
-      const label = await askChoiceLabel(chapter, ready, signal);
-      if (label) setDraft((d) => (d && !d.newChoiceLabel.trim() ? { ...d, newChoiceLabel: label } : d));
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") throw e;
-    }
   }
 
   /** The button next to the choice text: replaces it with a fresh one made from the current chapter. */
@@ -1121,7 +1152,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                 <option value="long">Long (~1000 words)</option>
               </select>
               <button type="button" onClick={() => runAi("generate")} disabled={busy !== null}>
-                {busy === "generate" ? "Writing…" : draft.body ? "Generate a new draft" : "Generate chapter"}
+                {busy === "generate" ? (generating?.state === "waiting" ? "Waiting…" : "Writing…") : draft.body ? "Generate a new draft" : "Generate chapter"}
               </button>
               <PromptButton
                 label="Generate chapter"
@@ -1129,12 +1160,17 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                 build={() => chapterRequest("generate", ctx, null)}
               />
               {writePicker}
-              {working && (
-                <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
+              {(working || generating) && (
+                <button type="button" className="secondary" onClick={stopWork}>
                   Stop
                 </button>
               )}
             </div>
+            {generating?.state === "waiting" && (
+              <p className="meta" role="status">
+                {generating.note ?? "Waiting its turn…"}
+              </p>
+            )}
             {hasBody && busy === null && (
               <p className="meta">This adds a new draft; the current text is kept, and you can switch between drafts under Chapter.</p>
             )}

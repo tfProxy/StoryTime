@@ -102,6 +102,8 @@ try {
   await page.reload();
   await page.getByRole("heading", { name: "History" }).waitFor();
   ok(await until(async () => (await section("History").getByRole("listitem").count()) >= 3, "the history to list the jobs", 50), "History lists the jobs after a reload");
+  // The chapter and story titles are fetched after the list shows, so wait for them.
+  await until(async () => { const t = await section("History").getByRole("listitem").allInnerTexts(); return names.every((n) => t.some((x) => x.includes(n))) && t[0].includes("Queue page tale"); }, "the titles in the history", 50);
   const history = await section("History").getByRole("listitem").allInnerTexts();
   ok(names.every((n) => history.some((t) => t.includes(n))) && history[0].includes("Queue page tale"), "…each with its chapter and story");
   ok((await section("History").locator("img").count()) >= 3, "…and a thumbnail");

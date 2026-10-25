@@ -404,6 +404,8 @@ Today **Generate chapter** on the writing page (`runAi("generate")` in `src/comp
 
 ### Task 5.1: applying a generated chapter to a draft (pure code)
 
+(Done in task 5.1. `applyGenerated(draft, {title, body}, {continued})` — the begin step (undo and previous version) happens unless `continued`; `isBegun(draft, base)` tells whether it already has, so the page and the queue need no flag between them.)
+
 **Files:** `src/lib/generatedDraft.ts` (new), `tests/unit/generated-draft.test.mts` (new), `src/components/ChapterEditor.tsx` (use it).
 
 - `applyGenerated(draft, { title, body }) → Draft`: exactly what the page does now when a Generate starts and streams (`pushUndo`, `startVersion`, then title and body). Move `pushUndo` and `startVersion` (and `MAX_VERSIONS`, `MAX_UNDO`) out of the component into this file and have the component import them, with no change in behaviour.
@@ -412,6 +414,8 @@ Today **Generate chapter** on the writing page (`runAi("generate")` in `src/comp
 - **Check:** `npx tsc --noEmit`, `npm test`, `node tests/run.mjs e2e chapters drafts` (the editor's behaviour mustn't change).
 
 ### Task 5.2: Generate through the queue (after 5.1)
+
+(Done in task 5.2. Choices made: the queue summarizes the older chapters itself before sending (`withPathSummaries`), so a Generate started and left at once still works; the item carries the page's draft as the start when the server has none saved; one Generate per draft (a second click while one is waiting or going is ignored); Stop keeps what was written; picture jobs are now started one after another so ComfyUI's order is the queue's order.)
 
 **Files:** `src/components/WorkQueue.tsx`, `src/components/WorkQueueStatus.tsx`, `src/lib/workQueue/schedule.ts`, `src/components/ChapterEditor.tsx`, `tests/e2e/work-queue.e2e.mjs`. A Generate is a writing step for the schedule (D18, D19), so with turns on it can wait for pictures; the writing page then shows "Waiting for pictures to finish (2 left)" with Stop.
 

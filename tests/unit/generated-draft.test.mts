@@ -1,5 +1,5 @@
 import { emptyDraft } from "../../src/lib/drafts.ts";
-import { applyAfterGenerate, applyGenerated, beginGenerated, MAX_UNDO, MAX_VERSIONS, pushUndo, startVersion } from "../../src/lib/generatedDraft.ts";
+import { applyAfterGenerate, applyGenerated, beginGenerated, isBegun, MAX_UNDO, MAX_VERSIONS, pushUndo, startVersion } from "../../src/lib/generatedDraft.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const draft = (extra = {}) => ({ ...emptyDraft("fill:c1", "/c/p/write?choice=c1", "Story: “Go”"), ...extra });
@@ -46,3 +46,12 @@ ok(r2.newChoiceLabel === "Mine" && r2.suggestions === undefined, "the author's c
 const r3 = applyAfterGenerate(draft({ newChoiceLabel: "   " }), { choiceLabel: "Go left" });
 ok(r3.newChoiceLabel === "Go left", "a blank choice text counts as empty");
 ok(applyAfterGenerate(none, {}) === none, "nothing to add gives the same draft");
+
+// Whether a Generate has been begun in a draft, so two places can apply its text without telling each other.
+const base = { title: "Mine", body: "My own words." };
+ok(!isBegun(written, base), "a draft still holding the starting text hasn't been begun");
+const begun = applyGenerated(written, { title: "G", body: "The" });
+ok(isBegun(begun, base), "…after the first text it has");
+ok(isBegun(applyGenerated(begun, { title: "G", body: "The AI" }, { continued: isBegun(begun, base) }), base) && applyGenerated(begun, { title: "G", body: "The AI" }, { continued: isBegun(begun, base) }).undo.length === 1, "…and applying again by that check adds no second undo entry");
+ok(isBegun(draft(), { title: "", body: "" }), "a Generate that started from an empty draft is always begun (nothing to keep)");
+ok(!isBegun(draft({ undo: [{ title: "older", body: "older" }] }), base), "a different last undo entry doesn't count");
