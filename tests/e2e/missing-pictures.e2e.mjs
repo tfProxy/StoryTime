@@ -72,10 +72,10 @@ try {
   // ---- the menus ----
   const a = await makeStory("Picture tale");
   await page.goto(`${BASE}/c/${a.ids[1]}`);
-  await page.locator(".site-menu summary").click();
+  await page.getByLabel("Menu", { exact: true }).click();
   ok(await page.locator(".site-menu-items").getByRole("link", { name: "Make missing pictures…" }).isVisible(), "the chapter's ☰ menu has Make missing pictures…");
   await page.goto(`${BASE}/s/${a.storyId}/outline`);
-  await page.locator(".site-menu summary").click();
+  await page.getByLabel("Menu", { exact: true }).click();
   ok(await page.locator(".site-menu-items").getByRole("link", { name: "Make missing pictures" }).isVisible(), "the story's menu (the outline) has Make missing pictures");
 
   // ---- the form: the whole story, headers ----
