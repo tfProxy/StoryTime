@@ -90,6 +90,7 @@ try {
   await form().getByRole("button", { name: "Start", exact: true }).click();
   await page.waitForURL(/write-ahead\?run=/);
   ok(await until(async () => (await page.getByRole("heading", { name: /2 of 2 written/ }).count()) > 0, "both chapters written", 300), "the run writes both chapters");
+  await page.getByText(/Wrote 2 chapters/).waitFor({ timeout: 30000 });
   const written = (await choicesOf(a.root)).filter((c) => c.child_chapter_id && c.child_ai === "unreviewed");
   ok(written.length === 2, "…each posted as AI-written and not reviewed");
   ok(await page.getByText(/Wrote 2 chapters, marked not reviewed\./).isVisible(), "the page ends with “Wrote 2 chapters, marked not reviewed”");

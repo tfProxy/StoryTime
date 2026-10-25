@@ -281,6 +281,11 @@ a {
   width: 100%;
 }
 
+.ai-run-review textarea {
+  min-height: 0;
+  height: 5.5rem;
+}
+
 .picture-queue-text-button:disabled {
   color: var(--muted, inherit);
   opacity: 0.5;
