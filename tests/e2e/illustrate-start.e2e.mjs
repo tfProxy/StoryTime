@@ -83,10 +83,16 @@ try {
   const clickedSrc = await items.first().locator("img").getAttribute("src");
   ok(await thumb.getAttribute("src") === clickedSrc, "…and the thumbnail is the picture that was chosen");
   ok(await items.first().getByText("Editing", { exact: true }).isVisible() && await page.locator(".picture-tile.editing").count() === 1, "…and that picture in the list is tagged Editing");
-  const thumbBox = await thumb.boundingBox();
-  const stopBox = await page.getByRole("button", { name: "Stop editing" }).boundingBox();
-  const strengthBox = await strength.boundingBox();
-  ok(thumbBox.y + thumbBox.height <= strengthBox.y && stopBox.y > strengthBox.y, "…and the picture is above the settings, with Stop editing at the bottom of the section");
+  // The layout can still be settling (pictures loading) right after the click, so look until it has.
+  let arranged = false;
+  for (let i = 0; i < 30 && !arranged; i++) {
+    const thumbBox = await thumb.boundingBox();
+    const stopBox = await page.getByRole("button", { name: "Stop editing" }).boundingBox();
+    const strengthBox = await strength.boundingBox();
+    arranged = !!(thumbBox && stopBox && strengthBox) && thumbBox.y + thumbBox.height <= strengthBox.y && stopBox.y > strengthBox.y;
+    if (!arranged) await new Promise((r) => setTimeout(r, 100));
+  }
+  ok(arranged, "…and the picture is above the settings, with Stop editing at the bottom of the section");
   ok(await page.getByText(/The prompt above isn't used/).count() === 0 && await page.getByRole("button", { name: "Paint area" }).count() === 0 && await page.getByRole("textbox", { name: "Redraw prompt (optional)" }).count() === 0, "…without the long note about the prompt, and with nothing of the old Redraw (no Paint area, no Redraw prompt)");
   ok(await makeButton.isDisabled(), "Queue waits for an instruction");
 
