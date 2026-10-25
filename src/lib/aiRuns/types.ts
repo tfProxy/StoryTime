@@ -114,4 +114,6 @@ export type AiRun = {
   finished_at: number | null;
   created_at: number;
   updated_at: number;
+  /** As the server answers: another tab holds the run now. */
+  leased?: boolean;
 };

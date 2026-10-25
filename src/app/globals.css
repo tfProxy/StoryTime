@@ -220,6 +220,67 @@ a {
   border-radius: 6px;
 }
 
+/* The write-ahead page and a run in progress. */
+.write-ahead-form {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.write-ahead-form fieldset {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+}
+
+.write-ahead-sub {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0.4rem 0 0 1.4rem;
+}
+
+.write-ahead-settings {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+}
+
+.write-ahead-settings > summary {
+  cursor: pointer;
+}
+
+.write-ahead-settings > * + * {
+  margin-top: 0.7rem;
+}
+
+.write-ahead-unfinished {
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.ai-run-live pre {
+  white-space: pre-wrap;
+  max-height: 16rem;
+  overflow: auto;
+  margin: 0.4rem 0 0;
+}
+
+.ai-run-tasks {
+  display: grid;
+  gap: 0.5rem;
+  padding-left: 1.4rem;
+}
+
+.ai-run-task-failed > div:first-child {
+  color: var(--error, inherit);
+}
+
+.ai-run-review textarea,
+.ai-run-review input {
+  width: 100%;
+}
+
 .picture-queue-text-button:disabled {
   color: var(--muted, inherit);
   opacity: 0.5;

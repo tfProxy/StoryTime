@@ -540,7 +540,7 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
   const applyRun = useCallback(
     (run: AiRun) => {
       const writes = run.tasks.filter((t) => t.kind === "write");
-      patchRunItem(run.id, { done: writes.filter((t) => t.status === "done").length, total: writes.length });
+      patchRunItem(run.id, { done: writes.filter((t) => t.status === "done" || t.status === "written").length, total: writes.length });
       runListeners.current.get(run.id)?.forEach((l) => l.onRun(run));
     },
     [patchRunItem],
@@ -591,7 +591,7 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
         ...prev.filter((r) => r.runId !== runId),
         {
           type: "run", key: `run:${runId}`, runId, storyId: run.story_id, storyTitle: label?.story_title ?? "A story", startChapterId: run.start_chapter_id,
-          startTitle: label?.title ?? "", mode: run.mode, done: writes.filter((t) => t.status === "done").length, total: writes.length,
+          startTitle: label?.title ?? "", mode: run.mode, done: writes.filter((t) => t.status === "done" || t.status === "written").length, total: writes.length,
           state: "waiting", addedAt: Date.now(),
         },
       ]);
@@ -705,6 +705,34 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
       // asked again when the app next comes into view
     }
   }, [updateRuns]);
+
+  // While a run is writing or waiting, ask for a screen wake lock (a phone that sleeps stops the tab); let go when idle.
+  const writingNow = runItems.some((r) => r.state === "working" || r.state === "waiting");
+  useEffect(() => {
+    if (!writingNow) return;
+    let lock: WakeLockSentinel | null = null;
+    let live = true;
+    const request = async () => {
+      try {
+        const got = await navigator.wakeLock?.request("screen");
+        if (!got) return;
+        if (live) lock = got;
+        else void got.release().catch(() => {});
+      } catch {
+        // not allowed, or not supported: the run goes on while the screen is on
+      }
+    };
+    void request();
+    const again = () => {
+      if (document.visibilityState === "visible" && (!lock || lock.released)) void request();
+    };
+    document.addEventListener("visibilitychange", again);
+    return () => {
+      live = false;
+      document.removeEventListener("visibilitychange", again);
+      void lock?.release().catch(() => {});
+    };
+  }, [writingNow]);
 
   /** A gathered job is closed (its timer ran out, or a different click came): no more clicks join it, and it waits to be sent. */
   const markReady = useCallback(

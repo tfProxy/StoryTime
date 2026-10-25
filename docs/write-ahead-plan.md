@@ -299,6 +299,8 @@ The picture queue becomes the app's one work queue (D14), still holding only pic
 
 ### Task 1.5: the page and the review mark (after 1.4)
 
+(Done in task 1.5, in two commits: the marks, then the page. Choices made: “N of M written” counts chapters posted (tasks `done` or `written`), so grouped runs don't look stuck; the unfinished-run offer reads the run's own task counts; “Resume” everywhere is the queue's `startRun`, which also creates the item for a run this tab doesn't have yet; the wake lock is in the provider.)
+
 **Files:** `src/app/c/[id]/write-ahead/page.tsx` (new), `src/components/WriteAhead.tsx` (new, the form), `src/components/AiRunProgress.tsx` (new, shared by milestone 4), `src/components/AiReviewNotice.tsx` (new), `src/components/AiMark.tsx` (new), `src/app/c/[id]/page.tsx`, `src/app/s/[id]/outline/page.tsx`, `src/lib/settingsSchema.ts`, `src/app/globals.css`, `tests/e2e/write-ahead.e2e.mjs` (new).
 
 Split this task in two commits if it gets large: first the marks (items 1 and 2, testable with chapters posted through the API with `ai_run_id`), then the page.
