@@ -6,6 +6,10 @@ Planned work, with what you need to know to start. Finished work isn't listed; t
 
 The AI writes many chapters (fill open choices, grow the tree to a depth and width, reach a goal in N chapters) or makes the missing header and footer pictures of a branch or story, through one work queue for pictures and writing that takes turns on a shared machine. The milestones (0 to 5, each shipped to main on its own) and the decisions are in `docs/write-ahead-plan.md`. Not started.
 
+## Run the work queue on the server (planned 2026-10-25)
+
+Move picture jobs, Generate and AI runs from the browser tab to the StoryTime server, so work goes on with the tab closed. The plan, decisions and tasks (phases 0 to 5) are in `docs/server-queue-plan.md`; read it before starting. Not started.
+
 ## Not yet checked against a real ComfyUI
 
 The tests use a fake. Before building more on this, try once on the real machine and write down what differs:
