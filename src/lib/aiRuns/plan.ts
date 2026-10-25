@@ -152,7 +152,8 @@ export function needsReview(run: Pick<AiRun, "options" | "tasks">): boolean {
   const depth = Math.min(...waiting.map((t) => t.depth));
   if ((run.options.reviewedDepths ?? []).includes(depth)) return false;
   const plans = run.tasks.filter((t): t is PlanTask => t.kind === "plan" && t.depth === depth);
-  if (!plans.length) return false;
+  // Grow the tree: a level made by `expandAfter` has no plan task; its plans came with the chapters above, so it can be checked as soon as it exists.
+  if (!plans.length) return waiting.filter((t) => t.depth === depth).every((t) => !t.plannedBy);
   return plans.every((p) => p.status === "done" || settled(p.status)) && plans.some((p) => p.status === "done");
 }
 

@@ -1,6 +1,6 @@
 // The runner of AI runs, against a fake server (an in-memory story and run) and a fake AI that records every request.
 import { claim, finish, retryTask, runNextStep, skipTask, type RunEvent } from "../../src/lib/aiRuns/runner.ts";
-import { planFill, type PlanNode } from "../../src/lib/aiRuns/plan.ts";
+import { planFill, planTree, type PlanNode } from "../../src/lib/aiRuns/plan.ts";
 import type { AiRun, RunOptions, RunTask, WriteTask } from "../../src/lib/aiRuns/types.ts";
 import { SYSTEM_CHAPTER, SYSTEM_PLAN_STEPS } from "../../src/lib/ai/prompts.ts";
 import { DEFAULT_SETTINGS } from "../../src/lib/settingsSchema.ts";
@@ -11,7 +11,7 @@ type Ch = { id: string; revision: number; depth: number; title: string; body: st
 type Choice = { id: string; parent: string; label: string };
 
 /** A fake StoryTime server holding one story and one run, speaking the routes the runner uses. */
-function makeServer(opts: { options: RunOptions; open: string[]; written?: string[] }) {
+function makeServer(opts: { options: RunOptions; open: string[]; written?: string[]; tree?: boolean }) {
   const chapters = new Map<string, Ch>();
   const choices: Choice[] = [];
   let n = 0;
@@ -105,7 +105,7 @@ function makeServer(opts: { options: RunOptions; open: string[]; written?: strin
 
   const runId = "run1";
   state.run = {
-    id: runId, story_id: "s1", start_chapter_id: root.id, mode: "fill", options: opts.options, tasks: planFill(tree(root), { scope: "children", endChoices: 2, ...opts.options }),
+    id: runId, story_id: "s1", start_chapter_id: root.id, mode: opts.tree ? "tree" : "fill", options: opts.options, tasks: opts.tree ? planTree(tree(root), opts.options) : planFill(tree(root), { scope: "children", endChoices: 2, ...opts.options }),
     status: "ready", review_depth: null, error: null, version: 1, finished_at: null, created_at: 1, updated_at: 1,
   };
   return { fetch: fetchFake, state, chapters, choices, log, root, open, pre, childOf, runId, tree, addCh, addChoice };
@@ -307,4 +307,38 @@ async function drive(server: ReturnType<typeof makeServer>, ai: ReturnType<typeo
   const run = await claim(s.runId, token, { fetch: s.fetch });
   const stopped = await finish(run, "stopped", token, { fetch: s.fetch });
   ok(stopped.status === "stopped" && s.state.token === null, "finish ends the run and releases the lease");
+}
+
+// ---- Grow the tree ----
+for (const models of ["each", "group"] as const) {
+  const s = makeServer({ options: { models, maxDepth: 2, breadth: 2, endChoices: 1, model: BIG, suggestModel: SMALL }, open: [], tree: true });
+  const ai = makeAi();
+  const { run } = await drive(s, ai, 200);
+  const writes = run.tasks.filter((t): t is WriteTask => t.kind === "write");
+  ok(run.status === "done" && writes.length === 6 && writes.every((t) => t.status === "done"), `${models}: depth 2 and breadth 2 from a bare chapter writes 6 chapters, adding the tasks as the chapters appear`);
+  ok(s.log.posts.length === 6 && s.log.posts.every((p) => p.body.ai_run_id === "run1"), `${models}: each posted as AI-written`);
+  const top = [...s.chapters.values()].filter((c) => c.depth === 1).length;
+  const second = [...s.chapters.values()].filter((c) => c.depth === 2).length;
+  ok(s.choices.filter((c) => c.parent === s.root.id).length === 2 && top === 2 && second === 4, `${models}: two choices on the start chapter, two chapters under them, four under those (${top}, ${second})`);
+  const chapterPrompts = ai.calls.filter((c) => c.kind === "chapter").map((c) => c.message);
+  ok(chapterPrompts.filter((m) => m.includes("plan for")).length >= 2, `${models}: chapters are written from the plan made with their parent's choices`);
+  ok(writes.filter((t) => t.depth === 2).every((t) => t.choices.suggest === 1) && writes.filter((t) => t.depth === 1).every((t) => t.choices.suggest === 2), `${models}: the last level's chapters suggest the end choices, the level above `+"breadth");
+  ok([...s.chapters.values()].filter((c) => c.depth === 2).every((c) => s.choices.filter((x) => x.parent === c.id).length === 1), `${models}: the last chapters end with the end choices`);
+}
+
+// Keeps what is there: an open choice and a written one on the start chapter.
+{
+  const s = makeServer({ options: { models: "each", maxDepth: 1, breadth: 3, endChoices: 0 }, open: ["Open one"], written: ["Done already"], tree: true });
+  const { run } = await drive(s, makeAi(), 60);
+  ok(run.status === "done" && s.log.posts.length === 2 && s.choices.filter((c) => c.parent === s.root.id).length === 3, "tree: keeps the written chapter, writes the open choice and adds what is missing up to breadth");
+  ok(s.chapters.get(s.pre["Done already"])!.ai_run_id === null, "…the chapter that was there is not touched");
+}
+
+// Over the limit: the run stops with a message instead of growing without end.
+{
+  const s = makeServer({ options: { models: "each", maxDepth: 4, breadth: 6, endChoices: 0 }, open: [], tree: true });
+  const { run } = await drive(s, makeAi(), 900);
+  const count = run.tasks.filter((t) => t.kind === "write").length;
+  ok(run.status === "paused" && /more than|past 200|200 chapters/i.test(run.error ?? "") && count <= 200, `tree: a run that would pass 200 chapters pauses with a message (${count} chapters planned): ${run.error}`);
+  ok(s.log.posts.length <= 200 && s.log.posts.length > 30, "…after writing chapters up to there: " + s.log.posts.length);
 }

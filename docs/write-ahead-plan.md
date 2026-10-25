@@ -326,6 +326,8 @@ Split this task in two commits if it gets large: first the marks (items 1 and 2,
 
 ### Task 2.1: planner and prompt
 
+(Done in task 2.1; no prompt change was needed, since `planStepsPrompt` already suggests new choices with their plans. `expandAfter(done, tasks, opts)` takes the task list for ids. `needsReview` now also stops before a level made by `expandAfter`, which has no plan task of its own.)
+
 **Files:** `src/lib/ai/prompts.ts`, `src/lib/aiRuns/plan.ts`, `tests/unit/ai-runs-plan.test.mts`, `tests/unit/prompts.test.mts`.
 
 - `planTree(tree, opts)` (depth D, breadth B): walk existing chapters at depth 0…D-1. For each, take its choices in order, written ones first, up to B. If it has unwritten ones among those B, or fewer than B choices, a `PlanTask` (`labels` = the unwritten ones, `add` = B minus its choice count, at least 0). A write task (depth = chapter depth + 1) per unwritten choice among those B, `plannedBy` that plan task, with `choices: {given: [], suggest: depth + 1 < D ? B : endChoices}` and `expand: depth + 1 < D`. Recurse into the written ones among those B. Choices past the first B are left alone.
@@ -334,6 +336,8 @@ Split this task in two commits if it gets large: first the marks (items 1 and 2,
 - **Tests:** the planner on a tree with one written branch and a chapter with 1 choice when B = 3 (a plan task with `add: 2`); the estimates; `expandAfter` stops at depth D and carries each child's plan as its direction.
 
 ### Task 2.2: runner and form
+
+(Done in task 2.2. The runner appends `expandAfter` tasks when a task becomes done and pauses with a message instead of passing 200 chapters; a plan step never adds more choices than `LIMITS.choices` leaves room for; a chapter that was already there when a task runs keeps its choices as the next level's labels. The page's unfinished-run offer now covers both Fill and Grow the tree.)
 
 **Files:** `src/lib/aiRuns/runner.ts`, `src/components/WriteAhead.tsx`, `tests/unit/ai-runs-runner.test.mts`, `tests/e2e/write-ahead.e2e.mjs`.
 

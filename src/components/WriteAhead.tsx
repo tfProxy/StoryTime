@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { generatePrompt, SYSTEM_CHAPTER, type StoryContext } from "@/lib/ai/prompts";
 import { claim, finish } from "@/lib/aiRuns/runner";
-import { estimateFill, planFill, DEFAULT_END_CHOICES, type PlanNode } from "@/lib/aiRuns/plan";
+import { estimateFill, estimateTree, planFill, planTree, DEFAULT_END_CHOICES, type PlanNode } from "@/lib/aiRuns/plan";
 import type { RunOptions } from "@/lib/aiRuns/types";
 import { LIMITS } from "@/lib/limits";
 import { usableRef, useSettings, type ModelRef } from "@/lib/settings";
@@ -37,7 +37,9 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
   const router = useRouter();
   const settings = useSettings();
   const { startRun } = useWorkQueue();
-  const [what] = useState<"fill">("fill");
+  const [what, setWhat] = useState<"fill" | "tree">("fill");
+  const [maxDepth, setMaxDepth] = useState(3);
+  const [breadth, setBreadth] = useState(3);
   const [scope, setScope] = useState<"children" | "below">("children");
   const [length, setLength] = useState<"short" | "medium" | "long">("medium");
   const [writeModel, setWriteModel] = useState<ModelRef | null>(null);
@@ -59,21 +61,24 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
       endChoices,
       reviewPlan,
       models,
-      scope,
+      ...(what === "tree" ? { maxDepth, breadth } : { scope }),
     }),
-    [settings, length, writeModel, suggestModel, guidance, endChoices, reviewPlan, models, scope],
+    [settings, length, writeModel, suggestModel, guidance, endChoices, reviewPlan, models, scope, what, maxDepth, breadth],
   );
   const openHere = openIn(tree, false);
   const openBelow = openIn(tree, true);
-  const estimate = useMemo(() => estimateFill(tree, options), [tree, options]);
-  const none = (scope === "children" ? openHere : openBelow) === 0;
+  const estimate = useMemo(() => (what === "tree" ? estimateTree(tree, options) : estimateFill(tree, options)), [what, tree, options]);
+  // Nothing to write: no open choices (Fill), or the tree already has everything to that depth and breadth (Grow the tree).
+  const none = what === "tree" ? estimate.chapters === 0 : (scope === "children" ? openHere : openBelow) === 0;
   const tooMany = estimate.chapters > LIMITS.runChapters;
 
   /** The prompt of the first chapter the run would write, for View prompt. */
   const firstPrompt = () => {
     const walk = (n: PlanNode): PlanNode[] => [n, ...n.choices.flatMap((c) => (c.child ? walk(c.child) : []))];
     const first = walk(tree).find((n) => n.choices.some((c) => !c.child));
-    if (!first || (scope === "children" && first.id !== tree.id)) throw new Error("There is no open choice to write.");
+    if (!first || (what === "fill" && scope === "children" && first.id !== tree.id)) {
+      throw new Error(what === "tree" ? "The first choices are made by the plan before any chapter is written, so there is no chapter prompt yet." : "There is no open choice to write.");
+    }
     const label = first.choices.find((c) => !c.child)!.label;
     // Only the start chapter's story-so-far is known here; a deeper chapter's prompt has more path.
     return {
@@ -86,7 +91,7 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
     setBusy(true);
     setError(null);
     try {
-      const tasks = planFill(tree, options);
+      const tasks = what === "tree" ? planTree(tree, options) : planFill(tree, options);
       const res = await fetch("/api/ai-runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -154,20 +159,45 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
         <fieldset>
           <legend>What to write</legend>
           <label className="inline-label">
-            <input type="radio" name="what" checked={what === "fill"} readOnly style={{ width: "auto" }} />
+            <input type="radio" name="what" style={{ width: "auto" }} checked={what === "fill"} onChange={() => setWhat("fill")} />
             <span>Fill open choices</span>
           </label>
-          <div className="write-ahead-sub">
-            <label className="inline-label">
-              <input type="radio" name="scope" style={{ width: "auto" }} checked={scope === "children"} onChange={() => setScope("children")} />
-              <span>This chapter&apos;s open choices ({openHere})</span>
-            </label>
-            <label className="inline-label">
-              <input type="radio" name="scope" style={{ width: "auto" }} checked={scope === "below"} onChange={() => setScope("below")} />
-              <span>Every open choice below this chapter ({openBelow})</span>
-            </label>
-          </div>
-          {none && <p className="meta">There are no open choices {scope === "children" ? "on this chapter" : "below this chapter"}: every choice already has its chapter.</p>}
+          {what === "fill" && (
+            <div className="write-ahead-sub">
+              <label className="inline-label">
+                <input type="radio" name="scope" style={{ width: "auto" }} checked={scope === "children"} onChange={() => setScope("children")} />
+                <span>This chapter&apos;s open choices ({openHere})</span>
+              </label>
+              <label className="inline-label">
+                <input type="radio" name="scope" style={{ width: "auto" }} checked={scope === "below"} onChange={() => setScope("below")} />
+                <span>Every open choice below this chapter ({openBelow})</span>
+              </label>
+            </div>
+          )}
+          <label className="inline-label">
+            <input type="radio" name="what" style={{ width: "auto" }} checked={what === "tree"} onChange={() => setWhat("tree")} />
+            <span>Grow the tree</span>
+          </label>
+          {what === "tree" && (
+            <div className="write-ahead-sub">
+              <label>
+                Depth <small>(levels below this chapter, 1–8)</small>
+                <input type="number" min={1} max={8} value={maxDepth} onChange={(e) => setMaxDepth(Math.max(1, Math.min(8, Math.round(Number(e.target.value) || 1))))} />
+              </label>
+              <label>
+                Choices per chapter <small>(1–6)</small>
+                <input type="number" min={1} max={6} value={breadth} onChange={(e) => setBreadth(Math.max(1, Math.min(6, Math.round(Number(e.target.value) || 1))))} />
+              </label>
+              <p className="meta">Keeps the chapters and choices already there, and writes what is missing to that depth.</p>
+            </div>
+          )}
+          {none && (
+            <p className="meta">
+              {what === "tree"
+                ? "There is nothing to write: the tree below this chapter already has that many choices and levels."
+                : `There are no open choices ${scope === "children" ? "on this chapter" : "below this chapter"}: every choice already has its chapter.`}
+            </p>
+          )}
         </fieldset>
 
         <details className="write-ahead-settings">
@@ -189,7 +219,7 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
             <textarea rows={3} value={guidance} maxLength={LIMITS.premise} onChange={(e) => setGuidance(e.target.value)} />
           </label>
           <label>
-            Choices on each new chapter <small>(0–6, so the story doesn&apos;t end there)</small>
+            {what === "tree" ? "Choices on the last chapters" : "Choices on each new chapter"} <small>(0–6, so the story doesn&apos;t end there)</small>
             <input type="number" min={0} max={6} value={endChoices} onChange={(e) => setEndChoices(Math.max(0, Math.min(6, Math.round(Number(e.target.value) || 0))))} />
           </label>
           <fieldset>

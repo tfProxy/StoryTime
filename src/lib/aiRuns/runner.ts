@@ -16,7 +16,8 @@ import {
   type Fetch,
   type NewChapter,
 } from "./api";
-import { applyPlan, needsReview, nextTask, resolveSlot, withGuidance } from "./plan";
+import { LIMITS } from "../limits";
+import { applyPlan, expandAfter, needsReview, nextTask, resolveSlot, withGuidance } from "./plan";
 import type { AiRun, PlanTask, RunStatus, RunTask, WriteTask } from "./types";
 import { planNext, storyContextOf, summarize, withPathSummaries, writeOneChapter, writeText, type PlannedChoice, type Stream } from "./writeChapter";
 
@@ -212,6 +213,15 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<{ run: AiRun;
   }
 
   onEvent?.({ type: "taskDone", taskId: task.id });
+  const grown = withExpansion(list, tasks, run.options);
+  tasks = grown.tasks;
+  if (grown.tooMany) {
+    const text = `Stopped: going on would take this run past ${LIMITS.runChapters} chapters, the most one run can write.`;
+    await save({ tasks, status: "paused", error: text });
+    onEvent?.({ type: "error", taskId: task.id, message: text });
+    state("paused", text);
+    return { run, more: false };
+  }
   const settled = !tasks.some(unfinished);
   await save({ tasks, status: settled ? "done" : "running", error: null });
   if (settled) state("done");
@@ -234,7 +244,26 @@ function writtenFor(task: WriteTask, slot: ReturnType<typeof resolveSlot>, paren
 
 async function doneWith(task: WriteTask, chapterId: string, f: Fetch, list: RunTask[]): Promise<RunTask[]> {
   const written = await getContext(f, chapterId);
-  return replace(list, { ...task, status: "done", chapterId, choiceIds: written.choices.map((c) => c.id), error: undefined } as RunTask);
+  // A chapter that was there already keeps the choices it has: they are what Grow the tree goes on from.
+  const planned = task.planned ?? written.choices.map((c) => ({ label: c.label, direction: "" }));
+  return replace(list, { ...task, status: "done", chapterId, choiceIds: written.choices.map((c) => c.id), planned, error: undefined } as RunTask);
+}
+
+/**
+ * Tasks that became done in this step may add tasks (Grow the tree: the chapters for a new chapter's choices, and for
+ * the choices a plan step added). Returns the list with them appended; `tooMany` when that would take the run past
+ * the most chapters one run may write, in which case nothing is added.
+ */
+function withExpansion(before: RunTask[], after: RunTask[], options: AiRun["options"]): { tasks: RunTask[]; tooMany: boolean } {
+  const added: RunTask[] = [];
+  for (const t of after) {
+    if (t.status !== "done" || before.find((b) => b.id === t.id)?.status === "done") continue;
+    added.push(...expandAfter(t, [...after, ...added], options));
+  }
+  if (added.length === 0) return { tasks: after, tooMany: false };
+  const chapters = [...after, ...added].filter((t) => t.kind === "write" && t.status !== "skipped").length;
+  if (chapters > LIMITS.runChapters) return { tasks: after, tooMany: true };
+  return { tasks: [...after, ...added], tooMany: false };
 }
 
 async function doPlan(task: PlanTask, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
@@ -245,11 +274,12 @@ async function doPlan(task: PlanTask, run: AiRun, list: RunTask[], env: StepEnv,
   const labels = task.labels.filter((l) => open.has(norm(l)));
   env.onEvent?.({ type: "status", text: "Planning what happens after each choice…" });
   const before = { ...context, path: context.path.slice(0, -1) };
+  // Never past the most choices a chapter can have.
   const planned = await planNext(settings, {
     ctx: storyContextOf(before, null, []),
     chapter,
     given: labels,
-    suggest: task.add,
+    suggest: Math.max(0, Math.min(task.add, LIMITS.choices - context.choices.length)),
     options: run.options,
     signal,
     stream: env.deps?.stream,

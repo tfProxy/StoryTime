@@ -149,6 +149,42 @@ try {
   const left = await choicesOf(c.root);
   ok(left.find((x) => x.label === "Left").child_chapter_id && !left.find((x) => x.label === "Right").child_chapter_id, "the chapter left out is still an open choice");
 
+  // ---- Grow the tree ----
+  const countNodes = (n) => 1 + n.choices.reduce((sum, c) => sum + (c.child ? countNodes(c.child) : 0), 0);
+  const tr = await story("Tree tale", []);
+  await page.setViewportSize({ width: 1000, height: 1300 });
+  await page.goto(`${BASE}/c/${tr.root}/write-ahead`);
+  await form().getByLabel("Grow the tree").check();
+  ok(await page.getByText(/Writes 39 chapters, about 118 AI requests, one at a time\./).isVisible(), "Grow the tree: depth 3 and 3 choices from a bare chapter is estimated at 39 chapters");
+  ok(await page.getByText("Keeps the chapters and choices already there").isVisible(), "…and says it keeps what is already there");
+  await form().getByRole("button", { name: "Start", exact: true }).click();
+  ok(await page.getByText(/That is a lot: 39 chapters/).isVisible() && await form().getByRole("button", { name: "Yes, write 39 chapters" }).isVisible(), "a big run asks before starting");
+  await form().getByRole("button", { name: "Cancel" }).click();
+  await form().getByLabel(/^Depth/).fill("2");
+  await form().getByLabel(/^Choices per chapter/).fill("2");
+  ok(await page.getByText(/Writes 6 chapters/).isVisible(), "depth 2 with 2 choices is estimated at 6 chapters");
+  await page.screenshot({ path: `${SHOTS}/write-ahead-tree-form-desktop.png`, fullPage: true });
+  await form().getByRole("button", { name: "Start", exact: true }).click();
+  await page.waitForURL(/write-ahead\?run=/);
+  const treeRun = new URL(page.url()).searchParams.get("run");
+  ok(await until(async () => (await call("GET", `/api/ai-runs/${treeRun}`)).status === "done", "the tree run to finish", 600), "the run finishes");
+  const treeNow = await call("GET", `/api/chapters/${tr.root}/subtree?depth=8`);
+  ok(countNodes(treeNow) === 7 && treeNow.choices.length === 2 && treeNow.choices.every((c) => c.child && c.child.choices.length === 2 && c.child.choices.every((x) => x.child && x.child.choices.length === 3)), "depth 2 with 2 choices wrote 6 chapters: two, then two under each, the last with their 3 end choices");
+  ok(await page.getByText(/Wrote 6 chapters, marked not reviewed\./).isVisible(), "the page says it wrote 6 chapters");
+  // A second run keeps what is there and finds nothing to add.
+  await page.goto(`${BASE}/c/${tr.root}/write-ahead`);
+  await form().getByLabel("Grow the tree").check();
+  await form().getByLabel(/^Depth/).fill("2");
+  await form().getByLabel(/^Choices per chapter/).fill("2");
+  ok(await page.getByText(/nothing to write: the tree below this chapter already has/).isVisible() && await form().getByRole("button", { name: "Start" }).isDisabled(), "growing a tree that is already that big says there is nothing to write");
+  // Too big for one run.
+  const big = await story("Big tree", []);
+  await page.goto(`${BASE}/c/${big.root}/write-ahead`);
+  await form().getByLabel("Grow the tree").check();
+  await form().getByLabel(/^Depth/).fill("8");
+  await form().getByLabel(/^Choices per chapter/).fill("6");
+  ok(await page.getByText(/more than 200 chapters/).isVisible() && await form().getByRole("button", { name: "Start" }).isDisabled(), "a 6 × 8 tree is refused: the estimate is over the limit and Start is off");
+
   // ---- phone width ----
   await page.setViewportSize({ width: 400, height: 900 });
   await page.goto(`${BASE}/c/${a.root}/write-ahead`);
