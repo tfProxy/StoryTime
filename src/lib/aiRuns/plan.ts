@@ -167,3 +167,118 @@ export function resolveSlot(task: WriteTask, tasks: RunTask[]): { choiceId: stri
   if (!choiceId) throw new Error(`Task ${slot.taskId} has no choice number ${slot.choiceIndex + 1}.`);
   return { choiceId };
 }
+
+// ---- Grow the tree ----
+
+/** The options Grow the tree reads (`maxDepth`, `breadth`, `endChoices`, `guidance` of `RunOptions`), with their defaults. */
+function growOptions(opts: RunOptions) {
+  return {
+    depth: Math.max(1, opts.maxDepth ?? 3),
+    breadth: Math.max(1, opts.breadth ?? 3),
+    endChoices: opts.endChoices ?? DEFAULT_END_CHOICES,
+    guidance: opts.guidance ?? "",
+  };
+}
+
+/**
+ * Grow the tree: fill the tree below the start chapter to `maxDepth` levels with `breadth` choices per chapter,
+ * counting what is already there. Chapters from the start down to the level above the last are looked at; of each
+ * chapter's choices, up to `breadth` are kept (written ones first). A chapter with an open choice among them, or
+ * with fewer than `breadth` choices, gets a plan task (`labels` the open ones, `add` the choices it lacks) and a
+ * write task per open choice among them. Written ones among them are looked at in turn. Choices past the first
+ * `breadth` are left alone. Chapters that will be written get their own choices from the runner, planned together
+ * (`expand`), and `expandAfter` adds their tasks once they exist.
+ */
+export function planTree(tree: PlanNode, opts: RunOptions): RunTask[] {
+  const { depth: D, breadth: B, endChoices } = growOptions(opts);
+  const tasks: RunTask[] = [];
+  const visit = (node: PlanNode) => {
+    const level = node.depth - tree.depth; // 0 for the start chapter
+    const kept = [...node.choices.filter((c) => c.child), ...node.choices.filter((c) => !c.child)].slice(0, B);
+    const open = kept.filter((c) => !c.child);
+    const add = Math.max(0, B - node.choices.length);
+    if (open.length > 0 || add > 0) {
+      const planId = newTaskId(tasks);
+      tasks.push({ kind: "plan", id: planId, chapterId: node.id, depth: level + 1, labels: open.map((c) => c.label), add, status: "todo" } satisfies PlanTask);
+      for (const c of open) {
+        tasks.push({
+          kind: "write",
+          id: newTaskId(tasks),
+          slot: { kind: "choice", choiceId: c.id },
+          label: c.label,
+          direction: "",
+          depth: level + 1,
+          choices: { given: [], suggest: level + 1 < D ? B : endChoices },
+          plannedBy: planId,
+          parentChapterId: node.id,
+          expand: level + 1 < D,
+          status: "todo",
+        } satisfies WriteTask);
+      }
+    }
+    if (level + 1 < D) for (const c of kept) if (c.child) visit(c.child);
+  };
+  visit(tree);
+  return tasks;
+}
+
+/**
+ * The tasks to add once `done` is done: for a write task with `expand`, one write task per choice its chapter was
+ * posted with (`choiceIds`, in the order of `planned`), each starting from what the plan said happens (D22); for a
+ * plan task that added choices (`add`), a write task for each added choice with its plan. They follow the rules of
+ * `planTree`: chapters at the last level aren't expanded, and their own choices are the D5 ones. `tasks` is the
+ * current list (for ids). Pure.
+ */
+export function expandAfter(done: RunTask, tasks: RunTask[], opts: RunOptions): RunTask[] {
+  const { depth: D, breadth: B, endChoices, guidance } = growOptions(opts);
+  const out: RunTask[] = [];
+  const make = (parentChapterId: string, depth: number, choiceId: string, label: string, direction: string) => {
+    const all = [...tasks, ...out];
+    out.push({
+      kind: "write",
+      id: newTaskId(all),
+      slot: { kind: "choice", choiceId },
+      label,
+      direction: withGuidance(direction, guidance),
+      depth,
+      choices: { given: [], suggest: depth < D ? B : endChoices },
+      parentChapterId,
+      expand: depth < D,
+      status: "todo",
+    } satisfies WriteTask);
+  };
+  if (done.kind === "write" && done.status === "done" && done.expand && done.chapterId && done.depth < D) {
+    (done.choiceIds ?? []).slice(0, B).forEach((choiceId, i) => {
+      const plan = done.planned?.[i];
+      make(done.chapterId!, done.depth + 1, choiceId, plan?.label ?? `Choice ${i + 1}`, plan?.direction ?? "");
+    });
+  } else if (done.kind === "plan" && done.status === "done" && done.add > 0 && done.depth <= D) {
+    const given = new Set(done.labels);
+    for (const step of done.steps ?? []) {
+      if (!step.choiceId || given.has(step.label)) continue;
+      make(done.chapterId, done.depth, step.choiceId, step.label, step.direction);
+    }
+  }
+  return out;
+}
+
+/**
+ * What a Grow the tree run will cost before it starts, counting the chapters `expandAfter` will add level by level
+ * (each chapter written above the last level gets `breadth` choices, each written in turn). From a bare chapter,
+ * depth 3 and breadth 3 is 3 + 9 + 27 = 39 chapters.
+ */
+export function estimateTree(tree: PlanNode, opts: RunOptions): { chapters: number; requests: number } {
+  const { depth: D, breadth: B } = growOptions(opts);
+  const tasks = planTree(tree, opts);
+  const plans = tasks.filter((t) => t.kind === "plan").length;
+  // Chapters to write at each level, and how many of them will have choices of their own to write.
+  const at = new Map<number, number>();
+  const bump = (d: number, n: number) => at.set(d, (at.get(d) ?? 0) + n);
+  for (const t of tasks) {
+    if (t.kind === "write") bump(t.depth, 1);
+    else if (t.kind === "plan") bump(t.depth, t.add);
+  }
+  for (let d = 1; d < D; d++) bump(d + 1, (at.get(d) ?? 0) * B);
+  const chapters = [...at.values()].reduce((a, b) => a + b, 0);
+  return { chapters, requests: chapters * 3 + plans };
+}
