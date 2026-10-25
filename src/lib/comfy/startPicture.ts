@@ -1,5 +1,6 @@
 // A picture chosen to start a job from (image to image), and getting it into ComfyUI. Browser code.
 import { codexPictureUrl, savedOwner, savedPictureUrl, type PictureSlot, type PictureTarget } from "../pictureTarget";
+import { imageSize } from "../imageSize";
 import { fetchImage, imageUrl, uploadImage, type ComfyImage } from "./client";
 
 export type StartPicture = {
@@ -62,9 +63,18 @@ export type Uploaded = { key: string; name: string; width: number; height: numbe
 /** Uploads the starting picture to ComfyUI and reads its size, which is the size of the pictures made from it. */
 export async function uploadStart(comfyUrl: string, start: StartPicture): Promise<Uploaded> {
   const blob = await start.blob();
-  const bitmap = await createImageBitmap(blob);
-  const { width, height } = bitmap;
-  bitmap.close();
+  let width: number;
+  let height: number;
+  if (typeof createImageBitmap === "undefined") {
+    // On the server there is no canvas: read the size from the file's header.
+    const size = imageSize(new Uint8Array(await blob.arrayBuffer()));
+    if (!size) throw new Error("Couldn't read the size of the starting picture.");
+    ({ width, height } = size);
+  } else {
+    const bitmap = await createImageBitmap(blob);
+    ({ width, height } = bitmap);
+    bitmap.close();
+  }
   const ext = blob.type === "image/jpeg" ? "jpg" : "png";
   const name = await uploadImage(comfyUrl, blob, `storytime-start-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${ext}`);
   return { key: start.key, name, width, height };

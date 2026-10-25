@@ -147,7 +147,7 @@ Each task is one commit unless it says otherwise. Each task lists what to do, wh
 
 **0.2 Move edit-model helpers out of components (done).** `src/lib/aiRuns/pictures.ts` imports `drawPresetFamily`, `drawPresetIpAdapter`, `toEditModels`, `EditModels` from `src/components/useEditModels`. Move those (pure, non-hook) exports into `src/lib/comfy/editModelsData.ts` (or into `editModels.ts` if they fit there), re-export them from `useEditModels` so other imports keep working, and change `pictures.ts` to import from `src/lib`. Then `grep -rn "components/" src/lib` must print nothing. Check: tsc, `npx next build`, unit tests, `node tests/run.mjs e2e missing-pictures illustrate-families`.
 
-**0.3 imageSize.** `src/lib/imageSize.ts` (D7) plus `tests/unit/image-size.test.mts` with tiny hand-built PNG and JPEG headers (`fakeComfy.mjs` already builds PNGs; copy its approach). Change `uploadStart` (`startPicture.ts`) to fall back to `imageSize` when `typeof createImageBitmap === "undefined"`. Check: unit tests, `node tests/run.mjs e2e illustrate-start`.
+**0.3 imageSize (done).** `src/lib/imageSize.ts` (D7) plus `tests/unit/image-size.test.mts` with tiny hand-built PNG and JPEG headers (`fakeComfy.mjs` already builds PNGs; copy its approach). Change `uploadStart` (`startPicture.ts`) to fall back to `imageSize` when `typeof createImageBitmap === "undefined"`. Check: unit tests, `node tests/run.mjs e2e illustrate-start`.
 
 **0.4 JobSpec.** Add `src/lib/comfy/jobSpec.ts` as above, with `tests/unit/job-spec.test.mts`: `sameJob(fromSpec(toSpec(x)))` equals `sameJob(x)` for a drawing job, an edit job with a start, a redraw with a mask, and a job with refs; `blob()` of a rebuilt start calls the resolver with the right source. No caller uses it yet.
 
