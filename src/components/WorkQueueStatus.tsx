@@ -20,7 +20,11 @@ export const MODE_WORDS = { fill: "Fill open choices", tree: "Grow the tree", ar
 
 /** Where a run's page is (the page that shows its tasks, review and results). */
 export const runHref = (run: Pick<RunItem, "runId" | "storyId" | "startChapterId" | "mode">) =>
-  run.mode === "pictures" || !run.startChapterId ? `/s/${run.storyId}/details?run=${run.runId}` : `/c/${run.startChapterId}/write-ahead?run=${run.runId}`;
+  run.mode === "pictures"
+    ? `/s/${run.storyId}/pictures?picrun=${run.runId}`
+    : !run.startChapterId
+      ? `/s/${run.storyId}/details?run=${run.runId}`
+      : `/c/${run.startChapterId}/write-ahead?run=${run.runId}`;
 
 export type Labels = Record<string, { title: string; story_title: string }>;
 
