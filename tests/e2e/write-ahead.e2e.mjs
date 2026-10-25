@@ -31,7 +31,9 @@ const mock = http.createServer((req, res) => {
     if (kind === "chapter") ai.prompts.push(message);
     const labels = [...(message.match(/offered at its end: ([^\n]*?)\.\n/)?.[1].matchAll(/“([^”]+)”/g) ?? [])].map((x) => x[1]);
     const add = Number(message.match(/uggest (\d+) new choice/)?.[1] ?? 0);
+    const arcCount = Number(message.match(/Plan exactly (\d+) chapter/)?.[1] ?? 0);
     const text = kind === "chapter" ? `# Written ${ai.prompts.length}\n\nA chapter the fake AI wrote.`
+      : kind === "plan" && arcCount > 0 ? JSON.stringify(Array.from({ length: arcCount }, (_, i) => ({ choice: `Step ${i + 1} choice`, direction: `Step ${i + 1} happens.` })))
       : kind === "plan" ? JSON.stringify([...labels.map((l) => ({ choice: l, direction: `They face ${l}.` })), ...Array.from({ length: add }, (_, i) => ({ choice: `Onward ${ai.calls}-${i + 1}`, direction: "Something follows." }))])
       : "SUMMARY:\nShort.\nSTORY SO FAR:\nSo far.";
     res.setHeader("content-type", "text/event-stream");
@@ -184,6 +186,47 @@ try {
   await form().getByLabel(/^Depth/).fill("8");
   await form().getByLabel(/^Choices per chapter/).fill("6");
   ok(await page.getByText(/more than 200 chapters/).isVisible() && await form().getByRole("button", { name: "Start" }).isDisabled(), "a 6 × 8 tree is refused: the estimate is over the limit and Start is off");
+
+  // ---- Reach a goal ----
+  const goal = await story("Goal tale", []);
+  await page.goto(`${BASE}/c/${goal.root}/write-ahead`);
+  await form().getByLabel("Reach a goal").check();
+  ok(await form().getByRole("button", { name: "Plan the chapters" }).isDisabled(), "Reach a goal: planning needs a goal first");
+  await form().getByLabel(/^Goal/).fill("The heroes find the vault");
+  await form().getByLabel(/^Chapters/).fill("2");
+  await form().getByRole("button", { name: "Plan the chapters", exact: true }).click();
+  ok(await until(async () => (await form().getByLabel(/^Choice text for chapter/).count()) === 2, "the plan to show", 100), "the plan shows as one editable row per chapter");
+  ok((await form().getByLabel("Choice text for chapter 1").inputValue()) === "Step 1 choice" && (await form().getByLabel(/What happens/).first().inputValue()) === "Step 1 happens.", "…with the choice text and what happens");
+  await form().getByRole("button", { name: "Remove chapter 2" }).click();
+  ok(await form().getByRole("button", { name: "Write 1 chapter" }).isVisible(), "removing a row shortens the chain: “Write 1 chapter”");
+  await form().getByRole("button", { name: "Plan again" }).click();
+  ok(await until(async () => (await form().getByLabel(/^Choice text for chapter/).count()) === 2, "the plan again", 100), "Plan again makes the plan afresh");
+  await form().getByLabel("Choice text for chapter 1").fill("Edited step one");
+  await form().getByLabel(/^What happens/).nth(1).fill("EDITEDSECOND happens.");
+  await page.screenshot({ path: `${SHOTS}/write-ahead-arc-form-desktop.png`, fullPage: true });
+  const arcPromptsBefore = ai.prompts.length;
+  await form().getByRole("button", { name: "Write 2 chapters" }).click();
+  await page.waitForURL(/write-ahead\?run=/);
+  const arcRun = new URL(page.url()).searchParams.get("run");
+  ok(await until(async () => (await call("GET", `/api/ai-runs/${arcRun}`)).status === "done", "the chain to be written", 400), "the chain is written");
+  const first = (await choicesOf(goal.root));
+  ok(first.length === 1 && first[0].label === "Edited step one" && first[0].child_chapter_id, "the first chapter is under a new choice with the edited text");
+  const second = (await choicesOf(first[0].child_chapter_id));
+  ok(second[0]?.label === "Step 2 choice" && second[0].child_chapter_id, "the second is under the first chapter's first choice");
+  const chainPrompts = ai.prompts.slice(arcPromptsBefore);
+  ok(chainPrompts.length === 2 && chainPrompts[0].includes("part 1 of 2") && chainPrompts[0].includes("Don't reach that goal yet") && chainPrompts[1].includes("EDITEDSECOND") && chainPrompts[1].includes("This chapter reaches that goal."), "each chapter was written from its place in the chain, the second from the edited plan");
+  // Starting from an open choice.
+  const goal2 = await story("Goal tale two", ["Already open"]);
+  await page.goto(`${BASE}/c/${goal2.root}/write-ahead`);
+  await form().getByLabel("Reach a goal").check();
+  await form().getByLabel(/^Start with/).selectOption({ label: "Its open choice “Already open”" });
+  await form().getByLabel(/^Goal/).fill("Something big");
+  await form().getByLabel(/^Chapters/).fill("1");
+  await form().getByRole("button", { name: "Plan the chapters", exact: true }).click();
+  await form().getByRole("button", { name: "Write 1 chapter" }).click();
+  await page.waitForURL(/write-ahead\?run=/);
+  ok(await until(async () => (await choicesOf(goal2.root)).every((c) => c.child_chapter_id), "the chapter to be written", 300), "starting from an open choice writes into it");
+  ok((await choicesOf(goal2.root)).length === 1, "…without adding another choice");
 
   // ---- phone width ----
   await page.setViewportSize({ width: 400, height: 900 });

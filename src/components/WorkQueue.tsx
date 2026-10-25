@@ -548,7 +548,17 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
       inFlight.current.add(g.key);
       lastPreset.current = drawPreset;
       // One after another, each once the one before is queued on ComfyUI, so ComfyUI gets them in the order chosen.
-      sendChain.current = sendChain.current.then(() => new Promise<void>((resolve) => void send(g, resolve)));
+      // (A job that takes more than 15 s to queue doesn't hold up the ones behind it.)
+      sendChain.current = sendChain.current.then(
+        () =>
+          new Promise<void>((resolve) => {
+            const give = setTimeout(resolve, 15_000);
+            void send(g, () => {
+              clearTimeout(give);
+              resolve();
+            });
+          }),
+      );
     }
     // Jobs still held while taking turns say so on their place and in the header.
     if (q.sharing === "turns" && !isPaused()) {

@@ -25,7 +25,7 @@ export default async function WriteAheadPage({
   const story = getStory(chapter.story_id);
   const tree = getSubtree(id, 8);
   if (!story || !tree) notFound();
-  const unfinished = listRuns(story.id, { startChapterId: id }).find((r) => (r.mode === "fill" || r.mode === "tree") && ["queued", "running", "review", "paused", "ready"].includes(r.status));
+  const unfinished = listRuns(story.id, { startChapterId: id }).find((r) => (r.mode === "fill" || r.mode === "tree" || r.mode === "arc") && ["queued", "running", "review", "paused", "ready"].includes(r.status));
 
   return (
     <>

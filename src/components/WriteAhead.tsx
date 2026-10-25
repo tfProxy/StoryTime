@@ -4,14 +4,16 @@
 // The form is built so later modes (grow the tree, reach a goal) can join "What to write" as more options.
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { generatePrompt, SYSTEM_CHAPTER, type StoryContext } from "@/lib/ai/prompts";
+import { arcPlanPrompt, generatePrompt, parseIdeas, SYSTEM_ARC_PLAN, SYSTEM_CHAPTER, type StoryContext } from "@/lib/ai/prompts";
 import { claim, finish } from "@/lib/aiRuns/runner";
-import { estimateFill, estimateTree, planFill, planTree, DEFAULT_END_CHOICES, type PlanNode } from "@/lib/aiRuns/plan";
+import { estimateArc, estimateFill, estimateTree, planArc, planFill, planTree, DEFAULT_END_CHOICES, type ArcStep, type PlanNode } from "@/lib/aiRuns/plan";
+import { completeChat } from "@/lib/ai/client";
 import type { RunOptions } from "@/lib/aiRuns/types";
 import { LIMITS } from "@/lib/limits";
 import { usableRef, useSettings, type ModelRef } from "@/lib/settings";
 import AiRunProgress from "./AiRunProgress";
 import ModelPicker from "./ModelPicker";
+import NumberInput from "./NumberInput";
 import PromptButton from "./PromptButton";
 import { useWorkQueue } from "./WorkQueue";
 
@@ -37,7 +39,14 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
   const router = useRouter();
   const settings = useSettings();
   const { startRun } = useWorkQueue();
-  const [what, setWhat] = useState<"fill" | "tree">("fill");
+  const [what, setWhat] = useState<"fill" | "tree" | "arc">("fill");
+  // Reach a goal: what should happen, in how many chapters, where to start, and the plan the author edits.
+  const [objective, setObjective] = useState("");
+  const [arcCount, setArcCount] = useState(3);
+  const [alternatives, setAlternatives] = useState(0);
+  const [startChoiceId, setStartChoiceId] = useState("new");
+  const [steps, setSteps] = useState<ArcStep[] | null>(null);
+  const [planning, setPlanning] = useState(false);
   const [maxDepth, setMaxDepth] = useState(3);
   const [breadth, setBreadth] = useState(3);
   const [scope, setScope] = useState<"children" | "below">("children");
@@ -61,15 +70,20 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
       endChoices,
       reviewPlan,
       models,
-      ...(what === "tree" ? { maxDepth, breadth } : { scope }),
+      ...(what === "tree" ? { maxDepth, breadth } : what === "arc" ? { objective: objective.trim(), chapters: arcCount, alternatives } : { scope }),
     }),
-    [settings, length, writeModel, suggestModel, guidance, endChoices, reviewPlan, models, scope, what, maxDepth, breadth],
+    [settings, length, writeModel, suggestModel, guidance, endChoices, reviewPlan, models, scope, what, maxDepth, breadth, objective, arcCount, alternatives],
   );
   const openHere = openIn(tree, false);
   const openBelow = openIn(tree, true);
-  const estimate = useMemo(() => (what === "tree" ? estimateTree(tree, options) : estimateFill(tree, options)), [what, tree, options]);
-  // Nothing to write: no open choices (Fill), or the tree already has everything to that depth and breadth (Grow the tree).
-  const none = what === "tree" ? estimate.chapters === 0 : (scope === "children" ? openHere : openBelow) === 0;
+  const openChoices = tree.choices.filter((c) => !c.child);
+  const startChoice = openChoices.find((c) => c.id === startChoiceId);
+  const estimate = useMemo(
+    () => (what === "tree" ? estimateTree(tree, options) : what === "arc" ? estimateArc(steps ?? Array.from({ length: arcCount }, () => ({ choice: "", direction: "" }))) : estimateFill(tree, options)),
+    [what, tree, options, steps, arcCount],
+  );
+  // Nothing to write: no open choices (Fill), the tree already has everything to that depth and breadth (Grow the tree), or no plan yet (Reach a goal).
+  const none = what === "tree" ? estimate.chapters === 0 : what === "arc" ? !steps || steps.length === 0 : (scope === "children" ? openHere : openBelow) === 0;
   const tooMany = estimate.chapters > LIMITS.runChapters;
 
   /** The prompt of the first chapter the run would write, for View prompt. */
@@ -87,11 +101,36 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
     };
   };
 
+  /** The story so far for the plan, following the choice the author starts from when there is one. */
+  const planContext: StoryContext = { ...context, choiceLabel: startChoice?.label ?? null, siblingChoices: startChoice ? [] : context.siblingChoices };
+  const planRequest = () => ({
+    system: SYSTEM_ARC_PLAN,
+    message: arcPlanPrompt(planContext, objective.trim(), arcCount, settings.contextTokens),
+  });
+
+  /** Asks the writing model for the steps to the goal; the author edits them before anything is written. */
+  async function planChapters() {
+    setPlanning(true);
+    setError(null);
+    try {
+      const request = planRequest();
+      const reply = await completeChat(settings, { system: request.system, messages: [{ role: "user", content: request.message }], role: "main", model: usableRef(settings, writeModel) });
+      const found = parseIdeas(reply, arcCount);
+      if (found.length === 0) throw new Error("The model's plan could not be read. Try Plan again.");
+      setSteps(found.map((i) => ({ choice: i.choice.slice(0, LIMITS.label), direction: i.direction })));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPlanning(false);
+    }
+  }
+
   async function start() {
     setBusy(true);
     setError(null);
     try {
-      const tasks = what === "tree" ? planTree(tree, options) : planFill(tree, options);
+      const tasks =
+        what === "tree" ? planTree(tree, options) : what === "arc" ? planArc(chapter.id, steps ?? [], { ...options, chapters: steps?.length }, startChoice && { id: startChoice.id, label: startChoice.label }) : planFill(tree, options);
       const res = await fetch("/api/ai-runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -191,7 +230,64 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
               <p className="meta">Keeps the chapters and choices already there, and writes what is missing to that depth.</p>
             </div>
           )}
-          {none && (
+          <label className="inline-label">
+            <input type="radio" name="what" style={{ width: "auto" }} checked={what === "arc"} onChange={() => setWhat("arc")} />
+            <span>Reach a goal</span>
+          </label>
+          {what === "arc" && (
+            <div className="write-ahead-sub">
+              <label>
+                Goal <small>(what should happen by the end of the chain)</small>
+                <textarea rows={3} value={objective} maxLength={LIMITS.premise} onChange={(e) => { setObjective(e.target.value); setSteps(null); }} />
+              </label>
+              <label>
+                Chapters <small>(1–20)</small>
+                <NumberInput min={1} max={20} integer value={arcCount} onChange={(v) => { if (v !== null) { setArcCount(v); setSteps(null); } }} />
+              </label>
+              <label>
+                Start with
+                <select value={startChoiceId} onChange={(e) => { setStartChoiceId(e.target.value); setSteps(null); }}>
+                  <option value="new">A new choice on this chapter</option>
+                  {openChoices.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      Its open choice “{c.label}”
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Other choices along the way <small>(0–3 more besides the next step; they stay unwritten)</small>
+                <NumberInput min={0} max={3} integer value={alternatives} onChange={(v) => v !== null && setAlternatives(v)} />
+              </label>
+              <div className="row" style={{ alignItems: "center" }}>
+                <button type="button" disabled={planning || !objective.trim()} onClick={() => void planChapters()}>
+                  {planning ? "Planning…" : steps ? "Plan again" : "Plan the chapters"}
+                </button>
+                <PromptButton label="Plan the chapters" build={planRequest} disabled={!objective.trim()} note="Sent to the writing model." />
+              </div>
+              {steps && (
+                <ol className="ai-run-tasks" aria-label="The plan">
+                  {steps.map((s, i) => (
+                    <li key={i} className="ai-run-task">
+                      <label>
+                        Choice text for chapter {i + 1}
+                        <input value={s.choice} maxLength={LIMITS.label} onChange={(e) => setSteps((p) => p && p.map((x, j) => (j === i ? { ...x, choice: e.target.value } : x)))} />
+                      </label>
+                      <label>
+                        What happens
+                        <textarea rows={2} value={s.direction} onChange={(e) => setSteps((p) => p && p.map((x, j) => (j === i ? { ...x, direction: e.target.value } : x)))} />
+                      </label>
+                      <button type="button" className="picture-queue-text-button" aria-label={`Remove chapter ${i + 1}`} onClick={() => setSteps((p) => p && p.filter((_, j) => j !== i))}>
+                        ✕ Remove
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {steps && steps.length === 0 && <p className="meta">The plan has no chapters left. Plan again.</p>}
+            </div>
+          )}
+          {none && what !== "arc" && (
             <p className="meta">
               {what === "tree"
                 ? "There is nothing to write: the tree below this chapter already has that many choices and levels."
@@ -219,7 +315,7 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
             <textarea rows={3} value={guidance} maxLength={LIMITS.premise} onChange={(e) => setGuidance(e.target.value)} />
           </label>
           <label>
-            {what === "tree" ? "Choices on the last chapters" : "Choices on each new chapter"} <small>(0–6, so the story doesn&apos;t end there)</small>
+            {what === "tree" ? "Choices on the last chapters" : what === "arc" ? "Choices on the last chapter" : "Choices on each new chapter"} <small>(0–6, so the story doesn&apos;t end there)</small>
             <input type="number" min={0} max={6} value={endChoices} onChange={(e) => setEndChoices(Math.max(0, Math.min(6, Math.round(Number(e.target.value) || 0))))} />
           </label>
           <fieldset>
@@ -239,10 +335,12 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
           </fieldset>
         </details>
 
-        <label className="inline-label">
-          <input type="checkbox" style={{ width: "auto" }} checked={reviewPlan} onChange={(e) => setReviewPlan(e.target.checked)} />
-          <span>Let me check the plan first</span>
-        </label>
+        {what !== "arc" && (
+          <label className="inline-label">
+            <input type="checkbox" style={{ width: "auto" }} checked={reviewPlan} onChange={(e) => setReviewPlan(e.target.checked)} />
+            <span>Let me check the plan first</span>
+          </label>
+        )}
 
         {!none && (
           <p className="meta" aria-live="polite">
@@ -258,9 +356,12 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
         {error && <p className="error">{error}</p>}
         <div className="row" style={{ alignItems: "center" }}>
           <button type="submit" disabled={busy || none || tooMany}>
-            {confirming ? `Yes, write ${estimate.chapters} chapters` : "Start"}
+            {confirming ? `Yes, write ${estimate.chapters} chapters` : what === "arc" ? (steps ? `Write ${steps.length} ${steps.length === 1 ? "chapter" : "chapters"}` : "Write chapters") : "Start"}
           </button>
-          <PromptButton label="First chapter" build={firstPrompt} disabled={none} note="The first chapter the run would write. Its direction comes from the plan made first, so it isn't in this prompt." />
+          {what !== "arc" && (
+            <PromptButton label="First chapter" build={firstPrompt} disabled={none} note="The first chapter the run would write. Its direction comes from the plan made first, so it isn't in this prompt." />
+          )}
+          {what === "arc" && !steps && <span className="meta">Plan the chapters first, then edit the plan.</span>}
           {confirming && (
             <button type="button" className="secondary" onClick={() => setConfirming(false)}>
               Cancel

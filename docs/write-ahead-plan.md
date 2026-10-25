@@ -353,6 +353,8 @@ Split this task in two commits if it gets large: first the marks (items 1 and 2,
 
 ### Task 3.1: prompts and planner
 
+(Done in task 3.1. A chapter's given choice is the *next* step's choice (the plan's `given: [steps[k].choice]` read with the next index); `estimateArc` is chapters × 3 + 1.)
+
 **Files:** `src/lib/ai/prompts.ts`, `src/lib/aiRuns/plan.ts`, unit tests.
 
 - `SYSTEM_ARC_PLAN` and `arcPlanPrompt(ctx, objective, chapters, contextTokens)`: uses `storyHeader` like `ideasPrompt`; asks for exactly `chapters` steps from the end of the last chapter to the objective, each `{"choice": button text under 12 words for the choice that leads into that chapter, "direction": one or two sentences on what happens in it}`; only the last step reaches the objective; reply with only a JSON array. Read the reply with `parseIdeas`.
@@ -361,6 +363,8 @@ Split this task in two commits if it gets large: first the marks (items 1 and 2,
 - **Tests:** the chain links t2 to t1's choice 0; `arcPlanPrompt` names the objective and the count; `arcDirection` wording for middle and last.
 
 ### Task 3.2: form
+
+(Done in task 3.2. The plan is asked of the writing model from the page with `completeChat`; starting from an open choice makes the plan follow “The reader chose: …”; the plan check checkbox isn't offered for a goal, since the plan is already edited before it starts.)
 
 **Files:** `src/components/WriteAhead.tsx`, `tests/e2e/write-ahead.e2e.mjs`.
 

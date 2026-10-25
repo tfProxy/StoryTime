@@ -286,6 +286,10 @@ a {
   height: 5.5rem;
 }
 
+.write-ahead-form textarea {
+  min-height: 0;
+}
+
 .picture-queue-text-button:disabled {
   color: var(--muted, inherit);
   opacity: 0.5;
