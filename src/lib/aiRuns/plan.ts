@@ -1,6 +1,7 @@
 // Planner for AI runs: pure functions that turn the owner's choices into a task list and pick the next task.
 // No database, no network. Milestone 1 (Fill open choices) uses planFill; later modes add their own planners.
 
+import { arcDirection } from "../ai/prompts";
 import type { AiRun, PlanTask, RunOptions, RunTask, WriteTask } from "./types";
 
 /**
@@ -282,4 +283,48 @@ export function estimateTree(tree: PlanNode, opts: RunOptions): { chapters: numb
   for (let d = 1; d < D; d++) bump(d + 1, (at.get(d) ?? 0) * B);
   const chapters = [...at.values()].reduce((a, b) => a + b, 0);
   return { chapters, requests: chapters * 3 + plans };
+}
+
+// ---- Reach a goal ----
+
+/** One step of a Reach a goal plan: the choice that leads into the chapter, and what happens in it. */
+export type ArcStep = { choice: string; direction: string };
+
+/**
+ * Reach a goal: a chain of write tasks, one chapter after another from `startChapterId`. The first goes into an
+ * existing open choice (`startChoice`, whose text then replaces the first step's) or into a new choice on the
+ * start chapter; each later one goes into the first choice of the chapter before it (`fromTask`), which is the
+ * choice to the next step. A chapter's choices are the next step's (only that one, D6) plus `alternatives` more
+ * from the AI; the last chapter's are the end choices. Directions come from `arcDirection` with the guidance.
+ */
+export function planArc(startChapterId: string, steps: ArcStep[], opts: RunOptions, startChoice?: { id: string; label: string }): RunTask[] {
+  const objective = opts.objective ?? "";
+  const alternatives = opts.alternatives ?? 0;
+  const endChoices = opts.endChoices ?? DEFAULT_END_CHOICES;
+  const tasks: RunTask[] = [];
+  steps.forEach((step, k) => {
+    const last = k === steps.length - 1;
+    const id = newTaskId(tasks);
+    const label = k === 0 && startChoice ? startChoice.label : step.choice;
+    const slot: WriteTask["slot"] =
+      k > 0 ? { kind: "fromTask", taskId: tasks[k - 1].id, choiceIndex: 0 } : startChoice ? { kind: "choice", choiceId: startChoice.id } : { kind: "new", parentChapterId: startChapterId, label };
+    tasks.push({
+      kind: "write",
+      id,
+      slot,
+      label,
+      direction: withGuidance(arcDirection(objective, step, k, steps.length, steps[k + 1]?.choice), opts.guidance),
+      depth: k + 1,
+      choices: last ? { given: [], suggest: endChoices } : { given: [steps[k + 1].choice], suggest: alternatives },
+      ...(k === 0 && { parentChapterId: startChapterId }),
+      expand: false,
+      status: "todo",
+    } satisfies WriteTask);
+  });
+  return tasks;
+}
+
+/** What a Reach a goal run will cost: each chapter is about 3 requests (the chapter, its summary, the plan for its choices); the plan itself is one more. */
+export function estimateArc(steps: ArcStep[]): { chapters: number; requests: number } {
+  return { chapters: steps.length, requests: steps.length * 3 + 1 };
 }

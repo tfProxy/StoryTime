@@ -1,4 +1,4 @@
-import { applyPlan, estimateFill, estimateTree, expandAfter, planTree, needsReview, newTaskId, nextTask, planFill, resolveSlot, withGuidance, type PlanNode } from "../../src/lib/aiRuns/plan.ts";
+import { applyPlan, estimateArc, planArc, estimateFill, estimateTree, expandAfter, planTree, needsReview, newTaskId, nextTask, planFill, resolveSlot, withGuidance, type PlanNode } from "../../src/lib/aiRuns/plan.ts";
 import type { PlanTask, RunTask, WriteTask } from "../../src/lib/aiRuns/types.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
@@ -157,4 +157,26 @@ ok(!needsReview(run(true, planned.map((x) => ({ ...x, status: "done" as const })
   const fromPlan = expandAfter(planDone, [planDone], { maxDepth: 3, breadth: 3 });
   ok(fromPlan.length === 2 && fromPlan.map((x) => (x as WriteTask).label).join() === "New 1,New 2" && (fromPlan[0] as WriteTask).direction === "plan n1" && (fromPlan[0] as WriteTask).depth === 1 && (fromPlan[0] as WriteTask).parentChapterId === "R", "a plan task that added choices gives write tasks for those, with their plans, and not for the given ones");
   ok(expandAfter({ ...planDone, add: 0 }, [planDone], { maxDepth: 3, breadth: 3 }).length === 0, "…none when it added nothing");
+}
+
+// ---- Reach a goal ----
+{
+  const steps = [{ choice: "Follow the stranger", direction: "She meets the stranger." }, { choice: "Take the tunnel", direction: "They go underground." }, { choice: "Open the vault", direction: "The vault opens." }];
+  const arc = planArc("R0", steps, { objective: "The heroes find the vault", alternatives: 1, endChoices: 2, guidance: "Keep it tense." }) as WriteTask[];
+  ok(arc.length === 3 && arc.map((t) => t.id).join() === "t1,t2,t3" && arc.every((t) => t.kind === "write" && t.expand === false && t.status === "todo"), "planArc: a chain of write tasks, none expanded");
+  ok(arc[0].slot.kind === "new" && (arc[0].slot as { parentChapterId: string; label: string }).parentChapterId === "R0" && (arc[0].slot as { label: string }).label === "Follow the stranger" && arc[0].parentChapterId === "R0", "the first goes into a new choice on the start chapter");
+  ok(arc[1].slot.kind === "fromTask" && (arc[1].slot as { taskId: string; choiceIndex: number }).taskId === "t1" && (arc[1].slot as { choiceIndex: number }).choiceIndex === 0, "the second goes into the first choice of the first's chapter");
+  ok((arc[2].slot as { taskId: string }).taskId === "t2", "…and the third into the second's");
+  ok(arc.map((t) => t.label).join() === "Follow the stranger,Take the tunnel,Open the vault", "each is labelled with the choice that leads into it");
+  ok(arc[0].choices.given.join() === "Take the tunnel" && arc[1].choices.given.join() === "Open the vault" && arc[0].choices.suggest === 1, "a chapter's choices are the next step's, plus the other choices along the way");
+  ok(arc[2].choices.given.length === 0 && arc[2].choices.suggest === 2, "the last chapter gets the end choices");
+  ok(arc.map((t) => t.depth).join() === "1,2,3", "depths count along the chain");
+  ok(arc[0].direction.includes("part 1 of 3") && arc[0].direction.includes("The heroes find the vault") && arc[0].direction.includes("She meets the stranger.") && arc[0].direction.endsWith("Keep it tense."), "the directions say where it is in the chain, what happens, and carry the guidance");
+  ok(arc[0].direction.includes("Don't reach that goal yet; end where “Take the tunnel” is a natural next step.") && arc[2].direction.includes("This chapter reaches that goal."), "…not reaching the goal until the last chapter");
+  const existing = planArc("R0", steps, { objective: "x" }, { id: "choice-9", label: "Already offered" }) as WriteTask[];
+  ok(existing[0].slot.kind === "choice" && (existing[0].slot as { choiceId: string }).choiceId === "choice-9" && existing[0].label === "Already offered", "starting from an existing open choice uses it, and its text replaces the first step's");
+  ok(estimateArc(steps).chapters === 3 && estimateArc(steps).requests === 10, "estimate: 3 chapters, 3 requests each and one to plan");
+  ok(planArc("R0", [], { objective: "x" }).length === 0, "no steps give no tasks");
+  const single = planArc("R0", [steps[0]], { objective: "Goal", endChoices: 3 }) as WriteTask[];
+  ok(single.length === 1 && single[0].direction.includes("part 1 of 1") && single[0].direction.includes("reaches that goal") && single[0].choices.suggest === 3, "a single chapter reaches the goal at once");
 }

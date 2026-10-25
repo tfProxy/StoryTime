@@ -542,6 +542,44 @@ export function matchSteps(labels: string[], ideas: Idea[]): PlanStep[] {
   return steps;
 }
 
+export const SYSTEM_ARC_PLAN = `You help write branching stories. You plan a stretch of chapters that leads to a goal the author names. You reply with a JSON array and nothing else.`;
+
+/**
+ * Reach a goal (D6): plans `chapters` chapters, one after another from the end of the last chapter, that get the
+ * story to what the author wants to happen. `ctx.path` is the story so far. Each step is `choice` (button text for
+ * the choice that leads into that chapter, under 12 words) and `direction` (what happens in it); only the last
+ * step reaches the goal. Read the reply with `parseIdeas(text, chapters)`.
+ */
+export function arcPlanPrompt(ctx: StoryContext, objective: string, chapters: number, contextTokens: number): string {
+  const { text: goal, notes } = parseBracketNotes(objective);
+  const ask =
+    `The author wants the story to reach this: "${goal}"` +
+    `\nPlan exactly ${chapters} chapter${chapters === 1 ? "" : "s"}, one after another, starting from the end of the last chapter, that get the story there. ` +
+    (chapters === 1
+      ? `That one chapter reaches the goal.`
+      : `Each chapter follows naturally from the one before it, and only the last one reaches the goal; the earlier ones build toward it without arriving.`) +
+    `\nFor each give "choice" (button text, under 12 words, for the choice the reader picks at the end of the chapter before it to get into this chapter) and "direction" (one or two sentences on what happens in this chapter).` +
+    (notes.length ? `\n${notesBlock(notes, "Also follow these instructions from the author")}` : "") +
+    `\n${CHOICE_QUALITY}` +
+    `\nReply with only a JSON array of ${chapters} object${chapters === 1 ? "" : "s"} like [{"choice":"...","direction":"..."}], in story order.`;
+  return [storyHeader(ctx, Math.floor(budgetFor(contextTokens) * 0.7), goal), ask].join("\n\n");
+}
+
+/**
+ * The direction a chapter of a Reach a goal chain is written from (step `index` of `total`, 0 for the first):
+ * what it is part of, what happens in it, and whether it arrives at the goal or only builds toward it.
+ */
+export function arcDirection(objective: string, step: { direction: string }, index: number, total: number, nextChoice?: string): string {
+  const { text: goal } = parseBracketNotes(objective);
+  const head = `This chapter is part ${index + 1} of ${total} of a stretch of the story heading toward: ${goal}.`;
+  const what = step.direction.trim() ? ` In this chapter: ${step.direction.trim()}` : "";
+  const last = index + 1 >= total;
+  const end = last
+    ? ` This chapter reaches that goal.`
+    : ` Don't reach that goal yet${nextChoice ? `; end where “${nextChoice}” is a natural next step` : ""}.`;
+  return `${head}${what}${end}`;
+}
+
 /** Splits "# Title\n\nbody" output. While streaming, the title may not be complete yet. */
 export function parseChapterOutput(text: string): { title: string | null; body: string } {
   const m = text.match(/^\s*#+\s*([^\n]*)\n+([\s\S]*)$/);

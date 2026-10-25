@@ -1,6 +1,6 @@
 // The runner of AI runs, against a fake server (an in-memory story and run) and a fake AI that records every request.
 import { claim, finish, retryTask, runNextStep, skipTask, type RunEvent } from "../../src/lib/aiRuns/runner.ts";
-import { planFill, planTree, type PlanNode } from "../../src/lib/aiRuns/plan.ts";
+import { planArc, planFill, planTree, type PlanNode } from "../../src/lib/aiRuns/plan.ts";
 import type { AiRun, RunOptions, RunTask, WriteTask } from "../../src/lib/aiRuns/types.ts";
 import { SYSTEM_CHAPTER, SYSTEM_PLAN_STEPS } from "../../src/lib/ai/prompts.ts";
 import { DEFAULT_SETTINGS } from "../../src/lib/settingsSchema.ts";
@@ -11,7 +11,7 @@ type Ch = { id: string; revision: number; depth: number; title: string; body: st
 type Choice = { id: string; parent: string; label: string };
 
 /** A fake StoryTime server holding one story and one run, speaking the routes the runner uses. */
-function makeServer(opts: { options: RunOptions; open: string[]; written?: string[]; tree?: boolean }) {
+function makeServer(opts: { options: RunOptions; open: string[]; written?: string[]; tree?: boolean; tasks?: (rootId: string) => RunTask[] }) {
   const chapters = new Map<string, Ch>();
   const choices: Choice[] = [];
   let n = 0;
@@ -105,7 +105,7 @@ function makeServer(opts: { options: RunOptions; open: string[]; written?: strin
 
   const runId = "run1";
   state.run = {
-    id: runId, story_id: "s1", start_chapter_id: root.id, mode: opts.tree ? "tree" : "fill", options: opts.options, tasks: opts.tree ? planTree(tree(root), opts.options) : planFill(tree(root), { scope: "children", endChoices: 2, ...opts.options }),
+    id: runId, story_id: "s1", start_chapter_id: root.id, mode: opts.tasks ? "arc" : opts.tree ? "tree" : "fill", options: opts.options, tasks: opts.tasks ? opts.tasks(root.id) : opts.tree ? planTree(tree(root), opts.options) : planFill(tree(root), { scope: "children", endChoices: 2, ...opts.options }),
     status: "ready", review_depth: null, error: null, version: 1, finished_at: null, created_at: 1, updated_at: 1,
   };
   return { fetch: fetchFake, state, chapters, choices, log, root, open, pre, childOf, runId, tree, addCh, addChoice };
@@ -341,4 +341,22 @@ for (const models of ["each", "group"] as const) {
   const count = run.tasks.filter((t) => t.kind === "write").length;
   ok(run.status === "paused" && /more than|past 200|200 chapters/i.test(run.error ?? "") && count <= 200, `tree: a run that would pass 200 chapters pauses with a message (${count} chapters planned): ${run.error}`);
   ok(s.log.posts.length <= 200 && s.log.posts.length > 30, "…after writing chapters up to there: " + s.log.posts.length);
+}
+
+// ---- Reach a goal ----
+for (const models of ["each", "group"] as const) {
+  const steps = [{ choice: "Follow the stranger", direction: "She meets the stranger." }, { choice: "Take the tunnel", direction: "They go underground." }, { choice: "Open the vault", direction: "The vault opens." }];
+  const options: RunOptions = { models, objective: "The heroes find the vault", alternatives: 1, endChoices: 1, model: BIG, suggestModel: SMALL };
+  const s = makeServer({ options, open: [], tasks: (rootId) => planArc(rootId, steps, options) });
+  const ai = makeAi();
+  const { run } = await drive(s, ai, 100);
+  ok(run.status === "done" && s.log.posts.length === 3, `${models}: a goal in 3 chapters writes a chain of 3`);
+  const chain = [...s.chapters.values()].filter((c) => c.ai_run_id).sort((a, b) => a.depth - b.depth);
+  const parentOf = (c: (typeof chain)[number]) => s.choices.find((x) => x.id === c.parent_choice_id)!;
+  ok(chain.length === 3 && parentOf(chain[0]).parent === s.root.id && parentOf(chain[1]).parent === chain[0].id && parentOf(chain[2]).parent === chain[1].id, `${models}: the first under the start chapter, each next under the one before`);
+  ok(parentOf(chain[0]).label === "Follow the stranger" && parentOf(chain[1]).label === "Take the tunnel" && parentOf(chain[2]).label === "Open the vault", `${models}: each reached by its step's choice`);
+  const prompts = ai.calls.filter((c) => c.kind === "chapter").map((c) => c.message);
+  ok(prompts[0].includes("part 1 of 3") && prompts[1].includes("part 2 of 3") && prompts[2].includes("This chapter reaches that goal."), `${models}: each chapter is written from its place in the chain`);
+  ok(s.choices.filter((c) => c.parent === chain[0].id)[0].label === "Take the tunnel" && s.choices.filter((c) => c.parent === chain[0].id).length === 2, `${models}: a chapter's first choice is the next step, with one more suggested`);
+  ok(s.choices.filter((c) => c.parent === chain[2].id).length === 1, `${models}: the last chapter gets the end choices`);
 }

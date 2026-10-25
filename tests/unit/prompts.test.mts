@@ -133,3 +133,23 @@ ok(m[0].direction === "A!" && m.length === 1, "matchSteps: quotes and punctuatio
 m = matchSteps([], [idea("x", "X!"), idea("y", "Y!")]);
 ok(m.length === 2 && m.every((s) => s.isNew), "matchSteps: with no labels every item is new");
 ok(matchSteps(["a", "b"], []).every((s) => s.direction === "" && !s.isNew), "matchSteps: an empty reply gives empty directions");
+
+// ---- Reach a goal: the plan prompt and the chapter's direction ----
+{
+  const { arcPlanPrompt, arcDirection, parseIdeas, SYSTEM_ARC_PLAN } = await import("../../src/lib/ai/prompts.ts");
+  const ctx = { storyTitle: "Vault tale", premise: "A treasure hunt.", path: [{ title: "Start", body: "It begins.", summary: null, path_summary: null }], choiceLabel: null };
+  const p = arcPlanPrompt(ctx, "The heroes find the vault [keep it light]", 4, 8000);
+  ok(p.includes("Vault tale") && p.includes("It begins."), "the arc plan prompt has the story so far");
+  ok(p.includes("The heroes find the vault") && !p.includes("[keep it light]") && p.includes("keep it light"), "…names the goal, with a bracket note as an instruction");
+  ok(p.includes("exactly 4 chapters") && p.includes("only the last one reaches the goal"), "…asks for the number of chapters, only the last reaching the goal");
+  ok(p.includes(`"choice"`) && p.includes(`"direction"`) && p.includes("JSON array of 4 objects"), "…and for a JSON array of that many {choice, direction}");
+  ok(arcPlanPrompt(ctx, "Goal", 1, 8000).includes("exactly 1 chapter,") && arcPlanPrompt(ctx, "Goal", 1, 8000).includes("That one chapter reaches the goal."), "a single chapter reaches the goal at once");
+  ok(SYSTEM_ARC_PLAN.includes("JSON array"), "the system prompt asks for a JSON array");
+  const ideas = parseIdeas('[{"choice":"A","direction":"a"},{"choice":"B","direction":"b"},{"choice":"C","direction":"c"},{"choice":"D","direction":"d"}]', 4);
+  ok(ideas.length === 4 && ideas[3].choice === "D", "the reply reads with parseIdeas, up to the number of chapters");
+  const mid = arcDirection("Find the vault", { direction: "They descend." }, 1, 4, "Open the door");
+  ok(mid === "This chapter is part 2 of 4 of a stretch of the story heading toward: Find the vault. In this chapter: They descend. Don't reach that goal yet; end where “Open the door” is a natural next step.", "the direction for a middle chapter: " + mid);
+  const end = arcDirection("Find the vault", { direction: "It opens." }, 3, 4);
+  ok(end === "This chapter is part 4 of 4 of a stretch of the story heading toward: Find the vault. In this chapter: It opens. This chapter reaches that goal.", "the direction for the last chapter: " + end);
+  ok(!arcDirection("G", { direction: "" }, 0, 2).includes("In this chapter:"), "no “In this chapter” when the step has no direction");
+}
