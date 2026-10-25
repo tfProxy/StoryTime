@@ -34,6 +34,7 @@ import {
 import type { PathChapter } from "@/lib/ai/codexAi";
 import { draftOps, foldCodex, isDraftEntry, type CodexOp } from "@/lib/codex";
 import { deleteDraft, DraftConflict, emptyDraft, getDraft, saveDraft, type Draft } from "@/lib/drafts";
+import { pushUndo, startVersion } from "@/lib/generatedDraft";
 import Prose from "./Prose";
 import AutoTextarea from "./AutoTextarea";
 import CodexPanel from "./CodexPanel";
@@ -76,9 +77,6 @@ type Props = {
   /** The codex as of the chapter being continued; absent when there is no earlier chapter to anchor it to. */
   codexPanel?: { chapterId: string; path: PathChapter[]; ops: CodexOp[] };
 };
-
-const MAX_UNDO = 20;
-const MAX_VERSIONS = 20;
 
 const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
 
@@ -403,15 +401,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
 
   const patch = (p: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...p } : d));
 
-  /** A new generated or revised draft gets its own version; the text it started from is kept as the one before it. */
-  function startVersion(d: Draft): Pick<Draft, "versions" | "versionIndex"> {
-    if (!d.body.trim()) return {};
-    const kept = [...(d.versions ?? [{ title: d.title, body: d.body }])];
-    kept[d.versionIndex ?? kept.length - 1] = { title: d.title, body: d.body };
-    const versions = [...kept, { title: "", body: "" }].slice(-MAX_VERSIONS);
-    return { versions, versionIndex: versions.length - 1 };
-  }
-
   function showVersion(j: number) {
     setDraft((d) => {
       if (!d?.versions?.[j]) return d;
@@ -419,11 +408,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       versions[d.versionIndex ?? versions.length - 1] = { title: d.title, body: d.body };
       return { ...d, versions, versionIndex: j, title: versions[j].title, body: versions[j].body };
     });
-  }
-
-  function pushUndo(d: Draft): Draft["undo"] {
-    if (!d.title && !d.body) return d.undo;
-    return [...d.undo, { title: d.title, body: d.body }].slice(-MAX_UNDO);
   }
 
   /** The selected passage, unless the text has changed since it was selected. */
