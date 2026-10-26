@@ -204,7 +204,7 @@ export default function RefinePromptPanel({ session, onSession, present, canvas,
 
   // Why Go can't be used, or null.
   let blocked: string | null = null;
-  if (locked) blocked = "A result is on show: Apply it or Discard it, or select it again to go back to editing.";
+  if (locked) blocked = "A result is on show: Apply it or Trash it, or select it again to go back to editing.";
   else if (!dims || !picture) blocked = "The picture isn't loaded yet.";
   else if (!ctx) blocked = "Loading the drawing preset…";
   else if (!comfy.url) blocked = "Add your ComfyUI machine in Settings first.";

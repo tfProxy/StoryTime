@@ -99,7 +99,7 @@ try {
   await btn("Go").click();
   await until(async () => (await tray.count()) === 4, "four results");
   ok((await tray.count()) === 4 && (await selectedIndex()) === null && (await attr("data-previewing")) === "false", "Go made four results; none is selected and the screen is editing");
-  ok((await page.locator(".refine-review").count()) === 0 && (await nav("Previous result").count()) === 0, "no Apply / Discard bar and no Previous / Next while nothing is selected");
+  ok(await nav("Apply").isDisabled() && await nav("Trash").isDisabled() && (await nav("Previous result").count()) === 0, "Apply and Trash are there but off, and there is no Previous / Next, while nothing is selected");
 
   // Paint and a mask on the original, to see what Apply does to them.
   await btn("Paint brush").click();
@@ -118,7 +118,7 @@ try {
   ok((await attr("data-previewing")) === "true" && (await attr("data-preview-key")).includes("StoryTime_") && (await previewIs(3)), "the main window shows that result (data-previewing, its picture)");
   ok((await page.locator("canvas[data-layer=paint]").evaluate((c) => getComputedStyle(c).visibility)) === "hidden" && (await page.locator("canvas[data-layer=mask]").evaluate((c) => getComputedStyle(c).visibility)) === "hidden", "the paint and mask layers are hidden while it is on show");
   ok(await btn("Mask brush").isDisabled() && await btn("Paint brush").isDisabled() && await slider("Paint size").isDisabled() && await btn("Show mask").isDisabled() && await btn("Invert mask").isDisabled(), "the Mask and Paint tools are off");
-  ok(await btn("Undo").isDisabled() && await btn("Redo").isDisabled() && await btn("Go").isDisabled() && (await btn("Go").getAttribute("title")).includes("Apply it or Discard it"), "Undo, Redo and Go are off (Go says why)");
+  ok(await btn("Undo").isDisabled() && await btn("Redo").isDisabled() && await btn("Go").isDisabled() && (await btn("Go").getAttribute("title")).includes("Apply it or Trash it"), "Undo, Redo and Go are off (Go says why)");
   ok(await btn("Accept").isDisabled() && (await btn("Accept").getAttribute("title")) === "Apply or deselect the result first", "Accept is off while a result is on show (and says why)");
   await drag(0.2, 0.7, 0.8, 0.7);
   ok((await strokes()) === 1 && (await maskStrokes()) === 1, "dragging on the picture draws nothing");
@@ -182,10 +182,10 @@ try {
   await box("Prompt").fill("custom text");
   await tileAt(1).click();
   await until(async () => (await attr("data-preview-ready")) === "1" && (await previewIs(1)), "result 1 on show");
-  const bt = await page.locator(".refine-review").boundingBox();
-  const sb = await stage.boundingBox();
-  ok(bt && bt.y >= sb.y + sb.height - 2 && await nav("Apply this result").isVisible() && await nav("Discard this result").isVisible(), "Apply and Discard are under the picture");
-  await nav("Apply this result").click();
+  const head = await page.locator(".refine-head").boundingBox();
+  const bar = await page.locator(".refine-bar").boundingBox();
+  ok(await nav("Accept").isVisible() && await nav("Cancel").isVisible() && (await nav("Cancel").boundingBox()).y < head.y + head.height && bar && await nav("Apply").isEnabled() && await nav("Trash").isEnabled(), "Accept and Cancel are in the toolbar at the top; Apply and Trash are in the tools bar and on");
+  await nav("Apply").click();
   await until(async () => (await selectedIndex()) === null && (await baseIs(1)), "Apply to switch the picture");
   await until(async () => Math.abs((await frame()).width - zoomed.width) < 2, "the zoom kept after Apply");
   for (let i = 0; i < 6; i++) await page.mouse.wheel(0, 300);
@@ -213,12 +213,12 @@ try {
   // Apply 2, then 1 again.
   await tileAt(2).click();
   await until(async () => (await previewIs(2)), "result 2 on show");
-  await nav("Apply this result").click();
+  await nav("Apply").click();
   await until(async () => (await baseIs(2)), "result 2 to be applied");
   ok((await badgeIndex()) === 2 && (await tray.count()) === 4, "applying result 3 moves the badge; the other stays in the tray");
   await tileAt(1).click();
   await until(async () => (await previewIs(1)), "result 1 on show");
-  await nav("Apply this result").click();
+  await nav("Apply").click();
   await until(async () => (await baseIs(1)), "result 1 to be applied again");
   ok((await badgeIndex()) === 1 && (await maskStrokes()) === 1, "applying result 2 again gives its picture again, and the mask is still kept");
   await settle();
@@ -244,7 +244,7 @@ try {
   // ================= Discard =================
   // The tray, newest first, is now: index 3, 2, 1 (in use), 0.
   await trayTile(3).click(); // index 0, the last
-  await nav("Discard this result").click();
+  await nav("Trash").click();
   ok((await tray.count()) === 3 && (await selectedIndex()) !== null && (await attr("data-previewing")) === "true", "Discard removes the result and keeps reviewing");
   const sel1 = await page.locator('[data-result-index][data-selected="true"]');
   ok((await sel1.getAttribute("data-in-use")) === "true", "…at the end of the tray the previous one (here the one in use) is selected");
@@ -253,11 +253,11 @@ try {
   ok((await tray.count()) === 3 && (await selectedIndex()) === null, "(let go of it)");
   await trayTile(0).click(); // the newest
   await until(async () => (await previewIs(3)), "result 4 on show");
-  await nav("Discard this result").click();
+  await nav("Trash").click();
   ok((await tray.count()) === 2, "the newest is discarded");
   await until(async () => (await previewIs(2)), "the next result on show");
   ok((await selectedIndex()) === 1 && (await previewIs(2)), "…and the next in the tray is selected and shown");
-  await nav("Discard this result").click();
+  await nav("Trash").click();
   await until(async () => (await previewIs(1)), "the last result on show");
   ok((await tray.count()) === 1 && (await selectedIndex()) === 0 && (await previewIs(1)), "discarding the first of two selects the one left");
   ok(await baseIs(1), "(the working picture was never touched)");
@@ -267,8 +267,8 @@ try {
   await ready();
   ok((await tray.count()) === 1 && (await selectedIndex()) === null && (await baseIs(1)), "a reload keeps the discards; nothing is selected");
   await trayTile(0).click();
-  await nav("Discard this result").click();
-  ok((await tray.count()) === 0 && (await attr("data-previewing")) === "false" && (await page.locator(".refine-review").count()) === 0 && await btn("Go").isEnabled(), "discarding the only result goes back to editing");
+  await nav("Trash").click();
+  ok((await tray.count()) === 0 && (await attr("data-previewing")) === "false" && await nav("Apply").isDisabled() && await btn("Go").isEnabled(), "trashing the only result goes back to editing");
   ok((await baseIs(1)) && (await badges().count()) === 0, "…the working picture stays, and no badge as its result is gone");
   ok((await page.getByText("Pictures made with Go appear here.").count()) === 1, "…and the tray says it is empty");
   await settle();
@@ -287,7 +287,7 @@ try {
   await until(async () => (await attr("data-preview-ready")) === "1" && (await previewIs(2)), "the big result on show");
   const pdims = await page.evaluate(() => { const c = document.querySelector("canvas[data-layer=preview]"); return [c.width, c.height]; });
   ok(pdims.join() === "112,64", "the result on show is 112 x 64");
-  await nav("Apply this result").click();
+  await nav("Apply").click();
   await until(async () => (await selectedIndex()) === null && uploads() === up0 + 1, "the resampled picture to be uploaded");
   await until(async () => (await attr("data-ready")) === "1" && (await baseIs(2)), "the resampled picture to load");
   ok(uploads() === up0 + 1, "applying it uploaded one picture to ComfyUI");
@@ -301,11 +301,11 @@ try {
   ok(dims1.join() === "96,60" && (await strokes()) === 0 && (await maskStrokes()) === 1 && (await badgeIndex()) === 2, "the working picture is still 96 x 60 (the mask fits), with the mask kept and the badge on the result");
   await tileAt(1).click();
   await until(async () => (await previewIs(1)), "another result on show");
-  await nav("Apply this result").click();
+  await nav("Apply").click();
   await until(async () => (await baseIs(1)), "another result applied");
   await tileAt(2).click();
   await until(async () => (await previewIs(2)), "the big result on show again");
-  await nav("Apply this result").click();
+  await nav("Apply").click();
   await until(async () => (await baseIs(2)), "the big result applied again");
   ok(uploads() === up0 + 1, "applying it again does not upload it again");
   await page.reload();
@@ -319,7 +319,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(400);
   ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "at 390 px a result on show does not scroll the page sideways");
-  const taps = await page.evaluate(() => [...document.querySelectorAll(".refine-nav, .refine-review button, .refine-result-pick")].map((b) => Math.round(Math.min(b.getBoundingClientRect().width, b.getBoundingClientRect().height))));
+  const taps = await page.evaluate(() => [...document.querySelectorAll(".refine-nav, .refine-bar button, .refine-finish button, .refine-result-pick")].map((b) => Math.round(Math.min(b.getBoundingClientRect().width, b.getBoundingClientRect().height))));
   ok(taps.length >= 7 && taps.every((t) => t >= 40), `…and the buttons are big enough to tap (${taps.join(" ")})`);
   if (process.env.E2E_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/refine-results-390.png`, fullPage: true });
   await context.close();

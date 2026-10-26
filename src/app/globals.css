@@ -2867,6 +2867,7 @@ button.link-button {
 
 .refine-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
@@ -3125,23 +3126,6 @@ button.refine-nav:disabled {
   right: 0.4rem;
 }
 
-.refine-review {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.refine-review button {
-  flex: 1 1 0;
-  min-height: 2.75rem;
-  font-weight: 600;
-}
-
-.refine-review .refine-apply {
-  background: #2e7d32;
-  border-color: #2e7d32;
-  color: #fff;
-}
-
 .refine-stage[data-previewing="true"] {
   cursor: default;
 }
@@ -3183,29 +3167,46 @@ fieldset.refine-panel:disabled {
   border-top: 1px solid var(--line);
 }
 
-.refine-bar .refine-accept,
-.refine-bar .refine-cancel {
+.refine-bar .refine-apply,
+.refine-bar .refine-discard {
   flex: 1 1 5rem;
   min-height: 2.75rem;
   font-weight: 600;
 }
 
-.refine-bar .refine-accept {
+.refine-bar .refine-apply,
+.refine-finish .refine-accept {
   background: #2e7d32;
   border-color: #2e7d32;
   color: #fff;
 }
 
-.refine-bar .refine-accept-error {
+.refine-finish {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.refine-finish button {
+  min-height: 2.5rem;
+  font-weight: 600;
+}
+
+/* Cancel throws the whole session away: red. */
+.refine-finish .refine-cancel {
+  background: #c0392b;
+  border-color: #c0392b;
+  color: #fff;
+}
+
+.refine-finish button:disabled,
+.refine-bar .refine-apply:disabled {
+  opacity: 0.5;
+}
+
+.refine-head .refine-accept-error {
   flex: 1 1 100%;
   margin: 0;
   overflow-wrap: anywhere;
-}
-
-.refine-bar .refine-cancel {
-  background: transparent;
-  border-color: #c0392b;
-  color: #c0392b;
 }
 
 .refine-stage {
@@ -3318,11 +3319,6 @@ button.refine-fit {
     min-height: 24rem;
   }
 
-  /* Apply / Discard under the picture take room from it, so they stay on the screen. */
-  .refine-picture:has(.refine-review) .refine-stage {
-    height: calc(100dvh - 10rem - 3.75rem);
-    min-height: 20rem;
-  }
 }
 
 /* ---- The AI mark and the review notice (write-ahead task 1.5, part 1) ---- */

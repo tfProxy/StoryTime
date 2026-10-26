@@ -368,7 +368,7 @@ try {
   await page.locator('.refine-stage[data-ready="1"]').waitFor();
   let asked = false;
   page.once("dialog", (d) => { asked = true; d.dismiss(); });
-  await page.getByRole("button", { name: "Cancel and go back" }).click();
+  await page.getByRole("button", { name: "Cancel" }).click();
   await page.waitForURL(new RegExp(`/c/${chapterId}/illustrate$`));
   ok(!asked, "Cancel with no changes just goes back (the header's Cancel too)");
 

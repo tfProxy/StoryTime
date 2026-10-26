@@ -149,7 +149,7 @@ try {
     ok(await btn("Accept").isEnabled(), "…and on again when it is let go");
     await tileAt(1).click();
     await until(async () => (await stage.getAttribute("data-preview-ready")) === "1", "the result to load");
-    await page.getByRole("button", { name: "Apply this result", exact: true }).click();
+    await page.getByRole("button", { name: "Apply", exact: true }).click();
     await until(async () => (await stage.getAttribute("data-previewing")) === "false", "Apply");
     await page.waitForTimeout(700);
     const applied = (await stored(id)).results[1].image;
