@@ -103,6 +103,18 @@ export function InvertIcon() {
   );
 }
 
+/** A bin: clear the mask. */
+export function TrashIcon() {
+  return (
+    <svg {...svg}>
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M6 6l1 14h10l1-14" />
+      <path d="M10 10v6M14 10v6" />
+    </svg>
+  );
+}
+
 /** An eye, struck through when `off`. */
 export function EyeIcon({ off = false }: { off?: boolean }) {
   return (

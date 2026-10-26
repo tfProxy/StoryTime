@@ -237,6 +237,13 @@ try {
   await btn("Invert mask").click();
   ok((await pixel("mask", 0.02, 0.02))[3] === 0 && (await pixel("mask", 0.5, 0.4))[3] > 200, "…and swaps them back");
 
+  await btn("Invert mask").click();
+  await btn("Clear mask").click();
+  ok(await maskStrokes() === 0 && (await btn("Invert mask").getAttribute("aria-pressed")) === "false" && (await stats("mask")).n === 0 && await btn("Clear mask").isDisabled(), "Clear mask takes the strokes away and un-inverts, and is off when there is nothing to clear");
+  await btn("Undo").click();
+  ok(await maskStrokes() === 1 && (await btn("Invert mask").getAttribute("aria-pressed")) === "true", "…and Undo brings the mask back");
+  await btn("Invert mask").click();
+
   await setRange("Soft edge", 4);
   const soft = async () => (await stored())?.history?.present?.mask?.softness;
   await until(async () => (await soft()) === 4, "the soft edge to be kept");

@@ -55,6 +55,9 @@ export function setMask(s: RefineState, patch: Partial<Pick<MaskState, "softness
   return { ...s, mask: { ...s.mask, softness, inverted } };
 }
 
+/** Takes every stroke off the mask and un-inverts it (an inverted empty mask would cover everything); the soft edge stays. */
+export const clearMask = (s: RefineState): RefineState => (s.mask.strokes.length === 0 && !s.mask.inverted ? s : { ...s, mask: { ...s.mask, strokes: [], inverted: false } });
+
 export const togglePaintVisible = (s: RefineState): RefineState => ({ ...s, paintVisible: !s.paintVisible });
 export const toggleMaskVisible = (s: RefineState): RefineState => ({ ...s, maskVisible: !s.maskVisible });
 

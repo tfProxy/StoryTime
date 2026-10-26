@@ -22,6 +22,7 @@ import {
   commit,
   redo,
   setMask,
+  clearMask,
   toggleMaskVisible,
   togglePaintVisible,
   undo,
@@ -357,6 +358,8 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
             onSoftCommit={(v) => change((s) => setMask(s, { softness: v }))}
             inverted={present.mask.inverted}
             onInvert={() => change((s) => setMask(s, { inverted: !s.mask.inverted }))}
+            canClear={present.mask.strokes.length > 0 || present.mask.inverted}
+            onClear={() => change(clearMask)}
             visible={present.maskVisible}
             onToggleVisible={() => change(toggleMaskVisible)}
             disabled={reviewing || accepting}
