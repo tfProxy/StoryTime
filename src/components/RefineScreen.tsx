@@ -62,6 +62,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
   const [history, setHistory] = useState<History<RefineState> | null>(null);
   const [tool, setTool] = useState<RefineTool>("paint-brush");
   const [ctrlHeld, setCtrlHeld] = useState(false);
+  const [spaceHeld, setSpaceHeld] = useState(false);
   const [tools, setTools] = useState<ToolSettings>(DEFAULT_TOOLS);
   const [softPreview, setSoftPreview] = useState<number | null>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
@@ -177,7 +178,29 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
       window.removeEventListener("blur", off);
     };
   }, []);
-  const activeTool: RefineTool = ctrlHeld && !reviewing && !accepting ? "eyedropper" : tool;
+  // Holding Space swaps to the pan tool the same way (not while typing in a field, where it is a space).
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || typingInField(e.target)) return;
+      e.preventDefault(); // no page scroll, and a focused button is not pressed by it
+      setSpaceHeld(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+      if (!typingInField(e.target)) e.preventDefault();
+      setSpaceHeld(false);
+    };
+    const off = () => setSpaceHeld(false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", off);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", off);
+    };
+  }, []);
+  const activeTool: RefineTool = spaceHeld && !accepting ? "pan" : ctrlHeld && !reviewing && !accepting ? "eyedropper" : tool;
 
   // Ctrl/Cmd+Z, Shift+Ctrl/Cmd+Z and Ctrl+Y, unless typing in a field or looking at a result.
   useEffect(() => {

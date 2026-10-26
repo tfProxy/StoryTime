@@ -118,6 +118,17 @@ try {
   await page.keyboard.up("Control");
   ok((await btn("Paint brush").getAttribute("aria-pressed")) === "true" && (await stage.getAttribute("data-tool")) === "paint-brush", "…and letting go puts the chosen tool back");
 
+  // ================= Space is the pan tool =================
+  await page.keyboard.down("Space");
+  ok((await btn("Pan").getAttribute("aria-pressed")) === "true" && (await stage.getAttribute("data-tool")) === "pan", "holding Space switches to the Pan tool");
+  await page.keyboard.up("Space");
+  ok((await btn("Paint brush").getAttribute("aria-pressed")) === "true" && (await stage.getAttribute("data-tool")) === "paint-brush", "…and letting go puts the chosen tool back");
+  await page.getByRole("textbox", { name: "Colour as hex" }).focus();
+  await page.keyboard.down("Space");
+  ok((await stage.getAttribute("data-tool")) === "paint-brush", "…but not while typing in a text box");
+  await page.keyboard.up("Space");
+  await page.locator(".refine-stage").focus().catch(() => {});
+
   // ================= panning =================
   const sb = await stage.boundingBox();
   await page.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
