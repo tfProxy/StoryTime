@@ -169,7 +169,16 @@ export function isDoubleTap(prev: { t: number; x: number; y: number } | null, no
  * A mask kept for a starting picture: what was painted (the PNG is drawn from the strokes when it is needed,
  * so it survives a refresh), the picture's size it fits, and `id`, which changes whenever the mask does.
  */
-export type PaintedArea = MaskState & { id: string; width: number; height: number };
+export type PaintedArea = MaskState & {
+  id: string;
+  width: number;
+  height: number;
+  /**
+   * The mask's PNG, already drawn. Set only on the server (`fromSpec`), where the strokes are not kept and there is
+   * no canvas to draw them on; when it is missing the PNG is drawn from the strokes with `renderMask`.
+   */
+  render?: () => Promise<Blob>;
+};
 
 /** Renders a mask's strokes to the black and white PNG at the picture's size; null when nothing is painted or the browser can't. Browser only. */
 export async function renderMask(state: MaskState, width: number, height: number): Promise<MaskResult | null> {

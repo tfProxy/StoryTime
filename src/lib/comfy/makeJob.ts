@@ -91,9 +91,9 @@ function uploadMask(comfyUrl: string, area: PaintedArea): Promise<string> {
   const cached = maskUploads.get(area);
   if (cached?.url === comfyUrl) return cached.name;
   const name = (async () => {
-    const rendered = await renderMask(area, area.width, area.height);
-    if (!rendered) throw new Error("The painted area is empty. Paint the part to redraw again, or clear it.");
-    return uploadImage(comfyUrl, rendered.blob, `storytime-mask-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.png`);
+    const blob = area.render ? await area.render() : (await renderMask(area, area.width, area.height))?.blob;
+    if (!blob) throw new Error("The painted area is empty. Paint the part to redraw again, or clear it.");
+    return uploadImage(comfyUrl, blob,`storytime-mask-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.png`);
   })();
   maskUploads.set(area, { url: comfyUrl, name });
   // the next job tries the upload again
