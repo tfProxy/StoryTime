@@ -90,7 +90,7 @@ try {
   ok((await stats("base")).w === 96, "the working picture is loaded at its own size");
 
   // ================= layout =================
-  ok(await btn("Accept").isEnabled() && (await btn("Accept").getAttribute("title")) === "Keep this picture and go back", "Accept is there and on once the picture is loaded (tests/e2e/refine-accept.e2e.mjs covers what it does)");
+  ok(await btn("Keep picture").isEnabled() && (await btn("Keep picture").getAttribute("title")) === "Keep this picture and go back", "Accept is there and on once the picture is loaded (tests/e2e/refine-accept.e2e.mjs covers what it does)");
   ok(await btn("Undo").isDisabled() && await btn("Redo").isDisabled(), "Undo and Redo start off");
   const lay = await page.evaluate(() => {
     const r = (s) => document.querySelector(s).getBoundingClientRect();
@@ -110,6 +110,49 @@ try {
   ok(await strokes() === 0 && await btn("Undo").isDisabled(), "…and picking is not an undo step");
   const swatch = await page.locator(".refine-swatch").getAttribute("data-color");
   ok(swatch === picked, "the swatch shows the current colour");
+
+  // ================= Ctrl is the eyedropper =================
+  await btn("Paint brush").click();
+  await page.keyboard.down("Control");
+  ok((await btn("Eyedropper").getAttribute("aria-pressed")) === "true" && (await stage.getAttribute("data-tool")) === "eyedropper", "holding Ctrl switches to the eyedropper");
+  await page.keyboard.up("Control");
+  ok((await btn("Paint brush").getAttribute("aria-pressed")) === "true" && (await stage.getAttribute("data-tool")) === "paint-brush", "…and letting go puts the chosen tool back");
+
+  // ================= Space is the pan tool =================
+  await page.keyboard.down("Space");
+  ok((await btn("Pan").getAttribute("aria-pressed")) === "true" && (await stage.getAttribute("data-tool")) === "pan", "holding Space switches to the Pan tool");
+  await page.keyboard.up("Space");
+  ok((await btn("Paint brush").getAttribute("aria-pressed")) === "true" && (await stage.getAttribute("data-tool")) === "paint-brush", "…and letting go puts the chosen tool back");
+  await page.getByRole("textbox", { name: "Colour as hex" }).focus();
+  await page.keyboard.down("Space");
+  ok((await stage.getAttribute("data-tool")) === "paint-brush", "…but not while typing in a text box");
+  await page.keyboard.up("Space");
+  await page.locator(".refine-stage").focus().catch(() => {});
+
+  // ================= panning =================
+  const sb = await stage.boundingBox();
+  await page.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
+  for (let i = 0; i < 4; i++) await page.mouse.wheel(0, -300);
+  await until(async () => (await box()).width > sb.width * 1.2, "the picture zoomed in");
+  const panFrom = await box();
+  await btn("Pan").click();
+  ok((await btn("Pan").getAttribute("aria-pressed")) === "true", "the Pan tool is in the Paint section");
+  await page.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(sb.x + sb.width / 2 + 30, sb.y + sb.height / 2 + 20, { steps: 4 });
+  await page.mouse.up();
+  const panned = await box();
+  ok(Math.abs(panned.x - panFrom.x - 30) < 2 && Math.abs(panned.y - panFrom.y - 20) < 2 && await strokes() === 0, "dragging with the Pan tool moves the picture and draws nothing");
+  await btn("Paint brush").click();
+  await page.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.move(sb.x + sb.width / 2 - 25, sb.y + sb.height / 2 - 10, { steps: 4 });
+  await page.mouse.up({ button: "middle" });
+  const mid = await box();
+  ok(Math.abs(mid.x - panned.x + 25) < 2 && Math.abs(mid.y - panned.y + 10) < 2 && await strokes() === 0, "the middle mouse button pans with any tool");
+  await page.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
+  for (let i = 0; i < 6; i++) await page.mouse.wheel(0, 300);
+  await until(async () => Math.abs((await box()).width - panFrom.width / 1.0) > 1 && (await box()).width < panFrom.width * 0.6, "zoomed back out");
 
   // ================= paint =================
   await hex.fill("#00ff00");
@@ -211,6 +254,13 @@ try {
   ok((await btn("Invert mask").getAttribute("aria-pressed")) === "true" && (await pixel("mask", 0.02, 0.02))[3] > 200 && (await pixel("mask", 0.5, 0.4))[3] === 0, "Invert swaps the painted and unpainted areas");
   await btn("Invert mask").click();
   ok((await pixel("mask", 0.02, 0.02))[3] === 0 && (await pixel("mask", 0.5, 0.4))[3] > 200, "…and swaps them back");
+
+  await btn("Invert mask").click();
+  await btn("Clear mask").click();
+  ok(await maskStrokes() === 0 && (await btn("Invert mask").getAttribute("aria-pressed")) === "false" && (await stats("mask")).n === 0 && await btn("Clear mask").isDisabled(), "Clear mask takes the strokes away and un-inverts, and is off when there is nothing to clear");
+  await btn("Undo").click();
+  ok(await maskStrokes() === 1 && (await btn("Invert mask").getAttribute("aria-pressed")) === "true", "…and Undo brings the mask back");
+  await btn("Invert mask").click();
 
   await setRange("Soft edge", 4);
   const soft = async () => (await stored())?.history?.present?.mask?.softness;
@@ -329,7 +379,7 @@ try {
   await page.locator('.refine-stage[data-ready="1"]').waitFor();
   let asked = false;
   page.once("dialog", (d) => { asked = true; d.dismiss(); });
-  await page.getByRole("button", { name: "Cancel and go back" }).click();
+  await page.getByRole("button", { name: "Cancel" }).click();
   await page.waitForURL(new RegExp(`/c/${chapterId}/illustrate$`));
   ok(!asked, "Cancel with no changes just goes back (the header's Cancel too)");
 

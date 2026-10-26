@@ -115,10 +115,10 @@ try {
   {
     const ctx = await fresh("Accept nothing");
     const id = await openSession(ctx, comfyOriginal(ctx.file));
-    ok(await btn("Accept").isEnabled() && (await btn("Accept").getAttribute("title")) === "Keep this picture and go back", "Accept is on once the picture is loaded");
+    ok(await btn("Keep picture").isEnabled() && (await btn("Keep picture").getAttribute("title")) === "Keep this picture and go back", "Accept is on once the picture is loaded");
     const jobsBefore = (await jobsOf(ctx.chapterId)).length;
     const up = uploads();
-    await btn("Accept").click();
+    await btn("Keep picture").click();
     await waitIllustrate(ctx);
     const jobs = await jobsOf(ctx.chapterId);
     ok(jobs.length === jobsBefore && jobs[0].marks[0] === null && uploads() === up, "with nothing changed Accept leaves: nothing recorded, uploaded or trashed");
@@ -129,7 +129,7 @@ try {
     await paintGreen();
     await btn("Show paint").click();
     ok((await btn("Show paint").getAttribute("aria-pressed")) === "false", "(the paint is hidden)");
-    await btn("Accept").click();
+    await btn("Keep picture").click();
     await waitIllustrate(ctx);
     const jobs2 = await jobsOf(ctx.chapterId);
     ok(jobs2.length === jobsBefore && jobs2[0].marks[0] === null && uploads() === up && (await stored(id2)) === null, "hidden paint is discarded: Accept just leaves (no upload, no new picture, the original is not trashed)");
@@ -144,17 +144,17 @@ try {
     await until(async () => (await tray.count()) === 2, "two results");
     await until(async () => (await jobsOf(ctx.chapterId)).length === 2, "the Refine job in the log");
     await tileAt(1).click();
-    ok(await btn("Accept").isDisabled() && (await btn("Accept").getAttribute("title")) === "Apply or deselect the result first", "Accept is off while a result is on show, and says why");
+    ok(await btn("Keep picture").isDisabled() && (await btn("Keep picture").getAttribute("title")) === "Apply or deselect the result first", "Accept is off while a result is on show, and says why");
     await tileAt(1).click();
-    ok(await btn("Accept").isEnabled(), "…and on again when it is let go");
+    ok(await btn("Keep picture").isEnabled(), "…and on again when it is let go");
     await tileAt(1).click();
     await until(async () => (await stage.getAttribute("data-preview-ready")) === "1", "the result to load");
-    await page.getByRole("button", { name: "Apply this result", exact: true }).click();
+    await page.getByRole("button", { name: "Apply", exact: true }).click();
     await until(async () => (await stage.getAttribute("data-previewing")) === "false", "Apply");
     await page.waitForTimeout(700);
     const applied = (await stored(id)).results[1].image;
     const up = uploads();
-    await btn("Accept").click();
+    await btn("Keep picture").click();
     await waitIllustrate(ctx);
     const jobs = await jobsOf(ctx.chapterId);
     const refineJob = jobs.find((j) => j.temporary);
@@ -178,7 +178,7 @@ try {
     const id = await openSession(ctx, comfyOriginal(ctx.file));
     await paintGreen();
     const up = uploads();
-    await btn("Accept").click();
+    await btn("Keep picture").click();
     await waitIllustrate(ctx);
     ok(uploads() === up + 1, "Accept uploaded one picture to ComfyUI");
     const jobs = await jobsOf(ctx.chapterId);
@@ -221,7 +221,7 @@ try {
     const id = /\/refine\/([a-z0-9]+)/.exec(page.url())[1];
     ok((await stored(id)).original.kind === "saved", "Refine… on the header starts a session on the saved picture");
     await paintGreen();
-    await btn("Accept").click();
+    await btn("Keep picture").click();
     await waitIllustrate(ctx);
     const jobs = await jobsOf(ctx.chapterId);
     ok(jobs.length === 1 && jobs[0].images[0].type === "input" && jobs[0].marks[0] === "pinned" && jobs[0].temporary === false && jobs[0].moment === "start", "the painted picture is a new pinned picture (moment start, the chapter's saved one)");
@@ -239,7 +239,7 @@ try {
     await call("POST", "/api/picture-jobs", { story_id: ctx.storyId, prompt_id: `cover-${counter}-${Date.now()}`, prompt: "a lighthouse", negative: "", checkpoint: "x", width: 96, height: 60, seed: 1, count: 1, moment: "cover", images: [{ filename: file, subfolder: "", type: "output" }], unseen: false });
     await openSession(ctx, comfyOriginal(file), { kind: "cover", storyId: ctx.storyId });
     await paintGreen();
-    await btn("Accept").click();
+    await btn("Keep picture").click();
     await page.waitForURL(new RegExp(`/s/${ctx.storyId}/cover$`));
     const jobs = (await call("GET", `/api/picture-jobs?cover=${ctx.storyId}&temporary=1&limit=50`)).jobs;
     const made = jobs.find((j) => j.images[0].type === "input");
@@ -253,10 +253,10 @@ try {
     await paintGreen();
     comfy.setMode({ fail: "upload" });
     const up = uploads();
-    await btn("Accept").click();
+    await btn("Keep picture").click();
     await page.getByRole("alert").filter({ hasText: /ComfyUI wouldn't take/ }).waitFor();
     ok(page.url().includes(`/refine/${id}`) && (await stored(id)) !== null && (await jobsOf(ctx.chapterId)).length === 1, "a refused upload shows an error, stays on the screen and keeps the session; nothing is recorded");
-    ok(await btn("Accept").isEnabled() && (await btn("Accept").innerText()) === "Accept", "…Accept is back on");
+    ok(await btn("Keep picture").isEnabled() && (await btn("Keep picture").innerText()) === "Keep picture", "…Accept is back on");
     ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "(no sideways scrolling with the error)");
     comfy.setMode({ fail: null });
     const up2 = uploads(); // (the refused try counted too)
@@ -268,7 +268,7 @@ try {
       if (breakMark) { await new Promise((r) => setTimeout(r, 500)); breakMark = false; slow++; return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "Fake failure" }) }); }
       return route.continue();
     });
-    await btn("Accept").click();
+    await btn("Keep picture").click();
     await until(async () => (await btn("Saving…").count()) === 1, "the Saving… state");
     ok(await btn("Saving…").isDisabled() && await btn("Cancel").isDisabled() && await btn("Undo").isDisabled() && await btn("Go").isDisabled() && await btn("Show paint").isDisabled(), "while saving the button says Saving… and editing is off");
     const strokesBefore = await stage.getAttribute("data-strokes");
@@ -281,7 +281,7 @@ try {
     ok(afterFail.length === 2 && upAfterFail === up2 + 1, "…the painted picture was uploaded (not again) and recorded once so far");
     const rec = (await stored(id)).accepting;
     ok(rec && rec.jobId && rec.image && rec.image.type === "input", "…the session remembers the upload and the record");
-    await btn("Accept").click();
+    await btn("Keep picture").click();
     await waitIllustrate(ctx);
     const jobs = await jobsOf(ctx.chapterId);
     const made = jobs.filter((j) => j.images[0].type === "input");
@@ -297,9 +297,9 @@ try {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(300);
     ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "at 390 px the screen with Accept does not scroll sideways");
-    const h = await btn("Accept").boundingBox();
+    const h = await btn("Keep picture").boundingBox();
     ok(h && h.height >= 40 && h.width >= 60, `…and Accept is big enough to tap (${Math.round(h.width)} x ${Math.round(h.height)})`);
-    await btn("Accept").click();
+    await btn("Keep picture").click();
     await waitIllustrate(ctx);
     await page.setViewportSize({ width: 1280, height: 900 });
   }

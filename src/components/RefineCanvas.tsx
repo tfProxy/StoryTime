@@ -53,6 +53,8 @@ type Props = {
   onUndo: () => void;
   onLoaded?: (size: { w: number; h: number }) => void;
   onError?: (message: string) => void;
+  /** Keeps the zoom and pan between canvases (a new working picture is a new canvas, but it opens as the last one was left). */
+  viewMemo?: { current: View | null };
   ref?: Ref<RefineCanvasHandle>;
 };
 
@@ -84,7 +86,7 @@ const isMaskTool = (t: RefineTool) => t === "mask-brush" || t === "mask-eraser" 
  * draws; two fingers pinch and pan; a pen cancels touch (palm rejection). Strokes are drawn live and then
  * handed to the screen, which keeps them in its undo history; the layers are redrawn from the state.
  */
-export default function RefineCanvas({ picture, preview = null, frozen = false, state, tool, settings, softPreview = null, onPaintStroke, onMaskStroke, onPickColor, onUndo, onLoaded, onError, ref }: Props) {
+export default function RefineCanvas({ picture, preview = null, frozen = false, state, tool, settings, softPreview = null, onPaintStroke, onMaskStroke, onPickColor, onUndo, onLoaded, onError, viewMemo, ref }: Props) {
   const stageEl = useRef<HTMLDivElement>(null);
   const baseCanvas = useRef<HTMLCanvasElement>(null);
   const previewCanvas = useRef<HTMLCanvasElement>(null);
@@ -97,7 +99,7 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
   const [loaded, setLoaded] = useState<{ bitmap: ImageBitmap; w: number; h: number } | null>(null);
   const [previewLoaded, setPreviewLoaded] = useState<{ pic: StartPicture; bitmap: ImageBitmap } | null>(null);
   const [stage, setStage] = useState<Size>(EMPTY_SIZE);
-  const [view, setViewState] = useState<View>({ scale: 1, tx: 0, ty: 0 });
+  const [view, setViewState] = useState<View>(() => viewMemo?.current ?? { scale: 1, tx: 0, ty: 0 });
   const w = loaded?.w ?? 0;
   const h = loaded?.h ?? 0;
 
@@ -111,6 +113,8 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
   const pointers = useRef(new Map<number, Pt>());
   const penIds = useRef(new Set<number>());
   const gesture = useRef<{ d0: number; mid0: [number, number]; v0: View } | null>(null);
+  /** A one-pointer drag that moves the picture (the pan tool, or the middle mouse button). */
+  const panning = useRef<{ id: number; x: number; y: number; v0: View } | null>(null);
   const lastTap = useRef<{ t: number; x: number; y: number; dot: boolean } | null>(null);
 
   const frame = fitSize(stage, w, h);
@@ -160,7 +164,10 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
 
   const setView = useCallback((v: View) => {
     viewRef.current = v;
+    if (viewMemo) viewMemo.current = v;
     setViewState(v);
+    // viewMemo is a ref object that never changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ---- loading the picture ----
@@ -214,16 +221,30 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
     paintMask(ctx, loaded.w, loaded.h, state.mask, MASK_TINT);
   }, [loaded, state.mask]);
 
-  // The stage's size: the picture is refitted (zoom reset) when it changes, as on turning a tablet.
+  // The stage's size changes (turning a tablet, the review bar coming and going): a picture that is fitted is
+  // refitted, and a zoomed one keeps the same part of the picture in the middle.
   useEffect(() => {
     const el = stageEl.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
+      const prevStage = stageRef.current;
+      const prevFrame = frameRef.current;
+      const v = viewRef.current;
       const s = { w: el.clientWidth, h: el.clientHeight };
+      const f = fitSize(s, latest.current.w, latest.current.h);
       stageRef.current = s;
-      frameRef.current = fitSize(s, latest.current.w, latest.current.h);
+      frameRef.current = f;
       setStage(s);
-      setView(fitView(s, frameRef.current));
+      if (f.w === 0 || f.h === 0) return; // no picture yet: the view (maybe one kept from the last canvas) waits for it
+      if (prevStage.w === 0 || prevFrame.w === 0) {
+        setView(clampView(v, s, f));
+      } else if (v.scale <= 1.001) {
+        setView(fitView(s, f));
+      } else {
+        const cx = (prevStage.w / 2 - v.tx) / v.scale / prevFrame.w;
+        const cy = (prevStage.h / 2 - v.ty) / v.scale / prevFrame.h;
+        setView(clampView({ scale: v.scale, tx: s.w / 2 - cx * f.w * v.scale, ty: s.h / 2 - cy * f.h * v.scale }, s, f));
+      }
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -292,7 +313,7 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
     if (!c) return;
     c.style.width = c.style.height = `${diameter}px`;
     c.style.transform = `translate(${sx - diameter / 2}px, ${sy - diameter / 2}px)`;
-    c.style.opacity = visible && !latest.current.previewing ? String(opacity) : "0";
+    c.style.opacity = visible && !latest.current.previewing && latest.current.tool !== "pan" ? String(opacity) : "0";
   }
 
   function previewDiameter(pictureDiameter: number) {
@@ -468,7 +489,7 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
 
   function onPointerDown(e: React.PointerEvent) {
     if (!loaded) return;
-    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (e.pointerType === "mouse" && e.button !== 0 && e.button !== 1) return;
     // Palm rejection: a hand resting on the screen while the pen is down is not a finger.
     if (e.pointerType === "touch" && penIds.current.size > 0) return;
     if (e.pointerType === "pen") {
@@ -485,9 +506,17 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
       } catch {
         // Capture is only a convenience.
       }
+      if (e.button === 1 || latest.current.tool === "pan") {
+        panning.current = { id: e.pointerId, x: e.clientX, y: e.clientY, v0: viewRef.current };
+        stageEl.current!.dataset.panning = "true";
+        placeCursor(0, 0, false);
+        return;
+      }
       beginStroke(e);
       if (e.pointerType !== "mouse") placeCursor(...stagePoint(e), true, 0.55);
     } else if (pointers.current.size === 2) {
+      panning.current = null;
+      if (stageEl.current) delete stageEl.current.dataset.panning;
       dropStroke();
       placeCursor(0, 0, false);
       startGesture();
@@ -510,6 +539,12 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
       const r = stageEl.current!.getBoundingClientRect();
       const mid: [number, number] = [(a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top];
       setView(pinchView(g.v0, g.mid0, g.d0, mid, Math.hypot(a.x - b.x, a.y - b.y), stageRef.current, frameRef.current));
+      return;
+    }
+    const pan = panning.current;
+    if (pan && pan.id === e.pointerId) {
+      const { v0 } = pan;
+      setView(clampView({ scale: v0.scale, tx: v0.tx + e.clientX - pan.x, ty: v0.ty + e.clientY - pan.y }, stageRef.current, frameRef.current));
       return;
     }
     const l = live.current;
@@ -544,6 +579,11 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) gesture.current = null;
     if (e.pointerType !== "mouse") placeCursor(0, 0, false);
+    if (panning.current?.id === e.pointerId) {
+      panning.current = null;
+      if (stageEl.current) delete stageEl.current.dataset.panning;
+      return;
+    }
     const l = live.current;
     if (!l || l.id !== e.pointerId) return;
     stopLive();
@@ -597,6 +637,10 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
       data-strokes={state.paint.length}
       data-mask-strokes={state.mask.strokes.length}
       onPointerDown={onPointerDown}
+      onMouseDown={(e) => {
+        // The middle button pans; stop the browser's autoscroll circle.
+        if (e.button === 1) e.preventDefault();
+      }}
       onPointerMove={onPointerMove}
       onPointerUp={(e) => endPointer(e, false)}
       onPointerCancel={(e) => endPointer(e, true)}

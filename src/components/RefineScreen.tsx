@@ -22,6 +22,7 @@ import {
   commit,
   redo,
   setMask,
+  clearMask,
   toggleMaskVisible,
   togglePaintVisible,
   undo,
@@ -30,6 +31,7 @@ import {
 } from "@/lib/refineHistory";
 import { addResults, appliedSource, baseOf, deleteSession, discardResult, loadSession, neighbour, pruneSessions, resultBaseId, resultKey, saveSession, type RefineSession } from "@/lib/refine/session";
 import { pictureOfOriginal } from "@/lib/refine/original";
+import type { View } from "@/lib/mask";
 import { baseForResult } from "@/lib/refine/apply";
 import { acceptPicture } from "@/lib/refine/accept";
 import { fromComfyImage } from "@/lib/comfy/startPicture";
@@ -48,7 +50,7 @@ function typingInField(t: EventTarget | null): boolean {
 }
 
 /**
- * The Refine screen: the tools on the left (the mask, the paint, and the Undo / Accept / Cancel bar) and the
+ * The Refine screen: the tools on the left (the mask, the paint, and the Undo / Redo / Apply / Trash bar) and the
  * picture on the right. The session (the picture's origin and the editor's undo history) is kept in this
  * browser, so reloading the page brings everything back.
  */
@@ -59,6 +61,8 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
   const [session, setSession] = useState<RefineSession | null>(null);
   const [history, setHistory] = useState<History<RefineState> | null>(null);
   const [tool, setTool] = useState<RefineTool>("paint-brush");
+  const [ctrlHeld, setCtrlHeld] = useState(false);
+  const [spaceHeld, setSpaceHeld] = useState(false);
   const [tools, setTools] = useState<ToolSettings>(DEFAULT_TOOLS);
   const [softPreview, setSoftPreview] = useState<number | null>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
@@ -73,6 +77,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
   const queue = usePictureQueue();
   const { listenSession, stop } = queue;
   const canvas = useRef<RefineCanvasHandle>(null);
+  const viewMemo = useRef<View | null>(null);
   const sessionRef = useRef<RefineSession | null>(null);
   const historyRef = useRef<History<RefineState> | null>(null);
   const toolsReady = useRef(false);
@@ -159,6 +164,43 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
   const nextResult = selected && results ? neighbour(results, selectedKey!, 1) : null;
   const selectedImage = selected?.image;
   const preview = useMemo(() => (selectedImage && comfy.url ? fromComfyImage(comfy.url, selectedImage) : null), [selectedImage, comfy.url]);
+
+  // Holding Ctrl swaps to the eyedropper; letting go (or leaving the window) puts back the tool that was chosen.
+  useEffect(() => {
+    const sync = (e: KeyboardEvent) => setCtrlHeld(e.ctrlKey);
+    const off = () => setCtrlHeld(false);
+    window.addEventListener("keydown", sync);
+    window.addEventListener("keyup", sync);
+    window.addEventListener("blur", off);
+    return () => {
+      window.removeEventListener("keydown", sync);
+      window.removeEventListener("keyup", sync);
+      window.removeEventListener("blur", off);
+    };
+  }, []);
+  // Holding Space swaps to the pan tool the same way (not while typing in a field, where it is a space).
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || typingInField(e.target)) return;
+      e.preventDefault(); // no page scroll, and a focused button is not pressed by it
+      setSpaceHeld(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+      if (!typingInField(e.target)) e.preventDefault();
+      setSpaceHeld(false);
+    };
+    const off = () => setSpaceHeld(false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", off);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", off);
+    };
+  }, []);
+  const activeTool: RefineTool = spaceHeld && !accepting ? "pan" : ctrlHeld && !reviewing && !accepting ? "eyedropper" : tool;
 
   // Ctrl/Cmd+Z, Shift+Ctrl/Cmd+Z and Ctrl+Y, unless typing in a field or looking at a result.
   useEffect(() => {
@@ -333,14 +375,30 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
     <div className="refine-page" data-session={session.id}>
       <header className="refine-head">
         <h1>Refine picture</h1>
-        <button type="button" className="secondary" disabled={accepting} onClick={cancel} aria-label="Cancel and go back" title="Leave without changing anything">
-          Cancel
-        </button>
+        <div className="refine-finish" role="group" aria-label="Finish">
+          <button
+            type="button"
+            className="refine-accept"
+            disabled={reviewing || accepting || applying || !dims || !!loadError}
+            title={reviewing ? "Apply or deselect the result first" : "Keep this picture and go back"}
+            onClick={accept}
+          >
+            {accepting ? "Saving…" : "Keep picture"}
+          </button>
+          <button type="button" className="refine-cancel" disabled={accepting} onClick={cancel} title="Throw this away and go back">
+            Cancel
+          </button>
+        </div>
+        {acceptError && (
+          <p className="error refine-accept-error" role="alert">
+            {acceptError}
+          </p>
+        )}
       </header>
       <div className="refine-tools">
         <div className="refine-panels">
           <MaskPanel
-            tool={tool}
+            tool={activeTool}
             onTool={setTool}
             size={maskSize}
             maxSize={maxSize}
@@ -355,12 +413,14 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
             onSoftCommit={(v) => change((s) => setMask(s, { softness: v }))}
             inverted={present.mask.inverted}
             onInvert={() => change((s) => setMask(s, { inverted: !s.mask.inverted }))}
+            canClear={present.mask.strokes.length > 0 || present.mask.inverted}
+            onClear={() => change(clearMask)}
             visible={present.maskVisible}
             onToggleVisible={() => change(toggleMaskVisible)}
             disabled={reviewing || accepting}
           />
           <PaintPanel
-            tool={tool}
+            tool={activeTool}
             onTool={setTool}
             size={tools.size}
             maxSize={maxSize}
@@ -401,30 +461,19 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
             inUseKey={inUse ? resultKey(inUse) : null}
           />
         </div>
-        <div className="refine-bar" role="group" aria-label="Undo and finish">
+        <div className="refine-bar" role="group" aria-label="Undo and results">
           <button type="button" className="refine-icon secondary" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={reviewing || accepting || !canUndo(history)} onClick={doUndo}>
             <UndoIcon />
           </button>
           <button type="button" className="refine-icon secondary" aria-label="Redo" title="Redo (Shift+Ctrl+Z)" disabled={reviewing || accepting || !canRedo(history)} onClick={doRedo}>
             <RedoIcon />
           </button>
-          <button
-            type="button"
-            className="refine-accept"
-            disabled={reviewing || accepting || applying || !dims || !!loadError}
-            title={reviewing ? "Apply or deselect the result first" : "Keep this picture and go back"}
-            onClick={accept}
-          >
-            {accepting ? "Saving…" : "Accept"}
+          <button type="button" className="refine-apply" title="Make the result on show the working picture" disabled={!reviewing || accepting || applying || !dims} onClick={apply}>
+            {applying ? "Applying…" : "Apply"}
           </button>
-          <button type="button" className="refine-cancel" disabled={accepting} onClick={cancel} title="Throw this away and go back">
-            Cancel
+          <button type="button" className="refine-discard secondary" title="Remove the result on show from the list" disabled={!reviewing || accepting || applying} onClick={discard}>
+            Trash
           </button>
-          {acceptError && (
-            <p className="error refine-accept-error" role="alert">
-              {acceptError}
-            </p>
-          )}
         </div>
       </div>
       <div className="refine-picture">
@@ -447,7 +496,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
           preview={preview}
           frozen={accepting}
           state={present}
-          tool={tool}
+          tool={activeTool}
           settings={tools}
           softPreview={softPreview}
           onPaintStroke={onPaintStroke}
@@ -456,6 +505,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
           onUndo={doUndo}
           onLoaded={setDims}
           onError={setLoadError}
+          viewMemo={viewMemo}
         />
         {reviewing && (
           <>
@@ -482,16 +532,6 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
           </>
         )}
         </div>
-        {reviewing && (
-          <div className="refine-review" role="group" aria-label="This result">
-            <button type="button" className="refine-apply" aria-label="Apply this result" title="Make this the working picture" disabled={applying || !dims} onClick={apply}>
-              {applying ? "Applying…" : "Apply"}
-            </button>
-            <button type="button" className="refine-discard secondary" aria-label="Discard this result" title="Remove this result from the list" disabled={applying} onClick={discard}>
-              Discard
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

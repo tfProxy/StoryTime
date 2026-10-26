@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { HexColorPicker } from "react-colorful";
 import { normalizeHex } from "@/lib/paint";
 import type { RefineTool } from "@/lib/refine/tools";
-import { AirbrushIcon, BrushIcon, EraserIcon, EyedropperIcon, EyeIcon, InvertIcon, LassoIcon, MaskBrushIcon, MaskEraserIcon } from "./RefineIcons";
+import { AirbrushIcon, BrushIcon, EraserIcon, EyedropperIcon, HandIcon, EyeIcon, InvertIcon, LassoIcon, MaskBrushIcon, MaskEraserIcon, TrashIcon } from "./RefineIcons";
 
 // The left column's panels. Each is a <section> with a heading, icon buttons on one line, and sliders. To add a
 // panel (the next step's Prompt and Results), put another <section className="refine-panel"> in RefineScreen's
@@ -54,13 +54,16 @@ type MaskProps = {
   onSoftCommit: (v: number) => void;
   inverted: boolean;
   onInvert: () => void;
+  /** There is something to clear, and clearing it (one undo step). */
+  canClear: boolean;
+  onClear: () => void;
   visible: boolean;
   onToggleVisible: () => void;
   /** Every control is off (a result is being reviewed). */
   disabled?: boolean;
 };
 
-export function MaskPanel({ tool, onTool, size, maxSize, onSize, softness, maxSoft, onSoftPreview, onSoftCommit, inverted, onInvert, visible, onToggleVisible, disabled = false }: MaskProps) {
+export function MaskPanel({ tool, onTool, size, maxSize, onSize, softness, maxSoft, onSoftPreview, onSoftCommit, inverted, onInvert, canClear, onClear, visible, onToggleVisible, disabled = false }: MaskProps) {
   const [draft, setDraft] = useState<number | null>(null);
   const draftRef = useRef<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -94,6 +97,9 @@ export function MaskPanel({ tool, onTool, size, maxSize, onSize, softness, maxSo
         <button type="button" className="refine-icon secondary" aria-label="Invert mask" title="Swap the painted and unpainted areas" aria-pressed={inverted} onClick={onInvert}>
           <InvertIcon />
         </button>
+        <button type="button" className="refine-icon secondary" aria-label="Clear mask" title="Take the whole mask away (Undo brings it back)" disabled={!canClear} onClick={onClear}>
+          <TrashIcon />
+        </button>
         <button type="button" className="refine-icon secondary" aria-label="Show mask" title={visible ? "Hide the mask (a hidden mask is not used)" : "Show the mask"} aria-pressed={visible} onClick={onToggleVisible}>
           <EyeIcon off={!visible} />
         </button>
@@ -122,6 +128,7 @@ export function MaskPanel({ tool, onTool, size, maxSize, onSize, softness, maxSo
 }
 
 const PAINT_BUTTONS: ToolButton[] = [
+  { tool: "pan", label: "Pan", title: "Drag to move the picture (the middle mouse button does this with any tool)", icon: HandIcon },
   { tool: "paint-brush", label: "Paint brush", title: "Paint with the colour", icon: BrushIcon },
   { tool: "airbrush", label: "Airbrush", title: "Soft paint that builds up while you hold", icon: AirbrushIcon },
   { tool: "paint-eraser", label: "Paint eraser", title: "Take paint away (the picture is not touched)", icon: EraserIcon },

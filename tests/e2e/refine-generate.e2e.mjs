@@ -252,6 +252,12 @@ try {
   ok(nodes(lastWorkflow(), "LoadImageMask").length === 0 && nodes(lastWorkflow(), "SetLatentNoiseMask").length === 0, "mask hidden: no mask in the job (the whole picture)");
   await btn("Show mask").click();
   ok(await results.count() === 7, "every Go added its tile (7 results)");
+  // A mask rubbed out again still has strokes but paints nothing: that is a whole-picture redraw, not an error.
+  await btn("Mask eraser").click();
+  await page.getByRole("slider", { name: "Mask brush size", exact: true }).fill("24");
+  await drag(0.1, 0.3, 0.6, 0.3);
+  await goAndWait(1);
+  ok(nodes(lastWorkflow(), "LoadImageMask").length === 0 && nodes(lastWorkflow(), "SetLatentNoiseMask").length === 0 && await results.count() === 8, "a mask with nothing left painted redraws the whole picture, with no error");
 
   // ================= the Illustrate page does not see these jobs =================
   await page.goto(`${BASE}/c/${chapterId}/illustrate`);
@@ -263,7 +269,7 @@ try {
   await toggle.waitFor();
   await toggle.check();
   await until(async () => (await tiles.count()) > 1, "the temporary pictures");
-  ok(await tiles.count() === 1 + 7, "with “Include temporary inpainting images” on, the Refine pictures (7 of them) appear too");
+  ok(await tiles.count() === 1 + 8, "with “Include temporary inpainting images” on, the Refine pictures (8 of them) appear too");
 
   // ================= a session's jobs are not given to the page, and wait for the screen =================
   await page.goto(`${BASE}/c/${chapterId}/illustrate`);

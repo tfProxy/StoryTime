@@ -84,15 +84,15 @@ export const sameJob = (a: JobInput) =>
   ]);
 
 /** A mask's upload to ComfyUI, kept (by the mask object, which changes whenever the mask does) so the next job with it doesn't send it again. */
-const maskUploads = new WeakMap<PaintedArea, { url: string; name: Promise<string> }>();
+const maskUploads = new WeakMap<PaintedArea, { url: string; name: Promise<string | null> }>();
 
-/** Draws the mask and uploads it next to the starting picture; its name in ComfyUI's input folder. */
-function uploadMask(comfyUrl: string, area: PaintedArea): Promise<string> {
+/** Draws the mask and uploads it next to the starting picture; its name in ComfyUI's input folder, or null when nothing in it is painted (the whole picture is redrawn). */
+function uploadMask(comfyUrl: string, area: PaintedArea): Promise<string | null> {
   const cached = maskUploads.get(area);
   if (cached?.url === comfyUrl) return cached.name;
   const name = (async () => {
     const blob = area.render ? await area.render() : (await renderMask(area, area.width, area.height))?.blob;
-    if (!blob) throw new Error("The painted area is empty. Paint the part to redraw again, or clear it.");
+    if (!blob) return null;
     return uploadImage(comfyUrl, blob,`storytime-mask-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.png`);
   })();
   maskUploads.set(area, { url: comfyUrl, name });
