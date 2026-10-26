@@ -61,6 +61,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
   const [session, setSession] = useState<RefineSession | null>(null);
   const [history, setHistory] = useState<History<RefineState> | null>(null);
   const [tool, setTool] = useState<RefineTool>("paint-brush");
+  const [ctrlHeld, setCtrlHeld] = useState(false);
   const [tools, setTools] = useState<ToolSettings>(DEFAULT_TOOLS);
   const [softPreview, setSoftPreview] = useState<number | null>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
@@ -162,6 +163,21 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
   const nextResult = selected && results ? neighbour(results, selectedKey!, 1) : null;
   const selectedImage = selected?.image;
   const preview = useMemo(() => (selectedImage && comfy.url ? fromComfyImage(comfy.url, selectedImage) : null), [selectedImage, comfy.url]);
+
+  // Holding Ctrl swaps to the eyedropper; letting go (or leaving the window) puts back the tool that was chosen.
+  useEffect(() => {
+    const sync = (e: KeyboardEvent) => setCtrlHeld(e.ctrlKey);
+    const off = () => setCtrlHeld(false);
+    window.addEventListener("keydown", sync);
+    window.addEventListener("keyup", sync);
+    window.addEventListener("blur", off);
+    return () => {
+      window.removeEventListener("keydown", sync);
+      window.removeEventListener("keyup", sync);
+      window.removeEventListener("blur", off);
+    };
+  }, []);
+  const activeTool: RefineTool = ctrlHeld && !reviewing && !accepting ? "eyedropper" : tool;
 
   // Ctrl/Cmd+Z, Shift+Ctrl/Cmd+Z and Ctrl+Y, unless typing in a field or looking at a result.
   useEffect(() => {
@@ -343,7 +359,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
       <div className="refine-tools">
         <div className="refine-panels">
           <MaskPanel
-            tool={tool}
+            tool={activeTool}
             onTool={setTool}
             size={maskSize}
             maxSize={maxSize}
@@ -365,7 +381,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
             disabled={reviewing || accepting}
           />
           <PaintPanel
-            tool={tool}
+            tool={activeTool}
             onTool={setTool}
             size={tools.size}
             maxSize={maxSize}
@@ -452,7 +468,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
           preview={preview}
           frozen={accepting}
           state={present}
-          tool={tool}
+          tool={activeTool}
           settings={tools}
           softPreview={softPreview}
           onPaintStroke={onPaintStroke}

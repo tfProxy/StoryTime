@@ -111,6 +111,13 @@ try {
   const swatch = await page.locator(".refine-swatch").getAttribute("data-color");
   ok(swatch === picked, "the swatch shows the current colour");
 
+  // ================= Ctrl is the eyedropper =================
+  await btn("Paint brush").click();
+  await page.keyboard.down("Control");
+  ok((await btn("Eyedropper").getAttribute("aria-pressed")) === "true" && (await stage.getAttribute("data-tool")) === "eyedropper", "holding Ctrl switches to the eyedropper");
+  await page.keyboard.up("Control");
+  ok((await btn("Paint brush").getAttribute("aria-pressed")) === "true" && (await stage.getAttribute("data-tool")) === "paint-brush", "…and letting go puts the chosen tool back");
+
   // ================= panning =================
   const sb = await stage.boundingBox();
   await page.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
