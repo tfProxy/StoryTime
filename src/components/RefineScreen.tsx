@@ -30,6 +30,7 @@ import {
 } from "@/lib/refineHistory";
 import { addResults, appliedSource, baseOf, deleteSession, discardResult, loadSession, neighbour, pruneSessions, resultBaseId, resultKey, saveSession, type RefineSession } from "@/lib/refine/session";
 import { pictureOfOriginal } from "@/lib/refine/original";
+import type { View } from "@/lib/mask";
 import { baseForResult } from "@/lib/refine/apply";
 import { acceptPicture } from "@/lib/refine/accept";
 import { fromComfyImage } from "@/lib/comfy/startPicture";
@@ -73,6 +74,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
   const queue = usePictureQueue();
   const { listenSession, stop } = queue;
   const canvas = useRef<RefineCanvasHandle>(null);
+  const viewMemo = useRef<View | null>(null);
   const sessionRef = useRef<RefineSession | null>(null);
   const historyRef = useRef<History<RefineState> | null>(null);
   const toolsReady = useRef(false);
@@ -456,6 +458,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
           onUndo={doUndo}
           onLoaded={setDims}
           onError={setLoadError}
+          viewMemo={viewMemo}
         />
         {reviewing && (
           <>

@@ -161,6 +161,23 @@ try {
   ok((await selectedIndex()) === 0, "→ at the end stays where it is");
   await tileAt(0).click();
 
+  // ================= zoom and pan stay =================
+  const sbox = await stage.boundingBox();
+  await page.mouse.move(sbox.x + sbox.width / 2, sbox.y + sbox.height / 2);
+  for (let i = 0; i < 4; i++) await page.mouse.wheel(0, -300);
+  await until(async () => (await frame()).width > sbox.width * 1.2, "zoomed in");
+  const zoomed = await frame();
+  await tileAt(2).click();
+  await until(async () => (await attr("data-preview-ready")) === "1" && (await previewIs(2)), "result 2 on show");
+  const zoomedReview = await frame();
+  ok(Math.abs(zoomedReview.width - zoomed.width) < 2 && zoomedReview.width > sbox.width * 1.2, "looking at a result keeps the zoom");
+  await nav("Next result").click();
+  await until(async () => (await previewIs(1)), "result 1 on show");
+  ok(Math.abs((await frame()).width - zoomedReview.width) < 2, "…and so does going from one result to the next");
+  await tileAt(1).click();
+  await until(async () => (await attr("data-previewing")) === "false", "back to editing");
+  ok(Math.abs((await frame()).width - zoomed.width) < 2, "…and so does going back to editing");
+
   // ================= Apply =================
   await box("Prompt").fill("custom text");
   await tileAt(1).click();
@@ -170,6 +187,8 @@ try {
   ok(bt && bt.y >= sb.y + sb.height - 2 && await nav("Apply this result").isVisible() && await nav("Discard this result").isVisible(), "Apply and Discard are under the picture");
   await nav("Apply this result").click();
   await until(async () => (await selectedIndex()) === null && (await baseIs(1)), "Apply to switch the picture");
+  await until(async () => Math.abs((await frame()).width - zoomed.width) < 2, "the zoom kept after Apply");
+  for (let i = 0; i < 6; i++) await page.mouse.wheel(0, 300);
   ok((await baseIs(1)) && (await attr("data-previewing")) === "false", "Apply makes the result the working picture and goes back to editing");
   ok((await strokes()) === 0 && (await maskStrokes()) === 1, "…the paint is cleared and the mask is kept");
   ok((await tray.count()) === 4 && (await badgeIndex()) === 1, "…the result stays in the tray, with the “In use” badge");

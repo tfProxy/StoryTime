@@ -53,6 +53,8 @@ type Props = {
   onUndo: () => void;
   onLoaded?: (size: { w: number; h: number }) => void;
   onError?: (message: string) => void;
+  /** Keeps the zoom and pan between canvases (a new working picture is a new canvas, but it opens as the last one was left). */
+  viewMemo?: { current: View | null };
   ref?: Ref<RefineCanvasHandle>;
 };
 
@@ -84,7 +86,7 @@ const isMaskTool = (t: RefineTool) => t === "mask-brush" || t === "mask-eraser" 
  * draws; two fingers pinch and pan; a pen cancels touch (palm rejection). Strokes are drawn live and then
  * handed to the screen, which keeps them in its undo history; the layers are redrawn from the state.
  */
-export default function RefineCanvas({ picture, preview = null, frozen = false, state, tool, settings, softPreview = null, onPaintStroke, onMaskStroke, onPickColor, onUndo, onLoaded, onError, ref }: Props) {
+export default function RefineCanvas({ picture, preview = null, frozen = false, state, tool, settings, softPreview = null, onPaintStroke, onMaskStroke, onPickColor, onUndo, onLoaded, onError, viewMemo, ref }: Props) {
   const stageEl = useRef<HTMLDivElement>(null);
   const baseCanvas = useRef<HTMLCanvasElement>(null);
   const previewCanvas = useRef<HTMLCanvasElement>(null);
@@ -97,7 +99,7 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
   const [loaded, setLoaded] = useState<{ bitmap: ImageBitmap; w: number; h: number } | null>(null);
   const [previewLoaded, setPreviewLoaded] = useState<{ pic: StartPicture; bitmap: ImageBitmap } | null>(null);
   const [stage, setStage] = useState<Size>(EMPTY_SIZE);
-  const [view, setViewState] = useState<View>({ scale: 1, tx: 0, ty: 0 });
+  const [view, setViewState] = useState<View>(() => viewMemo?.current ?? { scale: 1, tx: 0, ty: 0 });
   const w = loaded?.w ?? 0;
   const h = loaded?.h ?? 0;
 
@@ -162,7 +164,10 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
 
   const setView = useCallback((v: View) => {
     viewRef.current = v;
+    if (viewMemo) viewMemo.current = v;
     setViewState(v);
+    // viewMemo is a ref object that never changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ---- loading the picture ----
@@ -216,16 +221,30 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
     paintMask(ctx, loaded.w, loaded.h, state.mask, MASK_TINT);
   }, [loaded, state.mask]);
 
-  // The stage's size: the picture is refitted (zoom reset) when it changes, as on turning a tablet.
+  // The stage's size changes (turning a tablet, the review bar coming and going): a picture that is fitted is
+  // refitted, and a zoomed one keeps the same part of the picture in the middle.
   useEffect(() => {
     const el = stageEl.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
+      const prevStage = stageRef.current;
+      const prevFrame = frameRef.current;
+      const v = viewRef.current;
       const s = { w: el.clientWidth, h: el.clientHeight };
+      const f = fitSize(s, latest.current.w, latest.current.h);
       stageRef.current = s;
-      frameRef.current = fitSize(s, latest.current.w, latest.current.h);
+      frameRef.current = f;
       setStage(s);
-      setView(fitView(s, frameRef.current));
+      if (f.w === 0 || f.h === 0) return; // no picture yet: the view (maybe one kept from the last canvas) waits for it
+      if (prevStage.w === 0 || prevFrame.w === 0) {
+        setView(clampView(v, s, f));
+      } else if (v.scale <= 1.001) {
+        setView(fitView(s, f));
+      } else {
+        const cx = (prevStage.w / 2 - v.tx) / v.scale / prevFrame.w;
+        const cy = (prevStage.h / 2 - v.ty) / v.scale / prevFrame.h;
+        setView(clampView({ scale: v.scale, tx: s.w / 2 - cx * f.w * v.scale, ty: s.h / 2 - cy * f.h * v.scale }, s, f));
+      }
     });
     ro.observe(el);
     return () => ro.disconnect();
