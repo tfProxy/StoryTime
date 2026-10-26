@@ -44,8 +44,6 @@ export type RunnerDeps = { fetch?: Fetch; stream?: Stream; renewMs?: number; wri
 export type StepResult = { run: AiRun; more: boolean; idle?: boolean };
 
 export type StepEnv = {
-  /** Fill missing pictures: how many pictures may have their prompt written and not be drawn yet (default 2). */
-  promptsAhead?: number;
   settings: Settings;
   /** This tab's lease token: made by the caller, and the one it claimed the run with. */
   token: string;
@@ -109,12 +107,12 @@ function ready(list: RunTask[], t: RunTask): boolean {
  * (main model), then finish each (summary, planned choices: cheap model), plan tasks wherever nothing can be
  * written; the others do a task at a time, in the order of the list, a chapter's text, choices and summaries together.
  */
-function pickStep(run: AiRun, list: RunTask[], ahead = 2): Pick | null {
+function pickStep(run: AiRun, list: RunTask[]): Pick | null {
   if (run.mode === "pictures") {
-    // The prompt of the next picture, while not too many are written and waiting to be drawn; drawing is the queue's.
+    // The prompt of the next picture. Every prompt is written before any picture is drawn (the queue starts drawing when
+    // none is left), so the text model and the picture model are each loaded once; drawing is the queue's.
     const todo = list.find((t): t is PictureTask => t.kind === "picture" && t.status === "todo");
-    const waiting = list.filter((t) => t.kind === "picture" && t.status === "written").length;
-    return todo && waiting < ahead ? { kind: "prompt", task: todo } : null;
+    return todo ? { kind: "prompt", task: todo } : null;
   }
   const writes = list.filter((t): t is WriteTask => t.kind === "write");
   const written = writes.filter((t) => t.status === "written");
@@ -179,10 +177,10 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<StepResult> {
 
   if (run.status !== "running") await save({ status: "running", error: null });
   const { tasks: list } = nextTask(run.tasks);
-  const picked = pickStep(run, list, env.promptsAhead);
+  const picked = pickStep(run, list);
 
   if (!picked && run.mode === "pictures" && list.some(unfinished)) {
-    // Prompts are written as far ahead as allowed: the rest waits for pictures to be drawn.
+    // Every prompt is written: the rest waits for the pictures to be drawn.
     if (list !== run.tasks) await save({ tasks: list });
     return { run, more: false, idle: true };
   }
@@ -247,8 +245,8 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<StepResult> {
   const settled = !tasks.some(unfinished);
   await save({ tasks, status: settled ? "done" : "running", error: null });
   if (settled) state("done");
-  // A pictures run with its prompts written as far ahead as allowed waits for the pictures.
-  const idle = !settled && run.mode === "pictures" && !pickStep(run, nextTask(tasks).tasks, env.promptsAhead);
+  // A pictures run with all its prompts written waits for the pictures.
+  const idle = !settled && run.mode === "pictures" && !pickStep(run, nextTask(tasks).tasks);
   return { run, more: !settled && !idle, ...(idle && { idle }) };
 }
 

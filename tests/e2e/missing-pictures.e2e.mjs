@@ -19,7 +19,7 @@ const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 const hasPicture = async (chapterId, slot) => (await fetch(`${BASE}/api/chapters/${chapterId}/images/${slot}`, { method: "HEAD" })).status === 200;
 
 // ---- a fake model that writes a picture prompt, one at a time ----
-const ai = { prompts: [], delay: 30 };
+const ai = { prompts: [], postedAt: [], delay: 30 };
 const mock = http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "*");
@@ -30,6 +30,7 @@ const mock = http.createServer((req, res) => {
     const body = data ? JSON.parse(data) : {};
     if (!body.messages) { res.setHeader("content-type", "application/json"); return res.end(JSON.stringify({ data: [] })); }
     ai.prompts.push(body.messages.at(-1).content);
+    ai.postedAt.push(posted().length);
     const reply = JSON.stringify({ scene: `Scene ${ai.prompts.length}`, prompt: `harbour picture ${ai.prompts.length}`, negative: "text, watermark" });
     res.setHeader("content-type", "text/event-stream");
     setTimeout(() => {
@@ -100,6 +101,7 @@ try {
   ok((await hasPicture(a.ids[1], "header")) && (await hasPicture(a.ids[2], "header")) && (await hasPicture(a.ids[0], "header")), "every chapter has its header picture");
   ok(posted().length - sentBefore === 2, "ComfyUI was asked for two pictures, not three (the chapter that had one was left alone)");
   ok(ai.prompts.length === 2 && ai.prompts[0].includes("Market") && ai.prompts[1].includes("Lighthouse"), "a prompt was written for each, from the story down to that chapter, in outline order");
+  ok(ai.postedAt.length === 2 && ai.postedAt.every((n) => n === sentBefore), "every prompt was written before any picture was sent to ComfyUI");
   ok(await page.getByText(/Made 2 pictures/).isVisible(), "the page says it made 2 pictures");
   ok((await page.locator(".ai-run-tasks img").count()) === 2, "…with a thumbnail per picture");
   const draft = (await call("GET", `/api/chapters/${a.ids[1]}/picture-draft`)).draft;
@@ -127,6 +129,13 @@ try {
   await form().getByRole("button", { name: "Start" }).click();
   await page.waitForURL(/pictures\?picrun=/);
   await until(async () => (await runsOf(b.storyId))[0]?.counts.written + (await runsOf(b.storyId))[0]?.counts.done >= 1, "a prompt written", 300);
+  // Away from the run's page, the queue's list leads back to it.
+  await page.evaluate(() => window.next.router.push("/settings"));
+  await page.waitForURL(`${BASE}/settings`);
+  await page.locator(".site-header .picture-queue-button").click();
+  await page.getByRole("region", { name: "Queue" }).getByRole("link", { name: "Open" }).first().click();
+  await page.waitForURL(/\/s\/[^/]+\/pictures\?picrun=/);
+  ok(true, "the queue's list links back to the picture run's page");
   await page.getByRole("button", { name: "Stop", exact: true }).click();
   ok(await waitRun(b.storyId, "paused", 100), "Stop pauses the run");
   const madeBefore = (await Promise.all(b.ids.map((id) => hasPicture(id, "header")))).filter(Boolean).length;

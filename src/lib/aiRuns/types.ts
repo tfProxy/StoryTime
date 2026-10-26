@@ -1,6 +1,5 @@
 // Shared types for AI runs (write ahead, grow the tree, reach a goal, fill missing pictures).
-// Milestone 1 uses only WriteTask, PlanTask and the `fill` options; later milestones add the rest.
-// See docs/write-ahead-plan.md ("Shared types"). Task 1.1 copies these shapes into zod on the server.
+// The server validates the same shapes with zod (src/lib/aiRuns.ts).
 
 import type { ModelRef } from "../settingsSchema";
 

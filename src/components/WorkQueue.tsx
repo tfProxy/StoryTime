@@ -710,8 +710,6 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
           signal: ctl.signal,
           onEvent: (e) => onRunEvent(runId, e),
           deps: { fetch: plainFetch },
-          // Fill missing pictures: how many prompts may be written ahead of the drawing. With turns that is a whole batch.
-          promptsAhead: queueSettings.current.sharing === "turns" ? Math.max(2, queueSettings.current.switchItems || 4) : 2,
         });
         applyRun(out.run);
         if (out.idle) patchRunItem(runId, { state: "working", current: "Drawing pictures" });
@@ -1389,7 +1387,7 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
     [ask, pictureFailed, plainFetch],
   );
 
-  /** Looks at a picture run: has the pictures of prompts that are written asked for, and puts the run back in line for more prompts when there is room. */
+  /** Looks at a picture run: puts the run back in line while prompts are left to write, then (all written) asks for the pictures. */
   const pictureTick = useCallback(
     (runId: string) => {
       const run = latestRuns.current.get(runId);
@@ -1405,16 +1403,17 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
           onFailed: (base, message) => pictureFailed(runId, base, message),
         });
       }
-      for (const t of run.tasks) {
-        if (t.kind === "picture" && t.status === "written" && !s.asked.has(t.id)) {
-          s.asked.add(t.id);
-          void askPicture(run, t);
+      // Every prompt is written before any picture is asked for, so the text model isn't swapped for the picture model and back.
+      const todo = run.tasks.some((t) => t.status === "todo");
+      if (!todo) {
+        for (const t of run.tasks) {
+          if (t.kind === "picture" && t.status === "written" && !s.asked.has(t.id)) {
+            s.asked.add(t.id);
+            void askPicture(run, t);
+          }
         }
       }
-      const todo = run.tasks.some((t) => t.status === "todo");
-      const written = run.tasks.filter((t) => t.status === "written").length;
-      const ahead = queueSettings.current.sharing === "turns" ? Math.max(2, queueSettings.current.switchItems || 4) : 2;
-      if (todo && written < ahead && !writingQueue.current.includes(runId) && writingActive.current !== runId) {
+      if (todo && !writingQueue.current.includes(runId) && writingActive.current !== runId) {
         writingQueue.current.push(runId);
         patchRunItem(runId, { state: "waiting", current: undefined });
         pumpRef.current();
