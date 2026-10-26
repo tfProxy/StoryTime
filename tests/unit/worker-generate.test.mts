@@ -123,6 +123,14 @@ try {
   const partial = getDraft("fill:d") as { body: string; title: string } | null;
   ok(getItem("gen:fill:d") === null, "a stopped Generate is removed");
   ok(!!partial && partial.body.length > 0 && partial.body.length < "She opened it and went in.".length, `…and the text so far stays in the draft (${JSON.stringify(partial?.body)})`);
+
+  // A Generate that was going when the server stopped (D12).
+  const { createItem } = await import("../../src/lib/worker/items.ts");
+  const { recoverGenerates } = await import("../../src/lib/worker/loop.ts");
+  createItem({ key: "gen:fill:z", type: "generate", state: "working", data: { draftKey: "fill:z", href: "/", label: "Z", request: {} } });
+  recoverGenerates();
+  const restarted = getItem("gen:fill:z");
+  ok(restarted?.state === "failed" && /restarted while writing/.test(restarted.data.error ?? ""), "after a restart, a Generate that was going is failed, with the reason");
 } finally {
   await ai.close();
   fs.rmSync(dir, { recursive: true, force: true });

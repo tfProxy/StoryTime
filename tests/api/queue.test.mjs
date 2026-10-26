@@ -56,6 +56,11 @@ const res = await fetch(B + "/api/queue/events", { signal: controller.signal });
 ok(res.status === 200 && /^text\/event-stream/.test(res.headers.get("content-type") ?? ""), "the events route answers as an event stream");
 ok(/no-cache/.test(res.headers.get("cache-control") ?? "") && res.headers.get("x-accel-buffering") === "no", "…told not to be cached or buffered");
 const stream = events(res);
+// the next event about an item (the loop also sends "machine" events after each change)
+const nextChange = async () => {
+  for (let e = await stream.next(); e; e = await stream.next()) if (e.type !== "machine") return e;
+  return null;
+};
 const first = await stream.next();
 ok(first?.type === "items" && Array.isArray(first.items), "the first event lists every item");
 
@@ -63,14 +68,14 @@ ok(first?.type === "items" && Array.isArray(first.items), "the first event lists
 let t = Date.now();
 r = await call("POST", "/api/queue/test-items", { key: KEY });
 ok(r.status === 201 && r.json.key === KEY && r.json.state === "waiting", "a test item is made");
-let evt = await stream.next();
+let evt = await nextChange();
 ok(evt?.type === "item" && evt.item.key === KEY && evt.item.state === "waiting", "…and an item event arrives");
 ok(Date.now() - t < 1000, `…at once, not held back (${Date.now() - t} ms)`);
 
 t = Date.now();
 r = await call("DELETE", `/api/queue/test-items?key=${encodeURIComponent(KEY)}`);
 ok(r.json?.removed === true, "the test item is removed");
-evt = await stream.next();
+evt = await nextChange();
 ok(evt?.type === "removed" && evt.key === KEY && Date.now() - t < 1000, "…and a removed event arrives");
 
 // a second stream gets the current list first, and a closed one doesn't hold up the others
@@ -78,7 +83,7 @@ const second = events(await fetch(B + "/api/queue/events"));
 ok((await second.next())?.type === "items", "a second stream starts with the list too");
 await second.cancel();
 await call("POST", "/api/queue/test-items", { key: KEY });
-evt = await stream.next();
+evt = await nextChange();
 ok(evt?.type === "item" && evt.item.key === KEY, "a stream still gets changes after another one closed");
 await call("DELETE", `/api/queue/test-items?key=${encodeURIComponent(KEY)}`);
 

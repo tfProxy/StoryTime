@@ -21,6 +21,8 @@ const request = {
   draft: { key, href: "/stories/s1/chapters/c1/write", label: "A chapter", updatedAt: 0, storyTitle: "", premise: "", newChoiceLabel: "", title: "", body: "", choices: [""], prompt: "", undo: [] },
 };
 
+// Paused, so the loop leaves the Generate waiting.
+await call("PUT", "/api/queue/paused", { paused: true });
 let r = await call("POST", "/api/queue/generate", { ...request, length: "huge" });
 ok(r.status === 400 && typeof r.json.error === "string", "a request that does not fit is refused");
 r = await call("POST", "/api/queue/generate", "nonsense");
@@ -44,3 +46,4 @@ r = await call("DELETE", `/api/queue/generate?key=${encodeURIComponent(key)}`);
 ok(r.status === 200, "a waiting Generate can be stopped");
 ok(!(await call("GET", "/api/queue")).json.items.some((i) => i.key === `gen:${key}`), "…and is no longer listed");
 ok((await call("DELETE", `/api/queue/generate?key=${encodeURIComponent(key)}`)).status === 404, "stopping one that is not there is a 404");
+await call("PUT", "/api/queue/paused", { paused: false });

@@ -117,6 +117,10 @@ export async function runGenerate(draftKey: string): Promise<void> {
   const itemKey = genItemKey(draftKey);
   const item = getItem(itemKey);
   if (!item || item.type !== "generate" || workerState().generates.has(draftKey)) return;
+  if (!generateRequest.safeParse(item.data.request).success) {
+    updateItem(itemKey, { state: "failed", data: { error: "The request for this Generate is not valid." } });
+    return;
+  }
   const req = item.data.request as GenerateRequest;
   const settings = getSettings() ?? parseSettings({});
   const run = { text: "", ctl: new AbortController() };

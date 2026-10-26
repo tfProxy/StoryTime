@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { handlePost } from "@/lib/api";
+import { getWorker } from "@/lib/worker";
+import { pump } from "@/lib/worker/loop";
 import { getPaused, setPaused } from "@/lib/worker/paused";
 
 export const dynamic = "force-dynamic";
@@ -11,5 +13,10 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  return handlePost(request, z.object({ paused: z.boolean() }), ({ paused }) => ({ paused: setPaused(paused) }), 200);
+  getWorker();
+  return handlePost(request, z.object({ paused: z.boolean() }), ({ paused }) => {
+    setPaused(paused);
+    pump(); // resuming starts what waited; either way the watchers are told
+    return { paused };
+  }, 200);
 }
