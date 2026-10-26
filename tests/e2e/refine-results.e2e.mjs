@@ -119,7 +119,7 @@ try {
   ok((await page.locator("canvas[data-layer=paint]").evaluate((c) => getComputedStyle(c).visibility)) === "hidden" && (await page.locator("canvas[data-layer=mask]").evaluate((c) => getComputedStyle(c).visibility)) === "hidden", "the paint and mask layers are hidden while it is on show");
   ok(await btn("Mask brush").isDisabled() && await btn("Paint brush").isDisabled() && await slider("Paint size").isDisabled() && await btn("Show mask").isDisabled() && await btn("Invert mask").isDisabled(), "the Mask and Paint tools are off");
   ok(await btn("Undo").isDisabled() && await btn("Redo").isDisabled() && await btn("Go").isDisabled() && (await btn("Go").getAttribute("title")).includes("Apply it or Trash it"), "Undo, Redo and Go are off (Go says why)");
-  ok(await btn("Accept").isDisabled() && (await btn("Accept").getAttribute("title")) === "Apply or deselect the result first", "Accept is off while a result is on show (and says why)");
+  ok(await btn("Keep picture").isDisabled() && (await btn("Keep picture").getAttribute("title")) === "Apply or deselect the result first", "Accept is off while a result is on show (and says why)");
   await drag(0.2, 0.7, 0.8, 0.7);
   ok((await strokes()) === 1 && (await maskStrokes()) === 1, "dragging on the picture draws nothing");
   const f0 = await frame();
@@ -184,7 +184,7 @@ try {
   await until(async () => (await attr("data-preview-ready")) === "1" && (await previewIs(1)), "result 1 on show");
   const head = await page.locator(".refine-head").boundingBox();
   const bar = await page.locator(".refine-bar").boundingBox();
-  ok(await nav("Accept").isVisible() && await nav("Cancel").isVisible() && (await nav("Cancel").boundingBox()).y < head.y + head.height && bar && await nav("Apply").isEnabled() && await nav("Trash").isEnabled(), "Accept and Cancel are in the toolbar at the top; Apply and Trash are in the tools bar and on");
+  ok(await nav("Keep picture").isVisible() && await nav("Cancel").isVisible() && (await nav("Cancel").boundingBox()).y < head.y + head.height && bar && await nav("Apply").isEnabled() && await nav("Trash").isEnabled(), "Accept and Cancel are in the toolbar at the top; Apply and Trash are in the tools bar and on");
   await nav("Apply").click();
   await until(async () => (await selectedIndex()) === null && (await baseIs(1)), "Apply to switch the picture");
   await until(async () => Math.abs((await frame()).width - zoomed.width) < 2, "the zoom kept after Apply");

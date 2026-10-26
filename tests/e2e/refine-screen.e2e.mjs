@@ -90,7 +90,7 @@ try {
   ok((await stats("base")).w === 96, "the working picture is loaded at its own size");
 
   // ================= layout =================
-  ok(await btn("Accept").isEnabled() && (await btn("Accept").getAttribute("title")) === "Keep this picture and go back", "Accept is there and on once the picture is loaded (tests/e2e/refine-accept.e2e.mjs covers what it does)");
+  ok(await btn("Keep picture").isEnabled() && (await btn("Keep picture").getAttribute("title")) === "Keep this picture and go back", "Accept is there and on once the picture is loaded (tests/e2e/refine-accept.e2e.mjs covers what it does)");
   ok(await btn("Undo").isDisabled() && await btn("Redo").isDisabled(), "Undo and Redo start off");
   const lay = await page.evaluate(() => {
     const r = (s) => document.querySelector(s).getBoundingClientRect();

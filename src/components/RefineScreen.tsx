@@ -360,7 +360,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
             title={reviewing ? "Apply or deselect the result first" : "Keep this picture and go back"}
             onClick={accept}
           >
-            {accepting ? "Saving…" : "Accept"}
+            {accepting ? "Saving…" : "Keep picture"}
           </button>
           <button type="button" className="refine-cancel" disabled={accepting} onClick={cancel} title="Throw this away and go back">
             Cancel
