@@ -111,6 +111,31 @@ try {
   const swatch = await page.locator(".refine-swatch").getAttribute("data-color");
   ok(swatch === picked, "the swatch shows the current colour");
 
+  // ================= panning =================
+  const sb = await stage.boundingBox();
+  await page.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
+  for (let i = 0; i < 4; i++) await page.mouse.wheel(0, -300);
+  await until(async () => (await box()).width > sb.width * 1.2, "the picture zoomed in");
+  const panFrom = await box();
+  await btn("Pan").click();
+  ok((await btn("Pan").getAttribute("aria-pressed")) === "true", "the Pan tool is in the Paint section");
+  await page.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(sb.x + sb.width / 2 + 30, sb.y + sb.height / 2 + 20, { steps: 4 });
+  await page.mouse.up();
+  const panned = await box();
+  ok(Math.abs(panned.x - panFrom.x - 30) < 2 && Math.abs(panned.y - panFrom.y - 20) < 2 && await strokes() === 0, "dragging with the Pan tool moves the picture and draws nothing");
+  await btn("Paint brush").click();
+  await page.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.move(sb.x + sb.width / 2 - 25, sb.y + sb.height / 2 - 10, { steps: 4 });
+  await page.mouse.up({ button: "middle" });
+  const mid = await box();
+  ok(Math.abs(mid.x - panned.x + 25) < 2 && Math.abs(mid.y - panned.y + 10) < 2 && await strokes() === 0, "the middle mouse button pans with any tool");
+  await page.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
+  for (let i = 0; i < 6; i++) await page.mouse.wheel(0, 300);
+  await until(async () => Math.abs((await box()).width - panFrom.width / 1.0) > 1 && (await box()).width < panFrom.width * 0.6, "zoomed back out");
+
   // ================= paint =================
   await hex.fill("#00ff00");
   await btn("Paint brush").click();

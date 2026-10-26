@@ -111,6 +111,8 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
   const pointers = useRef(new Map<number, Pt>());
   const penIds = useRef(new Set<number>());
   const gesture = useRef<{ d0: number; mid0: [number, number]; v0: View } | null>(null);
+  /** A one-pointer drag that moves the picture (the pan tool, or the middle mouse button). */
+  const panning = useRef<{ id: number; x: number; y: number; v0: View } | null>(null);
   const lastTap = useRef<{ t: number; x: number; y: number; dot: boolean } | null>(null);
 
   const frame = fitSize(stage, w, h);
@@ -292,7 +294,7 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
     if (!c) return;
     c.style.width = c.style.height = `${diameter}px`;
     c.style.transform = `translate(${sx - diameter / 2}px, ${sy - diameter / 2}px)`;
-    c.style.opacity = visible && !latest.current.previewing ? String(opacity) : "0";
+    c.style.opacity = visible && !latest.current.previewing && latest.current.tool !== "pan" ? String(opacity) : "0";
   }
 
   function previewDiameter(pictureDiameter: number) {
@@ -468,7 +470,7 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
 
   function onPointerDown(e: React.PointerEvent) {
     if (!loaded) return;
-    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (e.pointerType === "mouse" && e.button !== 0 && e.button !== 1) return;
     // Palm rejection: a hand resting on the screen while the pen is down is not a finger.
     if (e.pointerType === "touch" && penIds.current.size > 0) return;
     if (e.pointerType === "pen") {
@@ -485,9 +487,17 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
       } catch {
         // Capture is only a convenience.
       }
+      if (e.button === 1 || latest.current.tool === "pan") {
+        panning.current = { id: e.pointerId, x: e.clientX, y: e.clientY, v0: viewRef.current };
+        stageEl.current!.dataset.panning = "true";
+        placeCursor(0, 0, false);
+        return;
+      }
       beginStroke(e);
       if (e.pointerType !== "mouse") placeCursor(...stagePoint(e), true, 0.55);
     } else if (pointers.current.size === 2) {
+      panning.current = null;
+      if (stageEl.current) delete stageEl.current.dataset.panning;
       dropStroke();
       placeCursor(0, 0, false);
       startGesture();
@@ -510,6 +520,12 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
       const r = stageEl.current!.getBoundingClientRect();
       const mid: [number, number] = [(a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top];
       setView(pinchView(g.v0, g.mid0, g.d0, mid, Math.hypot(a.x - b.x, a.y - b.y), stageRef.current, frameRef.current));
+      return;
+    }
+    const pan = panning.current;
+    if (pan && pan.id === e.pointerId) {
+      const { v0 } = pan;
+      setView(clampView({ scale: v0.scale, tx: v0.tx + e.clientX - pan.x, ty: v0.ty + e.clientY - pan.y }, stageRef.current, frameRef.current));
       return;
     }
     const l = live.current;
@@ -544,6 +560,11 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) gesture.current = null;
     if (e.pointerType !== "mouse") placeCursor(0, 0, false);
+    if (panning.current?.id === e.pointerId) {
+      panning.current = null;
+      if (stageEl.current) delete stageEl.current.dataset.panning;
+      return;
+    }
     const l = live.current;
     if (!l || l.id !== e.pointerId) return;
     stopLive();
@@ -597,6 +618,10 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
       data-strokes={state.paint.length}
       data-mask-strokes={state.mask.strokes.length}
       onPointerDown={onPointerDown}
+      onMouseDown={(e) => {
+        // The middle button pans; stop the browser's autoscroll circle.
+        if (e.button === 1) e.preventDefault();
+      }}
       onPointerMove={onPointerMove}
       onPointerUp={(e) => endPointer(e, false)}
       onPointerCancel={(e) => endPointer(e, true)}

@@ -3146,6 +3146,14 @@ button.refine-nav:disabled {
   cursor: default;
 }
 
+.refine-stage[data-tool="pan"] {
+  cursor: grab;
+}
+
+.refine-stage[data-panning="true"] {
+  cursor: grabbing;
+}
+
 /* A result on show: the paint and mask are not drawn over it. */
 .refine-stage[data-previewing="true"] canvas[data-layer="paint"],
 .refine-stage[data-previewing="true"] canvas[data-layer="mask"] {

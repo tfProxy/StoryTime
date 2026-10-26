@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { HexColorPicker } from "react-colorful";
 import { normalizeHex } from "@/lib/paint";
 import type { RefineTool } from "@/lib/refine/tools";
-import { AirbrushIcon, BrushIcon, EraserIcon, EyedropperIcon, EyeIcon, InvertIcon, LassoIcon, MaskBrushIcon, MaskEraserIcon } from "./RefineIcons";
+import { AirbrushIcon, BrushIcon, EraserIcon, EyedropperIcon, HandIcon, EyeIcon, InvertIcon, LassoIcon, MaskBrushIcon, MaskEraserIcon } from "./RefineIcons";
 
 // The left column's panels. Each is a <section> with a heading, icon buttons on one line, and sliders. To add a
 // panel (the next step's Prompt and Results), put another <section className="refine-panel"> in RefineScreen's
@@ -122,6 +122,7 @@ export function MaskPanel({ tool, onTool, size, maxSize, onSize, softness, maxSo
 }
 
 const PAINT_BUTTONS: ToolButton[] = [
+  { tool: "pan", label: "Pan", title: "Drag to move the picture (the middle mouse button does this with any tool)", icon: HandIcon },
   { tool: "paint-brush", label: "Paint brush", title: "Paint with the colour", icon: BrushIcon },
   { tool: "airbrush", label: "Airbrush", title: "Soft paint that builds up while you hold", icon: AirbrushIcon },
   { tool: "paint-eraser", label: "Paint eraser", title: "Take paint away (the picture is not touched)", icon: EraserIcon },

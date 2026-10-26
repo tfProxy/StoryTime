@@ -39,6 +39,18 @@ export function EraserIcon() {
   );
 }
 
+/** An open hand: drag the picture around. */
+export function HandIcon() {
+  return (
+    <svg {...svg}>
+      <path d="M18 11V6a2 2 0 0 0-4 0" />
+      <path d="M14 10V4a2 2 0 0 0-4 0v2" />
+      <path d="M10 10.5V6a2 2 0 0 0-4 0v8" />
+      <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-5.9-2.4L3.4 16a2 2 0 0 1 3.2-2.4L8 15" />
+    </svg>
+  );
+}
+
 /** A pipette. */
 export function EyedropperIcon() {
   return (

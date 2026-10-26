@@ -3,9 +3,9 @@ import { MAX_PAINT_SIZE, MIN_PAINT_SIZE, normalizeHex } from "../paint";
 import { QUEUE_COUNTS } from "../settingsSchema";
 import { TOOLS_KEY_NAME } from "./session";
 
-export type RefineTool = "paint-brush" | "airbrush" | "paint-eraser" | "eyedropper" | "mask-brush" | "mask-eraser" | "mask-lasso";
+export type RefineTool = "pan" | "paint-brush" | "airbrush" | "paint-eraser" | "eyedropper" | "mask-brush" | "mask-eraser" | "mask-lasso";
 
-export const PAINT_TOOLS: readonly RefineTool[] = ["paint-brush", "airbrush", "paint-eraser", "eyedropper"];
+export const PAINT_TOOLS: readonly RefineTool[] = ["pan", "paint-brush", "airbrush", "paint-eraser", "eyedropper"];
 export const MASK_TOOLS: readonly RefineTool[] = ["mask-brush", "mask-eraser", "mask-lasso"];
 export const isMaskTool = (t: RefineTool) => MASK_TOOLS.includes(t);
 
