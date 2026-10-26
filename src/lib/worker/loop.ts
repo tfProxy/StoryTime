@@ -8,6 +8,7 @@ import { publish, QUEUE_CHANNEL, subscribe, workerState } from "./bus";
 import { genItemKey, runGenerate } from "./generate";
 import { listItems, updateItem, type WorkRow } from "./items";
 import { getPaused } from "./paused";
+import { recoverRuns, runStep } from "./runs";
 
 export const PUMP_MS = 5000;
 
@@ -48,8 +49,10 @@ function pumpOnce() {
   const items = listItems();
   // Generates take their turns in the order they were asked; a Generate goes before the next steps of runs (D16).
   const waitingGenerates = items.filter((i): i is WorkRow<"generate"> => i.type === "generate" && i.state === "waiting" && i.key === genItemKey(i.data.draftKey));
-  const waiting = waitingGenerates.map((i) => i.key);
-  const active = worker.generates.size > 0;
+  // Runs follow, the one that has waited longest first: a run goes back in line after each step, so they take turns.
+  const waitingRuns = items.filter((i): i is WorkRow<"run"> => i.type === "run" && i.state === "waiting").sort((a, b) => a.updatedAt - b.updatedAt);
+  const waiting = [...waitingGenerates, ...waitingRuns].map((i) => i.key);
+  const active = worker.generates.size > 0 || worker.runs.size > 0;
   const plan = schedule({
     ready: [],
     inFlight: [],
@@ -65,13 +68,15 @@ function pumpOnce() {
   worker.holder = plan.holder;
   for (const action of plan.actions) {
     if (action.kind !== "startWriting") continue;
+    // The runners handle their own failures; the catch only keeps one that escapes from stopping the server.
     const draftKey = waitingGenerates.find((i) => i.key === action.id)?.data.draftKey;
-    // runGenerate handles its own failures; this only keeps one that escapes from stopping the server.
     if (draftKey !== undefined) void runGenerate(draftKey).catch(() => {}).finally(pump);
+    const runId = waitingRuns.find((i) => i.key === action.id)?.data.runId;
+    if (runId !== undefined) void runStep(runId).catch(() => {}).finally(pump);
   }
-  // A waiting Generate says why.
-  const note = worker.generates.size > 0 ? "Waiting for the step in progress" : undefined;
-  for (const item of waitingGenerates) {
+  // A waiting Generate or run says why.
+  const note = worker.generates.size > 0 || worker.runs.size > 0 ? "Waiting for the step in progress" : undefined;
+  for (const item of [...waitingGenerates, ...waitingRuns]) {
     if (item.data.note !== note) updateItem(item.key, { data: { note } });
   }
   publish(QUEUE_CHANNEL, {
@@ -86,6 +91,7 @@ function pumpOnce() {
 export function startLoop() {
   const worker = workerState();
   recoverGenerates();
+  recoverRuns();
   subscribe(QUEUE_CHANNEL, (event) => {
     if ((event as { type?: string }).type !== "machine") pump();
   });

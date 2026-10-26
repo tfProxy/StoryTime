@@ -131,6 +131,12 @@ try {
   recoverGenerates();
   const restarted = getItem("gen:fill:z");
   ok(restarted?.state === "failed" && /restarted while writing/.test(restarted.data.error ?? ""), "after a restart, a Generate that was going is failed, with the reason");
+
+  // A run step that was going goes back in line (D12).
+  const { recoverRuns } = await import("../../src/lib/worker/runs.ts");
+  createItem({ key: "run:r1", type: "run", state: "working", data: { runId: "r1", storyId: "s", storyTitle: "S", startChapterId: null, startTitle: "", mode: "fill", done: 0, total: 2 } });
+  recoverRuns();
+  ok(getItem("run:r1")?.state === "waiting", "after a restart, a run that was working goes back in line");
 } finally {
   await ai.close();
   fs.rmSync(dir, { recursive: true, force: true });
