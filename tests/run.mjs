@@ -73,7 +73,8 @@ async function withServer(fn) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "storytime-test-"));
   const server = spawn(nodeBin, [nextBin, "start", "-p", String(PORT)], {
     cwd: root,
-    env: { ...process.env, STORYTIME_DB: path.join(dir, "test.db") },
+    // STORYTIME_TEST=1 turns on the routes that exist only for the API tests (see src/app/api/queue/test-items).
+    env: { ...process.env, STORYTIME_DB: path.join(dir, "test.db"), STORYTIME_TEST: "1" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let log = "";

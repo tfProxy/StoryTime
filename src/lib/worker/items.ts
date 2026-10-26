@@ -1,8 +1,10 @@
 // The work queue's items in SQLite (`work_items`, migration 32): pictures to make, AI runs and Generates. A row's
 // columns are what the scheduler reads; `data` is JSON per type, checked here on every write. The browser shows an
-// item as `WorkItem` (WorkQueue.tsx); later tasks build that from a row.
+// item as `WorkItem` (WorkQueue.tsx); later tasks build that from a row. Every change is published on the queue's
+// channel, as `{type: "item", item: row}` or `{type: "removed", key}`, for the events route.
 import { z } from "zod";
 import { db } from "../db";
+import { publish, QUEUE_CHANNEL } from "./bus";
 import { targetKey, type PictureTarget } from "../pictureTarget";
 
 export const ITEM_TYPES = ["picture", "run", "generate"] as const;
@@ -149,7 +151,9 @@ export function createItem<T extends ItemType>(item: NewItem<T>, now = Date.now(
   db()
     .prepare(`INSERT INTO work_items (${COLUMNS}) VALUES (?, ?, ?, ?, ?, 0, ?, NULL, ?, ?)`)
     .run(item.key, item.type, item.state, targetOf, JSON.stringify(data), item.readyAt ?? null, now, now);
-  return getItem(item.key) as WorkRow<T>;
+  const created = getItem(item.key) as WorkRow<T>;
+  publish(QUEUE_CHANNEL, { type: "item", item: created });
+  return created;
 }
 
 export function getItem(key: string): WorkRow | null {
@@ -181,7 +185,7 @@ export type ItemPatch = {
 /** Changes an item, checking the merged data; null when there is no such item. A state of done or failed sets `endedAt` unless given. */
 export function updateItem(key: string, patch: ItemPatch, now = Date.now()): WorkRow | null {
   const d = db();
-  return d.transaction((): WorkRow | null => {
+  const updated = d.transaction((): WorkRow | null => {
     const row = d.prepare(`SELECT ${COLUMNS} FROM work_items WHERE key = ?`).get(key) as Row | undefined;
     if (!row) return null;
     const merged: Record<string, unknown> = { ...JSON.parse(row.data) };
@@ -204,9 +208,13 @@ export function updateItem(key: string, patch: ItemPatch, now = Date.now()): Wor
     );
     return getItem(key);
   })();
+  if (updated) publish(QUEUE_CHANNEL, { type: "item", item: updated });
+  return updated;
 }
 
 /** Removes an item; false when there was none. */
 export function deleteItem(key: string): boolean {
-  return db().prepare(`DELETE FROM work_items WHERE key = ?`).run(key).changes > 0;
+  const removed = db().prepare(`DELETE FROM work_items WHERE key = ?`).run(key).changes > 0;
+  if (removed) publish(QUEUE_CHANNEL, { type: "removed", key });
+  return removed;
 }
