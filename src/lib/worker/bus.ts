@@ -40,6 +40,8 @@ export type WorkerState = {
   started: boolean;
   /** Intervals the worker keeps, so they can be stopped. */
   timers: ReturnType<typeof setInterval>[];
+  /** The Generates going now, by draft key: the text so far, and how to stop it. */
+  generates: Map<string, { text: string; ctl: AbortController }>;
 };
 
 declare global {
@@ -48,7 +50,7 @@ declare global {
 
 /** The one worker state of this process, made on first use. */
 export function workerState(): WorkerState {
-  return (globalThis.__storytimeWorker ??= { bus: createBus(), started: false, timers: [] });
+  return (globalThis.__storytimeWorker ??= { bus: createBus(), started: false, timers: [], generates: new Map() });
 }
 
 export const publish = (channel: string, event: unknown) => workerState().bus.publish(channel, event);
