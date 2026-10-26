@@ -147,5 +147,22 @@ ok(!refusedItem(() => item("r1", "later")), "an issue can be put off");
 ok(refusedItem(() => item("r2", "dismissed")), "…and has one decision at a time");
 ok(refusedItem(() => tagDb.prepare(`UPDATE review_items SET status = 'maybe'`).run()), "the status is one of dismissed, later and intentional");
 tagDb.close();
+
+// the work queue (schema version 32): items of a known type and state, and uploads
+ok(MIGRATIONS.length >= 32, "migration 32 exists");
+const wq = new Database(":memory:");
+wq.exec(MIGRATIONS[31]);
+const wqCols = (t: string) => (wq.pragma(`table_info(${t})`) as { name: string }[]).map((c) => c.name);
+ok(["key", "type", "state", "target_key", "data", "moved", "ready_at", "ended_at", "created_at", "updated_at"].every((c) => wqCols("work_items").includes(c)), "work items have their columns");
+ok(["id", "type", "bytes", "created_at"].every((c) => wqCols("work_uploads").includes(c)), "work uploads have their columns");
+const wqItem = (key: string, type: string, state: string) =>
+  wq.prepare(`INSERT INTO work_items (key, type, state, data, created_at, updated_at) VALUES (?, ?, ?, '{}', 1, 1)`).run(key, type, state);
+const wqRefused = (f: () => unknown) => { try { f(); return false; } catch { return true; } };
+ok(!wqRefused(() => wqItem("a", "picture", "gathering")) && !wqRefused(() => wqItem("b", "run", "paused")), "a picture can be gathering and a run can be paused");
+ok(wqRefused(() => wqItem("c", "picture", "elsewhere")), "the state is one of gathering, waiting, working, paused, done and failed");
+ok(wqRefused(() => wqItem("d", "video", "waiting")), "the type is one of picture, run and generate");
+ok(wqRefused(() => wqItem("a", "picture", "waiting")), "a key is used once");
+ok((wq.prepare(`SELECT moved FROM work_items WHERE key = 'a'`).get() as { moved: number }).moved === 0, "an item has not been moved by default");
+wq.close();
 d.close();
 fs.rmSync(dir, { recursive: true, force: true });

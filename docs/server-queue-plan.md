@@ -97,7 +97,7 @@ Retry and Skip have no routes of their own today: `retryTask`/`skipTask` (`runne
 CREATE TABLE work_items (
   key        TEXT PRIMARY KEY,          -- "job-<id>", "run:<run id>", "gen:<draft key>"
   type       TEXT NOT NULL CHECK (type IN ('picture', 'run', 'generate')),
-  state      TEXT NOT NULL CHECK (state IN ('gathering', 'waiting', 'working', 'done', 'failed')),
+  state      TEXT NOT NULL CHECK (state IN ('gathering', 'waiting', 'working', 'paused', 'done', 'failed')),  -- 'paused': a run the author stopped or that waits for its plan to be checked (agreed with the owner); the scheduler skips it
   target_key TEXT,                      -- pictures: targetKey(target); others null
   data       TEXT NOT NULL,             -- JSON: per type, see items.ts (spec, count, view, progress, prompt_id, pictures, message, run id, request...)
   moved      INTEGER NOT NULL DEFAULT 0,
@@ -159,7 +159,7 @@ Ship Phase 0.
 
 ### Phase 1: the worker skeleton (idle)
 
-**1.1 Migration 32 and `items.ts`.** Add the tables above, `src/lib/worker/items.ts` (zod schemas for each item's `data`, `createItem`, `getItem`, `listItems` (oldest first, leaving out `done`/`failed` items older than 7 days), `updateItem(key, patch)`, `deleteItem`), and the migration test. Check: `npm test`.
+**1.1 Migration 32 and `items.ts` (done).** Add the tables above, `src/lib/worker/items.ts` (zod schemas for each item's `data`, `createItem`, `getItem`, `listItems` (oldest first, leaving out `done`/`failed` items older than 7 days), `updateItem(key, patch)`, `deleteItem`), and the migration test. Check: `npm test`.
 
 **1.2 Bus, SSE, worker start.** `bus.ts`, `sse.ts`, `worker/index.ts` (`startWorker()` creates the `globalThis` singleton once, runs restart recovery (D12; nothing to recover yet), schedules upload clean-up; `getWorker()` returns it, starting it if needed, so routes work even if instrumentation ran in another module copy), `src/instrumentation.ts`. `GET /api/queue` and `GET /api/queue/events` (`export const dynamic = "force-dynamic"`, `runtime = "nodejs"`). Write `tests/api/queue.test.mjs`: connect to the events route with `fetch` and read the body stream, check the first `items` event arrives, then create an item through a test-only path (or wait for 1.3) and check an `item` event arrives within 1 s, which proves events aren't buffered. Check: `npx next build` (watch for warnings about instrumentation), `node tests/run.mjs api queue`, and the Docker CI job after pushing (health check must still pass).
 
