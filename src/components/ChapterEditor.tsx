@@ -186,6 +186,31 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     setDraft(upgraded(d));
   }
 
+  /**
+   * A Generate has ended and the server has the text in the draft: what the Generate makes is taken from the server's
+   * draft, and anything else the author changed on the page meanwhile (the model picked, the choices typed) is kept
+   * and saved on top of it.
+   */
+  function showGenerated(d: Draft) {
+    baseRef.current = d.updatedAt;
+    setDraft((cur) =>
+      cur
+        ? {
+            ...cur,
+            updatedAt: d.updatedAt,
+            title: d.title,
+            body: d.body,
+            undo: d.undo,
+            versions: d.versions,
+            versionIndex: d.versionIndex,
+            // the choice text and suggestions the Generate made, unless the author has written their own meanwhile
+            newChoiceLabel: cur.newChoiceLabel.trim() ? cur.newChoiceLabel : d.newChoiceLabel,
+            suggestions: cur.choices.some((c) => c.trim()) ? cur.suggestions : d.suggestions,
+          }
+        : upgraded(d),
+    );
+  }
+
   // An edit draft saved before summaries were carried into it has no summary field: start it from the chapter's.
   function upgraded(d: Draft): Draft {
     if (target.kind === "fill" && !d.newChoiceLabel) return { ...d, newChoiceLabel: target.label };
@@ -288,7 +313,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     if (wasGenerating.current && !now && loadedRef.current) {
       getDraft(draftKey)
         .then((d) => {
-          if (d) showStored(d);
+          if (d) showGenerated(d);
         })
         .catch(() => {});
     }
@@ -322,12 +347,18 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   }, []);
 
   // A Generate in the queue puts its text into this draft as it comes (the queue saves it itself when no page is open).
+  const generatingRef = useRef(false);
+  useEffect(() => {
+    generatingRef.current = !!generating;
+  }, [generating]);
   const draftReady = draft !== null;
   useEffect(() => {
     if (!draftReady) return;
+    // A page that opens while its Generate is going shows the text as it comes (reading mode). One that started the Generate
+    // is in reading mode already; the author may switch to editing, and the pieces that follow do not switch it back.
+    if (generatingRef.current) setReading(true);
     return listenDraft(draftKey, {
       onText: (text, base) => {
-        setReading(true);
         setDraft((d) => (d ? applyGenerated(d, parseChapterOutput(text), { continued: isBegun(d, base) }) : d));
       },
       onDone: (after) => setDraft((d) => (d ? applyAfterGenerate(d, after) : d)),

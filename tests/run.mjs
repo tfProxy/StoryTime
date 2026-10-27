@@ -99,6 +99,23 @@ async function withServer(fn) {
   }
 }
 
+/**
+ * The work queue is kept by the server, so what a test file leaves in it (finished jobs, a paused queue, a Generate that
+ * is done) is what the next file finds. Each browser file starts with the queue running and empty.
+ */
+async function emptyQueue(base) {
+  const send = (method, url, body) => fetch(base + url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined }).catch(() => null);
+  await send("PUT", "/api/queue/paused", { paused: false });
+  const res = await send("GET", "/api/queue");
+  const items = res?.ok ? (await res.json()).items : [];
+  for (const i of items) {
+    const url = `/api/queue/items/${encodeURIComponent(i.key)}`;
+    if (i.state === "waiting" || i.state === "working" || i.state === "gathering") await send("POST", url, { action: "stop" });
+    if (i.type === "run") await send("DELETE", `/api/ai-runs/${encodeURIComponent(i.data.runId)}/queue?end=1`);
+    await send("DELETE", url);
+  }
+}
+
 const results = [];
 if (suites.includes("unit")) {
   for (const f of filesFor("unit", /\.test\.m?ts$/)) results.push(runFile(f, {}));
@@ -112,7 +129,10 @@ if (needsServer) {
       for (const f of filesFor("api", /\.test\.mjs$/)) results.push(runFile(f, env));
     }
     if (suites.includes("e2e")) {
-      for (const f of filesFor("e2e", /\.e2e\.mjs$/)) results.push(runFile(f, env));
+      for (const f of filesFor("e2e", /\.e2e\.mjs$/)) {
+        await emptyQueue(base);
+        results.push(runFile(f, env));
+      }
     }
   });
 }

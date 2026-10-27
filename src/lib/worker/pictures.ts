@@ -333,7 +333,10 @@ export function watchFound(key: string, url: string, found: TaggedJob) {
  */
 export async function scanComfy(): Promise<void> {
   const worker = workerState();
-  if (worker.scan.running) return;
+  if (worker.scan.running) {
+    worker.scan.again = true;
+    return;
+  }
   const url = (getSettings() ?? parseSettings({})).comfy.url.trim();
   if (!url) return;
   worker.scan.running = true;
@@ -367,6 +370,11 @@ export async function scanComfy(): Promise<void> {
     // ComfyUI not reachable: the Illustrate page's checkpoint check says so.
   } finally {
     worker.scan.running = false;
+    // Asked again while it ran (a page opened): the jobs ComfyUI finished meanwhile are looked for now.
+    if (worker.scan.again) {
+      worker.scan.again = false;
+      void scanComfy();
+    }
   }
 }
 
@@ -405,13 +413,9 @@ export async function recoverPictures(wait = RECOVER_WAIT_MS): Promise<void> {
   }
 }
 
-/** How long after the last scan a page opening is enough reason to scan again. */
-const RESCAN_MS = 2000;
-
-/** Scans when it is on and the last scan was a while ago: a page has just come into view, so jobs ComfyUI finished meanwhile are looked for now. */
+/** A page has opened: when the scan is on, ComfyUI is asked now for jobs it finished meanwhile (a scan going already is followed by another). */
 export function scanIfDue() {
-  const { scan } = workerState();
-  if (scan.enabled && Date.now() - scan.last > RESCAN_MS) void scanComfy();
+  if (workerState().scan.enabled) void scanComfy();
 }
 
 /** The waiting jobs as the scheduler takes them (oldest first; jobs the owner moved have the earliest times). */
