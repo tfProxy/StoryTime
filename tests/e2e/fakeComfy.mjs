@@ -105,6 +105,7 @@ const NODES = [
   "ModelSamplingAuraFlow", "CFGNorm", "ReferenceLatent", "FluxGuidance", "ConditioningZeroOut", "LoraLoaderModelOnly", "LoraLoader",
   "EmptySD3LatentImage",
   "LoadImageMask", "SetLatentNoiseMask", "InvertMask", "ImageCompositeMasked",
+  "GrowMask", "DifferentialDiffusion",
 ];
 const GGUF_NODES = ["UnetLoaderGGUF", "CLIPLoaderGGUF", "DualCLIPLoaderGGUF"];
 // The nodes of ComfyUI_IPAdapter_plus (and the CLIP Vision loader reference pictures use), present only with `ipAdapter: true`.

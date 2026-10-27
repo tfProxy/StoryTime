@@ -41,6 +41,8 @@ export type PictureParams = {
   image?: string;
   /** Inpainting: the mask's name in ComfyUI's input folder (white = redraw). Only used together with `image`. */
   mask?: string;
+  /** Inpainting: how many pixels the sampled mask grows past the painted one (the paste-back keeps the painted one). */
+  grow?: number;
   /** Image to image: how far the pictures may drift from the starting one, 0 to 1 (default 1). */
   denoise?: number;
   /** The built-in workflow's sampler settings (from the preset); other workflows keep their own. */
@@ -294,6 +296,11 @@ export function fillWorkflow(wf: Workflow, p: PictureParams): Workflow {
   addLoras(out, p.loras ?? []);
   // After the LoRAs, so the references' adapters wrap the model the sampler really uses.
   if (refs.length > 0) out = withReferences(out, refs, p.ipAdapter!);
+  // Our own graphs get the grown mask and Differential Diffusion; a workflow with placeholders is left as its author wired it.
+  if (p.image && p.mask && (builtin || placeholdersIn(wf).size === 0)) {
+    growNoiseMask(out, p.grow ?? 0);
+    addDifferentialDiffusion(out);
+  }
   setPrefix(out, p.prefix ?? DEFAULT_PREFIX);
   return out;
 }
@@ -376,6 +383,43 @@ export function redrawOnlyMask(wf: Workflow, mask: string, load: string, repeat:
     wf[paste] = { class_type: "ImageCompositeMasked", inputs: { destination: link, source: [load, 0], x: 0, y: 0, resize_source: false, mask: [invert, 0] } };
     wf[id].inputs.images = [paste, 0];
   });
+}
+
+/**
+ * Makes each SetLatentNoiseMask sample over the mask grown by `grow` pixels (GrowMask), so the seam falls
+ * inside redrawn pixels. The paste-back in `redrawOnlyMask` keeps the un-grown mask.
+ */
+export function growNoiseMask(wf: Workflow, grow: number) {
+  if (!(grow > 0)) return;
+  let n = 0;
+  for (const node of Object.values(wf)) {
+    if (node.class_type !== "SetLatentNoiseMask" || !isLink(node.inputs.mask)) continue;
+    n++;
+    const id = `storytime_grow_${n}`;
+    wf[id] = { class_type: "GrowMask", inputs: { mask: node.inputs.mask, expand: grow, tapered_corners: true } };
+    node.inputs.mask = [id, 0];
+  }
+}
+
+/**
+ * Puts a DifferentialDiffusion node in front of every sampler's model (one per distinct model link), so the
+ * soft edge of the mask means less change near the edge.
+ */
+export function addDifferentialDiffusion(wf: Workflow) {
+  const made = new Map<string, string>();
+  for (const node of Object.values(wf)) {
+    if (!/^(KSampler|KSamplerAdvanced)$/.test(node.class_type)) continue;
+    const model = node.inputs.model;
+    if (!isLink(model)) continue;
+    const key = `${model[0]}:${model[1]}`;
+    let id = made.get(key);
+    if (!id) {
+      id = `storytime_dd_${made.size + 1}`;
+      made.set(key, id);
+      wf[id] = { class_type: "DifferentialDiffusion", inputs: { model } };
+    }
+    node.inputs.model = [id, 0];
+  }
 }
 
 function fillSettings(wf: Workflow, p: PictureParams): Workflow {

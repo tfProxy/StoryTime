@@ -11,7 +11,7 @@ import { MAX_REFERENCES, storedOf, uploadReference, type Reference } from "./ref
 import { uploadStart, type StartPicture, type Uploaded } from "./startPicture";
 import { builtinSampler, describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "./workflow";
 import { cancelPrompt, queuePrompt, uploadImage, type Progress } from "./client";
-import { renderMask, type PaintedArea } from "../mask";
+import { maskGrow, renderMask, type PaintedArea } from "../mask";
 import type { JobRecord, JobTag } from "./jobTag";
 
 /** Everything a job is made with, as it was when it was asked for. */
@@ -217,7 +217,7 @@ export async function queueJob(
             loras: drawLoras,
             tuning: drawTuning(family.model, draw.sampler),
             textEncoderDevice: draw.textEncoderDevice,
-            ...(from && { image: from.name, denoise: input.redraw, ...(maskName && { mask: maskName }) }),
+            ...(from && { image: from.name, denoise: input.redraw, ...(maskName && { mask: maskName, grow: maskGrow(area!.width, area!.height) }) }),
           })
       : fillWorkflow(base!, {
           prompt,
@@ -234,7 +234,7 @@ export async function queueJob(
             refs: refs.map((r, i) => ({ image: refNames[i], role: r.role, weight: r.weight })),
             ipAdapter: { ipadapter: input.ipAdapter!.files.ipAdapter, clipVision: input.ipAdapter!.files.clipVision, mode: draw.refMode, end: draw.refEnd },
           }),
-          ...(from && { image: from.name, denoise: input.redraw, ...(maskName && { mask: maskName }) }),
+          ...(from && { image: from.name, denoise: input.redraw, ...(maskName && { mask: maskName, grow: maskGrow(area!.width, area!.height) }) }),
         });
   const denoise = from ? denoiseOf(input) : null;
   // Everything the log records about the job. It goes to ComfyUI with the job too, so a page opened while

@@ -1,4 +1,4 @@
-import { clampView, clientToPicture, coverageOf, drawStroke, emptyMask, fitSize, fitView, isDoubleTap, paintMask, pinchView, strokeWidth, withoutLastStroke, zoomAt, type MaskStroke } from "../../src/lib/mask.ts";
+import { clampView, clientToPicture, coverageOf, drawStroke, emptyMask, fitSize, fitView, isDoubleTap, maskGrow, paintMask, pinchView, strokeWidth, withoutLastStroke, zoomAt, type MaskStroke } from "../../src/lib/mask.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const near = (a: number, b: number) => Math.abs(a - b) < 1e-6;
@@ -30,6 +30,10 @@ ok(coverageOf(rgba([[255, 0, 0, 255], [0, 0, 0, 255], [255, 255, 255, 255], [0, 
 ok(coverageOf(rgba([[0, 0, 0, 0], [255, 0, 0, 200]]), 3) === 0.5, "…or opaque ones (alpha channel)");
 ok(coverageOf(new Uint8ClampedArray(0)) === 0, "no pixels, no coverage");
 ok(coverageOf(rgba([[128, 0, 0, 255], [127, 0, 0, 255]])) === 0.5, "a mid-grey counts from 128 up");
+
+// how far the sampled area grows past the painted one
+ok(maskGrow(1344, 768) === 13 && maskGrow(768, 1344) === 13, "the sampled mask grows by 1% of the longer side");
+ok(maskGrow(100, 100) === 4 && maskGrow(0, 0) === 4, "…but at least 4 pixels");
 
 // fit and zoom
 const stage = { w: 400, h: 800 };

@@ -1,4 +1,4 @@
-import { BUILTIN_IMG2IMG, BUILTIN_INPAINT, BUILTIN_SAMPLER, BUILTIN_WORKFLOW, builtinSampler, describeWorkflow, filenamePrefix, fillWorkflow, parseWorkflow, partialSteps, randomSeed, stepsToRun, WorkflowError, type PictureParams, type Workflow } from "../../src/lib/comfy/workflow.ts";
+import { addDifferentialDiffusion, growNoiseMask, BUILTIN_IMG2IMG, BUILTIN_INPAINT, BUILTIN_SAMPLER, BUILTIN_WORKFLOW, builtinSampler, describeWorkflow, filenamePrefix, fillWorkflow, parseWorkflow, partialSteps, randomSeed, stepsToRun, WorkflowError, type PictureParams, type Workflow } from "../../src/lib/comfy/workflow.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const throwsWorkflowError = (fn: () => unknown) => {
@@ -263,6 +263,51 @@ ok(noMaskSlot !== null && noMaskSlot.includes("{{mask}}"), "inpaint placeholders
 ok(describeWorkflow(BUILTIN_WORKFLOW).mask === true, "describe: the built-in workflow can redraw part of a picture");
 ok(describeWorkflow(maskPlaceholders).mask === true && describeWorkflow(imgPlaceholders).mask === false && describeWorkflow(custom).mask === false, "describe: a placeholder workflow can only with {{mask}}");
 ok(describeWorkflow(sdxl).mask === true && describeWorkflow(bare).mask === false, "describe: a detected workflow can when it can start from a picture");
+
+// ---- the sampled mask grows past the painted one, and the model goes through Differential Diffusion ----
+{
+  const classesOf = (wf: Workflow) => Object.values(wf).map((n) => n.class_type);
+  const samplersOf = (wf: Workflow) => Object.values(wf).filter((n) => /^(KSampler|KSamplerAdvanced)$/.test(n.class_type));
+  const grown = { ...maskParams, grow: 13 };
+  const gBuilt = fillWorkflow(BUILTIN_WORKFLOW, grown);
+  const grow = gBuilt.storytime_grow_1;
+  ok(grow.class_type === "GrowMask" && JSON.stringify(grow.inputs) === '{"mask":["13",0],"expand":13,"tapered_corners":true}' && JSON.stringify(gBuilt["14"].inputs.mask) === '["storytime_grow_1",0]', "grow builtin: a GrowMask sits between the mask loader and SetLatentNoiseMask");
+  ok(JSON.stringify(gBuilt["15"].inputs.mask) === '["13",0]' && JSON.stringify(gBuilt["16"].inputs.mask) === '["15",0]', "grow builtin: the paste-back mask is still the inverted, un-grown one");
+  const dd = gBuilt.storytime_dd_1;
+  ok(dd.class_type === "DifferentialDiffusion" && JSON.stringify(dd.inputs) === '{"model":["4",0]}' && JSON.stringify(gBuilt["3"].inputs.model) === '["storytime_dd_1",0]' && gBuilt["3"].class_type === "KSamplerAdvanced", "grow builtin: the sampler (a KSamplerAdvanced) takes its model through DifferentialDiffusion");
+  ok(JSON.stringify(BUILTIN_INPAINT).includes("GrowMask") === false && JSON.stringify(BUILTIN_WORKFLOW).includes("DifferentialDiffusion") === false, "grow builtin: the built-in workflows are not changed");
+  const gLora = fillWorkflow(BUILTIN_WORKFLOW, { ...grown, loras: [{ name: "a.safetensors", strength: 0.8 }] });
+  ok(JSON.stringify(gLora.storytime_dd_1.inputs.model) === '["storytime_lora_1",0]' && JSON.stringify(gLora["3"].inputs.model) === '["storytime_dd_1",0]', "grow builtin: with LoRAs, DifferentialDiffusion wraps the LoRA output");
+  const gNone = fillWorkflow(BUILTIN_WORKFLOW, { ...grown, grow: 0 });
+  ok(!classesOf(gNone).includes("GrowMask") && JSON.stringify(gNone["14"].inputs.mask) === '["13",0]' && gNone.storytime_dd_1?.class_type === "DifferentialDiffusion", "grow builtin: with grow 0 there is no GrowMask, but DifferentialDiffusion is still added");
+  ok(!classesOf(fillWorkflow(BUILTIN_WORKFLOW, maskParams)).includes("GrowMask"), "grow builtin: with no grow given there is no GrowMask");
+  const plainImg = fillWorkflow(BUILTIN_WORKFLOW, { ...imgParams, grow: 13 });
+  ok(JSON.stringify(plainImg) === JSON.stringify(imgBuilt) && JSON.stringify(fillWorkflow(BUILTIN_WORKFLOW, { ...params, grow: 13 })) === JSON.stringify(built), "grow builtin: with no mask (or no picture), the graph is exactly as before");
+
+  const gSdxl = fillWorkflow(sdxl, grown);
+  ok(JSON.stringify(gSdxl.storytime_grow_1.inputs) === '{"mask":["storytime_mask",0],"expand":13,"tapered_corners":true}' && JSON.stringify(gSdxl.storytime_noise_mask.inputs.mask) === '["storytime_grow_1",0]', "grow detected: a GrowMask sits between the mask loader and SetLatentNoiseMask");
+  ok(JSON.stringify(gSdxl.storytime_mask_invert.inputs.mask) === '["storytime_mask",0]' && JSON.stringify(gSdxl.storytime_paste_1.inputs.mask) === '["storytime_mask_invert",0]', "grow detected: the paste-back mask is still the inverted, un-grown one");
+  ok(JSON.stringify(gSdxl.storytime_dd_1.inputs.model) === '["4",0]' && JSON.stringify(gSdxl["3"].inputs.model) === '["storytime_dd_1",0]' && JSON.stringify(sdxl["3"].inputs.model) === '["4",0]', "grow detected: the sampler's model goes through DifferentialDiffusion (and the original is untouched)");
+  ok(JSON.stringify(fillWorkflow(sdxl, { ...imgParams, grow: 13 })) === JSON.stringify(sdxlImg), "grow detected: with no mask, the graph is exactly as before");
+
+  const gPlaceholders = fillWorkflow({ ...maskPlaceholders, "1": { ...maskPlaceholders["1"], inputs: { ...maskPlaceholders["1"].inputs, model: ["9", 0] } } }, grown);
+  ok(!classesOf(gPlaceholders).includes("GrowMask") && !classesOf(gPlaceholders).includes("DifferentialDiffusion") && JSON.stringify(gPlaceholders["1"].inputs.model) === '["9",0]', "grow placeholders: a workflow with {{mask}} is left as its author wired it");
+
+  // The two helpers on their own.
+  const two: Workflow = {
+    a: { class_type: "KSampler", inputs: { model: ["m", 0] } },
+    b: { class_type: "KSamplerAdvanced", inputs: { model: ["m", 0] } },
+    c: { class_type: "KSampler", inputs: { model: ["n", 0] } },
+    d: { class_type: "KSampler", inputs: { model: "not a link" } },
+    e: { class_type: "SetLatentNoiseMask", inputs: { samples: ["x", 0], mask: "not a link" } },
+  };
+  addDifferentialDiffusion(two);
+  growNoiseMask(two, 5);
+  const ddIds = Object.keys(two).filter((k) => two[k].class_type === "DifferentialDiffusion");
+  const modelOf = (k: string) => (two[k].inputs.model as string[])[0];
+  ok(ddIds.length === 2 && modelOf("a") === modelOf("b") && modelOf("a") !== modelOf("c") && two.d.inputs.model === "not a link", "addDifferentialDiffusion: one node per distinct model link; samplers with no model link are skipped");
+  ok(samplersOf(two).length === 4 && !classesOf(two).includes("GrowMask") && two.e.inputs.mask === "not a link", "growNoiseMask: a mask input that is not a link is skipped");
+}
 
 // ---- the built-in workflow's sampler settings ----
 const sampled = (wf: Workflow) => Object.values(wf).find((n) => n.class_type === "KSampler" || n.class_type === "KSamplerAdvanced")!.inputs;

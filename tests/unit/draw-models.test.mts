@@ -105,6 +105,19 @@ ok(only(buildDraw(z, { ...P, image: "start.png", denoise: 1 }), "KSampler").inpu
   ok(only(m, "LoadImageMask").inputs.image === "mask.png" && noise.inputs.samples[0] === idOf(m, "RepeatLatentBatch") && sampler(m).inputs.latent_image[0] === idOf(m, "SetLatentNoiseMask"), "…with a painted area, the mask limits the sampler's latent");
   ok(paste.inputs.source[0] === idOf(m, "ImageScale") && paste.inputs.destination[0] === idOf(m, "VAEDecode") && only(m, "SaveImage").inputs.images[0] === idOf(m, "ImageCompositeMasked"), "…and the new pictures are pasted over the scaled picture outside it");
   ok(nodesOfType(buildDraw(z, { ...P, mask: "mask.png" }), "LoadImageMask").length === 0, "…a mask without a starting picture is ignored");
+  // The sampled mask grows past the painted one; the model goes through Differential Diffusion.
+  const g = buildDraw(z, { ...P, image: "start.png", denoise: 0.6, mask: "mask.png", grow: 13 });
+  const grow = only(g, "GrowMask");
+  const loader = idOf(g, "LoadImageMask");
+  ok(nodesOfType(g, "GrowMask").length === 1 && grow.inputs.mask[0] === loader && grow.inputs.expand === 13 && grow.inputs.tapered_corners === true && only(g, "SetLatentNoiseMask").inputs.mask[0] === idOf(g, "GrowMask"), "…with a grow, a GrowMask sits between the mask loader and SetLatentNoiseMask");
+  ok(target(g, only(g, "InvertMask").inputs.mask) === only(g, "LoadImageMask") && target(g, only(g, "ImageCompositeMasked").inputs.mask) === only(g, "InvertMask"), "…and the paste-back mask is still the inverted, un-grown one");
+  const dd = target(g, sampler(g).inputs.model);
+  ok(nodesOfType(g, "DifferentialDiffusion").length === 1 && dd === only(g, "DifferentialDiffusion") && target(g, dd?.inputs.model)?.class_type === "ModelSamplingAuraFlow", "…the sampler's model goes through DifferentialDiffusion");
+  const gl = buildDraw(z, { ...P, image: "start.png", denoise: 0.6, mask: "mask.png", grow: 13, loras: [{ name: "a.safetensors", strength: 0.8 }] });
+  ok(target(gl, target(gl, sampler(gl).inputs.model)?.inputs.model)?.class_type === "ModelSamplingAuraFlow" && target(gl, only(gl, "ModelSamplingAuraFlow").inputs.model)?.class_type === "LoraLoaderModelOnly", "…also with LoRAs (they come before the sampling node, so DifferentialDiffusion wraps the whole chain)");
+  const g0 = buildDraw(z, { ...P, image: "start.png", denoise: 0.6, mask: "mask.png", grow: 0 });
+  ok(nodesOfType(g0, "GrowMask").length === 0 && nodesOfType(g0, "DifferentialDiffusion").length === 1 && only(g0, "SetLatentNoiseMask").inputs.mask[0] === idOf(g0, "LoadImageMask"), "…with grow 0 there is no GrowMask, but DifferentialDiffusion is still added");
+  ok(ids(buildDraw(z, { ...P, image: "start.png", denoise: 0.6, grow: 13 })).join() === ids(buildDraw(z, { ...P, image: "start.png", denoise: 0.6 })).join() && nodesOfType(buildDraw(z, { ...P, grow: 13 }), "DifferentialDiffusion").length === 0, "…with no mask, no GrowMask or DifferentialDiffusion is added");
 }
 ok(only(wf, "ImageScale").inputs.width === 1008 && only(wf, "ImageScale").inputs.height === 1504, "…scaled to the size in multiples of 16");
 

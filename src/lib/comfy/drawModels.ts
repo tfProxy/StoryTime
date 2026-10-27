@@ -14,7 +14,7 @@ import {
   QWEN_TEXT_ENCODER, QWEN_VAE, T5_XXL, UNET_GGUF,
   type LoaderInfo, type ModelLora, type ModelPart, type NeededOption, type NodeInfo, type PartCheck, type TextEncoderDevice,
 } from "./modelParts";
-import { partialSteps, redrawOnlyMask, type SamplerTuning, type Workflow } from "./workflow";
+import { addDifferentialDiffusion, growNoiseMask, partialSteps, redrawOnlyMask, type SamplerTuning, type Workflow } from "./workflow";
 
 /** "checkpoint" is the SDXL-style all-in-one checkpoint of the built-in workflow; the rest are families of separate files. */
 export const DRAW_FAMILIES = ["checkpoint", "zimage", "flux", "chroma", "qwen-image", "krea2"] as const;
@@ -54,6 +54,8 @@ export type DrawParams = {
   denoise?: number;
   /** Redraw only a painted area: the mask's name in ComfyUI's input folder (white = redraw). Only used with `image`. */
   mask?: string;
+  /** Redraw only a painted area: how many pixels the sampled mask grows past the painted one (the paste-back keeps the painted one). */
+  grow?: number;
   /** The preset's LoRAs, applied in order after the model loader. */
   loras?: ModelLora[];
   /** The family's settings (`drawTuning`); its defaults when not given. */
@@ -505,6 +507,10 @@ export function buildDraw(check: FamilyCheck, p: DrawParams): Workflow {
   const wf = check.model.build(check.files, { ...p, optionalNodes: check.optionalNodes });
   switchToGgufLoaders(check.model.parts, check.files, check.loaders, wf);
   // The scaled picture ("11") is pasted back outside the mask, so it matches the decoded pictures' size.
-  if (p.image && p.mask) redrawOnlyMask(wf, p.mask, "11", "13");
+  if (p.image && p.mask) {
+    redrawOnlyMask(wf, p.mask, "11", "13");
+    growNoiseMask(wf, p.grow ?? 0);
+    addDifferentialDiffusion(wf);
+  }
   return wf;
 }

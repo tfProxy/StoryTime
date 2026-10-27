@@ -105,6 +105,9 @@ export function finishMask(target: Ctx, layer: CanvasImageSource, width: number,
   target.restore();
 }
 
+/** How far the sampled area grows past the painted one: 1% of the picture's longer side, at least 4 pixels. */
+export const maskGrow = (width: number, height: number) => Math.max(4, Math.round(Math.max(width, height) / 100));
+
 /** The share (0..1) of pixels whose channel (0 red .. 3 alpha) is above the threshold, from RGBA data. */
 export function coverageOf(data: ArrayLike<number>, channel = 0, threshold = 127): number {
   const n = Math.floor(data.length / 4);

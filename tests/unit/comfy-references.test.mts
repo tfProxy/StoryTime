@@ -52,8 +52,11 @@ ok(/nowhere to put/.test(message(() => withReferences({ "1": { class_type: "Save
 const paramsWith = { ...params, refs, ipAdapter: files };
 for (const [name, extra] of [["text to image", {}], ["image to image", { image: "start.png", denoise: 0.6 }], ["inpaint", { image: "start.png", denoise: 0.6, mask: "m.png" }]] as const) {
   const out = fillWorkflow(BUILTIN_WORKFLOW, { ...paramsWith, ...extra });
-  const sampler = nodes(out, "KSampler")[0][1].inputs;
-  ok(nodes(out, "IPAdapterAdvanced").length === 2 && JSON.stringify(sampler.model) === '["ref-2",0]', `the built-in ${name} workflow takes the references`);
+  const sampler = out["3"].inputs; // a KSampler, or a KSamplerAdvanced when it starts from a picture
+  // With a painted area the model goes through Differential Diffusion, after the references.
+  const dd = nodes(out, "DifferentialDiffusion")[0];
+  const model = dd ? out[(sampler.model as [string, number])[0]].inputs.model : sampler.model;
+  ok(nodes(out, "IPAdapterAdvanced").length === 2 && JSON.stringify(model) === '["ref-2",0]' && !!dd === ("mask" in extra), `the built-in ${name} workflow takes the references`);
   ok(!JSON.stringify(out).includes("{{"), `…and has no placeholders left (${name})`);
 }
 const withLora = fillWorkflow(BUILTIN_WORKFLOW, { ...paramsWith, loras: [{ name: "style.safetensors", strength: 0.8 }] });
