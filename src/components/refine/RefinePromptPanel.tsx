@@ -17,7 +17,7 @@ import { applyLoraOverrides, hasLoraOverrides, resetLoraOverrides, setLoraOverri
 import { denoiseOf, madeWithText, maskOf, type JobInput } from "@/lib/comfy/makeJob";
 import { drawPresetFor, presetName, usesFamily } from "@/lib/comfy/presets";
 import type { StartPicture } from "@/lib/comfy/startPicture";
-import { describeWorkflow, parseWorkflow } from "@/lib/comfy/workflow";
+import { describeWorkflow, parseWorkflow, type FillKind } from "@/lib/comfy/workflow";
 import type { PaintedArea } from "@/lib/mask";
 import type { RefineState } from "@/lib/refineHistory";
 import { appliedSource, type RefineSession } from "@/lib/refine/session";
@@ -147,6 +147,8 @@ export default function RefinePromptPanel({ session, onSession, present, canvas,
   const editModels = useEditModels(comfy.url);
   const pictureQueue = usePictureQueue();
   const [ctx, setCtx] = useState<Context | null>(null);
+  // What the drawing model sees under the painted area; only offered (and used) while an area is painted.
+  const [fill, setFill] = useState<FillKind>("keep");
   // The painted area is reused (the same object) while it doesn't change, so its upload to ComfyUI is reused too.
   const areaCache = useRef<PaintedArea | null>(null);
 
@@ -242,6 +244,7 @@ export default function RefinePromptPanel({ session, onSession, present, canvas,
       redraw: strength,
       start,
       mask,
+      ...(mask && fill !== "keep" && { fill }),
       edit: null,
       seed: null,
       ipAdapter: drawPresetIpAdapter(editModels, draw),
@@ -303,6 +306,7 @@ export default function RefinePromptPanel({ session, onSession, present, canvas,
         min="2.6rem"
         note={target.kind === "chapter" ? "Starts as the chapter's Always include text; changing it here doesn't change the chapter." : undefined}
       />
+      <div className="strength-row">
       <label className="strength">
         Strength {strength.toFixed(2)}
         <input
@@ -322,6 +326,17 @@ export default function RefinePromptPanel({ session, onSession, present, canvas,
           <span>High</span>
         </span>
       </label>
+      {area && (
+        <label className="under-paint">
+          Under the paint
+          <select value={fill} onChange={(e) => setFill(e.target.value as FillKind)} title="What the drawing model sees under the painted area before it redraws it">
+            <option value="keep">Keep what&apos;s there</option>
+            <option value="blur">Blur it</option>
+            <option value="grey">Grey</option>
+          </select>
+        </label>
+      )}
+      </div>
       {draw.loras.length > 0 && (
         <LoraToggles
           stack={stack}

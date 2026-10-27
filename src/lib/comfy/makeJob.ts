@@ -9,9 +9,10 @@ import { drawFilesText, presetName, usesFamily, type DrawPreset } from "./preset
 import { ipAdapterProblem, type IpAdapterCheck } from "./ipAdapter";
 import { MAX_REFERENCES, storedOf, uploadReference, type Reference } from "./references";
 import { uploadStart, type StartPicture, type Uploaded } from "./startPicture";
-import { builtinSampler, describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed } from "./workflow";
+import { builtinSampler, describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed, type FillKind } from "./workflow";
 import { cancelPrompt, queuePrompt, uploadImage, type Progress } from "./client";
-import { renderMask, type PaintedArea } from "../mask";
+import { maskGrow, renderMask, type PaintedArea } from "../mask";
+import { contextBox, maskBounds, type CropPlan } from "./inpaintRegion";
 import type { JobRecord, JobTag } from "./jobTag";
 
 /** Everything a job is made with, as it was when it was asked for. */
@@ -29,6 +30,8 @@ export type JobInput = {
   start: StartPicture | null;
   /** The painted part of the starting picture to redraw (the Refine screen's; ignored by an edit); null for the whole picture. */
   mask?: PaintedArea | null;
+  /** What the sampler sees under the painted area (only with a mask): the picture as it is (default), a blurred copy, or grey. */
+  fill?: FillKind;
   /** A temporary job (the Refine screen's): recorded as temporary, so the Illustrate page leaves its pictures out unless asked for or pinned. */
   temporary?: boolean;
   /** The Refine session that asked (its id) and the session's base picture the job starts from: the queue gives the pictures to that screen only, never to the target's page. */
@@ -77,7 +80,7 @@ export const sameJob = (a: JobInput) =>
   JSON.stringify([
     a.prompt, a.negative, a.moment, a.comfy.url, a.comfy.width, a.comfy.height, a.start?.key ?? null,
     a.edit ? null : [a.draw.checkpoint, a.draw.workflow, a.draw.sampler, a.drawLoras, a.draw.family, a.family?.files ?? null, a.draw.textEncoderDevice, a.draw.refMode ?? null, a.draw.refEnd ?? null],
-    a.start && !a.edit ? a.redraw : null, maskOf(a)?.id ?? null,
+    a.start && !a.edit ? a.redraw : null, maskOf(a)?.id ?? null, maskOf(a) ? a.fill ?? "keep" : null,
     a.edit?.check.model.id ?? null, a.edit?.instruction ?? null,
     a.edit?.strength ?? null, a.edit?.fast ?? null, a.edit?.loras ?? null, a.edit?.tuning ?? null, a.edit?.textEncoderDevice ?? null, a.seed,
     refsOf(a).map((r) => [r.key, r.role, r.weight]), !!a.temporary, a.session ?? null,
@@ -193,6 +196,13 @@ export async function queueJob(
     maskName = await uploadMask(comfy.url, area);
     onProgress({ stage: "queued", ahead: null });
   }
+  // A small painted area is redrawn from a crop around it (the server has the box already; the browser works it out).
+  let crop: CropPlan | null = null;
+  if (from && area) {
+    const bounds = area.bounds !== undefined ? area.bounds : maskBounds(area, area.width, area.height);
+    crop = bounds ? contextBox(bounds, from.width, from.height, comfy.width * comfy.height) : null;
+  }
+  const fill: FillKind = input.fill ?? "keep";
   // The references go up once each, like the starting picture.
   let refNames: string[] = [];
   if (refs.length > 0) {
@@ -217,7 +227,7 @@ export async function queueJob(
             loras: drawLoras,
             tuning: drawTuning(family.model, draw.sampler),
             textEncoderDevice: draw.textEncoderDevice,
-            ...(from && { image: from.name, denoise: input.redraw, ...(maskName && { mask: maskName }) }),
+            ...(from && { image: from.name, denoise: input.redraw, ...(maskName && { mask: maskName, grow: maskGrow(area!.width, area!.height), ...(crop && { crop }), ...(fill !== "keep" && { fill }) }) }),
           })
       : fillWorkflow(base!, {
           prompt,
@@ -234,7 +244,7 @@ export async function queueJob(
             refs: refs.map((r, i) => ({ image: refNames[i], role: r.role, weight: r.weight })),
             ipAdapter: { ipadapter: input.ipAdapter!.files.ipAdapter, clipVision: input.ipAdapter!.files.clipVision, mode: draw.refMode, end: draw.refEnd },
           }),
-          ...(from && { image: from.name, denoise: input.redraw, ...(maskName && { mask: maskName }) }),
+          ...(from && { image: from.name, denoise: input.redraw, ...(maskName && { mask: maskName, grow: maskGrow(area!.width, area!.height), ...(crop && { crop }), ...(fill !== "keep" && { fill }) }) }),
         });
   const denoise = from ? denoiseOf(input) : null;
   // Everything the log records about the job. It goes to ComfyUI with the job too, so a page opened while

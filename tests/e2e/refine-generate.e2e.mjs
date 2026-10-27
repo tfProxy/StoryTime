@@ -166,8 +166,8 @@ try {
   // ================= Go, no mask, no paint =================
   await goAndWait(2);
   const wf1 = lastWorkflow();
-  const samplers = nodes(wf1, "KSampler");
-  ok(nodes(wf1, "LoadImage").length === 1 && samplers[0].inputs.denoise === 0.3, "Go sends an image to image job at the strength set here (0.3)");
+  const samplers = nodes(wf1, "KSamplerAdvanced");
+  ok(nodes(wf1, "LoadImage").length === 1 && nodes(wf1, "KSampler").length === 0 && samplers[0].inputs.steps - samplers[0].inputs.start_at_step === Math.round(samplers[0].inputs.steps * 0.3), "Go sends an image to image job at the strength set here (0.3): only that share of the steps run");
   ok(nodes(wf1, "LoadImageMask").length === 0 && nodes(wf1, "SetLatentNoiseMask").length === 0, "…with no mask in it: the whole picture is redrawn");
   const lora = nodes(wf1, "LoraLoader")[0];
   ok(lora?.inputs.lora_name === "styles/ink.safetensors" && lora.inputs.strength_model === 0.6, "…with the LoRA at the strength set here (0.6)");
@@ -233,6 +233,8 @@ try {
   await btn("Show paint").click();
 
   // A mask: only the masked part is redrawn.
+  const underPaint = page.getByLabel("Under the paint");
+  ok(await underPaint.count() === 0, "the “Under the paint” menu is hidden while nothing is masked");
   await btn("Mask brush").click();
   await page.getByRole("slider", { name: "Mask brush size", exact: true }).fill("20");
   await drag(0.3, 0.3, 0.4, 0.3);
@@ -243,21 +245,33 @@ try {
   const inside = await uploadedPixel(maskName, 0.35, 0.3);
   const outside = await uploadedPixel(maskName, 0.8, 0.8);
   ok(inside && inside[0] > 200 && outside && outside[0] < 40, `…white where it was painted, black elsewhere (${inside} / ${outside})`);
-  ok(nodes(wfm, "KSampler")[0].inputs.denoise === 0.3, "…at the same strength");
+  ok(nodes(wfm, "KSamplerAdvanced")[0].inputs.steps - nodes(wfm, "KSamplerAdvanced")[0].inputs.start_at_step === Math.round(nodes(wfm, "KSamplerAdvanced")[0].inputs.steps * 0.3), "…at the same strength");
   const tmpJobs = (await call("GET", `/api/picture-jobs?chapter=${chapterId}&temporary=only`)).jobs;
   ok(tmpJobs[0].mask === maskName && tmpJobs[0].temporary === true, "the job log records the mask's name on the temporary job");
+  // Under the paint: shown with a mask, "Keep what's there" by default (nothing extra queued), "Blur it" fills a blurred copy.
+  ok(await underPaint.isVisible() && (await underPaint.inputValue()) === "keep", "“Under the paint” shows once an area is masked, set to Keep what's there");
+  ok(nodes(wfm, "ImageScaleBy").length === 0 && nodes(wfm, "EmptyImage").length === 0, "…and by default the job fills nothing under the paint");
+  await underPaint.selectOption({ label: "Blur it" });
+  await goAndWait(1);
+  const wfb = lastWorkflow();
+  ok(nodes(wfb, "ImageScaleBy").length === 1 && nodes(wfb, "ImageCompositeMasked").length >= 2, "choosing Blur it queues a graph that blurs the picture under the mask before encoding");
+  await underPaint.selectOption({ label: "Grey" });
+  await goAndWait(1);
+  ok(nodes(lastWorkflow(), "EmptyImage").length === 1 && nodes(lastWorkflow(), "ImageScaleBy").length === 0, "choosing Grey queues a graph with a grey fill instead");
+  await underPaint.selectOption({ label: "Keep what's there" });
   // The mask hidden: not used.
   await btn("Show mask").click();
+  ok(await underPaint.count() === 0, "the menu is hidden again while the mask is hidden");
   await goAndWait(1);
   ok(nodes(lastWorkflow(), "LoadImageMask").length === 0 && nodes(lastWorkflow(), "SetLatentNoiseMask").length === 0, "mask hidden: no mask in the job (the whole picture)");
   await btn("Show mask").click();
-  ok(await results.count() === 7, "every Go added its tile (7 results)");
+  ok(await results.count() === 9, "every Go added its tile (9 results)");
   // A mask rubbed out again still has strokes but paints nothing: that is a whole-picture redraw, not an error.
   await btn("Mask eraser").click();
   await page.getByRole("slider", { name: "Mask brush size", exact: true }).fill("24");
   await drag(0.1, 0.3, 0.6, 0.3);
   await goAndWait(1);
-  ok(nodes(lastWorkflow(), "LoadImageMask").length === 0 && nodes(lastWorkflow(), "SetLatentNoiseMask").length === 0 && await results.count() === 8, "a mask with nothing left painted redraws the whole picture, with no error");
+  ok(nodes(lastWorkflow(), "LoadImageMask").length === 0 && nodes(lastWorkflow(), "SetLatentNoiseMask").length === 0 && await results.count() === 10, "a mask with nothing left painted redraws the whole picture, with no error");
 
   // ================= the Illustrate page does not see these jobs =================
   await page.goto(`${BASE}/c/${chapterId}/illustrate`);
@@ -269,7 +283,7 @@ try {
   await toggle.waitFor();
   await toggle.check();
   await until(async () => (await tiles.count()) > 1, "the temporary pictures");
-  ok(await tiles.count() === 1 + 8, "with “Include temporary inpainting images” on, the Refine pictures (8 of them) appear too");
+  ok(await tiles.count() === 1 + 10, "with “Include temporary inpainting images” on, the Refine pictures (10 of them) appear too");
 
   // ================= a session's jobs are not given to the page, and wait for the screen =================
   await page.goto(`${BASE}/c/${chapterId}/illustrate`);

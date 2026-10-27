@@ -64,10 +64,18 @@ const redraw: JobInput = { ...base, start: start("saved:c1:header:3", "saved:c1:
 const redrawSpec = toSpec(redraw, { [maskUploadKey("m1")]: "upload:mask-1" });
 ok(redrawSpec.mask?.source === "upload:mask-1" && redrawSpec.mask.id === "m1", "the mask is sent as its uploaded source and keeps its id");
 ok(!("strokes" in (redrawSpec.mask ?? {})), "the strokes are not sent");
+ok(JSON.stringify(redrawSpec.mask?.bounds) === JSON.stringify({ x: 0, y: 0, w: 15, h: 16 }), "the painted area's bounding box is worked out from the strokes and sent");
+ok(toSpec({ ...redraw, mask: { ...mask, strokes: [] } }, { [maskUploadKey("m1")]: "upload:mask-1" }).mask?.bounds === null, "a mask with nothing painted has no bounding box");
 const redrawBack = fromSpec(JSON.parse(JSON.stringify(redrawSpec)), async (s) => png(`server:${s}`));
 ok(sameJob(redrawBack) === sameJob(redraw), "a redraw with a mask keeps its sameJob key");
 ok(redrawBack.mask?.width === 96 && redrawBack.mask.height === 60, "the mask keeps its size");
+ok(JSON.stringify(redrawBack.mask?.bounds) === JSON.stringify({ x: 0, y: 0, w: 15, h: 16 }) && redrawBack.mask?.strokes.length === 0, "the server's painted area has the box, and no strokes");
 ok((await text(await redrawBack.mask!.render!())) === "server:upload:mask-1", "the mask's render fetches its upload");
+const filled: JobInput = { ...redraw, fill: "blur" };
+const filledBack = fromSpec(JSON.parse(JSON.stringify(toSpec(filled, { [maskUploadKey("m1")]: "upload:mask-1" }))), async (s) => png(`server:${s}`));
+ok(filledBack.fill === "blur" && sameJob(filledBack) === sameJob(filled), "the fill under the paint survives toSpec and fromSpec");
+ok(sameJob(filled) !== sameJob(redraw) && sameJob({ ...redraw, fill: "keep" }) === sameJob(redraw), "the fill is part of the job key with a mask: blur differs, keep is the default");
+ok(sameJob({ ...base, fill: "grey" }) === sameJob(base), "the fill is left out of the job key with no mask");
 let threw = false;
 try { toSpec(redraw, {}); } catch { threw = true; }
 ok(threw, "a mask that was not uploaded is refused");

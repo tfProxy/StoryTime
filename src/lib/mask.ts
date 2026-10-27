@@ -2,6 +2,8 @@
 // drawn onto a canvas, and the maths for zooming. Nothing here needs a DOM, except that the drawing functions
 // take a 2D context.
 
+import type { Box } from "./comfy/inpaintRegion";
+
 export type MaskTool = "brush" | "eraser" | "fill";
 export type MaskStroke = { tool: MaskTool; size: number; points: [x: number, y: number, pressure: number][] };
 export type MaskState = { strokes: MaskStroke[]; softness: number; inverted: boolean };
@@ -105,6 +107,9 @@ export function finishMask(target: Ctx, layer: CanvasImageSource, width: number,
   target.restore();
 }
 
+/** How far the sampled area grows past the painted one: 1% of the picture's longer side, at least 4 pixels. */
+export const maskGrow = (width: number, height: number) => Math.max(4, Math.round(Math.max(width, height) / 100));
+
 /** The share (0..1) of pixels whose channel (0 red .. 3 alpha) is above the threshold, from RGBA data. */
 export function coverageOf(data: ArrayLike<number>, channel = 0, threshold = 127): number {
   const n = Math.floor(data.length / 4);
@@ -178,6 +183,8 @@ export type PaintedArea = MaskState & {
    * no canvas to draw them on; when it is missing the PNG is drawn from the strokes with `renderMask`.
    */
   render?: () => Promise<Blob>;
+  /** The painted pixels' bounding box (`maskBounds`). Set only on the server, where the strokes are not kept; undefined means work it out from the strokes. */
+  bounds?: Box | null;
 };
 
 /** Renders a mask's strokes to the black and white PNG at the picture's size; null when nothing is painted or the browser can't. Browser only. */

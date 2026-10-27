@@ -100,11 +100,14 @@ export const EDIT_FILES = {
 
 // The nodes the fake knows; /object_info answers {} for any other.
 const NODES = [
-  "CheckpointLoaderSimple", "KSampler", "EmptyLatentImage", "CLIPTextEncode", "VAEDecode", "VAEEncode", "SaveImage", "LoadImage",
+  "CheckpointLoaderSimple", "KSampler", "KSamplerAdvanced", "EmptyLatentImage", "CLIPTextEncode", "VAEDecode", "VAEEncode", "SaveImage", "LoadImage",
   "RepeatLatentBatch", "ImageScale", "UNETLoader", "CLIPLoader", "DualCLIPLoader", "VAELoader", "TextEncodeQwenImageEditPlus",
   "ModelSamplingAuraFlow", "CFGNorm", "ReferenceLatent", "FluxGuidance", "ConditioningZeroOut", "LoraLoaderModelOnly", "LoraLoader",
   "EmptySD3LatentImage",
   "LoadImageMask", "SetLatentNoiseMask", "InvertMask", "ImageCompositeMasked",
+  "GrowMask", "DifferentialDiffusion",
+  "ImageCrop", "CropMask", "MaskToImage", "ImageToMask", "RepeatImageBatch",
+  "EmptyImage", "ImageScaleBy",
 ];
 const GGUF_NODES = ["UnetLoaderGGUF", "CLIPLoaderGGUF", "DualCLIPLoaderGGUF"];
 // The nodes of ComfyUI_IPAdapter_plus (and the CLIP Vision loader reference pictures use), present only with `ipAdapter: true`.

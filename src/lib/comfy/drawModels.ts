@@ -14,7 +14,8 @@ import {
   QWEN_TEXT_ENCODER, QWEN_VAE, T5_XXL, UNET_GGUF,
   type LoaderInfo, type ModelLora, type ModelPart, type NeededOption, type NodeInfo, type PartCheck, type TextEncoderDevice,
 } from "./modelParts";
-import { redrawOnlyMask, type SamplerTuning, type Workflow } from "./workflow";
+import { addDifferentialDiffusion, fillUnderMask, growNoiseMask, partialSteps, redrawCropped, redrawOnlyMask, type FillKind, type SamplerTuning, type Workflow } from "./workflow";
+import type { CropPlan } from "./inpaintRegion";
 
 /** "checkpoint" is the SDXL-style all-in-one checkpoint of the built-in workflow; the rest are families of separate files. */
 export const DRAW_FAMILIES = ["checkpoint", "zimage", "flux", "chroma", "qwen-image", "krea2"] as const;
@@ -54,6 +55,12 @@ export type DrawParams = {
   denoise?: number;
   /** Redraw only a painted area: the mask's name in ComfyUI's input folder (white = redraw). Only used with `image`. */
   mask?: string;
+  /** Redraw only a painted area: how many pixels the sampled mask grows past the painted one (the paste-back keeps the painted one). */
+  grow?: number;
+  /** Redraw only a painted area: redraw a crop of the picture (the area plus context) at `sw` by `sh`, and paste it back. */
+  crop?: CropPlan;
+  /** Redraw only a painted area: what the sampler sees under it (see `fillUnderMask`); left out to keep the picture as it is. */
+  fill?: FillKind;
   /** The preset's LoRAs, applied in order after the model loader. */
   loras?: ModelLora[];
   /** The family's settings (`drawTuning`); its defaults when not given. */
@@ -94,7 +101,7 @@ function startLatent(p: DrawParams): { nodes: Workflow; latent: [string, number]
   return {
     nodes: {
       "10": { class_type: "LoadImage", inputs: { image: p.image } },
-      "11": { class_type: "ImageScale", inputs: { image: ["10", 0], upscale_method: "lanczos", width: snap16(p.width), height: snap16(p.height), crop: "disabled" } },
+      "11": { class_type: "ImageScale", inputs: { image: ["10", 0], upscale_method: "lanczos", width: p.crop && p.mask ? p.crop.sw : snap16(p.width), height: p.crop && p.mask ? p.crop.sh : snap16(p.height), crop: "disabled" } },
       "12": { class_type: "VAEEncode", inputs: { pixels: ["11", 0], vae: ["3", 0] } },
       "13": { class_type: "RepeatLatentBatch", inputs: { samples: ["12", 0], amount: p.count } },
     },
@@ -104,15 +111,17 @@ function startLatent(p: DrawParams): { nodes: Workflow; latent: [string, number]
 
 /** The sampler (node "8") and the nodes after it: decode and save. */
 function sampleAndSave(p: DrawParams, t: DrawTuning, links: { model: [string, number]; positive: [string, number]; negative: [string, number]; latent: [string, number] }): Workflow {
-  return {
-    "8": {
-      class_type: "KSampler",
-      inputs: {
-        seed: p.seed, steps: t.steps, cfg: t.cfg, sampler_name: t.sampler, scheduler: t.scheduler,
-        denoise: p.image ? (p.denoise ?? 1) : 1,
-        model: links.model, positive: links.positive, negative: links.negative, latent_image: links.latent,
-      },
+  const sampler: Workflow[string] = {
+    class_type: "KSampler",
+    inputs: {
+      seed: p.seed, steps: t.steps, cfg: t.cfg, sampler_name: t.sampler, scheduler: t.scheduler,
+      denoise: p.image ? (p.denoise ?? 1) : 1,
+      model: links.model, positive: links.positive, negative: links.negative, latent_image: links.latent,
     },
+  };
+  if (p.image) partialSteps(sampler);
+  return {
+    "8": sampler,
     "20": { class_type: "VAEDecode", inputs: { samples: ["8", 0], vae: ["3", 0] } },
     "21": { class_type: "SaveImage", inputs: { filename_prefix: p.prefix, images: ["20", 0] } },
   };
@@ -502,7 +511,18 @@ export const ggufNeeded = (check: FamilyCheck): string[] => [
 export function buildDraw(check: FamilyCheck, p: DrawParams): Workflow {
   const wf = check.model.build(check.files, { ...p, optionalNodes: check.optionalNodes });
   switchToGgufLoaders(check.model.parts, check.files, check.loaders, wf);
-  // The scaled picture ("11") is pasted back outside the mask, so it matches the decoded pictures' size.
-  if (p.image && p.mask) redrawOnlyMask(wf, p.mask, "11", "13");
+  if (p.image && p.mask) {
+    if (p.crop) {
+      // The crop is scaled by the workflow's own ImageScale ("11"); redrawCropped grows the mask itself, in the crop's pixels.
+      redrawCropped(wf, { mask: p.mask, full: "10", repeat: "13", count: p.count, crop: p.crop, grow: p.grow ?? 0, scale: false });
+    } else {
+      // The scaled picture ("11") is pasted back outside the mask, so it matches the decoded pictures' size.
+      redrawOnlyMask(wf, p.mask, "11", "13");
+      growNoiseMask(wf, p.grow ?? 0);
+    }
+    addDifferentialDiffusion(wf);
+    // The family's scaler ("11") makes the encoded picture: the crop's size, or the picture's snapped to 16.
+    fillUnderMask(wf, { kind: p.fill ?? "keep", size: p.crop ? { w: p.crop.sw, h: p.crop.sh } : { w: snap16(p.width), h: snap16(p.height) } });
+  }
   return wf;
 }

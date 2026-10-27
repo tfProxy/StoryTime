@@ -1,4 +1,4 @@
-import { BUILTIN_IMG2IMG, BUILTIN_INPAINT, BUILTIN_SAMPLER, BUILTIN_WORKFLOW, builtinSampler, describeWorkflow, filenamePrefix, fillWorkflow, parseWorkflow, randomSeed, WorkflowError, type PictureParams, type Workflow } from "../../src/lib/comfy/workflow.ts";
+import { addDifferentialDiffusion, fillUnderMask, growNoiseMask, BUILTIN_IMG2IMG, BUILTIN_INPAINT, BUILTIN_SAMPLER, BUILTIN_WORKFLOW, builtinSampler, describeWorkflow, filenamePrefix, fillWorkflow, parseWorkflow, partialSteps, randomSeed, stepsToRun, WorkflowError, type PictureParams, type Workflow } from "../../src/lib/comfy/workflow.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const throwsWorkflowError = (fn: () => unknown) => {
@@ -193,9 +193,9 @@ const imgBuilt = fillWorkflow(BUILTIN_WORKFLOW, imgParams);
 ok(JSON.stringify(BUILTIN_WORKFLOW) === imgBefore && JSON.stringify(BUILTIN_IMG2IMG).includes("{{image}}"), "img2img builtin: the built-in workflows are not changed by filling");
 ok(Object.values(imgBuilt).some((n) => n.class_type === "LoadImage" && n.inputs.image === "storytime-abc.png"), "img2img builtin: a LoadImage node has the uploaded picture's name");
 ok(!Object.values(imgBuilt).some((n) => n.class_type === "EmptyLatentImage"), "img2img builtin: there is no empty latent image");
-ok(imgBuilt["3"].inputs.denoise === 0.4 && typeof imgBuilt["3"].inputs.denoise === "number", "img2img builtin: the sampler's denoise is the strength, as a number");
+ok(imgBuilt["3"].class_type === "KSamplerAdvanced" && imgBuilt["3"].inputs.start_at_step === 30 - stepsToRun(30, 0.4), "img2img builtin: the sampler starts part way through its steps, as far as the strength says");
 ok(JSON.stringify(imgBuilt["3"].inputs.latent_image) === '["12",0]' && JSON.stringify(imgBuilt["12"].inputs.samples) === '["11",0]' && JSON.stringify(imgBuilt["11"].inputs.pixels) === '["10",0]', "img2img builtin: the picture goes LoadImage → VAEEncode → RepeatLatentBatch → sampler");
-ok(imgBuilt["12"].inputs.amount === 2 && imgBuilt["3"].inputs.seed === 12345 && imgBuilt["6"].inputs.text === "a lighthouse at dawn" && imgBuilt["4"].inputs.ckpt_name === "sdxl_base.safetensors", "img2img builtin: the batch is the count, and seed, prompt and checkpoint are set");
+ok(imgBuilt["12"].inputs.amount === 2 && imgBuilt["3"].inputs.noise_seed === 12345 && imgBuilt["6"].inputs.text === "a lighthouse at dawn" && imgBuilt["4"].inputs.ckpt_name === "sdxl_base.safetensors", "img2img builtin: the batch is the count, and seed, prompt and checkpoint are set");
 ok(JSON.stringify(imgBuilt["11"].inputs.vae) === '["4",2]' && JSON.stringify(imgBuilt).includes("{{") === false, "img2img builtin: the checkpoint's VAE encodes, and no placeholder is left");
 ok(fillWorkflow(BUILTIN_WORKFLOW, { ...imgParams, denoise: undefined })["3"].inputs.denoise === 1, "img2img builtin: with no strength given, denoise is 1");
 ok(fillWorkflow(BUILTIN_WORKFLOW, params)["3"].inputs.denoise === 1 && fillWorkflow(BUILTIN_WORKFLOW, params)["5"].class_type === "EmptyLatentImage", "builtin: with no picture the text-to-image workflow is used, as before");
@@ -234,7 +234,7 @@ const inBuilt = fillWorkflow(BUILTIN_WORKFLOW, maskParams);
 ok(JSON.stringify(BUILTIN_INPAINT) === inBefore && JSON.stringify(BUILTIN_INPAINT).includes("{{mask}}"), "inpaint builtin: filling does not change the built-in workflow");
 ok(inBuilt["13"].class_type === "LoadImageMask" && inBuilt["13"].inputs.image === "storytime-mask-abc.png" && inBuilt["13"].inputs.channel === "red", "inpaint builtin: LoadImageMask reads the mask's red channel");
 ok(inBuilt["14"].class_type === "SetLatentNoiseMask" && JSON.stringify(inBuilt["14"].inputs.samples) === '["12",0]' && JSON.stringify(inBuilt["14"].inputs.mask) === '["13",0]', "inpaint builtin: SetLatentNoiseMask takes the repeated latent and the mask");
-ok(JSON.stringify(inBuilt["3"].inputs.latent_image) === '["14",0]' && inBuilt["3"].inputs.denoise === 0.4, "inpaint builtin: the sampler uses the masked latent at the chosen strength");
+ok(JSON.stringify(inBuilt["3"].inputs.latent_image) === '["14",0]' && inBuilt["3"].class_type === "KSamplerAdvanced" && inBuilt["3"].inputs.start_at_step === 30 - stepsToRun(30, 0.4), "inpaint builtin: the sampler uses the masked latent and runs only the steps the chosen strength needs");
 const comp = inBuilt["16"].inputs;
 ok(inBuilt["15"].class_type === "InvertMask" && JSON.stringify(inBuilt["15"].inputs.mask) === '["13",0]', "inpaint builtin: InvertMask inverts the mask");
 ok(inBuilt["16"].class_type === "ImageCompositeMasked" && JSON.stringify(comp.destination) === '["8",0]' && JSON.stringify(comp.source) === '["10",0]' && JSON.stringify(comp.mask) === '["15",0]' && comp.x === 0 && comp.y === 0 && comp.resize_source === false, "inpaint builtin: the new pictures (destination) are pasted over the original (source) outside the mask");
@@ -264,18 +264,220 @@ ok(describeWorkflow(BUILTIN_WORKFLOW).mask === true, "describe: the built-in wor
 ok(describeWorkflow(maskPlaceholders).mask === true && describeWorkflow(imgPlaceholders).mask === false && describeWorkflow(custom).mask === false, "describe: a placeholder workflow can only with {{mask}}");
 ok(describeWorkflow(sdxl).mask === true && describeWorkflow(bare).mask === false, "describe: a detected workflow can when it can start from a picture");
 
+// ---- the sampled mask grows past the painted one, and the model goes through Differential Diffusion ----
+{
+  const classesOf = (wf: Workflow) => Object.values(wf).map((n) => n.class_type);
+  const samplersOf = (wf: Workflow) => Object.values(wf).filter((n) => /^(KSampler|KSamplerAdvanced)$/.test(n.class_type));
+  const grown = { ...maskParams, grow: 13 };
+  const gBuilt = fillWorkflow(BUILTIN_WORKFLOW, grown);
+  const grow = gBuilt.storytime_grow_1;
+  ok(grow.class_type === "GrowMask" && JSON.stringify(grow.inputs) === '{"mask":["13",0],"expand":13,"tapered_corners":true}' && JSON.stringify(gBuilt["14"].inputs.mask) === '["storytime_grow_1",0]', "grow builtin: a GrowMask sits between the mask loader and SetLatentNoiseMask");
+  ok(JSON.stringify(gBuilt["15"].inputs.mask) === '["13",0]' && JSON.stringify(gBuilt["16"].inputs.mask) === '["15",0]', "grow builtin: the paste-back mask is still the inverted, un-grown one");
+  const dd = gBuilt.storytime_dd_1;
+  ok(dd.class_type === "DifferentialDiffusion" && JSON.stringify(dd.inputs) === '{"model":["4",0]}' && JSON.stringify(gBuilt["3"].inputs.model) === '["storytime_dd_1",0]' && gBuilt["3"].class_type === "KSamplerAdvanced", "grow builtin: the sampler (a KSamplerAdvanced) takes its model through DifferentialDiffusion");
+  ok(JSON.stringify(BUILTIN_INPAINT).includes("GrowMask") === false && JSON.stringify(BUILTIN_WORKFLOW).includes("DifferentialDiffusion") === false, "grow builtin: the built-in workflows are not changed");
+  const gLora = fillWorkflow(BUILTIN_WORKFLOW, { ...grown, loras: [{ name: "a.safetensors", strength: 0.8 }] });
+  ok(JSON.stringify(gLora.storytime_dd_1.inputs.model) === '["storytime_lora_1",0]' && JSON.stringify(gLora["3"].inputs.model) === '["storytime_dd_1",0]', "grow builtin: with LoRAs, DifferentialDiffusion wraps the LoRA output");
+  const gNone = fillWorkflow(BUILTIN_WORKFLOW, { ...grown, grow: 0 });
+  ok(!classesOf(gNone).includes("GrowMask") && JSON.stringify(gNone["14"].inputs.mask) === '["13",0]' && gNone.storytime_dd_1?.class_type === "DifferentialDiffusion", "grow builtin: with grow 0 there is no GrowMask, but DifferentialDiffusion is still added");
+  ok(!classesOf(fillWorkflow(BUILTIN_WORKFLOW, maskParams)).includes("GrowMask"), "grow builtin: with no grow given there is no GrowMask");
+  const plainImg = fillWorkflow(BUILTIN_WORKFLOW, { ...imgParams, grow: 13 });
+  ok(JSON.stringify(plainImg) === JSON.stringify(imgBuilt) && JSON.stringify(fillWorkflow(BUILTIN_WORKFLOW, { ...params, grow: 13 })) === JSON.stringify(built), "grow builtin: with no mask (or no picture), the graph is exactly as before");
+
+  const gSdxl = fillWorkflow(sdxl, grown);
+  ok(JSON.stringify(gSdxl.storytime_grow_1.inputs) === '{"mask":["storytime_mask",0],"expand":13,"tapered_corners":true}' && JSON.stringify(gSdxl.storytime_noise_mask.inputs.mask) === '["storytime_grow_1",0]', "grow detected: a GrowMask sits between the mask loader and SetLatentNoiseMask");
+  ok(JSON.stringify(gSdxl.storytime_mask_invert.inputs.mask) === '["storytime_mask",0]' && JSON.stringify(gSdxl.storytime_paste_1.inputs.mask) === '["storytime_mask_invert",0]', "grow detected: the paste-back mask is still the inverted, un-grown one");
+  ok(JSON.stringify(gSdxl.storytime_dd_1.inputs.model) === '["4",0]' && JSON.stringify(gSdxl["3"].inputs.model) === '["storytime_dd_1",0]' && JSON.stringify(sdxl["3"].inputs.model) === '["4",0]', "grow detected: the sampler's model goes through DifferentialDiffusion (and the original is untouched)");
+  ok(JSON.stringify(fillWorkflow(sdxl, { ...imgParams, grow: 13 })) === JSON.stringify(sdxlImg), "grow detected: with no mask, the graph is exactly as before");
+
+  const gPlaceholders = fillWorkflow({ ...maskPlaceholders, "1": { ...maskPlaceholders["1"], inputs: { ...maskPlaceholders["1"].inputs, model: ["9", 0] } } }, grown);
+  ok(!classesOf(gPlaceholders).includes("GrowMask") && !classesOf(gPlaceholders).includes("DifferentialDiffusion") && JSON.stringify(gPlaceholders["1"].inputs.model) === '["9",0]', "grow placeholders: a workflow with {{mask}} is left as its author wired it");
+
+  // The two helpers on their own.
+  const two: Workflow = {
+    a: { class_type: "KSampler", inputs: { model: ["m", 0] } },
+    b: { class_type: "KSamplerAdvanced", inputs: { model: ["m", 0] } },
+    c: { class_type: "KSampler", inputs: { model: ["n", 0] } },
+    d: { class_type: "KSampler", inputs: { model: "not a link" } },
+    e: { class_type: "SetLatentNoiseMask", inputs: { samples: ["x", 0], mask: "not a link" } },
+  };
+  addDifferentialDiffusion(two);
+  growNoiseMask(two, 5);
+  const ddIds = Object.keys(two).filter((k) => two[k].class_type === "DifferentialDiffusion");
+  const modelOf = (k: string) => (two[k].inputs.model as string[])[0];
+  ok(ddIds.length === 2 && modelOf("a") === modelOf("b") && modelOf("a") !== modelOf("c") && two.d.inputs.model === "not a link", "addDifferentialDiffusion: one node per distinct model link; samplers with no model link are skipped");
+  ok(samplersOf(two).length === 4 && !classesOf(two).includes("GrowMask") && two.e.inputs.mask === "not a link", "growNoiseMask: a mask input that is not a link is skipped");
+}
+
+// ---- redrawing from a crop of the picture ----
+{
+  const classesOf = (wf: Workflow) => Object.values(wf).map((n) => n.class_type);
+  const count = (wf: Workflow, cls: string) => classesOf(wf).filter((c) => c === cls).length;
+  const j = (v: unknown) => JSON.stringify(v);
+  /** Every link ([id, output]) in the graph points at a node that exists. */
+  const assertLinksResolve = (wf: Workflow, label: string) => {
+    const bad: string[] = [];
+    for (const [id, node] of Object.entries(wf)) {
+      for (const [k, v] of Object.entries(node.inputs)) {
+        if (Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "number" && !wf[v[0]]) bad.push(`${id}.${k} -> ${v[0]}`);
+      }
+    }
+    ok(bad.length === 0, `${label}: every link points at an existing node${bad.length ? ` (${bad.join(", ")})` : ""}`);
+  };
+  const crop = { x: 100, y: 200, w: 400, h: 300, sw: 832, sh: 624, scale: 2 };
+  const cropped = { ...maskParams, grow: 13, crop };
+  /** Checks the parts of the cropped graph every workflow shares: `load` is the full LoadImage, `scaler` the node the encoder reads. */
+  const checkCrop = (wf: Workflow, label: string, o: { load: string; save: string; decode: string; sampler: string; scaler: string }) => {
+    assertLinksResolve(wf, label);
+    const c = wf.storytime_crop;
+    ok(c.class_type === "ImageCrop" && j(c.inputs) === j({ image: [o.load, 0], width: 400, height: 300, x: 100, y: 200 }), `${label}: the crop reads the full picture at x, y, w, h`);
+    const cs = wf.storytime_crop_scale;
+    ok(cs.class_type === "ImageScale" && j(cs.inputs) === j({ image: ["storytime_crop", 0], upscale_method: "lanczos", width: 832, height: 624, crop: "disabled" }), `${label}: the crop is scaled to sw by sh`);
+    ok(wf[o.scaler].inputs.pixels !== undefined ? j(wf[o.scaler].inputs.pixels) === '["storytime_crop_scale",0]' : false, `${label}: the encoder reads the scaled crop, not the full picture`);
+    const m = wf.storytime_mask_crop;
+    ok(wf.storytime_mask.class_type === "LoadImageMask" && m.class_type === "CropMask" && j(m.inputs) === j({ mask: ["storytime_mask", 0], x: 100, y: 200, width: 400, height: 300 }), `${label}: the painted mask is cropped the same way`);
+    ok(j(wf.storytime_mask_scaled.inputs) === j({ image: ["storytime_mask_img", 0], upscale_method: "bilinear", width: 832, height: 624, crop: "disabled" }) && wf.storytime_mask_img.class_type === "MaskToImage" && wf.storytime_mask_small.class_type === "ImageToMask", `${label}: …and scaled to sw by sh as an image`);
+    const noise = wf.storytime_noise_mask;
+    ok(count(wf, "SetLatentNoiseMask") === 1 && count(wf, "GrowMask") === 1 && j(noise.inputs.mask) === '["storytime_grow_1",0]' && j(wf.storytime_grow_1.inputs) === j({ mask: ["storytime_mask_small", 0], expand: 26, tapered_corners: true }), `${label}: the sampled mask is grown exactly once, by grow times the scale`);
+    ok(j(wf[o.sampler].inputs.latent_image) === '["storytime_noise_mask",0]', `${label}: the sampler starts from the noise-masked latent`);
+    ok(count(wf, "DifferentialDiffusion") === 1 && j(wf[o.sampler].inputs.model) === '["storytime_dd_1",0]', `${label}: the sampler's model goes through DifferentialDiffusion once`);
+    const paste = wf.storytime_paste_1;
+    ok(j(wf[o.save].inputs.images) === '["storytime_paste_1",0]' && paste.class_type === "ImageCompositeMasked", `${label}: the saved picture comes through ImageCompositeMasked`);
+    const dest = wf[(paste.inputs.destination as string[])[0]];
+    ok(dest.class_type === "RepeatImageBatch" && j(dest.inputs) === j({ image: [o.load, 0], amount: 2 }), `${label}: …whose destination is the full picture repeated to the batch`);
+    const back = wf[(paste.inputs.source as string[])[0]];
+    ok(back.class_type === "ImageScale" && j(back.inputs) === j({ image: [o.decode, 0], upscale_method: "lanczos", width: 400, height: 300, crop: "disabled" }), `${label}: …and whose source is the decoded crop scaled back to w by h`);
+    ok(paste.inputs.x === 100 && paste.inputs.y === 200 && paste.inputs.resize_source === false && j(paste.inputs.mask) === '["storytime_mask_crop",0]', `${label}: …pasted at x, y with the un-grown, un-inverted cropped mask`);
+    ok(count(wf, "InvertMask") === 0 && !("storytime_mask_invert" in wf), `${label}: the mask is not inverted`);
+  };
+
+  // built-in
+  const bBefore = j(BUILTIN_IMG2IMG) + j(BUILTIN_INPAINT);
+  const cBuilt = fillWorkflow(BUILTIN_WORKFLOW, cropped);
+  ok(j(BUILTIN_IMG2IMG) + j(BUILTIN_INPAINT) === bBefore, "crop builtin: filling does not change the built-in workflows");
+  checkCrop(cBuilt, "crop builtin", { load: "10", save: "9", decode: "8", sampler: "3", scaler: "11" });
+  ok(!("13" in cBuilt) && !("14" in cBuilt) && !("16" in cBuilt) && j(cBuilt).includes("{{") === false, "crop builtin: it starts from the image workflow, not the static inpaint one, and no placeholder is left");
+  ok(cBuilt["10"].inputs.image === "storytime-abc.png" && cBuilt["12"].inputs.amount === 2 && cBuilt.storytime_mask.inputs.image === "storytime-mask-abc.png", "crop builtin: the picture and the mask are the uploaded ones");
+  ok(cBuilt["3"].class_type === "KSamplerAdvanced" && cBuilt["3"].inputs.start_at_step === 30 - stepsToRun(30, 0.4), "crop builtin: the sampler still runs only the steps the strength needs");
+  const cLora = fillWorkflow(BUILTIN_WORKFLOW, { ...cropped, loras: [{ name: "a.safetensors", strength: 0.8 }] });
+  ok(j(cLora.storytime_dd_1.inputs.model) === '["storytime_lora_1",0]', "crop builtin: with LoRAs, DifferentialDiffusion wraps the LoRA output");
+  const cNoGrow = fillWorkflow(BUILTIN_WORKFLOW, { ...cropped, grow: 0 });
+  ok(count(cNoGrow, "GrowMask") === 0 && j(cNoGrow.storytime_noise_mask.inputs.mask) === '["storytime_mask_small",0]' && count(cNoGrow, "DifferentialDiffusion") === 1, "crop builtin: with grow 0 there is no GrowMask, but DifferentialDiffusion is still added");
+  ok(j(fillWorkflow(BUILTIN_WORKFLOW, { ...grown13(), crop: undefined })) === j(fillWorkflow(BUILTIN_WORKFLOW, grown13())) && !classesOf(fillWorkflow(BUILTIN_WORKFLOW, grown13())).includes("ImageCrop"), "crop builtin: without a crop the graph is exactly what it was");
+  ok(j(fillWorkflow(BUILTIN_WORKFLOW, { ...imgParams, crop })) === j(imgBuilt) && j(fillWorkflow(BUILTIN_WORKFLOW, { ...params, crop })) === j(built), "crop builtin: with no mask (or no picture) a crop does nothing");
+
+  // detected
+  const sBefore = j(sdxl);
+  const cSdxl = fillWorkflow(sdxl, cropped);
+  ok(j(sdxl) === sBefore, "crop detected: filling does not change the workflow");
+  checkCrop(cSdxl, "crop detected", { load: "storytime_image", save: "9", decode: "8", sampler: "3", scaler: "storytime_encode" });
+  ok(cSdxl["3"].class_type === "KSampler" && cSdxl["3"].inputs.denoise === 0.4, "crop detected: the workflow's own sampler is kept, set to the strength");
+  ok(j(fillWorkflow(sdxl, { ...grown13(), crop: undefined })) === j(fillWorkflow(sdxl, grown13())) && !classesOf(fillWorkflow(sdxl, grown13())).includes("ImageCrop"), "crop detected: without a crop the graph is exactly what it was");
+  ok(j(fillWorkflow(sdxl, { ...imgParams, crop })) === j(sdxlImg), "crop detected: with no mask a crop does nothing");
+  const cTwo = fillWorkflow(twoSaves, cropped);
+  ok(cTwo["10"].inputs.images[0] === "storytime_paste_2" && cTwo["9"].inputs.images[0] === "storytime_paste_1" && count(cTwo, "RepeatImageBatch") === 2, "crop detected: every save or preview node gets its own paste");
+  assertLinksResolve(cTwo, "crop detected (two saves)");
+
+  // placeholders are never cropped
+  const phWf = { ...maskPlaceholders, "1": { ...maskPlaceholders["1"], inputs: { ...maskPlaceholders["1"].inputs, model: ["9", 0] } } };
+  ok(j(fillWorkflow(phWf, cropped)) === j(fillWorkflow(phWf, { ...cropped, crop: undefined })) && !classesOf(fillWorkflow(phWf, cropped)).includes("ImageCrop"), "crop placeholders: a workflow with {{mask}} is left as its author wired it");
+}
+// ---- filling the painted area before it is encoded ("Under the paint") ----
+{
+  const j = (v: unknown) => JSON.stringify(v);
+  const classesOf = (wf: Workflow) => Object.values(wf).map((n) => n.class_type);
+  const assertLinksResolve = (wf: Workflow, label: string) => {
+    const bad: string[] = [];
+    for (const [id, node] of Object.entries(wf)) {
+      for (const [k, v] of Object.entries(node.inputs)) {
+        if (Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "number" && !wf[v[0]]) bad.push(`${id}.${k} -> ${v[0]}`);
+      }
+    }
+    ok(bad.length === 0, `${label}: every link points at an existing node${bad.length ? ` (${bad.join(", ")})` : ""}`);
+  };
+  const crop = { x: 100, y: 200, w: 400, h: 300, sw: 832, sh: 624, scale: 2 };
+  const base = { ...maskParams, grow: 13 };
+  /** Checks one filled graph: `encode` is the VAEEncode, `pixels` the link it read before, `size` the encoded picture's size. */
+  const checkFill = (wf: Workflow, label: string, kind: "blur" | "grey", o: { encode: string; pixels: [string, number]; size: [number, number]; mask: string }) => {
+    assertLinksResolve(wf, label);
+    ok(j(wf[o.encode].inputs.pixels) === '["storytime_fill_paste",0]', `${label}: the encoder reads the filled copy`);
+    const paste = wf.storytime_fill_paste;
+    ok(paste.class_type === "ImageCompositeMasked" && j(paste.inputs.destination) === j(o.pixels) && j(paste.inputs.source) === '["storytime_fill",0]' && paste.inputs.x === 0 && paste.inputs.y === 0 && paste.inputs.resize_source === false, `${label}: the fill is pasted over the picture that was encoded`);
+    ok(j(paste.inputs.mask) === j([o.mask, 0]) && wf[o.mask].class_type === "GrowMask" && j(Object.values(wf).find((n) => n.class_type === "SetLatentNoiseMask")!.inputs.mask) === j([o.mask, 0]), `${label}: …through the grown mask the sampler uses`);
+    if (kind === "grey") {
+      ok(j(wf.storytime_fill) === j({ class_type: "EmptyImage", inputs: { width: o.size[0], height: o.size[1], batch_size: 1, color: 8421504 } }) && !("storytime_fill_small" in wf), `${label}: grey is an EmptyImage of the encoded size`);
+    } else {
+      ok(j(wf.storytime_fill_small.inputs) === j({ image: o.pixels, upscale_method: "area", scale_by: 0.0625 }) && wf.storytime_fill_small.class_type === "ImageScaleBy", `${label}: blur shrinks the encoded picture to 1/16`);
+      ok(j(wf.storytime_fill.inputs) === j({ image: ["storytime_fill_small", 0], upscale_method: "bilinear", width: o.size[0], height: o.size[1], crop: "disabled" }), `${label}: …and scales it back to the encoded size`);
+    }
+  };
+
+  for (const kind of ["blur", "grey"] as const) {
+    // built-in, not cropped: the encoder reads the LoadImage "10" directly, at the picture's size
+    const bf = fillWorkflow(BUILTIN_WORKFLOW, { ...base, fill: kind });
+    checkFill(bf, `fill ${kind} builtin`, kind, { encode: "11", pixels: ["10", 0], size: [1344, 768], mask: "storytime_grow_1" });
+    ok(j(bf["16"].inputs) === j(fillWorkflow(BUILTIN_WORKFLOW, base)["16"].inputs) && j(bf["9"]) === j(fillWorkflow(BUILTIN_WORKFLOW, base)["9"]), `fill ${kind} builtin: the paste-back and the save are untouched`);
+    // built-in, cropped
+    const bc = fillWorkflow(BUILTIN_WORKFLOW, { ...base, crop, fill: kind });
+    checkFill(bc, `fill ${kind} builtin cropped`, kind, { encode: "11", pixels: ["storytime_crop_scale", 0], size: [832, 624], mask: "storytime_grow_1" });
+    const bcPlain = fillWorkflow(BUILTIN_WORKFLOW, { ...base, crop });
+    ok(j(bc.storytime_paste_1) === j(bcPlain.storytime_paste_1) && j(bc["9"]) === j(bcPlain["9"]), `fill ${kind} builtin cropped: the paste-back is untouched`);
+    // detected, not cropped and cropped
+    checkFill(fillWorkflow(sdxl, { ...base, fill: kind }), `fill ${kind} detected`, kind, { encode: "storytime_encode", pixels: ["storytime_image", 0], size: [1344, 768], mask: "storytime_grow_1" });
+    checkFill(fillWorkflow(sdxl, { ...base, crop, fill: kind }), `fill ${kind} detected cropped`, kind, { encode: "storytime_encode", pixels: ["storytime_crop_scale", 0], size: [832, 624], mask: "storytime_grow_1" });
+    // with LoRAs and two saves the links still resolve
+    assertLinksResolve(fillWorkflow(twoSaves, { ...base, fill: kind, loras: [{ name: "a.safetensors", strength: 0.8 }] }), `fill ${kind} detected (two saves, LoRA)`);
+  }
+
+  // "keep", nothing, and no mask leave the graphs exactly as before
+  ok(j(fillWorkflow(BUILTIN_WORKFLOW, { ...base, fill: "keep" })) === j(fillWorkflow(BUILTIN_WORKFLOW, base)), "fill keep builtin: the graph is exactly as before");
+  ok(j(fillWorkflow(BUILTIN_WORKFLOW, { ...base, crop, fill: "keep" })) === j(fillWorkflow(BUILTIN_WORKFLOW, { ...base, crop })), "fill keep builtin cropped: the graph is exactly as before");
+  ok(j(fillWorkflow(sdxl, { ...base, fill: "keep" })) === j(fillWorkflow(sdxl, base)), "fill keep detected: the graph is exactly as before");
+  ok(j(fillWorkflow(BUILTIN_WORKFLOW, { ...imgParams, fill: "blur" })) === j(imgBuilt) && j(fillWorkflow(sdxl, { ...imgParams, fill: "grey" })) === j(sdxlImg), "fill: with no mask a fill does nothing");
+  ok(j(fillWorkflow(BUILTIN_WORKFLOW, { ...params, fill: "blur" })) === j(built), "fill: with no picture a fill does nothing");
+  const phWf = { ...maskPlaceholders, "1": { ...maskPlaceholders["1"], inputs: { ...maskPlaceholders["1"].inputs, model: ["9", 0] } } };
+  ok(j(fillWorkflow(phWf, { ...base, fill: "blur" })) === j(fillWorkflow(phWf, base)) && !classesOf(fillWorkflow(phWf, { ...base, fill: "grey" })).includes("EmptyImage"), "fill placeholders: a workflow with {{mask}} is left as its author wired it");
+
+  // the helper on its own: no noise mask, or no encoder behind it, is left alone
+  const lone: Workflow = { a: { class_type: "KSampler", inputs: { model: ["m", 0] } } };
+  const loneBefore = j(lone);
+  fillUnderMask(lone, { kind: "blur", size: { w: 64, h: 64 } });
+  ok(j(lone) === loneBefore, "fillUnderMask: a graph with no SetLatentNoiseMask is left alone");
+  const noEncoder: Workflow = { n: { class_type: "SetLatentNoiseMask", inputs: { samples: ["x", 0], mask: ["y", 0] } } };
+  const noEncoderBefore = j(noEncoder);
+  fillUnderMask(noEncoder, { kind: "grey", size: { w: 64, h: 64 } });
+  ok(j(noEncoder) === noEncoderBefore, "fillUnderMask: a noise mask with no RepeatLatentBatch and VAEEncode behind it is left alone");
+}
+function grown13(): PictureParams { return { ...maskParams, grow: 13 }; }
+
 // ---- the built-in workflow's sampler settings ----
-const sampled = (wf: Workflow) => Object.values(wf).find((n) => n.class_type === "KSampler")!.inputs;
+const sampled = (wf: Workflow) => Object.values(wf).find((n) => n.class_type === "KSampler" || n.class_type === "KSamplerAdvanced")!.inputs;
 let ks = sampled(fillWorkflow(BUILTIN_WORKFLOW, params));
 ok(ks.steps === 30 && ks.cfg === 6 && ks.sampler_name === "dpmpp_2m" && ks.scheduler === "karras", "the built-in workflow runs 30 steps of DPM++ 2M Karras at CFG 6");
 ok(JSON.stringify(builtinSampler()) === JSON.stringify(BUILTIN_SAMPLER) && builtinSampler({ cfg: 4 }).steps === 30, "builtinSampler fills in the defaults the settings don't change");
 ks = sampled(fillWorkflow(BUILTIN_WORKFLOW, { ...params, sampler: builtinSampler({ steps: 22, cfg: 4.5, sampler: "euler_ancestral", scheduler: "normal" }) }));
 ok(ks.steps === 22 && ks.cfg === 4.5 && ks.sampler_name === "euler_ancestral" && ks.scheduler === "normal" && ks.seed === params.seed, "Settings can change its steps, CFG, sampler and scheduler");
 ks = sampled(fillWorkflow(BUILTIN_WORKFLOW, { ...params, image: "start.png", denoise: 0.4, sampler: builtinSampler({ steps: 12 }) }));
-ok(ks.steps === 12 && ks.denoise === 0.4 && Array.isArray(ks.latent_image) && ks.latent_image[0] === "12", "…also when it starts from a picture");
+ok(ks.steps === 12 && ks.start_at_step === 12 - stepsToRun(12, 0.4) && Array.isArray(ks.latent_image) && ks.latent_image[0] === "12", "…also when it starts from a picture");
+
+// ---- running only the steps a redraw's strength needs ----
+ok(stepsToRun(30, 0.5) === 15 && stepsToRun(30, 0.05) === 4 && stepsToRun(4, 0.25) === 4 && stepsToRun(8, 0.5) === 4, "stepsToRun: the share of the steps, at least 4, never more than all of them");
+ok(stepsToRun(3, 0.1) === 3 && stepsToRun(30, 1) === 30, "stepsToRun: fewer than 4 steps run all of them, and full strength runs every step");
+const builtBefore = JSON.stringify([BUILTIN_WORKFLOW, BUILTIN_IMG2IMG, BUILTIN_INPAINT]);
+const redraw = fillWorkflow(BUILTIN_WORKFLOW, { ...params, image: "start.png", denoise: 0.4 });
+const rs = redraw["3"];
+ok(rs.class_type === "KSamplerAdvanced" && rs.inputs.start_at_step === 30 - stepsToRun(30, 0.4) && rs.inputs.start_at_step === 18 && rs.inputs.end_at_step === 10000, "a redraw at 0.4 is a KSamplerAdvanced that starts part way through its steps");
+ok(rs.inputs.add_noise === "enable" && rs.inputs.return_with_leftover_noise === "disable" && rs.inputs.noise_seed === params.seed && rs.inputs.steps === 30 && rs.inputs.cfg === 6 && rs.inputs.sampler_name === "dpmpp_2m" && rs.inputs.scheduler === "karras" && !("denoise" in rs.inputs), "…adding noise, leaving none over, keeping the seed and sampler settings, with no denoise");
+ok(JSON.stringify(rs.inputs.model) === '["4",0]' && JSON.stringify(rs.inputs.positive) === '["6",0]' && JSON.stringify(rs.inputs.negative) === '["7",0]' && JSON.stringify(rs.inputs.latent_image) === '["12",0]' && JSON.stringify(redraw["8"].inputs.samples) === '["3",0]', "…with the same links, under the same id");
+ok(fillWorkflow(BUILTIN_WORKFLOW, { ...params, image: "start.png", denoise: 1 })["3"].class_type === "KSampler" && fillWorkflow(BUILTIN_WORKFLOW, { ...params, image: "start.png" })["3"].class_type === "KSampler", "a redraw at full strength stays a KSampler");
+ok(fillWorkflow(BUILTIN_WORKFLOW, { ...params, denoise: 0.4 })["3"].class_type === "KSampler", "…and so does a picture drawn from nothing");
+ok(sampled(fillWorkflow(sdxl, imgParams)).denoise === 0.4 && sdxl["3"].class_type === "KSampler" && sampled(fillWorkflow(imgPlaceholders, imgParams)).denoise === 0.4, "custom workflows (detected or with placeholders) keep their own KSampler and its denoise");
+const noop: Workflow[string] = { class_type: "KSamplerAdvanced", inputs: { steps: 10 } };
+partialSteps(noop);
+ok(noop.class_type === "KSamplerAdvanced" && Object.keys(noop.inputs).join() === "steps", "partialSteps leaves a node that isn't a KSampler alone");
+ok(JSON.stringify([BUILTIN_WORKFLOW, BUILTIN_IMG2IMG, BUILTIN_INPAINT]) === builtBefore, "the built-in workflows are not changed by any of this");
 const own = parseWorkflow(JSON.stringify({ ...BUILTIN_WORKFLOW, "3": { ...BUILTIN_WORKFLOW["3"], inputs: { ...BUILTIN_WORKFLOW["3"].inputs, steps: 9 } } }));
-ok(sampled(fillWorkflow(own, { ...params, sampler: builtinSampler({ steps: 40 }) })).steps === 9, "a workflow of your own keeps its own steps");
-ok(BUILTIN_WORKFLOW["3"].inputs.steps === 30, "…and the built-in workflow itself is left as it was");
+ok(sampled(fillWorkflow(own, { ...params, sampler: builtinSampler({ steps: 40 }) })).steps === 9, "a workflow of your own keeps its own steps");ok(BUILTIN_WORKFLOW["3"].inputs.steps === 30, "…and the built-in workflow itself is left as it was");
 
 // ---- a drawing preset's LoRAs ----
 const loras = [{ name: "styles/ink.safetensors", strength: 0.8 }, { name: "hero.safetensors", strength: -0.5 }];
