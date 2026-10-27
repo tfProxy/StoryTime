@@ -82,6 +82,7 @@ export const TagsTaskSchema = z.object({
   revision: z.number().int().min(1),
   label: text(LIMITS.title).optional(),
   status: taskStatus,
+  found: z.number().int().min(0).optional(),
   error: text(LIMITS.summary).optional(),
 });
 

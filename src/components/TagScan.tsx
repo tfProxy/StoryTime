@@ -1,9 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { suggestTagsForChapter, type TagRule } from "@/lib/ai/tagAi";
+import type { AiRun, TagsTask } from "@/lib/aiRuns/types";
 import { useSettings } from "@/lib/settings";
+import AiRunProgress from "./AiRunProgress";
+import { useWorkQueue } from "./WorkQueue";
 
 export type ScanChapter = {
   id: string;
@@ -17,21 +20,29 @@ export type ScanChapter = {
 };
 
 type Props = {
+  storyId: string;
   story: { title: string; premise: string };
   /** Every chapter, parents first. */
   chapters: ScanChapter[];
   /** The chapter named by ?chapter=, if any. */
   chapterId?: string;
   tags: TagRule[];
+  /** A Find tags run for this story that is not finished (found when the page loaded), shown instead of starting a new one. */
+  unfinishedRunId?: string | null;
 };
 
-export default function TagScan({ story, chapters, chapterId, tags }: Props) {
+const skippedWords = (n: number) => (n > 0 ? ` ${n} chapter${n === 1 ? " was" : "s were"} skipped (already decided).` : "");
+
+export default function TagScan({ storyId, story, chapters, chapterId, tags, unfinishedRunId = null }: Props) {
   const router = useRouter();
   const settings = useSettings();
+  const { startRun } = useWorkQueue();
   const [scope, setScope] = useState<Scope>(chapterId ? "chapter" : "story");
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [runId, setRunId] = useState<string | null>(unfinishedRunId);
+  const [runGoing, setRunGoing] = useState(unfinishedRunId !== null);
   const abortRef = useRef<AbortController | null>(null);
 
   const current = chapters.find((c) => c.id === chapterId);
@@ -39,14 +50,58 @@ export default function TagScan({ story, chapters, chapterId, tags }: Props) {
   const fromHere = current ? subtreeOf(chapters, current.id) : [];
   const counted = (n: number) => `${n} chapter${n === 1 ? "" : "s"}`;
 
+  /** The message for a finished run, from its tasks; the chapters the server left out (already decided) count as skipped. */
+  const finishedRun = useCallback(
+    (run: AiRun) => {
+      const tasks = run.tasks.filter((t): t is TagsTask => t.kind === "tags");
+      const inScope = scopeOf(chapters, run.options.tagScope ?? (run.start_chapter_id ? "chapter" : "story"), run.start_chapter_id).length;
+      const read = tasks.filter((t) => t.status === "done" && t.found !== undefined);
+      const found = read.reduce((n, t) => n + (t.found ?? 0), 0);
+      const failed = tasks.filter((t) => t.status === "failed").length;
+      const skipped = Math.max(0, inScope - tasks.length) + tasks.filter((t) => t.status === "skipped" || (t.status === "done" && t.found === undefined)).length;
+      const text = `Read ${read.length} chapter${read.length === 1 ? "" : "s"}; found ${found} new suggestion${found === 1 ? "" : "s"}.${skippedWords(skipped)}`;
+      setRunGoing(false);
+      setMessage(failed > 0 ? { ok: false, text: `${text} ${failed} chapter${failed === 1 ? "" : "s"} could not be read.` } : { ok: true, text });
+      router.refresh();
+    },
+    [chapters, router],
+  );
+
+  /** Every scope but This chapter: a run on the work queue, made by the server, shown with its progress. */
+  async function scanWithRun(chosen: ScanChapter[], todo: ScanChapter[]) {
+    setMessage(null);
+    if (todo.length === 0) {
+      setMessage({ ok: true, text: `Read 0 chapters; found 0 new suggestions.${skippedWords(chosen.length)}` });
+      return;
+    }
+    setScanning(true);
+    try {
+      const res = await fetch("/api/ai-runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ story_id: storyId, start_chapter_id: !current || scope === "story" ? null : current.id, mode: "tags", options: { tagScope: !current ? "story" : scope } }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || typeof data.id !== "string") throw new Error(data.error ?? `Couldn't start the run (${res.status})`);
+      setRunId(data.id);
+      setRunGoing(true);
+      await startRun(data.id);
+    } catch (e) {
+      setMessage({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setScanning(false);
+    }
+  }
+
   async function scan() {
+    const chosen = !current || scope === "story" ? chapters : scope === "path" ? wayHere : scope === "subtree" ? fromHere : [current];
+    const ids = tags.map((t) => t.id);
+    const todo = chosen.filter((c) => !ids.every((id) => c.decided.includes(id)));
+    if (scope !== "chapter" || !current) return scanWithRun(chosen, todo);
     const ctl = new AbortController();
     abortRef.current = ctl;
     setScanning(true);
     setMessage(null);
-    const chosen = !current || scope === "story" ? chapters : scope === "path" ? wayHere : scope === "subtree" ? fromHere : [current];
-    const ids = tags.map((t) => t.id);
-    const todo = chosen.filter((c) => !ids.every((id) => c.decided.includes(id)));
     const skipped = chosen.length - todo.length;
     let found = 0;
     let done = 0;
@@ -59,7 +114,7 @@ export default function TagScan({ story, chapters, chapterId, tags }: Props) {
           chapter: { title: c.title, body: c.body },
           tags,
           signal: ctl.signal,
-          role: scope === "chapter" && current ? "main" : "cheap",
+          role: "main",
         });
         const res = await fetch(`/api/chapters/${c.id}/tags/suggest`, {
           method: "POST",
@@ -79,7 +134,7 @@ export default function TagScan({ story, chapters, chapterId, tags }: Props) {
       setScanning(false);
       setProgress(null);
     }
-    const skippedText = skipped > 0 ? ` ${skipped} chapter${skipped === 1 ? " was" : "s were"} skipped (already decided).` : "";
+    const skippedText = skippedWords(skipped);
     if (failure) setMessage({ ok: false, text: `${failure} (${done} of ${todo.length} chapters were read.)${skippedText}` });
     else setMessage({ ok: true, text: `Read ${done} chapter${done === 1 ? "" : "s"}; found ${found} new suggestion${found === 1 ? "" : "s"}.${skippedText}` });
     router.refresh();
@@ -113,8 +168,8 @@ export default function TagScan({ story, chapters, chapterId, tags }: Props) {
       </fieldset>
       {scope !== "chapter" && <p className="meta">One AI call per chapter, using your cheaper model.</p>}
       <div className="row">
-        <button type="button" onClick={scan} disabled={scanning}>
-          {scanning ? "Reading…" : "Find tags"}
+        <button type="button" onClick={scan} disabled={scanning || runGoing}>
+          {scanning || runGoing ? "Reading…" : "Find tags"}
         </button>
         {scanning && (
           <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
@@ -128,11 +183,20 @@ export default function TagScan({ story, chapters, chapterId, tags }: Props) {
         )}
       </div>
       {message && <p className={message.ok ? "ok" : "error"}>{message.text}</p>}
+      {runId && <AiRunProgress key={runId} runId={runId} onFinished={finishedRun} />}
     </div>
   );
 }
 
 type Scope = "chapter" | "path" | "subtree" | "story";
+
+/** The chapters a run's scope covers (the start chapter's, or the whole story when there is none). */
+function scopeOf(chapters: ScanChapter[], scope: Scope, startId: string | null): ScanChapter[] {
+  if (!startId || scope === "story") return chapters;
+  if (scope === "path") return pathTo(chapters, startId);
+  if (scope === "subtree") return subtreeOf(chapters, startId);
+  return chapters.filter((c) => c.id === startId);
+}
 
 /** The chapters from the first one down to `id`, in reading order. */
 function pathTo(chapters: ScanChapter[], id: string): ScanChapter[] {

@@ -86,6 +86,7 @@ try {
   // Find tags for the whole story.
   await page.getByRole("button", { name: "Find tags" }).click();
   await page.getByText(/found 1 new suggestion/).waitFor();
+  ok(await page.getByRole("heading", { name: "Read 2 of 2 chapters" }).isVisible(), "the whole story runs on the queue and shows the run's progress");
   ok(calls.length === 2, "one AI call per chapter");
   ok(calls.every((c) => c.model === "cheap"), "the whole story uses the cheap model");
   const sug = page.locator("article[data-chapter-tag]");
@@ -187,6 +188,14 @@ try {
   const check = horseCard.getByRole("link", { name: "Check again" });
   ok((await check.count()) === 1, "the flagged chapter has a Check again link");
   ok((await check.getAttribute("href")) === `/s/${s.story_id}/review?tab=tags&chapter=${horse}`, "…linking to that chapter on the tags tab");
+
+  // An unfinished Find tags run (the tab was closed) is shown again when the page opens, instead of starting another.
+  const fresh = await post("/api/stories", { title: "Resume trial", chapter: { title: "Lone", body: "Nothing.", choices: [] } });
+  const run = await post("/api/ai-runs", { story_id: fresh.story_id, start_chapter_id: null, mode: "tags", options: { tagScope: "story" } });
+  await page.goto(reviewUrl(fresh.story_id, "?tab=tags"));
+  await page.getByRole("heading", { name: "Read 0 of 1 chapter" }).waitFor();
+  ok(await page.getByRole("button", { name: "Reading…" }).isDisabled(), "an unfinished run is shown with its progress, and Find tags waits for it");
+  await fetch(`${BASE}/api/ai-runs/${run.id}/queue?end=1`, { method: "DELETE" });
 } finally {
   await send("DELETE", `/api/tags/${tagId}`);
   await ai.restore();

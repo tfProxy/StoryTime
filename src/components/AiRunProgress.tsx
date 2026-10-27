@@ -4,10 +4,10 @@
 // retry and skip, the plan check (D23) and the end summary. It follows the queue's item for the run when this tab
 // has it, and the run as saved on the server otherwise (a run going in another tab, or one found after a reload).
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getRun } from "@/lib/aiRuns/api";
 import type { RunEvent } from "@/lib/aiRuns/runner";
-import type { AiRun, PictureTask, WriteTask } from "@/lib/aiRuns/types";
+import type { AiRun, PictureTask, TagsTask, WriteTask } from "@/lib/aiRuns/types";
 import { useWorkQueue, type RunItem } from "./WorkQueue";
 
 const plainFetch = (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init);
@@ -17,9 +17,23 @@ const STATUS_WORDS: Record<string, string> = { todo: "to do", written: "written,
 
 type Edit = { label?: string; direction?: string; remove?: boolean };
 
-export default function AiRunProgress({ runId, chapterId, backHref, backLabel }: { runId: string; chapterId?: string; backHref?: string; backLabel?: string }) {
+export default function AiRunProgress({
+  runId,
+  chapterId,
+  backHref,
+  backLabel,
+  onFinished,
+}: {
+  runId: string;
+  chapterId?: string;
+  backHref?: string;
+  backLabel?: string;
+  /** Called once when the run is seen finished (done or stopped for good). */
+  onFinished?: (run: AiRun) => void;
+}) {
   const { items, stopRun, startRun, listenRun } = useWorkQueue();
   const [run, setRun] = useState<AiRun | null>(null);
+  const finishedRef = useRef(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [live, setLive] = useState("");
@@ -59,14 +73,25 @@ export default function AiRunProgress({ runId, chapterId, backHref, backLabel }:
     [runId, listenRun],
   );
 
+  const runEnded = run?.status === "done" || run?.status === "stopped";
+  useEffect(() => {
+    if (!run || !runEnded || finishedRef.current) return;
+    finishedRef.current = true;
+    onFinished?.(run);
+  }, [run, runEnded, onFinished]);
+
   if (!run) return <p className="meta">{problem ?? "Loading the run…"}</p>;
 
   const isPictures = run.mode === "pictures";
+  const isTags = run.mode === "tags";
+  const tagTasks = run.tasks.filter((t): t is TagsTask => t.kind === "tags");
   const pics = run.tasks.filter((t): t is PictureTask => t.kind === "picture");
   const writes = run.tasks.filter((t): t is WriteTask => t.kind === "write");
   // Chapters posted (waiting for their summaries counts), or pictures saved.
-  const done = isPictures ? pics.filter((t) => t.status === "done").length : writes.filter((t) => t.status === "done" || t.status === "written").length;
-  const total = isPictures ? pics.length : writes.length;
+  const done = isTags
+    ? tagTasks.filter((t) => t.status === "done").length
+    : isPictures ? pics.filter((t) => t.status === "done").length : writes.filter((t) => t.status === "done" || t.status === "written").length;
+  const total = isTags ? tagTasks.length : isPictures ? pics.length : writes.length;
   const failedPlans = run.tasks.filter((t) => t.kind === "plan" && t.status === "failed");
   const finished = run.status === "done" || run.status === "stopped";
   const goingHere = item?.state === "working" || item?.state === "waiting";
@@ -118,7 +143,9 @@ export default function AiRunProgress({ runId, chapterId, backHref, backLabel }:
   return (
     <section className="ai-run" aria-label="Run progress">
       <h2>
-        {done} of {total} {isPictures ? "pictures made" : "written"}{item?.state === "working" && item.current ? <>. Now: {isPictures ? item.current : <>“{item.current}”</>}</> : null}
+        {isTags
+          ? total === 0 ? "No chapters to read" : `Read ${done} of ${total} ${total === 1 ? "chapter" : "chapters"}`
+          : <>{done} of {total} {isPictures ? "pictures made" : "written"}{item?.state === "working" && item.current ? <>. Now: {isPictures ? item.current : <>“{item.current}”</>}</> : null}</>}
       </h2>
       <p aria-live="polite">{stateLine}</p>
       {(run.error || item?.error) && !finished && <p className="error">{item?.error ?? run.error}</p>}
@@ -172,7 +199,7 @@ export default function AiRunProgress({ runId, chapterId, backHref, backLabel }:
           </p>
         </div>
       )}
-      {finished && !isPictures && (
+      {finished && !isPictures && !isTags && (
         <div className="ai-run-done">
           <p>
             {run.status === "done" ? `Wrote ${done} ${done === 1 ? "chapter" : "chapters"}, marked not reviewed.` : `Stopped after ${done} of ${writes.length}; what was written is marked not reviewed.`}{" "}
@@ -196,6 +223,23 @@ export default function AiRunProgress({ runId, chapterId, backHref, backLabel }:
 
       <h3>{isPictures ? "Pictures" : "Chapters"}</h3>
       <ol className="ai-run-tasks">
+        {tagTasks.map((t) => (
+          <li key={t.id} className={`ai-run-task ai-run-task-${t.status}`}>
+            <div>
+              <Link href={`/c/${t.chapterId}`}>{t.label ?? "A chapter"}</Link> <span className="meta">· {STATUS_WORDS[t.status]}{t.status === "done" && t.found ? `, ${t.found} new suggestion${t.found === 1 ? "" : "s"}` : ""}</span>
+            </div>
+            {t.status === "failed" && (
+              <>
+                <p className="error">{t.error}</p>
+                <div className="row" style={{ gap: "0.75rem" }}>
+                  <button type="button" className="picture-queue-text-button" disabled={busy || goingHere} onClick={() => void act(async () => { await taskAction(t.id, "retry"); await startRun(runId); })}>Try again</button>
+                  <button type="button" className="picture-queue-text-button" disabled={busy || goingHere} onClick={() => void act(() => taskAction(t.id, "skip"))}>Skip</button>
+                </div>
+              </>
+            )}
+            {t.status === "skipped" && t.error && <div className="meta">{t.error}</div>}
+          </li>
+        ))}
         {pics.map((t) => (
           <li key={t.id} className={`ai-run-task ai-run-task-${t.status}`}>
             <div>
@@ -248,12 +292,18 @@ export default function AiRunProgress({ runId, chapterId, backHref, backLabel }:
           </li>
         ))}
       </ol>
-      <p className="meta">
-        This runs in this browser tab: you can use other pages of StoryTime meanwhile, but keep the tab open. On a phone, keep the screen on.
-      </p>
-      <p>
-        <Link href={backHref ?? `/c/${chapterId}`}>{backLabel ?? "Back to the chapter"}</Link>
-      </p>
+      {isTags ? (
+        <p className="meta">This runs on the StoryTime server: you can close this page and come back later.</p>
+      ) : (
+        <>
+          <p className="meta">
+            This runs in this browser tab: you can use other pages of StoryTime meanwhile, but keep the tab open. On a phone, keep the screen on.
+          </p>
+          <p>
+            <Link href={backHref ?? `/c/${chapterId}`}>{backLabel ?? "Back to the chapter"}</Link>
+          </p>
+        </>
+      )}
     </section>
   );
 }

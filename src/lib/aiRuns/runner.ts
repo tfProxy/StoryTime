@@ -459,12 +459,14 @@ async function doTags(task: TagsTask, run: AiRun, list: RunTask[], env: StepEnv,
     signal: env.signal,
     role: "cheap",
   });
+  let added = 0;
   try {
     // Every tag is sent and recorded as checked, like the review page does.
-    await postTagSuggestions(f, task.chapterId, task.revision, rules.map((t) => t.id), suggestions);
+    const saved = await postTagSuggestions(f, task.chapterId, task.revision, rules.map((t) => t.id), suggestions);
+    added = saved.added ?? 0;
   } catch (e) {
     if (e instanceof ApiError && e.status === 409) return skip("Skipped: the chapter was edited while it was read.");
     throw e;
   }
-  return replace(list, { ...task, status: "done", error: undefined });
+  return replace(list, { ...task, status: "done", found: added, error: undefined });
 }

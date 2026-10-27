@@ -81,6 +81,8 @@ export type TagsTask = {
   /** The chapter's title, for the task list. */
   label?: string;
   status: TaskStatus;
+  /** How many new suggestions the AI's reading of the chapter added (set when it was read). */
+  found?: number;
   error?: string;
 };
 
