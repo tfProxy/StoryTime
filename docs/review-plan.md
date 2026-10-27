@@ -65,7 +65,7 @@ Built as: migration 34 rebuilds `ai_runs` to allow the mode; the server makes th
 - `src/lib/aiRuns/runner.ts`: a step for a `tags` task calls `suggestTagsForChapter` (`src/lib/ai/tagAi.ts`, which only needs `fetch`) with the server's settings and `role: "cheap"`, then saves through `POST /api/chapters/:id/tags/suggest` with the fetch the runner is given (see how `doPrompt` and `saveSummaries` take `f`). A 409 marks the task skipped.
 - Tests: an API test like `tests/api/queue-runs.test.mjs` with `tests/fakeAi.mjs`: a two-chapter run makes two AI calls and leaves suggestions; a re-run makes none.
 
-### B2. Find tags uses the run for more than one chapter (medium, Ask first: question 3)
+### B2. Find tags uses the run for more than one chapter (medium, Ask first: question 3) (done, aa3040e)
 
 - `TagScan.tsx`: for every scope except This chapter, `POST /api/ai-runs` with mode `tags`, then show progress with `AiRunProgress.tsx` (see how `WriteAhead.tsx` and `MissingPictures.tsx` use it). This chapter stays in the page as today, with the main model.
 - Keep the message texts ("Read N chapters; found M new suggestions. K chapters were skipped (already decided).") by building them from the run's tasks.
