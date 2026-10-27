@@ -2,10 +2,6 @@
 
 Planned work, with what you need to know to start. Finished work isn't listed; the code and tests describe it. How the Illustrate page works is in `docs/illustrate.md`: read it before touching that page.
 
-## Run the work queue on the server (planned 2026-10-25)
-
-Move picture jobs, Generate and AI runs from the browser tab to the StoryTime server, so work goes on with the tab closed. The plan, decisions and tasks (phases 0 to 5) are in `docs/server-queue-plan.md`; read it before starting. Not started.
-
 ## Not yet checked against a real ComfyUI
 
 The tests use a fake. Before building more on this, try once on the real machine and write down what differs:
@@ -13,6 +9,12 @@ The tests use a fake. Before building more on this, try once on the real machine
 1. Earlier pictures: make pictures, pin one, reload (only it shows), and use one from All. Restart ComfyUI and check the pictures still load from `/view`.
 2. Start from a picture with the built-in workflow, then with your own exported workflow (with and without `{{image}}`). Check the upload (`/upload/image`, `type=input`) works through your CORS setup, and that a 1344 × 768 start picture fits in memory.
 3. A workflow with `KSamplerAdvanced` has no `denoise` input, so StoryTime says it can't start from a picture. See whether that matters to you.
+4. **The server's work queue** (it now makes the picture jobs, AI runs and Generates; `docs/server-queue-plan.md`). Only the NAS can show these:
+   - Before updating: `docker exec -it storytime node -e "fetch('http://<comfy-ip>:8188/system_stats').then(r=>r.text()).then(console.log)"`, and the same for Ollama (`http://<ollama-ip>:11434/api/ps`). Both must print JSON; if not, the server can't reach them and the addresses in Settings need changing (Settings › Test from server says so).
+   - Queue 4 pictures on the phone, lock the phone, wait, unlock: they should be ready.
+   - Start a write-ahead run, close every tab, reopen later: the run should have continued.
+   - During a long picture job, Compose Pull and Compose Up: the job should be found again and recorded once.
+   - Check the live updates arrive (the header counts change without a reload); if a proxy in front of StoryTime buffers `text/event-stream`, they will not.
 
 ## Next steps, roughly in order of usefulness
 
@@ -113,4 +115,4 @@ New tables (a migration): tag definitions, per-story enabled tags, chapter tags,
 2. The tag library in Settings, rule help and Try it, event tags with approval. (Done: `src/lib/ai/tagAi.ts`, `src/lib/tags.ts` (migrations 27 and 28), Settings > Tags, the Review page's Tags tab (Waiting for you, Tagged, Find tags), and a per-story switch for each tag on the Tags tab and the story details page; every tag starts on. Issues can be put off (Later) or dismissed until the chapter is edited: `review_items`, migration 29, `PUT /api/chapters/:id/review`. Intentional, which adds a codex note, waits for the continuity checks in stage 3.)
 3. Fact extraction, continuity checks and state tags.
 4. Tags at choices and in the outline.
-5. Automatic runs: check a chapter after it is saved. A background or nightly run needs the server to make the AI calls (today the browser makes them; settings already live on the server).
+5. Automatic runs: check a chapter after it is saved. A background or nightly run needs the server to make the AI calls: the server's work queue now does that for writing runs and Generates (`src/lib/worker/`, `src/lib/ai/client.ts` from Node), so this stage can reuse it; the codex scan, tag suggestions and summaries made from a page still go from the browser.

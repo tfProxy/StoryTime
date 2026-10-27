@@ -1,5 +1,6 @@
-// Browser-side LLM client. Requests go directly from the user's browser to the provider,
-// so API keys never touch the StoryTime server.
+// LLM client, used from the browser (a page's own requests go from the user's browser straight to the provider) and
+// from the StoryTime server (the work queue's Generates and AI runs, in src/lib/worker). The keys are in the settings
+// the server keeps, so the server has them; it needs plain `fetch`, which both have.
 import { providerInfo, type ProviderKind } from "./providers";
 import { defaultRef, favoriteFor, findConnection, type Connection, type ModelRef, type Settings } from "../settingsSchema";
 import { freeComfyMemory } from "../comfy/client";
