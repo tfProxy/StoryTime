@@ -13,6 +13,7 @@ import {
   getStoryTags,
   patchRun,
   postChapter,
+  postFacts,
   postTagSuggestions,
   putSummary,
   type ChapterContext,
@@ -23,7 +24,8 @@ import { LIMITS } from "../limits";
 import { applyPlan, expandAfter, needsReview, nextTask, resolveSlot, withGuidance } from "./plan";
 import type { writeImagePrompt } from "../ai/imagePrompt";
 import { hasPicture, loadSetup, writePicturePrompt } from "./pictures";
-import type { AiRun, PictureTask, PlanTask, RunStatus, RunTask, TagsTask, WriteTask } from "./types";
+import type { AiRun, FactsTask, PictureTask, PlanTask, RunStatus, RunTask, TagsTask, WriteTask } from "./types";
+import { extractFacts } from "../ai/factAi";
 import { suggestTagsForChapter } from "../ai/tagAi";
 import { planNext, storyContextOf, summarize, withPathSummaries, writeOneChapter, writeText, type PlannedChoice, type Stream } from "./writeChapter";
 
@@ -97,7 +99,7 @@ export async function skipTask(runId: string, taskId: string, token: string, dep
   return patchRun(fetcher(deps), run.id, { token, version: run.version, tasks, status: run.status === "running" ? "paused" : run.status });
 }
 
-type Pick = { kind: "plan" | "write" | "finish" | "prompt" | "tags"; task: RunTask };
+type Pick = { kind: "plan" | "write" | "finish" | "prompt" | "tags" | "facts"; task: RunTask };
 
 /** Whether the task's dependencies are all done: its plan, and for a `fromTask` slot the task it follows. */
 function ready(list: RunTask[], t: RunTask): boolean {
@@ -118,9 +120,9 @@ function pickStep(run: AiRun, list: RunTask[]): Pick | null {
     const todo = list.find((t): t is PictureTask => t.kind === "picture" && t.status === "todo");
     return todo ? { kind: "prompt", task: todo } : null;
   }
-  if (run.mode === "tags") {
-    const todo = list.find((t): t is TagsTask => t.kind === "tags" && t.status === "todo");
-    return todo ? { kind: "tags", task: todo } : null;
+  if (run.mode === "review") {
+    const todo = list.find((t): t is TagsTask | FactsTask => (t.kind === "tags" || t.kind === "facts") && t.status === "todo");
+    return todo ? { kind: todo.kind, task: todo } : null;
   }
   const writes = list.filter((t): t is WriteTask => t.kind === "write");
   const written = writes.filter((t) => t.status === "written");
@@ -209,8 +211,8 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<StepResult> {
   }
 
   const { task } = picked;
-  const phase = picked.kind === "plan" ? "planning" : picked.kind === "write" || picked.kind === "prompt" || picked.kind === "tags" ? "writing" : "finishing";
-  const label = task.kind === "write" ? task.label : task.kind === "plan" ? "Plan the choices" : task.kind === "picture" ? `Prompt for “${task.label ?? "a chapter"}” (${task.slot})` : task.kind === "tags" ? `Find tags in “${task.label ?? "a chapter"}”` : "";
+  const phase = picked.kind === "plan" ? "planning" : picked.kind === "write" || picked.kind === "prompt" || picked.kind === "tags" || picked.kind === "facts" ? "writing" : "finishing";
+  const label = task.kind === "write" ? task.label : task.kind === "plan" ? "Plan the choices" : task.kind === "picture" ? `Prompt for “${task.label ?? "a chapter"}” (${task.slot})` : task.kind === "tags" ? `Find tags in “${task.label ?? "a chapter"}”` : task.kind === "facts" ? `Find facts in “${task.label ?? "a chapter"}”` : "";
   let tasks = list;
   let failure: unknown = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -261,6 +263,7 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<StepResult> {
 /** Does the step's work; returns the task list with the task updated (and the tasks it planned, for a plan). Posts and adds choices on the server; the caller saves the run. */
 async function doStep(picked: Pick, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
   if (picked.kind === "tags") return doTags(picked.task as TagsTask, run, list, env, f);
+  if (picked.kind === "facts") return doFacts(picked.task as FactsTask, list, env, f);
   if (picked.kind === "prompt") return doPrompt(picked.task as PictureTask, run, list, env, f);
   if (picked.kind === "plan") return doPlan(picked.task as PlanTask, run, list, env, f);
   if (picked.kind === "finish") return doFinish(picked.task as WriteTask, run, list, env, f);
@@ -469,4 +472,31 @@ async function doTags(task: TagsTask, run: AiRun, list: RunTask[], env: StepEnv,
     throw e;
   }
   return replace(list, { ...task, status: "done", found: added, error: undefined });
+}
+
+/**
+ * Facts: the AI reads one chapter for the lasting facts it states, and they are saved over the chapter's earlier ones. The
+ * chapter is read again here, since the run may be old: one edited since the run was made (or while the AI read it) is
+ * skipped.
+ */
+async function doFacts(task: FactsTask, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
+  const context = await getContext(f, task.chapterId);
+  const chapter = context.path.at(-1)!;
+  const skip = (why: string) => replace(list, { ...task, status: "skipped", error: why });
+  if (chapter.revision !== task.revision) return skip("Skipped: the chapter was edited after the run was made.");
+  env.onEvent?.({ type: "status", text: `Reading “${chapter.title}” for facts…` });
+  const facts = await extractFacts(env.settings, {
+    chapter: { title: chapter.title, body: chapter.body },
+    codexNames: context.codex.map((c) => c.name),
+    signal: env.signal,
+    role: "cheap",
+  });
+  let saved = 0;
+  try {
+    saved = (await postFacts(f, task.chapterId, task.revision, facts)).saved;
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409) return skip("Skipped: the chapter was edited while it was read.");
+    throw e;
+  }
+  return replace(list, { ...task, status: "done", found: saved, error: undefined });
 }

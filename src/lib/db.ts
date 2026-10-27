@@ -616,6 +616,50 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE ai_runs_new RENAME TO ai_runs;
   CREATE INDEX ai_runs_story ON ai_runs(story_id, created_at);
   `,
+  // 35: the story review's facts. chapter_facts holds what a chapter states (one row per fact, for one revision of the
+  // chapter); chapter_fact_checks records that a chapter was read at a revision, so one with no facts isn't read again.
+  // The "tags" AI run becomes the "review" run (it now also reads facts): ai_runs is rebuilt with the new mode list and
+  // its "tags" rows become "review".
+  `
+  CREATE TABLE chapter_facts (
+    id         TEXT PRIMARY KEY,
+    chapter_id TEXT NOT NULL REFERENCES chapters(id),
+    revision   INTEGER NOT NULL,
+    entity     TEXT NOT NULL,
+    attribute  TEXT NOT NULL,
+    value      TEXT NOT NULL,
+    quote      TEXT NOT NULL
+  );
+  CREATE INDEX chapter_facts_chapter ON chapter_facts(chapter_id);
+  CREATE TABLE chapter_fact_checks (
+    chapter_id TEXT PRIMARY KEY REFERENCES chapters(id),
+    revision   INTEGER NOT NULL,
+    checked_at INTEGER NOT NULL
+  );
+  CREATE TABLE ai_runs_new (
+    id               TEXT PRIMARY KEY,
+    story_id         TEXT NOT NULL REFERENCES stories(id),
+    start_chapter_id TEXT,
+    mode             TEXT NOT NULL CHECK (mode IN ('fill', 'tree', 'arc', 'pictures', 'review')),
+    options          TEXT NOT NULL,
+    tasks            TEXT NOT NULL,
+    status           TEXT NOT NULL CHECK (status IN ('ready', 'queued', 'running', 'review', 'paused', 'done', 'stopped')),
+    review_depth     INTEGER,
+    finished_at      INTEGER,
+    error            TEXT,
+    version          INTEGER NOT NULL DEFAULT 1,
+    lease_token      TEXT,
+    lease_until      INTEGER,
+    created_at       INTEGER NOT NULL,
+    updated_at       INTEGER NOT NULL
+  );
+  INSERT INTO ai_runs_new (id, story_id, start_chapter_id, mode, options, tasks, status, review_depth, finished_at, error, version, lease_token, lease_until, created_at, updated_at)
+    SELECT id, story_id, start_chapter_id, CASE WHEN mode = 'tags' THEN 'review' ELSE mode END, options, tasks, status, review_depth, finished_at, error, version, lease_token, lease_until, created_at, updated_at FROM ai_runs;
+  DROP TABLE ai_runs;
+  ALTER TABLE ai_runs_new RENAME TO ai_runs;
+  CREATE INDEX ai_runs_story ON ai_runs(story_id, created_at);
+  UPDATE work_items SET data = json_set(data, '$.mode', 'review') WHERE type = 'run' AND json_extract(data, '$.mode') = 'tags';
+  `,
 ];
 
 function open(): Database.Database {

@@ -244,7 +244,7 @@ export default async function ReviewPage({
         <p className="meta">The AI reads each chapter and suggests which of this story&apos;s tags apply. You decide each one.</p>
         <TagScan
           storyId={storyId}
-          unfinishedRunId={listRuns(storyId, { mode: "tags" }).find((r) => ["queued", "running", "paused", "ready", "review"].includes(r.status) && r.counts.total > 0)?.id ?? null}
+          unfinishedRunId={listRuns(storyId, { mode: "review" }).find((r) => ["queued", "running", "paused", "ready", "review"].includes(r.status) && r.counts.total > 0)?.id ?? null}
           story={{ title: story!.title, premise: story!.premise }}
           chapterId={chosen?.id}
           chapters={chapters.map((c) => ({

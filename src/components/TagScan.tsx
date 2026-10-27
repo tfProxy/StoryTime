@@ -79,7 +79,7 @@ export default function TagScan({ storyId, story, chapters, chapterId, tags, unf
       const res = await fetch("/api/ai-runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ story_id: storyId, start_chapter_id: !current || scope === "story" ? null : current.id, mode: "tags", options: { tagScope: !current ? "story" : scope } }),
+        body: JSON.stringify({ story_id: storyId, start_chapter_id: !current || scope === "story" ? null : current.id, mode: "review", options: { tagScope: !current ? "story" : scope } }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || typeof data.id !== "string") throw new Error(data.error ?? `Couldn't start the run (${res.status})`);

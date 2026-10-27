@@ -1,6 +1,7 @@
 // Fetch helpers for the AI run routes and the chapter routes a run uses. Every helper takes the `fetch` to use, so
 // the runner can be tested against a fake server.
 import type { ContextChapter, ContextCodexEntry } from "../ai/prompts";
+import type { Fact } from "../ai/factAi";
 import type { TagRule, TagSuggestion } from "../ai/tagAi";
 import type { AiRun, RunStatus, RunTask } from "./types";
 
@@ -72,6 +73,10 @@ export const getChapterTags = (f: Fetch, storyId: string, chapterId: string) =>
 /** Saves the AI's tag suggestions for a chapter revision; 409 when the chapter was edited meanwhile. */
 export const postTagSuggestions = (f: Fetch, chapterId: string, revision: number, checkedTagIds: string[], suggestions: TagSuggestion[]) =>
   call<{ added: number; kept: number }>(f, "POST", `/api/chapters/${chapterId}/tags/suggest`, { revision, checked_tag_ids: checkedTagIds, suggestions });
+
+/** Saves the facts the AI read from a chapter revision (replacing the chapter's facts); 409 when the chapter was edited meanwhile. */
+export const postFacts = (f: Fetch, chapterId: string, revision: number, facts: Fact[]) =>
+  call<{ saved: number }>(f, "POST", `/api/chapters/${chapterId}/facts`, { revision, facts });
 
 /** Adds an unwritten choice to a chapter. */
 export const addChoice = (f: Fetch, chapterId: string, label: string) => call<{ ok: true }>(f, "POST", `/api/chapters/${chapterId}/choices`, { label });

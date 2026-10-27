@@ -193,5 +193,41 @@ ok(!wqRefused(() => arAdd("r3", "tags")), "a tags run can be saved");
 ok(wqRefused(() => arAdd("r4", "bogus")), "an unknown mode is still refused");
 ok((ar.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'ai_runs_story'`).get() as { name: string } | undefined) !== undefined, "the story index is back");
 ar.close();
+
+// facts and the "review" AI run (schema version 35): chapter_facts and chapter_fact_checks are added, and ai_runs is
+// rebuilt so a "tags" run becomes a "review" run
+ok(MIGRATIONS.length >= 35, "migration 35 exists");
+const fr = new Database(":memory:");
+fr.pragma("foreign_keys = OFF");
+fr.exec(`CREATE TABLE chapters (id TEXT PRIMARY KEY)`);
+fr.exec(MIGRATIONS[30]);
+fr.exec(MIGRATIONS[31]);
+fr.exec(MIGRATIONS[33]);
+const frAdd = (id: string, mode: string) =>
+  fr.prepare(`INSERT INTO ai_runs (id, story_id, mode, options, tasks, status, created_at, updated_at) VALUES (?, 's1', ?, '{}', '[]', 'done', 1, 1)`).run(id, mode);
+frAdd("r1", "fill");
+frAdd("r2", "tags");
+const frItem = (key: string, mode: string) =>
+  fr.prepare(`INSERT INTO work_items (key, type, state, data, created_at, updated_at) VALUES (?, 'run', 'waiting', ?, 1, 1)`).run(key, JSON.stringify({ runId: key, mode }));
+frItem("w1", "tags");
+frItem("w2", "fill");
+fr.exec(MIGRATIONS[34]);
+const itemMode = (key: string) => (JSON.parse((fr.prepare(`SELECT data FROM work_items WHERE key = ?`).get(key) as { data: string }).data) as { mode: string }).mode;
+ok(itemMode("w1") === "review" && itemMode("w2") === "fill", "a queued tags run's item says review too");
+const modeOf = (id: string) => (fr.prepare(`SELECT mode FROM ai_runs WHERE id = ?`).get(id) as { mode: string } | undefined)?.mode;
+ok(modeOf("r1") === "fill", "an existing run is kept");
+ok(modeOf("r2") === "review", "a tags run becomes a review run");
+ok(!wqRefused(() => frAdd("r3", "review")), "a review run can be saved");
+ok(wqRefused(() => frAdd("r4", "tags")), "a tags run is refused now");
+ok(wqRefused(() => frAdd("r5", "bogus")), "an unknown mode is still refused");
+ok((fr.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'ai_runs_story'`).get() as { name: string } | undefined) !== undefined, "the story index is back");
+const frCols = (t: string) => (fr.prepare(`PRAGMA table_info(${t})`).all() as { name: string }[]).map((c) => c.name).join(",");
+ok(frCols("chapter_facts") === "id,chapter_id,revision,entity,attribute,value,quote", "chapter_facts has its columns");
+ok(frCols("chapter_fact_checks") === "chapter_id,revision,checked_at", "chapter_fact_checks has its columns");
+ok((fr.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'chapter_facts_chapter'`).get() as { name: string } | undefined) !== undefined, "chapter_facts is indexed by chapter");
+const factAdd = (id: string) => fr.prepare(`INSERT INTO chapter_facts (id, chapter_id, revision, entity, attribute, value, quote) VALUES (?, 'c1', 1, 'Ann', 'home', 'farm', 'q')`).run(id);
+ok(!wqRefused(() => factAdd("f1")), "a fact can be recorded");
+ok(wqRefused(() => factAdd("f1")), "a fact id is unique");
+fr.close();
 d.close();
 fs.rmSync(dir, { recursive: true, force: true });

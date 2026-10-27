@@ -4,6 +4,7 @@
 // save carries the `version` it started from, so two tabs can't overwrite each other.
 import { z } from "zod";
 import { db, newId } from "./db";
+import { factCheckedChapterIds } from "./facts";
 import { LIMITS } from "./limits";
 import { getChapter, getStory, PostError } from "./stories";
 import { decidedTagIdsByChapter, storyTags } from "./tags";
@@ -11,7 +12,7 @@ import { getStoryChapters } from "./tree";
 
 const text = (max: number) => z.string().trim().max(max);
 
-export const RUN_MODES = ["fill", "tree", "arc", "pictures", "tags"] as const;
+export const RUN_MODES = ["fill", "tree", "arc", "pictures", "review"] as const;
 export const TASK_STATUSES = ["todo", "written", "done", "failed", "skipped"] as const;
 export const RUN_STATUSES = ["ready", "queued", "running", "review", "paused", "done", "stopped"] as const;
 
@@ -86,7 +87,19 @@ export const TagsTaskSchema = z.object({
   error: text(LIMITS.summary).optional(),
 });
 
-export const RunTaskSchema = z.discriminatedUnion("kind", [WriteTaskSchema, PlanTaskSchema, PictureTaskSchema, TagsTaskSchema]);
+export const FactsTaskSchema = z.object({
+  kind: z.literal("facts"),
+  id: taskId,
+  chapterId: z.string().min(1).max(100),
+  revision: z.number().int().min(1),
+  label: text(LIMITS.title).optional(),
+  status: taskStatus,
+  /** How many facts were saved. */
+  found: z.number().int().min(0).optional(),
+  error: text(LIMITS.summary).optional(),
+});
+
+export const RunTaskSchema = z.discriminatedUnion("kind", [WriteTaskSchema, PlanTaskSchema, PictureTaskSchema, TagsTaskSchema, FactsTaskSchema]);
 export const RunTasksSchema = z.array(RunTaskSchema).max(LIMITS.runTasks);
 
 export const RunOptionsSchema = z.object({
@@ -107,6 +120,8 @@ export const RunOptionsSchema = z.object({
   useRefs: z.boolean().optional(),
   // Find tags: which chapters, from the start chapter (the whole story when there is none).
   tagScope: z.enum(["chapter", "path", "subtree", "story"]).optional(),
+  // A review run: what to read each chapter for (tags unless said otherwise; facts cost one more AI call a chapter).
+  checks: z.array(z.enum(["tags", "facts"])).max(2).optional(),
   // The depths whose plans the owner has already checked (D23), so a run that goes on doesn't stop there again.
   reviewedDepths: z.array(z.number().int().min(0).max(100)).max(100).optional(),
 });
@@ -150,14 +165,14 @@ export const NewRunSchema = z
     start_chapter_id: z.string().min(1).nullable().default(null),
     mode: z.enum(RUN_MODES),
     options: RunOptionsSchema.default({}),
-    // The browser makes the tasks of every mode but "tags", whose tasks the server makes (any sent are ignored).
+    // The browser makes the tasks of every mode but "review", whose tasks the server makes (any sent are ignored).
     tasks: RunTasksSchema.optional(),
   })
-  .refine((v) => v.start_chapter_id !== null || v.mode === "pictures" || (v.mode === "tags" && (v.options.tagScope ?? "story") === "story"), {
-    message: "start_chapter_id is needed unless the run is for pictures or for the whole story's tags",
+  .refine((v) => v.start_chapter_id !== null || v.mode === "pictures" || (v.mode === "review" && (v.options.tagScope ?? "story") === "story"), {
+    message: "start_chapter_id is needed unless the run is for pictures or for the whole story's review",
     path: ["start_chapter_id"],
   })
-  .refine((v) => v.mode === "tags" || v.tasks !== undefined, { message: "tasks are needed", path: ["tasks"] });
+  .refine((v) => v.mode === "review" || v.tasks !== undefined, { message: "tasks are needed", path: ["tasks"] });
 
 export const ClaimSchema = z.object({ token: z.string().min(8).max(100) });
 
@@ -245,11 +260,12 @@ function checkTasks(tasks: RunTask[]) {
 }
 
 /**
- * The tasks of a Find tags run: one per chapter in the scope (the start chapter, the way to it, it and everything below
- * it, or the whole story), in story order, leaving out the chapters already checked (every tag that is on for the story
- * is decided for them, as the review page's Find tags counts them).
+ * The tasks of a review run, for each chapter in the scope (the start chapter, the way to it, it and everything below
+ * it, or the whole story), in story order: a tags task if tags are asked for, leaving out the chapters already checked
+ * (every tag that is on for the story is decided for them, as the review page's Find tags counts them); a facts task if
+ * facts are asked for, leaving out the chapters read for facts at their current revision.
  */
-function tagTasks(storyId: string, startChapterId: string | null, scope: NonNullable<RunOptions["tagScope"]>): RunTask[] {
+function reviewTasks(storyId: string, startChapterId: string | null, scope: NonNullable<RunOptions["tagScope"]>, checks: NonNullable<RunOptions["checks"]>): RunTask[] {
   const chapters = getStoryChapters(storyId);
   let chosen = chapters;
   if (startChapterId !== null && scope !== "story") {
@@ -270,11 +286,23 @@ function tagTasks(storyId: string, startChapterId: string | null, scope: NonNull
       });
     }
   }
-  const on = storyTags(storyId);
-  const decided = decidedTagIdsByChapter(storyId);
-  return chosen
-    .filter((c) => !on.every((tid) => (decided.get(c.id) ?? []).includes(tid)))
-    .map((c, i) => ({ kind: "tags", id: `t${i + 1}`, chapterId: c.id, revision: c.revision, label: c.title.slice(0, LIMITS.title), status: "todo" }));
+  const tasks: RunTask[] = [];
+  if (checks.includes("tags")) {
+    const on = storyTags(storyId);
+    const decided = decidedTagIdsByChapter(storyId);
+    for (const c of chosen) {
+      if (on.every((tid) => (decided.get(c.id) ?? []).includes(tid))) continue;
+      tasks.push({ kind: "tags", id: `t${tasks.length + 1}`, chapterId: c.id, revision: c.revision, label: c.title.slice(0, LIMITS.title), status: "todo" });
+    }
+  }
+  if (checks.includes("facts")) {
+    const read = factCheckedChapterIds(storyId);
+    for (const c of chosen) {
+      if (read.has(c.id)) continue;
+      tasks.push({ kind: "facts", id: `t${tasks.length + 1}`, chapterId: c.id, revision: c.revision, label: c.title.slice(0, LIMITS.title), status: "todo" });
+    }
+  }
+  return tasks;
 }
 
 export function createRun(input: z.infer<typeof NewRunSchema>): { id: string } {
@@ -284,7 +312,9 @@ export function createRun(input: z.infer<typeof NewRunSchema>): { id: string } {
     if (!chapter || chapter.story_id !== input.story_id) throw new PostError("That chapter is not in this story", 404);
   }
   const tasks: RunTask[] =
-    input.mode === "tags" ? tagTasks(input.story_id, input.start_chapter_id, input.options.tagScope ?? (input.start_chapter_id === null ? "story" : "chapter")) : (input.tasks ?? []);
+    input.mode === "review"
+      ? reviewTasks(input.story_id, input.start_chapter_id, input.options.tagScope ?? (input.start_chapter_id === null ? "story" : "chapter"), input.options.checks ?? ["tags"])
+      : (input.tasks ?? []);
   if (tasks.length > LIMITS.runTasks) throw new PostError(`A run can have at most ${LIMITS.runTasks} tasks`, 400);
   checkTasks(tasks);
   const id = newId();

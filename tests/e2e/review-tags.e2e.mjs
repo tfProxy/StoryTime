@@ -191,7 +191,7 @@ try {
 
   // An unfinished Find tags run (the tab was closed) is shown again when the page opens, instead of starting another.
   const fresh = await post("/api/stories", { title: "Resume trial", chapter: { title: "Lone", body: "Nothing.", choices: [] } });
-  const run = await post("/api/ai-runs", { story_id: fresh.story_id, start_chapter_id: null, mode: "tags", options: { tagScope: "story" } });
+  const run = await post("/api/ai-runs", { story_id: fresh.story_id, start_chapter_id: null, mode: "review", options: { tagScope: "story" } });
   await page.goto(reviewUrl(fresh.story_id, "?tab=tags"));
   await page.getByRole("heading", { name: "Read 0 of 1 chapter" }).waitFor();
   ok(await page.getByRole("button", { name: "Reading…" }).isDisabled(), "an unfinished run is shown with its progress, and Find tags waits for it");

@@ -60,7 +60,7 @@ export const runData = z.object({
   storyTitle: z.string(),
   startChapterId: z.string().nullable(),
   startTitle: z.string(),
-  mode: z.enum(["fill", "tree", "arc", "pictures", "tags"]),
+  mode: z.enum(["fill", "tree", "arc", "pictures", "review"]),
   done: z.number().int().min(0),
   total: z.number().int().min(0),
   current: z.string().optional(),

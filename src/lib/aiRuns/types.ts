@@ -3,7 +3,7 @@
 
 import type { ModelRef } from "../settingsSchema";
 
-export type RunMode = "fill" | "tree" | "arc" | "pictures" | "tags";
+export type RunMode = "fill" | "tree" | "arc" | "pictures" | "review";
 
 /** Where a write task's chapter goes. */
 export type Slot =
@@ -86,7 +86,22 @@ export type TagsTask = {
   error?: string;
 };
 
-export type RunTask = WriteTask | PlanTask | PictureTask | TagsTask;
+/** Facts: the AI reads one chapter (at `revision`) and its facts are saved. Made by the server when a review run asks for facts. */
+export type FactsTask = {
+  kind: "facts";
+  id: string;
+  chapterId: string;
+  /** The chapter's revision when the run was made; a chapter edited since is skipped. */
+  revision: number;
+  /** The chapter's title, for the task list. */
+  label?: string;
+  status: TaskStatus;
+  /** How many facts were saved (set when the chapter was read). */
+  found?: number;
+  error?: string;
+};
+
+export type RunTask = WriteTask | PlanTask | PictureTask | TagsTask | FactsTask;
 
 export type RunOptions = {
   // writing modes
@@ -113,6 +128,8 @@ export type RunOptions = {
   useRefs?: boolean; // D12, default false
   // tags: which chapters (the server makes the tasks): the start chapter, the way to it, it and everything below it, or the whole story
   tagScope?: "chapter" | "path" | "subtree" | "story";
+  // review: what to read each chapter for (tags unless said otherwise)
+  checks?: ("tags" | "facts")[];
 };
 
 /** `queued`: waiting its turn in a tab's work queue. `running` with a lapsed lease means the tab that ran it is gone. */
