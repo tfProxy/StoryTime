@@ -192,6 +192,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
    * and saved on top of it.
    */
   function showGenerated(d: Draft) {
+    // Read twice for one Generate (its end event and the queue list): the later read may be older than a save made since.
+    if (d.updatedAt <= baseRef.current) return;
     baseRef.current = d.updatedAt;
     setDraft((cur) =>
       cur
@@ -307,16 +309,19 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   }, [busy]);
 
   // When its Generate ends (done, failed or stopped) the draft is read again from the server, which has the text.
+  // This also brings the page's base up to the server's version, without which its next save is refused as a conflict.
+  function rereadGenerated() {
+    if (!loadedRef.current) return;
+    getDraft(draftKey)
+      .then((d) => {
+        if (d) showGenerated(d);
+      })
+      .catch(() => {});
+  }
   const wasGenerating = useRef(false);
   useEffect(() => {
     const now = !!generating;
-    if (wasGenerating.current && !now && loadedRef.current) {
-      getDraft(draftKey)
-        .then((d) => {
-          if (d) showGenerated(d);
-        })
-        .catch(() => {});
-    }
+    if (wasGenerating.current && !now) rereadGenerated();
     wasGenerating.current = now;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!generating, draftKey]);
@@ -361,9 +366,19 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       onText: (text, base) => {
         setDraft((d) => (d ? applyGenerated(d, parseChapterOutput(text), { continued: isBegun(d, base) }) : d));
       },
-      onDone: (after) => setDraft((d) => (d ? applyAfterGenerate(d, after) : d)),
-      onError: (message) => setError(message),
+      // A quick Generate can start and end between two updates of the queue list, so the page never sees it going;
+      // its end event is the sure sign, so the draft is read again here too.
+      onDone: (after) => {
+        setDraft((d) => (d ? applyAfterGenerate(d, after) : d));
+        rereadGenerated();
+      },
+      onError: (message) => {
+        setError(message);
+        rereadGenerated();
+      },
     });
+    // rereadGenerated reads only refs and the draft key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey, draftReady, listenDraft]);
 
   if (!draft) return <p className="meta">Loading draft…</p>;
