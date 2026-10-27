@@ -102,7 +102,9 @@ Built as: the owner chose a "Check continuity" button inside the Continuity sect
 - Issues tab: a "Continuity" section under Summaries, each issue with both quotes and links to both chapters, and Later/Dismiss as today.
 - Tests: `tests/api/review.test.mjs`, `tests/e2e/review.e2e.mjs`.
 
-### C5. The Intentional action (medium)
+### C5. The Intentional action (medium) (done, cbd18cc)
+
+Built as: the codex has no note op, so (owner's choice) the note is appended to the matching entry's content with a `replace` op at the later chapter; no matching entry keeps the note on the Review page only.
 
 - `IssueActions.tsx`: an "Intentional" action for continuity issues, asking for a short note ("a disguise"). It writes a codex note op anchored at the chapter (see `src/lib/codexDb.ts` and `codex.ts` op shapes) and saves the decision with status `intentional` and the note (`decideIssue` takes the note).
 - Intentional issues show in the Dismissed section with their note.
