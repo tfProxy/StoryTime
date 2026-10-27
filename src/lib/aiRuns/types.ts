@@ -113,7 +113,22 @@ export type ContinuityTask = {
   error?: string;
 };
 
-export type RunTask = WriteTask | PlanTask | PictureTask | TagsTask | FactsTask | ContinuityTask;
+/** Summary: the AI checks one chapter's summary against the chapter (at `revision`). Made by the server when a review run asks for it. */
+export type SummaryTask = {
+  kind: "summary";
+  id: string;
+  chapterId: string;
+  /** The chapter's revision when the run was made; a chapter edited since is skipped. */
+  revision: number;
+  /** The chapter's title, for the task list. */
+  label?: string;
+  status: TaskStatus;
+  /** 1 when the summary does not match the chapter (set when checked). */
+  found?: number;
+  error?: string;
+};
+
+export type RunTask = WriteTask | PlanTask | PictureTask | TagsTask | FactsTask | ContinuityTask | SummaryTask;
 
 export type RunOptions = {
   // writing modes
@@ -141,7 +156,7 @@ export type RunOptions = {
   // tags: which chapters (the server makes the tasks): the start chapter, the way to it, it and everything below it, or the whole story
   tagScope?: "chapter" | "path" | "subtree" | "story";
   // review: what to read each chapter for (tags unless said otherwise)
-  checks?: ("tags" | "facts" | "continuity")[];
+  checks?: ("tags" | "facts" | "continuity" | "summaries")[];
 };
 
 /** `queued`: waiting its turn in a tab's work queue. `running` with a lapsed lease means the tab that ran it is gone. */

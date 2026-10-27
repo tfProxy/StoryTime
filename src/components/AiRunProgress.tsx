@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getRun } from "@/lib/aiRuns/api";
 import type { RunEvent } from "@/lib/aiRuns/runner";
-import type { AiRun, ContinuityTask, FactsTask, PictureTask, TagsTask, WriteTask } from "@/lib/aiRuns/types";
+import type { AiRun, ContinuityTask, FactsTask, PictureTask, SummaryTask, TagsTask, WriteTask } from "@/lib/aiRuns/types";
 import { useWorkQueue, type RunItem } from "./WorkQueue";
 
 const plainFetch = (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init);
@@ -85,8 +85,9 @@ export default function AiRunProgress({
   const isPictures = run.mode === "pictures";
   const isTags = run.mode === "review";
   // A review run's tasks: the chapters read for tags and for facts.
-  const tagTasks = run.tasks.filter((t): t is TagsTask | FactsTask | ContinuityTask => t.kind === "tags" || t.kind === "facts" || t.kind === "continuity");
+  const tagTasks = run.tasks.filter((t): t is TagsTask | FactsTask | ContinuityTask | SummaryTask => t.kind === "tags" || t.kind === "facts" || t.kind === "continuity" || t.kind === "summary");
   const hasFacts = tagTasks.some((t) => t.kind === "facts" || t.kind === "continuity");
+  const onlySummaries = tagTasks.length > 0 && tagTasks.every((t) => t.kind === "summary");
   const pics = run.tasks.filter((t): t is PictureTask => t.kind === "picture");
   const writes = run.tasks.filter((t): t is WriteTask => t.kind === "write");
   // Chapters posted (waiting for their summaries counts), or pictures saved.
@@ -146,7 +147,7 @@ export default function AiRunProgress({
     <section className="ai-run" aria-label="Run progress">
       <h2>
         {isTags
-          ? total === 0 ? "No chapters to read" : hasFacts ? `Did ${done} of ${total} ${total === 1 ? "check" : "checks"}` : `Read ${done} of ${total} ${total === 1 ? "chapter" : "chapters"}`
+          ? total === 0 ? "No chapters to read" : onlySummaries ? `Checked ${done} of ${total} ${total === 1 ? "summary" : "summaries"}` : hasFacts || tagTasks.some((t) => t.kind === "summary") ? `Did ${done} of ${total} ${total === 1 ? "check" : "checks"}` : `Read ${done} of ${total} ${total === 1 ? "chapter" : "chapters"}`
           : <>{done} of {total} {isPictures ? "pictures made" : "written"}{item?.state === "working" && item.current ? <>. Now: {isPictures ? item.current : <>“{item.current}”</>}</> : null}</>}
       </h2>
       <p aria-live="polite">{stateLine}</p>
@@ -234,7 +235,7 @@ export default function AiRunProgress({
                 </>
               ) : (
                 <>
-                  <Link href={`/c/${t.chapterId}`}>{t.label ?? "A chapter"}</Link> <span className="meta">· {t.kind === "facts" ? "Facts: " : ""}{STATUS_WORDS[t.status]}{t.status === "done" && t.found ? (t.kind === "facts" ? `, ${t.found} fact${t.found === 1 ? "" : "s"}` : `, ${t.found} new suggestion${t.found === 1 ? "" : "s"}`) : ""}</span>
+                  <Link href={`/c/${t.chapterId}`}>{t.label ?? "A chapter"}</Link> <span className="meta">· {t.kind === "facts" ? "Facts: " : t.kind === "summary" ? "Summary: " : ""}{STATUS_WORDS[t.status]}{t.status === "done" && t.found ? (t.kind === "summary" ? ", doesn't match" : t.kind === "facts" ? `, ${t.found} fact${t.found === 1 ? "" : "s"}` : `, ${t.found} new suggestion${t.found === 1 ? "" : "s"}`) : ""}</span>
                 </>
               )}
             </div>

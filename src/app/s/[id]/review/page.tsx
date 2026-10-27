@@ -4,6 +4,7 @@ import CodexAiScan from "@/components/CodexAiScan";
 import ContinuityCheck from "@/components/ContinuityCheck";
 import IssueActions from "@/components/IssueActions";
 import StoryTagSwitches from "@/components/StoryTagSwitches";
+import SummaryCheck from "@/components/SummaryCheck";
 import TagScan from "@/components/TagScan";
 import TagSuggestions from "@/components/TagSuggestions";
 import TaggedChapters from "@/components/TaggedChapters";
@@ -123,6 +124,10 @@ export default async function ReviewPage({
       listRuns(storyId, { mode: "review" }).find(
         (r) => ["queued", "running", "paused", "ready", "review"].includes(r.status) && (r.options.checks ?? ["tags"]).includes("continuity"),
       )?.id ?? null;
+    const unfinishedSummaryRun =
+      listRuns(storyId, { mode: "review" }).find(
+        (r) => ["queued", "running", "paused", "ready", "review"].includes(r.status) && r.counts.total > 0 && (r.options.checks ?? ["tags"]).includes("summaries"),
+      )?.id ?? null;
     const item = (i: (typeof all)[number], actions: ("later" | "dismissed" | "open" | "undo")[], fix: boolean) => (
       <li key={`${i.chapterId}-${i.kind}-${i.fingerprint}`}>
         <Link href={`/c/${i.chapterId}`}>{i.title}</Link>
@@ -165,6 +170,12 @@ export default async function ReviewPage({
             <ul>{dismissed.map((i) => item(i, ["undo"], false))}</ul>
           </details>
         )}
+        <SummaryCheck
+          storyId={storyId}
+          unfinishedRunId={unfinishedSummaryRun}
+          chapterId={chosen?.id}
+          chapters={chapters.map((c) => ({ id: c.id, title: c.title, parent_id: c.parent_id }))}
+        />
 
         <h2>Continuity</h2>
         {openClashes.length === 0 ? (

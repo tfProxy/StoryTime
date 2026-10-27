@@ -4,8 +4,9 @@ import { PostError } from "./stories";
 
 import { storyVerdicts } from "./continuityVerdicts";
 import { CODEX_LIMITS, createCodexOp, getCodexState } from "./codexDb";
+import { currentSummaryChecks } from "./summaryChecks";
 
-export const ISSUE_KINDS = ["summary-missing", "summary-stale", "continuity", "codex-missing"] as const;
+export const ISSUE_KINDS = ["summary-missing", "summary-stale", "summary-wrong", "continuity", "codex-missing"] as const;
 export type IssueKind = (typeof ISSUE_KINDS)[number];
 
 /** The two sides of a continuity issue: an earlier chapter said one thing, a later one another. */
@@ -94,6 +95,22 @@ export function reviewIssues(storyId: string): ReviewIssue[] {
     } else if (c.revision > 1 && c.prev_body !== null && c.prev_body !== c.body && c.prev_summary === c.summary) {
       add("summary-stale", "The last edit changed the text but not the summary.");
     }
+  }
+
+  // Summaries the AI found don't match their chapter (a check counts while the chapter and its summary are as checked).
+  const rowOf = new Map(rows.map((c) => [c.id, c]));
+  for (const k of currentSummaryChecks(storyId)) {
+    const c = rowOf.get(k.chapterId);
+    if (!c || k.verdict !== "wrong") continue;
+    issues.push({
+      chapterId: c.id,
+      title: c.title,
+      depth: c.depth,
+      kind: "summary-wrong",
+      fingerprint: "",
+      message: `The summary doesn't match the chapter: ${k.problem}`,
+      status: statusOf(c.id, "summary-wrong", ""),
+    });
   }
 
   // Continuity: the clashes the AI judged a contradiction, while both chapters are still as they were read.

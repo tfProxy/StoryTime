@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { db, newId } from "./db";
 import { factCheckedChapterIds } from "./facts";
+import { currentSummaryChecks } from "./summaryChecks";
 import { LIMITS } from "./limits";
 import { getChapter, getStory, PostError } from "./stories";
 import { decidedTagIdsByChapter, storyTags } from "./tags";
@@ -110,7 +111,19 @@ export const ContinuityTaskSchema = z.object({
   error: text(LIMITS.summary).optional(),
 });
 
-export const RunTaskSchema = z.discriminatedUnion("kind", [WriteTaskSchema, PlanTaskSchema, PictureTaskSchema, TagsTaskSchema, FactsTaskSchema, ContinuityTaskSchema]);
+export const SummaryTaskSchema = z.object({
+  kind: z.literal("summary"),
+  id: taskId,
+  chapterId: z.string().min(1).max(100),
+  revision: z.number().int().min(1),
+  label: text(LIMITS.title).optional(),
+  status: taskStatus,
+  /** 1 when the summary does not match the chapter. */
+  found: z.number().int().min(0).optional(),
+  error: text(LIMITS.summary).optional(),
+});
+
+export const RunTaskSchema = z.discriminatedUnion("kind", [WriteTaskSchema, PlanTaskSchema, PictureTaskSchema, TagsTaskSchema, FactsTaskSchema, ContinuityTaskSchema, SummaryTaskSchema]);
 export const RunTasksSchema = z.array(RunTaskSchema).max(LIMITS.runTasks);
 
 export const RunOptionsSchema = z.object({
@@ -132,8 +145,8 @@ export const RunOptionsSchema = z.object({
   // Find tags: which chapters, from the start chapter (the whole story when there is none).
   tagScope: z.enum(["chapter", "path", "subtree", "story"]).optional(),
   // A review run: what to read each chapter for (tags unless said otherwise; facts cost one more AI call a chapter;
-  // continuity, after the facts, asks the AI about each clash between chapters).
-  checks: z.array(z.enum(["tags", "facts", "continuity"])).max(3).optional(),
+  // continuity, after the facts, asks the AI about each clash between chapters; summaries checks each summary against its chapter).
+  checks: z.array(z.enum(["tags", "facts", "continuity", "summaries"])).max(4).optional(),
   // The depths whose plans the owner has already checked (D23), so a run that goes on doesn't stop there again.
   reviewedDepths: z.array(z.number().int().min(0).max(100)).max(100).optional(),
 });
@@ -312,6 +325,14 @@ function reviewTasks(storyId: string, startChapterId: string | null, scope: NonN
     for (const c of chosen) {
       if (read.has(c.id)) continue;
       tasks.push({ kind: "facts", id: `t${tasks.length + 1}`, chapterId: c.id, revision: c.revision, label: c.title.slice(0, LIMITS.title), status: "todo" });
+    }
+  }
+  if (checks.includes("summaries")) {
+    // Chapters with no summary are left out (the Issues tab already lists them as missing one).
+    const checked = new Set(currentSummaryChecks(storyId).map((k) => k.chapterId));
+    for (const c of chosen) {
+      if (!c.summary || c.summary.trim() === "" || checked.has(c.id)) continue;
+      tasks.push({ kind: "summary", id: `t${tasks.length + 1}`, chapterId: c.id, revision: c.revision, label: c.title.slice(0, LIMITS.title), status: "todo" });
     }
   }
   if (checks.includes("continuity")) {

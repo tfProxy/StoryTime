@@ -682,6 +682,19 @@ export const MIGRATIONS: string[] = [
   );
   CREATE INDEX continuity_verdicts_story ON continuity_verdicts(story_id);
   `,
+  // 37: the AI's check of whether a chapter's summary matches the chapter. One row a chapter. A summary edit does not
+  // bump the chapter's revision, so the summary text that was checked is kept too: the row only counts while both the
+  // revision and the summary are still the ones checked.
+  `
+  CREATE TABLE summary_checks (
+    chapter_id TEXT PRIMARY KEY REFERENCES chapters(id),
+    revision   INTEGER NOT NULL,
+    summary    TEXT NOT NULL,
+    verdict    TEXT NOT NULL CHECK (verdict IN ('ok', 'wrong')),
+    problem    TEXT,
+    checked_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 function open(): Database.Database {

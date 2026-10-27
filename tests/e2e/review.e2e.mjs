@@ -14,7 +14,9 @@ const mock = http.createServer((req, res) => {
     const user = body.messages.at(-1).content;
     aiCalls.push({ model: body.model, user });
     const early = user.includes('Chapter to read: "Dawn"');
-    const out = user.includes("Is this a contradiction")
+    const out = user.includes("Summary to check:")
+      ? user.includes('Chapter: "Night"') ? { ok: false, problem: "Adds a dragon." } : { ok: true }
+      : user.includes("Is this a contradiction")
       ? { verdict: "contradiction" }
       : { facts: [{ entity: "Mira", attribute: "eye colour", value: early ? "green" : "blue", quote: early ? "Mira has green eyes." : "Mira has blue eyes." }] };
     res.setHeader("content-type", "text/event-stream");
@@ -197,6 +199,30 @@ try {
   ok((await found.getByRole("link", { name: "Dusk" }).getAttribute("href")) === `/c/${dDusk}`, "the contradiction appears in the section when the run ends");
   await page.goto(`${BASE}/s/${d.story_id}/review?chapter=${dDusk}`);
   ok((await page.locator('input[name="continuity-scope"]').count()) === 3, "a chosen chapter offers this chapter, the way here and the whole story");
+
+  // Summaries that don't match: an issue seeded through the route shows under Summaries, and Check summaries checks the rest.
+  const e = await post("/api/stories", { title: "Summary check story", chapter: { title: "Morning", body: "A storm broke at dawn.", summary: "A quiet dawn.", choices: ["on"] } });
+  const eChoice = (await send("GET", `/api/chapters/${e.chapter_id}`)).choices[0];
+  const eNight = (await post("/api/chapters", { choice_id: eChoice.id, title: "Night", body: "The stars came out.", summary: "Stars and a dragon." })).chapter_id;
+  const seeded = await fetch(`${BASE}/api/chapters/${e.chapter_id}/summary-check`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ revision: 1, summary: "A quiet dawn.", verdict: "wrong", problem: "Leaves out the storm." }),
+  });
+  ok(seeded.status === 200, "a summary check can be saved through the route");
+  await page.goto(`${BASE}/s/${e.story_id}/review`);
+  const wrongItem = page.locator("li", { hasText: "The summary doesn't match the chapter: Leaves out the storm." });
+  ok(await wrongItem.isVisible(), "a summary that doesn't match shows under Summaries");
+  ok((await wrongItem.getByRole("link", { name: "Fix the summary" }).getAttribute("href")) === `/c/${e.chapter_id}/summary`, "…with a Fix the summary link to its summary page");
+  ok(await page.getByText("Reads each chapter and its summary, and says when they don't match. Uses your cheaper model.").isVisible(), "the Check summaries section explains what it does");
+  ok((await page.locator('input[name="summary-scope"]').count()) === 1, "without a chosen chapter only The whole story is offered");
+  const summaryCallsBefore = aiCalls.filter((x) => x.user.includes("Summary to check:")).length;
+  await page.getByRole("button", { name: "Check summaries" }).click();
+  await page.getByText("Found 1 summary that doesn't match.").waitFor({ timeout: 30000 });
+  const summaryCalls = aiCalls.slice().filter((x) => x.user.includes("Summary to check:"));
+  ok(summaryCalls.length - summaryCallsBefore === 1 && summaryCalls.at(-1).user.includes('Chapter: "Night"') && summaryCalls.at(-1).model === "cheap", "only the chapter not yet checked was sent to the cheaper model");
+  await page.locator("li", { hasText: "The summary doesn't match the chapter: Adds a dragon." }).waitFor();
+  ok((await page.locator("li", { hasText: "The summary doesn't match the chapter: Adds a dragon." }).getByRole("link", { name: "Fix the summary" }).getAttribute("href")) === `/c/${eNight}/summary`, "the new issue appears when the run ends");
   await ai.restore();
 } finally {
   mock.close();

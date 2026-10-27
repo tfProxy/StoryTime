@@ -18,6 +18,7 @@ import {
   postChapter,
   postFacts,
   postVerdict,
+  postSummaryCheck,
   postTagSuggestions,
   putSummary,
   type ChapterContext,
@@ -28,8 +29,9 @@ import { LIMITS } from "../limits";
 import { applyPlan, expandAfter, needsReview, nextTask, resolveSlot, withGuidance } from "./plan";
 import type { writeImagePrompt } from "../ai/imagePrompt";
 import { hasPicture, loadSetup, writePicturePrompt } from "./pictures";
-import type { AiRun, ContinuityTask, FactsTask, PictureTask, PlanTask, RunStatus, RunTask, TagsTask, WriteTask } from "./types";
+import type { AiRun, ContinuityTask, FactsTask, PictureTask, PlanTask, RunStatus, RunTask, SummaryTask, TagsTask, WriteTask } from "./types";
 import { extractFacts, judgeConflict } from "../ai/factAi";
+import { summaryCheck } from "../ai/summaryCheckAi";
 import { CHANGE_EVENT_TAGS, continuityFingerprint, findConflicts, type Conflict } from "../continuity";
 import { suggestTagsForChapter } from "../ai/tagAi";
 import { planNext, storyContextOf, summarize, withPathSummaries, writeOneChapter, writeText, type PlannedChoice, type Stream } from "./writeChapter";
@@ -104,7 +106,7 @@ export async function skipTask(runId: string, taskId: string, token: string, dep
   return patchRun(fetcher(deps), run.id, { token, version: run.version, tasks, status: run.status === "running" ? "paused" : run.status });
 }
 
-type Pick = { kind: "plan" | "write" | "finish" | "prompt" | "tags" | "facts" | "continuity"; task: RunTask };
+type Pick = { kind: "plan" | "write" | "finish" | "prompt" | "tags" | "facts" | "continuity" | "summary"; task: RunTask };
 
 /** Whether the task's dependencies are all done: its plan, and for a `fromTask` slot the task it follows. */
 function ready(list: RunTask[], t: RunTask): boolean {
@@ -126,7 +128,7 @@ function pickStep(run: AiRun, list: RunTask[]): Pick | null {
     return todo ? { kind: "prompt", task: todo } : null;
   }
   if (run.mode === "review") {
-    const todo = list.find((t): t is TagsTask | FactsTask => (t.kind === "tags" || t.kind === "facts") && t.status === "todo");
+    const todo = list.find((t): t is TagsTask | FactsTask | SummaryTask => (t.kind === "tags" || t.kind === "facts" || t.kind === "summary") && t.status === "todo");
     if (todo) return { kind: todo.kind, task: todo };
     // The clashes are judged last, once every chapter's facts are in.
     const judge = list.find((t): t is ContinuityTask => t.kind === "continuity" && t.status === "todo");
@@ -219,8 +221,8 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<StepResult> {
   }
 
   const { task } = picked;
-  const phase = picked.kind === "plan" ? "planning" : picked.kind === "write" || picked.kind === "prompt" || picked.kind === "tags" || picked.kind === "facts" || picked.kind === "continuity" ? "writing" : "finishing";
-  const label = task.kind === "write" ? task.label : task.kind === "plan" ? "Plan the choices" : task.kind === "picture" ? `Prompt for “${task.label ?? "a chapter"}” (${task.slot})` : task.kind === "tags" ? `Find tags in “${task.label ?? "a chapter"}”` : task.kind === "facts" ? `Find facts in “${task.label ?? "a chapter"}”` : task.kind === "continuity" ? "Check continuity" : "";
+  const phase = picked.kind === "plan" ? "planning" : picked.kind === "write" || picked.kind === "prompt" || picked.kind === "tags" || picked.kind === "facts" || picked.kind === "continuity" || picked.kind === "summary" ? "writing" : "finishing";
+  const label = task.kind === "write" ? task.label : task.kind === "plan" ? "Plan the choices" : task.kind === "picture" ? `Prompt for “${task.label ?? "a chapter"}” (${task.slot})` : task.kind === "tags" ? `Find tags in “${task.label ?? "a chapter"}”` : task.kind === "facts" ? `Find facts in “${task.label ?? "a chapter"}”` : task.kind === "continuity" ? "Check continuity" : task.kind === "summary" ? `Check the summary of “${task.label ?? "a chapter"}”` : "";
   let tasks = list;
   let failure: unknown = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -272,6 +274,7 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<StepResult> {
 async function doStep(picked: Pick, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
   if (picked.kind === "tags") return doTags(picked.task as TagsTask, run, list, env, f);
   if (picked.kind === "facts") return doFacts(picked.task as FactsTask, list, env, f);
+  if (picked.kind === "summary") return doSummary(picked.task as SummaryTask, list, env, f);
   if (picked.kind === "continuity") return doContinuity(picked.task as ContinuityTask, run, list, env, f);
   if (picked.kind === "prompt") return doPrompt(picked.task as PictureTask, run, list, env, f);
   if (picked.kind === "plan") return doPlan(picked.task as PlanTask, run, list, env, f);
@@ -508,6 +511,29 @@ async function doFacts(task: FactsTask, list: RunTask[], env: StepEnv, f: Fetch)
     throw e;
   }
   return replace(list, { ...task, status: "done", found: saved, error: undefined });
+}
+
+/**
+ * Summary: the AI checks whether a chapter's summary matches the chapter, and the answer is saved with the revision and
+ * the summary text it was about. The chapter is read again here, since the run may be old: one edited since the run was
+ * made (or while the AI read it), or whose summary is now empty, is skipped.
+ */
+async function doSummary(task: SummaryTask, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
+  const context = await getContext(f, task.chapterId);
+  const chapter = context.path.at(-1)!;
+  const skip = (why: string) => replace(list, { ...task, status: "skipped", error: why });
+  if (chapter.revision !== task.revision) return skip("Skipped: the chapter was edited after the run was made.");
+  const summary = chapter.summary ?? "";
+  if (!summary.trim()) return skip("Skipped: the chapter has no summary.");
+  env.onEvent?.({ type: "status", text: `Checking the summary of “${chapter.title}”…` });
+  const result = await summaryCheck(env.settings, { chapter: { title: chapter.title, body: chapter.body }, summary, signal: env.signal, role: "cheap" });
+  try {
+    await postSummaryCheck(f, task.chapterId, { revision: task.revision, summary, verdict: result.ok ? "ok" : "wrong", ...(!result.ok && { problem: result.problem }) });
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409) return skip("Skipped: the chapter or its summary was edited while it was checked.");
+    throw e;
+  }
+  return replace(list, { ...task, status: "done", found: result.ok ? 0 : 1, error: undefined });
 }
 
 /** The most clashes one run asks the AI about; the rest wait for the next run (they have no verdict yet). */

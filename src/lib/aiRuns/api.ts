@@ -79,6 +79,10 @@ export const postTagSuggestions = (f: Fetch, chapterId: string, revision: number
 export const postFacts = (f: Fetch, chapterId: string, revision: number, facts: Fact[]) =>
   call<{ saved: number }>(f, "POST", `/api/chapters/${chapterId}/facts`, { revision, facts });
 
+/** Saves the AI's check of a chapter's summary; 409 when the chapter or its summary was edited meanwhile. */
+export const postSummaryCheck = (f: Fetch, chapterId: string, body: { revision: number; summary: string; verdict: "ok" | "wrong"; problem?: string }) =>
+  call<{ ok: true }>(f, "POST", `/api/chapters/${chapterId}/summary-check`, body);
+
 /** The facts of each chapter from the story's root down to this one, root first. */
 export const getPathFacts = (f: Fetch, chapterId: string) => call<{ path: PathFacts[] }>(f, "GET", `/api/chapters/${chapterId}/facts`);
 

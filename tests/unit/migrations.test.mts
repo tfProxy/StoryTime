@@ -249,5 +249,19 @@ ok(wqRefused(() => cvAdd("a", "fine")), "a fingerprint is unique");
 ok(wqRefused(() => cvAdd("d", "maybe")), "an unknown verdict is refused");
 ok((cv.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'continuity_verdicts_story'`).get() as { name: string } | undefined) !== undefined, "verdicts are indexed by story");
 cv.close();
+
+// summary checks (schema version 37): one row per chapter, the verdict ok or wrong
+ok(MIGRATIONS.length >= 37, "migration 37 exists");
+const sc = new Database(":memory:");
+sc.pragma("foreign_keys = OFF");
+sc.exec(MIGRATIONS[36]);
+const scCols = (sc.prepare(`PRAGMA table_info(summary_checks)`).all() as { name: string }[]).map((c) => c.name).join(",");
+ok(scCols === "chapter_id,revision,summary,verdict,problem,checked_at", "summary_checks has its columns");
+const scAdd = (chapterId: string, verdict: string) =>
+  sc.prepare(`INSERT INTO summary_checks (chapter_id, revision, summary, verdict, problem, checked_at) VALUES (?, 1, 'A summary', ?, NULL, 1)`).run(chapterId, verdict);
+ok(!wqRefused(() => scAdd("c1", "ok")) && !wqRefused(() => scAdd("c2", "wrong")), "a check can be ok or wrong");
+ok(wqRefused(() => scAdd("c1", "ok")), "a chapter has one check");
+ok(wqRefused(() => scAdd("c3", "maybe")), "an unknown verdict is refused");
+sc.close();
 d.close();
 fs.rmSync(dir, { recursive: true, force: true });
