@@ -28,7 +28,7 @@ Written 2026-10-27 for agents on cheaper models, one task at a time, directed by
 2. **AI mark and Review** (needed before E3): should AI-written chapters not yet marked reviewed also be listed on the Review page's Issues tab, and counted in the outline ⚠? **Answered 2026-10-27: list them on the Issues tab, but don't count them in the outline ⚠** (the AI mark already shows there).
 5. **Automatic checks** (E1, E2): **answered 2026-10-27: all of them** — tags, facts and continuity, and the summary check.
 3. **Long scans on the server** (needed before B2): should Find tags over more than one chapter go through the queue (it keeps going with the tab closed and takes turns with pictures), replacing today's in-page loop? **Answered 2026-10-27: yes, through the queue.**
-4. **Placement for stage 4** (D1 to D3): where content notes go on the reading page, and the outline chips/filter.
+4. **Placement for stage 4** (D1 to D3): where content notes go on the reading page, and the outline chips/filter. **Answered 2026-10-27:** under each choice, both the next chapter's tags and the rest of the branch's, marked apart ("Next: violence · Later on this branch: tf"); hidden by one switch in Settings (not per reader); shown in the offline HTML export too, not Twine; the outline already shows tag chips, and the "highlight branches tagged X" option is wanted.
 
 ## Phase A: small tag fixes (no owner input needed)
 
