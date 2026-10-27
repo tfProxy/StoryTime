@@ -5,7 +5,6 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { arcPlanPrompt, generatePrompt, parseIdeas, SYSTEM_ARC_PLAN, SYSTEM_CHAPTER, type StoryContext } from "@/lib/ai/prompts";
-import { claim, finish } from "@/lib/aiRuns/runner";
 import { estimateArc, estimateFill, estimateTree, planArc, planFill, planTree, DEFAULT_END_CHOICES, type ArcStep, type PlanNode } from "@/lib/aiRuns/plan";
 import { completeChat } from "@/lib/ai/client";
 import type { RunOptions } from "@/lib/aiRuns/types";
@@ -149,9 +148,8 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
   async function stopUnfinished(id: string) {
     setBusy(true);
     try {
-      const token = `stop-${Math.random().toString(36).slice(2)}-${Date.now()}`;
-      const run = await claim(id, token);
-      await finish(run, "stopped", token);
+      const res = await fetch(`/api/ai-runs/${id}/queue?end=1`, { method: "DELETE" });
+      if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `Couldn't stop the run (${res.status})`);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

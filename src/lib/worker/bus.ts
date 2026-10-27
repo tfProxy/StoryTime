@@ -49,8 +49,8 @@ export type WorkerState = {
   pictureRuns: Map<string, { asked: Set<string>; retried: Set<string>; results: { taskId: string; jobId?: string; error?: string }[]; flushing: boolean }>;
   /** ComfyUI jobs already picked up (made here or found in ComfyUI), by prompt id. */
   picked: Set<string>;
-  /** The scan of ComfyUI for this StoryTime's jobs: off until the browser has moved to the server queue (Phase 5), or both would record the same jobs. */
-  scan: { enabled: boolean; running: boolean };
+  /** The scan of ComfyUI for this StoryTime's jobs: on now that the browser follows the server's queue (it would record the same jobs as the browser did, if both scanned). `last` is when it last ran. */
+  scan: { enabled: boolean; running: boolean; last: number };
   /** The loop's pump is going, and was asked again meanwhile (see `pump` in loop.ts). */
   pump: { running: boolean; again: boolean };
   /** The picture job quick clicks can still join: its key, what it must match, how many pictures it has, and the timer that closes it. */
@@ -75,7 +75,7 @@ declare global {
 
 /** The one worker state of this process, made on first use. */
 export function workerState(): WorkerState {
-  return (globalThis.__storytimeWorker ??= { bus: createBus(), started: false, timers: [], generates: new Map(), runs: new Map(), pictureRuns: new Map(), picked: new Set(), scan: { enabled: false, running: false }, pump: { running: false, again: false }, gathering: null, pictures: new Map(), sendChain: Promise.resolve(), uploads: { current: null }, lastPreset: null, holder: null });
+  return (globalThis.__storytimeWorker ??= { bus: createBus(), started: false, timers: [], generates: new Map(), runs: new Map(), pictureRuns: new Map(), picked: new Set(), scan: { enabled: true, running: false, last: 0 }, pump: { running: false, again: false }, gathering: null, pictures: new Map(), sendChain: Promise.resolve(), uploads: { current: null }, lastPreset: null, holder: null });
 }
 
 export const publish = (channel: string, event: unknown) => workerState().bus.publish(channel, event);

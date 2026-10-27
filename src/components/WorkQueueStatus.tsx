@@ -95,7 +95,6 @@ export default function WorkQueueStatus() {
   const gensFailed = gens.filter((g) => g.state === "failed");
   const runsGoing = runs.filter((r) => r.state === "working" || r.state === "waiting");
   const runsPaused = runs.filter((r) => r.state === "paused");
-  const runsElsewhere = runs.filter((r) => r.state === "elsewhere");
   const runsDone = runs.filter((r) => r.state === "done");
   const runsFailed = runs.filter((r) => r.state === "failed");
   const making = jobs.filter((j) => j.state === "making");
@@ -144,7 +143,6 @@ export default function WorkQueueStatus() {
     paused && "paused",
     going > 0 && `${going} ${mixed ? "going" : "being made"}`,
     runsPaused.length > 0 && `${runsPaused.length} paused`,
-    runsElsewhere.length > 0 && `${runsElsewhere.length} in another tab`,
     ready > 0 && `${ready} ready`,
     bad > 0 && `${bad} failed`,
   ].filter(Boolean);
@@ -161,7 +159,6 @@ export default function WorkQueueStatus() {
           </span>
         )}
         {runsPaused.length > 0 && <span className="picture-queue-part">⏸ {runsPaused.length}</span>}
-        {runsElsewhere.length > 0 && <span className="picture-queue-part">↗ {runsElsewhere.length}</span>}
         {ready > 0 && (
           <span className="picture-queue-part">
             <span className="picture-queue-dot" aria-hidden="true" />
@@ -262,7 +259,7 @@ export function JobRow({
   );
 }
 
-const RUN_STATE = { waiting: "waiting its turn", working: "writing", paused: "paused", done: "finished", failed: "failed", elsewhere: "running in another tab or browser" } as const;
+const RUN_STATE = { waiting: "waiting its turn", working: "writing", paused: "paused", done: "finished", failed: "failed" } as const;
 
 /** One AI run in the header list and the queue page. */
 export function RunRow({ run, onStop, onResume, onDismiss }: { run: RunItem; onStop: () => void; onResume: () => void; onDismiss: () => void }) {
@@ -296,7 +293,7 @@ export function RunRow({ run, onStop, onResume, onDismiss }: { run: RunItem; onS
       {run.error && <p className="error picture-queue-message">{run.error}</p>}
       <div className="picture-queue-line">
         <Link href={href}>Open</Link>
-        {!going && run.state !== "elsewhere" && (
+        {!going && (
           <button type="button" className="picture-queue-text-button" onClick={onDismiss}>
             Dismiss
           </button>

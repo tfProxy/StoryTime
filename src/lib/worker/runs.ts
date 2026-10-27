@@ -139,6 +139,21 @@ export async function stopRun(runId: string): Promise<boolean> {
   return true;
 }
 
+/** Ends a run for good ("Stop" on an unfinished run): a step going is stopped and waited for, then the run is saved as stopped and leaves the queue. */
+export async function endRun(runId: string): Promise<AiRun> {
+  stopPictures(runId);
+  const running = workerState().runs.get(runId);
+  if (running) {
+    running.ctl.abort();
+    await running.done;
+  }
+  const run = await claim(runId, token(), deps);
+  const saved = await finishRun(run, "stopped", token(), deps);
+  deleteItem(runItemKey(runId));
+  publish(runChannel(runId), { type: "run", run: saved } satisfies RunStreamEvent);
+  return saved;
+}
+
 /** Retry or skip a task. A step going is waited for first. Answers the run as saved. */
 export async function changeTask(runId: string, taskId: string, action: "retry" | "skip"): Promise<AiRun> {
   await workerState().runs.get(runId)?.done;

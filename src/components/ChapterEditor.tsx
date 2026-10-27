@@ -260,7 +260,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       skipSaveRef.current = false;
       return;
     }
-    if (conflict || isBlank(draft, target)) return;
+    // While its Generate is in the queue the server saves the draft itself (D11); saving from here too would fight it.
+    if (conflict || generating || isBlank(draft, target)) return;
     let fired = false;
     const unsaved = unsavedRef;
     unsaved.current++;
@@ -274,11 +275,26 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       if (!fired) unsaved.current--;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, conflict]);
+  }, [draft, conflict, !!generating]);
 
   useEffect(() => {
     busyRef.current = busy !== null;
   }, [busy]);
+
+  // When its Generate ends (done, failed or stopped) the draft is read again from the server, which has the text.
+  const wasGenerating = useRef(false);
+  useEffect(() => {
+    const now = !!generating;
+    if (wasGenerating.current && !now && loadedRef.current) {
+      getDraft(draftKey)
+        .then((d) => {
+          if (d) showStored(d);
+        })
+        .catch(() => {});
+    }
+    wasGenerating.current = now;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!generating, draftKey]);
 
   // Coming back to this tab after writing somewhere else: show the newer draft, if nothing here is unsaved.
   useEffect(() => {
@@ -457,7 +473,9 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     setLastAction("generate");
     setReading(true);
     setSelection(null);
-    generate({
+    // What is typed on the page is saved first, so the server builds on it (the page stops saving while it generates).
+    if (!conflictRef.current && !isBlank(draft, target)) queueSave(draft);
+    void saveChainRef.current.then(() => generate({
       key: draftKey,
       href: resumeHref,
       label: draftLabel,
@@ -474,7 +492,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       },
       base: { title: draft.title, body: draft.body },
       draft,
-    });
+    }));
   }
 
   /** Stops what is going: a Generate in the queue, or this page's own request. */

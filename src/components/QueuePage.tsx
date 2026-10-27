@@ -68,7 +68,7 @@ export default function QueuePage() {
   const runs = items.filter((i): i is RunItem => i.type === "run").sort((a, b) => b.addedAt - a.addedAt);
   const runsWorking = runs.filter((r) => r.state === "working");
   const runsWaiting = runs.filter((r) => r.state === "waiting");
-  const runsPaused = runs.filter((r) => r.state === "paused" || r.state === "elsewhere");
+  const runsPaused = runs.filter((r) => r.state === "paused");
   const runsDone = runs.filter((r) => r.state === "done");
   const runsFailed = runs.filter((r) => r.state === "failed");
   const gens = items.filter((i): i is GenerateItem => i.type === "generate").sort((a, b) => b.addedAt - a.addedAt);

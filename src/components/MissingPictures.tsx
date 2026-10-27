@@ -5,7 +5,6 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { claim, finish } from "@/lib/aiRuns/runner";
 import { estimatePictures, planPictures, type PictureChapter } from "@/lib/aiRuns/plan";
 import type { RunOptions } from "@/lib/aiRuns/types";
 import { LIMITS } from "@/lib/limits";
@@ -78,8 +77,8 @@ export default function MissingPictures({
   async function stopUnfinished(id: string) {
     setBusy(true);
     try {
-      const token = `stop-${Math.random().toString(36).slice(2)}-${Date.now()}`;
-      await finish(await claim(id, token), "stopped", token);
+      const res = await fetch(`/api/ai-runs/${id}/queue?end=1`, { method: "DELETE" });
+      if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `Couldn't stop the run (${res.status})`);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

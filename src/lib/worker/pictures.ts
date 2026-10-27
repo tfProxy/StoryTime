@@ -310,6 +310,7 @@ export async function scanComfy(): Promise<void> {
   const url = (getSettings() ?? parseSettings({})).comfy.url.trim();
   if (!url) return;
   worker.scan.running = true;
+  worker.scan.last = Date.now();
   try {
     const mine = instanceId();
     const inItems = new Set(listItems().flatMap((i) => (i.type === "picture" && i.data.promptId ? [i.data.promptId] : [])));
@@ -375,6 +376,15 @@ export async function recoverPictures(wait = RECOVER_WAIT_MS): Promise<void> {
     if (found) watchFound(item.key, url, found);
     else updateItem(item.key, { state: "failed", data: { message: reached ? "StoryTime restarted, and ComfyUI no longer has this job." : "StoryTime restarted and couldn't reach ComfyUI to find this job.", progress: undefined } });
   }
+}
+
+/** How long after the last scan a page opening is enough reason to scan again. */
+const RESCAN_MS = 10_000;
+
+/** Scans when it is on and the last scan was a while ago: a page has just come into view, so jobs ComfyUI finished meanwhile are looked for now. */
+export function scanIfDue() {
+  const { scan } = workerState();
+  if (scan.enabled && Date.now() - scan.last > RESCAN_MS) void scanComfy();
 }
 
 /** The waiting jobs as the scheduler takes them (oldest first; jobs the owner moved have the earliest times). */

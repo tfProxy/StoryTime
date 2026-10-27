@@ -6,7 +6,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { getRun } from "@/lib/aiRuns/api";
-import { retryTask, skipTask, type RunEvent } from "@/lib/aiRuns/runner";
+import type { RunEvent } from "@/lib/aiRuns/runner";
 import type { AiRun, PictureTask, WriteTask } from "@/lib/aiRuns/types";
 import { useWorkQueue, type RunItem } from "./WorkQueue";
 
@@ -26,7 +26,6 @@ export default function AiRunProgress({ runId, chapterId, backHref, backLabel }:
   const [marked, setMarked] = useState<number | null>(null);
   const [edits, setEdits] = useState<Record<string, Edit>>({});
   const [busy, setBusy] = useState(false);
-  const [token] = useState(() => `page-${Math.random().toString(36).slice(2)}-${Date.now()}`);
   const item = items.find((i): i is RunItem => i.type === "run" && i.runId === runId);
   const others = items.filter((i) => i.type === "run" && i.runId !== runId && (i.state === "working" || i.state === "waiting")).length;
 
@@ -69,10 +68,9 @@ export default function AiRunProgress({ runId, chapterId, backHref, backLabel }:
   const done = isPictures ? pics.filter((t) => t.status === "done").length : writes.filter((t) => t.status === "done" || t.status === "written").length;
   const total = isPictures ? pics.length : writes.length;
   const failedPlans = run.tasks.filter((t) => t.kind === "plan" && t.status === "failed");
-  const elsewhere = item?.state === "elsewhere" || (!item && run.leased);
   const finished = run.status === "done" || run.status === "stopped";
   const goingHere = item?.state === "working" || item?.state === "waiting";
-  const canResume = !finished && !elsewhere && !goingHere && (run.status !== "review");
+  const canResume = !finished && !goingHere && (run.status !== "review");
   const inReview = run.status === "review" && run.review_depth !== null;
   const reviewTasks = inReview ? writes.filter((t) => t.status === "todo" && t.depth === run.review_depth) : [];
   const edited = (t: WriteTask) => ({ label: edits[t.id]?.label ?? t.label, direction: edits[t.id]?.direction ?? t.direction, remove: edits[t.id]?.remove ?? false });
@@ -88,6 +86,12 @@ export default function AiRunProgress({ runId, chapterId, backHref, backLabel }:
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Try again or skip a task: the server does it with its own hold on the run (and waits for a step that is going). */
+  async function taskAction(taskId: string, action: "retry" | "skip") {
+    const res = await fetch(`/api/ai-runs/${runId}/task`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taskId, action }) });
+    if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `Couldn't do that (${res.status})`);
   }
 
   async function continueAfterReview() {
@@ -106,7 +110,6 @@ export default function AiRunProgress({ runId, chapterId, backHref, backLabel }:
 
   const stateLine = finished
     ? run.status === "stopped" ? "Stopped." : "Finished."
-    : elsewhere ? "Running in another tab or browser. Open this page there, or wait for it to finish."
     : item?.state === "waiting" ? `Waiting its turn${others > 0 ? ` (${others} ahead)` : ""}.`
     : item?.state === "working" ? (status || "Working…")
     : inReview ? "Plan ready to check."
@@ -208,8 +211,8 @@ export default function AiRunProgress({ runId, chapterId, backHref, backLabel }:
               <>
                 <p className="error">{t.error}</p>
                 <div className="row" style={{ gap: "0.75rem" }}>
-                  <button type="button" className="picture-queue-text-button" disabled={busy || goingHere} onClick={() => void act(async () => { await retryTask(runId, t.id, token); await startRun(runId); })}>Try again</button>
-                  <button type="button" className="picture-queue-text-button" disabled={busy || goingHere} onClick={() => void act(() => skipTask(runId, t.id, token))}>Skip</button>
+                  <button type="button" className="picture-queue-text-button" disabled={busy || goingHere} onClick={() => void act(async () => { await taskAction(t.id, "retry"); await startRun(runId); })}>Try again</button>
+                  <button type="button" className="picture-queue-text-button" disabled={busy || goingHere} onClick={() => void act(() => taskAction(t.id, "skip"))}>Skip</button>
                 </div>
               </>
             )}
@@ -226,8 +229,8 @@ export default function AiRunProgress({ runId, chapterId, backHref, backLabel }:
               <>
                 <p className="error">{t.error}</p>
                 <div className="row" style={{ gap: "0.75rem" }}>
-                  <button type="button" className="picture-queue-text-button" disabled={busy || goingHere} onClick={() => void act(async () => { await retryTask(runId, t.id, token); await startRun(runId); })}>Try again</button>
-                  <button type="button" className="picture-queue-text-button" disabled={busy || goingHere} onClick={() => void act(() => skipTask(runId, t.id, token))}>Skip</button>
+                  <button type="button" className="picture-queue-text-button" disabled={busy || goingHere} onClick={() => void act(async () => { await taskAction(t.id, "retry"); await startRun(runId); })}>Try again</button>
+                  <button type="button" className="picture-queue-text-button" disabled={busy || goingHere} onClick={() => void act(() => taskAction(t.id, "skip"))}>Skip</button>
                 </div>
               </>
             )}
@@ -239,8 +242,8 @@ export default function AiRunProgress({ runId, chapterId, backHref, backLabel }:
             <div>Planning the choices of this chapter <span className="meta">· failed</span></div>
             <p className="error">{t.error}</p>
             <div className="row" style={{ gap: "0.75rem" }}>
-              <button type="button" className="picture-queue-text-button" disabled={busy || goingHere} onClick={() => void act(async () => { await retryTask(runId, t.id, token); await startRun(runId); })}>Try again</button>
-              <button type="button" className="picture-queue-text-button" disabled={busy || goingHere} onClick={() => void act(() => skipTask(runId, t.id, token))}>Skip</button>
+              <button type="button" className="picture-queue-text-button" disabled={busy || goingHere} onClick={() => void act(async () => { await taskAction(t.id, "retry"); await startRun(runId); })}>Try again</button>
+              <button type="button" className="picture-queue-text-button" disabled={busy || goingHere} onClick={() => void act(() => taskAction(t.id, "skip"))}>Skip</button>
             </div>
           </li>
         ))}
