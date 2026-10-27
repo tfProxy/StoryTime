@@ -26,7 +26,7 @@ Written 2026-10-27 for agents on cheaper models, one task at a time, directed by
 
 1. **Tag rules** (needed before C8 and before changing the starter rules): do dreams or visions count? A change reversed in the same chapter? Partial changes (ears, a tail)?
 2. **AI mark and Review** (needed before E3): should AI-written chapters not yet marked reviewed also be listed on the Review page's Issues tab, and counted in the outline ⚠?
-3. **Long scans on the server** (needed before B2): should Find tags over more than one chapter go through the queue (it keeps going with the tab closed and takes turns with pictures), replacing today's in-page loop?
+3. **Long scans on the server** (needed before B2): should Find tags over more than one chapter go through the queue (it keeps going with the tab closed and takes turns with pictures), replacing today's in-page loop? **Answered 2026-10-27: yes, through the queue.**
 4. **Placement for stage 4** (D1 to D3): where content notes go on the reading page, and the outline chips/filter.
 
 ## Phase A: small tag fixes (no owner input needed)
@@ -56,7 +56,9 @@ Today a chapter that got no suggestions is read again on every Find tags run, be
 
 Read `docs/server-queue-plan.md` "Notes for agents" first; its rules apply (no imports from `src/components/` in server code, `handlePost`, build before tests).
 
-### B1. A "tags" AI run mode (medium)
+### B1. A "tags" AI run mode (medium) (done, 0483908)
+
+Built as: migration 34 rebuilds `ai_runs` to allow the mode; the server makes the tasks from `options.tagScope` (`chapter`, `path`, `subtree`, `story`) and `start_chapter_id`, so `POST /api/ai-runs` for mode `tags` sends no tasks. A run with nothing left to check is made with 0 tasks.
 
 - `src/lib/aiRuns.ts`: add `"tags"` to `RUN_MODES`; allow `start_chapter_id` null for it, like pictures. Add the task type in `src/lib/aiRuns/types.ts`: `{ kind: "tags"; id; chapterId; revision; status; error? }`.
 - When the run is created, build one task per chapter in scope (chapter, way here, from here on, or the whole story; scope in `options`), leaving out chapters already checked (A1).

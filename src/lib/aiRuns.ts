@@ -6,10 +6,12 @@ import { z } from "zod";
 import { db, newId } from "./db";
 import { LIMITS } from "./limits";
 import { getChapter, getStory, PostError } from "./stories";
+import { decidedTagIdsByChapter, storyTags } from "./tags";
+import { getStoryChapters } from "./tree";
 
 const text = (max: number) => z.string().trim().max(max);
 
-export const RUN_MODES = ["fill", "tree", "arc", "pictures"] as const;
+export const RUN_MODES = ["fill", "tree", "arc", "pictures", "tags"] as const;
 export const TASK_STATUSES = ["todo", "written", "done", "failed", "skipped"] as const;
 export const RUN_STATUSES = ["ready", "queued", "running", "review", "paused", "done", "stopped"] as const;
 
@@ -73,7 +75,17 @@ export const PictureTaskSchema = z.object({
   error: text(LIMITS.summary).optional(),
 });
 
-export const RunTaskSchema = z.discriminatedUnion("kind", [WriteTaskSchema, PlanTaskSchema, PictureTaskSchema]);
+export const TagsTaskSchema = z.object({
+  kind: z.literal("tags"),
+  id: taskId,
+  chapterId: z.string().min(1).max(100),
+  revision: z.number().int().min(1),
+  label: text(LIMITS.title).optional(),
+  status: taskStatus,
+  error: text(LIMITS.summary).optional(),
+});
+
+export const RunTaskSchema = z.discriminatedUnion("kind", [WriteTaskSchema, PlanTaskSchema, PictureTaskSchema, TagsTaskSchema]);
 export const RunTasksSchema = z.array(RunTaskSchema).max(LIMITS.runTasks);
 
 export const RunOptionsSchema = z.object({
@@ -92,6 +104,8 @@ export const RunOptionsSchema = z.object({
   alternatives: z.number().int().min(0).max(3).optional(),
   slots: z.enum(["header", "footer", "both"]).optional(),
   useRefs: z.boolean().optional(),
+  // Find tags: which chapters, from the start chapter (the whole story when there is none).
+  tagScope: z.enum(["chapter", "path", "subtree", "story"]).optional(),
   // The depths whose plans the owner has already checked (D23), so a run that goes on doesn't stop there again.
   reviewedDepths: z.array(z.number().int().min(0).max(100)).max(100).optional(),
 });
@@ -135,9 +149,14 @@ export const NewRunSchema = z
     start_chapter_id: z.string().min(1).nullable().default(null),
     mode: z.enum(RUN_MODES),
     options: RunOptionsSchema.default({}),
-    tasks: RunTasksSchema,
+    // The browser makes the tasks of every mode but "tags", whose tasks the server makes (any sent are ignored).
+    tasks: RunTasksSchema.optional(),
   })
-  .refine((v) => v.start_chapter_id !== null || v.mode === "pictures", { message: "start_chapter_id is needed unless the run is for pictures", path: ["start_chapter_id"] });
+  .refine((v) => v.start_chapter_id !== null || v.mode === "pictures" || (v.mode === "tags" && (v.options.tagScope ?? "story") === "story"), {
+    message: "start_chapter_id is needed unless the run is for pictures or for the whole story's tags",
+    path: ["start_chapter_id"],
+  })
+  .refine((v) => v.mode === "tags" || v.tasks !== undefined, { message: "tasks are needed", path: ["tasks"] });
 
 export const ClaimSchema = z.object({ token: z.string().min(8).max(100) });
 
@@ -224,13 +243,49 @@ function checkTasks(tasks: RunTask[]) {
   }
 }
 
+/**
+ * The tasks of a Find tags run: one per chapter in the scope (the start chapter, the way to it, it and everything below
+ * it, or the whole story), in story order, leaving out the chapters already checked (every tag that is on for the story
+ * is decided for them, as the review page's Find tags counts them).
+ */
+function tagTasks(storyId: string, startChapterId: string | null, scope: NonNullable<RunOptions["tagScope"]>): RunTask[] {
+  const chapters = getStoryChapters(storyId);
+  let chosen = chapters;
+  if (startChapterId !== null && scope !== "story") {
+    const byId = new Map(chapters.map((c) => [c.id, c]));
+    if (!byId.has(startChapterId)) throw new PostError("That chapter is not in this story's tree", 404);
+    if (scope === "chapter") chosen = [byId.get(startChapterId)!];
+    else if (scope === "path") {
+      chosen = [];
+      for (let c = byId.get(startChapterId); c; c = c.parent_id ? byId.get(c.parent_id) : undefined) chosen.unshift(c);
+    } else {
+      const inside = new Set([startChapterId]);
+      chosen = chapters.filter((c) => {
+        if (c.id === startChapterId || (c.parent_id && inside.has(c.parent_id))) {
+          inside.add(c.id);
+          return true;
+        }
+        return false;
+      });
+    }
+  }
+  const on = storyTags(storyId);
+  const decided = decidedTagIdsByChapter(storyId);
+  return chosen
+    .filter((c) => !on.every((tid) => (decided.get(c.id) ?? []).includes(tid)))
+    .map((c, i) => ({ kind: "tags", id: `t${i + 1}`, chapterId: c.id, revision: c.revision, label: c.title.slice(0, LIMITS.title), status: "todo" }));
+}
+
 export function createRun(input: z.infer<typeof NewRunSchema>): { id: string } {
   if (!getStory(input.story_id)) throw new PostError("That story does not exist", 404);
   if (input.start_chapter_id !== null) {
     const chapter = getChapter(input.start_chapter_id);
     if (!chapter || chapter.story_id !== input.story_id) throw new PostError("That chapter is not in this story", 404);
   }
-  checkTasks(input.tasks);
+  const tasks: RunTask[] =
+    input.mode === "tags" ? tagTasks(input.story_id, input.start_chapter_id, input.options.tagScope ?? (input.start_chapter_id === null ? "story" : "chapter")) : (input.tasks ?? []);
+  if (tasks.length > LIMITS.runTasks) throw new PostError(`A run can have at most ${LIMITS.runTasks} tasks`, 400);
+  checkTasks(tasks);
   const id = newId();
   const t = Date.now();
   db()
@@ -238,7 +293,7 @@ export function createRun(input: z.infer<typeof NewRunSchema>): { id: string } {
       `INSERT INTO ai_runs (id, story_id, start_chapter_id, mode, options, tasks, status, version, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, 'ready', 1, ?, ?)`,
     )
-    .run(id, input.story_id, input.start_chapter_id, input.mode, JSON.stringify(input.options), JSON.stringify(input.tasks), t, t);
+    .run(id, input.story_id, input.start_chapter_id, input.mode, JSON.stringify(input.options), JSON.stringify(tasks), t, t);
   return { id };
 }
 

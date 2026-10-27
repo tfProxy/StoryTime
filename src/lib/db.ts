@@ -590,6 +590,32 @@ export const MIGRATIONS: string[] = [
     PRIMARY KEY (chapter_id)
   );
   `,
+  // 34: a "tags" AI run (Find tags on the work queue): ai_runs.mode allows it. SQLite can't change a CHECK, so the
+  // table is rebuilt with the same columns.
+  `
+  CREATE TABLE ai_runs_new (
+    id               TEXT PRIMARY KEY,
+    story_id         TEXT NOT NULL REFERENCES stories(id),
+    start_chapter_id TEXT,
+    mode             TEXT NOT NULL CHECK (mode IN ('fill', 'tree', 'arc', 'pictures', 'tags')),
+    options          TEXT NOT NULL,
+    tasks            TEXT NOT NULL,
+    status           TEXT NOT NULL CHECK (status IN ('ready', 'queued', 'running', 'review', 'paused', 'done', 'stopped')),
+    review_depth     INTEGER,
+    finished_at      INTEGER,
+    error            TEXT,
+    version          INTEGER NOT NULL DEFAULT 1,
+    lease_token      TEXT,
+    lease_until      INTEGER,
+    created_at       INTEGER NOT NULL,
+    updated_at       INTEGER NOT NULL
+  );
+  INSERT INTO ai_runs_new (id, story_id, start_chapter_id, mode, options, tasks, status, review_depth, finished_at, error, version, lease_token, lease_until, created_at, updated_at)
+    SELECT id, story_id, start_chapter_id, mode, options, tasks, status, review_depth, finished_at, error, version, lease_token, lease_until, created_at, updated_at FROM ai_runs;
+  DROP TABLE ai_runs;
+  ALTER TABLE ai_runs_new RENAME TO ai_runs;
+  CREATE INDEX ai_runs_story ON ai_runs(story_id, created_at);
+  `,
 ];
 
 function open(): Database.Database {

@@ -9,7 +9,7 @@ import TaggedChapters from "@/components/TaggedChapters";
 import { getCodexOps } from "@/lib/codexDb";
 import { reviewIssues } from "@/lib/review";
 import { getPath, getStory } from "@/lib/stories";
-import { chapterTags, checkedTagIdsByChapter, listTags, storyTags } from "@/lib/tags";
+import { chapterTags, decidedTagIdsByChapter, listTags, storyTags } from "@/lib/tags";
 import { getStoryChapters } from "@/lib/tree";
 
 export const dynamic = "force-dynamic";
@@ -182,17 +182,7 @@ export default async function ReviewPage({
     const rejected = inScope.filter((t) => t.status === "rejected").length;
     const approved = inScope.filter((t) => t.status === "approved");
 
-    const decidedBy = new Map<string, string[]>();
-    const revisionOf = new Map(chapters.map((c) => [c.id, c.revision]));
-    for (const t of all) {
-      if (t.status === "approved" || (t.status === "rejected" && t.revision === revisionOf.get(t.chapter_id))) {
-        decidedBy.set(t.chapter_id, [...(decidedBy.get(t.chapter_id) ?? []), t.tag_id]);
-      }
-    }
-    for (const [chapterId, tagIds] of checkedTagIdsByChapter(storyId)) {
-      const have = decidedBy.get(chapterId) ?? [];
-      decidedBy.set(chapterId, [...have, ...tagIds.filter((tid) => !have.includes(tid))]);
-    }
+    const decidedBy = decidedTagIdsByChapter(storyId);
 
     // Chapters with approved tags, in story order; the chosen chapter always, so it can be tagged by hand.
     const tagged = chapters

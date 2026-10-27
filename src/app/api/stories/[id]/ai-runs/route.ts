@@ -9,6 +9,6 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   if (!getStory(id)) return Response.json({ error: "Not found" }, { status: 404 });
   const q = new URL(request.url).searchParams;
   const mode = q.get("mode");
-  if (mode !== null && !(RUN_MODES as readonly string[]).includes(mode)) return Response.json({ error: "mode must be fill, tree, arc or pictures" }, { status: 400 });
+  if (mode !== null && !(RUN_MODES as readonly string[]).includes(mode)) return Response.json({ error: "mode must be fill, tree, arc, pictures or tags" }, { status: 400 });
   return Response.json({ runs: listRuns(id, { startChapterId: q.get("start") ?? undefined, mode: (mode as RunMode | null) ?? undefined }) });
 }

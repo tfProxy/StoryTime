@@ -7,10 +7,13 @@ import {
   addChoice,
   ApiError,
   claimRunLease,
+  getChapterTags,
   getContext,
   getRun,
+  getStoryTags,
   patchRun,
   postChapter,
+  postTagSuggestions,
   putSummary,
   type ChapterContext,
   type Fetch,
@@ -20,7 +23,8 @@ import { LIMITS } from "../limits";
 import { applyPlan, expandAfter, needsReview, nextTask, resolveSlot, withGuidance } from "./plan";
 import type { writeImagePrompt } from "../ai/imagePrompt";
 import { hasPicture, loadSetup, writePicturePrompt } from "./pictures";
-import type { AiRun, PictureTask, PlanTask, RunStatus, RunTask, WriteTask } from "./types";
+import type { AiRun, PictureTask, PlanTask, RunStatus, RunTask, TagsTask, WriteTask } from "./types";
+import { suggestTagsForChapter } from "../ai/tagAi";
 import { planNext, storyContextOf, summarize, withPathSummaries, writeOneChapter, writeText, type PlannedChoice, type Stream } from "./writeChapter";
 
 /** How often a run renews its lease while a step works (the server lets it lapse after two minutes). */
@@ -93,7 +97,7 @@ export async function skipTask(runId: string, taskId: string, token: string, dep
   return patchRun(fetcher(deps), run.id, { token, version: run.version, tasks, status: run.status === "running" ? "paused" : run.status });
 }
 
-type Pick = { kind: "plan" | "write" | "finish" | "prompt"; task: RunTask };
+type Pick = { kind: "plan" | "write" | "finish" | "prompt" | "tags"; task: RunTask };
 
 /** Whether the task's dependencies are all done: its plan, and for a `fromTask` slot the task it follows. */
 function ready(list: RunTask[], t: RunTask): boolean {
@@ -113,6 +117,10 @@ function pickStep(run: AiRun, list: RunTask[]): Pick | null {
     // none is left), so the text model and the picture model are each loaded once; drawing is the queue's.
     const todo = list.find((t): t is PictureTask => t.kind === "picture" && t.status === "todo");
     return todo ? { kind: "prompt", task: todo } : null;
+  }
+  if (run.mode === "tags") {
+    const todo = list.find((t): t is TagsTask => t.kind === "tags" && t.status === "todo");
+    return todo ? { kind: "tags", task: todo } : null;
   }
   const writes = list.filter((t): t is WriteTask => t.kind === "write");
   const written = writes.filter((t) => t.status === "written");
@@ -201,8 +209,8 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<StepResult> {
   }
 
   const { task } = picked;
-  const phase = picked.kind === "plan" ? "planning" : picked.kind === "write" || picked.kind === "prompt" ? "writing" : "finishing";
-  const label = task.kind === "write" ? task.label : task.kind === "plan" ? "Plan the choices" : task.kind === "picture" ? `Prompt for “${task.label ?? "a chapter"}” (${task.slot})` : "";
+  const phase = picked.kind === "plan" ? "planning" : picked.kind === "write" || picked.kind === "prompt" || picked.kind === "tags" ? "writing" : "finishing";
+  const label = task.kind === "write" ? task.label : task.kind === "plan" ? "Plan the choices" : task.kind === "picture" ? `Prompt for “${task.label ?? "a chapter"}” (${task.slot})` : task.kind === "tags" ? `Find tags in “${task.label ?? "a chapter"}”` : "";
   let tasks = list;
   let failure: unknown = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -252,6 +260,7 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<StepResult> {
 
 /** Does the step's work; returns the task list with the task updated (and the tasks it planned, for a plan). Posts and adds choices on the server; the caller saves the run. */
 async function doStep(picked: Pick, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
+  if (picked.kind === "tags") return doTags(picked.task as TagsTask, run, list, env, f);
   if (picked.kind === "prompt") return doPrompt(picked.task as PictureTask, run, list, env, f);
   if (picked.kind === "plan") return doPlan(picked.task as PlanTask, run, list, env, f);
   if (picked.kind === "finish") return doFinish(picked.task as WriteTask, run, list, env, f);
@@ -421,4 +430,41 @@ async function doPrompt(task: PictureTask, run: AiRun, list: RunTask[], env: Ste
   const setup = await loadSetup(f, task.chapterId);
   const written = await writePicturePrompt(env.settings, f, setup, task, run.options, { write: env.deps?.writePrompt, signal: env.signal });
   return replace(list, { ...task, status: "written", prompt: written.prompt, negative: written.negative, error: undefined });
+}
+
+/**
+ * Find tags: the AI reads one chapter and the suggestions are saved (as the review page's Find tags does). The chapter,
+ * the tags and what was decided are read again here, since the run may be old. A chapter edited since the run was made
+ * (or while the AI read it) is skipped; one with every tag decided already is done without asking the AI.
+ */
+async function doTags(task: TagsTask, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
+  const context = await getContext(f, task.chapterId);
+  const chapter = context.path.at(-1)!;
+  const skip = (why: string) => replace(list, { ...task, status: "skipped", error: why });
+  if (chapter.revision !== task.revision) return skip("Skipped: the chapter was edited after the run was made.");
+  const { tags, enabled } = await getStoryTags(f, run.story_id);
+  const on = tags.filter((t) => enabled.includes(t.id));
+  const { chapter_tags, checked } = await getChapterTags(f, run.story_id, task.chapterId);
+  const decided = new Set([
+    ...chapter_tags.filter((t) => t.status === "approved" || (t.status === "rejected" && t.revision === chapter.revision)).map((t) => t.tag_id),
+    ...(checked[task.chapterId] ?? []),
+  ]);
+  if (on.every((t) => decided.has(t.id))) return replace(list, { ...task, status: "done", error: undefined });
+  env.onEvent?.({ type: "status", text: `Reading “${chapter.title}” for tags…` });
+  const rules = on.map((t) => ({ id: t.id, name: t.name, applies: t.applies, not_applies: t.not_applies, choices: t.choices, examples: t.examples }));
+  const suggestions = await suggestTagsForChapter(env.settings, {
+    story: { title: context.story.title, premise: context.story.premise },
+    chapter: { title: chapter.title, body: chapter.body },
+    tags: rules,
+    signal: env.signal,
+    role: "cheap",
+  });
+  try {
+    // Every tag is sent and recorded as checked, like the review page does.
+    await postTagSuggestions(f, task.chapterId, task.revision, rules.map((t) => t.id), suggestions);
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409) return skip("Skipped: the chapter was edited while it was read.");
+    throw e;
+  }
+  return replace(list, { ...task, status: "done", error: undefined });
 }
