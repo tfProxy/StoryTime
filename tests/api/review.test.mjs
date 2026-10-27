@@ -124,6 +124,45 @@ r = await decide(fresh, { kind: "continuity", fingerprint: fp, status: "later" }
 ok(continuityOf(await issues()).find((i) => i.fingerprint === fp).status === "later", "…or put off");
 r = await decide(fresh, { kind: "continuity", fingerprint: fp, status: "dismissed" });
 
+// Intentional: a note is required, only continuity issues take it, and it is kept with the decision.
+const codexAt = async (id) => (await call("GET", `/api/chapters/${id}/codex`)).json;
+r = await decide(fresh, { kind: "continuity", fingerprint: fp, status: "intentional" });
+ok(r.status === 400, "intentional without a note is refused");
+r = await decide(fresh, { kind: "continuity", fingerprint: fp, status: "intentional", note: "   " });
+ok(r.status === 400, "…as is a blank note");
+r = await decide(fresh, { kind: "continuity", fingerprint: fp, status: "intentional", note: "x".repeat(201) });
+ok(r.status === 400, "…and one over 200 characters");
+r = await decide(noSummary, { kind: "summary-missing", fingerprint: "", status: "intentional", note: "on purpose" });
+ok(r.status === 400, "a summary issue can't be marked intentional");
+ok(continuityOf(await issues()).find((i) => i.fingerprint === fp).intentionalNote === undefined, "…and nothing was saved");
+
+// No codex entry named House: only the decision is kept.
+const opsBefore = (await codexAt(fresh)).ops.length;
+r = await decide(fresh, { kind: "continuity", fingerprint: fp2, status: "intentional", note: "  the house moved  " });
+ok(r.status === 200 && r.json.codex_entry === null, "intentional with no matching codex entry saves the decision only");
+ok((await codexAt(fresh)).ops.length === opsBefore, "…and writes no codex op");
+list = continuityOf(await issues());
+const house = list.find((i) => i.fingerprint === fp2);
+ok(house.status === "dismissed" && house.intentionalNote === "the house moved", "…the issue is hidden from the open list and carries its trimmed note");
+ok(list.find((i) => i.fingerprint === fp).intentionalNote === undefined, "…a plainly dismissed one has no note");
+
+// An entry named like the entity (any case) gets the note as a replace op anchored at the later chapter.
+r = await call("POST", "/api/codex", { anchor_chapter_id: root, op: "create", name: "MIRA", type: "character", aliases: ["the thief"], content: "A thief.", always_include: true });
+const miraEntry = r.json.entry_id;
+r = await decide(fresh, { kind: "continuity", fingerprint: fp, status: "intentional", note: "a disguise" });
+ok(r.status === 200 && r.json.codex_entry === "MIRA", "intentional with a matching entry reports it");
+let cx = await codexAt(fresh);
+const written = cx.ops.filter((o) => o.entry_id === miraEntry && o.op === "replace");
+ok(written.length === 1 && written[0].anchor_chapter_id === fresh && written[0].content === "A thief.\n\nIntentional (eye colour): a disguise", "…as a replace op at the chapter with the note appended");
+ok(cx.entries[0].name === "MIRA" && cx.entries[0].aliases[0] === "the thief" && cx.entries[0].always_include === true && cx.entries[0].type === "character", "…keeping the entry's other fields");
+ok((await codexAt(root)).entries[0].content === "A thief.", "…and the earlier chapters' codex is unchanged");
+list = continuityOf(await issues());
+ok(list.find((i) => i.fingerprint === fp).status === "dismissed" && list.find((i) => i.fingerprint === fp).intentionalNote === "a disguise", "the decision is saved with its note");
+r = await decide(fresh, { kind: "continuity", fingerprint: fp, status: "open" });
+ok(continuityOf(await issues()).find((i) => i.fingerprint === fp).status === "open", "undo brings an intentional issue back");
+r = await decide(fresh, { kind: "continuity", fingerprint: fp, status: "dismissed" });
+ok(continuityOf(await issues()).find((i) => i.fingerprint === fp).intentionalNote === undefined, "dismissing it again drops the note");
+
 // An edit to either chapter makes the verdict stale: the issue is gone.
 r = await call("PATCH", `/api/chapters/${noSummary}`, { base_revision: await rev(noSummary), title: "No summary", body: "edited", summary: "now has one" });
 ok(r.status === 200, "the earlier chapter can be edited");

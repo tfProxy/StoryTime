@@ -142,6 +142,30 @@ try {
   await page.goto(`${BASE}/s/${c.story_id}/outline`);
   ok((await page.locator("a.outline-review").count()) === 0, "…and the outline marker goes");
 
+  // Intentional: asks why, keeps the note, and files the issue under Dismissed with it.
+  await page.goto(`${BASE}/s/${c.story_id}/review`);
+  await page.getByText("Dismissed (1)").click();
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await page.getByRole("button", { name: "Intentional", exact: true }).waitFor();
+  ok((await page.getByRole("button", { name: "Dismiss", exact: true }).count()) === 1, "Undo brings the continuity issue back");
+  await page.getByRole("button", { name: "Intentional", exact: true }).click();
+  const why = page.getByPlaceholder("Why it's on purpose, e.g. a disguise");
+  const save = page.getByRole("button", { name: "Save", exact: true });
+  ok((await why.isVisible()) && (await save.isDisabled()), "Intentional asks for a note, and Save waits for one");
+  ok(await page.getByText("No codex entry named Mira; the note is kept here only.").isVisible(), "…saying when no codex entry matches");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  ok((await why.count()) === 0, "Cancel closes the note box");
+  await page.getByRole("button", { name: "Intentional", exact: true }).click();
+  await why.fill("a disguise");
+  ok(await save.isEnabled(), "Save is enabled once there is a note");
+  await save.click();
+  await page.getByText("Dismissed (1)").waitFor();
+  ok((await page.getByRole("button", { name: "Intentional", exact: true }).count()) === 0, "Save takes it off the open list");
+  await page.getByText("Dismissed (1)").click();
+  ok(await page.getByText("Intentional: a disguise").isVisible(), "the Dismissed section shows the note");
+  await page.goto(`${BASE}/s/${c.story_id}/outline`);
+  ok((await page.locator("a.outline-review").count()) === 0, "an intentional issue has no outline marker");
+
   // The Check continuity button: reads the facts of both chapters, then asks the judge once.
   const ai = await useMockAi(BASE);
   const d = await post("/api/stories", { title: "Continuity run story", chapter: { title: "Dawn", body: "Mira has green eyes. It was morning.", summary: "d", choices: ["on"] } });

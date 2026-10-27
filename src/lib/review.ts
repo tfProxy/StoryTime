@@ -3,6 +3,7 @@ import { db, newId } from "./db";
 import { PostError } from "./stories";
 
 import { storyVerdicts } from "./continuityVerdicts";
+import { CODEX_LIMITS, createCodexOp, getCodexState } from "./codexDb";
 
 export const ISSUE_KINDS = ["summary-missing", "summary-stale", "continuity"] as const;
 export type IssueKind = (typeof ISSUE_KINDS)[number];
@@ -27,6 +28,8 @@ export type ReviewIssue = {
   fingerprint: string;
   message: string;
   status: IssueStatus;
+  /** Set when the author marked the issue intentional (its status is then "dismissed"): why it is on purpose. */
+  intentionalNote?: string;
   /** Only on a continuity issue; its chapter is the later one (`after`). */
   continuity?: ContinuityDetail;
 };
@@ -42,7 +45,7 @@ type Row = {
   prev_summary: string | null;
 };
 
-type Decision = { chapter_id: string; kind: string; fingerprint: string; status: string; revision: number };
+type Decision = { chapter_id: string; kind: string; fingerprint: string; status: string; revision: number; note: string | null };
 
 /**
  * Free checks (no AI) on a story's chapters, parents before children, with the author's decisions on them.
@@ -64,16 +67,20 @@ export function reviewIssues(storyId: string): ReviewIssue[] {
     (
       db()
         .prepare(
-          `SELECT ri.chapter_id, ri.kind, ri.fingerprint, ri.status, ri.revision
+          `SELECT ri.chapter_id, ri.kind, ri.fingerprint, ri.status, ri.revision, ri.note
              FROM review_items ri JOIN chapters c ON c.id = ri.chapter_id
             WHERE c.story_id = ? AND ri.revision = c.revision`,
         )
         .all(storyId) as Decision[]
-    ).map((d) => [`${d.chapter_id}\n${d.kind}\n${d.fingerprint}`, d.status]),
+    ).map((d) => [`${d.chapter_id}\n${d.kind}\n${d.fingerprint}`, d]),
   );
   const statusOf = (chapterId: string, kind: IssueKind, fingerprint: string): IssueStatus => {
-    const s = decisions.get(`${chapterId}\n${kind}\n${fingerprint}`);
+    const s = decisions.get(`${chapterId}\n${kind}\n${fingerprint}`)?.status;
     return s === "later" || s === "dismissed" ? s : s === "intentional" ? "dismissed" : "open";
+  };
+  const noteOf = (chapterId: string, kind: IssueKind, fingerprint: string): string | undefined => {
+    const d = decisions.get(`${chapterId}\n${kind}\n${fingerprint}`);
+    return d?.status === "intentional" ? (d.note ?? "") : undefined;
   };
 
   const issues: ReviewIssue[] = [];
@@ -102,6 +109,7 @@ export function reviewIssues(storyId: string): ReviewIssue[] {
       fingerprint: v.fingerprint,
       message: `${v.entity}, ${v.attribute}: “${v.before.value}” in “${before.title}”, then “${v.after.value}” in “${after.title}”.`,
       status: statusOf(after.id, "continuity", v.fingerprint),
+      intentionalNote: noteOf(after.id, "continuity", v.fingerprint),
       continuity: {
         entity: v.entity,
         attribute: v.attribute,
@@ -120,27 +128,69 @@ export function issueCounts(storyId: string): Map<string, number> {
   return counts;
 }
 
-export const DecideIssueSchema = z.object({
-  kind: z.enum(ISSUE_KINDS),
-  fingerprint: z.string().max(200).default(""),
-  /** open undoes an earlier decision. */
-  status: z.enum(["open", "later", "dismissed"]),
-});
+export const NOTE_MAX = 200;
 
-/** Records (or with status open, forgets) the author's decision on one issue, at the chapter's current revision. */
-export function decideIssue(chapterId: string, input: z.infer<typeof DecideIssueSchema>): void {
-  db().transaction(() => {
+export const DecideIssueSchema = z
+  .object({
+    kind: z.enum(ISSUE_KINDS),
+    fingerprint: z.string().max(200).default(""),
+    /** open undoes an earlier decision; intentional (continuity only) needs a note. */
+    status: z.enum(["open", "later", "dismissed", "intentional"]),
+    note: z.string().trim().max(NOTE_MAX).optional(),
+  })
+  .refine((v) => v.status !== "intentional" || v.kind === "continuity", { message: "Only a continuity issue can be marked intentional" })
+  .refine((v) => v.status !== "intentional" || (v.note ?? "").length > 0, { message: "Say why it is on purpose" });
+
+/** The codex entry named `entity` (case-insensitive) that is live at the chapter, if any. */
+export function codexEntryFor(chapterId: string, entity: string) {
+  const name = entity.trim().toLowerCase();
+  return getCodexState(chapterId).find((e) => e.name.trim().toLowerCase() === name) ?? null;
+}
+
+/**
+ * Records (or with status open, forgets) the author's decision on one issue, at the chapter's current revision.
+ * An intentional decision also appends its note to the matching codex entry, as a replace op anchored at the
+ * chapter; with no such entry only the decision is kept. Returns the name of the entry that got the note.
+ */
+export function decideIssue(chapterId: string, input: z.infer<typeof DecideIssueSchema>): { codex_entry: string | null } {
+  return db().transaction(() => {
     const chapter = db().prepare(`SELECT revision FROM chapters WHERE id = ?`).get(chapterId) as { revision: number } | undefined;
     if (!chapter) throw new PostError("That chapter does not exist", 404);
     if (input.status === "open") {
       db().prepare(`DELETE FROM review_items WHERE chapter_id = ? AND kind = ? AND fingerprint = ?`).run(chapterId, input.kind, input.fingerprint);
-      return;
+      return { codex_entry: null };
+    }
+    const intentional = input.status === "intentional";
+    let codexEntry: string | null = null;
+    if (intentional) {
+      const verdict = storyVerdicts(
+        (db().prepare(`SELECT story_id FROM chapters WHERE id = ?`).get(chapterId) as { story_id: string }).story_id,
+      ).find((v) => v.fingerprint === input.fingerprint && v.after.chapterId === chapterId);
+      const entry = verdict ? codexEntryFor(chapterId, verdict.entity) : null;
+      if (verdict && entry) {
+        const added = `Intentional (${verdict.attribute}): ${input.note}`;
+        const content = entry.content.trim() ? `${entry.content.trim()}\n\n${added}` : added;
+        if (content.length <= CODEX_LIMITS.content) {
+          createCodexOp({
+            anchor_chapter_id: chapterId,
+            op: "replace",
+            entry_id: entry.entry_id,
+            name: entry.name,
+            type: entry.type,
+            aliases: entry.aliases,
+            content,
+            always_include: entry.always_include,
+          });
+          codexEntry = entry.name;
+        }
+      }
     }
     db()
       .prepare(
-        `INSERT INTO review_items (id, chapter_id, kind, fingerprint, status, revision, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (chapter_id, kind, fingerprint) DO UPDATE SET status = excluded.status, revision = excluded.revision, decided_at = excluded.decided_at`,
+        `INSERT INTO review_items (id, chapter_id, kind, fingerprint, status, revision, note, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (chapter_id, kind, fingerprint) DO UPDATE SET status = excluded.status, revision = excluded.revision, note = excluded.note, decided_at = excluded.decided_at`,
       )
-      .run(newId(), chapterId, input.kind, input.fingerprint, input.status, chapter.revision, Date.now());
+      .run(newId(), chapterId, input.kind, input.fingerprint, input.status, chapter.revision, intentional ? input.note : null, Date.now());
+    return { codex_entry: codexEntry };
   })();
 }

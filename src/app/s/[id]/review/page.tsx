@@ -9,7 +9,7 @@ import TagSuggestions from "@/components/TagSuggestions";
 import TaggedChapters from "@/components/TaggedChapters";
 import { listRuns } from "@/lib/aiRuns";
 import { getCodexOps } from "@/lib/codexDb";
-import { reviewIssues } from "@/lib/review";
+import { codexEntryFor, reviewIssues } from "@/lib/review";
 import { getPath, getStory } from "@/lib/stories";
 import { chapterTags, decidedTagIdsByChapter, listTags, storyTags } from "@/lib/tags";
 import { getStoryChapters } from "@/lib/tree";
@@ -79,7 +79,7 @@ export default async function ReviewPage({
     const laterClashes = clashes.filter((i) => i.status === "later");
     const dismissedClashes = clashes.filter((i) => i.status === "dismissed");
     const path = chosen ? getPath(chosen.id) : [];
-    const clash = (i: (typeof all)[number], actions: ("later" | "dismissed" | "open" | "undo")[]) => {
+    const clash = (i: (typeof all)[number], actions: ("later" | "dismissed" | "open" | "undo" | "intentional")[]) => {
       const c = i.continuity!;
       return (
         <li key={`${i.chapterId}-${i.kind}-${i.fingerprint}`}>
@@ -94,7 +94,15 @@ export default async function ReviewPage({
           <blockquote className="meta" style={{ margin: "0.25rem 0 0.25rem 0.5rem" }}>
             “{c.after.quote}”
           </blockquote>
-          <IssueActions chapterId={i.chapterId} kind={i.kind} fingerprint={i.fingerprint} actions={actions} />
+          {i.intentionalNote !== undefined && <p className="meta" style={{ margin: "0.25rem 0" }}>Intentional: {i.intentionalNote}</p>}
+          <IssueActions
+            chapterId={i.chapterId}
+            kind={i.kind}
+            fingerprint={i.fingerprint}
+            actions={actions}
+            entity={actions.includes("intentional") ? c.entity : undefined}
+            codexEntry={actions.includes("intentional") ? (codexEntryFor(i.chapterId, c.entity)?.name ?? null) : undefined}
+          />
         </li>
       );
     };
@@ -149,12 +157,12 @@ export default async function ReviewPage({
         {openClashes.length === 0 ? (
           <p>{clashes.length > 0 ? "Nothing left to deal with here." : "No continuity problems found yet."}</p>
         ) : (
-          <ul>{openClashes.map((i) => clash(i, ["later", "dismissed"]))}</ul>
+          <ul>{openClashes.map((i) => clash(i, ["later", "dismissed", "intentional"]))}</ul>
         )}
         {laterClashes.length > 0 && (
           <>
             <h3>Later</h3>
-            <ul>{laterClashes.map((i) => clash(i, ["open", "dismissed"]))}</ul>
+            <ul>{laterClashes.map((i) => clash(i, ["open", "dismissed", "intentional"]))}</ul>
           </>
         )}
         {dismissedClashes.length > 0 && (
