@@ -38,6 +38,10 @@ export async function startFakeAi({ port = 0, reply = "A reply from the fake AI.
         res.setHeader("content-type", "application/json");
         return res.end(JSON.stringify({ models: loaded.map((name) => ({ name, model: name })) }));
       }
+      if (req.method === "GET" && path.endsWith("/models")) {
+        res.setHeader("content-type", "application/json");
+        return res.end(JSON.stringify({ data: [{ id: "fake-model-a" }, { id: "fake-model-b" }] }));
+      }
       if (path.endsWith("/api/generate")) {
         res.setHeader("content-type", "application/json");
         return res.end("{}");

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { PROVIDERS, providerInfo, type ProviderKind } from "@/lib/ai/providers";
 import { AiError, listModels, streamChat } from "@/lib/ai/client";
+import { checkFromServer, type ServerCheck } from "@/lib/serverCheck";
 import PromptButton from "./PromptButton";
 import NumberInput from "./NumberInput";
 import ComfyConnection from "./ComfyConnection";
@@ -106,6 +107,15 @@ function ConnectionCard({
   const [typed, setTyped] = useState("");
   const [testing, setTesting] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
+  const [testingServer, setTestingServer] = useState(false);
+  const [serverStatus, setServerStatus] = useState<ServerCheck | null>(null);
+
+  async function testFromServer() {
+    setTestingServer(true);
+    setServerStatus(null);
+    setServerStatus(await checkFromServer({ kind: "ai", provider: conn.kind, baseUrl: conn.baseUrl, apiKey: conn.apiKey }));
+    setTestingServer(false);
+  }
 
   async function test() {
     setTesting(true);
@@ -150,6 +160,10 @@ function ConnectionCard({
         Server URL
         <input value={conn.baseUrl} onChange={(e) => onChange({ baseUrl: e.target.value })} />
         <small>{info.hint}</small>
+        <small>
+          The StoryTime server uses this address too (it writes chapters and runs), so it must work from the machine StoryTime
+          runs on (not <code>localhost</code> unless the service runs in the same container).
+        </small>
       </label>
       <label>
         API key {!info.needsKey && <small>(optional)</small>}
@@ -190,11 +204,15 @@ function ConnectionCard({
         <button type="button" onClick={test} disabled={testing}>
           {testing ? "Testing…" : models ? "Refresh models" : "Test connection"}
         </button>
+        <button type="button" className="secondary" onClick={testFromServer} disabled={testingServer || !conn.baseUrl.trim()}>
+          {testingServer ? "Testing…" : "Test from server"}
+        </button>
         <button type="button" className="secondary" onClick={onRemove}>
           Remove connection
         </button>
       </div>
       {status && <p className={status.kind}>{status.text}</p>}
+      {serverStatus && <p className={serverStatus.ok ? "ok" : "error"}>{serverStatus.text}</p>}
 
       {models && models.length > 0 && (
         <div className="model-list">
@@ -486,8 +504,9 @@ export default function SettingsForm() {
       <div {...panel("connections")}>
         <p className="notice">
           These settings, including your API keys, are stored on the StoryTime server and shared by every browser that
-          uses it. AI requests still go directly from your browser to the provider you choose, so the key is sent to
-          your browser when a page loads. Only use StoryTime on a server and network you trust.
+          uses it. Writing and pictures are made by the StoryTime server, which calls the provider you choose, and some
+          requests (such as listing models) still come from your browser, so the key is sent to your browser when a
+          page loads. Only use StoryTime on a server and network you trust.
         </p>
         <section className="settings-section">
           <h2>AI connections</h2>

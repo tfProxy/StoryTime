@@ -203,7 +203,7 @@ Ship Phase 4. The server can now do everything, but the browser still uses its o
 
 Do this on a branch (`server-queue`), not in small pieces on `main`. Push to `main` only when the whole browser suite passes.
 
-**5.1 New provider.** Rewrite `WorkQueue.tsx` as a client of the server, keeping the exported types and the `WorkQueueApi` shape:
+**5.1 New provider (done).** (As built: the bus now delivers nested publishes in order, `tests/run.mjs` empties the queue before each browser file, a page connecting always triggers a ComfyUI scan, and `DELETE /api/ai-runs/<id>/queue?end=1` ends a run for good.) Rewrite `WorkQueue.tsx` as a client of the server, keeping the exported types and the `WorkQueueApi` shape:
 
 - State: the items from `/api/queue/events` (one `EventSource` per tab, reconnect with backoff; on reconnect the `items` event replaces the list).
 - `ask(req)`: upload pictures that need it (D6; Refine's flattened picture, masks via `renderMask`, `upload:` refs), `toSpec`, `POST /api/queue/pictures`. Upload once per picture key per tab (a small map), like today's upload cache.
@@ -214,22 +214,22 @@ Do this on a branch (`server-queue`), not in small pieces on `main`. Push to `ma
 - Remove: `TAB_TOKEN`, leases from the browser, the `elsewhere` state, `beforeunload`, the wake lock, the ComfyUI scan, `loadRuns`, the picture-run tick functions, `localStorage` pause (migrate once, D10).
 - Keep `window.__storytimeQueue` for tests, pointing at the new state.
 
-**5.2 Writing page.** In `ChapterEditor.tsx` (grep `listenDraft`, around line 312): while its Generate is `working`, do not autosave; when it ends, reload the draft from the server (D11). Only touch that part of the file.
+**5.2 Writing page (done).** (As built: the page merges the server's finished draft with `showGenerated`, and only a page that joins a Generate already running switches to reading mode.) In `ChapterEditor.tsx` (grep `listenDraft`, around line 312): while its Generate is `working`, do not autosave; when it ends, reload the draft from the server (D11). Only touch that part of the file.
 
-**5.3 Pages that read run state.** `WriteAhead.tsx`, `AiRunProgress.tsx`, `MissingPictures.tsx`, `QueuePage.tsx`, `WorkQueueStatus.tsx`: remove anything about `elsewhere` and the tab lease; otherwise they should keep working through the hook. Check each with its e2e file.
+**5.3 Pages that read run state (done).** (As built: Retry and Skip use `POST /api/ai-runs/<id>/task`.) `WriteAhead.tsx`, `AiRunProgress.tsx`, `MissingPictures.tsx`, `QueuePage.tsx`, `WorkQueueStatus.tsx`: remove anything about `elsewhere` and the tab lease; otherwise they should keep working through the hook. Check each with its e2e file.
 
-**5.4 Turn on the server scan** (4.3).
+**5.4 Turn on the server scan (done)** (4.3).
 
-**5.5 Tests.** Run the whole browser suite (`npm run test:e2e`, in a cloud session `E2E_EXECUTABLE=/opt/pw-browsers/chromium`). Expected breakage and what to do:
+**5.5 Tests (done).** (As built: all 51 browser files pass; `failRecording` is a test switch on the worker state.) Run the whole browser suite (`npm run test:e2e`, in a cloud session `E2E_EXECUTABLE=/opt/pw-browsers/chromium`). Expected breakage and what to do:
 - Tests that wait for work to stop when a page closes, or test `elsewhere`, `beforeunload` or the wake lock: change them to the new behaviour (work continues), don't delete them.
 - Tests that check "kept in this tab only" for Refine sessions: the server now keeps them; update.
 - Tests that set the pause flag in `localStorage`: use `PUT /api/queue/paused`, and set it back at the end (tests share one server, AGENTS.md).
 - Tests that leave items in the queue change what later files see: dismiss or delete items a test creates (`DELETE /api/queue/items/<key>`).
 - Never skip or delete a test to get green. If a test's expectation is wrong for the new design, change it and say why in the commit message.
 
-**5.6 Docs.** Update `docs/illustrate.md` (the "picture queue", "Make missing pictures" and "Jobs are tagged" bullets, and its first paragraph: "All ComfyUI calls are made from the browser" is no longer true), `AGENTS.md` ("AI calls made from the browser" in `CLAUDE.md`'s first line too: ask the owner before editing `CLAUDE.md`), the stale comment at the top of `src/lib/ai/client.ts`, and `TODO.md` (remove this item; note under the Review plan's stage 5 that the server can now make AI calls).
+**5.6 Docs (done).** (`CLAUDE.md` line 1 is not changed: it still says AI calls are made from the browser, and the owner has to approve that edit.) Update `docs/illustrate.md` (the "picture queue", "Make missing pictures" and "Jobs are tagged" bullets, and its first paragraph: "All ComfyUI calls are made from the browser" is no longer true), `AGENTS.md` ("AI calls made from the browser" in `CLAUDE.md`'s first line too: ask the owner before editing `CLAUDE.md`), the stale comment at the top of `src/lib/ai/client.ts`, and `TODO.md` (remove this item; note under the Review plan's stage 5 that the server can now make AI calls).
 
-**5.7 Settings note.** In Settings, near each connection's URL and ComfyUI's URL, add one line of help: "The StoryTime server uses this address, so it must work from the NAS (not `localhost` unless the service runs in the same container)." Add a "Test from server" check: `GET /api/queue/check?url=` that fetches ComfyUI `/system_stats` or the provider's models list from the server and reports success or the error. Small UI change: one e2e file and a phone screenshot.
+**5.7 Settings note (done).** (As built: the check is `POST /api/queue/check` with `{kind:"comfy",url}` or `{kind:"ai",provider,baseUrl,apiKey}`, not a GET, because the API key must not go in a URL. It reaches ComfyUI's version and checkpoint list, or the provider's model list, and always answers 200 with `{ok,text}`. The Settings notice about keys was reworded too, since writing no longer goes straight from the browser.) In Settings, near each connection's URL and ComfyUI's URL, add one line of help: "The StoryTime server uses this address, so it must work from the NAS (not `localhost` unless the service runs in the same container)." Add a "Test from server" check: `GET /api/queue/check?url=` that fetches ComfyUI `/system_stats` or the provider's models list from the server and reports success or the error. Small UI change: one e2e file and a phone screenshot.
 
 Ship Phase 5, then tell the owner the manual checks below.
 
