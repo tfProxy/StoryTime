@@ -70,7 +70,8 @@ try {
   const callsBefore = comfy.calls.length;
   ok(live && (await call("POST", `/api/queue/items/${encodeURIComponent(live.key)}`, { action: "stop" })).status === 200, "…and can be stopped");
   ok(!!(await until(async () => !(await byPrompt(running)))), "…it leaves the queue");
-  ok(comfy.calls.slice(callsBefore).some((c) => c.path === "/queue" || c.path === "/interrupt"), "…and is taken off ComfyUI");
+  // (The cancel is sent without waiting for it, so it can arrive just after the job has left the list.)
+  ok(!!(await until(async () => comfy.calls.slice(callsBefore).some((c) => c.path === "/queue" || c.path === "/interrupt"), 3000)), "…and is taken off ComfyUI");
 
   // ---- restart recovery ----
   const left = (key, data) => call("POST", "/api/queue/test-items", { key, type: "picture", state: "working", data: { target, spec: { comfy: { url: comfy.url } }, count: 1, view: {}, ...data } });

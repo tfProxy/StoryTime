@@ -183,7 +183,8 @@ try {
   const callsBefore = comfy.calls.length;
   ok((await call("POST", `/api/queue/items/${encodeURIComponent(i.key)}`, { action: "stop" })).status === 200, "a job being made can be stopped");
   ok(!!(await until(async () => !(await itemOf(i.key)))), "…it leaves the queue");
-  ok(comfy.calls.slice(callsBefore).some((x) => x.path === "/interrupt" || x.path === "/queue"), "…and was taken off ComfyUI");
+  // (The cancel is sent without waiting for it, so it can arrive just after the job has left the list.)
+  ok(!!(await until(async () => comfy.calls.slice(callsBefore).some((x) => x.path === "/interrupt" || x.path === "/queue"), 3000)), "…and was taken off ComfyUI");
   ok((await jobsOf()).every((j) => !JSON.stringify(j).includes("prompt-i")), "…and nothing was recorded for it");
   comfy.setMode({ steps: 2, stepDelay: 40 });
 
