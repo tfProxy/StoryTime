@@ -333,7 +333,7 @@ async function doWrite(task: WriteTask, run: AiRun, list: RunTask[], env: StepEn
   let planned: PlannedChoice[];
   if (grouped) {
     // The text alone, with the choices it was given; its summaries and suggested choices follow in the cheap-model phase.
-    const ctx = await withPathSummaries(settings, storyContextOf(parent, task.label), signal, (s) => onEvent?.({ type: "status", text: s }));
+    const ctx = await withPathSummaries(settings, storyContextOf(parent, task.label), signal, (s) => onEvent?.({ type: "status", text: s }), f);
     const out = await writeText(settings, { ctx, label: task.label, direction, options: run.options, signal, onText: text, stream: env.deps?.stream });
     planned = task.choices.given.map((label) => ({ label, direction: "", isNew: false }));
     chapter = { ...out, choices: task.choices.given, ai_run_id: run.id, ...target };
@@ -349,6 +349,7 @@ async function doWrite(task: WriteTask, run: AiRun, list: RunTask[], env: StepEn
       onText: text,
       onStatus: (s) => onEvent?.({ type: "status", text: s }),
       stream: env.deps?.stream,
+      fetch: f,
     });
     planned = out.choices;
     chapter = { title: out.title, body: out.body, summary: out.summary, path_summary: out.path_summary, choices: out.choices.map((c) => c.label), ai_run_id: run.id, ...target };

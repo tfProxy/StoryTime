@@ -17,6 +17,7 @@ import { getSettings } from "../settingsStore";
 import { parseSettings } from "../settingsSchema";
 import { publish, workerState } from "./bus";
 import { createItem, deleteItem, getItem, updateItem, type WorkRow } from "./items";
+import { selfFetch } from "./selfFetch";
 
 const modelRef = z.object({ connectionId: z.string(), model: z.string() }).nullable();
 const draftText = z.object({ title: z.string(), body: z.string() });
@@ -129,7 +130,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
   const tell = (event: GenerateEvent) => publish(genChannel(draftKey), event);
   let lastSave = 0;
   try {
-    const ready = await withPathSummaries(settings, req.ctx, run.ctl.signal);
+    const ready = await withPathSummaries(settings, req.ctx, run.ctl.signal, undefined, selfFetch);
     const message = generatePrompt(ready, req.direction, req.length, settings.contextTokens);
     for await (const piece of streamChat(settings, { system: SYSTEM_CHAPTER, messages: [{ role: "user", content: message }], role: "main", model: req.model, signal: run.ctl.signal })) {
       run.text += piece;
