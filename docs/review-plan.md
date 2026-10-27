@@ -25,7 +25,8 @@ Written 2026-10-27 for agents on cheaper models, one task at a time, directed by
 ## Open questions for the owner (answer before the tasks that need them)
 
 1. **Tag rules** (needed before C8 and before changing the starter rules): do dreams or visions count? A change reversed in the same chapter? Partial changes (ears, a tail)? **Answered 2026-10-27: dreams and visions don't count; a change reversed in the same chapter counts; partial changes count the same as full ones.** The starter rules in `TODO.md` say so; the owner's own rules are edited in Settings > Tags.
-2. **AI mark and Review** (needed before E3): should AI-written chapters not yet marked reviewed also be listed on the Review page's Issues tab, and counted in the outline ⚠?
+2. **AI mark and Review** (needed before E3): should AI-written chapters not yet marked reviewed also be listed on the Review page's Issues tab, and counted in the outline ⚠? **Answered 2026-10-27: list them on the Issues tab, but don't count them in the outline ⚠** (the AI mark already shows there).
+5. **Automatic checks** (E1, E2): **answered 2026-10-27: all of them** — tags, facts and continuity, and the summary check.
 3. **Long scans on the server** (needed before B2): should Find tags over more than one chapter go through the queue (it keeps going with the tab closed and takes turns with pictures), replacing today's in-page loop? **Answered 2026-10-27: yes, through the queue.**
 4. **Placement for stage 4** (D1 to D3): where content notes go on the reading page, and the outline chips/filter.
 
