@@ -8,6 +8,7 @@ import { publish, QUEUE_CHANNEL, subscribe, workerState } from "./bus";
 import { genItemKey, runGenerate } from "./generate";
 import { listItems, updateItem, type WorkRow } from "./items";
 import { getPaused } from "./paused";
+import { recoverGathering } from "./pictures";
 import { recoverRuns, runStep } from "./runs";
 
 export const PUMP_MS = 5000;
@@ -92,6 +93,7 @@ export function startLoop() {
   const worker = workerState();
   recoverGenerates();
   recoverRuns();
+  recoverGathering();
   subscribe(QUEUE_CHANNEL, (event) => {
     if ((event as { type?: string }).type !== "machine") pump();
   });

@@ -15,7 +15,7 @@ export type ItemState = (typeof ITEM_STATES)[number];
 /** Finished and failed items are kept this long, then left out of the list. */
 export const KEEP_ENDED_MS = 7 * 24 * 60 * 60 * 1000;
 
-const target = z.discriminatedUnion("kind", [
+export const pictureTargetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("chapter"), storyId: z.string(), chapterId: z.string() }),
   z.object({ kind: z.literal("cover"), storyId: z.string() }),
   z.object({ kind: z.literal("codex"), storyId: z.string(), entryId: z.string() }),
@@ -27,7 +27,7 @@ const json = z.record(z.string(), z.unknown());
 
 /** A picture job: gathered from quick clicks, sent to ComfyUI, waited for, recorded. */
 export const pictureData = z.object({
-  target,
+  target: pictureTargetSchema,
   /** The `JobSpec` (comfy/jobSpec.ts). */
   spec: json,
   count: z.number().int().min(1),

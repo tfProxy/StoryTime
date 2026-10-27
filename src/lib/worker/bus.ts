@@ -44,6 +44,8 @@ export type WorkerState = {
   timers: ReturnType<typeof setInterval>[];
   /** The Generates going now, by draft key: the text so far, and how to stop it. */
   generates: Map<string, { text: string; ctl: AbortController }>;
+  /** The picture job quick clicks can still join: its key, what it must match, how many pictures it has, and the timer that closes it. */
+  gathering: { key: string; targetKey: string; signature: string; count: number; timer: ReturnType<typeof setTimeout> } | null;
   /** The run steps going now, by run id: how to stop it, and a promise that settles when the step has ended. */
   runs: Map<string, { ctl: AbortController; done: Promise<void> }>;
   /** Who has the machine when pictures and writing take turns (`schedule()` passes it back each time). */
@@ -56,7 +58,7 @@ declare global {
 
 /** The one worker state of this process, made on first use. */
 export function workerState(): WorkerState {
-  return (globalThis.__storytimeWorker ??= { bus: createBus(), started: false, timers: [], generates: new Map(), runs: new Map(), holder: null });
+  return (globalThis.__storytimeWorker ??= { bus: createBus(), started: false, timers: [], generates: new Map(), runs: new Map(), gathering: null, holder: null });
 }
 
 export const publish = (channel: string, event: unknown) => workerState().bus.publish(channel, event);

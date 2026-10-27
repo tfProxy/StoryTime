@@ -137,6 +137,13 @@ try {
   createItem({ key: "run:r1", type: "run", state: "working", data: { runId: "r1", storyId: "s", storyTitle: "S", startChapterId: null, startTitle: "", mode: "fill", done: 0, total: 2 } });
   recoverRuns();
   ok(getItem("run:r1")?.state === "waiting", "after a restart, a run that was working goes back in line");
+
+  // A picture job that was still gathering clicks is closed.
+  const { recoverGathering } = await import("../../src/lib/worker/pictures.ts");
+  createItem({ key: "job-g1", type: "picture", state: "gathering", data: { target: { kind: "cover", storyId: "s" }, spec: {}, count: 2, view: {} } });
+  recoverGathering();
+  const closed = getItem("job-g1");
+  ok(closed?.state === "waiting" && closed.readyAt !== null, "after a restart, a picture job that was gathering is closed and waiting");
 } finally {
   await ai.close();
   fs.rmSync(dir, { recursive: true, force: true });
