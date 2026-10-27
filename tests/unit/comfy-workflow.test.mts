@@ -1,4 +1,4 @@
-import { addDifferentialDiffusion, growNoiseMask, BUILTIN_IMG2IMG, BUILTIN_INPAINT, BUILTIN_SAMPLER, BUILTIN_WORKFLOW, builtinSampler, describeWorkflow, filenamePrefix, fillWorkflow, parseWorkflow, partialSteps, randomSeed, stepsToRun, WorkflowError, type PictureParams, type Workflow } from "../../src/lib/comfy/workflow.ts";
+import { addDifferentialDiffusion, fillUnderMask, growNoiseMask, BUILTIN_IMG2IMG, BUILTIN_INPAINT, BUILTIN_SAMPLER, BUILTIN_WORKFLOW, builtinSampler, describeWorkflow, filenamePrefix, fillWorkflow, parseWorkflow, partialSteps, randomSeed, stepsToRun, WorkflowError, type PictureParams, type Workflow } from "../../src/lib/comfy/workflow.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const throwsWorkflowError = (fn: () => unknown) => {
@@ -381,6 +381,72 @@ ok(describeWorkflow(sdxl).mask === true && describeWorkflow(bare).mask === false
   // placeholders are never cropped
   const phWf = { ...maskPlaceholders, "1": { ...maskPlaceholders["1"], inputs: { ...maskPlaceholders["1"].inputs, model: ["9", 0] } } };
   ok(j(fillWorkflow(phWf, cropped)) === j(fillWorkflow(phWf, { ...cropped, crop: undefined })) && !classesOf(fillWorkflow(phWf, cropped)).includes("ImageCrop"), "crop placeholders: a workflow with {{mask}} is left as its author wired it");
+}
+// ---- filling the painted area before it is encoded ("Under the paint") ----
+{
+  const j = (v: unknown) => JSON.stringify(v);
+  const classesOf = (wf: Workflow) => Object.values(wf).map((n) => n.class_type);
+  const assertLinksResolve = (wf: Workflow, label: string) => {
+    const bad: string[] = [];
+    for (const [id, node] of Object.entries(wf)) {
+      for (const [k, v] of Object.entries(node.inputs)) {
+        if (Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "number" && !wf[v[0]]) bad.push(`${id}.${k} -> ${v[0]}`);
+      }
+    }
+    ok(bad.length === 0, `${label}: every link points at an existing node${bad.length ? ` (${bad.join(", ")})` : ""}`);
+  };
+  const crop = { x: 100, y: 200, w: 400, h: 300, sw: 832, sh: 624, scale: 2 };
+  const base = { ...maskParams, grow: 13 };
+  /** Checks one filled graph: `encode` is the VAEEncode, `pixels` the link it read before, `size` the encoded picture's size. */
+  const checkFill = (wf: Workflow, label: string, kind: "blur" | "grey", o: { encode: string; pixels: [string, number]; size: [number, number]; mask: string }) => {
+    assertLinksResolve(wf, label);
+    ok(j(wf[o.encode].inputs.pixels) === '["storytime_fill_paste",0]', `${label}: the encoder reads the filled copy`);
+    const paste = wf.storytime_fill_paste;
+    ok(paste.class_type === "ImageCompositeMasked" && j(paste.inputs.destination) === j(o.pixels) && j(paste.inputs.source) === '["storytime_fill",0]' && paste.inputs.x === 0 && paste.inputs.y === 0 && paste.inputs.resize_source === false, `${label}: the fill is pasted over the picture that was encoded`);
+    ok(j(paste.inputs.mask) === j([o.mask, 0]) && wf[o.mask].class_type === "GrowMask" && j(Object.values(wf).find((n) => n.class_type === "SetLatentNoiseMask")!.inputs.mask) === j([o.mask, 0]), `${label}: …through the grown mask the sampler uses`);
+    if (kind === "grey") {
+      ok(j(wf.storytime_fill) === j({ class_type: "EmptyImage", inputs: { width: o.size[0], height: o.size[1], batch_size: 1, color: 8421504 } }) && !("storytime_fill_small" in wf), `${label}: grey is an EmptyImage of the encoded size`);
+    } else {
+      ok(j(wf.storytime_fill_small.inputs) === j({ image: o.pixels, upscale_method: "area", scale_by: 0.0625 }) && wf.storytime_fill_small.class_type === "ImageScaleBy", `${label}: blur shrinks the encoded picture to 1/16`);
+      ok(j(wf.storytime_fill.inputs) === j({ image: ["storytime_fill_small", 0], upscale_method: "bilinear", width: o.size[0], height: o.size[1], crop: "disabled" }), `${label}: …and scales it back to the encoded size`);
+    }
+  };
+
+  for (const kind of ["blur", "grey"] as const) {
+    // built-in, not cropped: the encoder reads the LoadImage "10" directly, at the picture's size
+    const bf = fillWorkflow(BUILTIN_WORKFLOW, { ...base, fill: kind });
+    checkFill(bf, `fill ${kind} builtin`, kind, { encode: "11", pixels: ["10", 0], size: [1344, 768], mask: "storytime_grow_1" });
+    ok(j(bf["16"].inputs) === j(fillWorkflow(BUILTIN_WORKFLOW, base)["16"].inputs) && j(bf["9"]) === j(fillWorkflow(BUILTIN_WORKFLOW, base)["9"]), `fill ${kind} builtin: the paste-back and the save are untouched`);
+    // built-in, cropped
+    const bc = fillWorkflow(BUILTIN_WORKFLOW, { ...base, crop, fill: kind });
+    checkFill(bc, `fill ${kind} builtin cropped`, kind, { encode: "11", pixels: ["storytime_crop_scale", 0], size: [832, 624], mask: "storytime_grow_1" });
+    const bcPlain = fillWorkflow(BUILTIN_WORKFLOW, { ...base, crop });
+    ok(j(bc.storytime_paste_1) === j(bcPlain.storytime_paste_1) && j(bc["9"]) === j(bcPlain["9"]), `fill ${kind} builtin cropped: the paste-back is untouched`);
+    // detected, not cropped and cropped
+    checkFill(fillWorkflow(sdxl, { ...base, fill: kind }), `fill ${kind} detected`, kind, { encode: "storytime_encode", pixels: ["storytime_image", 0], size: [1344, 768], mask: "storytime_grow_1" });
+    checkFill(fillWorkflow(sdxl, { ...base, crop, fill: kind }), `fill ${kind} detected cropped`, kind, { encode: "storytime_encode", pixels: ["storytime_crop_scale", 0], size: [832, 624], mask: "storytime_grow_1" });
+    // with LoRAs and two saves the links still resolve
+    assertLinksResolve(fillWorkflow(twoSaves, { ...base, fill: kind, loras: [{ name: "a.safetensors", strength: 0.8 }] }), `fill ${kind} detected (two saves, LoRA)`);
+  }
+
+  // "keep", nothing, and no mask leave the graphs exactly as before
+  ok(j(fillWorkflow(BUILTIN_WORKFLOW, { ...base, fill: "keep" })) === j(fillWorkflow(BUILTIN_WORKFLOW, base)), "fill keep builtin: the graph is exactly as before");
+  ok(j(fillWorkflow(BUILTIN_WORKFLOW, { ...base, crop, fill: "keep" })) === j(fillWorkflow(BUILTIN_WORKFLOW, { ...base, crop })), "fill keep builtin cropped: the graph is exactly as before");
+  ok(j(fillWorkflow(sdxl, { ...base, fill: "keep" })) === j(fillWorkflow(sdxl, base)), "fill keep detected: the graph is exactly as before");
+  ok(j(fillWorkflow(BUILTIN_WORKFLOW, { ...imgParams, fill: "blur" })) === j(imgBuilt) && j(fillWorkflow(sdxl, { ...imgParams, fill: "grey" })) === j(sdxlImg), "fill: with no mask a fill does nothing");
+  ok(j(fillWorkflow(BUILTIN_WORKFLOW, { ...params, fill: "blur" })) === j(built), "fill: with no picture a fill does nothing");
+  const phWf = { ...maskPlaceholders, "1": { ...maskPlaceholders["1"], inputs: { ...maskPlaceholders["1"].inputs, model: ["9", 0] } } };
+  ok(j(fillWorkflow(phWf, { ...base, fill: "blur" })) === j(fillWorkflow(phWf, base)) && !classesOf(fillWorkflow(phWf, { ...base, fill: "grey" })).includes("EmptyImage"), "fill placeholders: a workflow with {{mask}} is left as its author wired it");
+
+  // the helper on its own: no noise mask, or no encoder behind it, is left alone
+  const lone: Workflow = { a: { class_type: "KSampler", inputs: { model: ["m", 0] } } };
+  const loneBefore = j(lone);
+  fillUnderMask(lone, { kind: "blur", size: { w: 64, h: 64 } });
+  ok(j(lone) === loneBefore, "fillUnderMask: a graph with no SetLatentNoiseMask is left alone");
+  const noEncoder: Workflow = { n: { class_type: "SetLatentNoiseMask", inputs: { samples: ["x", 0], mask: ["y", 0] } } };
+  const noEncoderBefore = j(noEncoder);
+  fillUnderMask(noEncoder, { kind: "grey", size: { w: 64, h: 64 } });
+  ok(j(noEncoder) === noEncoderBefore, "fillUnderMask: a noise mask with no RepeatLatentBatch and VAEEncode behind it is left alone");
 }
 function grown13(): PictureParams { return { ...maskParams, grow: 13 }; }
 

@@ -46,6 +46,8 @@ export type PictureParams = {
   grow?: number;
   /** Inpainting: redraw from this crop of the picture (the painted area plus context), scaled to its `sw` by `sh`, and paste it back. Not used by workflows with placeholders. */
   crop?: CropPlan;
+  /** Inpainting: what the sampler sees under the painted area (see `fillUnderMask`); left out to keep the picture as it is. */
+  fill?: FillKind;
   /** Image to image: how far the pictures may drift from the starting one, 0 to 1 (default 1). */
   denoise?: number;
   /** The built-in workflow's sampler settings (from the preset); other workflows keep their own. */
@@ -307,6 +309,8 @@ export function fillWorkflow(wf: Workflow, p: PictureParams): Workflow {
     // A cropped redraw (redrawCropped) has grown its mask already, in the crop's pixels.
     if (!p.crop) growNoiseMask(out, p.grow ?? 0);
     addDifferentialDiffusion(out);
+    // Not cropped: the picture is encoded at its own size; cropped: at the crop's scaled size.
+    fillUnderMask(out, { kind: p.fill ?? "keep", size: p.crop ? { w: p.crop.sw, h: p.crop.sh } : { w: p.width, h: p.height } });
   }
   setPrefix(out, p.prefix ?? DEFAULT_PREFIX);
   return out;
@@ -481,6 +485,39 @@ export function addDifferentialDiffusion(wf: Workflow) {
     }
     node.inputs.model = [id, 0];
   }
+}
+
+/** What the sampler sees under the painted area: the picture as it is, a blurred copy, or flat grey. */
+export type FillKind = "keep" | "blur" | "grey";
+
+/**
+ * Fills the painted area of the picture that is encoded (not the pasted-back one) with a blurred copy of it or
+ * flat grey, so removing an object does not redraw the object. Finds the encoder through the noise mask:
+ * SetLatentNoiseMask, its RepeatLatentBatch, its VAEEncode. The fill is composited over the encoder's pixels
+ * through the noise mask as it stands (grown already), so call this after `growNoiseMask`. `size` is the
+ * size of the encoded picture. Does nothing for "keep", or when the graph has no such chain.
+ */
+export function fillUnderMask(wf: Workflow, o: { kind: FillKind; size: { w: number; h: number } }) {
+  if (o.kind === "keep") return;
+  const noise = Object.values(wf).find((n) => n.class_type === "SetLatentNoiseMask");
+  const repeatLink = noise?.inputs.samples;
+  const maskLink = noise?.inputs.mask;
+  if (!noise || !isLink(repeatLink) || !isLink(maskLink)) return;
+  const repeat = wf[repeatLink[0]];
+  const encodeLink = repeat?.class_type === "RepeatLatentBatch" ? repeat.inputs.samples : null;
+  const encode = isLink(encodeLink) ? wf[encodeLink[0]] : null;
+  const pixels = encode?.class_type === "VAEEncode" ? encode.inputs.pixels : null;
+  if (!encode || !isLink(pixels)) return;
+  const [small, fill, paste] = ["storytime_fill_small", "storytime_fill", "storytime_fill_paste"];
+  const { w, h } = o.size;
+  if (o.kind === "grey") {
+    wf[fill] = { class_type: "EmptyImage", inputs: { width: w, height: h, batch_size: 1, color: 8421504 } };
+  } else {
+    wf[small] = { class_type: "ImageScaleBy", inputs: { image: pixels, upscale_method: "area", scale_by: 0.0625 } };
+    wf[fill] = { class_type: "ImageScale", inputs: { image: [small, 0], upscale_method: "bilinear", width: w, height: h, crop: "disabled" } };
+  }
+  wf[paste] = { class_type: "ImageCompositeMasked", inputs: { destination: pixels, source: [fill, 0], x: 0, y: 0, resize_source: false, mask: maskLink } };
+  encode.inputs.pixels = [paste, 0];
 }
 
 function fillSettings(wf: Workflow, p: PictureParams): Workflow {

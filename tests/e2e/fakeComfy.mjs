@@ -107,6 +107,7 @@ const NODES = [
   "LoadImageMask", "SetLatentNoiseMask", "InvertMask", "ImageCompositeMasked",
   "GrowMask", "DifferentialDiffusion",
   "ImageCrop", "CropMask", "MaskToImage", "ImageToMask", "RepeatImageBatch",
+  "EmptyImage", "ImageScaleBy",
 ];
 const GGUF_NODES = ["UnetLoaderGGUF", "CLIPLoaderGGUF", "DualCLIPLoaderGGUF"];
 // The nodes of ComfyUI_IPAdapter_plus (and the CLIP Vision loader reference pictures use), present only with `ipAdapter: true`.

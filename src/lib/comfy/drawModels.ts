@@ -14,7 +14,7 @@ import {
   QWEN_TEXT_ENCODER, QWEN_VAE, T5_XXL, UNET_GGUF,
   type LoaderInfo, type ModelLora, type ModelPart, type NeededOption, type NodeInfo, type PartCheck, type TextEncoderDevice,
 } from "./modelParts";
-import { addDifferentialDiffusion, growNoiseMask, partialSteps, redrawCropped, redrawOnlyMask, type SamplerTuning, type Workflow } from "./workflow";
+import { addDifferentialDiffusion, fillUnderMask, growNoiseMask, partialSteps, redrawCropped, redrawOnlyMask, type FillKind, type SamplerTuning, type Workflow } from "./workflow";
 import type { CropPlan } from "./inpaintRegion";
 
 /** "checkpoint" is the SDXL-style all-in-one checkpoint of the built-in workflow; the rest are families of separate files. */
@@ -59,6 +59,8 @@ export type DrawParams = {
   grow?: number;
   /** Redraw only a painted area: redraw a crop of the picture (the area plus context) at `sw` by `sh`, and paste it back. */
   crop?: CropPlan;
+  /** Redraw only a painted area: what the sampler sees under it (see `fillUnderMask`); left out to keep the picture as it is. */
+  fill?: FillKind;
   /** The preset's LoRAs, applied in order after the model loader. */
   loras?: ModelLora[];
   /** The family's settings (`drawTuning`); its defaults when not given. */
@@ -519,6 +521,8 @@ export function buildDraw(check: FamilyCheck, p: DrawParams): Workflow {
       growNoiseMask(wf, p.grow ?? 0);
     }
     addDifferentialDiffusion(wf);
+    // The family's scaler ("11") makes the encoded picture: the crop's size, or the picture's snapped to 16.
+    fillUnderMask(wf, { kind: p.fill ?? "keep", size: p.crop ? { w: p.crop.sw, h: p.crop.sh } : { w: snap16(p.width), h: snap16(p.height) } });
   }
   return wf;
 }

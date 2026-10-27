@@ -155,6 +155,28 @@ ok(only(buildDraw(z, { ...P, image: "start.png", denoise: 1 }), "KSampler").inpu
   ok(j(buildDraw(z, { ...base, crop: undefined })) === j(plain) && nodesOfType(plain, "ImageCrop").length === 0 && j(plain["11"].inputs).includes('"width":1008'), "crop family: without a crop the graph is exactly what it was");
   ok(j(buildDraw(z, { ...base, mask: undefined, crop })) === j(buildDraw(z, { ...base, mask: undefined })) && nodesOfType(buildDraw(z, { ...base, mask: undefined, crop }), "ImageCrop").length === 0, "crop family: with no mask a crop does nothing");
   ok(j(buildDraw(z, { ...P, mask: "mask.png", crop })) === j(buildDraw(z, P)), "crop family: with no picture a crop does nothing");
+
+  // Fill the painted area before it is encoded ("Under the paint")
+  for (const kind of ["blur", "grey"] as const) {
+    for (const [label, size, extra] of [["", [1008, 1504], {}], [" cropped", [832, 624], { crop }]] as const) {
+      const f = buildDraw(z, { ...base, ...extra, fill: kind });
+      const name = `fill ${kind} family${label}`;
+      assertLinksResolve(f, name);
+      ok(j(f["12"].inputs.pixels) === '["storytime_fill_paste",0]', `${name}: the VAEEncode reads the filled copy`);
+      const fp = f.storytime_fill_paste;
+      ok(fp.class_type === "ImageCompositeMasked" && j(fp.inputs.destination) === '["11",0]' && j(fp.inputs.source) === '["storytime_fill",0]' && fp.inputs.x === 0 && fp.inputs.y === 0 && fp.inputs.resize_source === false, `${name}: the fill is pasted over the scaled picture (11)`);
+      ok(j(fp.inputs.mask) === j([idOf(f, "GrowMask"), 0]) && j(f.storytime_noise_mask ? f.storytime_noise_mask.inputs.mask : only(f, "SetLatentNoiseMask").inputs.mask) === j([idOf(f, "GrowMask"), 0]), `${name}: …through the grown mask the sampler uses`);
+      if (kind === "grey") {
+        ok(j(f.storytime_fill) === j({ class_type: "EmptyImage", inputs: { width: size[0], height: size[1], batch_size: 1, color: 8421504 } }) && nodesOfType(f, "ImageScaleBy").length === 0, `${name}: grey is an EmptyImage of the encoded size`);
+      } else {
+        ok(f.storytime_fill_small.class_type === "ImageScaleBy" && j(f.storytime_fill_small.inputs) === j({ image: ["11", 0], upscale_method: "area", scale_by: 0.0625 }) && j(f.storytime_fill.inputs) === j({ image: ["storytime_fill_small", 0], upscale_method: "bilinear", width: size[0], height: size[1], crop: "disabled" }), `${name}: blur shrinks the scaled picture to 1/16 and scales it back to the encoded size`);
+      }
+      const plainF = buildDraw(z, { ...base, ...extra });
+      ok(j(f.storytime_paste_1) === j(plainF.storytime_paste_1) && j(only(f, "SaveImage")) === j(only(plainF, "SaveImage")), `${name}: the paste-back and the save are untouched`);
+    }
+  }
+  ok(j(buildDraw(z, { ...base, fill: "keep" })) === j(plain) && j(buildDraw(z, { ...base, crop, fill: "keep" })) === j(buildDraw(z, { ...base, crop })), "fill family: keep leaves the graph exactly as before");
+  ok(j(buildDraw(z, { ...base, mask: undefined, fill: "blur" })) === j(buildDraw(z, { ...base, mask: undefined })) && j(buildDraw(z, { ...P, fill: "grey" })) === j(buildDraw(z, P)), "fill family: with no mask (or no picture) a fill does nothing");
 }
 ok(only(wf, "ImageScale").inputs.width === 1008 && only(wf, "ImageScale").inputs.height === 1504, "…scaled to the size in multiples of 16");
 

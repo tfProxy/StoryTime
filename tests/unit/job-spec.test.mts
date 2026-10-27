@@ -71,6 +71,11 @@ ok(sameJob(redrawBack) === sameJob(redraw), "a redraw with a mask keeps its same
 ok(redrawBack.mask?.width === 96 && redrawBack.mask.height === 60, "the mask keeps its size");
 ok(JSON.stringify(redrawBack.mask?.bounds) === JSON.stringify({ x: 0, y: 0, w: 15, h: 16 }) && redrawBack.mask?.strokes.length === 0, "the server's painted area has the box, and no strokes");
 ok((await text(await redrawBack.mask!.render!())) === "server:upload:mask-1", "the mask's render fetches its upload");
+const filled: JobInput = { ...redraw, fill: "blur" };
+const filledBack = fromSpec(JSON.parse(JSON.stringify(toSpec(filled, { [maskUploadKey("m1")]: "upload:mask-1" }))), async (s) => png(`server:${s}`));
+ok(filledBack.fill === "blur" && sameJob(filledBack) === sameJob(filled), "the fill under the paint survives toSpec and fromSpec");
+ok(sameJob(filled) !== sameJob(redraw) && sameJob({ ...redraw, fill: "keep" }) === sameJob(redraw), "the fill is part of the job key with a mask: blur differs, keep is the default");
+ok(sameJob({ ...base, fill: "grey" }) === sameJob(base), "the fill is left out of the job key with no mask");
 let threw = false;
 try { toSpec(redraw, {}); } catch { threw = true; }
 ok(threw, "a mask that was not uploaded is refused");

@@ -1656,6 +1656,24 @@ textarea.two-lines {
   overflow-wrap: anywhere;
 }
 
+/* Refine: the strength slider with the "Under the paint" menu beside it (wraps under it on a phone). */
+.strength-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.75rem;
+}
+
+.strength-row .strength {
+  flex: 1 1 10rem;
+}
+
+.under-paint {
+  display: grid;
+  gap: 0.25rem;
+  flex: 0 1 11rem;
+}
+
 .strength input[type="range"] {
   padding: 0;
   border: 0;
