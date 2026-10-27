@@ -129,6 +129,8 @@ Written 2026-10-22 at the end of a cloud session, for the next agent picking up 
 
 ## What's next, in order
 
+**Superseded on 2026-10-27 by `docs/review-plan.md`**, which splits the rest into small tasks for cheaper agents and takes in what changed on main (the server now runs AI work). The notes below are kept as background.
+
 ### 1. Review items table and dismissing (done 2026-10-23)
 
 - **Built:** migration 29 adds `review_items(id, chapter_id, kind, fingerprint, status dismissed|later|intentional, revision, note, decided_at)`, unique on (chapter_id, kind, fingerprint).
