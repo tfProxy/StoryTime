@@ -41,7 +41,7 @@ Today a chapter that got no suggestions is read again on every Find tags run, be
 - Changing a tag's rule should make it be checked again: in `updateTag`, when `applies`, `not_applies` or `choices` change, remove that tag id from every row's `tag_ids` (or delete rows containing it, which is simpler; say which you chose in the commit).
 - Tests: `tests/api/tags.test.mjs` (a second suggest with no suggestions records the check), `tests/e2e/review-tags.e2e.mjs` (the "1 chapter was skipped" count rises to 2 on the second run; update the "The way here" check that expects Start to be read again).
 
-### A2. Show who added a tag (small)
+### A2. Show who added a tag (small) (done, b879172)
 
 - `TaggedChapters.tsx`: after each tag, a muted "(by hand)" when `source` is `author`. Pass `source` from `src/app/s/[id]/review/page.tsx` (it is on the rows `chapterTags` returns; check the type).
 - Test in `tests/e2e/review-tags.e2e.mjs`: the hand-added tag shows "(by hand)", the approved AI one doesn't.
