@@ -93,7 +93,9 @@ Built as: migration 35 (chapter_facts, chapter_fact_checks, mode `tags` renamed 
 - `src/lib/continuity.ts`, pure: `findConflicts(path: {chapterId, facts}[], changeEvents)` walks the path, keeps the latest value per (entity, attribute) (case and spacing ignored), and returns a conflict when a value changes without an approved change event on that chapter (a tag whose name the caller passes, e.g. tf, tg). Each conflict has both chapters and both quotes.
 - Unit tests only. No AI.
 
-### C4. Continuity issues on the Review page (medium)
+### C4. Continuity issues on the Review page (medium) (done, 1312799)
+
+Built as: the owner chose a "Check continuity" button inside the Continuity section (same scopes as Find tags), starting a review run with `checks: ["facts", "continuity"]`. Verdicts are in `continuity_verdicts` (migration 36), keyed by a fingerprint of both quotes, since fact rows are replaced on every read. Change events are approved tags named in `CHANGE_EVENT_TAGS` (`tf`, `tg`) in `src/lib/continuity.ts`; a setting may be wanted later.
 
 - AI judge: `judgeConflict` in `factAi.ts` answers "contradiction", "change" or "fine" for one conflict. Store the verdict with the facts so it isn't asked again (a `verdicts` table keyed by both fact ids, or a JSON column; say which).
 - `src/lib/review.ts`: add kind `continuity` to `ISSUE_KINDS`; issues come from conflicts judged "contradiction". The fingerprint is a short hash of the kind and both quotes, so several issues on one chapter stay apart.
