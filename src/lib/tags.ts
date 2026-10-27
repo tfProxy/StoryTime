@@ -297,6 +297,28 @@ export function checkedTagIdsByChapter(storyId: string): Map<string, string[]> {
   return new Map(rows.map((r) => [r.chapter_id, JSON.parse(r.tag_ids) as string[]]));
 }
 
+/**
+ * The tag ids already decided for each chapter of a story at its current revision, keyed by chapter id: approved tags,
+ * tags rejected at the current revision, and the tags the AI last checked the chapter for. Find tags leaves a chapter
+ * out when every tag that is on for the story is in its list.
+ */
+export function decidedTagIdsByChapter(storyId: string): Map<string, string[]> {
+  const revisionOf = new Map(
+    (db().prepare(`SELECT id, revision FROM chapters WHERE story_id = ?`).all(storyId) as { id: string; revision: number }[]).map((r) => [r.id, r.revision]),
+  );
+  const decided = new Map<string, string[]>();
+  for (const t of chapterTags(storyId)) {
+    if (t.status === "approved" || (t.status === "rejected" && t.revision === revisionOf.get(t.chapter_id))) {
+      decided.set(t.chapter_id, [...(decided.get(t.chapter_id) ?? []), t.tag_id]);
+    }
+  }
+  for (const [chapterId, tagIds] of checkedTagIdsByChapter(storyId)) {
+    const have = decided.get(chapterId) ?? [];
+    decided.set(chapterId, [...have, ...tagIds.filter((tid) => !have.includes(tid))]);
+  }
+  return decided;
+}
+
 export const DecideChapterTagSchema = z.object({
   status: z.enum(["approved", "rejected"]),
   value: text(TAG_LIMITS.choice).nullable().optional(),

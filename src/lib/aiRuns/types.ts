@@ -3,7 +3,7 @@
 
 import type { ModelRef } from "../settingsSchema";
 
-export type RunMode = "fill" | "tree" | "arc" | "pictures";
+export type RunMode = "fill" | "tree" | "arc" | "pictures" | "tags";
 
 /** Where a write task's chapter goes. */
 export type Slot =
@@ -71,7 +71,20 @@ export type PictureTask = {
   error?: string;
 };
 
-export type RunTask = WriteTask | PlanTask | PictureTask;
+/** Find tags: the AI reads one chapter (at `revision`) and saves its tag suggestions. Made by the server when the run is created. */
+export type TagsTask = {
+  kind: "tags";
+  id: string;
+  chapterId: string;
+  /** The chapter's revision when the run was made; a chapter edited since is skipped. */
+  revision: number;
+  /** The chapter's title, for the task list. */
+  label?: string;
+  status: TaskStatus;
+  error?: string;
+};
+
+export type RunTask = WriteTask | PlanTask | PictureTask | TagsTask;
 
 export type RunOptions = {
   // writing modes
@@ -96,6 +109,8 @@ export type RunOptions = {
   // pictures
   slots?: "header" | "footer" | "both";
   useRefs?: boolean; // D12, default false
+  // tags: which chapters (the server makes the tasks): the start chapter, the way to it, it and everything below it, or the whole story
+  tagScope?: "chapter" | "path" | "subtree" | "story";
 };
 
 /** `queued`: waiting its turn in a tab's work queue. `running` with a lapsed lease means the tab that ran it is gone. */
@@ -105,7 +120,7 @@ export type RunStatus = "ready" | "queued" | "running" | "review" | "paused" | "
 export type AiRun = {
   id: string;
   story_id: string;
-  start_chapter_id: string | null; // null = the whole story (pictures)
+  start_chapter_id: string | null; // null = the whole story (pictures, tags)
   mode: RunMode;
   options: RunOptions;
   tasks: RunTask[];

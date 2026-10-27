@@ -16,13 +16,15 @@ import { copyText } from "@/lib/copyText";
 import { usePictureQueue, useWorkQueue, type GenerateItem, type QueueJob, type RunItem } from "./WorkQueue";
 
 /** The kinds of AI run, in words. */
-export const MODE_WORDS = { fill: "Fill open choices", tree: "Grow the tree", arc: "Reach a goal", pictures: "Fill missing pictures" } as const;
+export const MODE_WORDS = { fill: "Fill open choices", tree: "Grow the tree", arc: "Reach a goal", pictures: "Fill missing pictures", tags: "Find tags" } as const;
 
 /** Where a run's page is (the page that shows its tasks, review and results). */
 export const runHref = (run: Pick<RunItem, "runId" | "storyId" | "startChapterId" | "mode">) =>
   run.mode === "pictures"
     ? `/s/${run.storyId}/pictures?picrun=${run.runId}`
-    : !run.startChapterId
+    : run.mode === "tags"
+      ? `/s/${run.storyId}/review?tab=tags${run.startChapterId ? `&chapter=${run.startChapterId}` : ""}`
+      : !run.startChapterId
       ? `/s/${run.storyId}/details?run=${run.runId}`
       : `/c/${run.startChapterId}/write-ahead?run=${run.runId}`;
 

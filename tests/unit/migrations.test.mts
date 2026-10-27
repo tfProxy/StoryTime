@@ -176,5 +176,22 @@ const tcAdd = () => tc.prepare(`INSERT INTO chapter_tag_checks (chapter_id, revi
 ok(!wqRefused(tcAdd), "a chapter's check can be recorded");
 ok(wqRefused(tcAdd), "a chapter has one check row");
 tc.close();
+
+// a "tags" AI run (schema version 34): ai_runs is rebuilt to allow the mode, keeping its rows
+ok(MIGRATIONS.length >= 34, "migration 34 exists");
+const ar = new Database(":memory:");
+ar.pragma("foreign_keys = OFF");
+ar.exec(`CREATE TABLE chapters (id TEXT PRIMARY KEY)`);
+ar.exec(MIGRATIONS[30]);
+const arAdd = (id: string, mode: string) =>
+  ar.prepare(`INSERT INTO ai_runs (id, story_id, mode, options, tasks, status, created_at, updated_at) VALUES (?, 's1', ?, '{}', '[]', 'done', 1, 1)`).run(id, mode);
+arAdd("r1", "fill");
+ok(wqRefused(() => arAdd("r2", "tags")), "before 34 a tags run is refused");
+ar.exec(MIGRATIONS[33]);
+ok((ar.prepare(`SELECT mode FROM ai_runs WHERE id = 'r1'`).get() as { mode: string } | undefined)?.mode === "fill", "an existing run is kept");
+ok(!wqRefused(() => arAdd("r3", "tags")), "a tags run can be saved");
+ok(wqRefused(() => arAdd("r4", "bogus")), "an unknown mode is still refused");
+ok((ar.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'ai_runs_story'`).get() as { name: string } | undefined) !== undefined, "the story index is back");
+ar.close();
 d.close();
 fs.rmSync(dir, { recursive: true, force: true });

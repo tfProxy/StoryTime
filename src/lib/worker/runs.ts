@@ -34,7 +34,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** The chapters (or pictures) done, of how many, as the queue counts them. */
 function counts(run: AiRun) {
-  const parts = run.tasks.filter((t) => t.kind === (run.mode === "pictures" ? "picture" : "write"));
+  const parts = run.tasks.filter((t) => t.kind === (run.mode === "pictures" ? "picture" : run.mode === "tags" ? "tags" : "write"));
   return { done: parts.filter((t) => t.status === "done" || (t.kind === "write" && t.status === "written")).length, total: parts.length };
 }
 
