@@ -36,6 +36,8 @@ const s = await post("/api/stories", { title: "Tagging trial", chapter: { title:
 const choice = (await send("GET", `/api/chapters/${s.chapter_id}`)).choices[0];
 const horse = (await post("/api/chapters", { choice_id: choice.id, title: "Horse", body: "Mira had turned into a horse.", summary: "h" })).chapter_id;
 
+let tfId = null;
+let tfMine = false;
 const browser = await launch();
 const ai = await useMockAi(BASE);
 const page = await (await browser.newContext()).newPage();
@@ -189,6 +191,35 @@ try {
   ok((await check.count()) === 1, "the flagged chapter has a Check again link");
   ok((await check.getAttribute("href")) === `/s/${s.story_id}/review?tab=tags&chapter=${horse}`, "…linking to that chapter on the tags tab");
 
+  // A change-event tag (tf) offers a codex update at that chapter until a codex change is posted there.
+  const existingTf = (await send("GET", "/api/tags")).tags.find((t) => t.name.toLowerCase() === "tf");
+  if (existingTf) tfId = existingTf.id;
+  else {
+    const made = await post("/api/tags", { name: "tf", applies: "A character changes species or form.", not_applies: "dreams", kind: "event", choices: [] });
+    tfId = made.tag?.id ?? made.id;
+    tfMine = true;
+  }
+  const tfStory = await post("/api/stories", { title: "Codex offer trial", chapter: { title: "Before", body: "Mira stood.", summary: "s", choices: ["Onward"] } });
+  const tfChoice = (await send("GET", `/api/chapters/${tfStory.chapter_id}`)).choices[0];
+  const tfChapter = (await post("/api/chapters", { choice_id: tfChoice.id, title: "Change", body: "Mira became a horse.", summary: "c" })).chapter_id;
+  await post(`/api/chapters/${tfChapter}/tags`, { tag_id: tfId });
+  await page.goto(reviewUrl(tfStory.story_id, "?tab=tags"));
+  const tfCard = page.locator(`article[data-tagged-chapter="${tfChapter}"]`);
+  await tfCard.waitFor();
+  const offer = tfCard.getByRole("link", { name: "Update the codex for this change" });
+  ok((await offer.count()) === 1 && (await tfCard.innerText()).includes("The codex may need to change here."), "a tf tag offers a codex update");
+  ok((await offer.getAttribute("href")) === `/s/${tfStory.story_id}/review?chapter=${tfChapter}#codex`, "…linking to the Codex section for that chapter");
+  await offer.click();
+  await page.getByRole("heading", { name: "Codex", exact: true }).waitFor();
+  ok((await page.getByRole("link", { name: "Issues" }).getAttribute("aria-current")) === "page" && (await page.locator("h2#codex").count()) === 1, "…which opens on the Issues tab, at the Codex heading");
+  ok((await page.locator("details.ai-panel[open]").count()) > 0,"…with the AI codex check for that chapter");
+  ok((await page.getByText("Check the codex of").count()) === 0, "…and not the chapter picker");
+  const posted = await post("/api/codex", { anchor_chapter_id: tfChapter, op: "create", name: "Mira", type: "character", content: "A horse." });
+  ok(!!posted.entry_id, "a codex change is posted at that chapter");
+  await page.goto(reviewUrl(tfStory.story_id, "?tab=tags"));
+  await page.locator(`article[data-tagged-chapter="${tfChapter}"]`).waitFor();
+  ok((await page.getByRole("link", { name: "Update the codex for this change" }).count()) === 0, "the offer is gone once the codex changes there");
+
   // An unfinished Find tags run (the tab was closed) is shown again when the page opens, instead of starting another.
   const fresh = await post("/api/stories", { title: "Resume trial", chapter: { title: "Lone", body: "Nothing.", choices: [] } });
   const run = await post("/api/ai-runs", { story_id: fresh.story_id, start_chapter_id: null, mode: "review", options: { tagScope: "story" } });
@@ -198,6 +229,7 @@ try {
   await fetch(`${BASE}/api/ai-runs/${run.id}/queue?end=1`, { method: "DELETE" });
 } finally {
   await send("DELETE", `/api/tags/${tagId}`);
+  if (tfMine && tfId) await send("DELETE", `/api/tags/${tfId}`);
   await ai.restore();
   await browser.close();
   mock.close();

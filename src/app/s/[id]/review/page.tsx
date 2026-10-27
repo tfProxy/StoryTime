@@ -10,6 +10,7 @@ import TagSuggestions from "@/components/TagSuggestions";
 import TaggedChapters from "@/components/TaggedChapters";
 import { listRuns } from "@/lib/aiRuns";
 import { getCodexOps } from "@/lib/codexDb";
+import { CHANGE_EVENT_TAGS } from "@/lib/continuity";
 import { codexEntryFor, reviewIssues } from "@/lib/review";
 import { getPath, getStory } from "@/lib/stories";
 import { chapterTags, decidedTagIdsByChapter, listTags, storyTags } from "@/lib/tags";
@@ -203,7 +204,7 @@ export default async function ReviewPage({
           chapters={chapters.map((c) => ({ id: c.id, title: c.title, parent_id: c.parent_id }))}
         />
 
-        <h2>Codex</h2>
+        <h2 id="codex">Codex</h2>
         {openGaps.length > 0 && (
           <>
             <p className="meta">These names come up in several chapters on a path but have no codex entry.</p>
@@ -298,6 +299,10 @@ export default async function ReviewPage({
         id: c.id,
         title: c.title,
         tags: approved.filter((t) => t.chapter_id === c.id).map((t) => ({ id: t.id, name: t.tag_name, value: t.value, source: t.source, stale: t.stale })),
+        // A change-event tag (tf, tg) with no codex change posted at this chapter: offer to update the codex.
+        codexOffer:
+          approved.some((t) => t.chapter_id === c.id && CHANGE_EVENT_TAGS.includes(t.tag_name.toLowerCase())) &&
+          !getCodexOps(c.id).some((o) => o.anchor_chapter_id === c.id),
       }));
 
     return (

@@ -8,6 +8,7 @@ export type TaggedChapter = {
   id: string;
   title: string;
   tags: { id: string; name: string; value: string | null; source: "ai" | "author"; stale: boolean }[];
+  codexOffer?: boolean;
 };
 
 export type TagChoice = { id: string; name: string; choices: string[] };
@@ -81,6 +82,12 @@ export default function TaggedChapters({ storyId, chapters, enabled }: { storyId
             {c.tags.some((t) => t.stale) && (
               <p className="meta" style={{ margin: "0.25rem 0" }}>
                 <Link href={`/s/${storyId}/review?tab=tags&chapter=${c.id}`}>Check again</Link>
+              </p>
+            )}
+            {c.codexOffer && (
+              <p className="meta" style={{ margin: "0.25rem 0" }} data-codex-offer={c.id}>
+                The codex may need to change here.{" "}
+                <Link href={`/s/${storyId}/review?chapter=${c.id}#codex`}>Update the codex for this change</Link>
               </p>
             )}
             <div className="row" style={{ flexWrap: "wrap" }}>
