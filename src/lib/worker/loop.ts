@@ -8,10 +8,11 @@ import { publish, QUEUE_CHANNEL, subscribe, workerState } from "./bus";
 import { genItemKey, runGenerate } from "./generate";
 import { listItems, updateItem, type WorkRow } from "./items";
 import { getPaused } from "./paused";
-import { readyPictures, recoverGathering, sendPicture } from "./pictures";
+import { readyPictures, recoverGathering, recoverPictures, scanComfy, sendPicture } from "./pictures";
 import { recoverRuns, runStep } from "./runs";
 
 export const PUMP_MS = 5000;
+export const SCAN_MS = 60_000;
 
 /** A Generate that was going when the server stopped cannot go on: it fails, and says where its text is. */
 export function recoverGenerates() {
@@ -109,9 +110,16 @@ export function startLoop() {
   recoverGenerates();
   recoverRuns();
   recoverGathering();
+  void recoverPictures().catch(() => {});
   subscribe(QUEUE_CHANNEL, (event) => {
     if ((event as { type?: string }).type !== "machine") pump();
   });
   worker.timers.push(setInterval(pump, PUMP_MS).unref());
+  // ComfyUI is asked for jobs nothing here is watching, once a minute and on start (once the browser has moved over).
+  const scan = () => {
+    if (worker.scan.enabled) void scanComfy();
+  };
+  worker.timers.push(setInterval(scan, SCAN_MS).unref());
+  scan();
   pump();
 }

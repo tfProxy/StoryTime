@@ -4,13 +4,13 @@
 import { z } from "zod";
 import type { Picture } from "../../components/pictures";
 import { freeOllamaForPictures } from "../ai/ollama";
-import { cancelPrompt, waitForPictures, type ComfyImage, type Progress } from "../comfy/client";
+import { cancelPrompt, listTaggedJobs, waitForPictures, type ComfyImage, type Progress, type TaggedJob } from "../comfy/client";
 import { fromSpec, type JobSpec } from "../comfy/jobSpec";
-import type { JobRecord } from "../comfy/jobTag";
+import { tagTarget, type JobRecord } from "../comfy/jobTag";
 import { queueJob, sameJob } from "../comfy/makeJob";
 import { newId } from "../db";
 import { instanceId } from "../instance";
-import { NewJobSchema, recordPictureJob } from "../pictureJobs";
+import { knownPromptIds, NewJobSchema, recordPictureJob } from "../pictureJobs";
 import { chapterIdOf, targetKey, type PictureTarget } from "../pictureTarget";
 import { PostError } from "../stories";
 import { parseSettings } from "../settingsSchema";
@@ -202,6 +202,7 @@ async function send(key: string, posted: () => void) {
       beforeQueue: () => freeOllamaForPictures(settings.connections),
       onPromptId: (id) => {
         control.promptId = id;
+        worker.picked.add(id);
         updateItem(key, { data: { promptId: id } });
       },
     });
@@ -238,6 +239,142 @@ export function sendPicture(key: string) {
       }),
   );
   updateItem(key, { state: "working", data: { progress: { stage: "queued", ahead: null } } });
+}
+
+// ---- jobs found in ComfyUI: this StoryTime's jobs that nothing here is watching (made before a restart, or by a page that is gone) ----
+
+/** How a job looks in the list, from the record ComfyUI kept of it. */
+const viewOfRecord = (job: JobRecord) => ({
+  prompt: job.prompt,
+  negative: job.negative,
+  checkpoint: job.checkpoint,
+  width: job.width,
+  height: job.height,
+  denoise: job.denoise ?? null,
+  source: job.source ?? null,
+  mask: job.mask ?? null,
+  refs: job.refs ?? [],
+  instruction: job.instruction ?? null,
+  editModel: job.edit_model ?? null,
+  moment: job.moment,
+  ...(job.temporary && { temporary: true }),
+});
+
+/** Makes the item for a job found in ComfyUI (`working` until its end is recorded). */
+function itemForFound(found: TaggedJob): string {
+  const { job, clientId } = found.tag;
+  const key = `job-${newId()}`;
+  createItem({
+    key,
+    type: "picture",
+    state: "working",
+    data: {
+      target: tagTarget(found.tag),
+      spec: {},
+      count: job.count,
+      view: viewOfRecord(job),
+      progress: { stage: "queued", ahead: null },
+      promptId: found.promptId,
+      clientId,
+      ...(found.tag.session && { session: found.tag.session, base: found.tag.base ?? "" }),
+    },
+  });
+  return key;
+}
+
+/** Waits for a job ComfyUI has, records it and ends its item (as the end of `send` does). */
+export function watchFound(key: string, url: string, found: TaggedJob) {
+  const worker = workerState();
+  const { job, clientId } = found.tag;
+  const control = { ctl: new AbortController(), promptId: found.promptId, url };
+  worker.pictures.set(key, control);
+  worker.picked.add(found.promptId);
+  waitForPictures(url, found.promptId, clientId, (progress) => saveProgress(key, progress), control.ctl.signal)
+    .then((images) => {
+      if (images.length === 0) throw new Error("ComfyUI finished but sent back no pictures. Does the workflow end in a Save Image node?");
+      ended(key, recordPictures(tagTarget(found.tag), found.promptId, job, images, !job.temporary && !found.tag.session));
+    })
+    .catch((e) => failed(key, e))
+    .finally(() => lastProgress.delete(key));
+}
+
+/**
+ * Asks ComfyUI for this StoryTime's jobs it is making or has made lately that nothing here has picked up: those being
+ * made are shown again and recorded when they finish; those finished but never recorded are recorded and kept as new.
+ * ComfyUI may be shared with other StoryTimes and tools: only jobs this one queued (or, from before jobs carried an id,
+ * for chapters it has) are picked up. Never throws (ComfyUI may be down).
+ */
+export async function scanComfy(): Promise<void> {
+  const worker = workerState();
+  if (worker.scan.running) return;
+  const url = (getSettings() ?? parseSettings({})).comfy.url.trim();
+  if (!url) return;
+  worker.scan.running = true;
+  try {
+    const mine = instanceId();
+    const inItems = new Set(listItems().flatMap((i) => (i.type === "picture" && i.data.promptId ? [i.data.promptId] : [])));
+    const found = (await listTaggedJobs(url)).filter((j) => !worker.picked.has(j.promptId) && !inItems.has(j.promptId) && (!j.tag.instance || j.tag.instance === mine));
+    if (found.length === 0) return;
+    const done = found.filter((j): j is TaggedJob & { state: "done" } => j.state === "done");
+    const targets = found.map((j) => tagTarget(j.tag));
+    const { known, chapters, stories } = knownPromptIds({
+      prompt_ids: done.map((j) => j.promptId),
+      chapter_ids: [...new Set(targets.flatMap((t) => (t.kind === "chapter" ? [t.chapterId] : [])))],
+      story_ids: [...new Set(targets.flatMap((t) => (t.kind === "chapter" ? [] : [t.storyId])))],
+    });
+    const knownIds = new Set(known);
+    for (const j of found) {
+      const t = tagTarget(j.tag);
+      if (worker.picked.has(j.promptId) || !(t.kind === "chapter" ? chapters.includes(t.chapterId) : stories.includes(t.storyId))) continue;
+      worker.picked.add(j.promptId);
+      if (j.state !== "done") watchFound(itemForFound(j), url, j);
+      else if (!knownIds.has(j.promptId)) {
+        const result = recordPictures(t, j.promptId, j.tag.job, j.images, !j.tag.job.temporary && !j.tag.session);
+        if ("gone" in result) continue;
+        const key = itemForFound(j);
+        ended(key, result);
+      }
+    }
+  } catch {
+    // ComfyUI not reachable: the Illustrate page's checkpoint check says so.
+  } finally {
+    worker.scan.running = false;
+  }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** How long, and how often, a restart looks for ComfyUI when it is not up yet (both may be starting together). */
+const RECOVER_TRIES = 5;
+const RECOVER_WAIT_MS = 3000;
+
+/**
+ * Restart recovery (D12) for pictures: a job that was being made in ComfyUI is waited for again and recorded, found by
+ * the tag it carries there; one that had not been queued yet goes back to waiting; one ComfyUI no longer knows fails.
+ */
+export async function recoverPictures(wait = RECOVER_WAIT_MS): Promise<void> {
+  const worker = workerState();
+  const lost = listItems().filter((i): i is WorkRow<"picture"> => i.type === "picture" && i.state === "working" && !worker.pictures.has(i.key));
+  for (const item of lost) {
+    const promptId = item.data.promptId;
+    if (!promptId) {
+      updateItem(item.key, { state: "waiting", data: { progress: undefined } });
+      continue;
+    }
+    const url = (item.data.spec as { comfy?: { url?: string } }).comfy?.url || (getSettings() ?? parseSettings({})).comfy.url.trim();
+    let found: TaggedJob | undefined;
+    let reached = false;
+    for (let attempt = 0; attempt < RECOVER_TRIES && !reached; attempt++) {
+      try {
+        found = (await listTaggedJobs(url)).find((j) => j.promptId === promptId);
+        reached = true;
+      } catch {
+        if (attempt < RECOVER_TRIES - 1) await sleep(wait);
+      }
+    }
+    if (found) watchFound(item.key, url, found);
+    else updateItem(item.key, { state: "failed", data: { message: reached ? "StoryTime restarted, and ComfyUI no longer has this job." : "StoryTime restarted and couldn't reach ComfyUI to find this job.", progress: undefined } });
+  }
 }
 
 /** The waiting jobs as the scheduler takes them (oldest first; jobs the owner moved have the earliest times). */
