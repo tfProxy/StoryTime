@@ -471,6 +471,13 @@ a.card:hover {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
 }
 
+.choice-note {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .choice-unwritten {
   border: 1.5px dashed var(--line);
   background: transparent;

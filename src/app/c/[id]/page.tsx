@@ -4,6 +4,8 @@ import { aiMarkOf, getChoices, getPath, getStory } from "@/lib/stories";
 import AiMark from "@/components/AiMark";
 import AiReviewNotice from "@/components/AiReviewNotice";
 import { appliedTagNames } from "@/lib/tags";
+import { contentNotes } from "@/lib/contentNotes";
+import { noteText, type ChapterNote } from "@/lib/contentNotesRoll";
 import Prose from "@/components/Prose";
 import EditLink from "@/components/EditLink";
 import AddChoice from "@/components/AddChoice";
@@ -31,6 +33,7 @@ export default async function ChapterPage({
   const choices = getChoices(chapter.id);
   const images = chapterImageVersions([chapter.id]).get(chapter.id)!;
   const tagNames = appliedTagNames(story.id, chapter.id).get(chapter.id) ?? [];
+  const notes = choices.some((c) => c.child_chapter_id) ? contentNotes(story.id) : new Map<string, ChapterNote>();
 
   return (
     <>
@@ -89,6 +92,9 @@ export default async function ChapterPage({
                 <span className="choice-ai">
                   <AiMark mark={c.child_ai} />
                 </span>
+              )}
+              {noteText(notes.get(c.child_chapter_id)) && (
+                <span className="choice-note">{noteText(notes.get(c.child_chapter_id))}</span>
               )}
             </Link>
           ) : (

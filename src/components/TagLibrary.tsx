@@ -86,7 +86,22 @@ export default function TagLibrary() {
           </span>
         </span>
       </label>
-      {loadError && <p className="error">{loadError}</p>}
+      <label className="row" style={{ alignItems: "flex-start" }}>
+        <input
+          type="checkbox"
+          style={{ width: "auto" }}
+          checked={settings.contentNotes}
+          onChange={(e) => void saveSettings({ ...settings, contentNotes: e.target.checked })}
+        />
+        <span>
+          Show content notes to readers
+          <br />
+          <span className="meta" style={{ fontWeight: "normal" }}>
+            Under each choice, the tags marked Show to readers that come next or later on that branch.
+          </span>
+        </span>
+      </label>
+      {loadError &&<p className="error">{loadError}</p>}
       {tags === null && !loadError && <p className="meta">Loading…</p>}
       {tags?.length === 0 && !fresh && <p className="meta">No tags yet.</p>}
 

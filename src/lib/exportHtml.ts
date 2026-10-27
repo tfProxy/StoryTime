@@ -1,3 +1,5 @@
+import { contentNotes } from "./contentNotes";
+import { noteText } from "./contentNotesRoll";
 import { finishedBranches, routeTo, type StoryExport } from "./export";
 
 // A single self-contained HTML file that plays the story in any browser: no server, no network, no
@@ -5,7 +7,7 @@ import { finishedBranches, routeTo, type StoryExport } from "./export";
 // by story) and can forget them again. Only finished branches are included, like the Twine export.
 
 /** h and f are the header and footer pictures as data: URIs, when the chapter has them. */
-type Page = { t: string; b: string; c: [string, string][]; p: string | null; h?: string; f?: string };
+type Page = { t: string; b: string; c: [string, string, string?][]; p: string | null; h?: string; f?: string };
 
 /** Each chapter's pictures as data: URIs, so the exported file works offline. */
 function imageUris(data: StoryExport) {
@@ -43,6 +45,7 @@ button.secondary { background: transparent; color: var(--accent); }
 button.choice { background: var(--card); color: var(--fg); border-color: var(--line); }
 button.choice:hover, button.choice:focus-visible { border-color: var(--accent); }
 button.choice .seen { color: var(--muted); font-size: 0.8rem; margin-left: 0.5rem; }
+button.choice .note { display: block; color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
 nav { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1.5rem 0 0; }
 blockquote { margin: 1rem 0; padding-left: 1rem; border-left: 3px solid var(--line); color: var(--muted); white-space: pre-line; }
 .end { text-align: center; color: var(--muted); font-style: italic; margin: 2rem 0; }
@@ -119,7 +122,9 @@ const SCRIPT = String.raw`
     if (page.c.length) {
       kids.push(el("div", { class: "choices" }, page.c.map(function (c) {
         var seen = state.seen[c[1]];
-        return el("button", { class: "choice", onclick: function () { go(c[1]); } }, [c[0]].concat(seen ? [el("span", { class: "seen" }, ["(read)"])] : []));
+        var inner = [c[0]].concat(seen ? [el("span", { class: "seen" }, ["(read)"])] : []);
+        if (c[2]) inner.push(el("span", { class: "note" }, [c[2]]));
+        return el("button", { class: "choice", onclick: function () { go(c[1]); } }, inner);
       })));
     } else {
       kids.push(el("p", { class: "end" }, ["The end of this branch."]));
@@ -203,12 +208,14 @@ export function toHtml(data: StoryExport): string {
   const pages: Record<string, Page> = {};
   const parentOf = new Map<string, string>();
   const uris = imageUris(data);
+  const notes = contentNotes(data.story.id);
   for (const c of chapters) {
-    const list: [string, string][] = [];
+    const list: [string, string, string?][] = [];
     for (const ch of choicesBy.get(c.id) ?? []) {
       if (!leadsToKept(ch)) continue;
       const child = childBy.get(ch.id)!;
-      list.push([ch.label, child.id]);
+      const note = noteText(notes.get(child.id));
+      list.push(note ? [ch.label, child.id, note] : [ch.label, child.id]);
       parentOf.set(child.id, c.id);
     }
     const pictures = uris.get(c.id);
