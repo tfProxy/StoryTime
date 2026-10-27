@@ -2,6 +2,7 @@
 // pauses it, queueing again finishes it; Skip works with the worker's lease; the run's events stream.
 import Database from "better-sqlite3";
 import { startFakeAi } from "../fakeAi.mjs";
+import { startFakeComfy } from "../e2e/fakeComfy.mjs";
 
 const B = process.env.BASE_URL ?? "http://localhost:3111";
 const ok = (c, m) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
@@ -55,9 +56,11 @@ const ai = await startFakeAi({
       const given = [...(message.match(/These choices are offered at its end: ([^\n]*?)\.\n/)?.[1].matchAll(/“([^”]+)”/g) ?? [])].map((x) => x[1]);
       return JSON.stringify(given.map((choice) => ({ choice, direction: `plan for ${choice}` })));
     }
+    if (sent.includes("turn a chapter of a story into a prompt")) return JSON.stringify({ scene: "A door", prompt: "an open door, warm light", negative: "blurry" });
     return "SUMMARY:\nA short summary.\nSTORY SO FAR:\nThe story so far.";
   },
 });
+const comfy = await startFakeComfy({ port: 3563, steps: 2, stepDelay: 40 });
 
 // A story with two open choices, and a fill run for both.
 async function makeRun(name) {
@@ -124,9 +127,44 @@ try {
   ok((await call("POST", `/api/ai-runs/${c.run}/task`, { taskId: "t3", action: "dance" })).status === 400, "a task action must be retry or skip");
   r = await call("POST", `/api/ai-runs/${c.run}/task`, { taskId: "t3", action: "skip" });
   ok(r.status === 200 && r.json.tasks.find((t) => t.id === "t3").status === "skipped", "a task can be skipped through the worker");
+
+  // Fill missing pictures: the run writes the prompts, the picture queue draws, the picture is saved as the header.
+  const now = (await call("GET", "/api/settings")).json.settings;
+  const comfySettings = { ...now.comfy, url: comfy.url, drawPresets: now.comfy.drawPresets.map((p, i) => (i === 0 ? { ...p, checkpoint: "fake_sdxl_a.safetensors" } : p)) };
+  await call("PUT", "/api/settings", { ...now, comfy: comfySettings });
+  const pic = await makeRun("Pictures run");
+  const made = await call("POST", "/api/ai-runs", {
+    story_id: pic.story, start_chapter_id: null, mode: "pictures", options: {},
+    tasks: [{ kind: "picture", id: "p1", chapterId: pic.root, slot: "header", label: "Root", status: "todo" }],
+  });
+  const picRun = made.json.id;
+  ok((await call("POST", `/api/ai-runs/${picRun}/queue`)).status === 201, "a picture run is queued");
+  ok(!!(await until(async () => (await itemOf(picRun))?.state === "done", 20000)), "…the worker writes its prompt, has the picture drawn and finishes");
+  const picDone = await runOf(picRun);
+  ok(picDone.status === "done" && picDone.tasks[0].status === "done" && picDone.tasks[0].prompt.includes("open door") && !!picDone.tasks[0].jobId, "…the task is done with the prompt and the picture job it used");
+  const header = await fetch(`${B}/api/chapters/${pic.root}/images/header`);
+  const bytes = Buffer.from(await header.arrayBuffer());
+  ok(header.status === 200 && bytes[0] === 0xff && bytes[1] === 0xd8, "…and the picture is saved as the chapter's header, a JPEG");
+  ok(!(await call("GET", "/api/queue")).json.items.some((i) => i.type === "picture" && i.data.session === `pictures:${picRun}`), "…and the run's picture job is not left in the queue");
+  ok(comfy.calls.filter((x) => x.path === "/prompt").length === 1, "…it drew one picture");
+
+  // A job that fails is asked for again once, then the run fails with ComfyUI's message.
+  comfy.setMode({ fail: "error" });
+  const bad = await makeRun("Failing pictures");
+  const badRun = (await call("POST", "/api/ai-runs", {
+    story_id: bad.story, start_chapter_id: null, mode: "pictures", options: {},
+    tasks: [{ kind: "picture", id: "p1", chapterId: bad.root, slot: "header", label: "Root", status: "todo" }],
+  })).json.id;
+  const promptsBefore = comfy.calls.filter((x) => x.path === "/prompt").length;
+  await call("POST", `/api/ai-runs/${badRun}/queue`);
+  ok(!!(await until(async () => (await itemOf(badRun))?.state === "failed", 30000)), "a picture run whose job fails ends failed");
+  ok(/couldn't make the pictures/.test((await itemOf(badRun)).data.error ?? "") && (await runOf(badRun)).status === "paused", "…with ComfyUI's message, and the run paused on the server");
+  ok(comfy.calls.filter((x) => x.path === "/prompt").length - promptsBefore === 2, "…after the job was asked for again once");
+  comfy.setMode({ fail: null });
 } finally {
   await call("PUT", "/api/queue/paused", { paused: false });
   await ai.close();
+  await comfy.close();
   if (settingsBefore === null) {
     const db = new Database(process.env.TEST_DB);
     db.prepare("DELETE FROM settings WHERE key = 'settings'").run();

@@ -209,8 +209,17 @@ export function buildPictureJob(
 }
 
 /** Saves a drawn picture as the chapter's header or footer, as the Illustrate page's “Use as” does (which also pins it and keeps its prompt with it). */
-export async function savePicture(f: Fetch, comfyUrl: string, task: PictureTask, image: ComfyImage, jobId: string | null, index: number): Promise<void> {
-  const blob = await prepareImage(await fetchImage(comfyUrl, image), MAX_SIDE);
+export async function savePicture(
+  f: Fetch,
+  comfyUrl: string,
+  task: PictureTask,
+  image: ComfyImage,
+  jobId: string | null,
+  index: number,
+  /** Scales and re-encodes the picture: the browser's by default; the server passes its own, which has no canvas. */
+  prepare: (file: Blob, maxSide: number) => Promise<Blob> = prepareImage,
+): Promise<void> {
+  const blob = await prepare(await fetchImage(comfyUrl, image), MAX_SIDE);
   const target = chapterTarget("", task.chapterId);
   const api = savedPictureApi(target, task.slot);
   const url = jobId ? `${api}?job=${encodeURIComponent(jobId)}&index=${index}` : api;

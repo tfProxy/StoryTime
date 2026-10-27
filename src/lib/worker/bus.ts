@@ -45,6 +45,8 @@ export type WorkerState = {
   timers: ReturnType<typeof setInterval>[];
   /** The Generates going now, by draft key: the text so far, and how to stop it. */
   generates: Map<string, { text: string; ctl: AbortController }>;
+  /** What each picture run (Fill missing pictures) has asked for, retried once, and finished but not yet put on the run. */
+  pictureRuns: Map<string, { asked: Set<string>; retried: Set<string>; results: { taskId: string; jobId?: string; error?: string }[]; flushing: boolean }>;
   /** ComfyUI jobs already picked up (made here or found in ComfyUI), by prompt id. */
   picked: Set<string>;
   /** The scan of ComfyUI for this StoryTime's jobs: off until the browser has moved to the server queue (Phase 5), or both would record the same jobs. */
@@ -73,7 +75,7 @@ declare global {
 
 /** The one worker state of this process, made on first use. */
 export function workerState(): WorkerState {
-  return (globalThis.__storytimeWorker ??= { bus: createBus(), started: false, timers: [], generates: new Map(), runs: new Map(), picked: new Set(), scan: { enabled: false, running: false }, pump: { running: false, again: false }, gathering: null, pictures: new Map(), sendChain: Promise.resolve(), uploads: { current: null }, lastPreset: null, holder: null });
+  return (globalThis.__storytimeWorker ??= { bus: createBus(), started: false, timers: [], generates: new Map(), runs: new Map(), pictureRuns: new Map(), picked: new Set(), scan: { enabled: false, running: false }, pump: { running: false, again: false }, gathering: null, pictures: new Map(), sendChain: Promise.resolve(), uploads: { current: null }, lastPreset: null, holder: null });
 }
 
 export const publish = (channel: string, event: unknown) => workerState().bus.publish(channel, event);

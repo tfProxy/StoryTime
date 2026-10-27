@@ -9,7 +9,7 @@ import { genItemKey, runGenerate } from "./generate";
 import { listItems, updateItem, type WorkRow } from "./items";
 import { getPaused } from "./paused";
 import { readyPictures, recoverGathering, recoverPictures, scanComfy, sendPicture } from "./pictures";
-import { recoverRuns, runStep } from "./runs";
+import { recoverRuns, runStep, watchPictureRuns } from "./runs";
 
 export const PUMP_MS = 5000;
 export const SCAN_MS = 60_000;
@@ -114,6 +114,7 @@ export function startLoop() {
   subscribe(QUEUE_CHANNEL, (event) => {
     if ((event as { type?: string }).type !== "machine") pump();
   });
+  watchPictureRuns();
   worker.timers.push(setInterval(pump, PUMP_MS).unref());
   // ComfyUI is asked for jobs nothing here is watching, once a minute and on start (once the browser has moved over).
   const scan = () => {
