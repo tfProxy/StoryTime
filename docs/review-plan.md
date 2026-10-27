@@ -129,7 +129,7 @@ The owner chose the simpler version on 2026-10-27: no stretches. C9 is done with
 
 - `tag_ops(id, story_id, chapter_id, tag_id, subject, value, op open|close, status suggested|approved|rejected)`, folded along the path like codex ops. The AI suggests ops from the facts; the author approves them in a new "Stretches" list on the Tags tab. Plan this with the owner before building.
 
-### C9. tf follow-ups (medium, after C8)
+### C9. tf follow-ups (medium, after C8) (done, 0ccd01a)
 
 - Approving a tf event offers the matching codex change (species or form, anchored at that chapter) and opening a species stretch.
 - Simplified by the owner (no C8): approving a tf only offers the codex change; there is no stretch to open.
