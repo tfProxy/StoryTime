@@ -2,8 +2,18 @@ import { z } from "zod";
 import { db, newId } from "./db";
 import { PostError } from "./stories";
 
-export const ISSUE_KINDS = ["summary-missing", "summary-stale"] as const;
+import { storyVerdicts } from "./continuityVerdicts";
+
+export const ISSUE_KINDS = ["summary-missing", "summary-stale", "continuity"] as const;
 export type IssueKind = (typeof ISSUE_KINDS)[number];
+
+/** The two sides of a continuity issue: an earlier chapter said one thing, a later one another. */
+export type ContinuityDetail = {
+  entity: string;
+  attribute: string;
+  before: { chapterId: string; title: string; value: string; quote: string };
+  after: { chapterId: string; title: string; value: string; quote: string };
+};
 
 /** open: still to deal with; later: put off (kept on the Review page, left out of the outline count); dismissed: hidden. */
 export type IssueStatus = "open" | "later" | "dismissed";
@@ -17,6 +27,8 @@ export type ReviewIssue = {
   fingerprint: string;
   message: string;
   status: IssueStatus;
+  /** Only on a continuity issue; its chapter is the later one (`after`). */
+  continuity?: ContinuityDetail;
 };
 
 type Row = {
@@ -73,6 +85,30 @@ export function reviewIssues(storyId: string): ReviewIssue[] {
     } else if (c.revision > 1 && c.prev_body !== null && c.prev_body !== c.body && c.prev_summary === c.summary) {
       add("summary-stale", "The last edit changed the text but not the summary.");
     }
+  }
+
+  // Continuity: the clashes the AI judged a contradiction, while both chapters are still as they were read.
+  const byId = new Map(rows.map((c) => [c.id, c]));
+  for (const v of storyVerdicts(storyId)) {
+    if (v.verdict !== "contradiction") continue;
+    const before = byId.get(v.before.chapterId);
+    const after = byId.get(v.after.chapterId);
+    if (!before || !after || before.revision !== v.before.revision || after.revision !== v.after.revision) continue;
+    issues.push({
+      chapterId: after.id,
+      title: after.title,
+      depth: after.depth,
+      kind: "continuity",
+      fingerprint: v.fingerprint,
+      message: `${v.entity}, ${v.attribute}: “${v.before.value}” in “${before.title}”, then “${v.after.value}” in “${after.title}”.`,
+      status: statusOf(after.id, "continuity", v.fingerprint),
+      continuity: {
+        entity: v.entity,
+        attribute: v.attribute,
+        before: { chapterId: before.id, title: before.title, value: v.before.value, quote: v.before.quote },
+        after: { chapterId: after.id, title: after.title, value: v.after.value, quote: v.after.quote },
+      },
+    });
   }
   return issues;
 }

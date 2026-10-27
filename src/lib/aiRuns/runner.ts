@@ -8,12 +8,16 @@ import {
   ApiError,
   claimRunLease,
   getChapterTags,
+  getAllChapterTags,
   getContext,
+  getPathFacts,
   getRun,
   getStoryTags,
+  getVerdicts,
   patchRun,
   postChapter,
   postFacts,
+  postVerdict,
   postTagSuggestions,
   putSummary,
   type ChapterContext,
@@ -24,8 +28,9 @@ import { LIMITS } from "../limits";
 import { applyPlan, expandAfter, needsReview, nextTask, resolveSlot, withGuidance } from "./plan";
 import type { writeImagePrompt } from "../ai/imagePrompt";
 import { hasPicture, loadSetup, writePicturePrompt } from "./pictures";
-import type { AiRun, FactsTask, PictureTask, PlanTask, RunStatus, RunTask, TagsTask, WriteTask } from "./types";
-import { extractFacts } from "../ai/factAi";
+import type { AiRun, ContinuityTask, FactsTask, PictureTask, PlanTask, RunStatus, RunTask, TagsTask, WriteTask } from "./types";
+import { extractFacts, judgeConflict } from "../ai/factAi";
+import { CHANGE_EVENT_TAGS, continuityFingerprint, findConflicts, type Conflict } from "../continuity";
 import { suggestTagsForChapter } from "../ai/tagAi";
 import { planNext, storyContextOf, summarize, withPathSummaries, writeOneChapter, writeText, type PlannedChoice, type Stream } from "./writeChapter";
 
@@ -99,7 +104,7 @@ export async function skipTask(runId: string, taskId: string, token: string, dep
   return patchRun(fetcher(deps), run.id, { token, version: run.version, tasks, status: run.status === "running" ? "paused" : run.status });
 }
 
-type Pick = { kind: "plan" | "write" | "finish" | "prompt" | "tags" | "facts"; task: RunTask };
+type Pick = { kind: "plan" | "write" | "finish" | "prompt" | "tags" | "facts" | "continuity"; task: RunTask };
 
 /** Whether the task's dependencies are all done: its plan, and for a `fromTask` slot the task it follows. */
 function ready(list: RunTask[], t: RunTask): boolean {
@@ -122,7 +127,10 @@ function pickStep(run: AiRun, list: RunTask[]): Pick | null {
   }
   if (run.mode === "review") {
     const todo = list.find((t): t is TagsTask | FactsTask => (t.kind === "tags" || t.kind === "facts") && t.status === "todo");
-    return todo ? { kind: todo.kind, task: todo } : null;
+    if (todo) return { kind: todo.kind, task: todo };
+    // The clashes are judged last, once every chapter's facts are in.
+    const judge = list.find((t): t is ContinuityTask => t.kind === "continuity" && t.status === "todo");
+    return judge ? { kind: "continuity", task: judge } : null;
   }
   const writes = list.filter((t): t is WriteTask => t.kind === "write");
   const written = writes.filter((t) => t.status === "written");
@@ -211,8 +219,8 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<StepResult> {
   }
 
   const { task } = picked;
-  const phase = picked.kind === "plan" ? "planning" : picked.kind === "write" || picked.kind === "prompt" || picked.kind === "tags" || picked.kind === "facts" ? "writing" : "finishing";
-  const label = task.kind === "write" ? task.label : task.kind === "plan" ? "Plan the choices" : task.kind === "picture" ? `Prompt for “${task.label ?? "a chapter"}” (${task.slot})` : task.kind === "tags" ? `Find tags in “${task.label ?? "a chapter"}”` : task.kind === "facts" ? `Find facts in “${task.label ?? "a chapter"}”` : "";
+  const phase = picked.kind === "plan" ? "planning" : picked.kind === "write" || picked.kind === "prompt" || picked.kind === "tags" || picked.kind === "facts" || picked.kind === "continuity" ? "writing" : "finishing";
+  const label = task.kind === "write" ? task.label : task.kind === "plan" ? "Plan the choices" : task.kind === "picture" ? `Prompt for “${task.label ?? "a chapter"}” (${task.slot})` : task.kind === "tags" ? `Find tags in “${task.label ?? "a chapter"}”` : task.kind === "facts" ? `Find facts in “${task.label ?? "a chapter"}”` : task.kind === "continuity" ? "Check continuity" : "";
   let tasks = list;
   let failure: unknown = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -264,6 +272,7 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<StepResult> {
 async function doStep(picked: Pick, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
   if (picked.kind === "tags") return doTags(picked.task as TagsTask, run, list, env, f);
   if (picked.kind === "facts") return doFacts(picked.task as FactsTask, list, env, f);
+  if (picked.kind === "continuity") return doContinuity(picked.task as ContinuityTask, run, list, env, f);
   if (picked.kind === "prompt") return doPrompt(picked.task as PictureTask, run, list, env, f);
   if (picked.kind === "plan") return doPlan(picked.task as PlanTask, run, list, env, f);
   if (picked.kind === "finish") return doFinish(picked.task as WriteTask, run, list, env, f);
@@ -499,4 +508,59 @@ async function doFacts(task: FactsTask, list: RunTask[], env: StepEnv, f: Fetch)
     throw e;
   }
   return replace(list, { ...task, status: "done", found: saved, error: undefined });
+}
+
+/** The most clashes one run asks the AI about; the rest wait for the next run (they have no verdict yet). */
+export const MAX_JUDGMENTS = 30;
+
+/**
+ * Continuity: the facts along the way to each end chapter are compared in plain code, and the AI is asked about each
+ * clash that has no verdict yet. A chapter with an approved tag in CHANGE_EVENT_TAGS may change a value without a clash.
+ * Each verdict is saved as soon as it is made, so a retry or a later run does not ask again.
+ */
+async function doContinuity(task: ContinuityTask, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
+  const { chapter_tags } = await getAllChapterTags(f, run.story_id);
+  const changeEvents = new Set(chapter_tags.filter((t) => t.status === "approved" && CHANGE_EVENT_TAGS.includes(t.tag_name.trim().toLowerCase())).map((t) => t.chapter_id));
+  // A verdict made about older text (either chapter edited since) is asked again, so the clash isn't lost.
+  const known = new Map((await getVerdicts(f, run.story_id)).verdicts.map((v) => [v.fingerprint, v]));
+  const info = new Map<string, { title: string; revision: number }>();
+  const todo = new Map<string, Conflict>();
+  env.onEvent?.({ type: "status", text: "Comparing the facts chapter by chapter…" });
+  for (const id of task.chapterIds) {
+    const [{ path: facts }, context] = await Promise.all([getPathFacts(f, id), getContext(f, id)]);
+    for (const c of context.path) info.set(c.id, { title: c.title, revision: c.revision });
+    for (const conflict of findConflicts(facts, changeEvents)) {
+      const fingerprint = continuityFingerprint(conflict.before.quote, conflict.after.quote);
+      if (!todo.has(fingerprint)) todo.set(fingerprint, conflict);
+    }
+  }
+  for (const [fingerprint, conflict] of todo) {
+    const v = known.get(fingerprint);
+    if (v && v.before.revision === info.get(conflict.before.chapterId)?.revision && v.after.revision === info.get(conflict.after.chapterId)?.revision) todo.delete(fingerprint);
+  }
+  let found = 0;
+  let asked = 0;
+  for (const conflict of todo.values()) {
+    if (asked >= MAX_JUDGMENTS) break;
+    const before = info.get(conflict.before.chapterId);
+    const after = info.get(conflict.after.chapterId);
+    if (!before || !after) continue;
+    asked++;
+    env.onEvent?.({ type: "status", text: `Judging ${conflict.entity}, ${conflict.attribute} (${asked} of ${Math.min(todo.size, MAX_JUDGMENTS)})…` });
+    const verdict = await judgeConflict(env.settings, {
+      conflict: { entity: conflict.entity, attribute: conflict.attribute, before: conflict.before, after: conflict.after },
+      chapterTitles: { before: before.title, after: after.title },
+      signal: env.signal,
+      role: "cheap",
+    });
+    await postVerdict(f, run.story_id, {
+      verdict,
+      entity: conflict.entity,
+      attribute: conflict.attribute,
+      before: { chapterId: conflict.before.chapterId, revision: before.revision, value: conflict.before.value, quote: conflict.before.quote },
+      after: { chapterId: conflict.after.chapterId, revision: after.revision, value: conflict.after.value, quote: conflict.after.quote },
+    });
+    if (verdict === "contradiction") found++;
+  }
+  return replace(list, { ...task, status: "done", found, error: undefined });
 }

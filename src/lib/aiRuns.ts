@@ -99,7 +99,18 @@ export const FactsTaskSchema = z.object({
   error: text(LIMITS.summary).optional(),
 });
 
-export const RunTaskSchema = z.discriminatedUnion("kind", [WriteTaskSchema, PlanTaskSchema, PictureTaskSchema, TagsTaskSchema, FactsTaskSchema]);
+export const ContinuityTaskSchema = z.object({
+  kind: z.literal("continuity"),
+  id: taskId,
+  /** The chapters whose way from the start is checked: those in the run's scope with no child in it. */
+  chapterIds: z.array(z.string().min(1).max(100)).max(LIMITS.runTasks),
+  status: taskStatus,
+  /** How many clashes were judged a contradiction. */
+  found: z.number().int().min(0).optional(),
+  error: text(LIMITS.summary).optional(),
+});
+
+export const RunTaskSchema = z.discriminatedUnion("kind", [WriteTaskSchema, PlanTaskSchema, PictureTaskSchema, TagsTaskSchema, FactsTaskSchema, ContinuityTaskSchema]);
 export const RunTasksSchema = z.array(RunTaskSchema).max(LIMITS.runTasks);
 
 export const RunOptionsSchema = z.object({
@@ -120,8 +131,9 @@ export const RunOptionsSchema = z.object({
   useRefs: z.boolean().optional(),
   // Find tags: which chapters, from the start chapter (the whole story when there is none).
   tagScope: z.enum(["chapter", "path", "subtree", "story"]).optional(),
-  // A review run: what to read each chapter for (tags unless said otherwise; facts cost one more AI call a chapter).
-  checks: z.array(z.enum(["tags", "facts"])).max(2).optional(),
+  // A review run: what to read each chapter for (tags unless said otherwise; facts cost one more AI call a chapter;
+  // continuity, after the facts, asks the AI about each clash between chapters).
+  checks: z.array(z.enum(["tags", "facts", "continuity"])).max(3).optional(),
   // The depths whose plans the owner has already checked (D23), so a run that goes on doesn't stop there again.
   reviewedDepths: z.array(z.number().int().min(0).max(100)).max(100).optional(),
 });
@@ -301,6 +313,12 @@ function reviewTasks(storyId: string, startChapterId: string | null, scope: NonN
       if (read.has(c.id)) continue;
       tasks.push({ kind: "facts", id: `t${tasks.length + 1}`, chapterId: c.id, revision: c.revision, label: c.title.slice(0, LIMITS.title), status: "todo" });
     }
+  }
+  if (checks.includes("continuity")) {
+    // One task, after the facts: it judges the clashes along the way to each chapter in scope that has no child in scope.
+    const inScope = new Set(chosen.map((c) => c.id));
+    const parents = new Set(chosen.map((c) => c.parent_id).filter((p): p is string => !!p && inScope.has(p)));
+    tasks.push({ kind: "continuity", id: `t${tasks.length + 1}`, chapterIds: chosen.filter((c) => !parents.has(c.id)).map((c) => c.id), status: "todo" });
   }
   return tasks;
 }

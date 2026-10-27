@@ -3,6 +3,7 @@
 import type { ContextChapter, ContextCodexEntry } from "../ai/prompts";
 import type { Fact } from "../ai/factAi";
 import type { TagRule, TagSuggestion } from "../ai/tagAi";
+import type { PathFacts } from "../continuity";
 import type { AiRun, RunStatus, RunTask } from "./types";
 
 export type Fetch = typeof fetch;
@@ -77,6 +78,22 @@ export const postTagSuggestions = (f: Fetch, chapterId: string, revision: number
 /** Saves the facts the AI read from a chapter revision (replacing the chapter's facts); 409 when the chapter was edited meanwhile. */
 export const postFacts = (f: Fetch, chapterId: string, revision: number, facts: Fact[]) =>
   call<{ saved: number }>(f, "POST", `/api/chapters/${chapterId}/facts`, { revision, facts });
+
+/** The facts of each chapter from the story's root down to this one, root first. */
+export const getPathFacts = (f: Fetch, chapterId: string) => call<{ path: PathFacts[] }>(f, "GET", `/api/chapters/${chapterId}/facts`);
+
+/** Every chapter tag of a story (the approved ones are what counts for a change event). */
+export const getAllChapterTags = (f: Fetch, storyId: string) =>
+  call<{ chapter_tags: { chapter_id: string; tag_name: string; status: string }[] }>(f, "GET", `/api/stories/${storyId}/chapter-tags`);
+
+/** The verdicts already stored on a story's continuity clashes. */
+export const getVerdicts = (f: Fetch, storyId: string) => call<{ verdicts: { fingerprint: string; before: { revision: number }; after: { revision: number } }[] }>(f, "GET", `/api/stories/${storyId}/continuity`);
+
+export type VerdictSide = { chapterId: string; revision: number; value: string; quote: string };
+
+/** Saves the AI's verdict on one clash (replacing an earlier one on the same two quotes). */
+export const postVerdict = (f: Fetch, storyId: string, body: { verdict: string; entity: string; attribute: string; before: VerdictSide; after: VerdictSide }) =>
+  call<{ fingerprint: string }>(f, "POST", `/api/stories/${storyId}/continuity`, body);
 
 /** Adds an unwritten choice to a chapter. */
 export const addChoice = (f: Fetch, chapterId: string, label: string) => call<{ ok: true }>(f, "POST", `/api/chapters/${chapterId}/choices`, { label });

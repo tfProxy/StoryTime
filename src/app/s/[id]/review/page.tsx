@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import CodexAiScan from "@/components/CodexAiScan";
+import ContinuityCheck from "@/components/ContinuityCheck";
 import IssueActions from "@/components/IssueActions";
 import StoryTagSwitches from "@/components/StoryTagSwitches";
 import TagScan from "@/components/TagScan";
@@ -68,11 +69,39 @@ export default async function ReviewPage({
 
   function issuesPanel(storyId: string) {
     const all = reviewIssues(storyId);
-    const scoped = chosen ? all.filter((i) => i.chapterId === chosen.id) : all;
-    const issues = scoped.filter((i) => i.status === "open");
-    const later = scoped.filter((i) => i.status === "later");
-    const dismissed = scoped.filter((i) => i.status === "dismissed");
+    const scoped = chosen ? all.filter((i) => i.chapterId === chosen.id || i.continuity?.before.chapterId === chosen.id) : all;
+    const summaryScoped = scoped.filter((i) => i.kind !== "continuity");
+    const issues = summaryScoped.filter((i) => i.status === "open");
+    const later = summaryScoped.filter((i) => i.status === "later");
+    const dismissed = summaryScoped.filter((i) => i.status === "dismissed");
+    const clashes = scoped.filter((i) => i.kind === "continuity");
+    const openClashes = clashes.filter((i) => i.status === "open");
+    const laterClashes = clashes.filter((i) => i.status === "later");
+    const dismissedClashes = clashes.filter((i) => i.status === "dismissed");
     const path = chosen ? getPath(chosen.id) : [];
+    const clash = (i: (typeof all)[number], actions: ("later" | "dismissed" | "open" | "undo")[]) => {
+      const c = i.continuity!;
+      return (
+        <li key={`${i.chapterId}-${i.kind}-${i.fingerprint}`}>
+          <strong>
+            {c.entity} — {c.attribute}
+          </strong>
+          : “{c.before.value}” in <Link href={`/c/${c.before.chapterId}`}>{c.before.title}</Link>, then “{c.after.value}” in{" "}
+          <Link href={`/c/${c.after.chapterId}`}>{c.after.title}</Link>
+          <blockquote className="meta" style={{ margin: "0.25rem 0 0 0.5rem" }}>
+            “{c.before.quote}”
+          </blockquote>
+          <blockquote className="meta" style={{ margin: "0.25rem 0 0.25rem 0.5rem" }}>
+            “{c.after.quote}”
+          </blockquote>
+          <IssueActions chapterId={i.chapterId} kind={i.kind} fingerprint={i.fingerprint} actions={actions} />
+        </li>
+      );
+    };
+    const unfinishedContinuityRun =
+      listRuns(storyId, { mode: "review" }).find(
+        (r) => ["queued", "running", "paused", "ready", "review"].includes(r.status) && (r.options.checks ?? ["tags"]).includes("continuity"),
+      )?.id ?? null;
     const item = (i: (typeof all)[number], actions: ("later" | "dismissed" | "open" | "undo")[], fix: boolean) => (
       <li key={`${i.chapterId}-${i.kind}-${i.fingerprint}`}>
         <Link href={`/c/${i.chapterId}`}>{i.title}</Link>
@@ -115,6 +144,32 @@ export default async function ReviewPage({
             <ul>{dismissed.map((i) => item(i, ["undo"], false))}</ul>
           </details>
         )}
+
+        <h2>Continuity</h2>
+        {openClashes.length === 0 ? (
+          <p>{clashes.length > 0 ? "Nothing left to deal with here." : "No continuity problems found yet."}</p>
+        ) : (
+          <ul>{openClashes.map((i) => clash(i, ["later", "dismissed"]))}</ul>
+        )}
+        {laterClashes.length > 0 && (
+          <>
+            <h3>Later</h3>
+            <ul>{laterClashes.map((i) => clash(i, ["open", "dismissed"]))}</ul>
+          </>
+        )}
+        {dismissedClashes.length > 0 && (
+          <details>
+            <summary>Dismissed ({dismissedClashes.length})</summary>
+            <p className="meta">A dismissed problem comes back if the later chapter is edited.</p>
+            <ul>{dismissedClashes.map((i) => clash(i, ["undo"]))}</ul>
+          </details>
+        )}
+        <ContinuityCheck
+          storyId={storyId}
+          unfinishedRunId={unfinishedContinuityRun}
+          chapterId={chosen?.id}
+          chapters={chapters.map((c) => ({ id: c.id, title: c.title, parent_id: c.parent_id }))}
+        />
 
         <h2>Codex</h2>
         <p className="meta">The AI checks one chapter at a time, or that chapter and the ones leading to it.</p>
@@ -244,7 +299,7 @@ export default async function ReviewPage({
         <p className="meta">The AI reads each chapter and suggests which of this story&apos;s tags apply. You decide each one.</p>
         <TagScan
           storyId={storyId}
-          unfinishedRunId={listRuns(storyId, { mode: "review" }).find((r) => ["queued", "running", "paused", "ready", "review"].includes(r.status) && r.counts.total > 0)?.id ?? null}
+          unfinishedRunId={listRuns(storyId, { mode: "review" }).find((r) => ["queued", "running", "paused", "ready", "review"].includes(r.status) && r.counts.total > 0 && (r.options.checks ?? ["tags"]).includes("tags"))?.id ?? null}
           story={{ title: story!.title, premise: story!.premise }}
           chapterId={chosen?.id}
           chapters={chapters.map((c) => ({

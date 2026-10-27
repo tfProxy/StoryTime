@@ -1,5 +1,6 @@
 import http from "node:http";
-import { extractFacts, factRequest, parseFactReply } from "../../src/lib/ai/factAi.ts";
+import { extractFacts, factRequest, judgeConflict, judgeRequest, parseFactReply, parseVerdict } from "../../src/lib/ai/factAi.ts";
+import { continuityFingerprint } from "../../src/lib/continuity.ts";
 import { DEFAULT_SETTINGS } from "../../src/lib/settingsSchema.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
@@ -86,5 +87,38 @@ handler = () => "I cannot help";
 try { await extractFacts(settings, { chapter, codexNames }); ok(false, "should throw"); } catch (e) { ok(/anything|JSON/.test((e as Error).message), "unreadable reply -> friendly error"); }
 const ctl = new AbortController(); ctl.abort();
 try { await extractFacts(settings, { chapter, codexNames, signal: ctl.signal }); ok(false, "should abort"); } catch (e) { ok((e as any).name === "AbortError", "aborts"); }
+
+// ---- judgeConflict ----
+const clash = {
+  entity: "Mira",
+  attribute: "eye colour",
+  before: { value: "green", quote: "Mira, a green-eyed fox" },
+  after: { value: "blue", quote: "her blue eyes shone" },
+};
+const jr = judgeRequest({ conflict: clash, chapterTitles: { before: "One", after: "Two" } });
+ok(jr.system!.includes('"verdict"') && jr.system!.includes("contradiction") && jr.system!.includes("change") && jr.system!.includes("fine"), "judge system: the three verdicts, JSON-only");
+ok(jr.message.indexOf("green-eyed fox") < jr.message.indexOf("blue eyes shone"), "judge message: earlier chapter first");
+ok(jr.message.includes("Mira, eye colour") && jr.message.includes("“One”") && jr.message.includes("“Two”"), "judge message: entity, attribute and chapter titles");
+ok(!judgeRequest({ conflict: clash }).message.includes("chapter “"), "judge message: no titles needed");
+ok(parseVerdict({ verdict: "contradiction" }) === "contradiction" && parseVerdict({ verdict: " Change. " }) === "change" && parseVerdict("fine") === "fine", "verdict parsed, case and punctuation ignored");
+ok(parseVerdict({ verdict: "maybe" }) === null && parseVerdict({}) === null && parseVerdict(null) === null && parseVerdict({ verdict: 3 }) === null, "unknown verdicts -> null");
+handler = () => '{"verdict":"contradiction"}';
+const jb = prompts.length;
+ok((await judgeConflict(settings, { conflict: clash })) === "contradiction" && prompts.length === jb + 1, "contradiction judged");
+ok(prompts.at(-1)!.model === "cheap", "the judge uses the cheap model unless told otherwise");
+await judgeConflict(settings, { conflict: clash, role: "main" });
+ok(prompts.at(-1)!.model === "main", "role is passed through");
+handler = () => 'Sure:\n```json\n{"verdict":"change"}\n```';
+ok((await judgeConflict(settings, { conflict: clash })) === "change", "JSON wrapped in prose and code fences is read");
+handler = () => '{"verdict":"fine"}';
+ok((await judgeConflict(settings, { conflict: clash })) === "fine", "fine judged");
+handler = () => '{"verdict":"unsure"}';
+try { await judgeConflict(settings, { conflict: clash }); ok(false, "should throw"); } catch (e) { ok(/couldn't be read/.test((e as Error).message), "unknown verdict -> error"); }
+handler = () => "I cannot help";
+try { await judgeConflict(settings, { conflict: clash }); ok(false, "should throw"); } catch (e) { ok(/anything|JSON/.test((e as Error).message), "unreadable reply -> friendly error"); }
+
+// ---- fingerprint ----
+ok(continuityFingerprint("a b", "c") === continuityFingerprint("A  B", " c ") && /^[0-9a-f]{16}$/.test(continuityFingerprint("a", "b")), "fingerprint: 16 hex characters, ignores case and spacing");
+ok(continuityFingerprint("a", "b") !== continuityFingerprint("b", "a") && continuityFingerprint("a", "b") !== continuityFingerprint("a", "c"), "fingerprint: tells clashes apart");
 
 server.close();

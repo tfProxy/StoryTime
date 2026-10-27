@@ -660,6 +660,28 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX ai_runs_story ON ai_runs(story_id, created_at);
   UPDATE work_items SET data = json_set(data, '$.mode', 'review') WHERE type = 'run' AND json_extract(data, '$.mode') = 'tags';
   `,
+  // 36: the AI's verdicts on continuity clashes (two chapters stating different values for one thing). Keyed by a
+  // fingerprint of the two quotes rather than by fact ids, because fact rows are replaced each time a chapter is read.
+  // The revisions say which text the verdict was about: a chapter edited since makes it stale.
+  `
+  CREATE TABLE continuity_verdicts (
+    fingerprint       TEXT PRIMARY KEY,
+    story_id          TEXT NOT NULL REFERENCES stories(id),
+    verdict           TEXT NOT NULL CHECK (verdict IN ('contradiction', 'change', 'fine')),
+    entity            TEXT NOT NULL,
+    attribute         TEXT NOT NULL,
+    before_chapter_id TEXT NOT NULL,
+    before_revision   INTEGER NOT NULL,
+    before_value      TEXT NOT NULL,
+    before_quote      TEXT NOT NULL,
+    after_chapter_id  TEXT NOT NULL,
+    after_revision    INTEGER NOT NULL,
+    after_value       TEXT NOT NULL,
+    after_quote       TEXT NOT NULL,
+    created_at        INTEGER NOT NULL
+  );
+  CREATE INDEX continuity_verdicts_story ON continuity_verdicts(story_id);
+  `,
 ];
 
 function open(): Database.Database {

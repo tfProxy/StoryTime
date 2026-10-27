@@ -88,6 +88,62 @@ export function parseFactReply(raw: unknown): Fact[] {
   return out;
 }
 
+export type Verdict = "contradiction" | "change" | "fine";
+
+/** The two sides of a clash between chapters: the same thing stated with different values, the earlier chapter first. */
+export type ConflictInfo = {
+  entity: string;
+  attribute: string;
+  before: { value: string; quote: string };
+  after: { value: string; quote: string };
+};
+
+const SYSTEM_JUDGE = `You check a story for continuity mistakes. You are shown two statements from two chapters of the same story, the earlier chapter first, that seem to give different values for the same thing.
+Decide which of these it is:
+- "contradiction": a mistake. The story says two things that cannot both be true, and nothing explains the difference.
+- "change": the story explains it, for example a transformation, time passing, healing, moving house or a disguise.
+- "fine": not really the same thing, or both can be true.
+Reply with JSON only: {"verdict":"contradiction"} or {"verdict":"change"} or {"verdict":"fine"}`;
+
+export type JudgeRequestOptions = { conflict: ConflictInfo; chapterTitles?: { before?: string; after?: string } };
+
+/** The request asking whether one clash is a contradiction. */
+export function judgeRequest(opts: JudgeRequestOptions): PromptParts {
+  const { conflict: c, chapterTitles: t } = opts;
+  const where = (title: string | undefined) => (title ? ` (chapter “${title}”)` : "");
+  const message = [
+    `${asString(c.entity, ENTITY_MAX)}, ${asString(c.attribute, ATTRIBUTE_MAX)}`,
+    `Earlier${where(t?.before)}: value “${asString(c.before.value, VALUE_MAX)}”. The chapter says: “${asString(c.before.quote, QUOTE_MAX)}”`,
+    `Later${where(t?.after)}: value “${asString(c.after.value, VALUE_MAX)}”. The chapter says: “${asString(c.after.quote, QUOTE_MAX)}”`,
+    "Is this a contradiction, a change the story explains, or fine? Reply as JSON.",
+  ].join("\n\n");
+  return { system: SYSTEM_JUDGE, message };
+}
+
+/** Reads the verdict from a model reply (already parsed from JSON), or null when it can't be read. Tolerates a bare word. */
+export function parseVerdict(raw: unknown): Verdict | null {
+  const word = typeof raw === "string" ? raw : raw && typeof raw === "object" ? (raw as { verdict?: unknown }).verdict : null;
+  if (typeof word !== "string") return null;
+  const w = lc(word).replace(/[^a-z]/g, "");
+  return w === "contradiction" || w === "change" || w === "fine" ? w : null;
+}
+
+export type JudgeConflictOptions = JudgeRequestOptions & { signal?: AbortSignal; role?: "main" | "cheap" };
+
+/** Asks whether one clash is a contradiction, a change the story explains, or fine. Throws when the reply can't be read. */
+export async function judgeConflict(settings: Settings, opts: JudgeConflictOptions): Promise<Verdict> {
+  const request = judgeRequest(opts);
+  const reply = await completeChat(settings, {
+    system: request.system,
+    messages: [{ role: "user", content: request.message }],
+    role: opts.role ?? "cheap",
+    signal: opts.signal,
+  });
+  const verdict = parseVerdict(extractJson(reply));
+  if (!verdict) throw new Error("The AI's reply about the clash couldn't be read.");
+  return verdict;
+}
+
 export type ExtractFactsOptions = FactRequestOptions & { signal?: AbortSignal; role?: "main" | "cheap" };
 
 export async function extractFacts(settings: Settings, opts: ExtractFactsOptions): Promise<Fact[]> {

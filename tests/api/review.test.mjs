@@ -72,3 +72,64 @@ r = await decide(noSummary, { kind: "summary-missing", status: "maybe" });
 ok(r.status === 400, "unknown status is a 400");
 r = await decide("does-not-exist", { kind: "summary-missing", status: "later" });
 ok(r.status === 404, "unknown chapter is a 404");
+
+// ---- continuity: verdicts the AI made, kept by fingerprint; a contradiction becomes an issue on the later chapter ----
+const side = (chapterId, revision, value, quote) => ({ chapterId, revision, value, quote });
+const clash = (verdict, before, after, extra = {}) => ({ verdict, entity: "Mira", attribute: "eye colour", before, after, ...extra });
+const continuityOf = (l) => l.filter((i) => i.kind === "continuity");
+ok(continuityOf(await issues()).length === 0, "no continuity issue before any verdict");
+r = await call("GET", `/api/stories/${story}/continuity`);
+ok(r.status === 200 && r.json.verdicts.length === 0, "a story starts with no verdicts");
+r = await call("GET", "/api/stories/does-not-exist/continuity");
+ok(r.status === 404, "verdicts of an unknown story are a 404");
+
+const rev = async (id) => (await call("GET", `/api/chapters/${id}`)).json.chapter.revision;
+const revWith = await rev(withSummary);
+const revFresh = await rev(fresh);
+r = await call("POST", `/api/stories/${story}/continuity`, clash("contradiction", side(withSummary, revWith, "green", "her green eyes"), side(fresh, revFresh, "blue", "her blue eyes")));
+ok(r.status === 200 && /^[0-9a-f]{16}$/.test(r.json.fingerprint), "a verdict is saved and answers its fingerprint");
+const fp = r.json.fingerprint;
+list = continuityOf(await issues());
+ok(list.length === 1 && list[0].chapterId === fresh && list[0].fingerprint === fp && list[0].status === "open", "a contradiction is an open issue on the later chapter");
+ok(list[0].continuity.before.chapterId === withSummary && list[0].continuity.after.chapterId === fresh && list[0].continuity.before.quote === "her green eyes" && list[0].continuity.after.value === "blue", "…carrying both sides");
+ok(list[0].continuity.before.title === "Renamed" && list[0].continuity.after.title === "Fresh", "…and both chapter titles");
+
+r = await call("POST", `/api/stories/${story}/continuity`, clash("contradiction", side(withSummary, revWith, "green", "her green eyes"), side(fresh, revFresh, "blue", "her blue eyes")));
+ok(r.json.fingerprint === fp && (await call("GET", `/api/stories/${story}/continuity`)).json.verdicts.length === 1, "the same two quotes replace the verdict instead of adding one");
+
+r = await call("POST", `/api/stories/${story}/continuity`, clash("fine", side(withSummary, revWith, "tall", "she was tall"), side(fresh, revFresh, "small", "a small voice"), { attribute: "size" }));
+ok(r.status === 200, "a fine verdict is saved");
+r = await call("POST", `/api/stories/${story}/continuity`, clash("change", side(withSummary, revWith, "red", "a red coat"), side(fresh, revFresh, "grey", "a grey coat"), { attribute: "coat" }));
+ok(r.status === 200 && continuityOf(await issues()).length === 1, "a fine verdict and a change make no issue");
+
+r = await call("POST", `/api/stories/${story}/continuity`, clash("maybe", side(withSummary, revWith, "a", "q1"), side(fresh, revFresh, "b", "q2")));
+ok(r.status === 400, "an unknown verdict is a 400");
+r = await call("POST", `/api/stories/${story}/continuity`, clash("fine", side("nope", 1, "a", "q1"), side(fresh, revFresh, "b", "q2")));
+ok(r.status === 404, "a chapter that is not in the story is a 404");
+r = await call("POST", "/api/stories/does-not-exist/continuity", clash("fine", side(withSummary, 1, "a", "q1"), side(fresh, 1, "b", "q2")));
+ok(r.status === 404, "a verdict on an unknown story is a 404");
+
+// A second contradiction on the same later chapter stays apart by fingerprint.
+r = await call("POST", `/api/stories/${story}/continuity`, clash("contradiction", side(noSummary, await rev(noSummary), "north", "the house in the north"), side(fresh, revFresh, "south", "the house in the south"), { entity: "House", attribute: "place" }));
+const fp2 = r.json.fingerprint;
+list = continuityOf(await issues());
+ok(list.length === 2 && fp2 !== fp && list.every((i) => i.chapterId === fresh), "two contradictions on one chapter are two issues");
+
+// Decisions work as for the other kinds, per fingerprint.
+r = await decide(fresh, { kind: "continuity", fingerprint: fp, status: "dismissed" });
+ok(r.status === 200, "a continuity issue can be dismissed");
+list = continuityOf(await issues());
+ok(list.find((i) => i.fingerprint === fp).status === "dismissed" && list.find((i) => i.fingerprint === fp2).status === "open", "…only that one");
+r = await decide(fresh, { kind: "continuity", fingerprint: fp, status: "later" });
+ok(continuityOf(await issues()).find((i) => i.fingerprint === fp).status === "later", "…or put off");
+r = await decide(fresh, { kind: "continuity", fingerprint: fp, status: "dismissed" });
+
+// An edit to either chapter makes the verdict stale: the issue is gone.
+r = await call("PATCH", `/api/chapters/${noSummary}`, { base_revision: await rev(noSummary), title: "No summary", body: "edited", summary: "now has one" });
+ok(r.status === 200, "the earlier chapter can be edited");
+list = continuityOf(await issues());
+ok(list.length === 1 && list[0].fingerprint === fp, "editing the earlier chapter hides that issue");
+r = await call("PATCH", `/api/chapters/${fresh}`, { base_revision: revFresh, title: "Fresh", body: "edited again", summary: "fresh sum 3" });
+ok(r.status === 200 && continuityOf(await issues()).length === 0, "editing the later chapter hides the other");
+const kept = (await call("GET", `/api/stories/${story}/continuity`)).json.verdicts;
+ok(kept.length === 4, "…the verdicts themselves are kept");

@@ -101,7 +101,19 @@ export type FactsTask = {
   error?: string;
 };
 
-export type RunTask = WriteTask | PlanTask | PictureTask | TagsTask | FactsTask;
+/** Continuity: the AI judges each clash between chapters found in the facts along the way to `chapterIds`. Made by the server when a review run asks for it. */
+export type ContinuityTask = {
+  kind: "continuity";
+  id: string;
+  /** The chapters in the run's scope with no child in it; each one's way from the start is checked. */
+  chapterIds: string[];
+  status: TaskStatus;
+  /** How many clashes were judged a contradiction (set when done). */
+  found?: number;
+  error?: string;
+};
+
+export type RunTask = WriteTask | PlanTask | PictureTask | TagsTask | FactsTask | ContinuityTask;
 
 export type RunOptions = {
   // writing modes
@@ -129,7 +141,7 @@ export type RunOptions = {
   // tags: which chapters (the server makes the tasks): the start chapter, the way to it, it and everything below it, or the whole story
   tagScope?: "chapter" | "path" | "subtree" | "story";
   // review: what to read each chapter for (tags unless said otherwise)
-  checks?: ("tags" | "facts")[];
+  checks?: ("tags" | "facts" | "continuity")[];
 };
 
 /** `queued`: waiting its turn in a tab's work queue. `running` with a lapsed lease means the tab that ran it is gone. */

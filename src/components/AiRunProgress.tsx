@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getRun } from "@/lib/aiRuns/api";
 import type { RunEvent } from "@/lib/aiRuns/runner";
-import type { AiRun, FactsTask, PictureTask, TagsTask, WriteTask } from "@/lib/aiRuns/types";
+import type { AiRun, ContinuityTask, FactsTask, PictureTask, TagsTask, WriteTask } from "@/lib/aiRuns/types";
 import { useWorkQueue, type RunItem } from "./WorkQueue";
 
 const plainFetch = (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init);
@@ -85,8 +85,8 @@ export default function AiRunProgress({
   const isPictures = run.mode === "pictures";
   const isTags = run.mode === "review";
   // A review run's tasks: the chapters read for tags and for facts.
-  const tagTasks = run.tasks.filter((t): t is TagsTask | FactsTask => t.kind === "tags" || t.kind === "facts");
-  const hasFacts = tagTasks.some((t) => t.kind === "facts");
+  const tagTasks = run.tasks.filter((t): t is TagsTask | FactsTask | ContinuityTask => t.kind === "tags" || t.kind === "facts" || t.kind === "continuity");
+  const hasFacts = tagTasks.some((t) => t.kind === "facts" || t.kind === "continuity");
   const pics = run.tasks.filter((t): t is PictureTask => t.kind === "picture");
   const writes = run.tasks.filter((t): t is WriteTask => t.kind === "write");
   // Chapters posted (waiting for their summaries counts), or pictures saved.
@@ -228,7 +228,15 @@ export default function AiRunProgress({
         {tagTasks.map((t) => (
           <li key={t.id} className={`ai-run-task ai-run-task-${t.status}`}>
             <div>
-              <Link href={`/c/${t.chapterId}`}>{t.label ?? "A chapter"}</Link> <span className="meta">· {t.kind === "facts" ? "Facts: " : ""}{STATUS_WORDS[t.status]}{t.status === "done" && t.found ? (t.kind === "facts" ? `, ${t.found} fact${t.found === 1 ? "" : "s"}` : `, ${t.found} new suggestion${t.found === 1 ? "" : "s"}`) : ""}</span>
+              {t.kind === "continuity" ? (
+                <>
+                  Continuity <span className="meta">· {STATUS_WORDS[t.status]}{t.status === "done" ? `, ${t.found ?? 0} contradiction${t.found === 1 ? "" : "s"} found` : ""}</span>
+                </>
+              ) : (
+                <>
+                  <Link href={`/c/${t.chapterId}`}>{t.label ?? "A chapter"}</Link> <span className="meta">· {t.kind === "facts" ? "Facts: " : ""}{STATUS_WORDS[t.status]}{t.status === "done" && t.found ? (t.kind === "facts" ? `, ${t.found} fact${t.found === 1 ? "" : "s"}` : `, ${t.found} new suggestion${t.found === 1 ? "" : "s"}`) : ""}</span>
+                </>
+              )}
             </div>
             {t.status === "failed" && (
               <>

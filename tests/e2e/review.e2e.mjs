@@ -1,6 +1,28 @@
-import { launch } from "./browser.mjs";
+import http from "node:http";
+import { launch, useMockAi } from "./browser.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
+// The AI the server calls for the Check continuity button: each chapter states its eye colour, and the judge says contradiction.
+const aiCalls = [];
+const mock = http.createServer((req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "*");
+  if (req.method === "OPTIONS") { res.statusCode = 204; return res.end(); }
+  let data = ""; req.on("data", (c) => (data += c));
+  req.on("end", () => {
+    const body = JSON.parse(data || "{}");
+    const user = body.messages.at(-1).content;
+    aiCalls.push({ model: body.model, user });
+    const early = user.includes('Chapter to read: "Dawn"');
+    const out = user.includes("Is this a contradiction")
+      ? { verdict: "contradiction" }
+      : { facts: [{ entity: "Mira", attribute: "eye colour", value: early ? "green" : "blue", quote: early ? "Mira has green eyes." : "Mira has blue eyes." }] };
+    res.setHeader("content-type", "text/event-stream");
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify(out) } }] })}\n\n`);
+    res.end("data: [DONE]\n\n");
+  });
+});
+await new Promise((r) => mock.listen(3222, r));
 let failed = false;
 const ok = (c, m) => { console.log(c ? "ok  " : "FAIL", m); if (!c) failed = true; };
 const send = async (method, url, body) => (await fetch(BASE + url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined })).json();
@@ -90,7 +112,57 @@ try {
   await putSettings({ ...(settingsBefore ?? {}), outline: { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, ...(settingsBefore?.outline ?? {}), review: false } });
   await page.goto(`${BASE}/s/${s.story_id}/outline`);
   ok((await page.getByRole("link", { name: "Good root" }).count()) === 1 && (await page.locator("a.outline-review").count()) === 0, "with Review marker off, no marker is shown");
+
+  // Continuity: a stored contradiction shows with both chapters and both quotes; Dismiss hides it.
+  // (The outline marker is switched back on for this part.)
+  await putSettings(settingsBefore ?? {});
+  const c = await post("/api/stories", { title: "Continuity story", chapter: { title: "Dawn", body: "Mira has green eyes. It was morning.", summary: "d", choices: ["on"] } });
+  const cChoice = (await send("GET", `/api/chapters/${c.chapter_id}`)).choices[0];
+  const dusk = (await post("/api/chapters", { choice_id: cChoice.id, title: "Dusk", body: "Mira has blue eyes. It was evening.", summary: "e" })).chapter_id;
+  await post(`/api/stories/${c.story_id}/continuity`, {
+    verdict: "contradiction",
+    entity: "Mira",
+    attribute: "eye colour",
+    before: { chapterId: c.chapter_id, revision: 1, value: "green", quote: "Mira has green eyes." },
+    after: { chapterId: dusk, revision: 1, value: "blue", quote: "Mira has blue eyes." },
+  });
+  await page.goto(`${BASE}/s/${c.story_id}/review`);
+  ok(await page.getByRole("heading", { name: "Continuity", level: 2 }).isVisible(), "the Issues tab has a Continuity section");
+  const clash = page.locator("li", { hasText: "eye colour" });
+  ok((await clash.count()) === 1 && (await clash.innerText()).includes("“green” in Dawn, then “blue” in Dusk"), "the issue says what changed and where");
+  ok((await clash.getByRole("link", { name: "Dawn" }).getAttribute("href")) === `/c/${c.chapter_id}` && (await clash.getByRole("link", { name: "Dusk" }).getAttribute("href")) === `/c/${dusk}`, "…linking to both chapters");
+  ok((await clash.innerText()).includes("Mira has green eyes.") && (await clash.innerText()).includes("Mira has blue eyes."), "…with both quotes");
+  await page.goto(`${BASE}/s/${c.story_id}/outline`);
+  ok((await page.locator("a.outline-review").count()) === 1, "the outline marks the later chapter");
+  await page.goto(`${BASE}/s/${c.story_id}/review?chapter=${c.chapter_id}`);
+  ok((await page.locator("li", { hasText: "eye colour" }).count()) === 1, "choosing the earlier chapter shows the issue too");
+  await page.getByRole("button", { name: "Dismiss", exact: true }).click();
+  await page.getByText("Dismissed (1)").waitFor();
+  ok((await page.getByRole("button", { name: "Dismiss", exact: true }).count()) === 0 && (await page.getByText("Nothing left to deal with here.").count()) >= 1, "Dismiss moves it under Dismissed");
+  await page.goto(`${BASE}/s/${c.story_id}/outline`);
+  ok((await page.locator("a.outline-review").count()) === 0, "…and the outline marker goes");
+
+  // The Check continuity button: reads the facts of both chapters, then asks the judge once.
+  const ai = await useMockAi(BASE);
+  const d = await post("/api/stories", { title: "Continuity run story", chapter: { title: "Dawn", body: "Mira has green eyes. It was morning.", summary: "d", choices: ["on"] } });
+  const dChoice = (await send("GET", `/api/chapters/${d.chapter_id}`)).choices[0];
+  const dDusk = (await post("/api/chapters", { choice_id: dChoice.id, title: "Dusk", body: "Mira has blue eyes. It was evening.", summary: "e" })).chapter_id;
+  await page.goto(`${BASE}/s/${d.story_id}/review`);
+  ok(await page.getByText("No continuity problems found yet.").isVisible(), "a story with no verdicts says none were found yet");
+  ok(await page.getByText("Reads each chapter for facts, then asks about each clash. Uses your cheaper model.").isVisible(), "the Check continuity section explains what it does");
+  ok((await page.locator('input[name="continuity-scope"]').count()) === 1, "without a chosen chapter only The whole story is offered");
+  await page.getByRole("button", { name: "Check continuity" }).click();
+  await page.getByText("Found 1 contradiction.").waitFor({ timeout: 30000 });
+  ok(aiCalls.filter((x) => x.user.includes("Chapter to read")).length === 2 && aiCalls.filter((x) => x.user.includes("Is this a contradiction")).length === 1, "two fact reads and one judge call were made");
+  ok(aiCalls.every((x) => x.model === "cheap"), "…all on the cheaper model");
+  const found = page.locator("li", { hasText: "eye colour" });
+  await found.waitFor();
+  ok((await found.getByRole("link", { name: "Dusk" }).getAttribute("href")) === `/c/${dDusk}`, "the contradiction appears in the section when the run ends");
+  await page.goto(`${BASE}/s/${d.story_id}/review?chapter=${dDusk}`);
+  ok((await page.locator('input[name="continuity-scope"]').count()) === 3, "a chosen chapter offers this chapter, the way here and the whole story");
+  await ai.restore();
 } finally {
+  mock.close();
   await putSettings(settingsBefore ?? {});
   await browser.close();
 }

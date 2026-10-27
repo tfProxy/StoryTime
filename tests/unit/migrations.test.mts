@@ -229,5 +229,25 @@ const factAdd = (id: string) => fr.prepare(`INSERT INTO chapter_facts (id, chapt
 ok(!wqRefused(() => factAdd("f1")), "a fact can be recorded");
 ok(wqRefused(() => factAdd("f1")), "a fact id is unique");
 fr.close();
+
+// continuity verdicts (schema version 36): one row per fingerprint, the verdict one of three words
+ok(MIGRATIONS.length >= 36, "migration 36 exists");
+const cv = new Database(":memory:");
+cv.pragma("foreign_keys = OFF");
+cv.exec(MIGRATIONS[35]);
+const cvCols = (cv.prepare(`PRAGMA table_info(continuity_verdicts)`).all() as { name: string }[]).map((c) => c.name).join(",");
+ok(
+  cvCols === "fingerprint,story_id,verdict,entity,attribute,before_chapter_id,before_revision,before_value,before_quote,after_chapter_id,after_revision,after_value,after_quote,created_at",
+  "continuity_verdicts has its columns",
+);
+const cvAdd = (fingerprint: string, verdict: string) =>
+  cv
+    .prepare(`INSERT INTO continuity_verdicts (fingerprint, story_id, verdict, entity, attribute, before_chapter_id, before_revision, before_value, before_quote, after_chapter_id, after_revision, after_value, after_quote, created_at) VALUES (?, 's1', ?, 'Ann', 'eyes', 'c1', 1, 'green', 'q1', 'c2', 1, 'blue', 'q2', 1)`)
+    .run(fingerprint, verdict);
+ok(!wqRefused(() => cvAdd("a", "contradiction")) && !wqRefused(() => cvAdd("b", "change")) && !wqRefused(() => cvAdd("c", "fine")), "a verdict can be contradiction, change or fine");
+ok(wqRefused(() => cvAdd("a", "fine")), "a fingerprint is unique");
+ok(wqRefused(() => cvAdd("d", "maybe")), "an unknown verdict is refused");
+ok((cv.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'continuity_verdicts_story'`).get() as { name: string } | undefined) !== undefined, "verdicts are indexed by story");
+cv.close();
 d.close();
 fs.rmSync(dir, { recursive: true, force: true });
