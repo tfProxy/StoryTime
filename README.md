@@ -54,6 +54,28 @@ Settings has four tabs:
 
 Each tab has its own address (`/settings#pictures`), so a link or a reload comes back to it.
 
+## Suggested tag rules
+
+Tags (Settings > Tags) are written by you; Find tags on a story's Review page suggests where each applies.
+This wording settles the edge cases (dreams and visions don't count; a change undone in the same chapter
+does; partial changes count like full ones). Paste it into each tag's "Applies when" and "Doesn't apply
+when". A chapter with an approved **tf** or **tg** may also change a character without it being
+flagged as a continuity problem.
+
+- **tf**
+  - Applies when: a character's species or physical form changes, fully or partly (animal, creature,
+    object, size, or just ears, a tail or claws), on the page, even if it is undone before the chapter ends.
+  - Doesn't apply when: illusions, costumes, dreams, visions or imagined changes; a change of sex alone
+    (that's tg).
+- **tg**
+  - Applies when: a character's physical sex changes, fully or partly, on the page, even if it is undone
+    before the chapter ends.
+  - Doesn't apply when: cross-dressing, disguise, illusion, a dream or vision, or a change only talked about.
+- **violence**
+  - Applies when: a character deliberately injures or attacks someone, or destroys property in anger, on
+    the page. Choices: mild, graphic.
+  - Doesn't apply when: threats, past or reported fights, accidents, sparring or play.
+
 ## More guides
 
 - [Pictures with ComfyUI](docs/pictures.md): picture presets, installing the edit models
