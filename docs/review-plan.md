@@ -46,7 +46,7 @@ Today a chapter that got no suggestions is read again on every Find tags run, be
 - `TaggedChapters.tsx`: after each tag, a muted "(by hand)" when `source` is `author`. Pass `source` from `src/app/s/[id]/review/page.tsx` (it is on the rows `chapterTags` returns; check the type).
 - Test in `tests/e2e/review-tags.e2e.mjs`: the hand-added tag shows "(by hand)", the approved AI one doesn't.
 
-### A3. Flag approved tags on edited chapters (small)
+### A3. Flag approved tags on edited chapters (small) (done, 42a0f7d)
 
 - `chapterTags` already returns `stale` (the row's revision is older than the chapter's). In `TaggedChapters.tsx`, show "chapter edited since" after a stale tag, as `TagSuggestions.tsx` does for suggestions.
 - On a chapter with a stale tag, add a "Check again" link to `?tab=tags&chapter=<id>` (that page's Find tags with This chapter re-reads it). No new API.
