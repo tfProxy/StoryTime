@@ -2,7 +2,7 @@
 
 # StoryTime
 
-A single-writer branching-story app: Next.js (read `AGENTS.md` above first), React client components, SQLite through better-sqlite3, AI calls made from the browser.
+A single-writer branching-story app: Next.js (read `AGENTS.md` above first), React client components, SQLite through better-sqlite3, a work queue (picture jobs, Generate, AI runs) that runs on the server and keeps going with the page closed; the browser makes only setup and test requests to AI providers and ComfyUI.
 
 ## Docs
 
