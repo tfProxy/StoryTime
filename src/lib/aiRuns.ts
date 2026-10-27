@@ -290,7 +290,7 @@ function checkTasks(tasks: RunTask[]) {
  * (every tag that is on for the story is decided for them, as the review page's Find tags counts them); a facts task if
  * facts are asked for, leaving out the chapters read for facts at their current revision.
  */
-function reviewTasks(storyId: string, startChapterId: string | null, scope: NonNullable<RunOptions["tagScope"]>, checks: NonNullable<RunOptions["checks"]>): RunTask[] {
+export function reviewTasks(storyId: string, startChapterId: string | null, scope: NonNullable<RunOptions["tagScope"]>, checks: NonNullable<RunOptions["checks"]>): RunTask[] {
   const chapters = getStoryChapters(storyId);
   let chosen = chapters;
   if (startChapterId !== null && scope !== "story") {

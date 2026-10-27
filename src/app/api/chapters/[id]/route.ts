@@ -1,4 +1,5 @@
 import { handlePost } from "@/lib/api";
+import { queueAutoReview } from "@/lib/autoReview";
 import { CodexChangesSchema, saveWithCodexChanges } from "@/lib/codexDb";
 import { editChapter, EditChapterSchema, getChoices, getPath } from "@/lib/stories";
 
@@ -17,7 +18,11 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   return handlePost(
     request,
     EditChapterSchema.and(CodexChangesSchema),
-    (input) => saveWithCodexChanges(input.codex_changes, () => editChapter(id, input), () => id),
+    (input) => {
+      const saved = saveWithCodexChanges(input.codex_changes, () => editChapter(id, input), () => id);
+      void queueAutoReview(id);
+      return saved;
+    },
     200,
   );
 }

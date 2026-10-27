@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { draftRule, suggestTagsForChapter, type TagRule } from "@/lib/ai/tagAi";
-import { useSettings } from "@/lib/settings";
+import { saveSettings, useSettings } from "@/lib/settings";
 import type { Tag, TagExample } from "@/lib/tags";
 import AutoTextarea from "./AutoTextarea";
 
@@ -48,6 +48,7 @@ async function api<T>(url: string, method: string, body?: unknown): Promise<T> {
 }
 
 export default function TagLibrary() {
+  const settings = useSettings();
   const [tags, setTags] = useState<Tag[] | null>(null);
   const [loadError, setLoadError] = useState("");
   // Which editor is open: a tag id, "new" (a tag not saved yet), or nothing.
@@ -67,6 +68,22 @@ export default function TagLibrary() {
         Tags label chapters (for example violence, tf). Switch them on per story on the story&apos;s Review page; the AI
         suggests them and you approve each one.
       </p>
+      <label className="row" style={{ alignItems: "flex-start" }}>
+        <input
+          type="checkbox"
+          style={{ width: "auto" }}
+          checked={settings.autoReview}
+          onChange={(e) => void saveSettings({ ...settings, autoReview: e.target.checked })}
+        />
+        <span>
+          Check new and edited chapters automatically
+          <br />
+          <span className="meta" style={{ fontWeight: "normal" }}>
+            Finds tags, reads facts and checks continuity, and checks the summary, on the server with your cheaper
+            model. Results wait on the Review page.
+          </span>
+        </span>
+      </label>
       {loadError && <p className="error">{loadError}</p>}
       {tags === null && !loadError && <p className="meta">Loading…</p>}
       {tags?.length === 0 && !fresh && <p className="meta">No tags yet.</p>}

@@ -76,6 +76,8 @@ export type Settings = {
   contextTokens: number;
   /** After the AI writes a chapter, also suggest choices for its ending (one more call to the cheaper model). */
   autoSuggestChoices: boolean;
+  /** After a chapter is saved, queue a review run for it (tags, facts, continuity, summary). Off by default. */
+  autoReview: boolean;
   /** What the outline shows after each chapter's name. */
   outline: OutlineOptions;
   /** How picture prompts are written: tags (SDXL, SD 1.5), booru tags (Illustrious, NoobAI, Pony) or plain sentences (Flux, SD3). */
@@ -173,6 +175,7 @@ export const DEFAULT_SETTINGS: Settings = {
   temperature: null,
   contextTokens: 8000,
   autoSuggestChoices: false,
+  autoReview: false,
   outline: DEFAULT_OUTLINE,
   imagePromptStyle: "tags",
   imagePromptModel: null,
@@ -329,6 +332,7 @@ const settingsSchema = z.object({
   temperature: z.number().min(0).max(2).nullable().catch(null),
   contextTokens: z.number().int().min(1000).max(2_000_000).catch(DEFAULT_SETTINGS.contextTokens),
   autoSuggestChoices: z.boolean().catch(false),
+  autoReview: z.boolean().catch(false),
   // A part that is missing or isn't true/false is shown, as before the options existed.
   outline: z
     .object({

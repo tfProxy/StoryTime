@@ -49,6 +49,19 @@ try {
   const lib = page.getByRole("region", { name: "Tags" });
   await lib.getByRole("heading", { name: "Tags" }).waitFor();
 
+  // ---- check chapters automatically ----
+  const auto = lib.getByRole("checkbox", { name: /Check new and edited chapters automatically/ });
+  await auto.waitFor();
+  ok(!(await auto.isChecked()), "Check new and edited chapters automatically is off by default");
+  ok(await lib.getByText("Results wait on the Review page.").isVisible(), "…with its note under it");
+  await auto.check();
+  await page.waitForFunction(async () => (await (await fetch("/api/settings")).json()).settings?.autoReview === true);
+  await page.reload();
+  await lib.getByRole("heading", { name: "Tags" }).waitFor();
+  ok(await lib.getByRole("checkbox", { name: /Check new and edited chapters automatically/ }).isChecked(), "…and stays on after a reload");
+  await lib.getByRole("checkbox", { name: /Check new and edited chapters automatically/ }).uncheck();
+  await page.waitForFunction(async () => (await (await fetch("/api/settings")).json()).settings?.autoReview === false);
+
   // ---- by hand ----
   await lib.getByPlaceholder(/tf: a character/).fill("violence: someone is hurt");
   await lib.getByRole("button", { name: "Write it myself" }).click();
