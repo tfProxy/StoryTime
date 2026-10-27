@@ -31,7 +31,7 @@ Written 2026-10-27 for agents on cheaper models, one task at a time, directed by
 
 ## Phase A: small tag fixes (no owner input needed)
 
-### A1. Skip chapters already checked at their current revision (medium)
+### A1. Skip chapters already checked at their current revision (medium) (done, 721b7d2)
 
 Today a chapter that got no suggestions is read again on every Find tags run, because nothing records that it was checked.
 
