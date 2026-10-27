@@ -144,7 +144,7 @@ The owner chose the simpler version on 2026-10-27: no stretches. C9 is done with
 ## Phase E: automatic runs
 
 - **E1. After save (medium). (done, c1e6203)** Built as `queueAutoReview` in `src/lib/autoReview.ts`, setting `autoReview`; also runs after a summary is saved; skips chapters whose AI run is still going. A setting in Settings > Tags, off by default: "Check tags and facts when a chapter is saved". When on, saving a chapter (the PATCH and POST chapter routes, server side) queues a review run for that chapter. No browser work needed now that runs are on the server.
-- **E2. After an AI run (small).** When a write-ahead, grow-the-tree or reach-a-goal run finishes, and E1's setting is on, queue a review run for the chapters it wrote.
+- **E2. After an AI run (small). (done, b68cf53)** When a write-ahead, grow-the-tree or reach-a-goal run finishes, and E1's setting is on, queue a review run for the chapters it wrote.
 - **E3. AI mark on the Review page (small, Ask first: question 2).** If the owner wants it: an issue kind `ai-unreviewed` for chapters with `ai_run_id` and no `ai_reviewed_at`, with a "Mark reviewed" action that calls `POST /api/chapters/:id/reviewed`.
 - **E4. Nightly (design).** Only if the owner asks: a daily review run for chapters changed that day.
 
