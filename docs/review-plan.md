@@ -24,7 +24,7 @@ Written 2026-10-27 for agents on cheaper models, one task at a time, directed by
 
 ## Open questions for the owner (answer before the tasks that need them)
 
-1. **Tag rules** (needed before C8 and before changing the starter rules): do dreams or visions count? A change reversed in the same chapter? Partial changes (ears, a tail)?
+1. **Tag rules** (needed before C8 and before changing the starter rules): do dreams or visions count? A change reversed in the same chapter? Partial changes (ears, a tail)? **Answered 2026-10-27: dreams and visions don't count; a change reversed in the same chapter counts; partial changes count the same as full ones.** The starter rules in `TODO.md` say so; the owner's own rules are edited in Settings > Tags.
 2. **AI mark and Review** (needed before E3): should AI-written chapters not yet marked reviewed also be listed on the Review page's Issues tab, and counted in the outline ⚠?
 3. **Long scans on the server** (needed before B2): should Find tags over more than one chapter go through the queue (it keeps going with the tab closed and takes turns with pictures), replacing today's in-page loop? **Answered 2026-10-27: yes, through the queue.**
 4. **Placement for stage 4** (D1 to D3): where content notes go on the reading page, and the outline chips/filter.
@@ -123,13 +123,16 @@ Built as: the owner chose a "Check summaries" button in the Summaries section (r
 - `summaryCheck` in a new `src/lib/ai/summaryCheckAi.ts`: "does this summary leave out key events or add things not in the text?", answering ok or a one-line problem. Store the answer per chapter revision (a column or small table; migration).
 - Issue kind `summary-wrong`, with "Fix the summary" like the other summary issues. Run it as a task in the review run.
 
-### C8. State tags (design, Ask first: question 1)
+### C8. State tags (design, Ask first: question 1) (not wanted for now)
+
+The owner chose the simpler version on 2026-10-27: no stretches. C9 is done without them.
 
 - `tag_ops(id, story_id, chapter_id, tag_id, subject, value, op open|close, status suggested|approved|rejected)`, folded along the path like codex ops. The AI suggests ops from the facts; the author approves them in a new "Stretches" list on the Tags tab. Plan this with the owner before building.
 
 ### C9. tf follow-ups (medium, after C8)
 
 - Approving a tf event offers the matching codex change (species or form, anchored at that chapter) and opening a species stretch.
+- Simplified by the owner (no C8): approving a tf only offers the codex change; there is no stretch to open.
 
 ## Phase D: tags for readers and the outline (Ask first: question 4 for each)
 

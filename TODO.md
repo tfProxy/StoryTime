@@ -94,10 +94,10 @@ An AI review that suggests fixes and tags for the owner to approve, kept out of 
 - Kinds: **event** (on a chapter: violence, tg, tf) and **state** (a stretch: `species: wolf` for Jim from the chapter where it happens until one that ends it, stored as ops anchored at chapters and folded like codex ops, so it only applies on that branch). Branches and the story roll up their chapters' tags without approval.
 - A tf event can also suggest the matching codex change and open a species state tag.
 - Help writing rules: the AI drafts applies / doesn't apply from a rough idea, and **Try it** shows what a draft would tag on a few chapters before saving.
-- Starter rules to refine with the owner (open questions: do dreams or visions count, a change reversed in the same chapter, partial changes like ears or a tail):
+- Starter rules, with the owner's answers (2026-10-27): dreams, visions and imagined changes don't count; a change reversed in the same chapter still counts; partial changes (ears, a tail, claws) count the same as full ones:
   - **violence:** a character deliberately injures or attacks someone, or destroys property in anger, on the page. Not threats, past or reported fights, accidents, sparring or play. Value: mild / graphic.
-  - **tg:** a character's physical sex changes, fully or partly, on the page. Not cross-dressing, disguise, illusion, or a change only talked about.
-  - **tf:** a character's species or physical form changes (animal, creature, object, size, partial), on the page. Not illusions or costumes, and not tg alone.
+  - **tg:** a character's physical sex changes, fully or partly, on the page, even if it is undone before the chapter ends. Not cross-dressing, disguise, illusion, a dream or vision, or a change only talked about.
+  - **tf:** a character's species or physical form changes, fully or partly (animal, creature, object, size, or just ears, a tail or claws), on the page, even if it is undone before the chapter ends. Not illusions, costumes, dreams, visions or imagined changes, and not tg alone.
 
 **Review items (both tabs)**
 - Each shows its type, a quote with a link to the passage (two quotes for a contradiction) and a suggested fix. Actions: Apply / Approve, Reject (with "add as example" for tags), Intentional (adds a codex note so later checks know, e.g. a disguise), Later.
