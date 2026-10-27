@@ -14,7 +14,7 @@ import {
   QWEN_TEXT_ENCODER, QWEN_VAE, T5_XXL, UNET_GGUF,
   type LoaderInfo, type ModelLora, type ModelPart, type NeededOption, type NodeInfo, type PartCheck, type TextEncoderDevice,
 } from "./modelParts";
-import { redrawOnlyMask, type SamplerTuning, type Workflow } from "./workflow";
+import { partialSteps, redrawOnlyMask, type SamplerTuning, type Workflow } from "./workflow";
 
 /** "checkpoint" is the SDXL-style all-in-one checkpoint of the built-in workflow; the rest are families of separate files. */
 export const DRAW_FAMILIES = ["checkpoint", "zimage", "flux", "chroma", "qwen-image", "krea2"] as const;
@@ -104,15 +104,17 @@ function startLatent(p: DrawParams): { nodes: Workflow; latent: [string, number]
 
 /** The sampler (node "8") and the nodes after it: decode and save. */
 function sampleAndSave(p: DrawParams, t: DrawTuning, links: { model: [string, number]; positive: [string, number]; negative: [string, number]; latent: [string, number] }): Workflow {
-  return {
-    "8": {
-      class_type: "KSampler",
-      inputs: {
-        seed: p.seed, steps: t.steps, cfg: t.cfg, sampler_name: t.sampler, scheduler: t.scheduler,
-        denoise: p.image ? (p.denoise ?? 1) : 1,
-        model: links.model, positive: links.positive, negative: links.negative, latent_image: links.latent,
-      },
+  const sampler: Workflow[string] = {
+    class_type: "KSampler",
+    inputs: {
+      seed: p.seed, steps: t.steps, cfg: t.cfg, sampler_name: t.sampler, scheduler: t.scheduler,
+      denoise: p.image ? (p.denoise ?? 1) : 1,
+      model: links.model, positive: links.positive, negative: links.negative, latent_image: links.latent,
     },
+  };
+  if (p.image) partialSteps(sampler);
+  return {
+    "8": sampler,
     "20": { class_type: "VAEDecode", inputs: { samples: ["8", 0], vae: ["3", 0] } },
     "21": { class_type: "SaveImage", inputs: { filename_prefix: p.prefix, images: ["20", 0] } },
   };

@@ -100,7 +100,7 @@ export const EDIT_FILES = {
 
 // The nodes the fake knows; /object_info answers {} for any other.
 const NODES = [
-  "CheckpointLoaderSimple", "KSampler", "EmptyLatentImage", "CLIPTextEncode", "VAEDecode", "VAEEncode", "SaveImage", "LoadImage",
+  "CheckpointLoaderSimple", "KSampler", "KSamplerAdvanced", "EmptyLatentImage", "CLIPTextEncode", "VAEDecode", "VAEEncode", "SaveImage", "LoadImage",
   "RepeatLatentBatch", "ImageScale", "UNETLoader", "CLIPLoader", "DualCLIPLoader", "VAELoader", "TextEncodeQwenImageEditPlus",
   "ModelSamplingAuraFlow", "CFGNorm", "ReferenceLatent", "FluxGuidance", "ConditioningZeroOut", "LoraLoaderModelOnly", "LoraLoader",
   "EmptySD3LatentImage",

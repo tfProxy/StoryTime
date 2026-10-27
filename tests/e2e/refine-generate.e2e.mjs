@@ -166,8 +166,8 @@ try {
   // ================= Go, no mask, no paint =================
   await goAndWait(2);
   const wf1 = lastWorkflow();
-  const samplers = nodes(wf1, "KSampler");
-  ok(nodes(wf1, "LoadImage").length === 1 && samplers[0].inputs.denoise === 0.3, "Go sends an image to image job at the strength set here (0.3)");
+  const samplers = nodes(wf1, "KSamplerAdvanced");
+  ok(nodes(wf1, "LoadImage").length === 1 && nodes(wf1, "KSampler").length === 0 && samplers[0].inputs.steps - samplers[0].inputs.start_at_step === Math.round(samplers[0].inputs.steps * 0.3), "Go sends an image to image job at the strength set here (0.3): only that share of the steps run");
   ok(nodes(wf1, "LoadImageMask").length === 0 && nodes(wf1, "SetLatentNoiseMask").length === 0, "…with no mask in it: the whole picture is redrawn");
   const lora = nodes(wf1, "LoraLoader")[0];
   ok(lora?.inputs.lora_name === "styles/ink.safetensors" && lora.inputs.strength_model === 0.6, "…with the LoRA at the strength set here (0.6)");
@@ -243,7 +243,7 @@ try {
   const inside = await uploadedPixel(maskName, 0.35, 0.3);
   const outside = await uploadedPixel(maskName, 0.8, 0.8);
   ok(inside && inside[0] > 200 && outside && outside[0] < 40, `…white where it was painted, black elsewhere (${inside} / ${outside})`);
-  ok(nodes(wfm, "KSampler")[0].inputs.denoise === 0.3, "…at the same strength");
+  ok(nodes(wfm, "KSamplerAdvanced")[0].inputs.steps - nodes(wfm, "KSamplerAdvanced")[0].inputs.start_at_step === Math.round(nodes(wfm, "KSamplerAdvanced")[0].inputs.steps * 0.3), "…at the same strength");
   const tmpJobs = (await call("GET", `/api/picture-jobs?chapter=${chapterId}&temporary=only`)).jobs;
   ok(tmpJobs[0].mask === maskName && tmpJobs[0].temporary === true, "the job log records the mask's name on the temporary job");
   // The mask hidden: not used.

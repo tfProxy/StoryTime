@@ -8,7 +8,7 @@ import { checkEditModels } from "../../src/lib/comfy/editModels.ts";
 import { drawPresetSummary, newDrawPreset, usesFamily } from "../../src/lib/comfy/presets.ts";
 import { parseSettings } from "../../src/lib/settingsSchema.ts";
 import type { NodeInfo } from "../../src/lib/comfy/modelParts.ts";
-import type { Workflow } from "../../src/lib/comfy/workflow.ts";
+import { stepsToRun, type Workflow } from "../../src/lib/comfy/workflow.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 
@@ -43,6 +43,8 @@ const byId = (checks: FamilyCheck[], id: string) => checks.find((c) => c.model.i
 const nodesOfType = (wf: Workflow, type: string) => Object.entries(wf).filter(([, n]) => n.class_type === type);
 const only = (wf: Workflow, type: string) => nodesOfType(wf, type)[0]?.[1];
 const idOf = (wf: Workflow, type: string) => nodesOfType(wf, type)[0]?.[0];
+/** The sampler: a KSampler, or a KSamplerAdvanced when a redraw runs only part of its steps. */
+const sampler = (wf: Workflow) => only(wf, "KSampler") ?? only(wf, "KSamplerAdvanced");
 /** The node a link points to. */
 const target = (wf: Workflow, link: unknown) => (Array.isArray(link) ? wf[String(link[0])] : undefined);
 
@@ -90,15 +92,17 @@ ok(ids(wf).join() === ids(buildDraw(z, P)).join() && JSON.stringify(wf).includes
 
 // Redraw from a picture
 wf = buildDraw(z, { ...P, image: "start.png", denoise: 0.6, width: 1000, height: 1500 });
-ks = only(wf, "KSampler");
+ks = sampler(wf);
 const load = idOf(wf, "LoadImage"), scale = idOf(wf, "ImageScale"), enc = idOf(wf, "VAEEncode"), rep = idOf(wf, "RepeatLatentBatch");
 ok(only(wf, "LoadImage").inputs.image === "start.png" && only(wf, "ImageScale").inputs.image[0] === load && only(wf, "VAEEncode").inputs.pixels[0] === scale && only(wf, "VAEEncode").inputs.vae[0] === "3" && only(wf, "RepeatLatentBatch").inputs.samples[0] === enc, "Redraw: LoadImage → ImageScale → VAEEncode → RepeatLatentBatch");
-ok(ks.inputs.latent_image[0] === rep && only(wf, "RepeatLatentBatch").inputs.amount === 2 && ks.inputs.denoise === 0.6 && nodesOfType(wf, "EmptySD3LatentImage").length === 0, "…the sampler starts from it at the Redraw strength, with no empty latent");
+ok(ks.inputs.latent_image[0] === rep && only(wf, "RepeatLatentBatch").inputs.amount === 2 && nodesOfType(wf, "EmptySD3LatentImage").length === 0, "…the sampler starts from it, with no empty latent");
+ok(wf["8"] === ks && ks === only(wf, "KSamplerAdvanced") && !only(wf, "KSampler") && ks.inputs.steps === 9 && ks.inputs.start_at_step === 9 - stepsToRun(9, 0.6) && ks.inputs.end_at_step === 10000 && ks.inputs.add_noise === "enable" && ks.inputs.return_with_leftover_noise === "disable" && ks.inputs.noise_seed === 7 && !("denoise" in ks.inputs) && wf["20"].inputs.samples[0] === "8", "…at the Redraw strength it runs only the steps that needs (a KSamplerAdvanced, still node 8)");
+ok(only(buildDraw(z, { ...P, image: "start.png", denoise: 1 }), "KSampler").inputs.denoise === 1 && only(buildDraw(z, { ...P, denoise: 0.6 }), "KSampler").inputs.denoise === 1, "…at full strength, or with no picture, it stays a KSampler");
 {
   const m = buildDraw(z, { ...P, image: "start.png", denoise: 0.6, mask: "mask.png" });
   const noise = only(m, "SetLatentNoiseMask");
   const paste = only(m, "ImageCompositeMasked");
-  ok(only(m, "LoadImageMask").inputs.image === "mask.png" && noise.inputs.samples[0] === idOf(m, "RepeatLatentBatch") && only(m, "KSampler").inputs.latent_image[0] === idOf(m, "SetLatentNoiseMask"), "…with a painted area, the mask limits the sampler's latent");
+  ok(only(m, "LoadImageMask").inputs.image === "mask.png" && noise.inputs.samples[0] === idOf(m, "RepeatLatentBatch") && sampler(m).inputs.latent_image[0] === idOf(m, "SetLatentNoiseMask"), "…with a painted area, the mask limits the sampler's latent");
   ok(paste.inputs.source[0] === idOf(m, "ImageScale") && paste.inputs.destination[0] === idOf(m, "VAEDecode") && only(m, "SaveImage").inputs.images[0] === idOf(m, "ImageCompositeMasked"), "…and the new pictures are pasted over the scaled picture outside it");
   ok(nodesOfType(buildDraw(z, { ...P, mask: "mask.png" }), "LoadImageMask").length === 0, "…a mask without a starting picture is ignored");
 }
@@ -187,7 +191,7 @@ ok(drawKnobs(drawModel("flux")!).join() === "guidance" && drawTuning(drawModel("
 wf = buildDraw(f, { ...P, tuning: drawTuning(drawModel("flux")!, { guidance: 2, steps: 4 }), loras: [{ name: "style.safetensors", strength: 0.7 }] });
 ok(only(wf, "FluxGuidance").inputs.guidance === 2 && only(wf, "KSampler").inputs.steps === 4 && only(wf, "KSampler").inputs.model[0] === idOf(wf, "LoraLoaderModelOnly") && only(wf, "LoraLoaderModelOnly").inputs.model[0] === "1", "changed guidance and steps apply, and LoRAs chain after the model loader into the sampler");
 wf = buildDraw(f, { ...P, image: "s.png", denoise: 0.4 });
-ok(nodesOfType(wf, "EmptySD3LatentImage").length === 0 && only(wf, "KSampler").inputs.denoise === 0.4 && only(wf, "KSampler").inputs.latent_image[0] === idOf(wf, "RepeatLatentBatch") && only(wf, "VAEEncode").inputs.vae[0] === "3", "Flux Redraw: the same start from the picture");
+ok(nodesOfType(wf, "EmptySD3LatentImage").length === 0 && sampler(wf).inputs.start_at_step === sampler(wf).inputs.steps - stepsToRun(sampler(wf).inputs.steps, 0.4) && sampler(wf).inputs.latent_image[0] === idOf(wf, "RepeatLatentBatch") && only(wf, "VAEEncode").inputs.vae[0] === "3", "Flux Redraw: the same start from the picture");
 
 const fg = { unet: [...fFiles.unet!, "flux1-dev-Q4_K_S.gguf"], clip: [...fFiles.clip!, "t5-v1_1-xxl-encoder-Q5_K_M.gguf"], vae: fFiles.vae };
 let fc = familyPresetCheck(checkDrawFamilies(info(fg, { gguf: true })), { family: "flux", files: { model: "flux1-dev-Q4_K_S.gguf", t5: "t5-v1_1-xxl-encoder-Q5_K_M.gguf" } })!;
@@ -217,7 +221,7 @@ const tok = only(wf, "T5TokenizerOptions");
 ok(tok.inputs.min_padding === 1 && tok.inputs.min_length === 0 && tok.inputs.clip[0] === "2", "with it, T5TokenizerOptions (min_padding 1, min_length 0) follows the loader");
 ok(target(wf, only(wf, "KSampler").inputs.positive)?.inputs.clip[0] === idOf(wf, "T5TokenizerOptions") && target(wf, only(wf, "KSampler").inputs.negative)?.inputs.clip[0] === idOf(wf, "T5TokenizerOptions"), "…and both prompts are encoded through it");
 wf = buildDraw(ch, { ...P, image: "s.png", denoise: 0.7, textEncoderDevice: "cpu", loras: [{ name: "l.safetensors", strength: 1 }] });
-ok(wf["2"].inputs.device === "cpu" && only(wf, "KSampler").inputs.denoise === 0.7 && only(wf, "KSampler").inputs.model[0] === idOf(wf, "LoraLoaderModelOnly") && nodesOfType(wf, "EmptySD3LatentImage").length === 0, "Chroma: device cpu, a LoRA chain and Redraw work too");
+ok(wf["2"].inputs.device === "cpu" && sampler(wf).inputs.start_at_step === sampler(wf).inputs.steps - stepsToRun(sampler(wf).inputs.steps, 0.7) && sampler(wf).inputs.model[0] === idOf(wf, "LoraLoaderModelOnly") && nodesOfType(wf, "EmptySD3LatentImage").length === 0, "Chroma: device cpu, a LoRA chain and Redraw work too");
 
 const cg = { unet: [...cFiles.unet!, "Chroma1-HD-Q5_K_S.gguf"], clip: [...cFiles.clip!, "t5-v1_1-xxl-encoder-Q5_K_M.gguf"], vae: cFiles.vae };
 const cc = familyPresetCheck(checkDrawFamilies(info(cg, { gguf: true })), { family: "chroma", files: { model: "Chroma1-HD-Q5_K_S.gguf", textEncoder: "t5-v1_1-xxl-encoder-Q5_K_M.gguf" } })!;
@@ -249,7 +253,7 @@ ok(target(wf, ks.inputs.positive)?.inputs.text === P.prompt && target(wf, ks.inp
 ok(only(wf, "EmptySD3LatentImage").inputs.width === 832 && nodesOfType(wf, "CFGNorm").length === 0, "…on an EmptySD3LatentImage (16-channel latents), without the edit model's CFGNorm");
 ok(drawKnobs(drawModel("qwen-image")!).join() === "shift" && drawTuning(drawModel("qwen-image")!, { shift: 2 }).shift === 2, "Qwen-Image has a shift setting");
 wf = buildDraw(qi, { ...P, image: "s.png", denoise: 0.5, loras: [{ name: "q.safetensors", strength: 0.9 }], tuning: drawTuning(drawModel("qwen-image")!, { cfg: 3, shift: 2 }) });
-ok(only(wf, "KSampler").inputs.denoise === 0.5 && only(wf, "KSampler").inputs.cfg === 3 && only(wf, "ModelSamplingAuraFlow").inputs.shift === 2 && only(wf, "ModelSamplingAuraFlow").inputs.model[0] === idOf(wf, "LoraLoaderModelOnly") && nodesOfType(wf, "RepeatLatentBatch").length === 1, "Qwen-Image Redraw, a LoRA and changed settings");
+ok(sampler(wf).inputs.start_at_step === sampler(wf).inputs.steps - stepsToRun(sampler(wf).inputs.steps, 0.5) && sampler(wf).inputs.cfg === 3 && only(wf, "ModelSamplingAuraFlow").inputs.shift === 2 && only(wf, "ModelSamplingAuraFlow").inputs.model[0] === idOf(wf, "LoraLoaderModelOnly") && nodesOfType(wf, "RepeatLatentBatch").length === 1, "Qwen-Image Redraw, a LoRA and changed settings");
 
 const qg = { unet: [...qFiles.unet!, "Qwen-Image-Q4_K_S.gguf"], clip: [...qFiles.clip!, "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf", "Qwen2.5-VL-7B-Instruct-mmproj-F16.gguf"], vae: qFiles.vae };
 const qc = familyPresetCheck(checkDrawFamilies(info(qg, { gguf: true })), { family: "qwen-image", files: { model: "Qwen-Image-Q4_K_S.gguf", textEncoder: "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf" } })!;
@@ -283,7 +287,7 @@ ok(only(wf, "SaveImage").inputs.images[0] === "43" && wf["43"].inputs.samples[0]
 wf = buildDraw(k, { ...P, tuning: drawTuning(drawModel("krea2")!, { upscale: 1 }) });
 ok(!wf["40"] && !wf["42"] && only(wf, "SaveImage").inputs.images[0] === "20", "an Upscale of 1 skips the second pass");
 wf = buildDraw(k, { ...P, image: "start.png", denoise: 0.5 });
-ok(!wf["40"] && only(wf, "KSampler").inputs.denoise === 0.5, "Redraw skips it too");
+ok(!wf["40"] && sampler(wf).inputs.start_at_step === sampler(wf).inputs.steps - stepsToRun(sampler(wf).inputs.steps, 0.5), "Redraw skips it too");
 wf = buildDraw(k, { ...P, loras: [{ name: "AmateurSlider-KREA2_v1.safetensors", strength: 1.1 }] });
 const kl = only(wf, "LoraLoaderModelOnly");
 ok(kl.inputs.strength_model === 1.1 && wf["8"].inputs.model[0] === idOf(wf, "LoraLoaderModelOnly") && wf["42"].inputs.model[0] === idOf(wf, "LoraLoaderModelOnly"), "the Amateur slider is a LoRA of the preset, used by both samplers");

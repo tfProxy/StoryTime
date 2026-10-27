@@ -1,4 +1,4 @@
-import { BUILTIN_IMG2IMG, BUILTIN_INPAINT, BUILTIN_SAMPLER, BUILTIN_WORKFLOW, builtinSampler, describeWorkflow, filenamePrefix, fillWorkflow, parseWorkflow, randomSeed, WorkflowError, type PictureParams, type Workflow } from "../../src/lib/comfy/workflow.ts";
+import { BUILTIN_IMG2IMG, BUILTIN_INPAINT, BUILTIN_SAMPLER, BUILTIN_WORKFLOW, builtinSampler, describeWorkflow, filenamePrefix, fillWorkflow, parseWorkflow, partialSteps, randomSeed, stepsToRun, WorkflowError, type PictureParams, type Workflow } from "../../src/lib/comfy/workflow.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const throwsWorkflowError = (fn: () => unknown) => {
@@ -193,9 +193,9 @@ const imgBuilt = fillWorkflow(BUILTIN_WORKFLOW, imgParams);
 ok(JSON.stringify(BUILTIN_WORKFLOW) === imgBefore && JSON.stringify(BUILTIN_IMG2IMG).includes("{{image}}"), "img2img builtin: the built-in workflows are not changed by filling");
 ok(Object.values(imgBuilt).some((n) => n.class_type === "LoadImage" && n.inputs.image === "storytime-abc.png"), "img2img builtin: a LoadImage node has the uploaded picture's name");
 ok(!Object.values(imgBuilt).some((n) => n.class_type === "EmptyLatentImage"), "img2img builtin: there is no empty latent image");
-ok(imgBuilt["3"].inputs.denoise === 0.4 && typeof imgBuilt["3"].inputs.denoise === "number", "img2img builtin: the sampler's denoise is the strength, as a number");
+ok(imgBuilt["3"].class_type === "KSamplerAdvanced" && imgBuilt["3"].inputs.start_at_step === 30 - stepsToRun(30, 0.4), "img2img builtin: the sampler starts part way through its steps, as far as the strength says");
 ok(JSON.stringify(imgBuilt["3"].inputs.latent_image) === '["12",0]' && JSON.stringify(imgBuilt["12"].inputs.samples) === '["11",0]' && JSON.stringify(imgBuilt["11"].inputs.pixels) === '["10",0]', "img2img builtin: the picture goes LoadImage → VAEEncode → RepeatLatentBatch → sampler");
-ok(imgBuilt["12"].inputs.amount === 2 && imgBuilt["3"].inputs.seed === 12345 && imgBuilt["6"].inputs.text === "a lighthouse at dawn" && imgBuilt["4"].inputs.ckpt_name === "sdxl_base.safetensors", "img2img builtin: the batch is the count, and seed, prompt and checkpoint are set");
+ok(imgBuilt["12"].inputs.amount === 2 && imgBuilt["3"].inputs.noise_seed === 12345 && imgBuilt["6"].inputs.text === "a lighthouse at dawn" && imgBuilt["4"].inputs.ckpt_name === "sdxl_base.safetensors", "img2img builtin: the batch is the count, and seed, prompt and checkpoint are set");
 ok(JSON.stringify(imgBuilt["11"].inputs.vae) === '["4",2]' && JSON.stringify(imgBuilt).includes("{{") === false, "img2img builtin: the checkpoint's VAE encodes, and no placeholder is left");
 ok(fillWorkflow(BUILTIN_WORKFLOW, { ...imgParams, denoise: undefined })["3"].inputs.denoise === 1, "img2img builtin: with no strength given, denoise is 1");
 ok(fillWorkflow(BUILTIN_WORKFLOW, params)["3"].inputs.denoise === 1 && fillWorkflow(BUILTIN_WORKFLOW, params)["5"].class_type === "EmptyLatentImage", "builtin: with no picture the text-to-image workflow is used, as before");
@@ -234,7 +234,7 @@ const inBuilt = fillWorkflow(BUILTIN_WORKFLOW, maskParams);
 ok(JSON.stringify(BUILTIN_INPAINT) === inBefore && JSON.stringify(BUILTIN_INPAINT).includes("{{mask}}"), "inpaint builtin: filling does not change the built-in workflow");
 ok(inBuilt["13"].class_type === "LoadImageMask" && inBuilt["13"].inputs.image === "storytime-mask-abc.png" && inBuilt["13"].inputs.channel === "red", "inpaint builtin: LoadImageMask reads the mask's red channel");
 ok(inBuilt["14"].class_type === "SetLatentNoiseMask" && JSON.stringify(inBuilt["14"].inputs.samples) === '["12",0]' && JSON.stringify(inBuilt["14"].inputs.mask) === '["13",0]', "inpaint builtin: SetLatentNoiseMask takes the repeated latent and the mask");
-ok(JSON.stringify(inBuilt["3"].inputs.latent_image) === '["14",0]' && inBuilt["3"].inputs.denoise === 0.4, "inpaint builtin: the sampler uses the masked latent at the chosen strength");
+ok(JSON.stringify(inBuilt["3"].inputs.latent_image) === '["14",0]' && inBuilt["3"].class_type === "KSamplerAdvanced" && inBuilt["3"].inputs.start_at_step === 30 - stepsToRun(30, 0.4), "inpaint builtin: the sampler uses the masked latent and runs only the steps the chosen strength needs");
 const comp = inBuilt["16"].inputs;
 ok(inBuilt["15"].class_type === "InvertMask" && JSON.stringify(inBuilt["15"].inputs.mask) === '["13",0]', "inpaint builtin: InvertMask inverts the mask");
 ok(inBuilt["16"].class_type === "ImageCompositeMasked" && JSON.stringify(comp.destination) === '["8",0]' && JSON.stringify(comp.source) === '["10",0]' && JSON.stringify(comp.mask) === '["15",0]' && comp.x === 0 && comp.y === 0 && comp.resize_source === false, "inpaint builtin: the new pictures (destination) are pasted over the original (source) outside the mask");
@@ -265,17 +265,33 @@ ok(describeWorkflow(maskPlaceholders).mask === true && describeWorkflow(imgPlace
 ok(describeWorkflow(sdxl).mask === true && describeWorkflow(bare).mask === false, "describe: a detected workflow can when it can start from a picture");
 
 // ---- the built-in workflow's sampler settings ----
-const sampled = (wf: Workflow) => Object.values(wf).find((n) => n.class_type === "KSampler")!.inputs;
+const sampled = (wf: Workflow) => Object.values(wf).find((n) => n.class_type === "KSampler" || n.class_type === "KSamplerAdvanced")!.inputs;
 let ks = sampled(fillWorkflow(BUILTIN_WORKFLOW, params));
 ok(ks.steps === 30 && ks.cfg === 6 && ks.sampler_name === "dpmpp_2m" && ks.scheduler === "karras", "the built-in workflow runs 30 steps of DPM++ 2M Karras at CFG 6");
 ok(JSON.stringify(builtinSampler()) === JSON.stringify(BUILTIN_SAMPLER) && builtinSampler({ cfg: 4 }).steps === 30, "builtinSampler fills in the defaults the settings don't change");
 ks = sampled(fillWorkflow(BUILTIN_WORKFLOW, { ...params, sampler: builtinSampler({ steps: 22, cfg: 4.5, sampler: "euler_ancestral", scheduler: "normal" }) }));
 ok(ks.steps === 22 && ks.cfg === 4.5 && ks.sampler_name === "euler_ancestral" && ks.scheduler === "normal" && ks.seed === params.seed, "Settings can change its steps, CFG, sampler and scheduler");
 ks = sampled(fillWorkflow(BUILTIN_WORKFLOW, { ...params, image: "start.png", denoise: 0.4, sampler: builtinSampler({ steps: 12 }) }));
-ok(ks.steps === 12 && ks.denoise === 0.4 && Array.isArray(ks.latent_image) && ks.latent_image[0] === "12", "…also when it starts from a picture");
+ok(ks.steps === 12 && ks.start_at_step === 12 - stepsToRun(12, 0.4) && Array.isArray(ks.latent_image) && ks.latent_image[0] === "12", "…also when it starts from a picture");
+
+// ---- running only the steps a redraw's strength needs ----
+ok(stepsToRun(30, 0.5) === 15 && stepsToRun(30, 0.05) === 4 && stepsToRun(4, 0.25) === 4 && stepsToRun(8, 0.5) === 4, "stepsToRun: the share of the steps, at least 4, never more than all of them");
+ok(stepsToRun(3, 0.1) === 3 && stepsToRun(30, 1) === 30, "stepsToRun: fewer than 4 steps run all of them, and full strength runs every step");
+const builtBefore = JSON.stringify([BUILTIN_WORKFLOW, BUILTIN_IMG2IMG, BUILTIN_INPAINT]);
+const redraw = fillWorkflow(BUILTIN_WORKFLOW, { ...params, image: "start.png", denoise: 0.4 });
+const rs = redraw["3"];
+ok(rs.class_type === "KSamplerAdvanced" && rs.inputs.start_at_step === 30 - stepsToRun(30, 0.4) && rs.inputs.start_at_step === 18 && rs.inputs.end_at_step === 10000, "a redraw at 0.4 is a KSamplerAdvanced that starts part way through its steps");
+ok(rs.inputs.add_noise === "enable" && rs.inputs.return_with_leftover_noise === "disable" && rs.inputs.noise_seed === params.seed && rs.inputs.steps === 30 && rs.inputs.cfg === 6 && rs.inputs.sampler_name === "dpmpp_2m" && rs.inputs.scheduler === "karras" && !("denoise" in rs.inputs), "…adding noise, leaving none over, keeping the seed and sampler settings, with no denoise");
+ok(JSON.stringify(rs.inputs.model) === '["4",0]' && JSON.stringify(rs.inputs.positive) === '["6",0]' && JSON.stringify(rs.inputs.negative) === '["7",0]' && JSON.stringify(rs.inputs.latent_image) === '["12",0]' && JSON.stringify(redraw["8"].inputs.samples) === '["3",0]', "…with the same links, under the same id");
+ok(fillWorkflow(BUILTIN_WORKFLOW, { ...params, image: "start.png", denoise: 1 })["3"].class_type === "KSampler" && fillWorkflow(BUILTIN_WORKFLOW, { ...params, image: "start.png" })["3"].class_type === "KSampler", "a redraw at full strength stays a KSampler");
+ok(fillWorkflow(BUILTIN_WORKFLOW, { ...params, denoise: 0.4 })["3"].class_type === "KSampler", "…and so does a picture drawn from nothing");
+ok(sampled(fillWorkflow(sdxl, imgParams)).denoise === 0.4 && sdxl["3"].class_type === "KSampler" && sampled(fillWorkflow(imgPlaceholders, imgParams)).denoise === 0.4, "custom workflows (detected or with placeholders) keep their own KSampler and its denoise");
+const noop: Workflow[string] = { class_type: "KSamplerAdvanced", inputs: { steps: 10 } };
+partialSteps(noop);
+ok(noop.class_type === "KSamplerAdvanced" && Object.keys(noop.inputs).join() === "steps", "partialSteps leaves a node that isn't a KSampler alone");
+ok(JSON.stringify([BUILTIN_WORKFLOW, BUILTIN_IMG2IMG, BUILTIN_INPAINT]) === builtBefore, "the built-in workflows are not changed by any of this");
 const own = parseWorkflow(JSON.stringify({ ...BUILTIN_WORKFLOW, "3": { ...BUILTIN_WORKFLOW["3"], inputs: { ...BUILTIN_WORKFLOW["3"].inputs, steps: 9 } } }));
-ok(sampled(fillWorkflow(own, { ...params, sampler: builtinSampler({ steps: 40 }) })).steps === 9, "a workflow of your own keeps its own steps");
-ok(BUILTIN_WORKFLOW["3"].inputs.steps === 30, "…and the built-in workflow itself is left as it was");
+ok(sampled(fillWorkflow(own, { ...params, sampler: builtinSampler({ steps: 40 }) })).steps === 9, "a workflow of your own keeps its own steps");ok(BUILTIN_WORKFLOW["3"].inputs.steps === 30, "…and the built-in workflow itself is left as it was");
 
 // ---- a drawing preset's LoRAs ----
 const loras = [{ name: "styles/ink.safetensors", strength: 0.8 }, { name: "hero.safetensors", strength: -0.5 }];

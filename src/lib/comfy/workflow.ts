@@ -254,6 +254,27 @@ function setPrefix(wf: Workflow, prefix: string) {
   }
 }
 
+/** Steps a redraw at `denoise` runs: the share of `steps` it needs, but at least 4 (or all of them if fewer). */
+export const stepsToRun = (steps: number, denoise: number) => Math.min(steps, Math.max(Math.round(steps * denoise), Math.min(steps, 4)));
+
+/**
+ * Turns a KSampler that starts from a picture (denoise below 1) into a KSamplerAdvanced that starts part way
+ * through its steps. ComfyUI's KSampler would run all of `steps` on a longer schedule; this runs only
+ * stepsToRun(steps, denoise). Everything else about the node is kept, and its id, so links to it still work.
+ */
+export function partialSteps(node: WorkflowNode) {
+  const i = node.inputs;
+  const denoise = i.denoise;
+  if (node.class_type !== "KSampler" || typeof denoise !== "number" || !(denoise > 0 && denoise < 1)) return;
+  const steps = i.steps as number;
+  node.class_type = "KSamplerAdvanced";
+  node.inputs = {
+    add_noise: "enable", noise_seed: i.seed, steps, cfg: i.cfg, sampler_name: i.sampler_name, scheduler: i.scheduler,
+    start_at_step: steps - stepsToRun(steps, denoise), end_at_step: 10000, return_with_leftover_noise: "disable",
+    model: i.model, positive: i.positive, negative: i.negative, latent_image: i.latent_image,
+  };
+}
+
 /** A copy of the workflow with the picture's settings filled in. Throws WorkflowError if the prompt has nowhere to go. */
 export function fillWorkflow(wf: Workflow, p: PictureParams): Workflow {
   const builtin = wf === BUILTIN_WORKFLOW;
@@ -269,6 +290,7 @@ export function fillWorkflow(wf: Workflow, p: PictureParams): Workflow {
     const { steps, cfg, sampler, scheduler } = p.sampler;
     Object.assign(out["3"].inputs, { steps, cfg, sampler_name: sampler, scheduler });
   }
+  if (builtin && p.image) partialSteps(out["3"]);
   addLoras(out, p.loras ?? []);
   // After the LoRAs, so the references' adapters wrap the model the sampler really uses.
   if (refs.length > 0) out = withReferences(out, refs, p.ipAdapter!);
