@@ -2,7 +2,8 @@
 import { fromSpec, maskUploadKey, toSpec } from "../../src/lib/comfy/jobSpec.ts";
 import { refsOf, sameJob, type JobInput } from "../../src/lib/comfy/makeJob.ts";
 import { DEFAULT_DRAW_PRESETS } from "../../src/lib/comfy/presets.ts";
-import type { EditCheck } from "../../src/lib/comfy/editModels.ts";
+import { EDIT_MODELS, type EditCheck } from "../../src/lib/comfy/editModels.ts";
+import { DRAW_MODELS, type FamilyCheck } from "../../src/lib/comfy/drawModels.ts";
 import type { Reference } from "../../src/lib/comfy/references.ts";
 import type { StartPicture } from "../../src/lib/comfy/startPicture.ts";
 import { DEFAULT_SETTINGS } from "../../src/lib/settingsSchema.ts";
@@ -97,3 +98,11 @@ ok((await text(await uploadedStart.start!.blob())) === "server:upload:flat-1", "
 ok(uploadedStart.start?.source === "saved:c1:header", "an uploaded start still records its original source");
 const uploadedRef = fromSpec(toSpec({ ...base, refs: [ref("upload:pick.png")] }, { "upload:pick.png": "upload:pick-9" }), resolve);
 ok((await text(await uploadedRef.refs![0].blob())) === "server:upload:pick-9", "an uploaded ref is fetched by its upload");
+
+// The edit model and the drawing family have functions that build their workflows: they don't survive JSON, and come back by id.
+const realEdit = { ...edit, check: { ...edit.check, model: EDIT_MODELS[0] } as unknown as EditCheck };
+const editBack2 = roundTrip({ ...base, start: start("comfy:a/b.png"), edit: realEdit });
+ok(typeof editBack2.edit?.check.model.build === "function" && editBack2.edit.check.model.id === EDIT_MODELS[0].id, "an edit job gets its edit model's functions back");
+const realFamily = { model: DRAW_MODELS[0], files: { unet: "x.safetensors" }, ready: true } as unknown as FamilyCheck;
+const familyBack = roundTrip({ ...base, family: realFamily });
+ok(typeof familyBack.family?.model.build === "function" && familyBack.family.model.id === DRAW_MODELS[0].id && familyBack.family.files.unet === "x.safetensors", "a family job gets its model's functions back, and keeps its files");

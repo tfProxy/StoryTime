@@ -1,6 +1,8 @@
 // A job as plain data, so it can be sent to the server: `JobInput` with every closure (the pictures' `blob()`, the
 // painted mask) replaced by a source string the server can fetch (see `resolveSource` in `worker/uploads`).
 import type { PaintedArea } from "../mask";
+import { drawModel } from "./drawModels";
+import { editModel } from "./editModels";
 import { maskBounds, type Box } from "./inpaintRegion";
 import type { JobInput } from "./makeJob";
 import type { StoredReference } from "./references";
@@ -65,9 +67,12 @@ export function toSpec(input: JobInput, uploaded: Record<string, string>): JobSp
 
 /** Runs on the server: the job again, with each picture fetched through `resolve` when it is needed. */
 export function fromSpec(spec: JobSpec, resolve: ResolveSource): JobInput {
-  const { start, refs, mask, ...rest } = spec;
+  const { start, refs, mask, edit, family, ...rest } = spec;
   return {
     ...rest,
+    // The edit model and the drawing family carry the functions that build their workflows, which JSON drops: they are looked up again by id.
+    edit: edit && { ...edit, check: { ...edit.check, model: editModel(edit.check.model.id) ?? edit.check.model } },
+    family: family && { ...family, model: drawModel(family.model.id) ?? family.model },
     start: start && {
       key: start.key,
       source: start.source,
