@@ -109,7 +109,9 @@ Built as: the codex has no note op, so (owner's choice) the note is appended to 
 - `IssueActions.tsx`: an "Intentional" action for continuity issues, asking for a short note ("a disguise"). It writes a codex note op anchored at the chapter (see `src/lib/codexDb.ts` and `codex.ts` op shapes) and saves the decision with status `intentional` and the note (`decideIssue` takes the note).
 - Intentional issues show in the Dismissed section with their note.
 
-### C6. Codex gaps (medium)
+### C6. Codex gaps (medium) (done, fc28a6a)
+
+Skipped: name variants ("Jon" and "John") are not matched; only exact names and codex aliases (case and spacing ignored, a leading "the" dropped).
 
 - From facts: entities that appear in two or more chapters on a path with no codex entry (`foldCodex` at that chapter) become issues of kind `codex-missing`, anchored at the first appearance, with a link that opens the codex scan for that chapter (`?chapter=<id>`, the Codex section of the Issues tab).
 - Name variants ("Jon" and "John"): leave for later unless cheap; note it here if skipped.
