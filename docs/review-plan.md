@@ -88,7 +88,7 @@ Built as: migration 35 (chapter_facts, chapter_fact_checks, mode `tags` renamed 
 - Add a `facts` task kind to the `tags` run mode from B1 (rename the mode to `review` if B1 shipped as `tags`, in the same commit), skipping chapters whose facts are at the current revision.
 - Tests: API test for save and the 409; run test with the fake AI.
 
-### C3. Continuity fold in plain code (medium)
+### C3. Continuity fold in plain code (medium) (done, ed80285)
 
 - `src/lib/continuity.ts`, pure: `findConflicts(path: {chapterId, facts}[], changeEvents)` walks the path, keeps the latest value per (entity, attribute) (case and spacing ignored), and returns a conflict when a value changes without an approved change event on that chapter (a tag whose name the caller passes, e.g. tf, tg). Each conflict has both chapters and both quotes.
 - Unit tests only. No AI.
