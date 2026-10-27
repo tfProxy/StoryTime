@@ -138,7 +138,7 @@ The owner chose the simpler version on 2026-10-27: no stretches. C9 is done with
 ## Phase D: tags for readers and the outline (Ask first: question 4 for each)
 
 - **D1. (done, e7292a5; migration 38)** A per-tag "Show to readers" switch in Settings > Tags (a column on `tags`, migration).
-- **D2.** Content notes under each choice on the chapter reading page: the approved, shown-to-readers event tags of the chapter it leads to ("ahead: violence, tf"); maybe its subtree too (ask). A reader setting to hide them.
+- **D2. (done, 4460533)** Content notes under each choice on the chapter reading page: the approved, shown-to-readers event tags of the chapter it leads to ("ahead: violence, tf"); maybe its subtree too (ask). A reader setting to hide them.
 - **D3.** Outline: tag chips on chapters and a "highlight branches tagged X" option in the page menu, each switchable in Settings > Outline like the Review marker.
 
 ## Phase E: automatic runs
