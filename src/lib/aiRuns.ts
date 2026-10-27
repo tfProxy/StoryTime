@@ -143,7 +143,12 @@ export const RunOptionsSchema = z.object({
   slots: z.enum(["header", "footer", "both"]).optional(),
   useRefs: z.boolean().optional(),
   // Find tags: which chapters, from the start chapter (the whole story when there is none).
-  tagScope: z.enum(["chapter", "path", "subtree", "story"]).optional(),
+  // "chapters": exactly the chapters in `chapterIds` (the automatic review after an AI run, for the chapters it wrote).
+  tagScope: z.enum(["chapter", "path", "subtree", "story", "chapters"]).optional(),
+  chapterIds: z.array(z.string().min(1)).min(1).max(LIMITS.runTasks).optional(),
+  // A review run the server started by itself (Settings > Tags, "Check new and edited chapters automatically"): the
+  // Review page's buttons leave it alone, and the queue shows it as automatic.
+  automatic: z.boolean().optional(),
   // A review run: what to read each chapter for (tags unless said otherwise; facts cost one more AI call a chapter;
   // continuity, after the facts, asks the AI about each clash between chapters; summaries checks each summary against its chapter).
   checks: z.array(z.enum(["tags", "facts", "continuity", "summaries"])).max(4).optional(),
@@ -193,7 +198,7 @@ export const NewRunSchema = z
     // The browser makes the tasks of every mode but "review", whose tasks the server makes (any sent are ignored).
     tasks: RunTasksSchema.optional(),
   })
-  .refine((v) => v.start_chapter_id !== null || v.mode === "pictures" || (v.mode === "review" && (v.options.tagScope ?? "story") === "story"), {
+  .refine((v) => v.start_chapter_id !== null || v.mode === "pictures" || (v.mode === "review" && ((v.options.tagScope ?? "story") === "story" || v.options.tagScope === "chapters")), {
     message: "start_chapter_id is needed unless the run is for pictures or for the whole story's review",
     path: ["start_chapter_id"],
   })
@@ -290,10 +295,14 @@ function checkTasks(tasks: RunTask[]) {
  * (every tag that is on for the story is decided for them, as the review page's Find tags counts them); a facts task if
  * facts are asked for, leaving out the chapters read for facts at their current revision.
  */
-export function reviewTasks(storyId: string, startChapterId: string | null, scope: NonNullable<RunOptions["tagScope"]>, checks: NonNullable<RunOptions["checks"]>): RunTask[] {
+export function reviewTasks(storyId: string, startChapterId: string | null, scope: NonNullable<RunOptions["tagScope"]>, checks: NonNullable<RunOptions["checks"]>, chapterIds: string[] = []): RunTask[] {
   const chapters = getStoryChapters(storyId);
   let chosen = chapters;
-  if (startChapterId !== null && scope !== "story") {
+  if (scope === "chapters") {
+    // Exactly these chapters, in story order; any not in the story are ignored.
+    const wanted = new Set(chapterIds);
+    chosen = chapters.filter((c) => wanted.has(c.id));
+  } else if (startChapterId !== null && scope !== "story") {
     const byId = new Map(chapters.map((c) => [c.id, c]));
     if (!byId.has(startChapterId)) throw new PostError("That chapter is not in this story's tree", 404);
     if (scope === "chapter") chosen = [byId.get(startChapterId)!];
@@ -352,7 +361,7 @@ export function createRun(input: z.infer<typeof NewRunSchema>): { id: string } {
   }
   const tasks: RunTask[] =
     input.mode === "review"
-      ? reviewTasks(input.story_id, input.start_chapter_id, input.options.tagScope ?? (input.start_chapter_id === null ? "story" : "chapter"), input.options.checks ?? ["tags"])
+      ? reviewTasks(input.story_id, input.start_chapter_id, input.options.tagScope ?? (input.start_chapter_id === null ? "story" : "chapter"), input.options.checks ?? ["tags"], input.options.chapterIds)
       : (input.tasks ?? []);
   if (tasks.length > LIMITS.runTasks) throw new PostError(`A run can have at most ${LIMITS.runTasks} tasks`, 400);
   checkTasks(tasks);

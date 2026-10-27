@@ -154,7 +154,11 @@ export type RunOptions = {
   slots?: "header" | "footer" | "both";
   useRefs?: boolean; // D12, default false
   // tags: which chapters (the server makes the tasks): the start chapter, the way to it, it and everything below it, or the whole story
-  tagScope?: "chapter" | "path" | "subtree" | "story";
+  tagScope?: "chapter" | "path" | "subtree" | "story" | "chapters";
+  /** With tagScope "chapters": exactly these chapters (the automatic review after an AI run). */
+  chapterIds?: string[];
+  /** A review run the server started by itself after a save or an AI run. */
+  automatic?: boolean;
   // review: what to read each chapter for (tags unless said otherwise)
   checks?: ("tags" | "facts" | "continuity" | "summaries")[];
 };

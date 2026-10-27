@@ -77,6 +77,8 @@ export type RunItem = {
   startChapterId: string | null;
   startTitle: string;
   mode: RunMode;
+  /** A review the server queued after an AI run, for the chapters it wrote. */
+  automatic?: boolean;
   /** Chapters written, of how many. */
   done: number;
   total: number;

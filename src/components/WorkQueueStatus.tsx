@@ -19,11 +19,13 @@ import { usePictureQueue, useWorkQueue, type GenerateItem, type QueueJob, type R
 export const MODE_WORDS = { fill: "Fill open choices", tree: "Grow the tree", arc: "Reach a goal", pictures: "Fill missing pictures", review: "Find tags" } as const;
 
 /** Where a run's page is (the page that shows its tasks, review and results). */
-export const runHref = (run: Pick<RunItem, "runId" | "storyId" | "startChapterId" | "mode">) =>
+export const runHref = (run: Pick<RunItem, "runId" | "storyId" | "startChapterId" | "mode" | "automatic">) =>
   run.mode === "pictures"
     ? `/s/${run.storyId}/pictures?picrun=${run.runId}`
     : run.mode === "review"
-      ? `/s/${run.storyId}/review?tab=tags${run.startChapterId ? `&chapter=${run.startChapterId}` : ""}`
+      ? run.automatic
+        ? `/s/${run.storyId}/review`
+        : `/s/${run.storyId}/review?tab=tags${run.startChapterId ? `&chapter=${run.startChapterId}` : ""}`
       : !run.startChapterId
       ? `/s/${run.storyId}/details?run=${run.runId}`
       : `/c/${run.startChapterId}/write-ahead?run=${run.runId}`;

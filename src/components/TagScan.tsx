@@ -54,7 +54,7 @@ export default function TagScan({ storyId, story, chapters, chapterId, tags, unf
   const finishedRun = useCallback(
     (run: AiRun) => {
       const tasks = run.tasks.filter((t): t is TagsTask => t.kind === "tags");
-      const inScope = scopeOf(chapters, run.options.tagScope ?? (run.start_chapter_id ? "chapter" : "story"), run.start_chapter_id).length;
+      const inScope = scopeOf(chapters, run.options.tagScope === "chapters" ? "story" : (run.options.tagScope ?? (run.start_chapter_id ? "chapter" : "story")), run.start_chapter_id).length;
       const read = tasks.filter((t) => t.status === "done" && t.found !== undefined);
       const found = read.reduce((n, t) => n + (t.found ?? 0), 0);
       const failed = tasks.filter((t) => t.status === "failed").length;

@@ -123,11 +123,11 @@ export default async function ReviewPage({
     };
     const unfinishedContinuityRun =
       listRuns(storyId, { mode: "review" }).find(
-        (r) => ["queued", "running", "paused", "ready", "review"].includes(r.status) && (r.options.checks ?? ["tags"]).includes("continuity"),
+        (r) => ["queued", "running", "paused", "ready", "review"].includes(r.status) && !r.options.automatic && (r.options.checks ?? ["tags"]).includes("continuity"),
       )?.id ?? null;
     const unfinishedSummaryRun =
       listRuns(storyId, { mode: "review" }).find(
-        (r) => ["queued", "running", "paused", "ready", "review"].includes(r.status) && r.counts.total > 0 && (r.options.checks ?? ["tags"]).includes("summaries"),
+        (r) => ["queued", "running", "paused", "ready", "review"].includes(r.status) && !r.options.automatic && r.counts.total > 0 && (r.options.checks ?? ["tags"]).includes("summaries"),
       )?.id ?? null;
     const item = (i: (typeof all)[number], actions: ("later" | "dismissed" | "open" | "undo")[], fix: boolean) => (
       <li key={`${i.chapterId}-${i.kind}-${i.fingerprint}`}>
@@ -355,7 +355,7 @@ export default async function ReviewPage({
         <p className="meta">The AI reads each chapter and suggests which of this story&apos;s tags apply. You decide each one.</p>
         <TagScan
           storyId={storyId}
-          unfinishedRunId={listRuns(storyId, { mode: "review" }).find((r) => ["queued", "running", "paused", "ready", "review"].includes(r.status) && r.counts.total > 0 && (r.options.checks ?? ["tags"]).includes("tags"))?.id ?? null}
+          unfinishedRunId={listRuns(storyId, { mode: "review" }).find((r) => ["queued", "running", "paused", "ready", "review"].includes(r.status) && !r.options.automatic && r.counts.total > 0 && (r.options.checks ?? ["tags"]).includes("tags"))?.id ?? null}
           story={{ title: story!.title, premise: story!.premise }}
           chapterId={chosen?.id}
           chapters={chapters.map((c) => ({

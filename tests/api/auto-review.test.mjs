@@ -22,6 +22,7 @@ const until = async (fn, ms = 10000) => {
 
 let factCalls = 0;
 let summaryCalls = 0;
+let written = 0;
 const ai = await startFakeAi({
   port: 3574,
   delay: 5,
@@ -35,20 +36,28 @@ const ai = await startFakeAi({
       summaryCalls++;
       return '{"ok":true}';
     }
-    return "A reply.";
+    // A fill run: a plan for the given choices, a chapter, then its summary.
+    const message = body.messages?.at(-1)?.content ?? "";
+    if (sent.includes("skilled fiction co-author")) return `# Chapter ${++written}\n\nText of chapter ${written}.`;
+    if (sent.includes("You reply with a JSON array and nothing else")) {
+      const given = [...(message.match(/These choices are offered at its end: ([^\n]*?)\.\n/)?.[1].matchAll(/“([^”]+)”/g) ?? [])].map((x) => x[1]);
+      return JSON.stringify(given.map((choice) => ({ choice, direction: `plan for ${choice}` })));
+    }
+    return "SUMMARY:\nA short summary.\nSTORY SO FAR:\nThe story so far.";
   },
 });
 
 const settingsBefore = (await call("GET", "/api/settings")).json.settings;
 const setAuto = (on) => call("PUT", "/api/settings", { ...(settingsBefore ?? {}), connections: [{ id: "c1", name: "Fake", kind: "custom", baseUrl: `${ai.url}/v1`, apiKey: "k", freeComfy: false, freeForPictures: false }], defaults: { main: { connectionId: "c1", model: "m" }, cheap: { connectionId: "c1", model: "m" } }, autoReview: on });
 let story = null;
+const extraStories = [];
 try {
   ok((await setAuto(false)).json.settings.autoReview === false, "automatic review is off unless turned on");
   const s = await call("POST", "/api/stories", { title: "Auto review", premise: "P", chapter: { title: "Root", body: "root body", summary: "s", choices: ["Go", "Stay", "Write"] } });
   story = s.json.story_id;
   const root = s.json.chapter_id;
   const choices = (await call("GET", `/api/chapters/${root}`)).json.choices;
-  const runsOf = async () => (await call("GET", `/api/stories/${story}/ai-runs?mode=review`)).json.runs.filter((r) => r.options.checks?.includes("facts") && r.options.tagScope === "chapter");
+  const runsOf = async () => (await call("GET", `/api/stories/${story}/ai-runs?mode=review`)).json.runs.filter((r) => r.options.checks?.includes("facts") && r.options.tagScope === "chapter" && r.options.automatic === true);
   const forChapter = async (id) => (await runsOf()).filter((r) => r.start_chapter_id === id);
   const itemOf = async (run) => (await call("GET", "/api/queue")).json.items.find((i) => i.key === `run:${run}`);
 
@@ -97,6 +106,42 @@ try {
   } else ok(false, `could not post the AI-run chapter (${written.status})`);
   await call("DELETE", `/api/ai-runs/${aiRun}/queue?end=1`);
 
+  // After an AI run: one review run for the chapters it wrote.
+  const makeFill = async (name) => {
+    const st = await call("POST", "/api/stories", { title: name, premise: "A premise", chapter: { title: "Root", body: "root body", summary: "root sum", choices: ["Go left", "Go right"] } });
+    extraStories.push(st.json.story_id);
+    const [left, right] = (await call("GET", `/api/chapters/${st.json.chapter_id}`)).json.choices;
+    const write = (id, choice) => ({ kind: "write", id, slot: { kind: "choice", choiceId: choice.id }, label: choice.label, direction: "", depth: 1, choices: { given: [], suggest: 0 }, plannedBy: "t1", expand: false, status: "todo" });
+    const tasks = [{ kind: "plan", id: "t1", chapterId: st.json.chapter_id, depth: 0, labels: ["Go left", "Go right"], add: 0, status: "todo" }, write("t2", left), write("t3", right)];
+    const r = await call("POST", "/api/ai-runs", { story_id: st.json.story_id, start_chapter_id: st.json.chapter_id, mode: "fill", options: { models: "each", endChoices: 0 }, tasks });
+    return { run: r.json.id, story: st.json.story_id, root: st.json.chapter_id };
+  };
+  const afterRun = async (story) => (await call("GET", `/api/stories/${story}/ai-runs?mode=review`)).json.runs.filter((r) => r.options.tagScope === "chapters" && r.options.automatic === true);
+  await call("PUT", "/api/queue/paused", { paused: false });
+  const fillOn = await makeFill("After run");
+  await call("POST", `/api/ai-runs/${fillOn.run}/queue`);
+  ok(!!(await until(async () => (await itemOf(fillOn.run))?.state === "done")), "the fill run is written to the end");
+  const review = await until(async () => (await afterRun(fillOn.story))[0]);
+  ok(!!review && review.start_chapter_id === null && review.mode === "review", "on: an AI run that ends queues a review run for its chapters");
+  const kids = (await call("GET", `/api/chapters/${fillOn.root}`)).json.choices.map((c) => c.child_chapter_id).filter(Boolean);
+  ok(kids.length === 2 && review.options.chapterIds.length === 2 && kids.every((k) => review.options.chapterIds.includes(k)), "…naming the two chapters the run wrote");
+  ok(!!(await until(async () => (await itemOf(review.id))?.state === "done")), "…which the worker takes to the end");
+  const full = (await call("GET", `/api/ai-runs/${review.id}`)).json;
+  ok(full.tasks.filter((t) => t.kind === "summary").length === 2 && full.tasks.some((t) => t.kind === "continuity"), "…with a task for each chapter and the continuity check");
+  await sleep(300);
+  ok((await afterRun(fillOn.story)).length === 1, "…and only one review run is made for the AI run");
+  await call("DELETE", `/api/queue/items/run:${review.id}`);
+  await call("DELETE", `/api/queue/items/run:${fillOn.run}`);
+
+  // Off: an AI run that ends queues nothing.
+  await setAuto(false);
+  const fillOff = await makeFill("After run off");
+  await call("POST", `/api/ai-runs/${fillOff.run}/queue`);
+  ok(!!(await until(async () => (await itemOf(fillOff.run))?.state === "done")), "off: the fill run is written to the end");
+  await sleep(300);
+  ok((await afterRun(fillOff.story)).length === 0, "…and no review run is queued");
+  await call("DELETE", `/api/queue/items/run:${fillOff.run}`);
+
   // Off again: nothing new.
   await setAuto(false);
   const before = (await runsOf()).length;
@@ -108,6 +153,7 @@ try {
 } finally {
   await call("PUT", "/api/queue/paused", { paused: false });
   if (story) await call("DELETE", `/api/stories/${story}`);
+  for (const id of extraStories) await call("DELETE", `/api/stories/${id}`);
   await ai.close();
   if (settingsBefore === null) {
     const db = new Database(process.env.TEST_DB);

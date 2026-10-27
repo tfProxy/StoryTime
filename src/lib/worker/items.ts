@@ -61,6 +61,8 @@ export const runData = z.object({
   startChapterId: z.string().nullable(),
   startTitle: z.string(),
   mode: z.enum(["fill", "tree", "arc", "pictures", "review"]),
+  /** A review the server queued for the chapters of an AI run (tagScope "chapters"): its page is the Issues tab. */
+  automatic: z.boolean().optional(),
   done: z.number().int().min(0),
   total: z.number().int().min(0),
   current: z.string().optional(),

@@ -4,6 +4,7 @@
 // routes through `selfFetch`. Events and the saved run go out on the bus channel `run:<id>`.
 import type { Picture } from "../../components/pictures";
 import { listUnfinishedRuns } from "../aiRuns";
+import { queueAutoReviewForRun } from "../autoReview";
 import { getRun, patchRun } from "../aiRuns/api";
 import { buildPictureJob, loadModels, loadSetup, savePicture } from "../aiRuns/pictures";
 import { claim, finish as finishRun, retryTask, runNextStep, skipTask, type RunEvent } from "../aiRuns/runner";
@@ -69,6 +70,7 @@ export async function queueRun(runId: string): Promise<WorkRow<"run">> {
         startChapterId: saved.start_chapter_id,
         startTitle: summary?.start_title ?? "",
         mode: saved.mode,
+        ...(saved.options.automatic && { automatic: true }),
         ...counts(saved),
       },
     });
@@ -104,7 +106,10 @@ export async function runStep(runId: string): Promise<void> {
     applyRun(out.run);
     if (out.idle) updateItem(key, { state: "working", data: { current: "Drawing pictures" } });
     else if (out.more) updateItem(key, { state: "waiting" });
-    else if (out.run.status === "done") updateItem(key, { state: "done", data: { current: undefined } });
+    else if (out.run.status === "done") {
+      updateItem(key, { state: "done", data: { current: undefined } });
+      void queueAutoReviewForRun(runId); // the chapters it wrote are checked (when the setting is on)
+    }
     else if (out.run.status === "review") updateItem(key, { state: "paused", data: { note: "Plan ready to check", current: undefined } });
     else if (out.run.error && !ctl.signal.aborted) updateItem(key, { state: "failed", data: { error: out.run.error, current: undefined } });
     else updateItem(key, { state: "paused", data: { current: undefined } });
@@ -151,6 +156,7 @@ export async function endRun(runId: string): Promise<AiRun> {
   const saved = await finishRun(run, "stopped", token(), deps);
   deleteItem(runItemKey(runId));
   publish(runChannel(runId), { type: "run", run: saved } satisfies RunStreamEvent);
+  void queueAutoReviewForRun(runId); // what a stopped run wrote is still checked (when the setting is on)
   return saved;
 }
 
