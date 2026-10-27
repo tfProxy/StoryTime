@@ -23,6 +23,7 @@
 // the built-in workflow's prefix, or contains "{{prefix}}". Any other prefix is left alone.
 
 import { withReferences, type RefInput, type RefMode } from "./ipAdapter";
+import type { CropPlan } from "./inpaintRegion";
 
 export type WorkflowNode = { class_type: string; inputs: Record<string, unknown>; _meta?: unknown };
 export type Workflow = Record<string, WorkflowNode>;
@@ -43,6 +44,8 @@ export type PictureParams = {
   mask?: string;
   /** Inpainting: how many pixels the sampled mask grows past the painted one (the paste-back keeps the painted one). */
   grow?: number;
+  /** Inpainting: redraw from this crop of the picture (the painted area plus context), scaled to its `sw` by `sh`, and paste it back. Not used by workflows with placeholders. */
+  crop?: CropPlan;
   /** Image to image: how far the pictures may drift from the starting one, 0 to 1 (default 1). */
   denoise?: number;
   /** The built-in workflow's sampler settings (from the preset); other workflows keep their own. */
@@ -287,7 +290,10 @@ export function fillWorkflow(wf: Workflow, p: PictureParams): Workflow {
     }
     if (!p.ipAdapter) throw new WorkflowError("Reference pictures need the IP-Adapter and CLIP Vision files, and none were given.");
   }
-  let out = fillSettings(p.image && builtin ? (p.mask ? BUILTIN_INPAINT : BUILTIN_IMG2IMG) : wf, p);
+  // The built-in workflow with a crop starts from the plain image variant: the static inpaint graph has no place for a crop.
+  const cropped = !!(p.image && p.mask && p.crop && builtin);
+  let out = fillSettings(p.image && builtin ? (p.mask && !cropped ? BUILTIN_INPAINT : BUILTIN_IMG2IMG) : wf, cropped ? { ...p, mask: undefined } : p);
+  if (cropped) redrawCropped(out, { mask: p.mask!, full: "10", repeat: "12", count: p.count, crop: p.crop!, grow: p.grow ?? 0, scale: true });
   if (builtin && p.sampler) {
     const { steps, cfg, sampler, scheduler } = p.sampler;
     Object.assign(out["3"].inputs, { steps, cfg, sampler_name: sampler, scheduler });
@@ -298,7 +304,8 @@ export function fillWorkflow(wf: Workflow, p: PictureParams): Workflow {
   if (refs.length > 0) out = withReferences(out, refs, p.ipAdapter!);
   // Our own graphs get the grown mask and Differential Diffusion; a workflow with placeholders is left as its author wired it.
   if (p.image && p.mask && (builtin || placeholdersIn(wf).size === 0)) {
-    growNoiseMask(out, p.grow ?? 0);
+    // A cropped redraw (redrawCropped) has grown its mask already, in the crop's pixels.
+    if (!p.crop) growNoiseMask(out, p.grow ?? 0);
     addDifferentialDiffusion(out);
   }
   setPrefix(out, p.prefix ?? DEFAULT_PREFIX);
@@ -360,7 +367,10 @@ function startFromImage(wf: Workflow, p: PictureParams & { image: string }) {
   }
   for (const id of empties) delete wf[id];
   for (const node of samplers) node.inputs.denoise = p.denoise ?? 1;
-  if (p.mask) redrawOnlyMask(wf, p.mask, load, repeat);
+  if (p.mask) {
+    if (p.crop) redrawCropped(wf, { mask: p.mask, full: load, repeat, count: p.count, crop: p.crop, grow: p.grow ?? 0, scale: true });
+    else redrawOnlyMask(wf, p.mask, load, repeat);
+  }
 }
 
 /**
@@ -381,6 +391,57 @@ export function redrawOnlyMask(wf: Workflow, mask: string, load: string, repeat:
     if (!isLink(link) || wf[link[0]]?.class_type !== "VAEDecode") return;
     const paste = `storytime_paste_${i + 1}`;
     wf[paste] = { class_type: "ImageCompositeMasked", inputs: { destination: link, source: [load, 0], x: 0, y: 0, resize_source: false, mask: [invert, 0] } };
+    wf[id].inputs.images = [paste, 0];
+  });
+}
+
+/**
+ * Redraws only a crop of the picture (the painted area plus context) and pastes it back. `full` is the id of the
+ * LoadImage holding the whole picture and `repeat` the RepeatLatentBatch of the encoded start. The crop is
+ * scaled to `crop.sw` by `crop.sh` here when `scale` is true; with false the workflow scales it itself (a
+ * family's ImageScale), and only needs to read from the crop. The painted mask is cropped and scaled the same
+ * way and grown (in the crop's pixels) for sampling. Each saved picture is the redrawn crop scaled back to
+ * `crop.w` by `crop.h` and pasted over the original, repeated to the batch, where the un-grown mask is white.
+ */
+export function redrawCropped(
+  wf: Workflow,
+  o: { mask: string; full: string; repeat: string; count: number; crop: CropPlan; grow: number; scale: boolean },
+) {
+  const { crop, full, repeat } = o;
+  const [cropId, cropScale, loadMask, maskCrop, maskImg, maskScaled, maskSmall, noiseMask] = [
+    "storytime_crop", "storytime_crop_scale", "storytime_mask", "storytime_mask_crop", "storytime_mask_img", "storytime_mask_scaled",
+    "storytime_mask_small", "storytime_noise_mask",
+  ];
+  const into = o.scale ? cropScale : cropId;
+  // Re-point first: whatever read the full picture (the encoder, or a family's scaler) reads the crop instead,
+  // and so does whatever read the encoded start (the sampler) now read the noise mask. The nodes added below
+  // read the full picture and the start themselves, so they must not be re-pointed.
+  for (const node of Object.values(wf)) {
+    for (const [k, v] of Object.entries(node.inputs)) {
+      if (!isLink(v)) continue;
+      if (v[0] === full && v[1] === 0) node.inputs[k] = [into, 0];
+      else if (v[0] === repeat && v[1] === 0) node.inputs[k] = [noiseMask, 0];
+    }
+  }
+  wf[cropId] = { class_type: "ImageCrop", inputs: { image: [full, 0], width: crop.w, height: crop.h, x: crop.x, y: crop.y } };
+  if (o.scale) {
+    wf[cropScale] = { class_type: "ImageScale", inputs: { image: [cropId, 0], upscale_method: "lanczos", width: crop.sw, height: crop.sh, crop: "disabled" } };
+  }
+  wf[loadMask] = { class_type: "LoadImageMask", inputs: { image: o.mask, channel: "red" } };
+  wf[maskCrop] = { class_type: "CropMask", inputs: { mask: [loadMask, 0], x: crop.x, y: crop.y, width: crop.w, height: crop.h } };
+  wf[maskImg] = { class_type: "MaskToImage", inputs: { mask: [maskCrop, 0] } };
+  wf[maskScaled] = { class_type: "ImageScale", inputs: { image: [maskImg, 0], upscale_method: "bilinear", width: crop.sw, height: crop.sh, crop: "disabled" } };
+  wf[maskSmall] = { class_type: "ImageToMask", inputs: { image: [maskScaled, 0], channel: "red" } };
+  wf[noiseMask] = { class_type: "SetLatentNoiseMask", inputs: { samples: [repeat, 0], mask: [maskSmall, 0] } };
+  growNoiseMask(wf, Math.round(o.grow * crop.scale));
+  const saves = Object.entries(wf).filter(([, n]) => /^(SaveImage|PreviewImage)$/.test(n.class_type));
+  saves.forEach(([id, save], i) => {
+    const link = save.inputs.images;
+    if (!isLink(link) || wf[link[0]]?.class_type !== "VAEDecode") return;
+    const [back, again, paste] = [`storytime_back_${i + 1}`, `storytime_full_${i + 1}`, `storytime_paste_${i + 1}`];
+    wf[back] = { class_type: "ImageScale", inputs: { image: link, upscale_method: "lanczos", width: crop.w, height: crop.h, crop: "disabled" } };
+    wf[again] = { class_type: "RepeatImageBatch", inputs: { image: [full, 0], amount: o.count } };
+    wf[paste] = { class_type: "ImageCompositeMasked", inputs: { destination: [again, 0], source: [back, 0], x: crop.x, y: crop.y, resize_source: false, mask: [maskCrop, 0] } };
     wf[id].inputs.images = [paste, 0];
   });
 }

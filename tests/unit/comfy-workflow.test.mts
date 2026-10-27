@@ -309,6 +309,81 @@ ok(describeWorkflow(sdxl).mask === true && describeWorkflow(bare).mask === false
   ok(samplersOf(two).length === 4 && !classesOf(two).includes("GrowMask") && two.e.inputs.mask === "not a link", "growNoiseMask: a mask input that is not a link is skipped");
 }
 
+// ---- redrawing from a crop of the picture ----
+{
+  const classesOf = (wf: Workflow) => Object.values(wf).map((n) => n.class_type);
+  const count = (wf: Workflow, cls: string) => classesOf(wf).filter((c) => c === cls).length;
+  const j = (v: unknown) => JSON.stringify(v);
+  /** Every link ([id, output]) in the graph points at a node that exists. */
+  const assertLinksResolve = (wf: Workflow, label: string) => {
+    const bad: string[] = [];
+    for (const [id, node] of Object.entries(wf)) {
+      for (const [k, v] of Object.entries(node.inputs)) {
+        if (Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "number" && !wf[v[0]]) bad.push(`${id}.${k} -> ${v[0]}`);
+      }
+    }
+    ok(bad.length === 0, `${label}: every link points at an existing node${bad.length ? ` (${bad.join(", ")})` : ""}`);
+  };
+  const crop = { x: 100, y: 200, w: 400, h: 300, sw: 832, sh: 624, scale: 2 };
+  const cropped = { ...maskParams, grow: 13, crop };
+  /** Checks the parts of the cropped graph every workflow shares: `load` is the full LoadImage, `scaler` the node the encoder reads. */
+  const checkCrop = (wf: Workflow, label: string, o: { load: string; save: string; decode: string; sampler: string; scaler: string }) => {
+    assertLinksResolve(wf, label);
+    const c = wf.storytime_crop;
+    ok(c.class_type === "ImageCrop" && j(c.inputs) === j({ image: [o.load, 0], width: 400, height: 300, x: 100, y: 200 }), `${label}: the crop reads the full picture at x, y, w, h`);
+    const cs = wf.storytime_crop_scale;
+    ok(cs.class_type === "ImageScale" && j(cs.inputs) === j({ image: ["storytime_crop", 0], upscale_method: "lanczos", width: 832, height: 624, crop: "disabled" }), `${label}: the crop is scaled to sw by sh`);
+    ok(wf[o.scaler].inputs.pixels !== undefined ? j(wf[o.scaler].inputs.pixels) === '["storytime_crop_scale",0]' : false, `${label}: the encoder reads the scaled crop, not the full picture`);
+    const m = wf.storytime_mask_crop;
+    ok(wf.storytime_mask.class_type === "LoadImageMask" && m.class_type === "CropMask" && j(m.inputs) === j({ mask: ["storytime_mask", 0], x: 100, y: 200, width: 400, height: 300 }), `${label}: the painted mask is cropped the same way`);
+    ok(j(wf.storytime_mask_scaled.inputs) === j({ image: ["storytime_mask_img", 0], upscale_method: "bilinear", width: 832, height: 624, crop: "disabled" }) && wf.storytime_mask_img.class_type === "MaskToImage" && wf.storytime_mask_small.class_type === "ImageToMask", `${label}: …and scaled to sw by sh as an image`);
+    const noise = wf.storytime_noise_mask;
+    ok(count(wf, "SetLatentNoiseMask") === 1 && count(wf, "GrowMask") === 1 && j(noise.inputs.mask) === '["storytime_grow_1",0]' && j(wf.storytime_grow_1.inputs) === j({ mask: ["storytime_mask_small", 0], expand: 26, tapered_corners: true }), `${label}: the sampled mask is grown exactly once, by grow times the scale`);
+    ok(j(wf[o.sampler].inputs.latent_image) === '["storytime_noise_mask",0]', `${label}: the sampler starts from the noise-masked latent`);
+    ok(count(wf, "DifferentialDiffusion") === 1 && j(wf[o.sampler].inputs.model) === '["storytime_dd_1",0]', `${label}: the sampler's model goes through DifferentialDiffusion once`);
+    const paste = wf.storytime_paste_1;
+    ok(j(wf[o.save].inputs.images) === '["storytime_paste_1",0]' && paste.class_type === "ImageCompositeMasked", `${label}: the saved picture comes through ImageCompositeMasked`);
+    const dest = wf[(paste.inputs.destination as string[])[0]];
+    ok(dest.class_type === "RepeatImageBatch" && j(dest.inputs) === j({ image: [o.load, 0], amount: 2 }), `${label}: …whose destination is the full picture repeated to the batch`);
+    const back = wf[(paste.inputs.source as string[])[0]];
+    ok(back.class_type === "ImageScale" && j(back.inputs) === j({ image: [o.decode, 0], upscale_method: "lanczos", width: 400, height: 300, crop: "disabled" }), `${label}: …and whose source is the decoded crop scaled back to w by h`);
+    ok(paste.inputs.x === 100 && paste.inputs.y === 200 && paste.inputs.resize_source === false && j(paste.inputs.mask) === '["storytime_mask_crop",0]', `${label}: …pasted at x, y with the un-grown, un-inverted cropped mask`);
+    ok(count(wf, "InvertMask") === 0 && !("storytime_mask_invert" in wf), `${label}: the mask is not inverted`);
+  };
+
+  // built-in
+  const bBefore = j(BUILTIN_IMG2IMG) + j(BUILTIN_INPAINT);
+  const cBuilt = fillWorkflow(BUILTIN_WORKFLOW, cropped);
+  ok(j(BUILTIN_IMG2IMG) + j(BUILTIN_INPAINT) === bBefore, "crop builtin: filling does not change the built-in workflows");
+  checkCrop(cBuilt, "crop builtin", { load: "10", save: "9", decode: "8", sampler: "3", scaler: "11" });
+  ok(!("13" in cBuilt) && !("14" in cBuilt) && !("16" in cBuilt) && j(cBuilt).includes("{{") === false, "crop builtin: it starts from the image workflow, not the static inpaint one, and no placeholder is left");
+  ok(cBuilt["10"].inputs.image === "storytime-abc.png" && cBuilt["12"].inputs.amount === 2 && cBuilt.storytime_mask.inputs.image === "storytime-mask-abc.png", "crop builtin: the picture and the mask are the uploaded ones");
+  ok(cBuilt["3"].class_type === "KSamplerAdvanced" && cBuilt["3"].inputs.start_at_step === 30 - stepsToRun(30, 0.4), "crop builtin: the sampler still runs only the steps the strength needs");
+  const cLora = fillWorkflow(BUILTIN_WORKFLOW, { ...cropped, loras: [{ name: "a.safetensors", strength: 0.8 }] });
+  ok(j(cLora.storytime_dd_1.inputs.model) === '["storytime_lora_1",0]', "crop builtin: with LoRAs, DifferentialDiffusion wraps the LoRA output");
+  const cNoGrow = fillWorkflow(BUILTIN_WORKFLOW, { ...cropped, grow: 0 });
+  ok(count(cNoGrow, "GrowMask") === 0 && j(cNoGrow.storytime_noise_mask.inputs.mask) === '["storytime_mask_small",0]' && count(cNoGrow, "DifferentialDiffusion") === 1, "crop builtin: with grow 0 there is no GrowMask, but DifferentialDiffusion is still added");
+  ok(j(fillWorkflow(BUILTIN_WORKFLOW, { ...grown13(), crop: undefined })) === j(fillWorkflow(BUILTIN_WORKFLOW, grown13())) && !classesOf(fillWorkflow(BUILTIN_WORKFLOW, grown13())).includes("ImageCrop"), "crop builtin: without a crop the graph is exactly what it was");
+  ok(j(fillWorkflow(BUILTIN_WORKFLOW, { ...imgParams, crop })) === j(imgBuilt) && j(fillWorkflow(BUILTIN_WORKFLOW, { ...params, crop })) === j(built), "crop builtin: with no mask (or no picture) a crop does nothing");
+
+  // detected
+  const sBefore = j(sdxl);
+  const cSdxl = fillWorkflow(sdxl, cropped);
+  ok(j(sdxl) === sBefore, "crop detected: filling does not change the workflow");
+  checkCrop(cSdxl, "crop detected", { load: "storytime_image", save: "9", decode: "8", sampler: "3", scaler: "storytime_encode" });
+  ok(cSdxl["3"].class_type === "KSampler" && cSdxl["3"].inputs.denoise === 0.4, "crop detected: the workflow's own sampler is kept, set to the strength");
+  ok(j(fillWorkflow(sdxl, { ...grown13(), crop: undefined })) === j(fillWorkflow(sdxl, grown13())) && !classesOf(fillWorkflow(sdxl, grown13())).includes("ImageCrop"), "crop detected: without a crop the graph is exactly what it was");
+  ok(j(fillWorkflow(sdxl, { ...imgParams, crop })) === j(sdxlImg), "crop detected: with no mask a crop does nothing");
+  const cTwo = fillWorkflow(twoSaves, cropped);
+  ok(cTwo["10"].inputs.images[0] === "storytime_paste_2" && cTwo["9"].inputs.images[0] === "storytime_paste_1" && count(cTwo, "RepeatImageBatch") === 2, "crop detected: every save or preview node gets its own paste");
+  assertLinksResolve(cTwo, "crop detected (two saves)");
+
+  // placeholders are never cropped
+  const phWf = { ...maskPlaceholders, "1": { ...maskPlaceholders["1"], inputs: { ...maskPlaceholders["1"].inputs, model: ["9", 0] } } };
+  ok(j(fillWorkflow(phWf, cropped)) === j(fillWorkflow(phWf, { ...cropped, crop: undefined })) && !classesOf(fillWorkflow(phWf, cropped)).includes("ImageCrop"), "crop placeholders: a workflow with {{mask}} is left as its author wired it");
+}
+function grown13(): PictureParams { return { ...maskParams, grow: 13 }; }
+
 // ---- the built-in workflow's sampler settings ----
 const sampled = (wf: Workflow) => Object.values(wf).find((n) => n.class_type === "KSampler" || n.class_type === "KSamplerAdvanced")!.inputs;
 let ks = sampled(fillWorkflow(BUILTIN_WORKFLOW, params));

@@ -64,9 +64,12 @@ const redraw: JobInput = { ...base, start: start("saved:c1:header:3", "saved:c1:
 const redrawSpec = toSpec(redraw, { [maskUploadKey("m1")]: "upload:mask-1" });
 ok(redrawSpec.mask?.source === "upload:mask-1" && redrawSpec.mask.id === "m1", "the mask is sent as its uploaded source and keeps its id");
 ok(!("strokes" in (redrawSpec.mask ?? {})), "the strokes are not sent");
+ok(JSON.stringify(redrawSpec.mask?.bounds) === JSON.stringify({ x: 0, y: 0, w: 15, h: 16 }), "the painted area's bounding box is worked out from the strokes and sent");
+ok(toSpec({ ...redraw, mask: { ...mask, strokes: [] } }, { [maskUploadKey("m1")]: "upload:mask-1" }).mask?.bounds === null, "a mask with nothing painted has no bounding box");
 const redrawBack = fromSpec(JSON.parse(JSON.stringify(redrawSpec)), async (s) => png(`server:${s}`));
 ok(sameJob(redrawBack) === sameJob(redraw), "a redraw with a mask keeps its sameJob key");
 ok(redrawBack.mask?.width === 96 && redrawBack.mask.height === 60, "the mask keeps its size");
+ok(JSON.stringify(redrawBack.mask?.bounds) === JSON.stringify({ x: 0, y: 0, w: 15, h: 16 }) && redrawBack.mask?.strokes.length === 0, "the server's painted area has the box, and no strokes");
 ok((await text(await redrawBack.mask!.render!())) === "server:upload:mask-1", "the mask's render fetches its upload");
 let threw = false;
 try { toSpec(redraw, {}); } catch { threw = true; }

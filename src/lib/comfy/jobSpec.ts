@@ -1,6 +1,7 @@
 // A job as plain data, so it can be sent to the server: `JobInput` with every closure (the pictures' `blob()`, the
 // painted mask) replaced by a source string the server can fetch (see `resolveSource` in `worker/uploads`).
 import type { PaintedArea } from "../mask";
+import { maskBounds, type Box } from "./inpaintRegion";
 import type { JobInput } from "./makeJob";
 import type { StoredReference } from "./references";
 import type { StartPicture } from "./startPicture";
@@ -14,7 +15,7 @@ export type SpecStart = Pick<StartPicture, "key" | "source" | "image" | "slot"> 
 export type SpecRef = StoredReference & { key: string; fetch?: string };
 
 /** The painted area as the PNG the browser drew and uploaded (`source` is `upload:<id>`); `id` is the `PaintedArea`'s, which `sameJob` uses. */
-export type SpecMask = { source: string; id: string; width: number; height: number };
+export type SpecMask = { source: string; id: string; width: number; height: number; bounds: Box | null };
 
 export type JobSpec = Omit<JobInput, "start" | "refs" | "mask"> & {
   start: SpecStart | null;
@@ -38,7 +39,8 @@ export function toSpec(input: JobInput, uploaded: Record<string, string>): JobSp
   if (mask) {
     const source = uploaded[maskUploadKey(mask.id)];
     if (!source) throw new Error("The painted area was not uploaded.");
-    maskSpec = { source, id: mask.id, width: mask.width, height: mask.height };
+    // The server keeps no strokes, so the painted area's box is worked out here.
+    maskSpec = { source, id: mask.id, width: mask.width, height: mask.height, bounds: maskBounds(mask, mask.width, mask.height) };
   }
   return {
     ...rest,
@@ -84,6 +86,6 @@ export function fromSpec(spec: JobSpec, resolve: ResolveSource): JobInput {
       blob: () => resolve(r.fetch ?? r.source),
     })),
     // The strokes are not kept: the PNG is already drawn.
-    mask: mask && ({ strokes: [], softness: 0, inverted: false, id: mask.id, width: mask.width, height: mask.height, render: () => resolve(mask.source) } satisfies PaintedArea),
+    mask: mask && ({ strokes: [], softness: 0, inverted: false, id: mask.id, width: mask.width, height: mask.height, bounds: mask.bounds ?? null, render: () => resolve(mask.source) } satisfies PaintedArea),
   };
 }

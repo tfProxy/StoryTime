@@ -119,6 +119,43 @@ ok(only(buildDraw(z, { ...P, image: "start.png", denoise: 1 }), "KSampler").inpu
   ok(nodesOfType(g0, "GrowMask").length === 0 && nodesOfType(g0, "DifferentialDiffusion").length === 1 && only(g0, "SetLatentNoiseMask").inputs.mask[0] === idOf(g0, "LoadImageMask"), "…with grow 0 there is no GrowMask, but DifferentialDiffusion is still added");
   ok(ids(buildDraw(z, { ...P, image: "start.png", denoise: 0.6, grow: 13 })).join() === ids(buildDraw(z, { ...P, image: "start.png", denoise: 0.6 })).join() && nodesOfType(buildDraw(z, { ...P, grow: 13 }), "DifferentialDiffusion").length === 0, "…with no mask, no GrowMask or DifferentialDiffusion is added");
 }
+// Redraw from a crop of the picture
+{
+  const j = (v: unknown) => JSON.stringify(v);
+  const assertLinksResolve = (w: Workflow, label: string) => {
+    const bad: string[] = [];
+    for (const [id, node] of Object.entries(w)) {
+      for (const [k, v] of Object.entries(node.inputs)) if (Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && typeof v[1] === "number" && !w[v[0]]) bad.push(`${id}.${k} -> ${v[0]}`);
+    }
+    ok(bad.length === 0, `${label}: every link points at an existing node${bad.length ? ` (${bad.join(", ")})` : ""}`);
+  };
+  const crop = { x: 100, y: 200, w: 400, h: 300, sw: 832, sh: 624, scale: 2 };
+  const base = { ...P, image: "start.png", denoise: 0.6, width: 1000, height: 1500, mask: "mask.png", grow: 13 };
+  const c = buildDraw(z, { ...base, crop });
+  assertLinksResolve(c, "crop family");
+  ok(j(c["11"].inputs) === j({ image: ["storytime_crop", 0], upscale_method: "lanczos", width: 832, height: 624, crop: "disabled" }), "crop family: the workflow's own ImageScale (11) reads the crop and scales it to sw by sh");
+  ok(j(c["12"].inputs.pixels) === '["11",0]' && !("storytime_crop_scale" in c), "crop family: the VAEEncode reads that scaler, and no second scaler is added");
+  ok(j(c.storytime_crop.inputs) === j({ image: ["10", 0], width: 400, height: 300, x: 100, y: 200 }) && c.storytime_crop.class_type === "ImageCrop", "crop family: the crop reads the full LoadImage at x, y, w, h");
+  ok(j(c.storytime_mask_crop.inputs) === j({ mask: ["storytime_mask", 0], x: 100, y: 200, width: 400, height: 300 }) && j(c.storytime_mask_scaled.inputs) === j({ image: ["storytime_mask_img", 0], upscale_method: "bilinear", width: 832, height: 624, crop: "disabled" }), "crop family: the painted mask is cropped and scaled the same way");
+  ok(nodesOfType(c, "SetLatentNoiseMask").length === 1 && nodesOfType(c, "GrowMask").length === 1 && only(c, "GrowMask").inputs.expand === 26 && j(c.storytime_noise_mask.inputs.mask) === j([idOf(c, "GrowMask"), 0]) && j(c.storytime_noise_mask.inputs.samples) === '["13",0]', "crop family: the sampled mask is grown exactly once, by grow times the scale");
+  ok(sampler(c).class_type === "KSamplerAdvanced" && j(sampler(c).inputs.latent_image) === '["storytime_noise_mask",0]' && nodesOfType(c, "DifferentialDiffusion").length === 1 && target(c, sampler(c).inputs.model) === only(c, "DifferentialDiffusion"), "crop family: the sampler starts from the noise-masked latent, its model through DifferentialDiffusion once");
+  const paste = only(c, "ImageCompositeMasked");
+  const dest = target(c, paste.inputs.destination);
+  const back = target(c, paste.inputs.source);
+  ok(j(only(c, "SaveImage").inputs.images) === '["storytime_paste_1",0]' && nodesOfType(c, "ImageCompositeMasked").length === 1, "crop family: the saved picture comes through ImageCompositeMasked");
+  ok(dest?.class_type === "RepeatImageBatch" && j(dest.inputs) === j({ image: ["10", 0], amount: 2 }), "crop family: …whose destination is the full picture repeated to the batch");
+  ok(back?.class_type === "ImageScale" && j(back.inputs) === j({ image: ["20", 0], upscale_method: "lanczos", width: 400, height: 300, crop: "disabled" }), "crop family: …and whose source is the decoded crop scaled back to w by h");
+  ok(paste.inputs.x === 100 && paste.inputs.y === 200 && j(paste.inputs.mask) === '["storytime_mask_crop",0]' && nodesOfType(c, "InvertMask").length === 0, "crop family: …pasted at x, y with the un-grown, un-inverted cropped mask");
+  const cl = buildDraw(z, { ...base, crop, loras: [{ name: "a.safetensors", strength: 0.8 }] });
+  assertLinksResolve(cl, "crop family with a LoRA");
+  ok(target(cl, target(cl, sampler(cl).inputs.model)?.inputs.model)?.class_type === "ModelSamplingAuraFlow", "crop family: with LoRAs, DifferentialDiffusion still wraps the whole chain");
+  const c0 = buildDraw(z, { ...base, crop, grow: 0 });
+  ok(nodesOfType(c0, "GrowMask").length === 0 && nodesOfType(c0, "DifferentialDiffusion").length === 1, "crop family: with grow 0 there is no GrowMask, but DifferentialDiffusion is still added");
+  const plain = buildDraw(z, base);
+  ok(j(buildDraw(z, { ...base, crop: undefined })) === j(plain) && nodesOfType(plain, "ImageCrop").length === 0 && j(plain["11"].inputs).includes('"width":1008'), "crop family: without a crop the graph is exactly what it was");
+  ok(j(buildDraw(z, { ...base, mask: undefined, crop })) === j(buildDraw(z, { ...base, mask: undefined })) && nodesOfType(buildDraw(z, { ...base, mask: undefined, crop }), "ImageCrop").length === 0, "crop family: with no mask a crop does nothing");
+  ok(j(buildDraw(z, { ...P, mask: "mask.png", crop })) === j(buildDraw(z, P)), "crop family: with no picture a crop does nothing");
+}
 ok(only(wf, "ImageScale").inputs.width === 1008 && only(wf, "ImageScale").inputs.height === 1504, "…scaled to the size in multiples of 16");
 
 // Settings, device, LoRAs
