@@ -579,6 +579,17 @@ export const MIGRATIONS: string[] = [
     created_at INTEGER NOT NULL
   );
   `,
+  // 33: which tags the AI has checked a chapter for, and at which revision, so Find tags does not read a chapter
+  // again when nothing changed. One row per chapter; tag_ids is the JSON list of tag ids checked.
+  `
+  CREATE TABLE chapter_tag_checks (
+    chapter_id TEXT NOT NULL REFERENCES chapters(id),
+    revision   INTEGER NOT NULL,
+    tag_ids    TEXT NOT NULL,
+    checked_at INTEGER NOT NULL,
+    PRIMARY KEY (chapter_id)
+  );
+  `,
 ];
 
 function open(): Database.Database {

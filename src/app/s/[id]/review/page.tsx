@@ -9,7 +9,7 @@ import TaggedChapters from "@/components/TaggedChapters";
 import { getCodexOps } from "@/lib/codexDb";
 import { reviewIssues } from "@/lib/review";
 import { getPath, getStory } from "@/lib/stories";
-import { chapterTags, listTags, storyTags } from "@/lib/tags";
+import { chapterTags, checkedTagIdsByChapter, listTags, storyTags } from "@/lib/tags";
 import { getStoryChapters } from "@/lib/tree";
 
 export const dynamic = "force-dynamic";
@@ -188,6 +188,10 @@ export default async function ReviewPage({
       if (t.status === "approved" || (t.status === "rejected" && t.revision === revisionOf.get(t.chapter_id))) {
         decidedBy.set(t.chapter_id, [...(decidedBy.get(t.chapter_id) ?? []), t.tag_id]);
       }
+    }
+    for (const [chapterId, tagIds] of checkedTagIdsByChapter(storyId)) {
+      const have = decidedBy.get(chapterId) ?? [];
+      decidedBy.set(chapterId, [...have, ...tagIds.filter((tid) => !have.includes(tid))]);
     }
 
     // Chapters with approved tags, in story order; the chosen chapter always, so it can be tagged by hand.

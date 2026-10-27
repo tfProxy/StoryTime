@@ -118,6 +118,15 @@ await call("PATCH", `/api/chapter-tags/${vid}`, { status: "approved" });
 r = await suggest(child, 2, { checked_tag_ids: [violence], suggestions: [] });
 ok((await list()).length === 1, "an approved tag survives a check that did not raise it");
 
+// a check is recorded even when nothing was suggested, and a changed rule forgets it
+const checkedFor = async () => (await call("GET", `/api/stories/${story}/chapter-tags`)).json.checked[child];
+r = await suggest(child, 2, { checked_tag_ids: [swearing], suggestions: [] });
+ok(JSON.stringify(await checkedFor()) === JSON.stringify([swearing]), "a check with no suggestions is recorded");
+await call("PATCH", `/api/tags/${violence}`, { applies: "unrelated rule change" });
+ok(JSON.stringify(await checkedFor()) === JSON.stringify([swearing]), "changing the rule of a tag that was not checked keeps the check");
+await call("PATCH", `/api/tags/${swearing}`, { applies: "bad words, changed" });
+ok((await checkedFor()) === undefined, "changing a checked tag's rule forgets the check");
+
 // pending markers are not decided yet; by hand
 r = await call("POST", `/api/chapters/${root}/tags`, { tag_id: swearing, value: null });
 ok(r.status === 201 && r.json.status === "approved" && r.json.source === "author" && r.json.chapter_id === root, "added by hand");

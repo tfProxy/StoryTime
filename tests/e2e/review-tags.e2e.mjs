@@ -114,7 +114,7 @@ try {
   await page.getByRole("button", { name: "Find tags" }).click();
   await page.getByText(/skipped/).waitFor();
   ok(horseCalls() === before, "the decided chapter is not read again");
-  ok(await page.getByText(/1 chapter was skipped/).isVisible(), "it says how many were skipped");
+  ok(await page.getByText(/2 chapters were skipped/).isVisible(), "it says how many were skipped (the decided one and the one checked with nothing found)");
 
   // Branch scopes.
   await page.goto(reviewUrl(s.story_id, `?tab=tags&chapter=${s.chapter_id}`));
@@ -129,9 +129,9 @@ try {
   await page.getByRole("radio", { name: /The way here \(2 chapters/ }).check();
   await page.getByText("One AI call per chapter, using your cheaper model.").waitFor();
   await page.getByRole("button", { name: "Find tags" }).click();
-  await page.getByText(/Read 1 chapter; found 0 new suggestions\. 1 chapter was skipped/).waitFor();
-  ok(startCalls() === startBefore + 1 && horseCalls() === horseBefore, "The way here reads the chapters leading to this one, skipping decided ones");
-  ok(calls.filter((c) => c.model === "cheap").length === cheapBefore + 1, "…with the cheaper model");
+  await page.getByText(/Read 0 chapters; found 0 new suggestions\. 2 chapters were skipped/).waitFor();
+  ok(startCalls() === startBefore && horseCalls() === horseBefore, "The way here skips decided chapters and chapters already checked at their current revision");
+  ok(calls.filter((c) => c.model === "cheap").length === cheapBefore, "…so no AI call is made");
 
   // Reject and add as example (a suggestion posted directly on the first chapter).
   const startRev = 1;

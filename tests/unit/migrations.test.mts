@@ -164,5 +164,17 @@ ok(wqRefused(() => wqItem("d", "video", "waiting")), "the type is one of picture
 ok(wqRefused(() => wqItem("a", "picture", "waiting")), "a key is used once");
 ok((wq.prepare(`SELECT moved FROM work_items WHERE key = 'a'`).get() as { moved: number }).moved === 0, "an item has not been moved by default");
 wq.close();
+
+// which tags a chapter was checked for (schema version 33): one row per chapter
+ok(MIGRATIONS.length >= 33, "migration 33 exists");
+const tc = new Database(":memory:");
+tc.pragma("foreign_keys = OFF");
+tc.exec(MIGRATIONS[32]);
+const tcCols = (tc.pragma(`table_info(chapter_tag_checks)`) as { name: string }[]).map((c) => c.name);
+ok(["chapter_id", "revision", "tag_ids", "checked_at"].every((c) => tcCols.includes(c)), "a tag check has its columns");
+const tcAdd = () => tc.prepare(`INSERT INTO chapter_tag_checks (chapter_id, revision, tag_ids, checked_at) VALUES ('c1', 1, '[]', 1)`).run();
+ok(!wqRefused(tcAdd), "a chapter's check can be recorded");
+ok(wqRefused(tcAdd), "a chapter has one check row");
+tc.close();
 d.close();
 fs.rmSync(dir, { recursive: true, force: true });

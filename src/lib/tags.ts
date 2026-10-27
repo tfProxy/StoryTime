@@ -106,6 +106,10 @@ export function updateTag(id: string, input: z.infer<typeof UpdateTagSchema>): T
     const tag = needTag(id);
     if (input.name !== undefined) checkNameFree(input.name, id);
     const next = { ...tag, ...input };
+    // A changed rule means chapters should be checked for the tag again: forget the checks that included it.
+    if (next.applies !== tag.applies || next.not_applies !== tag.not_applies || JSON.stringify(next.choices) !== JSON.stringify(tag.choices)) {
+      db().prepare(`DELETE FROM chapter_tag_checks WHERE EXISTS (SELECT 1 FROM json_each(tag_ids) WHERE value = ?)`).run(id);
+    }
     db()
       .prepare(`UPDATE tags SET name = ?, applies = ?, not_applies = ?, kind = ?, choices = ?, examples = ? WHERE id = ?`)
       .run(next.name, next.applies, next.not_applies, next.kind, JSON.stringify(next.choices), JSON.stringify(next.examples), id);
@@ -272,8 +276,25 @@ export function suggestTags(chapterId: string, revision: number, suggestions: z.
       const row = existing.get(tagId);
       if (row && row.status === "suggested" && !raised.has(tagId)) db().prepare(`DELETE FROM chapter_tags WHERE id = ?`).run(row.id);
     }
+    db()
+      .prepare(
+        `INSERT INTO chapter_tag_checks (chapter_id, revision, tag_ids, checked_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT (chapter_id) DO UPDATE SET revision = excluded.revision, tag_ids = excluded.tag_ids, checked_at = excluded.checked_at`,
+      )
+      .run(chapterId, revision, JSON.stringify([...new Set(checkedTagIds)]), now);
     return { added, kept };
   })();
+}
+
+/** The tag ids each chapter of a story was last checked for, at the chapter's current revision, keyed by chapter id. */
+export function checkedTagIdsByChapter(storyId: string): Map<string, string[]> {
+  const rows = db()
+    .prepare(
+      `SELECT k.chapter_id, k.tag_ids FROM chapter_tag_checks k JOIN chapters c ON c.id = k.chapter_id
+        WHERE c.story_id = ? AND k.revision = c.revision`,
+    )
+    .all(storyId) as { chapter_id: string; tag_ids: string }[];
+  return new Map(rows.map((r) => [r.chapter_id, JSON.parse(r.tag_ids) as string[]]));
 }
 
 export const DecideChapterTagSchema = z.object({
