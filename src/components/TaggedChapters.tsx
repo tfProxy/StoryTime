@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 export type TaggedChapter = {
   id: string;
   title: string;
-  tags: { id: string; name: string; value: string | null }[];
+  tags: { id: string; name: string; value: string | null; source: "ai" | "author" }[];
 };
 
 export type TagChoice = { id: string; name: string; choices: string[] };
@@ -54,6 +54,11 @@ export default function TaggedChapters({ chapters, enabled }: { chapters: Tagged
                   return (
                     <span key={t.id} className="tag" style={{ marginRight: "0.4rem" }}>
                       {label}{" "}
+                      {t.source === "author" && (
+                        <span className="meta" style={{ margin: 0 }}>
+                          (by hand){" "}
+                        </span>
+                      )}
                       <button
                         type="button"
                         className="secondary"

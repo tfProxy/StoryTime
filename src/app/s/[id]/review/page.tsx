@@ -200,7 +200,7 @@ export default async function ReviewPage({
       .map((c) => ({
         id: c.id,
         title: c.title,
-        tags: approved.filter((t) => t.chapter_id === c.id).map((t) => ({ id: t.id, name: t.tag_name, value: t.value })),
+        tags: approved.filter((t) => t.chapter_id === c.id).map((t) => ({ id: t.id, name: t.tag_name, value: t.value, source: t.source })),
       }));
 
     return (

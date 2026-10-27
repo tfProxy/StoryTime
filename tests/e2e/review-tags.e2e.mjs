@@ -107,6 +107,7 @@ try {
   ok(true, "approving removes it from Waiting");
   await page.getByRole("button", { name: /^Remove .* from Horse$/ }).waitFor();
   ok((await page.locator("article[data-tagged-chapter]").innerText()).includes(`${TAG}: full`), "it appears under Tagged");
+  ok(!(await page.locator(`article[data-tagged-chapter="${horse}"]`).innerText()).includes("(by hand)"), "an approved AI tag does not say (by hand)");
 
   // A second run skips the decided chapter.
   const before = horseCalls();
@@ -152,6 +153,7 @@ try {
   await page.getByRole("button", { name: "Add a tag" }).click();
   await page.getByRole("button", { name: /^Remove .* from Start$/ }).waitFor();
   ok(true, "a tag added by hand shows up");
+  ok((await page.locator(`article[data-tagged-chapter="${s.chapter_id}"]`).innerText()).includes("(by hand)"), "a tag added by hand says (by hand)");
   await page.getByRole("button", { name: /^Remove .* from Start$/ }).click();
   await page.waitForFunction(() => !document.querySelector('button[aria-label$="from Start"]'));
   ok(true, "× removes it");
