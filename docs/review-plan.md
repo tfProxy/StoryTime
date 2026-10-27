@@ -73,7 +73,7 @@ Built as: migration 34 rebuilds `ai_runs` to allow the mode; the server makes th
 
 ## Phase C: stage 3 checks
 
-### C1. Fact extraction (medium)
+### C1. Fact extraction (medium) (done, a76216b)
 
 - New `src/lib/ai/factAi.ts`: `extractFacts(settings, {story, chapter, codexNames, signal, role})` returns `{entity, attribute, value, quote}[]`. Keep the prompt small (chapter text, active codex entry names, nothing else). Drop facts whose quote isn't in the text (reuse `quoteInText` from `tagAi.ts`). Follow `tagAi.ts` for prompt and parsing style.
 - Unit test with canned replies in `tests/unit/` (see `tests/unit/tag-ai.test.mts`).
