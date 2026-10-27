@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import CodexAiScan from "@/components/CodexAiScan";
 import ContinuityCheck from "@/components/ContinuityCheck";
 import IssueActions from "@/components/IssueActions";
+import MarkReviewedButton from "@/components/MarkReviewedButton";
 import StoryTagSwitches from "@/components/StoryTagSwitches";
 import SummaryCheck from "@/components/SummaryCheck";
 import TagScan from "@/components/TagScan";
@@ -72,7 +73,19 @@ export default async function ReviewPage({
   function issuesPanel(storyId: string) {
     const all = reviewIssues(storyId);
     const scoped = chosen ? all.filter((i) => i.chapterId === chosen.id || i.continuity?.before.chapterId === chosen.id) : all;
-    const summaryScoped = scoped.filter((i) => i.kind !== "continuity" && i.kind !== "codex-missing");
+    const summaryScoped = scoped.filter((i) => i.kind !== "continuity" && i.kind !== "codex-missing" && i.kind !== "ai-unreviewed");
+    const aiScoped = scoped.filter((i) => i.kind === "ai-unreviewed");
+    const aiOpen = aiScoped.filter((i) => i.status === "open");
+    const aiLater = aiScoped.filter((i) => i.status === "later");
+    const aiDismissed = aiScoped.filter((i) => i.status === "dismissed");
+    const aiItem = (i: (typeof all)[number], actions: ("later" | "dismissed" | "open" | "undo")[]) => (
+      <li key={`${i.chapterId}-${i.kind}-${i.fingerprint}`}>
+        <Link href={`/c/${i.chapterId}`}>{i.title}</Link>
+        <br />
+        {i.message} <MarkReviewedButton chapterId={i.chapterId} />
+        <IssueActions chapterId={i.chapterId} kind={i.kind} fingerprint={i.fingerprint} actions={actions} />
+      </li>
+    );
     const gaps = scoped.filter((i) => i.kind === "codex-missing");
     const openGaps = gaps.filter((i) => i.status === "open");
     const laterGaps = gaps.filter((i) => i.status === "later");
@@ -253,6 +266,25 @@ export default async function ReviewPage({
             </select>{" "}
             <button type="submit">Choose</button>
           </form>
+        )}
+
+        <h2 id="written-by-ai">Written by AI</h2>
+        {aiOpen.length === 0 ? (
+          <p>{aiLater.length + aiDismissed.length > 0 ? "Nothing left to deal with here." : "Every chapter the AI wrote has been read."}</p>
+        ) : (
+          <ul>{aiOpen.map((i) => aiItem(i, ["later", "dismissed"]))}</ul>
+        )}
+        {aiLater.length > 0 && (
+          <>
+            <h3>Later</h3>
+            <ul>{aiLater.map((i) => aiItem(i, ["open", "dismissed"]))}</ul>
+          </>
+        )}
+        {aiDismissed.length > 0 && (
+          <details>
+            <summary>Dismissed ({aiDismissed.length})</summary>
+            <ul>{aiDismissed.map((i) => aiItem(i, ["undo"]))}</ul>
+          </details>
         )}
       </>
     );

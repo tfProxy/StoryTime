@@ -168,6 +168,22 @@ try {
   await page.goto(`${BASE}/s/${c.story_id}/outline`);
   ok((await page.locator("a.outline-review").count()) === 0, "an intentional issue has no outline marker");
 
+  // AI-written chapters: listed under Written by AI, and Mark reviewed takes the chapter off the list.
+  await send("PUT", "/api/queue/paused", { paused: true });
+  const w = await post("/api/stories", { title: "AI review story", chapter: { title: "AI root", body: "root", summary: "r", choices: ["on"] } });
+  const wRun = (await send("POST", "/api/ai-runs", { story_id: w.story_id, start_chapter_id: null, mode: "review", options: { checks: ["summaries"] } })).id;
+  const wChoice = (await send("GET", `/api/chapters/${w.chapter_id}`)).choices[0];
+  const written = (await post("/api/chapters", { choice_id: wChoice.id, title: "AI written", body: "ai text", summary: "a", ai_run_id: wRun })).chapter_id;
+  await send("PUT", "/api/queue/paused", { paused: false });
+  await send("DELETE", `/api/ai-runs/${wRun}/queue?end=1`);
+  await page.goto(`${BASE}/s/${w.story_id}/review`);
+  ok(await page.getByRole("heading", { name: "Written by AI", level: 2 }).isVisible(), "the Issues tab has a Written by AI section");
+  const aiRow = page.locator("li", { hasText: "Written by AI and not read yet." });
+  ok((await aiRow.count()) === 1 && (await aiRow.getByRole("link", { name: "AI written" }).getAttribute("href")) === `/c/${written}`, "the AI-written chapter is listed, linking to it");
+  await aiRow.getByRole("button", { name: "Mark reviewed", exact: true }).click();
+  await page.getByText("Every chapter the AI wrote has been read.").waitFor();
+  ok((await page.locator("li", { hasText: "Written by AI and not read yet." }).count()) === 0, "Mark reviewed takes it off the list");
+
   // Codex gaps: a name in two chapters on a path with no codex entry shows in the Codex section.
   const g = await post("/api/stories", { title: "Gap story", chapter: { title: "Gap one", body: "Ilsa waits.", summary: "g", choices: ["on"] } });
   const gChoice = (await send("GET", `/api/chapters/${g.chapter_id}`)).choices[0];

@@ -197,3 +197,23 @@ ok(kept.length === 4, "…the verdicts themselves are kept");
   ok(r.status === 201 || r.status === 200, "a codex entry with the alias is added at the root");
   ok((await gaps()).length === 0, "an alias match closes the gap");
 }
+
+// ---- AI-written chapters: an open ai-unreviewed issue, left out of the outline count, gone once marked reviewed ----
+{
+  const s = (await call("POST", "/api/stories", { title: "AI written", chapter: { title: "AI root", body: "r", summary: "s", choices: ["Go"] } })).json;
+  await call("PUT", "/api/queue/paused", { paused: true });
+  const run = (await call("POST", "/api/ai-runs", { story_id: s.story_id, start_chapter_id: null, mode: "review", options: { checks: ["summaries"] } })).json.id;
+  const choice = (await call("GET", `/api/chapters/${s.chapter_id}`)).json.choices[0];
+  const made = await call("POST", "/api/chapters", { choice_id: choice.id, title: "AI made", body: "ai body", summary: "ai sum", ai_run_id: run });
+  const aiId = made.json.chapter_id;
+  const aiIssues = async () => (await call("GET", `/api/stories/${s.story_id}/review`)).json.issues.filter((i) => i.kind === "ai-unreviewed");
+  const outlineHtml = async () => (await fetch(`${B}/s/${s.story_id}/outline`)).text();
+  ok(made.status === 201, "a chapter an AI run wrote is posted");
+  const l = await aiIssues();
+  ok(l.length === 1 && l[0].chapterId === aiId && l[0].fingerprint === "" && l[0].status === "open" && l[0].message === "Written by AI and not read yet.", "an AI-written chapter not read yet is an open ai-unreviewed issue");
+  ok(!(await outlineHtml()).includes(`/review?chapter=${aiId}`), "…and it is not counted on the outline");
+  r = await call("POST", `/api/chapters/${aiId}/reviewed`);
+  ok(r.status === 200 && (await aiIssues()).length === 0, "marking it reviewed removes the issue");
+  await call("PUT", "/api/queue/paused", { paused: false });
+  await call("DELETE", `/api/ai-runs/${run}/queue?end=1`);
+}

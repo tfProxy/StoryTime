@@ -6,7 +6,7 @@ import { storyVerdicts } from "./continuityVerdicts";
 import { CODEX_LIMITS, createCodexOp, getCodexState } from "./codexDb";
 import { currentSummaryChecks } from "./summaryChecks";
 
-export const ISSUE_KINDS = ["summary-missing", "summary-stale", "summary-wrong", "continuity", "codex-missing"] as const;
+export const ISSUE_KINDS = ["summary-missing", "summary-stale", "summary-wrong", "continuity", "codex-missing", "ai-unreviewed"] as const;
 export type IssueKind = (typeof ISSUE_KINDS)[number];
 
 /** The two sides of a continuity issue: an earlier chapter said one thing, a later one another. */
@@ -45,6 +45,8 @@ type Row = {
   body: string;
   prev_body: string | null;
   prev_summary: string | null;
+  ai_run_id: string | null;
+  ai_reviewed_at: number | null;
 };
 
 type Decision = { chapter_id: string; kind: string; fingerprint: string; status: string; revision: number; note: string | null };
@@ -58,7 +60,7 @@ export function reviewIssues(storyId: string): ReviewIssue[] {
   const rows = db()
     .prepare(
       `SELECT c.id, ch.parent_chapter_id AS parent_id, c.title, c.depth, c.revision, c.summary, c.body,
-              r.body AS prev_body, r.summary AS prev_summary
+              r.body AS prev_body, r.summary AS prev_summary, c.ai_run_id, c.ai_reviewed_at
          FROM chapters c
          LEFT JOIN choices ch ON ch.id = c.parent_choice_id
          LEFT JOIN chapter_revisions r ON r.chapter_id = c.id AND r.revision = c.revision - 1
@@ -94,6 +96,9 @@ export function reviewIssues(storyId: string): ReviewIssue[] {
       add("summary-missing", "No summary. The AI reads the full text of this chapter instead, or nothing once it's far back.");
     } else if (c.revision > 1 && c.prev_body !== null && c.prev_body !== c.body && c.prev_summary === c.summary) {
       add("summary-stale", "The last edit changed the text but not the summary.");
+    }
+    if (c.ai_run_id !== null && c.ai_reviewed_at === null) {
+      add("ai-unreviewed", "Written by AI and not read yet.");
     }
   }
 
@@ -222,10 +227,13 @@ function codexGaps(
   return out;
 }
 
-/** Chapter id to number of open issues, for chapters with at least one. Put-off and dismissed ones don't count. */
+/**
+ * Chapter id to number of open issues, for chapters with at least one. Put-off and dismissed ones don't count.
+ * ai-unreviewed issues are left out: the AI mark already shows on the outline.
+ */
 export function issueCounts(storyId: string): Map<string, number> {
   const counts = new Map<string, number>();
-  for (const i of reviewIssues(storyId)) if (i.status === "open") counts.set(i.chapterId, (counts.get(i.chapterId) ?? 0) + 1);
+  for (const i of reviewIssues(storyId)) if (i.status === "open" && i.kind !== "ai-unreviewed") counts.set(i.chapterId, (counts.get(i.chapterId) ?? 0) + 1);
   return counts;
 }
 
