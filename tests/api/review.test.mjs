@@ -172,3 +172,28 @@ r = await call("PATCH", `/api/chapters/${fresh}`, { base_revision: revFresh, tit
 ok(r.status === 200 && continuityOf(await issues()).length === 0, "editing the later chapter hides the other");
 const kept = (await call("GET", `/api/stories/${story}/continuity`)).json.verdicts;
 ok(kept.length === 4, "…the verdicts themselves are kept");
+
+// ---- codex gaps: an entity in two chapters on a path with no codex entry ----
+{
+  const s = (await call("POST", "/api/stories", { title: "Gaps", chapter: { title: "G root", body: "r", summary: "s", choices: ["L", "R"] } })).json;
+  const gch = (await call("GET", `/api/chapters/${s.chapter_id}`)).json.choices;
+  const mk = async (choice, title) => (await call("POST", "/api/chapters", { choice_id: choice.id, title, body: title + " body", summary: title + " sum", choices: ["X"] })).json.chapter_id;
+  const left = await mk(gch[0], "G left");
+  const right = await mk(gch[1], "G right");
+  const leftChild = await mk((await call("GET", `/api/chapters/${left}`)).json.choices[0], "G left child");
+  const facts = (id, entity) => call("POST", `/api/chapters/${id}/facts`, { revision: 1, facts: [{ entity, attribute: "mood", value: "calm", quote: "q" }] });
+  const gaps = async () => (await call("GET", `/api/stories/${s.story_id}/review`)).json.issues.filter((i) => i.kind === "codex-missing");
+  await facts(left, "Ilsa");
+  await facts(right, "ilsa");
+  ok((await gaps()).length === 0, "an entity on two sibling branches is not a gap");
+  await facts(leftChild, "The  Ilsa");
+  let g = await gaps();
+  ok(g.length === 1 && g[0].chapterId === left && g[0].fingerprint === "ilsa" && g[0].status === "open", "two chapters on a path make one gap, anchored at the first");
+  ok(g[0].message.includes("“Ilsa”") && g[0].message.includes("2 chapters"), "…with a message naming the entity and count: " + g[0].message);
+  r = await decide(left, { kind: "codex-missing", fingerprint: "ilsa", status: "dismissed" });
+  ok(r.status === 200 && (await gaps())[0].status === "dismissed", "a gap can be dismissed");
+  r = await decide(left, { kind: "codex-missing", fingerprint: "ilsa", status: "open" });
+  r = await call("POST", "/api/codex", { anchor_chapter_id: s.chapter_id, op: "create", name: "Ilsa Vane", type: "character", aliases: ["Ilsa"], content: "x" });
+  ok(r.status === 201 || r.status === 200, "a codex entry with the alias is added at the root");
+  ok((await gaps()).length === 0, "an alias match closes the gap");
+}

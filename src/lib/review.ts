@@ -5,7 +5,7 @@ import { PostError } from "./stories";
 import { storyVerdicts } from "./continuityVerdicts";
 import { CODEX_LIMITS, createCodexOp, getCodexState } from "./codexDb";
 
-export const ISSUE_KINDS = ["summary-missing", "summary-stale", "continuity"] as const;
+export const ISSUE_KINDS = ["summary-missing", "summary-stale", "continuity", "codex-missing"] as const;
 export type IssueKind = (typeof ISSUE_KINDS)[number];
 
 /** The two sides of a continuity issue: an earlier chapter said one thing, a later one another. */
@@ -36,6 +36,7 @@ export type ReviewIssue = {
 
 type Row = {
   id: string;
+  parent_id: string | null;
   title: string;
   depth: number;
   revision: number;
@@ -55,9 +56,10 @@ type Decision = { chapter_id: string; kind: string; fingerprint: string; status:
 export function reviewIssues(storyId: string): ReviewIssue[] {
   const rows = db()
     .prepare(
-      `SELECT c.id, c.title, c.depth, c.revision, c.summary, c.body,
+      `SELECT c.id, ch.parent_chapter_id AS parent_id, c.title, c.depth, c.revision, c.summary, c.body,
               r.body AS prev_body, r.summary AS prev_summary
          FROM chapters c
+         LEFT JOIN choices ch ON ch.id = c.parent_choice_id
          LEFT JOIN chapter_revisions r ON r.chapter_id = c.id AND r.revision = c.revision - 1
         WHERE c.story_id = ?
         ORDER BY c.depth, c.posted_at, c.rowid`,
@@ -118,7 +120,89 @@ export function reviewIssues(storyId: string): ReviewIssue[] {
       },
     });
   }
+
+  issues.push(...codexGaps(storyId, rows, statusOf));
   return issues;
+}
+
+/** An entity name as compared for codex gaps: lowercase, spaces collapsed, no leading "the ". */
+function normaliseEntity(name: string): string {
+  return name.toLowerCase().replace(/\s+/g, " ").trim().replace(/^the /, "");
+}
+
+/**
+ * Entities the facts name in two or more chapters on one path that the codex (at the later chapter) has no entry for.
+ * One issue per entity and first chapter, anchored at the first appearance. Needs no AI.
+ */
+function codexGaps(
+  storyId: string,
+  rows: { id: string; parent_id: string | null; title: string; depth: number }[],
+  statusOf: (chapterId: string, kind: IssueKind, fingerprint: string) => IssueStatus,
+): ReviewIssue[] {
+  const factRows = db()
+    .prepare(
+      `SELECT f.chapter_id, f.entity
+         FROM chapter_facts f JOIN chapters c ON c.id = f.chapter_id AND c.revision = f.revision
+        WHERE c.story_id = ? ORDER BY f.rowid`,
+    )
+    .all(storyId) as { chapter_id: string; entity: string }[];
+  if (factRows.length === 0) return [];
+  const entitiesOf = new Map<string, Map<string, string>>();
+  for (const f of factRows) {
+    const norm = normaliseEntity(f.entity);
+    if (norm.length < 2) continue;
+    let m = entitiesOf.get(f.chapter_id);
+    if (!m) entitiesOf.set(f.chapter_id, (m = new Map()));
+    if (!m.has(norm)) m.set(norm, f.entity.trim());
+  }
+  if (entitiesOf.size === 0) return [];
+
+  type Seen = { first: string; written: string; count: number };
+  const seenAt = new Map<string, Map<string, Seen>>();
+  const codexCache = new Map<string, Set<string>>();
+  const namesAt = (chapterId: string) => {
+    let names = codexCache.get(chapterId);
+    if (!names) {
+      names = new Set<string>();
+      for (const e of getCodexState(chapterId)) for (const n of [e.name, ...e.aliases]) names.add(normaliseEntity(n));
+      codexCache.set(chapterId, names);
+    }
+    return names;
+  };
+  const byId = new Map(rows.map((c) => [c.id, c]));
+  const found = new Map<string, Seen & { norm: string }>();
+  for (const c of rows) {
+    const seen = new Map<string, Seen>();
+    for (const [k, v] of c.parent_id ? (seenAt.get(c.parent_id) ?? []) : []) seen.set(k, v);
+    for (const [norm, written] of entitiesOf.get(c.id) ?? []) {
+      const prior = seen.get(norm);
+      if (!prior) {
+        seen.set(norm, { first: c.id, written, count: 1 });
+        continue;
+      }
+      const next = { ...prior, count: prior.count + 1 };
+      seen.set(norm, next);
+      const key = `${prior.first}\n${norm}`;
+      const already = found.get(key);
+      if (already) already.count = Math.max(already.count, next.count);
+      else if (!namesAt(c.id).has(norm)) found.set(key, { ...next, norm });
+    }
+    seenAt.set(c.id, seen);
+  }
+  const out: ReviewIssue[] = [];
+  for (const g of found.values()) {
+    const first = byId.get(g.first)!;
+    out.push({
+      chapterId: first.id,
+      title: first.title,
+      depth: first.depth,
+      kind: "codex-missing",
+      fingerprint: g.norm,
+      message: `“${g.written}” comes up in ${g.count} chapters on this path but has no codex entry.`,
+      status: statusOf(first.id, "codex-missing", g.norm),
+    });
+  }
+  return out;
 }
 
 /** Chapter id to number of open issues, for chapters with at least one. Put-off and dismissed ones don't count. */

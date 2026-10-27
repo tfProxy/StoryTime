@@ -166,6 +166,19 @@ try {
   await page.goto(`${BASE}/s/${c.story_id}/outline`);
   ok((await page.locator("a.outline-review").count()) === 0, "an intentional issue has no outline marker");
 
+  // Codex gaps: a name in two chapters on a path with no codex entry shows in the Codex section.
+  const g = await post("/api/stories", { title: "Gap story", chapter: { title: "Gap one", body: "Ilsa waits.", summary: "g", choices: ["on"] } });
+  const gChoice = (await send("GET", `/api/chapters/${g.chapter_id}`)).choices[0];
+  const gTwo = (await post("/api/chapters", { choice_id: gChoice.id, title: "Gap two", body: "Ilsa leaves.", summary: "g2" })).chapter_id;
+  for (const id of [g.chapter_id, gTwo]) await post(`/api/chapters/${id}/facts`, { revision: 1, facts: [{ entity: "Ilsa", attribute: "mood", value: "calm", quote: "Ilsa" }] });
+  await page.goto(`${BASE}/s/${g.story_id}/review`);
+  const gap = page.locator("li", { hasText: "has no codex entry" });
+  ok((await gap.count()) === 1 && (await gap.innerText()).includes("Ilsa") && (await gap.innerText()).includes("Gap one"), "the Codex section lists the name that has no entry");
+  ok((await gap.getByRole("link", { name: "Check the codex here" }).getAttribute("href")).includes(`chapter=${g.chapter_id}`), "…with a link that opens the codex check at the first chapter");
+  await gap.getByRole("button", { name: "Dismiss", exact: true }).click();
+  await page.getByText("Dismissed (1)").waitFor();
+  ok((await page.getByRole("link", { name: "Check the codex here" }).count()) === 0, "Dismiss takes it off the open list");
+
   // The Check continuity button: reads the facts of both chapters, then asks the judge once.
   const ai = await useMockAi(BASE);
   const d = await post("/api/stories", { title: "Continuity run story", chapter: { title: "Dawn", body: "Mira has green eyes. It was morning.", summary: "d", choices: ["on"] } });

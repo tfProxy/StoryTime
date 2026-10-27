@@ -70,7 +70,20 @@ export default async function ReviewPage({
   function issuesPanel(storyId: string) {
     const all = reviewIssues(storyId);
     const scoped = chosen ? all.filter((i) => i.chapterId === chosen.id || i.continuity?.before.chapterId === chosen.id) : all;
-    const summaryScoped = scoped.filter((i) => i.kind !== "continuity");
+    const summaryScoped = scoped.filter((i) => i.kind !== "continuity" && i.kind !== "codex-missing");
+    const gaps = scoped.filter((i) => i.kind === "codex-missing");
+    const openGaps = gaps.filter((i) => i.status === "open");
+    const laterGaps = gaps.filter((i) => i.status === "later");
+    const dismissedGaps = gaps.filter((i) => i.status === "dismissed");
+    const gap = (i: (typeof all)[number], actions: ("later" | "dismissed" | "open" | "undo")[]) => (
+      <li key={`${i.chapterId}-${i.kind}-${i.fingerprint}`}>
+        <strong>{i.message.match(/^“(.*?)” comes up/)?.[1] ?? i.fingerprint}</strong> — first in <Link href={`/c/${i.chapterId}`}>{i.title}</Link> ·{" "}
+        <Link href={`${base}?chapter=${i.chapterId}`}>Check the codex here</Link>
+        <br />
+        <span className="meta">{i.message}</span>
+        <IssueActions chapterId={i.chapterId} kind={i.kind} fingerprint={i.fingerprint} actions={actions} />
+      </li>
+    );
     const issues = summaryScoped.filter((i) => i.status === "open");
     const later = summaryScoped.filter((i) => i.status === "later");
     const dismissed = summaryScoped.filter((i) => i.status === "dismissed");
@@ -180,6 +193,25 @@ export default async function ReviewPage({
         />
 
         <h2>Codex</h2>
+        {openGaps.length > 0 && (
+          <>
+            <p className="meta">These names come up in several chapters on a path but have no codex entry.</p>
+            <ul>{openGaps.map((i) => gap(i, ["later", "dismissed"]))}</ul>
+          </>
+        )}
+        {laterGaps.length > 0 && (
+          <>
+            <h3>Later</h3>
+            <ul>{laterGaps.map((i) => gap(i, ["open", "dismissed"]))}</ul>
+          </>
+        )}
+        {dismissedGaps.length > 0 && (
+          <details>
+            <summary>Dismissed ({dismissedGaps.length})</summary>
+            <p className="meta">A dismissed gap comes back if the chapter is edited.</p>
+            <ul>{dismissedGaps.map((i) => gap(i, ["undo"]))}</ul>
+          </details>
+        )}
         <p className="meta">The AI checks one chapter at a time, or that chapter and the ones leading to it.</p>
         {chosen && path.length > 0 ? (
           <CodexAiScan
