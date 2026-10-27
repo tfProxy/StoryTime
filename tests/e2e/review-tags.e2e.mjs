@@ -171,6 +171,22 @@ try {
   } else {
     ok(true, "…and Find tags is hidden when every tag is off");
   }
+
+  // An approved tag on a chapter edited since it was read is flagged, with a link to check it again.
+  await send("PUT", `/api/stories/${s.story_id}/tags`, { tag_id: tagId, on: true });
+  const edit = await fetch(`${BASE}/api/chapters/${horse}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ base_revision: 1, title: "Horse", body: "Mira had turned into a horse, and stayed one." }),
+  });
+  ok(edit.ok, "the Horse chapter is edited after its tag was approved");
+  await page.goto(reviewUrl(s.story_id, "?tab=tags"));
+  const horseCard = page.locator(`article[data-tagged-chapter="${horse}"]`);
+  await horseCard.waitFor();
+  ok((await horseCard.innerText()).includes(`${TAG}: full (chapter edited since)`), "its approved tag is flagged as made from an earlier text");
+  const check = horseCard.getByRole("link", { name: "Check again" });
+  ok((await check.count()) === 1, "the flagged chapter has a Check again link");
+  ok((await check.getAttribute("href")) === `/s/${s.story_id}/review?tab=tags&chapter=${horse}`, "…linking to that chapter on the tags tab");
 } finally {
   await send("DELETE", `/api/tags/${tagId}`);
   await ai.restore();

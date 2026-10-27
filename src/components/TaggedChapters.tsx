@@ -7,12 +7,12 @@ import { useRouter } from "next/navigation";
 export type TaggedChapter = {
   id: string;
   title: string;
-  tags: { id: string; name: string; value: string | null; source: "ai" | "author" }[];
+  tags: { id: string; name: string; value: string | null; source: "ai" | "author"; stale: boolean }[];
 };
 
 export type TagChoice = { id: string; name: string; choices: string[] };
 
-export default function TaggedChapters({ chapters, enabled }: { chapters: TaggedChapter[]; enabled: TagChoice[] }) {
+export default function TaggedChapters({ storyId, chapters, enabled }: { storyId: string; chapters: TaggedChapter[]; enabled: TagChoice[] }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pick, setPick] = useState<Record<string, { tag: string; value: string }>>({});
@@ -59,6 +59,11 @@ export default function TaggedChapters({ chapters, enabled }: { chapters: Tagged
                           (by hand){" "}
                         </span>
                       )}
+                      {t.stale && (
+                        <span className="meta" style={{ margin: 0 }}>
+                          (chapter edited since){" "}
+                        </span>
+                      )}
                       <button
                         type="button"
                         className="secondary"
@@ -71,6 +76,11 @@ export default function TaggedChapters({ chapters, enabled }: { chapters: Tagged
                     </span>
                   );
                 })}
+              </p>
+            )}
+            {c.tags.some((t) => t.stale) && (
+              <p className="meta" style={{ margin: "0.25rem 0" }}>
+                <Link href={`/s/${storyId}/review?tab=tags&chapter=${c.id}`}>Check again</Link>
               </p>
             )}
             <div className="row" style={{ flexWrap: "wrap" }}>
