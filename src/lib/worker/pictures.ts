@@ -2,12 +2,23 @@
 // its place looks. Quick clicks are gathered here (a port of `ask` and `markReady` in WorkQueue.tsx): a click that
 // matches the job being gathered adds a picture to it, and the job is closed GATHER_MS after the last click.
 import { z } from "zod";
-import { newId } from "../db";
-import { sameJob } from "../comfy/makeJob";
+import type { Picture } from "../../components/pictures";
+import { freeOllamaForPictures } from "../ai/ollama";
+import { cancelPrompt, waitForPictures, type ComfyImage, type Progress } from "../comfy/client";
 import { fromSpec, type JobSpec } from "../comfy/jobSpec";
-import { targetKey, type PictureTarget } from "../pictureTarget";
+import type { JobRecord } from "../comfy/jobTag";
+import { queueJob, sameJob } from "../comfy/makeJob";
+import { newId } from "../db";
+import { instanceId } from "../instance";
+import { NewJobSchema, recordPictureJob } from "../pictureJobs";
+import { chapterIdOf, targetKey, type PictureTarget } from "../pictureTarget";
+import { PostError } from "../stories";
+import { parseSettings } from "../settingsSchema";
+import { getSettings } from "../settingsStore";
+import { moveWaiting, waitingOrder, type ReadyPicture } from "../workQueue/schedule";
 import { workerState } from "./bus";
-import { createItem, getItem, listItems, pictureTargetSchema, updateItem, type WorkRow } from "./items";
+import { createItem, deleteItem, getItem, listItems, pictureTargetSchema, updateItem, type WorkRow } from "./items";
+import { resolveSource } from "./uploads";
 
 /** How long after the last click a job is closed, so quick clicks with the same settings make one job. */
 export const GATHER_MS = 800;
@@ -93,4 +104,182 @@ export function askPicture(request: AskRequest): WorkRow<"picture"> {
 /** Jobs that were still gathering when the server stopped are closed: nothing will click into them now. */
 export function recoverGathering() {
   for (const item of listItems()) if (item.type === "picture" && item.state === "gathering") markReady(item.key);
+}
+
+// ---- sending: queue the job on ComfyUI, wait for its pictures, record them (ports of `send`, `finish`, `record`, `ended`, `stop`) ----
+
+/** A job's pictures, as the Illustrate page shows them. */
+function picturesOfJob(chapterId: string | null, jobId: string | null, promptId: string, record: JobRecord, images: ComfyImage[]): Picture[] {
+  return images.map((image, i) => ({
+    key: `${jobId ?? promptId}-${i}`,
+    index: i,
+    mark: null,
+    fresh: true,
+    image,
+    jobId,
+    prompt: record.prompt,
+    negative: record.negative,
+    seed: record.seed,
+    checkpoint: record.checkpoint,
+    width: record.width,
+    height: record.height,
+    denoise: record.denoise ?? null,
+    source: record.source ?? null,
+    mask: record.mask ?? null,
+    refs: record.refs ?? [],
+    instruction: record.instruction ?? null,
+    editModel: record.edit_model ?? null,
+    moment: record.moment,
+    ...(record.temporary && { temporary: true }),
+    chapterId,
+    madeAt: Date.now(),
+    batch: images.length,
+  }));
+}
+
+/** What a job's end hands on. */
+type Ended = { pictures: Picture[]; warning?: string; unseen: boolean } | { error: string } | { stopped: true } | { gone: true };
+
+/** Records a finished job in the log (a cover job for its story, a codex job for its story and entry). */
+function recordPictures(target: PictureTarget, promptId: string, record: JobRecord, images: ComfyImage[], unseen: boolean): Ended {
+  const chapterId = chapterIdOf(target);
+  try {
+    const by = target.kind === "chapter" ? { chapter_id: target.chapterId } : target.kind === "cover" ? { story_id: target.storyId } : { story_id: target.storyId, entry_id: target.entryId };
+    const job = recordPictureJob(NewJobSchema.parse({ ...by, prompt_id: promptId, ...record, images, unseen }));
+    return { pictures: picturesOfJob(chapterId, job.id, promptId, record, images), unseen };
+  } catch (e) {
+    // Not this StoryTime's chapter: nothing to show or to warn about.
+    if (e instanceof PostError && e.status === 404) return { gone: true };
+    return {
+      pictures: picturesOfJob(chapterId, null, promptId, record, images),
+      warning: `The pictures are ready, but StoryTime couldn't record how they were made: ${e instanceof Error ? e.message : String(e)}`,
+      unseen: false,
+    };
+  }
+}
+
+/** A job has ended: its item becomes done or failed (for the pages to hand on), or goes when it was stopped or is not this StoryTime's. */
+function ended(key: string, result: Ended) {
+  workerState().pictures.delete(key);
+  if ("stopped" in result || "gone" in result) deleteItem(key);
+  else if ("error" in result) updateItem(key, { state: "failed", data: { message: result.error, progress: undefined } });
+  else updateItem(key, { state: "done", data: { pictures: result.pictures, message: result.warning, unseen: result.unseen, progress: undefined } });
+}
+
+const failed = (key: string, e: unknown) => ended(key, e instanceof DOMException && e.name === "AbortError" ? { stopped: true } : { error: e instanceof Error ? e.message : String(e) });
+
+/** Progress goes out at most four times a second per job, but a change of stage always does. */
+const PROGRESS_MS = 250;
+const lastProgress = new Map<string, { at: number; stage: string }>();
+
+function saveProgress(key: string, progress: Progress) {
+  const last = lastProgress.get(key);
+  const now = Date.now();
+  if (last && last.stage === progress.stage && now - last.at < PROGRESS_MS) return;
+  lastProgress.set(key, { at: now, stage: progress.stage });
+  updateItem(key, { data: { progress } });
+}
+
+/** Queues a sent job on ComfyUI and waits for its pictures. `posted` is called once ComfyUI has the job (or it failed before). */
+async function send(key: string, posted: () => void) {
+  const worker = workerState();
+  const control = worker.pictures.get(key);
+  const item = getItem(key);
+  if (!control || item?.type !== "picture") {
+    worker.pictures.delete(key);
+    posted();
+    return;
+  }
+  const { target, spec, count, session } = item.data;
+  try {
+    const input = fromSpec(spec as unknown as JobSpec, resolveSource);
+    const settings = getSettings() ?? parseSettings({});
+    const made = await queueJob(input, count, { ...target, instance: instanceId() }, {
+      signal: control.ctl.signal,
+      uploads: worker.uploads,
+      onProgress: (progress) => saveProgress(key, progress),
+      onSize: (width, height) => updateItem(key, { data: { view: { ...(getItem(key)?.data as { view?: object } | undefined)?.view, width, height } } }),
+      beforeQueue: () => freeOllamaForPictures(settings.connections),
+      onPromptId: (id) => {
+        control.promptId = id;
+        updateItem(key, { data: { promptId: id } });
+      },
+    });
+    posted();
+    const images = await waitForPictures(input.comfy.url, made.promptId, made.clientId, (progress) => saveProgress(key, progress), control.ctl.signal);
+    if (images.length === 0) throw new Error("ComfyUI finished but sent back no pictures. Does the workflow end in a Save Image node?");
+    ended(key, recordPictures(target, made.promptId, made.record, images, !made.record.temporary && !session));
+  } catch (e) {
+    posted();
+    failed(key, e);
+  } finally {
+    lastProgress.delete(key);
+  }
+}
+
+/** Sends a ready job: it is `working` at once, and goes to ComfyUI when the job before it has been queued there. */
+export function sendPicture(key: string) {
+  const worker = workerState();
+  const item = getItem(key);
+  if (item?.type !== "picture" || item.state !== "waiting" || worker.pictures.has(key)) return;
+  const spec = item.data.spec as { comfy?: { url?: string }; draw?: { id?: string } };
+  worker.lastPreset = spec.draw?.id ?? null;
+  worker.pictures.set(key, { ctl: new AbortController(), promptId: null, url: spec.comfy?.url ?? "" });
+  // In the chain before the item changes: changing it can pump again, which sends the jobs behind this one.
+  // (A job that takes more than 15 s to queue doesn't hold up the ones behind it.)
+  worker.sendChain = worker.sendChain.then(
+    () =>
+      new Promise<void>((resolve) => {
+        const give = setTimeout(resolve, 15_000);
+        void send(key, () => {
+          clearTimeout(give);
+          resolve();
+        });
+      }),
+  );
+  updateItem(key, { state: "working", data: { progress: { stage: "queued", ahead: null } } });
+}
+
+/** The waiting jobs as the scheduler takes them (oldest first; jobs the owner moved have the earliest times). */
+export function readyPictures(items = listItems()): (ReadyPicture & { key: string })[] {
+  return items
+    .filter((i): i is WorkRow<"picture"> => i.type === "picture" && i.state === "waiting")
+    .sort((a, b) => (a.readyAt ?? a.createdAt) - (b.readyAt ?? b.createdAt))
+    .map((i) => ({ key: i.key, targetKey: i.targetKey ?? "", drawPreset: (i.data.spec as { draw?: { id?: string } }).draw?.id ?? null, readyAt: i.readyAt ?? i.createdAt, moved: i.moved }));
+}
+
+/** Stops a job: one being gathered or waiting is dropped; one sent is taken off ComfyUI. False when there is no such job. */
+export function stopPicture(key: string): boolean {
+  const worker = workerState();
+  const item = getItem(key);
+  if (item?.type !== "picture") return false;
+  if (worker.gathering?.key === key) {
+    clearTimeout(worker.gathering.timer);
+    worker.gathering = null;
+    return deleteItem(key);
+  }
+  if (item.state === "gathering" || item.state === "waiting") return deleteItem(key);
+  const control = worker.pictures.get(key);
+  if (item.state !== "working" || !control) return false;
+  if (control.promptId) void cancelPrompt(control.url, control.promptId);
+  control.ctl.abort();
+  return true;
+}
+
+/** Takes a finished or failed job off the list (the pages have handed its pictures on). */
+export function dismissPicture(key: string): boolean {
+  const item = getItem(key);
+  if (item?.type !== "picture" || (item.state !== "done" && item.state !== "failed")) return false;
+  return deleteItem(key);
+}
+
+/** Moves a waiting job in the order they will go; the order is the owner's from then on. False when nothing moved. */
+export function movePicture(key: string, how: "up" | "down" | "next"): boolean {
+  const group = (getSettings() ?? parseSettings({})).queue.groupPictures;
+  const order = waitingOrder(readyPictures(), workerState().lastPreset, group);
+  const moved = moveWaiting(order, key, how);
+  if (moved.every((r, i) => r.key === order[i].key)) return false;
+  // Their times become 1, 2, 3…: the moved jobs sort by them, ahead of every job that was not moved.
+  moved.forEach((r, i) => updateItem(r.key, { moved: true, readyAt: i + 1 }));
+  return true;
 }
