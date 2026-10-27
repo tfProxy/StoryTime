@@ -292,17 +292,11 @@ export default function AiRunProgress({
           </li>
         ))}
       </ol>
-      {isTags ? (
-        <p className="meta">This runs on the StoryTime server: you can close this page and come back later.</p>
-      ) : (
-        <>
-          <p className="meta">
-            This runs in this browser tab: you can use other pages of StoryTime meanwhile, but keep the tab open. On a phone, keep the screen on.
-          </p>
-          <p>
-            <Link href={backHref ?? `/c/${chapterId}`}>{backLabel ?? "Back to the chapter"}</Link>
-          </p>
-        </>
+      <p className="meta">This runs on the StoryTime server: you can close this page and come back later.</p>
+      {!isTags && (
+        <p>
+          <Link href={backHref ?? `/c/${chapterId}`}>{backLabel ?? "Back to the chapter"}</Link>
+        </p>
       )}
     </section>
   );
