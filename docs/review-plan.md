@@ -78,7 +78,9 @@ Built as: migration 34 rebuilds `ai_runs` to allow the mode; the server makes th
 - New `src/lib/ai/factAi.ts`: `extractFacts(settings, {story, chapter, codexNames, signal, role})` returns `{entity, attribute, value, quote}[]`. Keep the prompt small (chapter text, active codex entry names, nothing else). Drop facts whose quote isn't in the text (reuse `quoteInText` from `tagAi.ts`). Follow `tagAi.ts` for prompt and parsing style.
 - Unit test with canned replies in `tests/unit/` (see `tests/unit/tag-ai.test.mts`).
 
-### C2. Facts storage and a "facts" run task (medium)
+### C2. Facts storage and a "facts" run task (medium) (done, a7c7d05)
+
+Built as: migration 35 (chapter_facts, chapter_fact_checks, mode `tags` renamed `review`). A review run reads facts only when `options.checks` includes `"facts"` (default `["tags"]`), so Find tags still makes one call per chapter. `GET /api/chapters/:id/facts` returns `factsAlongPath`.
 
 - Migration: `chapter_facts(id TEXT PRIMARY KEY, chapter_id TEXT NOT NULL REFERENCES chapters(id), revision INTEGER NOT NULL, entity TEXT NOT NULL, attribute TEXT NOT NULL, value TEXT NOT NULL, quote TEXT NOT NULL)`, index on `chapter_id`.
 - `src/lib/facts.ts`: `saveFacts(chapterId, revision, facts)` (replaces that chapter's rows; 409 if the revision is old) and `factsAlongPath(chapterId)` (facts of the root-to-chapter path, in order, only rows at each chapter's current revision).
