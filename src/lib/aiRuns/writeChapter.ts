@@ -55,13 +55,14 @@ export function storyContextOf(context: ChapterContext, label: string | null, si
  * Makes sure the older chapters of the path have the rolling summaries a prompt needs, as the writing page does.
  * A failure falls back silently: the prompt then uses short excerpts.
  */
-export async function withPathSummaries(settings: Settings, ctx: StoryContext, signal?: AbortSignal, onStatus?: (text: string) => void): Promise<StoryContext> {
+export async function withPathSummaries(settings: Settings, ctx: StoryContext, signal?: AbortSignal, onStatus?: (text: string) => void, f?: typeof fetch): Promise<StoryContext> {
   const upTo = neededSummaryIndex(ctx.path, settings.contextTokens);
   if (upTo < 0) return ctx;
   try {
     const made = await ensurePathSummaries(settings, ctx.path, upTo, {
       story: { title: ctx.storyTitle, premise: ctx.premise },
       signal,
+      fetch: f,
       onProgress: (done, total) => onStatus?.(`Summarizing the story so far (${Math.min(done + 1, total)} of ${total})…`),
     });
     return { ...ctx, path: ctx.path.map((c) => (c.id && made[c.id] ? { ...c, summary: made[c.id].summary, path_summary: made[c.id].path_summary } : c)) };
@@ -190,9 +191,11 @@ export async function writeOneChapter(
     onText?: (text: string) => void;
     onStatus?: (text: string) => void;
     stream?: Stream;
+    /** Saves the older chapters' summaries on the server (the worker's fetch; the page's by default). */
+    fetch?: typeof fetch;
   },
 ): Promise<{ title: string; body: string; choices: PlannedChoice[]; summary?: string; path_summary?: string }> {
-  const ctx = await withPathSummaries(settings, storyContextOf(p.context, p.label), p.signal, p.onStatus);
+  const ctx = await withPathSummaries(settings, storyContextOf(p.context, p.label), p.signal, p.onStatus, p.fetch);
   const chapter = await writeText(settings, { ctx, label: p.label, direction: p.direction, options: p.options, signal: p.signal, onText: p.onText, stream: p.stream });
   p.onStatus?.("Planning the choices…");
   const choices = await planNext(settings, { ctx: { ...ctx, siblingChoices: undefined }, chapter, given: p.given, suggest: p.suggest, options: p.options, signal: p.signal, stream: p.stream });

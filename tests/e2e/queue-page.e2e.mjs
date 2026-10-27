@@ -80,12 +80,14 @@ try {
   const items = () => section("Waiting").getByRole("listitem");
   const itemOf = (n) => items().filter({ hasText: n });
   ok(await itemOf("Chapter One").getByRole("button", { name: "Move up" }).isDisabled() && await itemOf("Chapter Three").getByRole("button", { name: "Move down" }).isDisabled(), "the first job can't move up, nor the last down");
+  // (The server moves it and tells the page, so the new order is waited for.)
+  const orderIs = (order) => until(async () => (await waitingNames()).join() === order, `the order ${order}`, 40);
   await itemOf("Chapter Three").getByRole("button", { name: "Move up" }).click();
-  ok((await waitingNames()).join() === "Chapter One,Chapter Three,Chapter Two", `Move up swaps a job with the one before it: ${(await waitingNames()).join()}`);
+  ok(await orderIs("Chapter One,Chapter Three,Chapter Two"), `Move up swaps a job with the one before it: ${(await waitingNames()).join()}`);
   await itemOf("Chapter Two").getByRole("button", { name: "Do next" }).click();
-  ok((await waitingNames()).join() === "Chapter Two,Chapter One,Chapter Three", `Do next puts a job first: ${(await waitingNames()).join()}`);
+  ok(await orderIs("Chapter Two,Chapter One,Chapter Three"), `Do next puts a job first: ${(await waitingNames()).join()}`);
   await itemOf("Chapter One").getByRole("button", { name: "Move down" }).click();
-  ok((await waitingNames()).join() === "Chapter Two,Chapter Three,Chapter One", `Move down swaps a job with the one after it: ${(await waitingNames()).join()}`);
+  ok(await orderIs("Chapter Two,Chapter Three,Chapter One"), `Move down swaps a job with the one after it: ${(await waitingNames()).join()}`);
   await page.screenshot({ path: `${SHOTS}/queue-page-desktop.png`, fullPage: true });
 
   // ---- resume: sent in that order ----

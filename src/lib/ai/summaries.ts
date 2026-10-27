@@ -119,8 +119,8 @@ export function parsePartialSummaryReply(reply: string, own?: string | null): Su
 }
 
 /** Stores a generated summary for a chapter (only fills it if it is still empty). */
-export async function saveSummaries(chapterId: string, revision: number, s: Summaries): Promise<void> {
-  const res = await fetch(`/api/chapters/${chapterId}/summary`, {
+export async function saveSummaries(chapterId: string, revision: number, s: Summaries, f: typeof fetch = (input, init) => fetch(input, init)): Promise<void> {
+  const res = await f(`/api/chapters/${chapterId}/summary`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ revision, summary: s.summary, path_summary: s.path_summary }),
@@ -134,6 +134,8 @@ export async function saveSummaries(chapterId: string, revision: number, s: Summ
 export type SummaryOptions = {
   story: { title: string; premise: string };
   signal?: AbortSignal;
+  /** The fetch that saves the summaries on the server: the page's own by default; the server's worker passes one that reaches its own routes. */
+  fetch?: typeof fetch;
   onProgress?: (done: number, total: number) => void;
   /** Streamed text for the chapter at `index` in the path, as in summarizeChapter. */
   onText?: (partial: Summaries, index: number) => void;
@@ -170,7 +172,7 @@ export async function ensurePathSummaries(
       onText: opts.onText && ((p) => opts.onText!(p, i)),
     });
     // Saving is best-effort: the summary is still useful for this prompt if the server refuses.
-    if (c.id && c.revision) await saveSummaries(c.id, c.revision, s).catch(() => {});
+    if (c.id && c.revision) await saveSummaries(c.id, c.revision, s, opts.fetch).catch(() => {});
     if (c.id) made[c.id] = s;
     previous = s.path_summary;
   }

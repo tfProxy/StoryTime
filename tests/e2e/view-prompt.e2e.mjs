@@ -89,7 +89,9 @@ ok(shown.includes("the lamp goes out") && !shown.includes("a storm arrives"), "a
 await page.keyboard.press("Escape");
 await page.getByRole("button", { name: "Generate chapter", exact: true }).click();
 await page.getByRole("button", { name: "Edit text" }).waitFor();
-ok(prompts.at(-1).user.trim() === shown, "…and it is the message that Generate then sends");
+// (The server makes the request a moment after the click, and asks for the choice text and suggestions after the chapter.)
+for (let i = 0; i < 50 && !prompts.some((p) => p.user.trim() === shown); i++) await new Promise((r) => setTimeout(r, 100));
+ok(prompts.some((p) => p.user.trim() === shown), "…and it is the message that Generate then sends");
 
 // ---- other buttons ----
 ok(await viewPrompt("Revise").isEnabled(), "the Revise prompt can be viewed once there is a chapter");
