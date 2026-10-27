@@ -113,6 +113,8 @@ const writePicker = page.getByLabel("Model for writing").first();
 ok((await writePicker.inputValue()) === "", "the writing model starts on the default");
 await page.getByRole("button", { name: "Generate chapter" }).click();
 await page.getByRole("button", { name: "Edit text" }).waitFor();
+// (The server makes the request now, a moment after the click.)
+await until(() => calls.some((c) => c.system.includes("Output format")), "the generate call");
 let gen = calls.filter((c) => c.system.includes("Output format")).at(-1);
 ok(gen.url === "/a/v1/chat/completions" && gen.model === "alpha", "generating uses the default model");
 ok(gen.reasoning === undefined, "…which is left to think");

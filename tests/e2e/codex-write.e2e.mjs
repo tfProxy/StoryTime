@@ -66,7 +66,8 @@ ok(/left out by you/.test(await row("Mira").innerText()), "an entry can be left 
 await page.getByRole("button", { name: "Generate chapter" }).click();
 await page.getByRole("button", { name: "Edit text" }).click();
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("Hello there"));
-const p = prompts.at(-1);
+// (The chapter prompt is the one with the codex entries: the choice text and the suggestions are asked for after it.)
+const p = prompts.findLast((x) => x.includes("Zed [character]")) ?? "";
 ok(p.includes("Zed [character]") && p.includes("Qux [character]") && p.includes("The Rule [lore]"), "the prompt carries the chosen entries");
 ok(!p.includes("Mira [character]"), "…and not the one that was left out");
 await row("Mira").getByRole("button", { name: "Put back" }).click();
@@ -103,7 +104,8 @@ await row("Zed").getByText("A cheerful ferryman now.").waitFor();
 ok(true, "the preview shows the edited entry");
 await page.getByRole("button", { name: "Generate a new draft" }).click();
 await page.getByRole("button", { name: "Edit text" }).waitFor();
-ok(prompts.at(-1).includes("A cheerful ferryman now."), "the next prompt uses the edited entry");
+for (let i = 0; i < 50 && !prompts.some((x) => x.includes("A cheerful ferryman now.")); i++) await new Promise((r) => setTimeout(r, 100));
+ok(prompts.some((x) => x.includes("A cheerful ferryman now.")), "the next prompt uses the edited entry");
 await page.getByRole("button", { name: "+ New entry" }).click();
 await drawer.getByRole("heading", { name: "New entry" }).waitFor();
 ok(true, "+ New entry in the preview opens a blank form");

@@ -47,6 +47,8 @@ export type WorkerState = {
   generates: Map<string, { text: string; ctl: AbortController }>;
   /** What each picture run (Fill missing pictures) has asked for, retried once, and finished but not yet put on the run. */
   pictureRuns: Map<string, { asked: Set<string>; retried: Set<string>; results: { taskId: string; jobId?: string; error?: string }[]; flushing: boolean }>;
+  /** For the API and browser tests only (the test routes set it): recording a finished job fails with this message. */
+  failRecording: string | null;
   /** ComfyUI jobs already picked up (made here or found in ComfyUI), by prompt id. */
   picked: Set<string>;
   /** The scan of ComfyUI for this StoryTime's jobs: on now that the browser follows the server's queue (it would record the same jobs as the browser did, if both scanned). `last` is when it last ran. */
@@ -75,7 +77,7 @@ declare global {
 
 /** The one worker state of this process, made on first use. */
 export function workerState(): WorkerState {
-  return (globalThis.__storytimeWorker ??= { bus: createBus(), started: false, timers: [], generates: new Map(), runs: new Map(), pictureRuns: new Map(), picked: new Set(), scan: { enabled: true, running: false, last: 0 }, pump: { running: false, again: false }, gathering: null, pictures: new Map(), sendChain: Promise.resolve(), uploads: { current: null }, lastPreset: null, holder: null });
+  return (globalThis.__storytimeWorker ??= { bus: createBus(), started: false, timers: [], generates: new Map(), runs: new Map(), pictureRuns: new Map(), failRecording: null, picked: new Set(), scan: { enabled: true, running: false, last: 0 }, pump: { running: false, again: false }, gathering: null, pictures: new Map(), sendChain: Promise.resolve(), uploads: { current: null }, lastPreset: null, holder: null });
 }
 
 export const publish = (channel: string, event: unknown) => workerState().bus.publish(channel, event);

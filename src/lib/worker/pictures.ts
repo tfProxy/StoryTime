@@ -144,12 +144,15 @@ type Ended = { pictures: Picture[]; warning?: string; unseen: boolean } | { erro
 function recordPictures(target: PictureTarget, promptId: string, record: JobRecord, images: ComfyImage[], unseen: boolean): Ended {
   const chapterId = chapterIdOf(target);
   try {
+    if (process.env.STORYTIME_TEST === "1" && workerState().failRecording) throw new Error(workerState().failRecording!);
     const by = target.kind === "chapter" ? { chapter_id: target.chapterId } : target.kind === "cover" ? { story_id: target.storyId } : { story_id: target.storyId, entry_id: target.entryId };
     const job = recordPictureJob(NewJobSchema.parse({ ...by, prompt_id: promptId, ...record, images, unseen }));
     return { pictures: picturesOfJob(chapterId, job.id, promptId, record, images), unseen };
   } catch (e) {
     // Not this StoryTime's chapter: nothing to show or to warn about.
     if (e instanceof PostError && e.status === 404) return { gone: true };
+    // Not in the log: a later scan of ComfyUI (which still has the job, tagged) records it.
+    workerState().picked.delete(promptId);
     return {
       pictures: picturesOfJob(chapterId, null, promptId, record, images),
       warning: `The pictures are ready, but StoryTime couldn't record how they were made: ${e instanceof Error ? e.message : String(e)}`,
@@ -161,6 +164,7 @@ function recordPictures(target: PictureTarget, promptId: string, record: JobReco
 /** A job has ended: its item becomes done or failed (for the pages to hand on), or goes when it was stopped or is not this StoryTime's. */
 function ended(key: string, result: Ended) {
   workerState().pictures.delete(key);
+  endProgress(key);
   if ("stopped" in result || "gone" in result) deleteItem(key);
   else if ("error" in result) updateItem(key, { state: "failed", data: { message: result.error, progress: undefined } });
   else updateItem(key, { state: "done", data: { pictures: result.pictures, message: result.warning, unseen: result.unseen, progress: undefined } });
@@ -170,14 +174,37 @@ const failed = (key: string, e: unknown) => ended(key, e instanceof DOMException
 
 /** Progress goes out at most four times a second per job, but a change of stage always does. */
 const PROGRESS_MS = 250;
-const lastProgress = new Map<string, { at: number; stage: string }>();
+type ProgressState = { at: number; stage: string; pending: Progress | null; timer: ReturnType<typeof setTimeout> | null };
+const lastProgress = new Map<string, ProgressState>();
 
 function saveProgress(key: string, progress: Progress) {
-  const last = lastProgress.get(key);
-  const now = Date.now();
-  if (last && last.stage === progress.stage && now - last.at < PROGRESS_MS) return;
-  lastProgress.set(key, { at: now, stage: progress.stage });
-  updateItem(key, { data: { progress } });
+  const s: ProgressState = lastProgress.get(key) ?? { at: 0, stage: "", pending: null, timer: null };
+  lastProgress.set(key, s);
+  const send = (p: Progress) => {
+    s.at = Date.now();
+    s.stage = p.stage;
+    s.pending = null;
+    updateItem(key, { data: { progress: p } });
+  };
+  const wait = PROGRESS_MS - (Date.now() - s.at);
+  if (s.stage !== progress.stage || wait <= 0) {
+    if (s.timer) clearTimeout(s.timer);
+    s.timer = null;
+    return send(progress);
+  }
+  // Too soon after the last one: the latest is sent when the time is up, so the last word is never lost.
+  s.pending = progress;
+  s.timer ??= setTimeout(() => {
+    s.timer = null;
+    if (s.pending && lastProgress.get(key) === s) send(s.pending);
+  }, wait);
+}
+
+/** The job has ended: no progress is sent for it any more. */
+function endProgress(key: string) {
+  const s = lastProgress.get(key);
+  if (s?.timer) clearTimeout(s.timer);
+  lastProgress.delete(key);
 }
 
 /** Queues a sent job on ComfyUI and waits for its pictures. `posted` is called once ComfyUI has the job (or it failed before). */
@@ -214,7 +241,7 @@ async function send(key: string, posted: () => void) {
     posted();
     failed(key, e);
   } finally {
-    lastProgress.delete(key);
+    endProgress(key);
   }
 }
 
@@ -295,7 +322,7 @@ export function watchFound(key: string, url: string, found: TaggedJob) {
       ended(key, recordPictures(tagTarget(found.tag), found.promptId, job, images, !job.temporary && !found.tag.session));
     })
     .catch((e) => failed(key, e))
-    .finally(() => lastProgress.delete(key));
+    .finally(() => endProgress(key));
 }
 
 /**
@@ -379,7 +406,7 @@ export async function recoverPictures(wait = RECOVER_WAIT_MS): Promise<void> {
 }
 
 /** How long after the last scan a page opening is enough reason to scan again. */
-const RESCAN_MS = 10_000;
+const RESCAN_MS = 2000;
 
 /** Scans when it is on and the last scan was a while ago: a page has just come into view, so jobs ComfyUI finished meanwhile are looked for now. */
 export function scanIfDue() {

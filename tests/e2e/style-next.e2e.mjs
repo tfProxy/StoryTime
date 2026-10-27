@@ -28,7 +28,14 @@ let failed = false;
 const ok = (c, m) => { console.log(c ? "ok  " : "FAIL", m); if (!c) failed = true; };
 const json = async (method, url, body) =>
   (await fetch(BASE + url, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) })).json();
-const lastChapterPrompt = () => [...prompts].reverse().find((p) => p.system.includes("Output format"))?.user ?? "";
+// The next chapter prompt the AI is sent (the server makes the request a moment after the click, so it is waited for).
+const chapterPrompts = () => prompts.filter((p) => p.system.includes("Output format"));
+let consumed = 0;
+const nextChapterPrompt = async () => {
+  for (let i = 0; i < 100 && chapterPrompts().length <= consumed; i++) await new Promise((r) => setTimeout(r, 100));
+  consumed = chapterPrompts().length;
+  return chapterPrompts().at(-1)?.user ?? "";
+};
 
 const settingsBefore = (await json("GET", "/api/settings")).settings;
 await json("PUT", "/api/settings", { ...(settingsBefore ?? {}), autoSuggestChoices: false, connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } });
@@ -42,7 +49,7 @@ page.on("dialog", (d) => d.accept());
 await startStory(page, BASE, { title: "Styled tale", style: "STYLE-NEW: first person." });
 await page.getByRole("button", { name: "Generate chapter" }).click();
 await page.getByRole("button", { name: "Edit text" }).waitFor();
-ok(lastChapterPrompt().includes("Style notes from the author (follow these in everything you write):\nSTYLE-NEW: first person."), "a new story's style notes go into the prompt");
+ok((await nextChapterPrompt()).includes("Style notes from the author (follow these in everything you write):\nSTYLE-NEW: first person."), "a new story's style notes go into the prompt");
 ok((await page.getByRole("button", { name: "Post and write next" }).count()) === 0, "there is no “Post and write next” button");
 
 await page.getByPlaceholder("Choice 1").fill("Left");
@@ -94,7 +101,8 @@ await page.getByText(/Style notes: STYLE-EDITED/).waitFor();
 ok(true, "the writing page shows the saved notes");
 await page.getByRole("button", { name: "Generate chapter" }).click();
 await page.getByRole("button", { name: "Edit text" }).waitFor();
-ok(lastChapterPrompt().includes("STYLE-EDITED: third person.") && !lastChapterPrompt().includes("STYLE-NEW"), "…and drafting uses them");
+const editedPrompt = await nextChapterPrompt();
+ok(editedPrompt.includes("STYLE-EDITED: third person.") && !editedPrompt.includes("STYLE-NEW"), "…and drafting uses them");
 
 // ---- a second chapter ----
 await page.getByPlaceholder("Choice 1").fill("Onward");
@@ -105,7 +113,7 @@ await page.waitForURL((u) => u.href.includes("/write?choice=") && !u.href.endsWi
 ok((await page.getByLabel(/Choice text/).inputValue()) === "Onward", "…and the next chapter's choice opens for writing");
 await page.getByRole("button", { name: "Generate chapter" }).click();
 await page.getByRole("button", { name: "Edit text" }).waitFor();
-ok(lastChapterPrompt().includes("STYLE-EDITED: third person."), "a later chapter's prompt uses the saved notes");
+ok((await nextChapterPrompt()).includes("STYLE-EDITED: third person."), "a later chapter's prompt uses the saved notes");
 
 // ---- plain post still goes to the chapter ----
 await page.getByRole("button", { name: "Post chapter" }).click();

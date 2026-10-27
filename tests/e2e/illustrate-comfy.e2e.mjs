@@ -644,13 +644,14 @@ try {
   ok(log.length === 9 && log[0].prompt === "a lighthouse in fog" && log[0].moment === "end" && log[1].moment === "start", "the log has this job (with Chapter end) after the earlier eight, and nothing from the refused, failed or stopped jobs");
 
   // ---- the job can't be recorded: the pictures are still usable, just without a prompt kept ----
-  await page.route("**/api/picture-jobs", (route) => route.request().method() === "POST" ? route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "disk full" }) }) : route.continue());
+  // (The server records jobs now, so it is the server that is told to fail: a test-only switch.)
+  await fetch(`${BASE}/api/queue/test-scan?do=record-fails&message=disk%20full`, { method: "POST" });
   await page.getByLabel("Moment to show").selectOption("start");
   await makeTwo();
   await page.getByText(/couldn't record how they were made: disk full/).waitFor({ timeout: 15000 });
   await picturesLoaded(5);
   ok(await items.count() === 5, "when the job can't be recorded, the page says so and still shows the new pictures");
-  await page.unroute("**/api/picture-jobs");
+  await fetch(`${BASE}/api/queue/test-scan?do=record-ok`, { method: "POST" });
   await useAs(items.first(), "header");
   await page.getByText("Saved as the header picture.").waitFor();
   const unrecorded = (await savedWith()).find((i) => i.slot === "header");
