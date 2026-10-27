@@ -52,10 +52,14 @@ export type GenerateAfter = { choiceLabel?: string; suggestions?: string[] };
 export type GenerateEvent =
   | { type: "text"; text: string; base: { title: string; body: string } }
   | { type: "done"; after: GenerateAfter }
+  | { type: "stopped" }
   | { type: "error"; message: string };
 
 export const genItemKey = (draftKey: string) => `gen:${draftKey}`;
 export const genChannel = genItemKey;
+
+/** The text so far is sent to pages watching at most this often. */
+const TEXT_MS = 250;
 
 /** The draft was changed by someone else twice while the text was being put into it. */
 class DraftChanged extends Error {
@@ -128,12 +132,17 @@ export async function runGenerate(draftKey: string): Promise<void> {
   updateItem(itemKey, { state: "working", data: { note: undefined, error: undefined, text: undefined } });
   const tell = (event: GenerateEvent) => publish(genChannel(draftKey), event);
   let lastSave = 0;
+  let lastTold = 0;
   try {
     const ready = await withPathSummaries(settings, req.ctx, run.ctl.signal);
     const message = generatePrompt(ready, req.direction, req.length, settings.contextTokens);
     for await (const piece of streamChat(settings, { system: SYSTEM_CHAPTER, messages: [{ role: "user", content: message }], role: "main", model: req.model, signal: run.ctl.signal })) {
       run.text += piece;
-      tell({ type: "text", text: run.text, base: req.base });
+      // The text so far goes out at most four times a second (the end sends it whole, below).
+      if (Date.now() - lastTold >= TEXT_MS) {
+        lastTold = Date.now();
+        tell({ type: "text", text: run.text, base: req.base });
+      }
       if (Date.now() - lastSave > 3000) {
         lastSave = Date.now();
         saveGenerated(req, run.text);
@@ -185,7 +194,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
         }
       }
       deleteItem(itemKey);
-      tell({ type: "error", message: "Stopped" });
+      tell({ type: "stopped" });
     } else {
       let message = e instanceof Error ? e.message : String(e);
       if (run.text && !(e instanceof DraftChanged)) {

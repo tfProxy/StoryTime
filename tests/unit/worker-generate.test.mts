@@ -90,7 +90,7 @@ try {
   const done = getItem("gen:fill:b");
   ok(done?.state === "done" && done.endedAt !== null, "…and done when it finishes");
   const texts = seen.events.filter((e) => e.type === "text").map((e) => e.text ?? "");
-  ok(texts.length >= 3 && texts[0] !== chapter && texts.at(-1) === chapter, `its text is published piece by piece (${texts.length} times)`);
+  ok(texts.length >= 2 && texts[0] !== chapter && texts.at(-1) === chapter, `its text is published as it comes, at most four times a second, and whole at the end (${texts.length} times)`);
   ok(seen.events.at(-1)?.type === "done" && seen.events.at(-1)?.after?.choiceLabel === "Open the door" && seen.events.at(-1)?.after?.suggestions?.join() === "Go left,Go right", "…then the end, with the choice text and the suggestions");
   const draft = getDraft("fill:b") as { title: string; body: string; undo: { title: string; body: string }[]; newChoiceLabel: string; suggestions: string[]; versions: unknown[] } | null;
   ok(draft?.title === "The Door" && draft.body === "She opened it and went in.", "the chapter is in the draft");
