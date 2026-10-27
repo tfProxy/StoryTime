@@ -263,5 +263,16 @@ ok(!wqRefused(() => scAdd("c1", "ok")) && !wqRefused(() => scAdd("c2", "wrong"))
 ok(wqRefused(() => scAdd("c1", "ok")), "a chapter has one check");
 ok(wqRefused(() => scAdd("c3", "maybe")), "an unknown verdict is refused");
 sc.close();
+
+// tags shown to readers (schema version 38): a flag, off by default
+ok(MIGRATIONS.length >= 38, "migration 38 exists");
+const sr = new Database(":memory:");
+sr.exec(`CREATE TABLE tags (id TEXT PRIMARY KEY, name TEXT NOT NULL)`);
+sr.prepare(`INSERT INTO tags (id, name) VALUES ('t1', 'old')`).run();
+sr.exec(MIGRATIONS[37]);
+ok((sr.prepare(`SELECT show_readers FROM tags WHERE id = 't1'`).get() as { show_readers: number }).show_readers === 0, "an existing tag is not shown to readers");
+sr.prepare(`INSERT INTO tags (id, name) VALUES ('t2', 'new')`).run();
+ok((sr.prepare(`SELECT show_readers FROM tags WHERE id = 't2'`).get() as { show_readers: number }).show_readers === 0, "a new tag defaults to not shown");
+sr.close();
 d.close();
 fs.rmSync(dir, { recursive: true, force: true });

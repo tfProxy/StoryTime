@@ -34,6 +34,16 @@ r = await call("PATCH", `/api/tags/${swearing}`, { name: `cursing-${sfx}` });
 ok(r.status === 200, "keeping its own name is fine");
 r = await call("GET", "/api/tags");
 ok(r.json.tags.some((t) => t.id === violence) && r.json.tags.some((t) => t.id === swearing), "listed");
+ok(r.json.tags.find((t) => t.id === violence).show_readers === false, "show_readers is false by default and listed");
+r = await call("PATCH", `/api/tags/${swearing}`, { show_readers: true });
+ok(r.status === 200 && r.json.show_readers === true && r.json.name === `cursing-${sfx}`, "PATCH sets show_readers");
+r = await call("GET", "/api/tags");
+ok(r.json.tags.find((t) => t.id === swearing).show_readers === true && r.json.tags.find((t) => t.id === violence).show_readers === false, "show_readers is listed per tag");
+r = await call("POST", "/api/tags", { name: `readers-${sfx}`, show_readers: true });
+ok(r.status === 201 && r.json.show_readers === true, "a tag can be created shown to readers");
+await call("DELETE", `/api/tags/${r.json.id}`);
+r = await call("PATCH", `/api/tags/${swearing}`, { show_readers: "yes" });
+ok(r.status === 400, "show_readers must be a boolean");
 r = await call("PATCH", "/api/tags/nope", { name: "x" });
 ok(r.status === 404, "unknown tag is a 404");
 
@@ -124,6 +134,8 @@ r = await suggest(child, 2, { checked_tag_ids: [swearing], suggestions: [] });
 ok(JSON.stringify(await checkedFor()) === JSON.stringify([swearing]), "a check with no suggestions is recorded");
 await call("PATCH", `/api/tags/${violence}`, { applies: "unrelated rule change" });
 ok(JSON.stringify(await checkedFor()) === JSON.stringify([swearing]), "changing the rule of a tag that was not checked keeps the check");
+r = await call("PATCH", `/api/tags/${swearing}`, { show_readers: false });
+ok(r.status === 200 && r.json.show_readers === false && JSON.stringify(await checkedFor()) === JSON.stringify([swearing]), "changing show_readers keeps the checks");
 await call("PATCH", `/api/tags/${swearing}`, { applies: "bad words, changed" });
 ok((await checkedFor()) === undefined, "changing a checked tag's rule forgets the check");
 

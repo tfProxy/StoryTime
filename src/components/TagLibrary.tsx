@@ -17,9 +17,10 @@ type Draft = {
   choices: string;
   examples: TagExample[];
   kind: "event" | "state";
+  show_readers: boolean;
 };
 
-const EMPTY: Draft = { name: "", applies: "", not_applies: "", choices: "", examples: [], kind: "event" };
+const EMPTY: Draft = { name: "", applies: "", not_applies: "", choices: "", examples: [], kind: "event", show_readers: false };
 
 const fromTag = (t: Tag): Draft => ({
   id: t.id,
@@ -29,6 +30,7 @@ const fromTag = (t: Tag): Draft => ({
   choices: t.choices.join(", "),
   examples: t.examples,
   kind: t.kind,
+  show_readers: t.show_readers,
 });
 
 const splitChoices = (s: string) => s.split(",").map((c) => c.trim()).filter(Boolean);
@@ -99,6 +101,7 @@ export default function TagLibrary() {
           >
             <strong>{t.name}</strong>
             {firstLine(t.applies) && <span className="meta"> — {firstLine(t.applies)}</span>}
+            {t.show_readers && <span className="meta"> · shown to readers</span>}
           </button>
           {open === t.id && (
             <TagEditor
@@ -220,6 +223,7 @@ function TagEditor({
     kind: d.kind,
     choices: splitChoices(d.choices),
     examples,
+    show_readers: d.show_readers,
   });
 
   async function save() {
@@ -290,6 +294,16 @@ function TagEditor({
         Values
         <input value={d.choices} onChange={(e) => set({ choices: e.target.value })} />
         <span className="meta">Optional, e.g. mild, graphic. Separate them with commas.</span>
+      </label>
+      <label className="inline-label" style={{ padding: 0 }}>
+        <input type="checkbox" style={{ width: "auto" }} checked={d.show_readers} onChange={(e) => set({ show_readers: e.target.checked })} />
+        <span>
+          Show to readers
+          <br />
+          <span className="meta" style={{ fontWeight: "normal" }}>
+            Readers see it in the notes under each choice (if content notes are on).
+          </span>
+        </span>
       </label>
 
       {d.examples.length > 0 && (

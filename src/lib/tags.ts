@@ -23,6 +23,7 @@ const tagFields = {
   kind: z.enum(["event", "state"]),
   choices: z.array(text(TAG_LIMITS.choice).min(1)).max(TAG_LIMITS.choices),
   examples: z.array(TagExampleSchema).max(TAG_LIMITS.examples),
+  show_readers: z.boolean(),
 };
 
 export const NewTagSchema = z.object({
@@ -32,6 +33,7 @@ export const NewTagSchema = z.object({
   kind: tagFields.kind.default("event"),
   choices: tagFields.choices.default([]),
   examples: tagFields.examples.default([]),
+  show_readers: tagFields.show_readers.default(false),
 });
 export const UpdateTagSchema = z.object(tagFields).partial();
 
@@ -43,10 +45,12 @@ export type Tag = {
   kind: "event" | "state";
   choices: string[];
   examples: TagExample[];
+  /** Readers see the tag in the notes under each choice (if content notes are on). */
+  show_readers: boolean;
   created_at: number;
 };
 
-type TagRow = Omit<Tag, "choices" | "examples"> & { choices: string; examples: string };
+type TagRow = Omit<Tag, "choices" | "examples" | "show_readers"> & { choices: string; examples: string; show_readers: number };
 
 function parseList<T>(raw: string): T[] {
   try {
@@ -57,10 +61,10 @@ function parseList<T>(raw: string): T[] {
   }
 }
 
-const TAG_COLUMNS = `id, name, applies, not_applies, kind, choices, examples, created_at`;
+const TAG_COLUMNS = `id, name, applies, not_applies, kind, choices, examples, show_readers, created_at`;
 
 function toTag(r: TagRow): Tag {
-  return { ...r, choices: parseList<string>(r.choices), examples: parseList<TagExample>(r.examples) };
+  return { ...r, choices: parseList<string>(r.choices), examples: parseList<TagExample>(r.examples), show_readers: r.show_readers === 1 };
 }
 
 function liveTag(id: string): Tag | undefined {
@@ -93,10 +97,10 @@ export function createTag(input: z.infer<typeof NewTagSchema>): Tag {
     const id = newId();
     db()
       .prepare(
-        `INSERT INTO tags (id, name, applies, not_applies, kind, choices, examples, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO tags (id, name, applies, not_applies, kind, choices, examples, show_readers, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, input.name, input.applies, input.not_applies, input.kind, JSON.stringify(input.choices), JSON.stringify(input.examples), Date.now());
+      .run(id, input.name, input.applies, input.not_applies, input.kind, JSON.stringify(input.choices), JSON.stringify(input.examples), input.show_readers ? 1 : 0, Date.now());
     return needTag(id);
   })();
 }
@@ -111,8 +115,8 @@ export function updateTag(id: string, input: z.infer<typeof UpdateTagSchema>): T
       db().prepare(`DELETE FROM chapter_tag_checks WHERE EXISTS (SELECT 1 FROM json_each(tag_ids) WHERE value = ?)`).run(id);
     }
     db()
-      .prepare(`UPDATE tags SET name = ?, applies = ?, not_applies = ?, kind = ?, choices = ?, examples = ? WHERE id = ?`)
-      .run(next.name, next.applies, next.not_applies, next.kind, JSON.stringify(next.choices), JSON.stringify(next.examples), id);
+      .prepare(`UPDATE tags SET name = ?, applies = ?, not_applies = ?, kind = ?, choices = ?, examples = ?, show_readers = ? WHERE id = ?`)
+      .run(next.name, next.applies, next.not_applies, next.kind, JSON.stringify(next.choices), JSON.stringify(next.examples), next.show_readers ? 1 : 0, id);
     return needTag(id);
   })();
 }

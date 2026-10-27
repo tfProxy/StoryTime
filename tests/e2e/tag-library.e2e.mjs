@@ -82,6 +82,19 @@ try {
   const saved = (await getJson("/api/tags")).tags.find((t) => t.name === "violence");
   ok(saved.not_applies === "only mentioned" && saved.choices.join() === "mild,graphic,gory", "edit saved on the server");
 
+  // ---- show to readers ----
+  ok(!(await v.getByRole("checkbox", { name: /Show to readers/ }).isChecked()), "Show to readers is off by default");
+  ok(await v.getByText("Readers see it in the notes under each choice (if content notes are on).").isVisible(), "…with its note under it");
+  ok(!(await card("violence").innerText()).includes("shown to readers"), "…and the list does not say so");
+  await v.getByRole("checkbox", { name: /Show to readers/ }).check();
+  await v.getByRole("button", { name: "Save", exact: true }).click();
+  await v.getByText("Saved.", { exact: true }).waitFor();
+  ok((await getJson("/api/tags")).tags.find((t) => t.name === "violence").show_readers === true, "Show to readers saved on the server");
+  await page.reload();
+  ok((await card("violence").innerText()).includes("shown to readers"), "the list says shown to readers after a reload");
+  await card("violence").getByRole("button", { name: /violence/ }).click();
+  ok(await card("violence").getByRole("checkbox", { name: /Show to readers/ }).isChecked(), "…and the box is still ticked");
+
   // ---- duplicate name ----
   await lib.getByPlaceholder(/tf: a character/).fill("Violence: again");
   await lib.getByRole("button", { name: "Write it myself" }).click();

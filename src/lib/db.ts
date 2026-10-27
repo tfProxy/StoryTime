@@ -695,6 +695,8 @@ export const MIGRATIONS: string[] = [
     checked_at INTEGER NOT NULL
   );
   `,
+  // 38: a tag can be shown to readers (in the notes under each choice, when content notes are on). Off by default.
+  `ALTER TABLE tags ADD COLUMN show_readers INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 function open(): Database.Database {
