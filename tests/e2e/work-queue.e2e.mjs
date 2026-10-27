@@ -87,6 +87,11 @@ const open = async (context) => {
   page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
   return page;
 };
+// The queue is kept by the server now, so what earlier sections (or files) finished is still in the list; a section that
+// counts the list starts by taking the finished and failed items off it.
+const clean = async () => {
+  for (const i of (await call("GET", "/api/queue")).items) if (i.state === "done" || i.state === "failed") await fetch(`${BASE}/api/queue/items/${encodeURIComponent(i.key)}`, { method: "DELETE" });
+};
 const queueOf = (page) => ({
   badge: page.locator(".site-header .picture-queue-button"),
   panel: page.getByRole("region", { name: "Queue" }),
@@ -100,6 +105,7 @@ try {
   const q = queueOf(page);
   const label = async () => (await q.badge.count()) ? await q.badge.getAttribute("aria-label") : "";
 
+  await clean();
   // ---- a run goes on when moving to another page ----
   const r1 = await makeRun("Run tale one", ["Left", "Right"]);
   await page.goto(`${BASE}/settings`);
@@ -118,6 +124,7 @@ try {
   await q.panel.getByRole("button", { name: "Dismiss" }).click();
   ok(await until(async () => (await q.badge.count()) === 0, "the header to clear"), "Dismiss takes a finished run off");
 
+  await clean();
   // ---- two runs, one after the other ----
   const r2 = await makeRun("Run tale two", ["A"]);
   const r3 = await makeRun("Run tale three", ["B"]);
@@ -132,6 +139,7 @@ try {
   await page.reload();
   await until(async () => (await q.badge.count()) === 0 || true, "settle", 3);
 
+  await clean();
   // ---- Stop, then Resume ----
   const r4 = await makeRun("Run tale four", ["One", "Two", "Three"]);
   await page.goto(`${BASE}/settings`);
@@ -159,7 +167,8 @@ try {
   ok((await writtenBy(r4.rootId)) === 3, "…with every chapter written once");
   await q.panel.getByRole("button", { name: "Dismiss" }).click().catch(() => {});
 
-  // ---- a second tab sees it as running elsewhere ----
+  await clean();
+  // ---- a second tab sees the run too ----
   const r5 = await makeRun("Run tale five", ["X", "Y"]);
   await page.goto(`${BASE}/settings`);
   await until(async () => await page.evaluate(() => !!window.__storytimeQueue), "the queue hook");
@@ -168,14 +177,16 @@ try {
   const other = await open(context);
   await other.goto(`${BASE}/settings`);
   const oq = queueOf(other);
-  ok(await until(async () => (await oq.badge.count()) > 0 && (await oq.badge.getAttribute("aria-label")) === "Queue: 1 in another tab", "the second tab to see the run"), "a second tab counts the run as in another tab");
+  // (The server runs it, so no tab has a run "elsewhere" any more: every tab sees the same queue and can stop it.)
+  ok(await until(async () => (await oq.badge.count()) > 0 && (await oq.badge.getAttribute("aria-label")) === "Queue: 1 going", "the second tab to see the run"), "a second tab counts the run as going too");
   await oq.badge.click();
-  const elsewhere = oq.panel.getByRole("listitem", { name: /running in another tab or browser/ });
-  ok(await elsewhere.isVisible(), "…as running in another tab or browser");
-  ok((await elsewhere.getByRole("button", { name: /Stop|Resume|Dismiss/ }).count()) === 0 && (await elsewhere.getByRole("link", { name: "Open", exact: true }).count()) === 1, "…with Open only");
+  const shownHere = oq.panel.getByRole("listitem", { name: /: writing$/ });
+  ok(await shownHere.isVisible(), "…as writing");
+  ok((await shownHere.getByRole("button", { name: "Stop" }).count()) === 1 && (await shownHere.getByRole("link", { name: "Open", exact: true }).count()) === 1, "…with Stop and Open, as in the tab that started it");
   await other.close();
   await until(async () => (await runState(r5.runId)).status === "done", "the run to finish", 300);
 
+  await clean();
   // ---- taking turns: a picture asked for while a run writes waits for the batch limit ----
   const shared = await call("POST", "/api/stories", { title: "Turns tale", chapter: { title: "The harbour", body: "Boats came in.", choices: [] } });
   const r6 = await makeRun("Run tale six", ["P", "Q"]);
@@ -208,6 +219,7 @@ try {
   ok(await until(async () => (await runState(r6.runId)).status === "done", "the run to finish", 500), "the run goes on after the picture and finishes");
   ok((await call("GET", `/api/picture-jobs?chapter=${shared.chapter_id}`)).jobs.length === 1, "…and the picture was made once");
 
+  await clean();
   // ---- at the same time: both go at once ----
   await putQueue({ sharing: "together", switchMinutes: 10, switchItems: 1, groupPictures: true });
   const r7 = await makeRun("Run tale seven", ["R", "S"]);
@@ -222,6 +234,7 @@ try {
   ok(await until(async () => posted() === posted2 + 1 && ai.active > 0, "the picture to go while the run writes", 60), "with “at the same time” the picture goes while a step is writing");
   await until(async () => (await runState(r7.runId)).status === "done", "the run to finish", 500);
 
+  await clean();
   // ---- Generate from the writing page finishes into the draft wherever the author goes (D15) ----
   const draftOf = async (key) => (await call("GET", `/api/drafts/${encodeURIComponent(key)}`)).draft;
   const g = await call("POST", "/api/stories", { title: "Generate tale", chapter: { title: "Root", body: "root", choices: [] } });

@@ -14,15 +14,28 @@ export type Bus = {
 
 export function createBus(): Bus {
   const channels = new Map<string, Set<Listener>>();
+  // An event published while another is being delivered (a listener that reacts by changing something) waits until the
+  // one being delivered has reached every listener, so every listener sees the events in the order they were published.
+  const waiting: { channel: string; event: unknown }[] = [];
+  let delivering = false;
   return {
     publish(channel, event) {
-      // A copy, so a listener that stops listening while it is called doesn't skip the next one.
-      for (const fn of [...(channels.get(channel) ?? [])]) {
-        try {
-          fn(event);
-        } catch {
-          // a listener that fails (a closed connection) must not hold up the others, or the code that published
+      waiting.push({ channel, event });
+      if (delivering) return;
+      delivering = true;
+      try {
+        for (let next = waiting.shift(); next; next = waiting.shift()) {
+          // A copy, so a listener that stops listening while it is called doesn't skip the next one.
+          for (const fn of [...(channels.get(next.channel) ?? [])]) {
+            try {
+              fn(next.event);
+            } catch {
+              // a listener that fails (a closed connection) must not hold up the others, or the code that published
+            }
+          }
         }
+      } finally {
+        delivering = false;
       }
     },
     subscribe(channel, fn) {

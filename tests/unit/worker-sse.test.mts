@@ -19,6 +19,14 @@ ok(JSON.stringify(got.slice(2)) === '[["c",2]]', "a listener that stopped hears 
 bus.publish("nobody", 3);
 ok(got.length === 3, "publishing on a channel nobody listens to does nothing");
 
+// An event published by a listener (it reacts by changing something) is heard after the one being delivered, by every listener.
+const ordered = createBus();
+const heard: string[] = [];
+ordered.subscribe("o", (e) => { heard.push(`first:${e}`); if (e === "one") ordered.publish("o", "two"); });
+ordered.subscribe("o", (e) => heard.push(`second:${e}`));
+ordered.publish("o", "one");
+ok(heard.join() === "first:one,second:one,first:two,second:two", `events are heard in the order they were published, by every listener: ${heard.join()}`);
+
 // one state per process, held on globalThis
 ok(workerState() === workerState() && workerState() === globalThis.__storytimeWorker, "the worker state is one object on globalThis");
 
