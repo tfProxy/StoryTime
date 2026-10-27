@@ -116,7 +116,9 @@ Skipped: name variants ("Jon" and "John") are not matched; only exact names and 
 - From facts: entities that appear in two or more chapters on a path with no codex entry (`foldCodex` at that chapter) become issues of kind `codex-missing`, anchored at the first appearance, with a link that opens the codex scan for that chapter (`?chapter=<id>`, the Codex section of the Issues tab).
 - Name variants ("Jon" and "John"): leave for later unless cheap; note it here if skipped.
 
-### C7. Summary that doesn't match its chapter (medium)
+### C7. Summary that doesn't match its chapter (medium) (done, 09a094b)
+
+Built as: the owner chose a "Check summaries" button in the Summaries section (review run, `checks: ["summaries"]`). Migration 37 `summary_checks` stores the summary text checked, since a summary edit doesn't bump the revision.
 
 - `summaryCheck` in a new `src/lib/ai/summaryCheckAi.ts`: "does this summary leave out key events or add things not in the text?", answering ok or a one-line problem. Store the answer per chapter revision (a column or small table; migration).
 - Issue kind `summary-wrong`, with "Fix the summary" like the other summary issues. Run it as a task in the review run.
