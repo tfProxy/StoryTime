@@ -44,7 +44,7 @@ export function codexPromptRequest(opts: CodexPromptOptions): PromptParts {
   const { text: direction, notes } = parseBracketNotes(opts.direction);
   const { entry } = opts;
   if (!entry.content.trim() && !direction) {
-    throw new Error("There's nothing to write the picture from yet: add a description to the codex entry, or say what to show.");
+    throw new Error("There's nothing to write the picture from yet: add facts to the codex entry, or say what to show.");
   }
 
   const parts = [`Story: ${opts.story.title || "(untitled)"}`];

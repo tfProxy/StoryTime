@@ -260,6 +260,14 @@ export function codexEntryAt(storyId: string, entryId: string, chapterId: string
   return { name: row.name, type: row.type, aliases: JSON.parse(row.aliases) as string[], content: row.content };
 }
 
+/** The chapter where an entry was last written (the anchor of its latest op that isn't a retirement); null if it has none. */
+export function entryLastAnchor(storyId: string, entryId: string): string | null {
+  const row = db()
+    .prepare(`SELECT anchor_chapter_id FROM codex_ops WHERE story_id = ? AND entry_id = ? AND op != 'retire' ORDER BY posted_at DESC, rowid DESC LIMIT 1`)
+    .get(storyId, entryId) as { anchor_chapter_id: string } | undefined;
+  return row?.anchor_chapter_id ?? null;
+}
+
 /** The latest name of each of these codex entries (any branch) and its story's title, by entry id; entries that don't exist are left out. */
 export function codexEntryLabels(entryIds: string[]): Record<string, { name: string; story_title: string }> {
   if (entryIds.length === 0) return {};

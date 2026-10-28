@@ -33,14 +33,19 @@ export default function CodexEntryList({
           </Link>
         ))}
       </nav>
-      <ul>
+      {/* Each name opens the entry's page at the chapter where it was last changed. */}
+      <ul className="entry-cards">
         {shown.map((e) => (
           <li key={e.entry_id}>
-            <Link href={`/s/${storyId}/codex/${e.entry_id}?at=${e.first_chapter_id}`}>{e.name}</Link>
-            <div className="meta">
-              {TYPE_LABELS[e.type]} · from {e.first_chapter_title}
-              {e.retired ? " · retired" : ""}
-            </div>
+            <Link className="entry-card" href={`/s/${storyId}/codex/${e.entry_id}?at=${e.last_chapter_id}`}>
+              <span className="entry-card-text">
+                <strong>{e.name}</strong>
+                <span className="meta entry-card-line">
+                  {TYPE_LABELS[e.type]} · from {e.first_chapter_title}
+                  {e.retired ? " · retired" : ""}
+                </span>
+              </span>
+            </Link>
           </li>
         ))}
       </ul>

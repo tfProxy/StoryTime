@@ -269,7 +269,8 @@ export function buildCodexBlock(
 ): string {
   const rows = explainCodex(entries, triggerText, budgetTokens, overrides).filter((r) => r.state === "included");
   const chosen = [...rows.filter((r) => r.entry.always_include), ...rows.filter((r) => !r.entry.always_include)];
-  const lines = chosen.map((r) => codexLine(r.entry));
+  // An entry with no facts has nothing to tell the AI, so it adds no line.
+  const lines = chosen.filter((r) => r.entry.content.trim()).map((r) => codexLine(r.entry));
   return lines.length ? `Codex (established facts; stay consistent with these):\n${lines.join("\n")}` : "";
 }
 

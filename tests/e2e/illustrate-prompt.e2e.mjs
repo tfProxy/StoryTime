@@ -35,7 +35,9 @@ await new Promise((r) => mock.listen(3222, r));
 const created = await post("/api/stories", { title: "Sandwich saga", premise: "A kitchen comedy.", chapter: { title: "Hunger", body: "Jim stood in the kitchen.", choices: ["Make lunch"] } });
 const choice = (await get(`/api/chapters/${created.chapter_id}`)).choices[0];
 const chapter = (await post("/api/chapters", { choice_id: choice.id, title: "Lunch", body: "Jim made a sandwich in the kitchen. He took a big bite.", choices: [] })).chapter_id;
-await post("/api/codex", { anchor_chapter_id: created.chapter_id, op: "create", name: "Jim", type: "character", content: "A tall man with blonde hair and a green apron." });
+// Only an entry's facts reach the AI (its notes are the author's own), so Jim's look is a (loose) fact.
+const jim = await post("/api/codex", { anchor_chapter_id: created.chapter_id, op: "create", name: "Jim", type: "character", content: "" });
+await post("/api/codex/facts", { anchor_chapter_id: created.chapter_id, entry_id: jim.entry_id, op: "set", aspect: "", text: "A tall man with blonde hair and a green apron." });
 await post("/api/codex", { anchor_chapter_id: created.chapter_id, op: "create", name: "Zed", type: "character", content: "A one-eyed pirate captain." });
 const storyId = created.story_id;
 

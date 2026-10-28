@@ -1596,13 +1596,21 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               <aside className="codex-drawer" aria-label="Codex">
                 <div className="codex-drawer-head">
                   <h2>Codex</h2>
-                  <button type="button" className="secondary" onClick={() => setCodexOpen(false)}>
-                    Close
-                  </button>
+                  <div className="row">
+                    {storyId && (
+                      <Link className="button secondary" href={`/s/${storyId}/review?tab=codex`} target="_blank" rel="noopener">
+                        Story Bible
+                      </Link>
+                    )}
+                    <button type="button" className="secondary" onClick={() => setCodexOpen(false)}>
+                      Close
+                    </button>
+                  </div>
                 </div>
                 <CodexPanel
                   key={codexStart.n}
                   embedded
+                  storyId={storyId}
                   startEditing={codexStart.editing}
                   draft={{ changes: codexChanges, onChange: (next) => patch({ codexChanges: next }) }}
                   story={{ title: context.storyTitle, premise: context.premise }}

@@ -69,7 +69,7 @@ export type CoverSource = (typeof COVER_SOURCES)[number];
 
 /** The page that makes the target's pictures. */
 export const targetHref = (t: PictureTarget) =>
-  t.kind === "chapter" ? `/c/${t.chapterId}/illustrate` : t.kind === "cover" ? `/s/${t.storyId}/cover` : `/s/${t.storyId}/codex/${t.entryId}`;
+  t.kind === "chapter" ? `/c/${t.chapterId}/illustrate` : t.kind === "cover" ? `/s/${t.storyId}/cover` : `/s/${t.storyId}/codex/${t.entryId}/pictures`;
 
 /** What the target's own preset and kept settings are called in a message: "chapter", "cover" or "codex entry". */
 export const targetWord = (t: PictureTarget) => (t.kind === "chapter" ? "chapter" : t.kind === "cover" ? "cover" : "codex entry");

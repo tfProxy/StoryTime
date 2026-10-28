@@ -10,6 +10,9 @@ import { createPortal } from "react-dom";
 export default function SiteMenu() {
   const ref = useRef<HTMLDetailsElement>(null);
   const pathname = usePathname();
+  // The Story Bible is one tap away from any story or chapter page (a chapter's link finds its story and opens the Bible at that chapter).
+  const where = /^\/([sc])\/([^/]+)/.exec(pathname);
+  const bibleHref = !where || /^\/s\/[^/]+\/review(\/|$)/.test(pathname) ? null : where[1] === "s" ? `/s/${where[2]}/review` : `/c/${where[2]}/bible`;
 
   // Close after navigating, and when clicking anywhere else.
   useEffect(() => {
@@ -40,7 +43,11 @@ export default function SiteMenu() {
       </summary>
       <div className="site-menu-items">
         <div id="page-menu-slot" className="menu-group" />
-        <div id="page-menu-codex-slot" className="menu-group" />
+        {/* The Story Bible, on every story and chapter page, above the page's own Codex entries (which go in the slot). */}
+        <div className="menu-group menu-group-codex">
+          {bibleHref && <Link href={bibleHref}>Story Bible</Link>}
+          <div id="page-menu-codex-slot" style={{ display: "contents" }} />
+        </div>
         <div className="menu-group">
           <Link href="/drafts">Drafts</Link>
           <Link href="/queue">Queue</Link>

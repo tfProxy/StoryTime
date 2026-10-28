@@ -49,6 +49,9 @@ const choice = (await call("GET", `/api/chapters/${first}`)).choices[0];
 const second = (await call("POST", "/api/chapters", { choice_id: choice.id, title: "The cellar", body: "Water rose in the cellar.", choices: [] })).chapter_id;
 const zephyr = (await call("POST", "/api/codex", { anchor_chapter_id: first, op: "create", name: "Zephyr", type: "character", aliases: ["the Keeper"], content: "An old lighthouse keeper with a grey beard and an oilskin coat." })).entry_id;
 const cellarEntry = (await call("POST", "/api/codex", { anchor_chapter_id: first, op: "create", name: "Cellar", type: "place", content: "A flooded stone cellar." })).entry_id;
+// The picture prompt is written from the entry's facts (its notes are the author's own).
+await call("POST", "/api/codex/facts", { anchor_chapter_id: first, entry_id: zephyr, op: "set", aspect: "", text: "An old lighthouse keeper with a grey beard and an oilskin coat." });
+await call("POST", "/api/codex/facts", { anchor_chapter_id: first, entry_id: cellarEntry, op: "set", aspect: "", text: "A flooded stone cellar." });
 
 const ai = await useMockAi(BASE, { favorites: [], imagePromptModel: null });
 const comfy = await startFakeComfy({
@@ -63,7 +66,8 @@ const context = await browser.newContext({ viewport: { width: 1000, height: 1500
 const page = await context.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 
-const codexUrl = (at) => `/s/${storyId}/codex/${zephyr}${at ? `?at=${at}` : ""}`;
+// The picture page of an entry (the entry's own page is `/s/<story>/codex/<entry>`).
+const codexUrl = (at) => `/s/${storyId}/codex/${zephyr}/pictures${at ? `?at=${at}` : ""}`;
 const promptBox = page.getByRole("textbox", { name: "Prompt", exact: true });
 const queueButton = page.getByRole("button", { name: "Queue", exact: true });
 const tiles = page.locator(".candidates li.picture-tile");
@@ -87,16 +91,18 @@ const useFor = async (menuName) => {
 try {
   // ---- the Codex panel links to the page ----
   await page.goto(`${BASE}/c/${first}/codex`);
-  const entryCard = page.locator("article.card", { hasText: "Zephyr" });
-  const link = entryCard.getByRole("link", { name: "Make a picture" });
-  await link.waitFor();
-  ok((await link.getAttribute("href")) === codexUrl(first), "an entry in the Codex panel has a Make a picture link to its codex page, with ?at= the chapter");
-  ok((await entryCard.locator("img.codex-thumb").count()) === 0, "…and no thumbnail while it has no picture");
+  const entryCard = page.locator(".entry-card", { hasText: "Zephyr" });
+  await entryCard.waitFor();
+  ok((await entryCard.locator("img.codex-thumb").count()) === 0, "an entry without a picture has no thumbnail in the list");
+  await entryCard.click();
+  await page.getByRole("heading", { name: "Zephyr", level: 1 }).waitFor();
+  const link = page.getByRole("link", { name: "Pictures", exact: true });
+  ok((await link.getAttribute("href")) === codexUrl(first), "the entry's page has a Pictures link to its picture page, with ?at= the chapter");
   await link.click();
   await page.waitForURL(`${BASE}${codexUrl(first)}`);
   await page.getByRole("heading", { name: "Codex picture prompt" }).waitFor();
-  ok(await page.getByRole("heading", { name: "Picture of “Zephyr”", level: 1 }).isVisible(), "the codex page has the heading Picture of “Zephyr”");
-  ok(await page.getByRole("link", { name: "← Back to the codex at “The lamp”" }).isVisible(), "…and a link back to the codex at the chapter it came from");
+  ok(await page.getByRole("heading", { name: "Picture of “Zephyr”", level: 1 }).isVisible(), "the picture page has the heading Picture of “Zephyr”");
+  ok((await page.getByRole("link", { name: "← Back to “Zephyr”" }).getAttribute("href")) === `/s/${storyId}/codex/${zephyr}?at=${first}`, "…and a link back to the entry's page at the chapter it came from");
   ok(await card.getByText("No picture yet").isVisible(), "the Codex picture card says there is no picture yet");
 
   // ---- the prompt is written from the entry's text ----
@@ -134,11 +140,12 @@ try {
 
   // ---- the Codex panel shows it ----
   await page.goto(`${BASE}/c/${first}/codex`);
-  const thumb = page.locator("article.card", { hasText: "Zephyr" }).locator("img.codex-thumb");
+  const thumb = page.locator(".entry-card", { hasText: "Zephyr" }).locator("img.codex-thumb");
   await thumb.waitFor();
-  ok((await thumb.getAttribute("src")) === `/api/stories/${storyId}/codex-pictures/${one}`, "the Codex panel shows the entry's picture as a thumbnail");
-  ok(await page.locator("article.card", { hasText: "Zephyr" }).getByRole("link", { name: "Picture", exact: true }).isVisible(), "…and the link now says Picture");
-  ok((await page.locator("article.card", { hasText: "Cellar" }).getByRole("link", { name: "Make a picture" }).count()) === 1, "an entry without a picture still says Make a picture");
+  ok((await thumb.getAttribute("src")) === `/api/stories/${storyId}/codex-pictures/${one}`, "the codex list shows the entry's picture as a thumbnail");
+  ok((await page.locator(".entry-card", { hasText: "Cellar" }).locator("img.codex-thumb").count()) === 0, "an entry without a picture has no thumbnail");
+  await page.goto(`${BASE}/s/${storyId}/codex/${zephyr}?at=${first}`);
+  ok((await page.locator(".entry-head img.codex-thumb").getAttribute("src")) === `/api/stories/${storyId}/codex-pictures/${one}`, "the entry's page shows it too, linked to the picture page");
 
   // ---- another picture from the second chapter on ----
   await page.goto(`${BASE}${codexUrl(second)}`);
@@ -167,12 +174,12 @@ try {
 
   // ---- the Codex panel as of each chapter ----
   await page.goto(`${BASE}/c/${second}/codex`);
-  const thumb2 = page.locator("article.card", { hasText: "Zephyr" }).locator("img.codex-thumb");
+  const thumb2 = page.locator(".entry-card", { hasText: "Zephyr" }).locator("img.codex-thumb");
   await thumb2.waitFor();
   ok((await thumb2.getAttribute("src")) === `/api/stories/${storyId}/codex-pictures/${two}`, "the Codex panel at the second chapter shows the second picture");
   await page.goto(`${BASE}/c/${first}/codex`);
-  await page.locator("article.card", { hasText: "Zephyr" }).locator("img.codex-thumb").waitFor();
-  ok((await page.locator("article.card", { hasText: "Zephyr" }).locator("img.codex-thumb").getAttribute("src")) === `/api/stories/${storyId}/codex-pictures/${one}`, "…and at the first chapter, the first");
+  await page.locator(".entry-card", { hasText: "Zephyr" }).locator("img.codex-thumb").waitFor();
+  ok((await page.locator(".entry-card", { hasText: "Zephyr" }).locator("img.codex-thumb").getAttribute("src")) === `/api/stories/${storyId}/codex-pictures/${one}`, "…and at the first chapter, the first");
 
   // ---- the picture queue names the job ----
   // (a slow job, left by the page)
@@ -191,7 +198,7 @@ try {
   ok((await row.innerText()).includes("Codex pictures saga"), "the header's job list calls the job “Zephyr (codex)”, with the story's title");
   const ready = page.getByRole("region", { name: "Queue" }).getByRole("listitem", { name: "Zephyr (codex): ready" });
   await ready.waitFor({ timeout: 20000 });
-  ok((await ready.getByRole("link", { name: "Open", exact: true }).getAttribute("href")) === `/s/${storyId}/codex/${zephyr}`, "…and its Open link is the codex page");
+  ok((await ready.getByRole("link", { name: "Open", exact: true }).getAttribute("href")) === `/s/${storyId}/codex/${zephyr}/pictures`, "…and its Open link is the entry's picture page");
   comfy.setMode({ steps: 2, stepDelay: 50 });
 
   // ---- references on an Illustrate page: the Codex tab ----

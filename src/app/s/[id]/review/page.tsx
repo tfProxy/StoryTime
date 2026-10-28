@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import BulkSummaries from "@/components/BulkSummaries";
 import CodexCheck from "@/components/CodexCheck";
+import CodexEntryCards from "@/components/CodexEntryCards";
 import CodexEntryList from "@/components/CodexEntryList";
 import CodexInbox from "@/components/CodexInbox";
 import ContinuityCheck from "@/components/ContinuityCheck";
@@ -14,8 +15,9 @@ import TagScan from "@/components/TagScan";
 import TagSuggestions from "@/components/TagSuggestions";
 import TaggedChapters from "@/components/TaggedChapters";
 import { listRuns } from "@/lib/aiRuns";
-import { ENTRY_TYPES } from "@/lib/codex";
-import { getCodexOps, storyCodexEntries } from "@/lib/codexDb";
+import { ENTRY_TYPES, foldCodex } from "@/lib/codex";
+import { getCodexFacts, getCodexOps, storyCodexEntries } from "@/lib/codexDb";
+import { codexPicturesAt } from "@/lib/codexPictures";
 import { openSuggestionCounts } from "@/lib/codexSuggestions";
 import { CHANGE_EVENT_TAGS } from "@/lib/continuity";
 import { codexEntryFor, reviewIssues, type ReviewIssue } from "@/lib/review";
@@ -357,7 +359,20 @@ export default async function StoryBiblePage({
         <p className="meta">The AI reads chapters and leaves suggested fact changes in the inbox above.</p>
         <CodexCheck storyId={story!.id} chapterId={chosen && path.length > 0 ? chosen.id : null} defaultOpen />
 
-        <CodexEntryList storyId={story!.id} entries={codexEntries} type={entryType} baseHref={`${base}?tab=codex`} />
+        {chosen ? (
+          <section>
+            <h2 id="entries">Entries as of “{chosen.title}”</h2>
+            <CodexEntryCards
+              entries={foldCodex(getCodexOps(chosen.id), getCodexFacts(chosen.id))}
+              chapterId={chosen.id}
+              storyId={story!.id}
+              pictures={codexPicturesAt(story!.id, chosen.id)}
+              empty="No entries at this chapter yet."
+            />
+          </section>
+        ) : (
+          <CodexEntryList storyId={story!.id} entries={codexEntries} type={entryType} baseHref={`${base}?tab=codex`} />
+        )}
       </>
     );
   }

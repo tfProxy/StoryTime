@@ -183,7 +183,6 @@ export default async function OutlinePage({
       </SummaryProvider>
       <PageMenu>
         <Link href={`/s/${story.id}/pictures`}>Make missing pictures</Link>
-        <Link href={`/s/${story.id}/review`}>Story Bible</Link>
         {storyTags.map((t) => (
           <Link key={t} href={`/s/${story.id}/outline?highlight=${encodeURIComponent(t)}`}>
             Highlight: {t}

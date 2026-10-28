@@ -747,6 +747,11 @@ export const MIGRATIONS: string[] = [
     checked_at INTEGER NOT NULL
   );
   `,
+  // 41: where a suggestion came from. 'chapter' = the AI read a chapter; 'notes' = the AI turned an entry's notes
+  // into facts (its quote is from the notes, not the chapter).
+  `
+  ALTER TABLE codex_suggestions ADD COLUMN source TEXT NOT NULL DEFAULT 'chapter';
+  `,
 ];
 
 function open(): Database.Database {

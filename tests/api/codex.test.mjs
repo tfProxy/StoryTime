@@ -75,11 +75,11 @@ ok(r.status === 200 && (await state(bc.json.chapter_id)).entries.some((x) => x.n
 const md = await fetch(`${B}/api/chapters/${a3}/codex?format=md`);
 const mdText = await md.text();
 ok(md.status === 200 && /text\/markdown/.test(md.headers.get("content-type")) && /filename="s-codex-a3\.md"/.test(md.headers.get("content-disposition")), "codex markdown download");
-ok(mdText.startsWith("# S: codex") && mdText.includes("## Characters") && mdText.includes("### Zed\n\nA ferryman.") && mdText.includes("### Mira") && mdText.includes("A horse with wings."), "entries are grouped by type with their text");
+ok(mdText.startsWith("# S: codex") && mdText.includes("## Characters") && mdText.includes("### Zed\n\n**Notes** (not sent to the AI)\n\nA ferryman.") && mdText.includes("### Mira") && mdText.includes("A horse with wings."), "entries are grouped by type with their text");
 ok(!mdText.includes("A human thief") && !mdText.includes("Now a horse."), "only the current version of an entry shows");
 await op(root, { op: "create", name: "Ferry", type: "place", aliases: ["the crossing"], always_include: true, content: "A river crossing." });
 const rootMd = await (await fetch(`${B}/api/chapters/${root}/codex?format=md`)).text();
-ok(rootMd.includes("## Places\n\n### Ferry\n\n*Also known as: the crossing · Always included in AI prompts*\n\nA river crossing.") && rootMd.indexOf("## Characters") < rootMd.indexOf("## Places"), "aliases and the always-include flag are noted, types in order");
+ok(rootMd.includes("## Places\n\n### Ferry\n\n*Also known as: the crossing · Always included in AI prompts*\n\n**Notes** (not sent to the AI)\n\nA river crossing.") && rootMd.indexOf("## Characters") < rootMd.indexOf("## Places"), "aliases and the always-include flag are noted, types in order");
 ok(!(await (await fetch(`${B}/api/chapters/${b}/codex?format=md`)).text()).includes("Zed"), "another branch's codex doesn't include it");
 ok((await fetch(`${B}/api/chapters/${a3}/codex?format=pdf`)).status === 400 && (await fetch(`${B}/api/chapters/nope/codex?format=md`)).status === 404, "bad format 400, unknown chapter 404");
 
@@ -95,7 +95,7 @@ ok(r.status === 201 && r.json.fact_id && r.json.id, "set a fact");
 const earsId = r.json.fact_id;
 let kitAt = async (id) => (await state(id)).entries.find((e) => e.entry_id === kit);
 let k = await kitAt(root);
-ok(k.facts.length === 1 && k.facts[0].aspect === "Ears" && k.facts[0].quote === "Her ears twitched." && k.description === "Ears: Tall russet fox ears. A fox.", "entry shows the fact and a description");
+ok(k.facts.length === 1 && k.facts[0].aspect === "Ears" && k.facts[0].quote === "Her ears twitched." && k.description === "Ears: Tall russet fox ears.", "entry shows the fact and a description (without the notes)");
 ok(k.content === "A fox.", "content stays the notes");
 r = await fact(a, { entry_id: kit, op: "set", aspect: "ears", text: "Short ears." });
 ok(r.status === 201 && r.json.fact_id === earsId, "the same aspect again reuses the fact id");

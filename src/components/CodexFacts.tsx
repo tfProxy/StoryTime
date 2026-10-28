@@ -5,6 +5,7 @@ import {
   FACT_LIMITS,
   factHistory,
   FORM_ASPECT,
+  formLine,
   isFormAspect,
   sameAspect,
   STARTER_ASPECTS,
@@ -23,7 +24,6 @@ type Props = {
   chapterId: string;
   /** Aspects used anywhere in this codex, offered when adding a fact. */
   usedAspects: string[];
-  readOnly?: boolean;
   onSaved: () => void;
 };
 
@@ -31,10 +31,15 @@ type Body = { op: "set" | "retire"; aspect: string; form: string; text: string; 
 
 const NEW_FORM = "\u0000new";
 
-export default function CodexFacts({ entry, factOps, path, chapterId, usedAspects, readOnly, onSaved }: Props) {
-  const [mode, setMode] = useState<null | "fact" | "form">(null);
-  const [editing, setEditing] = useState<LiveFact | null>(null);
-  const [showAi, setShowAi] = useState(false);
+/**
+ * An entry's form and facts. Every form opens directly beneath the button (or row) that opened it, and the
+ * add form at the end of the list.
+ */
+export default function CodexFacts({ entry, factOps, path, chapterId, usedAspects, onSaved }: Props) {
+  const [formOpen, setFormOpen] = useState(false);
+  // A fact's id while it is being changed, "new" while one is being added.
+  const [editing, setEditing] = useState<string | null>(null);
+  const [history, setHistory] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,195 +80,157 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
   const hasForms = entry.forms.length > 0;
   const current = entry.form?.name ?? null;
   const isCurrent = (name: string) => current !== null && sameAspect(name, current);
-  const groups: { key: string; heading: string | null; form: string; facts: LiveFact[]; dim: boolean }[] = [];
+  const groups: { key: string; heading: string | null; facts: LiveFact[]; dim: boolean }[] = [];
   const every = rows.filter((f) => f.form === "");
-  if (every.length) groups.push({ key: "", heading: hasForms ? "Every form" : null, form: "", facts: every, dim: false });
+  if (every.length) groups.push({ key: "", heading: hasForms ? "Every form" : null, facts: every, dim: false });
   for (const name of entry.forms) {
     const facts = rows.filter((f) => f.form !== "" && sameAspect(f.form, name));
     if (!facts.length) continue;
     const cur = isCurrent(name);
-    groups.push({
-      key: name,
-      heading: cur ? `${name} (current)` : `${name} (not current: not sent to the AI)`,
-      form: name,
-      facts,
-      dim: !cur,
-    });
+    groups.push({ key: name, heading: cur ? `${name} (current)` : `${name} (not current: not sent to the AI)`, facts, dim: !cur });
   }
 
-  const canSetForm = !readOnly && entry.type === "character";
+  const showForm = hasForms || entry.type === "character" || entry.form !== null;
+  const toggleHistory = (id: string) => setHistory(history.includes(id) ? history.filter((h) => h !== id) : [...history, id]);
 
   return (
-    <div className="facts">
-      {entry.form && (
-        <p className="facts-form">
-          <strong>Form: {entry.form.name}</strong>
-          {entry.form.note && <> — {entry.form.note}</>}{" "}
-          {!readOnly && (
-            <button type="button" className="secondary" disabled={busy} onClick={() => setMode(mode === "form" ? null : "form")}>
-              Change form
-            </button>
-          )}
-        </p>
-      )}
-      {!entry.form && canSetForm && (
-        <p className="meta" style={{ margin: "0 0 0.5rem" }}>
-          <button type="button" className="linkish" disabled={busy} onClick={() => setMode(mode === "form" ? null : "form")}>
-            Set a form
-          </button>
-        </p>
-      )}
-
-      {groups.map((g) => (
-        <div key={g.key} className={g.dim ? "fact-group dim" : "fact-group"}>
-          {g.heading && <h3 className="fact-heading">{g.heading}</h3>}
-          {g.facts.map((f) => (
-            <FactRow
-              key={f.fact_id}
-              fact={f}
-              history={factHistory(factOps, f.fact_id)}
-              since={since(f.op.anchor_chapter_id)}
-              here={f.op.anchor_chapter_id === chapterId}
-              titleOf={titleOf}
-              readOnly={readOnly}
+    <>
+      {showForm && (
+        <section className="entry-section">
+          <h2>Form</h2>
+          <p className="facts-form">
+            {entry.form ? (
+              <>
+                <strong>Form: {entry.form.name}</strong>
+                {entry.form.note && <> — {entry.form.note}</>}
+              </>
+            ) : (
+              <span className="meta">No form set.</span>
+            )}{" "}
+            {!formOpen && (
+              <button type="button" className="secondary" disabled={busy} onClick={() => setFormOpen(true)}>
+                {entry.form ? "Change form" : "Set a form"}
+              </button>
+            )}
+          </p>
+          {formOpen && (
+            <FormForm
+              entry={entry}
+              path={path}
+              chapterId={chapterId}
               busy={busy}
-              onChange={() => {
-                setEditing(f);
-                setMode("fact");
-              }}
-              onRemove={() => {
-                if (window.confirm(`Remove “${f.aspect || f.text}” from this chapter onward? Earlier chapters keep it.`)) {
-                  void send({ op: "retire", aspect: f.aspect, form: f.form, text: "", quote: "", fact_id: f.fact_id, anchor: chapterId });
-                }
+              onCancel={() => setFormOpen(false)}
+              onSave={async (b) => {
+                if (await send(b)) setFormOpen(false);
               }}
             />
-          ))}
-        </div>
-      ))}
-
-      {error && <p className="error">{error}</p>}
-
-      {mode === "fact" && (
-        <FactForm
-          key={editing?.fact_id ?? "new"}
-          entry={entry}
-          editing={editing}
-          path={path}
-          chapterId={chapterId}
-          usedAspects={usedAspects}
-          busy={busy}
-          onCancel={() => {
-            setMode(null);
-            setEditing(null);
-          }}
-          onSave={async (b) => {
-            if (await send(b)) {
-              setMode(null);
-              setEditing(null);
-            }
-          }}
-        />
-      )}
-      {mode === "form" && (
-        <FormForm
-          entry={entry}
-          path={path}
-          chapterId={chapterId}
-          busy={busy}
-          onCancel={() => setMode(null)}
-          onSave={async (b) => {
-            if (await send(b)) setMode(null);
-          }}
-        />
+          )}
+        </section>
       )}
 
-      <div className="meta" style={{ margin: "0.25rem 0 0.5rem" }}>
-        {!readOnly && mode !== "fact" && (
-          <>
-            <button
-              type="button"
-              className="secondary"
-              disabled={busy}
-              onClick={() => {
-                setEditing(null);
-                setMode("fact");
-              }}
-            >
-              + Add a fact
-            </button>{" "}
-          </>
-        )}
-        <button type="button" className="linkish" onClick={() => setShowAi(!showAi)}>
-          {showAi ? "Hide what the AI reads" : "What the AI reads"}
-        </button>
-      </div>
-      {showAi && <div className="fact-ai">{entry.description || <em>(nothing yet)</em>}</div>}
-    </div>
-  );
-}
-
-function FactRow({
-  fact,
-  history,
-  since,
-  here,
-  titleOf,
-  readOnly,
-  busy,
-  onChange,
-  onRemove,
-}: {
-  fact: LiveFact;
-  history: FactOp[];
-  since: string;
-  here: boolean;
-  titleOf: (id: string) => string;
-  readOnly?: boolean;
-  busy: boolean;
-  onChange: () => void;
-  onRemove: () => void;
-}) {
-  const versions = [...history].reverse();
-  return (
-    <details className="fact-row">
-      <summary>
-        <div className="fact-summary">
-          <div className="fact-line">
-            {fact.aspect && <strong>{fact.aspect}</strong>} <span>{fact.text}</span>
+      <section className="entry-section facts">
+        <h2>Facts</h2>
+        {groups.length === 0 && <p className="meta">No facts yet.</p>}
+        {groups.map((g) => (
+          <div key={g.key} className={g.dim ? "fact-group dim" : "fact-group"}>
+            {g.heading && <h3 className="fact-heading">{g.heading}</h3>}
+            {g.facts.map((f) => {
+              const versions = [...factHistory(factOps, f.fact_id)].reverse();
+              return (
+                <div key={f.fact_id} className="fact-row">
+                  <div className="fact-summary">
+                    <div className="fact-line">
+                      {f.aspect && <strong>{f.aspect}</strong>} <span>{f.text}</span>
+                    </div>
+                    <div className="meta" style={{ margin: 0 }}>
+                      {since(f.op.anchor_chapter_id)}
+                      {f.op.anchor_chapter_id === chapterId && <span className="tag"> · changed here</span>}
+                    </div>
+                  </div>
+                  <div className="row" style={{ margin: "0.4rem 0 0" }}>
+                    <button type="button" className="secondary" disabled={busy} onClick={() => setEditing(f.fact_id)}>
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => {
+                        if (window.confirm(`Remove “${f.aspect || f.text}” from this chapter onward? Earlier chapters keep it.`)) {
+                          void send({ op: "retire", aspect: f.aspect, form: f.form, text: "", quote: "", fact_id: f.fact_id, anchor: chapterId });
+                        }
+                      }}
+                    >
+                      Remove
+                    </button>
+                    <button type="button" className="linkish" aria-expanded={history.includes(f.fact_id)} onClick={() => toggleHistory(f.fact_id)}>
+                      History
+                    </button>
+                  </div>
+                  {editing === f.fact_id && (
+                    <FactForm
+                      key={f.fact_id}
+                      entry={entry}
+                      editing={f}
+                      path={path}
+                      chapterId={chapterId}
+                      usedAspects={usedAspects}
+                      busy={busy}
+                      onCancel={() => setEditing(null)}
+                      onSave={async (b) => {
+                        if (await send(b)) setEditing(null);
+                      }}
+                    />
+                  )}
+                  {history.includes(f.fact_id) && (
+                    <ol className="history">
+                      {versions.map((v, i) => (
+                        <li key={v.id}>
+                          <div className="meta" style={{ margin: 0 }}>
+                            <strong>{v.op === "retire" ? "Removed" : i === versions.length - 1 ? "Added" : "Changed"}</strong> in “
+                            {titleOf(v.anchor_chapter_id)}”{i === 0 && v.op !== "retire" ? " · current" : ""}
+                          </div>
+                          {v.op !== "retire" && (
+                            <div className={i === 0 ? "version" : "version old"}>
+                              {v.text}
+                              {v.quote && <div className="fact-quote">“{v.quote}”</div>}
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          <div className="meta" style={{ margin: 0 }}>
-            {since}
-            {here && <span className="tag"> · changed here</span>}
-          </div>
-        </div>
-      </summary>
-      <ol className="history">
-        {versions.map((v, i) => (
-          <li key={v.id}>
-            <div className="meta" style={{ margin: 0 }}>
-              {v.op === "retire" ? <strong>Removed</strong> : <strong>{i === versions.length - 1 ? "Added" : "Changed"}</strong>} in “
-              {titleOf(v.anchor_chapter_id)}”{i === 0 && v.op !== "retire" ? " · current" : ""}
-            </div>
-            {v.op !== "retire" && (
-              <div className={i === 0 ? "version" : "version old"}>
-                {v.text}
-                {v.quote && <div className="fact-quote">“{v.quote}”</div>}
-              </div>
-            )}
-          </li>
         ))}
-      </ol>
-      {!readOnly && (
-        <div className="row" style={{ margin: "0.5rem 0 0" }}>
-          <button type="button" className="secondary" disabled={busy} onClick={onChange}>
-            Change
-          </button>
-          <button type="button" className="secondary" disabled={busy} onClick={onRemove}>
-            Remove
-          </button>
-        </div>
-      )}
-    </details>
+
+        {error && <p className="error">{error}</p>}
+
+        {editing === "new" ? (
+          <FactForm
+            key="new"
+            entry={entry}
+            editing={null}
+            path={path}
+            chapterId={chapterId}
+            usedAspects={usedAspects}
+            busy={busy}
+            onCancel={() => setEditing(null)}
+            onSave={async (b) => {
+              if (await send(b)) setEditing(null);
+            }}
+          />
+        ) : (
+          <p style={{ margin: "0.5rem 0 0" }}>
+            <button type="button" className="secondary" disabled={busy} onClick={() => setEditing("new")}>
+              + Add a fact
+            </button>
+          </p>
+        )}
+      </section>
+    </>
   );
 }
 
@@ -398,32 +365,43 @@ function FormForm({
   onCancel: () => void;
   onSave: (b: Body) => void;
 }) {
-  const [name, setName] = useState(entry.form?.name ?? "");
-  const [note, setNote] = useState(entry.form?.note ?? "");
+  // The entry's forms, or a new one: with no form yet, a new one is the only choice.
+  const currentName = entry.form?.name ?? "";
+  const [sel, setSel] = useState(() => entry.forms.find((f) => sameAspect(f, currentName)) ?? entry.forms[0] ?? NEW_FORM);
+  const [newName, setNewName] = useState("");
+  const [stage, setStage] = useState(entry.form?.note ?? "");
   const [anchor, setAnchor] = useState(chapterId);
+  const name = sel === NEW_FORM ? newName.trim() : sel;
+  const line = name ? formLine(name, stage) : "";
   return (
     <div className="fact-form">
       <label>
-        Form name <small>(which form {entry.name} is in now; only its facts go to the AI)</small>
-        <input aria-label="Form name" list={`forms-${entry.entry_id}`} value={name} maxLength={FACT_LIMITS.form} onChange={(e) => setName(e.target.value)} />
-        <datalist id={`forms-${entry.entry_id}`}>
+        Form <small>(which form {entry.name} is in now; only its facts go to the AI)</small>
+        <select aria-label="Form" value={sel} onChange={(e) => setSel(e.target.value)}>
           {entry.forms.map((f) => (
-            <option key={f} value={f} />
+            <option key={f} value={f}>
+              {f}
+            </option>
           ))}
-        </datalist>
+          <option value={NEW_FORM}>New form…</option>
+        </select>
       </label>
+      {sel === NEW_FORM && (
+        <input aria-label="New form name" placeholder="New form name" value={newName} maxLength={FACT_LIMITS.form} onChange={(e) => setNewName(e.target.value)} />
+      )}
       <label>
-        Note <small>(optional, such as “changing, mostly vixen”)</small>
-        <input aria-label="Form note" value={note} maxLength={FACT_LIMITS.text} onChange={(e) => setNote(e.target.value)} />
+        Stage (optional) <small>(how far along it is, such as “halfway”)</small>
+        <input aria-label="Stage (optional)" placeholder="e.g. halfway, complete" value={stage} maxLength={FACT_LIMITS.text} onChange={(e) => setStage(e.target.value)} />
       </label>
+      <p className="meta" style={{ margin: 0 }} aria-live="polite">
+        {line ? <>The AI will read: <strong>{line}</strong></> : "Pick or name a form to see what the AI will read."}
+      </p>
       <ChapterSelect path={path} value={anchor} onChange={setAnchor} />
       <div className="row">
         <button
           type="button"
-          disabled={busy || !name.trim()}
-          onClick={() =>
-            onSave({ op: "set", aspect: FORM_ASPECT, form: name.trim(), text: note.trim(), quote: "", fact_id: entry.form?.fact.fact_id, anchor })
-          }
+          disabled={busy || !name}
+          onClick={() => onSave({ op: "set", aspect: FORM_ASPECT, form: name, text: stage.trim(), quote: "", fact_id: entry.form?.fact.fact_id, anchor })}
         >
           {busy ? "Saving…" : "Save"}
         </button>

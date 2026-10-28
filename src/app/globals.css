@@ -335,7 +335,8 @@ a {
   display: grid;
 }
 
-.menu-group:empty {
+.menu-group:empty,
+.menu-group-codex:not(:has(a, button, details)) {
   display: none;
 }
 
@@ -3509,16 +3510,8 @@ button.refine-fit {
   padding: 0.4rem 0;
 }
 
-.fact-row > summary {
-  cursor: pointer;
+.fact-row {
   overflow-wrap: anywhere;
-}
-
-/* Beside the disclosure triangle, not under it. */
-.fact-summary {
-  display: inline-block;
-  vertical-align: top;
-  max-width: calc(100% - 1.5rem);
 }
 
 .fact-line {
@@ -3648,4 +3641,109 @@ button.refine-fit {
 .inbox-facts {
   margin: 0;
   padding-left: 1.25rem;
+}
+
+/* The compact list of a codex's entries: one card each, whatever page lists them. */
+.entry-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.entry-card {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem 0.8rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.entry-card:hover {
+  border-color: var(--accent);
+}
+
+.entry-card-text {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.entry-card-line {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.entry-card-desc {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* The entry's own page (and the same editor inside the writing page's drawer). */
+.entry-editor {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.entry-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.entry-head-text {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.entry-keywords {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.entry-keywords .meta {
+  display: block;
+}
+
+.entry-section {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.entry-section > h2 {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 1.1rem;
+}
+
+.entry-notes {
+  margin: 0 0 0.5rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.entry-history > summary {
+  cursor: pointer;
+}
+
+.entry-path {
+  margin: 0;
+  overflow-wrap: anywhere;
 }

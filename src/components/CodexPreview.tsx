@@ -96,7 +96,8 @@ export default function CodexPreview({ ctx, direction, contextTokens, overrides,
           <div className="codex-entry-detail">
             {r.entry.aliases.length > 0 && <div className="meta">Also: {r.entry.aliases.join(", ")}</div>}
             {r.entry.always_include && <div className="meta">Always included in prompts.</div>}
-            <p>{r.entry.content || <em>(no description)</em>}</p>
+            {/* `content` here is what the AI reads (the entry's form and facts), never the owner's notes. */}
+            <p>{r.entry.content || <em>No facts yet</em>}</p>
           </div>
         )}
       </li>

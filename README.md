@@ -21,17 +21,24 @@ and, for pictures, your own ComfyUI machine.
   sent with every drafting prompt. Set them when starting a story, or change them from the Style
   notes section on any writing page; a change is tried out on that page until you save it for the
   whole story.
-- **Codex**: per-branch notes on characters, places and facts (a character who turns into a horse
-  stays human on other branches). The AI can draft entries, bring an entry up to date with the story,
-  and read chapters for changes (see **Codex inbox** below). While writing, you can read, edit and add entries without leaving
-  the page; those changes stay in the draft and are saved with the chapter when it is posted (or
-  straight away, if you date them to an earlier chapter). Entries can have pictures that change
-  over the story too.
-- **Codex facts**: on the codex page, an entry can hold small facts, one per aspect ("Ears: tall
-  fox ears"), each dated to the chapter where it became true, with the sentence that shows it.
-  Changing an aspect later keeps the old version in its history. A character can have forms
-  (human, vixen…): facts can belong to one form, and only the current form's facts go to the AI.
-  **What the AI reads** shows the text the AI gets for the entry: its form, facts and notes.
+- **Codex**: per-branch entries for characters, places and facts (a character who turns into a horse
+  stays human on other branches). Every list of entries (the chapter's codex page, the story's
+  details, the Story Bible, the writing page's drawer) shows the same cards, and each card opens the
+  entry's own page, the one place to read and change it. While writing, the drawer opens the entry in
+  place; changes stay in the draft and are saved with the chapter when it is posted (or straight away,
+  if you date them to an earlier chapter). Entries can have pictures that change over the story too
+  (the **Pictures** button on the entry's page).
+- **Keywords**: each entry lists the words in the story that bring it into the AI's prompt
+  ("Ro, the traveller"); **Edit details** on the entry's page changes them, with the name and type.
+- **Codex facts**: an entry holds small facts, one per aspect ("Ears: tall fox ears"), each dated to
+  the chapter where it became true, with the sentence that shows it. Each fact has its own **Edit**,
+  **Remove** and **History**. A character can have forms (human, vixen…): **Change form** picks one of
+  its forms (or a new one) and an optional stage ("halfway"), and shows exactly what the AI will read;
+  facts can belong to one form, and only the current form's facts go to the AI.
+  **What the AI reads** shows the text the AI gets for the entry: its form and facts.
+- **Your notes**: a free-text note on each entry that is yours and is **not sent to the AI**. **Turn
+  notes into facts** asks the AI to read them and leave suggested facts in the Codex inbox.
+- **Story Bible**: in the ☰ menu of every story and chapter page, and in the writing page's codex drawer.
 - **Codex inbox**: after you save a new or edited chapter, the AI (your cheaper model) reads it in
   the background and leaves suggested fact changes in the inbox, on the **Codex** tab of the Story
   Bible. Each suggestion is one fact, shows in red and green exactly what changes and the sentence it

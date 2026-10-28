@@ -86,7 +86,7 @@ export type CodexEntry = {
   form: { name: string; note: string; fact: LiveFact } | null;
   /** Every form named by its facts (and the current one). */
   forms: string[];
-  /** What the AI reads: the current form, the facts that apply to it, then the notes. */
+  /** What the AI reads: the current form and the facts that apply to it (never the notes). */
   description: string;
 };
 
@@ -124,11 +124,11 @@ export function applicableFacts(facts: LiveFact[], form: string | null): LiveFac
 }
 
 /**
- * What the AI reads for an entry: "Form: vixen (change complete). Ears: tall fox ears. ... Notes."
+ * What the AI reads for an entry: "Form: vixen, change complete. Ears: tall fox ears. ..." The notes are left out.
  * A fact anchored at `recentAnchor` (the chapter just before the one being written) is marked as just
  * changed, so the writer shows the character noticing it.
  */
-export function describeEntry(notes: string, facts: LiveFact[], recentAnchor?: string): string {
+export function describeEntry(facts: LiveFact[], recentAnchor?: string): string {
   const recent = (f: LiveFact) => !!recentAnchor && f.op.anchor_chapter_id === recentAnchor;
   // "Ears: fox ears (just changed)." — the mark goes inside the sentence's full stop.
   const sentence = (s: string, f: LiveFact) => {
@@ -147,8 +147,25 @@ export function describeEntry(notes: string, facts: LiveFact[], recentAnchor?: s
     if (!f.text.trim()) continue;
     parts.push(sentence(f.aspect.trim() ? `${f.aspect.trim()}: ${f.text.trim()}` : f.text, f));
   }
-  if (notes.trim()) parts.push(notes.trim());
   return parts.join(" ");
+}
+
+/** The sentence the AI reads for a form and its stage: "Form: vixen, halfway." (as `describeEntry` writes it). */
+export function formLine(form: string, stage: string): string {
+  const label = [form, stage].map((s) => s.trim().replace(/\s+/g, " ")).filter(Boolean).join(", ");
+  if (!label) return "";
+  return /[.!?…]$/.test(label) || /["”)]$/.test(label) ? `Form: ${label}` : `Form: ${label}.`;
+}
+
+/** Every aspect named by a fact of these entries (the form aspect left out), once each, for suggestions when adding a fact. */
+export function usedAspectsOf(entries: CodexEntry[]): string[] {
+  const out: string[] = [];
+  for (const e of entries) {
+    for (const f of e.facts) {
+      if (f.aspect.trim() && !isFormAspect(f.aspect) && !out.some((a) => sameAspect(a, f.aspect))) out.push(f.aspect.trim());
+    }
+  }
+  return out;
 }
 
 function withFacts(op: CodexOp, facts: LiveFact[], recentAnchor?: string): CodexEntry {
@@ -168,7 +185,7 @@ function withFacts(op: CodexOp, facts: LiveFact[], recentAnchor?: string): Codex
     facts,
     form: formFact ? { name: formFact.form, note: formFact.text, fact: formFact } : null,
     forms,
-    description: describeEntry(op.content, facts, recentAnchor),
+    description: describeEntry(facts, recentAnchor),
   };
 }
 
@@ -215,6 +232,8 @@ export type StoryEntrySummary = {
   /** The chapter the entry was created at (the shallowest, if several branches created it). */
   first_chapter_id: string;
   first_chapter_title: string;
+  /** The chapter where the entry was last written (its latest op that isn't a retirement), where its page opens. */
+  last_chapter_id: string;
   /** True when the op that takes effect last is a retirement. */
   retired: boolean;
 };
@@ -241,6 +260,7 @@ export function storyEntrySummaries(ops: CodexOp[], chapterTitles: Map<string, s
       type: named.type,
       first_chapter_id: first.anchor_chapter_id,
       first_chapter_title: titleOf(first.anchor_chapter_id),
+      last_chapter_id: named.anchor_chapter_id,
       retired: last.op === "retire",
     });
   }
@@ -280,7 +300,10 @@ export function toCodexMarkdown(storyTitle: string, chapterTitle: string, entrie
       if (e.aliases.length) notes.push(`Also known as: ${e.aliases.join(", ")}`);
       if (e.always_include) notes.push("Always included in AI prompts");
       if (notes.length) out.push(`*${notes.join(" · ")}*`);
-      out.push(e.description.trim() || "*(no description)*");
+      // The facts are what the AI reads; the notes are the author's own, so they are labelled apart.
+      if (e.description.trim()) out.push(e.description.trim());
+      if (e.content.trim()) out.push(`**Notes** (not sent to the AI)\n\n${e.content.trim()}`);
+      else if (!e.description.trim()) out.push("*(no description)*");
     }
   }
   return `${out.join("\n\n")}\n`;

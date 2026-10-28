@@ -89,10 +89,9 @@ ok(edited.style === "STYLE-EDITED: third person." && edited.title === "Styled ta
 
 await page.getByRole("button", { name: "+ New entry" }).click();
 await page.getByLabel("Name", { exact: true }).fill("Lantern");
-await page.getByLabel(/Description/).fill("A brass lantern.");
 ok(!(await page.getByLabel(/Takes effect from/).count()), "a story-wide entry has no chapter to pick");
 await page.getByRole("button", { name: "Add entry" }).click();
-await page.getByText("A brass lantern.").waitFor();
+await page.getByRole("heading", { name: "Lantern", level: 1 }).waitFor();
 const rootCodex = await json("GET", `/api/chapters/${root}/codex`);
 ok(rootCodex.ops.some((o) => o.name === "Lantern" && o.anchor_chapter_id === root), "a codex entry added there is anchored at the first chapter");
 

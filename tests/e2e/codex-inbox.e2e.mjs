@@ -48,7 +48,9 @@ try {
   page.on("dialog", (d) => d.accept());
   const inbox = `${BASE}/s/${storyId}/review?tab=codex`;
   const card = (quote) => page.locator("article.inbox-card", { hasText: quote });
-  const rowanFacts = () => page.locator("article", { hasText: "Rowan" }).first();
+  // Rowan's entry page (the one place the facts are listed), as of a chapter.
+  const rowanPage = (at) => page.goto(`${BASE}/s/${storyId}/codex/${rowan}?at=${at}`);
+  const rowanFacts = () => page.locator(".entry-editor");
   const factLine = (t) => rowanFacts().locator(".fact-line", { hasText: t });
 
   // ---- the chapter page banner and the codex page count ----
@@ -127,16 +129,21 @@ try {
   ok(await page.locator("article.inbox-card", { hasText: "Rowan stood there." }).isVisible(), "…only the other chapter's card is still open");
 
   // ---- what reached the codex ----
-  await page.goto(`${BASE}/c/${A}/codex`);
+  await rowanPage(A);
   await factLine("silver hair").waitFor();
   ok(await factLine("scuffed red boots").isVisible(), "the edited fact was saved");
   ok(await factLine("tense").isVisible(), "the fact accepted with Accept all was saved");
   ok((await factLine("wooden sword").count()) === 0, "the removal took effect");
-  ok(await rowanFacts().getByText("Form: hawk").isVisible(), "the form was set");
+  ok(await rowanFacts().locator(".facts-form").getByText("Form: hawk").isVisible(), "the form was set");
   ok(await factLine("green").isVisible() && (await factLine("blue").count()) === 0, "Keep the codex left the green eyes");
-  ok(await page.locator("article", { hasText: "Kestrel" }).first().getByText("A hunting hawk.").isVisible(), "the new entry was created");
+  ok(await rowanFacts().getByText("1 suggestion waiting for Rowan").isVisible(), "the entry page counts the suggestion still waiting");
+  await page.goto(`${BASE}/c/${A}/codex`);
+  await page.locator(".entry-card", { hasText: "Kestrel" }).click();
+  await page.getByRole("heading", { name: "Kestrel", level: 1 }).waitFor();
+  ok(await page.locator(".entry-notes", { hasText: "A hunting hawk." }).isVisible(), "the new entry was created, with its notes");
+  await page.goto(`${BASE}/c/${A}/codex`);
   ok(await page.getByText(/Codex inbox: 1 suggestion waiting/).isVisible(), "the codex page now counts 1");
-  await page.goto(`${BASE}/c/${root}/codex`);
+  await rowanPage(root);
   ok((await rowanFacts().locator(".fact-line", { hasText: "silver hair" }).count()) === 0, "changes took effect from chapter A, not from the root");
 
   // ---- dismissed list, with Reopen ----
@@ -148,7 +155,7 @@ try {
   ok(true, "Reopen on the Dismissed list puts the card back");
   await card("Her eyes were blue.").getByRole("button", { name: "Update codex" }).click();
   await page.getByText(/Saved to Rowan at “Chapter A”/).waitFor();
-  await page.goto(`${BASE}/c/${A}/codex`);
+  await rowanPage(A);
   await factLine("blue").waitFor();
   ok(true, "Update codex wrote the new eyes");
 

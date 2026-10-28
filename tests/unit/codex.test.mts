@@ -119,21 +119,21 @@ ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length ==
 
   const lf = (o: Partial<FactOp>): LiveFact => { const f = fop(o); return { fact_id: f.fact_id, aspect: f.aspect, form: f.form, text: f.text, quote: f.quote, op: f }; };
   const formFact = lf({ fact_id: "form", aspect: "form", form: "vixen", text: "change complete" });
-  let d = describeEntry("Notes here.", [formFact, lf({ text: "Fox ears." }), lf({ fact_id: "tail", aspect: "Tail", form: "vixen", text: "Bushy tail." }), lf({ fact_id: "tail2", aspect: "Tail", form: "human", text: "No tail." }), lf({ fact_id: "loose", aspect: "", text: "Hates rain" })]);
-  ok(d === "Form: vixen, change complete. Ears: Fox ears. Tail: Bushy tail. Hates rain. Notes here.", "describe: form first, current form's facts, loose facts, notes last: " + d);
-  d = describeEntry("", [lf({ text: "Fox ears." })]);
-  ok(d === "Ears: Fox ears.", "describe: no form, no notes");
-  d = describeEntry("N.", [lf({ fact_id: "tail2", aspect: "Tail", form: "human", text: "No tail." })]);
-  ok(d === "N.", "describe: a form fact without a current form doesn't apply");
-  d = describeEntry("N.", [lf({ anchor_chapter_id: "prev", text: "Fox ears." }), lf({ fact_id: "x", aspect: "Eyes", text: "Green." })], "prev");
-  ok(d === "Ears: Fox ears (just changed). Eyes: Green. N.", "describe: recent anchor is marked: " + d);
+  let d = describeEntry([formFact, lf({ text: "Fox ears." }), lf({ fact_id: "tail", aspect: "Tail", form: "vixen", text: "Bushy tail." }), lf({ fact_id: "tail2", aspect: "Tail", form: "human", text: "No tail." }), lf({ fact_id: "loose", aspect: "", text: "Hates rain" })]);
+  ok(d === "Form: vixen, change complete. Ears: Fox ears. Tail: Bushy tail. Hates rain.", "describe: form first, current form's facts, then loose facts: " + d);
+  d = describeEntry([lf({ text: "Fox ears." })]);
+  ok(d === "Ears: Fox ears.", "describe: no form");
+  d = describeEntry([lf({ fact_id: "tail2", aspect: "Tail", form: "human", text: "No tail." })]);
+  ok(d === "", "describe: a form fact without a current form doesn't apply");
+  d = describeEntry([lf({ anchor_chapter_id: "prev", text: "Fox ears." }), lf({ fact_id: "x", aspect: "Eyes", text: "Green." })], "prev");
+  ok(d === "Ears: Fox ears (just changed). Eyes: Green.", "describe: recent anchor is marked: " + d);
 
   let es = foldCodex([op({})], [fop({}), fop({ fact_id: "form", aspect: "form", form: "vixen", text: "" })]);
-  ok(es[0].facts.length === 2 && es[0].form?.name === "vixen" && es[0].forms.join() === "vixen" && es[0].description === "Form: vixen. Ears: Round ears. A human thief.", "foldCodex: facts folded into the entry: " + es[0].description);
+  ok(es[0].facts.length === 2 && es[0].form?.name === "vixen" && es[0].forms.join() === "vixen" && es[0].description === "Form: vixen. Ears: Round ears.", "foldCodex: facts folded into the entry: " + es[0].description);
   es = foldCodex([op({}), op({ op: "retire", anchor_depth: 1, anchor_chapter_id: "c1" })], [fop({})]);
   ok(es.length === 0, "foldCodex: a retired entry drops its facts");
   es = foldCodex([op({})]);
-  ok(es[0].description === es[0].content && es[0].facts.length === 0 && es[0].form === null, "foldCodex: no facts gives description === content");
+  ok(es[0].description === "" && es[0].content !== "" && es[0].facts.length === 0 && es[0].form === null, "foldCodex: no facts gives an empty description (the notes stay in content)");
   es = foldCodex([op({})], [fop({ anchor_chapter_id: "c1" })], { recentAnchor: "c1" });
   ok(es[0].description.includes("(just changed)"), "foldCodex: recentAnchor passes through");
 }

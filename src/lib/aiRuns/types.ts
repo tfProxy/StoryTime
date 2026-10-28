@@ -143,7 +143,23 @@ export type CodexTask = {
   error?: string;
 };
 
-export type RunTask = WriteTask | PlanTask | PictureTask | TagsTask | FactsTask | ContinuityTask | SummaryTask | CodexTask;
+/** Notes to facts: the AI reads the notes of one codex entry and leaves suggested facts in the inbox, anchored at `chapterId` (where the notes were last written). */
+export type NotesTask = {
+  kind: "notes";
+  id: string;
+  entryId: string;
+  chapterId: string;
+  /** That chapter's revision when the run was made; a chapter edited since is skipped. */
+  revision: number;
+  /** The entry's name, for the task list. */
+  label?: string;
+  status: TaskStatus;
+  /** How many suggestions were left in the inbox. */
+  found?: number;
+  error?: string;
+};
+
+export type RunTask = WriteTask | PlanTask | PictureTask | TagsTask | FactsTask | ContinuityTask | SummaryTask | CodexTask | NotesTask;
 
 export type RunOptions = {
   // writing modes
@@ -175,7 +191,9 @@ export type RunOptions = {
   /** A review run the server started by itself after a save or an AI run. */
   automatic?: boolean;
   // review: what to read each chapter for (tags unless said otherwise)
-  checks?: ("tags" | "facts" | "continuity" | "summaries" | "codex")[];
+  checks?: ("tags" | "facts" | "continuity" | "summaries" | "codex" | "notes")[];
+  /** With "notes": only these entries (all those with notes when absent). */
+  entryIds?: string[];
   /** With "codex": read chapters again that were read at their current revision already. */
   recheck?: boolean;
 };

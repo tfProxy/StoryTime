@@ -1,49 +1,41 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   addChange,
-  changedFields,
   DRAFT_ANCHOR,
   draftOps,
-  ENTRY_TYPES,
-  entryHistory,
   foldCodex,
   isDraftEntry,
-  isFormAspect,
-  sameAspect,
   retiredEntries,
+  usedAspectsOf,
   type CodexChange,
-  type CodexEntry,
   type CodexOp,
   type EntryType,
   type FactOp,
 } from "@/lib/codex";
-import { useSettings } from "@/lib/settings";
-import { draftEntry, entryRequest, type PathChapter, type StoryInfo } from "@/lib/ai/codexAi";
+import type { PathChapter, StoryInfo } from "@/lib/ai/codexAi";
 import CodexCheck from "./CodexCheck";
-import CodexFacts from "./CodexFacts";
-import PromptButton from "./PromptButton";
-
-type PathItem = PathChapter;
+import CodexEntryCards from "./CodexEntryCards";
+import CodexEntryEditor, { EntryDetailsForm, type EntryChange } from "./CodexEntryEditor";
 
 type Props = {
-  story: StoryInfo;
-  /** The story's id, which lets each entry show its picture and link to its picture page (not in the writing page's drawer). */
+  story?: StoryInfo;
+  /** The story's id: entries link to their pages with it, and show their pictures. */
   storyId?: string;
   /** Open the codex check section initially (used right after posting a chapter). */
   openAiHelper?: boolean;
-  /** Shown inside the writing page's drawer: no chapter timeline or AI scan, just the entries. */
+  /** Shown inside the writing page's drawer: entries open in the drawer, with no chapter timeline or AI scan. */
   embedded?: boolean;
   /** Shown on the story's details page: the codex at the first chapter, which every branch shares. */
   storyWide?: boolean;
-  /** Open with this entry's form showing ("new" for a new entry). */
+  /** Open with this entry showing ("new" for the new-entry form); only in the drawer. */
   startEditing?: string | null;
   /** The chapter whose codex is being viewed; changes made here are anchored at it. */
   chapterId: string;
-  path: PathItem[];
+  path: PathChapter[];
   /** Every op on the path from the story root to this chapter. */
   ops: CodexOp[];
   /** Every fact op on the same path as `ops`. */
@@ -55,18 +47,18 @@ type Props = {
   draft?: { changes: CodexChange[]; onChange: (next: CodexChange[]) => void };
 };
 
-type Fields = { name: string; type: EntryType; aliases: string[]; content: string; always_include: boolean };
-type Change = { op: CodexOp["op"]; entry_id?: string; anchor?: string } & Partial<Fields>;
-
-const when = (t: number) => new Date(t).toISOString().replace("T", " ").slice(0, 16) + " UTC";
 const localId = () => `draft-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 
-export default function CodexPanel({ story, storyId, openAiHelper, embedded, storyWide, startEditing, chapterId, path, ops, facts, draft }: Props) {
+/**
+ * The codex as a compact list of entries (see `CodexEntryCards`), with "+ New entry". Each card opens the entry's
+ * page; in the writing page's drawer it opens the entry in the drawer instead, so the draft is kept.
+ */
+export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide, startEditing, chapterId, path, ops, facts, draft }: Props) {
   const router = useRouter();
-  // Each entry's picture as of this chapter (by entry id), for the thumbnails and the picture links.
+  // Each entry's picture as of this chapter (by entry id), for the thumbnails.
   const [pictures, setPictures] = useState<Record<string, { id: string }>>({});
   useEffect(() => {
-    if (!storyId || embedded) return;
+    if (!storyId) return;
     let live = true;
     fetch(`/api/stories/${storyId}/codex-pictures?chapter=${encodeURIComponent(chapterId)}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -77,31 +69,25 @@ export default function CodexPanel({ story, storyId, openAiHelper, embedded, sto
     return () => {
       live = false;
     };
-  }, [storyId, chapterId, embedded]);
-  const titleOf = (id: string) =>
-    id === DRAFT_ANCHOR ? "this chapter (not posted yet)" : (path.find((p) => p.id === id)?.title ?? "an earlier chapter");
+  }, [storyId, chapterId]);
+  const titleOf = (id: string) => path.find((p) => p.id === id)?.title ?? "an earlier chapter";
 
   const allOps = draft ? [...ops, ...draftOps(draft.changes, (path.at(-1)?.depth ?? -1) + 1)] : ops;
   const entries = foldCodex(allOps, facts ?? []);
-  const usedAspects: string[] = [];
-  for (const e of entries) {
-    for (const f of e.facts) {
-      if (f.aspect.trim() && !isFormAspect(f.aspect) && !usedAspects.some((a) => sameAspect(a, f.aspect))) usedAspects.push(f.aspect.trim());
-    }
-  }
+  const usedAspects = usedAspectsOf(entries);
   const retired = retiredEntries(allOps);
   const pending = new Map((draft?.changes ?? []).map((c) => [c.entry_id, c]));
+  const held = Object.fromEntries([...pending].map(([id, c]) => [id, c.op]));
   const discard = (entryId: string) => draft?.onChange(draft.changes.filter((c) => c.entry_id !== entryId));
 
-  // null = closed, "new" = creating, otherwise the entry being edited
-  const [editing, setEditing] = useState<null | "new" | CodexEntry>(() =>
-    startEditing === "new" ? "new" : (entries.find((e) => e.entry_id === startEditing) ?? null),
-  );
-  const [historyOf, setHistoryOf] = useState<string | null>(null);
+  const [creating, setCreating] = useState(startEditing === "new");
+  // The entry open in the drawer.
+  const [openId, setOpenId] = useState<string | null>(startEditing && startEditing !== "new" ? startEditing : null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function post({ anchor, ...change }: Change): Promise<boolean> {
+  /** Saves a change: held in the draft by default when there is one, otherwise (or when it is anchored at an earlier chapter) saved now. */
+  async function post({ anchor, ...change }: EntryChange): Promise<{ id?: string; error?: string }> {
     const at = anchor ?? (draft ? DRAFT_ANCHOR : chapterId);
     if (draft && at === DRAFT_ANCHOR) {
       const entryId = change.op === "create" ? localId() : change.entry_id!;
@@ -117,12 +103,10 @@ export default function CodexPanel({ story, storyId, openAiHelper, embedded, sto
           always_include: change.always_include ?? was?.always_include ?? false,
         }),
       );
-      return true;
+      return { id: entryId };
     }
     // An entry that only exists in the draft becomes a real one when it is saved to an earlier chapter.
     const body = change.entry_id && isDraftEntry(change.entry_id) ? { ...change, op: "create", entry_id: undefined } : change;
-    setBusy(true);
-    setError(null);
     try {
       const res = await fetch("/api/codex", {
         method: "POST",
@@ -130,42 +114,76 @@ export default function CodexPanel({ story, storyId, openAiHelper, embedded, sto
         body: JSON.stringify({ anchor_chapter_id: at, ...body }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+      if (!res.ok) return { error: data.error ?? `Request failed (${res.status})` };
       // The saved version now holds what the form showed, so a held change to the same entry would only override it.
       if (change.entry_id) discard(change.entry_id);
       router.refresh();
-      return true;
+      return { id: data.entry_id ?? change.entry_id };
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      return false;
-    } finally {
-      setBusy(false);
+      return { error: e instanceof Error ? e.message : String(e) };
     }
   }
 
-  // `f` may be a whole op or entry object, so copy only the content fields (never its own op/id).
-  const restore = (f: Fields, entryId: string) =>
-    post({
-      op: "replace",
-      entry_id: entryId,
-      name: f.name,
-      type: f.type,
-      aliases: f.aliases,
-      content: f.content,
-      always_include: f.always_include,
-    });
+  async function create(f: { name: string; type: EntryType; aliases: string[] }) {
+    setBusy(true);
+    setError(null);
+    const r = await post({ op: "create", ...f, content: "", always_include: false });
+    setBusy(false);
+    if (r.error || !r.id) return setError(r.error ?? "Couldn't add the entry");
+    setCreating(false);
+    if (embedded) setOpenId(r.id);
+    else router.push(`/s/${storyId}/codex/${r.id}?at=${chapterId}`);
+  }
+
+  async function bringBack(e: (typeof retired)[number]) {
+    setBusy(true);
+    setError(null);
+    const r = await post({ op: "replace", entry_id: e.entry_id, name: e.name, type: e.type, aliases: e.aliases, content: e.content, always_include: e.always_include });
+    setBusy(false);
+    if (r.error) setError(r.error);
+  }
+
+  // In the drawer an entry opens in place of the list.
+  const open = embedded && openId ? entries.find((e) => e.entry_id === openId) : undefined;
+  if (open) {
+    return (
+      <div style={{ display: "grid", gap: "1rem" }}>
+        <div>
+          <button type="button" className="secondary" onClick={() => setOpenId(null)}>
+            ← All entries
+          </button>
+        </div>
+        <CodexEntryEditor
+          key={open.entry_id}
+          variant="drawer"
+          entry={open}
+          ops={allOps}
+          facts={facts ?? []}
+          path={path}
+          chapterId={chapterId}
+          storyId={storyId}
+          usedAspects={usedAspects}
+          pictureId={pictures[open.entry_id]?.id}
+          save={async (c) => (await post(c)).error ?? null}
+          held={pending.get(open.entry_id)}
+          onDiscardHeld={() => discard(open.entry_id)}
+          onRetired={() => setOpenId(null)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "grid", gap: "1.25rem" }}>
       {!embedded && !storyWide && (
-      <nav className="timeline" aria-label="Chapters on this path">
-        {path.map((p, i) => (
-          <span key={p.id}>
-            {i > 0 && " › "}
-            {p.id === chapterId ? <strong>{p.title}</strong> : <Link href={`/c/${p.id}/codex`}>{p.title}</Link>}
-          </span>
-        ))}
-      </nav>
+        <nav className="timeline" aria-label="Chapters on this path">
+          {path.map((p, i) => (
+            <span key={p.id}>
+              {i > 0 && " › "}
+              {p.id === chapterId ? <strong>{p.title}</strong> : <Link href={`/c/${p.id}/codex`}>{p.title}</Link>}
+            </span>
+          ))}
+        </nav>
       )}
       {draft ? (
         <p className="notice">
@@ -182,10 +200,8 @@ export default function CodexPanel({ story, storyId, openAiHelper, embedded, sto
       ) : (
         <p className="notice">
           This is the codex as of <strong>{titleOf(chapterId)}</strong>. Anything you add or change here takes effect from
-          this chapter onward on this branch, and other branches never see it.
-          {embedded
-            ? " Use “Takes effect from” on an entry to record a change that happened earlier."
-            : " To record a change that happened earlier, pick that chapter above first."}
+          this chapter onward on this branch, and other branches never see it. To record a change that happened earlier,
+          pick that chapter above first.
         </p>
       )}
 
@@ -193,170 +209,27 @@ export default function CodexPanel({ story, storyId, openAiHelper, embedded, sto
 
       {!embedded && !storyWide && storyId && <CodexCheck storyId={storyId} chapterId={chapterId} inboxHref={`/s/${storyId}/review?tab=codex`} defaultOpen={openAiHelper} />}
 
-      {editing === null && (
+      {creating ? (
         <div>
-          <button type="button" onClick={() => setEditing("new")}>
+          <EntryDetailsForm initial={null} busy={busy} path={path} chapterId={chapterId} inDraft={!!draft} onCancel={() => setCreating(false)} onSave={(f) => create(f)} />
+        </div>
+      ) : (
+        <div>
+          <button type="button" onClick={() => setCreating(true)}>
             + New entry
           </button>
         </div>
       )}
-      {editing !== null && (
-        <EntryForm
-          key={editing === "new" ? "new" : editing.op.id}
-          initial={editing === "new" ? null : editing}
-          busy={busy}
-          story={story}
-          chapterId={chapterId}
-          path={path}
-          entries={entries}
-          inDraft={!!draft}
-          onCancel={() => setEditing(null)}
-          onSave={async (f, anchorId) => {
-            const ok = await post(
-              editing === "new"
-                ? { op: "create", anchor: anchorId, ...f }
-                : { op: "replace", entry_id: editing.entry_id, anchor: anchorId, ...f },
-            );
-            if (ok) setEditing(null);
-          }}
-        />
-      )}
 
-      {entries.length === 0 && editing === null && (
-        <p className="meta">No entries yet at this point. Add characters, places or facts the story should remember.</p>
-      )}
-
-      {ENTRY_TYPES.map((type) => {
-        const group = entries.filter((e) => e.type === type);
-        if (group.length === 0) return null;
-        return (
-          <section key={type}>
-            <h2 style={{ textTransform: "capitalize" }}>{type}s</h2>
-            {group.map((e) => {
-              const here = e.op.anchor_chapter_id === chapterId;
-              const held = pending.get(e.entry_id);
-              const hist = entryHistory(allOps, e.entry_id);
-              const picture = pictures[e.entry_id];
-              const pictureHref = storyId && !embedded && !isDraftEntry(e.entry_id) ? `/s/${storyId}/codex/${e.entry_id}?at=${chapterId}` : null;
-              return (
-                <article key={e.entry_id} className="card">
-                  <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div className="row" style={{ alignItems: "flex-start", flexWrap: "nowrap", minWidth: 0 }}>
-                      {picture && storyId && pictureHref && (
-                        <Link href={pictureHref} title={`The picture of ${e.name} as of this chapter`} className="codex-thumb-link">
-                          {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
-                          <img className="codex-thumb" src={`/api/stories/${storyId}/codex-pictures/${picture.id}`} alt={`Picture of ${e.name}`} />
-                        </Link>
-                      )}
-                      <div>
-                      <strong>{e.name}</strong>{" "}
-                      {e.always_include && <span className="tag">· always included</span>}{" "}
-                      {here && !draft && <span className="tag">· changed in this chapter</span>}
-                      {held && (
-                        <span className="tag">· {held.op === "create" ? "new" : "changed"} in this chapter, saved when you post</span>
-                      )}
-                      {e.aliases.length > 0 && <div className="meta">Also: {e.aliases.join(", ")}</div>}
-                      </div>
-                    </div>
-                    <div className="row">
-                      {pictureHref && (
-                        <Link
-                          className="button secondary"
-                          href={pictureHref}
-                          title={picture ? `Make another picture of ${e.name}, or see this one` : `Make a picture of ${e.name} to use as a reference`}
-                        >
-                          {picture ? "Picture" : "Make a picture"}
-                        </Link>
-                      )}
-                      <button type="button" className="secondary" disabled={busy} onClick={() => setEditing(e)}>
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary"
-                        disabled={busy}
-                        onClick={() => {
-                          if (window.confirm(`Retire “${e.name}” from this chapter onward? Earlier chapters keep it.`)) {
-                            void post({ op: "retire", entry_id: e.entry_id });
-                          }
-                        }}
-                      >
-                        Retire
-                      </button>
-                      {held && (
-                        <button type="button" className="secondary" disabled={busy} onClick={() => discard(e.entry_id)}>
-                          {held.op === "create" ? "Delete" : "Undo change"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {isDraftEntry(e.entry_id) ? (
-                    <p className="meta" style={{ margin: "0.5rem 0 0" }}>Post the chapter to add facts.</p>
-                  ) : (
-                    <CodexFacts
-                      entry={e}
-                      factOps={facts ?? []}
-                      path={path}
-                      chapterId={chapterId}
-                      usedAspects={usedAspects}
-                      onSaved={() => router.refresh()}
-                    />
-                  )}
-                  {(e.content || e.facts.length === 0) && (
-                    <>
-                      {e.facts.length > 0 && <div className="meta" style={{ margin: "0.5rem 0 0" }}>Notes</div>}
-                      <p style={{ whiteSpace: "pre-wrap", margin: "0.5rem 0" }}>{e.content || <em>(no description)</em>}</p>
-                    </>
-                  )}
-                  <div className="meta" style={{ margin: 0 }}>
-                    {hist.length > 1 || !here ? `Last changed in “${titleOf(e.op.anchor_chapter_id)}”` : "Created here"} ·{" "}
-                    <button type="button" className="linkish" onClick={() => setHistoryOf(historyOf === e.entry_id ? null : e.entry_id)}>
-                      {historyOf === e.entry_id ? "Hide history" : `History (${hist.length})`}
-                    </button>
-                  </div>
-                  {historyOf === e.entry_id && (
-                    <ol className="history">
-                      {[...hist].reverse().map((v, idx, arr) => {
-                        const prev = arr[idx + 1];
-                        const isCurrent = v.id === e.op.id;
-                        return (
-                          <li key={v.id}>
-                            <div className="meta" style={{ margin: 0 }}>
-                              <strong>{v.op === "retire" ? "Retired" : prev ? "Changed" : "Created"}</strong> in “
-                              {titleOf(v.anchor_chapter_id)}” ·{" "}
-                              {v.anchor_chapter_id === DRAFT_ANCHOR ? "saved when you post" : when(v.posted_at)}
-                              {prev && v.op !== "retire" && ` · ${changedFields(prev, v).join(", ") || "no changes"}`}
-                              {isCurrent && " · current"}
-                            </div>
-                            {v.op !== "retire" && (
-                              <>
-                                <div className="version">
-                                  <strong>{v.name}</strong> [{v.type}]
-                                  <div style={{ whiteSpace: "pre-wrap" }}>{v.content}</div>
-                                </div>
-                                {!isCurrent && (
-                                  <button
-                                    type="button"
-                                    className="secondary"
-                                    disabled={busy}
-                                    onClick={() => restore(v, e.entry_id)}
-                                  >
-                                    Restore this version
-                                  </button>
-                                )}
-                              </>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ol>
-                  )}
-                </article>
-              );
-            })}
-          </section>
-        );
-      })}
+      <CodexEntryCards
+        entries={entries}
+        chapterId={chapterId}
+        storyId={storyId}
+        pictures={pictures}
+        held={held}
+        onOpen={embedded ? (e) => setOpenId(e.entry_id) : undefined}
+        empty={creating ? undefined : "No entries yet at this point. Add characters, places or facts the story should remember."}
+      />
 
       {retired.length > 0 && (
         <section>
@@ -372,7 +245,7 @@ export default function CodexPanel({ story, storyId, openAiHelper, embedded, sto
                   Undo retire
                 </button>
               ) : (
-                <button type="button" className="secondary" disabled={busy} onClick={() => restore(e, e.entry_id)}>
+                <button type="button" className="secondary" disabled={busy} onClick={() => bringBack(e)}>
                   Bring back
                 </button>
               )}
@@ -381,228 +254,5 @@ export default function CodexPanel({ story, storyId, openAiHelper, embedded, sto
         </section>
       )}
     </div>
-  );
-}
-
-function EntryForm({
-  initial,
-  busy,
-  story,
-  chapterId,
-  path,
-  entries,
-  inDraft,
-  onSave,
-  onCancel,
-}: {
-  inDraft: boolean;
-  initial: CodexEntry | null;
-  busy: boolean;
-  story: StoryInfo;
-  chapterId: string;
-  path: PathItem[];
-  entries: CodexEntry[];
-  onSave: (f: Fields, anchorId: string) => void;
-  onCancel: () => void;
-}) {
-  const settings = useSettings();
-  const [name, setName] = useState(initial?.name ?? "");
-  const [type, setType] = useState<EntryType>(initial?.type ?? "character");
-  const [aliases, setAliases] = useState((initial?.aliases ?? []).join(", "));
-  const [content, setContent] = useState(initial?.content ?? "");
-  const [always, setAlways] = useState(initial?.always_include ?? false);
-  const [anchorId, setAnchorId] = useState(inDraft ? DRAFT_ANCHOR : chapterId);
-
-  // AI help
-  const [direction, setDirection] = useState("");
-  const [aiBusy, setAiBusy] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-  const [aiNote, setAiNote] = useState<string | null>(null);
-  const [beforeAi, setBeforeAi] = useState<Fields | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-
-  const current = (): Fields => ({
-    name: name.trim(),
-    type,
-    aliases: aliases.split(",").map((a) => a.trim()).filter(Boolean),
-    content: content.trim(),
-    always_include: always,
-  });
-
-  function applyFields(f: Fields) {
-    setName(f.name);
-    setType(f.type);
-    setAliases(f.aliases.join(", "));
-    setContent(f.content);
-    setAlways(f.always_include);
-  }
-
-  /** What the AI is asked in each mode, from the form as it stands. */
-  function aiOptions(mode: "draft" | "update") {
-    // Chapters from where this entry was last changed up to here (that chapter included, since the
-    // change may be in its text).
-    const since = initial ? path.filter((c) => c.depth >= initial.op.anchor_depth) : [];
-    const existing = initial || name.trim() ? current() : null;
-    return {
-      story,
-      path,
-      codex: entries.filter((e) => e.entry_id !== initial?.entry_id),
-      direction,
-      existing: existing && existing.name ? existing : null,
-      mode,
-      since,
-    };
-  }
-
-  async function runAi(mode: "draft" | "update") {
-    const ctl = new AbortController();
-    abortRef.current = ctl;
-    setAiBusy(true);
-    setAiError(null);
-    setAiNote(null);
-    try {
-      const result = await draftEntry(settings, { ...aiOptions(mode), signal: ctl.signal });
-      setBeforeAi(current());
-      applyFields(result.fields);
-      if (result.changedInChapterId) {
-        setAnchorId(result.changedInChapterId);
-        const title = path.find((c) => c.id === result.changedInChapterId)?.title;
-        setAiNote(`The AI thinks this changed in “${title}”, so it will take effect from there. You can change that below.`);
-      }
-    } catch (e) {
-      if (!(e instanceof DOMException && e.name === "AbortError")) {
-        setAiError(e instanceof Error ? e.message : String(e));
-      }
-    } finally {
-      setAiBusy(false);
-    }
-  }
-
-  const parsedAliases = aliases
-    .split(",")
-    .map((a) => a.trim())
-    .filter(Boolean);
-
-  return (
-    <form
-      className="ai-panel"
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSave({ name: name.trim(), type, aliases: parsedAliases, content: content.trim(), always_include: always }, anchorId);
-      }}
-    >
-      <h2>{initial ? `Edit “${initial.name}”` : "New entry"}</h2>
-
-      <div className="ai-assist">
-        <label>
-          AI help{" "}
-          <small>
-            {initial
-              ? "(say what to change, or let it catch the entry up with the story)"
-              : "(describe what you want, e.g. “a grizzled ferryman who owes the hero a favour”)"}
-          </small>
-          <input
-            value={direction}
-            placeholder={initial ? "e.g. make her more guarded [keep her name]" : "Describe the entry [extra instructions go in brackets]"}
-            onChange={(e) => setDirection(e.target.value)}
-          />
-        </label>
-        <div className="row" style={{ flexWrap: "wrap" }}>
-          <button type="button" onClick={() => runAi("draft")} disabled={aiBusy || busy || !direction.trim()}>
-            {aiBusy ? "Working…" : initial ? "Rewrite with AI" : "Draft with AI"}
-          </button>
-          <PromptButton
-            label={initial ? "Rewrite with AI" : "Draft with AI"}
-            build={() => entryRequest(settings.contextTokens, aiOptions("draft"))}
-          />
-          {initial && (
-            <>
-              <button type="button" className="secondary" onClick={() => runAi("update")} disabled={aiBusy || busy}>
-                Update from the story
-              </button>
-              <PromptButton label="Update from the story" build={() => entryRequest(settings.contextTokens, aiOptions("update"))} />
-            </>
-          )}
-          {aiBusy && (
-            <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
-              Stop
-            </button>
-          )}
-          {beforeAi && !aiBusy && (
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => {
-                applyFields(beforeAi);
-                setBeforeAi(null);
-                setAiNote(null);
-              }}
-            >
-              Undo AI change
-            </button>
-          )}
-        </div>
-        {aiError && <p className="error">{aiError}</p>}
-        {aiNote && <p className="meta">{aiNote}</p>}
-      </div>
-      <label>
-        Name
-        <input required value={name} maxLength={100} onChange={(e) => setName(e.target.value)} />
-      </label>
-      <label>
-        Type
-        <select value={type} onChange={(e) => setType(e.target.value as EntryType)}>
-          {ENTRY_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Other names <small>(comma-separated; used to spot when the entry is relevant)</small>
-        <input value={aliases} onChange={(e) => setAliases(e.target.value)} />
-      </label>
-      <label>
-        Description <small>(what the AI should know: appearance, personality, current state…)</small>
-        <textarea
-          style={{ minHeight: "8rem", fontFamily: "inherit" }}
-          value={content}
-          maxLength={8000}
-          onChange={(e) => setContent(e.target.value)}
-        />
-      </label>
-      <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-        <input type="checkbox" checked={always} onChange={(e) => setAlways(e.target.checked)} style={{ width: "auto" }} />
-        Always include in AI prompts <small>(otherwise only when the name or an alias appears nearby)</small>
-      </label>
-      {(inDraft || path.length > 1) && (
-      <label>
-        Takes effect from{" "}
-        <small>
-          {inDraft
-            ? "(the chapter you're writing, or an earlier one if it changed before; an earlier chapter is saved now and reaches every branch below it)"
-            : "(this chapter and everything after it on this branch)"}
-        </small>
-        <select value={anchorId} onChange={(e) => setAnchorId(e.target.value)}>
-          {inDraft && <option value={DRAFT_ANCHOR}>This chapter (saved when you post it)</option>}
-          {path.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.title}
-              {inDraft ? " (saved now)" : c.id === chapterId ? " (this chapter)" : ""}
-            </option>
-          ))}
-        </select>
-      </label>
-      )}
-      <div className="row">
-        <button type="submit" disabled={busy || aiBusy || !name.trim()}>
-          {busy ? "Saving…" : initial ? "Save changes" : "Add entry"}
-        </button>
-        <button type="button" className="secondary" onClick={onCancel} disabled={busy}>
-          Cancel
-        </button>
-      </div>
-    </form>
   );
 }

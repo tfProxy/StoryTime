@@ -68,6 +68,10 @@ const block = buildCodexBlock(entries, "Mira walked.", 1000, { include: ["b"], e
 ok(block.includes("Zed [character]") && block.includes("Rule [character]") && !block.includes("Mira [character]"), "the prompt block follows the overrides");
 ok(buildCodexBlock(entries, "Mira walked.", 1000) === buildCodexBlock(entries, "Mira walked.", 1000, { include: [], exclude: [] }), "no overrides changes nothing");
 
+const emptyBlock = buildCodexBlock([cx("e", "Ghost", { content: "  ", always_include: true }), cx("c", "Rule", { always_include: true })], "x", 1000);
+ok(!emptyBlock.includes("Ghost") && emptyBlock.includes("Rule [character]"), "an entry with nothing to say adds no line to the prompt");
+ok(buildCodexBlock([cx("e", "Ghost", { content: "", always_include: true })], "x", 1000) === "", "only empty entries: no codex block");
+
 // ---- ideas for a new branch ----
 const ideas = parseIdeas('Sure! [{"choice":" Follow the stranger ","direction":"Mira trails him."},{"choice":"","direction":"x"},{"direction":"no choice"},{"choice":"Wait"}]');
 ok(ideas.length === 2 && ideas[0].choice === "Follow the stranger" && ideas[0].direction === "Mira trails him." && ideas[1].direction === "", "parseIdeas keeps usable ideas and trims them");

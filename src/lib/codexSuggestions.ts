@@ -36,10 +36,19 @@ export const SuggestionInputSchema = z
   })
   .refine((v) => (v.kind === "entry" ? v.entry !== undefined : v.entry_id !== undefined), { message: "an entry suggestion needs entry; the others need entry_id" });
 
-export const SaveSuggestionsSchema = z.object({
-  revision: z.number().int().min(1),
-  suggestions: z.array(SuggestionInputSchema).max(50),
-});
+/** Where a suggestion came from: reading a chapter, or turning an entry's notes into facts. */
+export const SUGGESTION_SOURCES = ["chapter", "notes"] as const;
+export type SuggestionSource = (typeof SUGGESTION_SOURCES)[number];
+
+export const SaveSuggestionsSchema = z
+  .object({
+    revision: z.number().int().min(1),
+    suggestions: z.array(SuggestionInputSchema).max(50),
+    source: z.enum(SUGGESTION_SOURCES).default("chapter"),
+    /** For source "notes": the entry whose notes were read (so its earlier open suggestions are replaced even when none are new). */
+    entry_id: z.string().min(1).optional(),
+  })
+  .refine((v) => v.source !== "notes" || v.entry_id !== undefined, { message: "a notes reading needs entry_id" });
 
 export const AcceptEditsSchema = z.object({
   aspect: text(FACT_LIMITS.aspect).optional(),
@@ -60,6 +69,7 @@ type Row = {
   after: string;
   quote: string;
   entry: string;
+  source: SuggestionSource;
   status: SuggestionStatus;
   created_at: number;
   decided_at: number | null;
@@ -81,26 +91,35 @@ function parseEntry(json: string): (z.infer<typeof SuggestedEntrySchema>) | null
 /**
  * Saves what the AI read from a chapter revision: replaces the chapter's open suggestions (an earlier reading), keeps
  * out any the owner dismissed before, and records that the chapter was read. 404 / 409 as saveFacts.
+ * With source "notes" (the AI turned the notes of entry `notesEntryId` into facts, anchored at this chapter) only the
+ * open "notes" suggestions for that entry at this chapter are replaced, the chapter is not marked as read, and only
+ * earlier "notes" dismissals count.
  */
-export function saveSuggestions(chapterId: string, revision: number, list: SuggestionInput[]): { saved: number } {
+export function saveSuggestions(chapterId: string, revision: number, list: SuggestionInput[], source: SuggestionSource = "chapter", notesEntryId?: string): { saved: number } {
   return db().transaction(() => {
     const chapter = db().prepare(`SELECT story_id, revision FROM chapters WHERE id = ?`).get(chapterId) as { story_id: string; revision: number } | undefined;
     if (!chapter) throw new PostError("That chapter does not exist", 404);
     if (chapter.revision !== revision) throw new PostError("The chapter was edited meanwhile", 409);
-    db().prepare(`DELETE FROM codex_suggestions WHERE chapter_id = ? AND status = 'open'`).run(chapterId);
+    if (source === "notes") {
+      if (!notesEntryId) throw new PostError("A notes reading needs the entry", 400);
+      db().prepare(`DELETE FROM codex_suggestions WHERE chapter_id = ? AND status = 'open' AND source = 'notes' AND entry_id = ?`).run(chapterId, notesEntryId);
+    } else {
+      db().prepare(`DELETE FROM codex_suggestions WHERE chapter_id = ? AND status = 'open' AND source = 'chapter'`).run(chapterId);
+    }
 
     const entries = getCodexState(chapterId);
-    const dismissed = (db().prepare(`SELECT kind, entry_id, aspect, form, after, entry FROM codex_suggestions WHERE chapter_id = ? AND status = 'dismissed'`).all(chapterId) as Pick<Row, "kind" | "entry_id" | "aspect" | "form" | "after" | "entry">[]).map((d) => ({
+    const dismissed = (db().prepare(`SELECT kind, entry_id, aspect, form, after, entry FROM codex_suggestions WHERE chapter_id = ? AND status = 'dismissed' AND source = ?`).all(chapterId, source) as Pick<Row, "kind" | "entry_id" | "aspect" | "form" | "after" | "entry">[]).map((d) => ({
       ...d,
       who: d.kind === "entry" ? lc(parseEntry(d.entry)?.name ?? "") : (d.entry_id ?? ""),
     }));
     const insert = db().prepare(
-      `INSERT INTO codex_suggestions (id, story_id, chapter_id, revision, kind, entry_id, aspect, form, before, after, quote, entry, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)`,
+      `INSERT INTO codex_suggestions (id, story_id, chapter_id, revision, kind, entry_id, aspect, form, before, after, quote, entry, source, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)`,
     );
     const now = Date.now();
     let saved = 0;
     for (const s of list) {
+      if (source === "notes" && (s.kind === "entry" || s.entry_id !== notesEntryId)) continue; // notes only ever suggest facts for their own entry
       let before = "";
       let who: string;
       if (s.kind === "entry") {
@@ -123,15 +142,17 @@ export function saveSuggestions(chapterId: string, revision: number, list: Sugge
         }
       }
       if (dismissed.some((d) => d.kind === s.kind && d.who === who && sameAspect(d.aspect, s.aspect) && sameAspect(d.form, s.form) && lc(d.after) === lc(s.after))) continue;
-      insert.run(newId(), chapter.story_id, chapterId, revision, s.kind, s.kind === "entry" ? null : s.entry_id, s.aspect, s.form, before, s.kind === "retire" ? "" : s.after, s.quote, s.kind === "entry" ? JSON.stringify(s.entry) : "{}", now);
+      insert.run(newId(), chapter.story_id, chapterId, revision, s.kind, s.kind === "entry" ? null : s.entry_id, s.aspect, s.form, before, s.kind === "retire" ? "" : s.after, s.quote, s.kind === "entry" ? JSON.stringify(s.entry) : "{}", source, now);
       saved += 1;
     }
-    db()
-      .prepare(
-        `INSERT INTO codex_checks (chapter_id, revision, checked_at) VALUES (?, ?, ?)
-         ON CONFLICT (chapter_id) DO UPDATE SET revision = excluded.revision, checked_at = excluded.checked_at`,
-      )
-      .run(chapterId, revision, now);
+    if (source === "chapter") {
+      db()
+        .prepare(
+          `INSERT INTO codex_checks (chapter_id, revision, checked_at) VALUES (?, ?, ?)
+           ON CONFLICT (chapter_id) DO UPDATE SET revision = excluded.revision, checked_at = excluded.checked_at`,
+        )
+        .run(chapterId, revision, now);
+    }
     return { saved };
   })();
 }
@@ -154,6 +175,8 @@ export type CodexSuggestion = {
   quote: string;
   /** The proposed entry, for kind "entry". */
   entry: z.infer<typeof SuggestedEntrySchema> | null;
+  /** "chapter": from reading the chapter (`quote` is from its text); "notes": from the entry's notes (`quote` is from the notes). */
+  source: SuggestionSource;
   /** The fact's text at the chapter now (so the page can see it moved since); "" if there is none. */
   current: string;
   status: SuggestionStatus;
@@ -168,7 +191,7 @@ export type CodexSuggestion = {
 export function listSuggestions(storyId: string, filter: { status?: SuggestionStatus; chapterId?: string } = {}): CodexSuggestion[] {
   const rows = db()
     .prepare(
-      `SELECT s.id, s.story_id, s.chapter_id, s.revision, s.kind, s.entry_id, s.aspect, s.form, s.before, s.after, s.quote, s.entry, s.status,
+      `SELECT s.id, s.story_id, s.chapter_id, s.revision, s.kind, s.entry_id, s.aspect, s.form, s.before, s.after, s.quote, s.entry, s.source, s.status,
               s.created_at, s.decided_at, c.title AS chapter_title, c.revision AS chapter_revision
          FROM codex_suggestions s JOIN chapters c ON c.id = s.chapter_id
         WHERE s.story_id = ? ${filter.status ? "AND s.status = ?" : ""} ${filter.chapterId ? "AND s.chapter_id = ?" : ""}
@@ -204,6 +227,7 @@ export function listSuggestions(storyId: string, filter: { status?: SuggestionSt
       after: r.after,
       quote: r.quote,
       entry: proposed,
+      source: r.source,
       current,
       status: r.status,
       created_at: r.created_at,
@@ -234,7 +258,7 @@ export function codexCheckedChapterIds(storyId: string): Set<string> {
 function openRow(id: string): Row & { chapter_revision: number } {
   const row = db()
     .prepare(
-      `SELECT s.id, s.story_id, s.chapter_id, s.revision, s.kind, s.entry_id, s.aspect, s.form, s.before, s.after, s.quote, s.entry, s.status,
+      `SELECT s.id, s.story_id, s.chapter_id, s.revision, s.kind, s.entry_id, s.aspect, s.form, s.before, s.after, s.quote, s.entry, s.source, s.status,
               s.created_at, s.decided_at, c.revision AS chapter_revision
          FROM codex_suggestions s JOIN chapters c ON c.id = s.chapter_id WHERE s.id = ?`,
     )
