@@ -207,6 +207,44 @@ ok(!(await page.locator(".outline-page").innerText()).includes(tagName), "with T
 // The tag library is shared by every test file that runs after this one, so take the tag back out.
 await fetch(`${BASE}/api/tags/${tag.id}`, { method: "DELETE" });
 
+// highlight a tag: Level 2 has the tag, Level 0 and 1 lead to it, a side branch of Level 0 and Level 3 and 4 are dimmed
+const hlName = `Marked ${Date.now()}`;
+const hlTag = await post("/api/tags", { name: hlName, applies: "when it is marked", not_applies: "when it is not" });
+await post(`/api/chapters/${ids[2]}/tags`, { tag_id: hlTag.id, value: null });
+const root = await getJson(`/api/chapters/${ids[0]}`);
+await post("/api/chapters", { choice_id: root.choices[1].id, title: "Side branch", body: "side", summary: "side sum", choices: [] });
+const markOf = async (title) => page.locator(".outline-row", { has: page.getByRole("link", { name: title, exact: true }) }).last().getAttribute("data-highlight");
+await page.goto(outlineUrl);
+ok((await page.locator("[data-highlight]").count()) === 0 && (await page.getByRole("link", { name: "Stop highlighting" }).count()) === 0, "without a highlight nothing is marked");
+await page.locator(".site-menu > summary").click();
+ok((await page.getByRole("link", { name: `Highlight: ${hlName}` }).count()) === 1, "the menu offers a Highlight entry for the story's approved tag");
+await page.getByRole("link", { name: `Highlight: ${hlName}` }).click();
+await page.waitForURL(/highlight=/);
+ok((await markOf("Level 2")) === "hit", "the chapter with the tag is marked as a hit");
+ok((await markOf("Level 1")) === "path" && (await markOf("Level 0")) === "path", "the chapters on the way to it are marked as leading there");
+ok((await markOf("Side branch")) === "dim" && (await markOf("Level 3")) === "dim", "the other chapters are dimmed");
+ok((await page.locator(".outline-highlight-note").innerText()).startsWith(`Highlighting “${hlName}”: 1 chapter.`), "a line at the top says what is highlighted and how many chapters");
+await page.goto(`${outlineUrl}?highlight=${encodeURIComponent(hlName.toUpperCase())}`);
+ok((await markOf("Level 2")) === "hit", "the tag name is matched without regard to case");
+await page.setViewportSize({ width: 390, height: 800 });
+ok((await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)), "a highlighted outline fits a phone-width window");
+await page.setViewportSize({ width: 1280, height: 800 });
+await page.locator(".outline-highlight-note").getByRole("link", { name: "Stop" }).click();
+await page.waitForURL(/outline$/);
+ok((await page.locator("[data-highlight]").count()) === 0, "Stop removes the highlight");
+await page.goto(`${outlineUrl}?highlight=${encodeURIComponent(hlName)}`);
+await page.locator(".site-menu > summary").click();
+await page.getByRole("link", { name: "Stop highlighting" }).click();
+await page.waitForURL(/outline$/);
+ok((await page.locator("[data-highlight]").count()) === 0, "Stop highlighting in the menu removes the highlight");
+await putSettings({ ...settingsBefore, outline: { ...(settingsBefore?.outline ?? {}), highlight: false } });
+await until(async () => (await outlineNow()).highlight === false, "Highlight by tag to be turned off");
+await page.goto(`${outlineUrl}?highlight=${encodeURIComponent(hlName)}`);
+await page.locator(".site-menu > summary").click();
+ok((await page.getByRole("link", { name: /^Highlight: / }).count()) === 0 && (await page.locator("[data-highlight]").count()) === 0, "with Highlight by tag off the menu entry is gone and a highlight in the address does nothing");
+await putSettings(settingsBefore ?? {});
+await fetch(`${BASE}/api/tags/${hlTag.id}`, { method: "DELETE" });
+
 // downloads
 await page.goto(BASE);
 await menu().click();

@@ -172,7 +172,7 @@ export function NodeSummary({
           ]
         </span>
       )}
-      {tags.length > 0 && <span className="meta outline-actions">[{tags.join(", ")}]</span>}
+      {tags.length > 0 && <span className="meta outline-actions outline-tags">[{tags.join(", ")}]</span>}
       {open && showSummary && (
         <span className="outline-summary" onClick={(e) => e.preventDefault()}>
           {via && <strong className="outline-via">{via}</strong>}

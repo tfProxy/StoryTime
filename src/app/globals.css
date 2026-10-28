@@ -903,6 +903,31 @@ button.outline-action {
   color: var(--warn);
 }
 
+/* Highlighting a tag: chapters with it, chapters on the way to one, and the rest. */
+.outline-highlight-note {
+  margin: 0.4rem 0 0.8rem;
+}
+
+.outline-row[data-highlight="hit"] {
+  padding: 0.1rem 0.4rem;
+  border-left: 4px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.outline-row[data-highlight="hit"] .outline-tags {
+  color: var(--fg);
+  font-weight: 700;
+}
+
+.outline-row[data-highlight="path"] {
+  padding: 0 0.4rem;
+  border-left: 2px dotted var(--accent);
+}
+
+.outline-row[data-highlight="dim"] {
+  opacity: 0.5;
+}
+
 /* The header, footer and illustrate icons after "read to here". */
 .outline-icons {
   display: inline-flex;

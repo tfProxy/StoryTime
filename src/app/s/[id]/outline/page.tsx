@@ -30,9 +30,21 @@ function idsOf(node: TreeNode): string[] {
   return [node.id, ...node.choices.flatMap((c) => (c.child ? idsOf(c.child) : []))];
 }
 
+type Mark = "hit" | "path" | "dim";
+
+/** Marks every chapter for a highlighted tag: "hit" has it, "path" leads to one that does, the rest are "dim". Returns the number of hits. */
+function markTree(node: TreeNode, hasTag: (chapterId: string) => boolean, marks: Map<string, Mark>): number {
+  let below = 0;
+  for (const c of node.choices) if (c.child) below += markTree(c.child, hasTag, marks);
+  const hit = hasTag(node.id);
+  marks.set(node.id, hit ? "hit" : below > 0 ? "path" : "dim");
+  return below + (hit ? 1 : 0);
+}
+
 function Node({
   node,
   via,
+  marks,
   images,
   issues,
   tagNames,
@@ -41,6 +53,8 @@ function Node({
 }: {
   node: TreeNode;
   via: string | null;
+  /** What a highlighted tag makes of each chapter; null when nothing is highlighted. */
+  marks: Map<string, Mark> | null;
   images: Map<string, ImageVersions>;
   issues: Map<string, { n: number; tags: boolean }>;
   /** Approved tag names by chapter; empty when tags are turned off in Settings. */
@@ -72,8 +86,9 @@ function Node({
       </Link>
     ),
   ].filter(Boolean);
+  const mark = marks?.get(node.id);
   const summary = (
-    <>
+    <span className="outline-row" data-highlight={mark}>
       <Link href={`/c/${node.id}`}>{node.title}</Link>
       {" "}
       <NodeSummary
@@ -88,7 +103,7 @@ function Node({
       >
         {links.length > 0 && links.flatMap((l, i) => (i === 0 ? [l] : [", ", l]))}
       </NodeSummary>
-    </>
+    </span>
   );
   if (written.length === 0) return <li id={`c-${node.id}`}>{summary}</li>;
   return (
@@ -98,7 +113,7 @@ function Node({
         <summary>{summary}</summary>
         <ul className="outline">
           {written.map((c) => (
-            <Node key={c.id} node={c.child!} via={c.label} images={images} issues={issues} tagNames={tagNames} storyId={storyId} show={show} />
+            <Node key={c.id} node={c.child!} via={c.label} marks={marks} images={images} issues={issues} tagNames={tagNames} storyId={storyId} show={show} />
           ))}
         </ul>
       </details>
@@ -106,8 +121,15 @@ function Node({
   );
 }
 
-export default async function OutlinePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function OutlinePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ highlight?: string | string[] }>;
+}) {
   const { id } = await params;
+  const { highlight: highlightParam } = await searchParams;
   const story = getStory(id);
   const tree = story ? getStoryTree(id) : null;
   if (!story || !tree) notFound();
@@ -118,6 +140,15 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
   // Read here, not in the browser, so a part turned off in Settings is never drawn first and then hidden.
   const show = (getSettings() ?? { outline: DEFAULT_OUTLINE }).outline;
   const tagNames = show.tags ? appliedTagNames(id) : new Map<string, string[]>();
+  // Highlighting by tag: found from the approved tags whether or not the chips are shown.
+  const approved = show.highlight ? appliedTagNames(id) : new Map<string, string[]>();
+  const storyTags = [...new Set([...approved.values()].flat())].sort((a, b) => a.localeCompare(b));
+  const wanted = (Array.isArray(highlightParam) ? highlightParam[0] : highlightParam)?.trim().toLowerCase();
+  const highlighted = wanted ? storyTags.find((t) => t.toLowerCase() === wanted) : undefined;
+  const marks = new Map<string, Mark>();
+  const hits = highlighted
+    ? markTree(tree, (cid) => approved.get(cid)?.some((t) => t.toLowerCase() === highlighted.toLowerCase()) ?? false, marks)
+    : 0;
   const issues = new Map<string, { n: number; tags: boolean }>();
   if (show.review) {
     const checks = issueCounts(id);
@@ -135,6 +166,11 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
         {totals.unwritten === 1 ? "" : "s"} still to write · {totals.ends} branch{totals.ends === 1 ? "" : "es"} end · longest path{" "}
         {totals.deepest}
       </p>
+      {highlighted && (
+        <p className="outline-highlight-note">
+          Highlighting “{highlighted}”: {hits} chapter{hits === 1 ? "" : "s"}. <Link href={`/s/${story.id}/outline`}>Stop</Link>
+        </p>
+      )}
       <SummaryProvider>
         {show.summary && (
           <p>
@@ -142,12 +178,18 @@ export default async function OutlinePage({ params }: { params: Promise<{ id: st
           </p>
         )}
         <ul className="outline outline-root">
-          <Node node={tree} via={null} images={images} issues={issues} tagNames={tagNames} storyId={story.id} show={show} />
+          <Node node={tree} via={null} marks={highlighted ? marks : null} images={images} issues={issues} tagNames={tagNames} storyId={story.id} show={show} />
         </ul>
       </SummaryProvider>
       <PageMenu>
         <Link href={`/s/${story.id}/pictures`}>Make missing pictures</Link>
         <Link href={`/s/${story.id}/review`}>Review the story</Link>
+        {storyTags.map((t) => (
+          <Link key={t} href={`/s/${story.id}/outline?highlight=${encodeURIComponent(t)}`}>
+            Highlight: {t}
+          </Link>
+        ))}
+        {highlighted && <Link href={`/s/${story.id}/outline`}>Stop highlighting</Link>}
         <Link href={`/s/${story.id}/summaries`}>Redo the AI summaries</Link>
       </PageMenu>
     </div>
