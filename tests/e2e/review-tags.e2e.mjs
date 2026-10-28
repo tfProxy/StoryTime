@@ -78,11 +78,12 @@ try {
 
   // Tabs.
   await page.goto(reviewUrl(s.story_id));
-  ok((await page.getByRole("link", { name: "Issues" }).getAttribute("aria-current")) === "page", "Issues is the default tab");
-  ok(await page.getByRole("heading", { name: "Summaries" }).isVisible(), "…and shows the summaries");
-  await page.getByRole("link", { name: "Tags", exact: true }).click();
+  const tabLink = (name) => page.locator('nav[aria-label="Story Bible"] a', { hasText: name });
+  ok((await tabLink("Overview").getAttribute("aria-current")) === "page", "Overview is the default tab");
+  ok(await page.getByRole("heading", { name: "Checks", level: 2 }).isVisible(), "…and shows the cards");
+  await tabLink("Tags").click();
   await page.waitForURL(/tab=tags/);
-  ok((await page.getByRole("link", { name: "Tags", exact: true }).getAttribute("aria-current")) === "page", "the Tags tab opens");
+  ok((await tabLink("Tags").getAttribute("aria-current")) === "page", "the Tags tab opens");
   ok(await page.getByText("Nothing is waiting for your decision.").isVisible(), "nothing waits at first");
 
   // Find tags for the whole story.
@@ -208,10 +209,11 @@ try {
   await tfCard.waitFor();
   const offer = tfCard.getByRole("link", { name: "Update the codex for this change" });
   ok((await offer.count()) === 1 && (await tfCard.innerText()).includes("The codex may need to change here."), "a tf tag offers a codex update");
-  ok((await offer.getAttribute("href")) === `/s/${tfStory.story_id}/review?chapter=${tfChapter}#codex`, "…linking to the Codex section for that chapter");
+  ok((await offer.getAttribute("href")) === `/s/${tfStory.story_id}/review?tab=codex&chapter=${tfChapter}`, "…linking to the Codex tab for that chapter");
   await offer.click();
-  await page.getByRole("heading", { name: "Codex", exact: true }).waitFor();
-  ok((await page.getByRole("link", { name: "Issues" }).getAttribute("aria-current")) === "page" && (await page.locator("h2#codex").count()) === 1, "…which opens on the Issues tab, at the Codex heading");
+  await page.waitForURL(/tab=codex/);
+  await page.getByRole("heading", { name: "Check with the AI" }).waitFor();
+  ok((await tabLink("Codex").getAttribute("aria-current")) === "page", "…which opens on the Codex tab");
   ok((await page.locator("details.ai-panel[open]").count()) > 0,"…with the AI codex check for that chapter");
   ok((await page.getByText("Check the codex of").count()) === 0, "…and not the chapter picker");
   const posted = await post("/api/codex", { anchor_chapter_id: tfChapter, op: "create", name: "Mira", type: "character", content: "A horse." });

@@ -50,7 +50,7 @@ page.on("dialog", (d) => d.accept());
 await page.goto(`${BASE}/s/${s.story_id}/outline`);
 await page.locator(".site-menu > summary").click();
 await page.getByRole("link", { name: "Redo the AI summaries" }).click();
-await page.waitForURL(/\/summaries$/);
+await page.waitForURL(/\/review\?tab=summaries$/);
 await page.getByText(/This story has/).waitFor();
 
 await page.getByRole("button", { name: "Redo summaries" }).click();
