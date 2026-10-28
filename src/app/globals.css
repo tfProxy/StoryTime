@@ -3863,7 +3863,12 @@ button.ai-log-row {
 .ai-log-top {
   display: flex;
   justify-content: space-between;
+  align-items: baseline;
   gap: 0.5rem;
+}
+
+.ai-log-top > * {
+  margin: 0;
 }
 
 .ai-log-line {

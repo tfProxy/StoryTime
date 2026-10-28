@@ -15,8 +15,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en">
       <body>
-        {/* Holds the picture jobs for the whole app, so they go on while pages change. */}
+        {/* Sends this browser's AI calls to the prompt history. */}
         <AiLogRecorder />
+        {/* Holds the picture jobs for the whole app, so they go on while pages change. */}
         <WorkQueueProvider>
           <header className="site-header">
             <Link href="/" className="brand">
