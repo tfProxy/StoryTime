@@ -1,5 +1,7 @@
 # Plan: run the work queue on the server
 
+**Status (2026-10-27): built and on `main`, every task done. Only the manual NAS checks remain; they are in `TODO.md`. The "Later" section at the end is still open.**
+
 Written 2026-10-25 for agents picking up this work. Read this whole file before starting a task, then only the code each task names. `CLAUDE.md` and `AGENTS.md` rules apply throughout (Edit/Write tools only, verification by size of change, one logical change per commit, "ship it" process).
 
 ## Goal

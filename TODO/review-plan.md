@@ -1,6 +1,8 @@
 # Plan: finish story review (checks and tags)
 
-Written 2026-10-27 for agents on cheaper models, one task at a time, directed by the owner. Background, what exists and test gotchas are in `tags_handoff.md` (read its "What exists" and "Tests" sections once). The agreed design is the "Story review: checks and tags" section of `TODO.md`.
+**Status (2026-10-27): phases A to E are done and on `main`, except C8 (state tags, the owner doesn't want them for now) and E4 (a nightly run, only if the owner asks). Nothing here has been tried against the owner's real models; see the end.**
+
+Written 2026-10-27 for agents on cheaper models, one task at a time, directed by the owner. Background, what exists and test gotchas are in `TODO/tags_handoff.md` (read its "What exists" and "Tests" sections once). The agreed design is the "Story review: checks and tags" section of `TODO.md`.
 
 ## How to work a task
 
@@ -15,7 +17,7 @@ Written 2026-10-27 for agents on cheaper models, one task at a time, directed by
 
 ## What changed on main since the original plan (2026-10-22 to 10-27)
 
-- **The server can call the AI now.** `src/lib/ai/client.ts` (`completeChat`, `streamChat`) runs in Node too, and the work queue (`src/lib/worker/`, `docs/server-queue-plan.md`) runs Generates and AI runs on the server, taking turns with ComfyUI. Stage 5 no longer needs "move AI calls to the server" first: review work can be a new **AI run mode**, like write ahead and fill missing pictures (`src/lib/aiRuns.ts`, `src/lib/aiRuns/`, `src/lib/worker/runs.ts`). That also lets a long Find tags carry on with the tab closed. Phase B does this.
+- **The server can call the AI now.** `src/lib/ai/client.ts` (`completeChat`, `streamChat`) runs in Node too, and the work queue (`src/lib/worker/`, `TODO/server-queue-plan.md`) runs Generates and AI runs on the server, taking turns with ComfyUI. Stage 5 no longer needs "move AI calls to the server" first: review work can be a new **AI run mode**, like write ahead and fill missing pictures (`src/lib/aiRuns.ts`, `src/lib/aiRuns/`, `src/lib/worker/runs.ts`). That also lets a long Find tags carry on with the tab closed. Phase B does this.
 - **AI runs write chapters** (write ahead, grow the tree, reach a goal), and the **AI mark** shows on chapters an AI run wrote until the author presses **Mark reviewed** (`chapters.ai_run_id`, `ai_reviewed_at`, migration 31, `AiReviewNotice.tsx`, `AiMark.tsx`). "Reviewed" there means "the author read it", not the Review page. More AI-written chapters make automatic tagging and checks (phase E) more useful.
 - **Summaries:** the server now saves the summaries it makes for older chapters, so fewer chapters show "summary missing".
 - **`src/lib/tree.ts`** gained `getSubtree(chapterId, maxDepth)` and an `ai` field on tree nodes. The outline page menu gained "Make missing pictures" above "Review the story".
@@ -55,7 +57,7 @@ Today a chapter that got no suggestions is read again on every Find tags run, be
 
 ## Phase B: review work on the server
 
-Read `docs/server-queue-plan.md` "Notes for agents" first; its rules apply (no imports from `src/components/` in server code, `handlePost`, build before tests).
+Read `TODO/server-queue-plan.md` "Notes for agents" first; its rules apply (no imports from `src/components/` in server code, `handlePost`, build before tests).
 
 ### B1. A "tags" AI run mode (medium) (done, 0483908)
 

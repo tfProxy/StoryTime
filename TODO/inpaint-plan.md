@@ -1,5 +1,7 @@
 # Plan: better inpainting (Refine's painted-area redraw)
 
+**Status (2026-10-27): phases A to D are done and on `main`. E (masks with the edit models) and F (inpaint-trained models, Flux Fill) are deferred. None of it has been tried on a real ComfyUI; see the manual check under "Rules for every phase".**
+
 Written 2026-10-26 for agents picking up this work. Read this whole file before starting a task, then only the code each task names. `CLAUDE.md` and `AGENTS.md` rules apply throughout: Edit/Write tools only (no sed, heredocs or scripts to change source), checks sized to the change, one logical change per commit, "ship it" process. Read `docs/illustrate.md` before touching `src/lib/comfy/` and update it in the same change when behaviour it describes changes.
 
 ## Why

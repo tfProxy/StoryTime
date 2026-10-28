@@ -1,5 +1,7 @@
 # Handoff: story review (checks and tags)
 
+**Out of date (2026-10-27): this was written when only stages 1 and 2 existed. Most of "What's next" is now built; see `TODO/review-plan.md`. "What exists" (stages 1 and 2) and "Tests" are still accurate.**
+
 Written 2026-10-22 at the end of a cloud session, for the next agent picking up this feature. Read `CLAUDE.md`, `AGENTS.md` and the "Story review: checks and tags" section of `TODO.md` first. That TODO section is the agreed plan. This file adds what has been built, how it works, the rules for working with the owner, and the plans that are not written down in TODO.
 
 ## Where things stand
@@ -129,7 +131,7 @@ Written 2026-10-22 at the end of a cloud session, for the next agent picking up 
 
 ## What's next, in order
 
-**Superseded on 2026-10-27 by `docs/review-plan.md`**, which splits the rest into small tasks for cheaper agents and takes in what changed on main (the server now runs AI work). The notes below are kept as background.
+**Superseded on 2026-10-27 by `TODO/review-plan.md`**, which splits the rest into small tasks for cheaper agents and takes in what changed on main (the server now runs AI work). The notes below are kept as background.
 
 ### 1. Review items table and dismissing (done 2026-10-23)
 
