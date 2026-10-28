@@ -5,7 +5,7 @@ import { createRun, getRun, listUnfinishedRuns, reviewTasks } from "./aiRuns";
 import { LIMITS } from "./limits";
 import { getWorker } from "./worker";
 import { endRun, queueRun } from "./worker/runs";
-import { parseSettings } from "./settingsSchema";
+import { defaultRef, parseSettings } from "./settingsSchema";
 import { getSettings } from "./settingsStore";
 import { getChapter } from "./stories";
 
@@ -14,7 +14,9 @@ export const AUTO_REVIEW_CHECKS = ["tags", "facts", "continuity", "summaries"] a
 /** The checks an automatic review makes, from the settings: the review's four, and the codex check. */
 function autoChecks(): ("tags" | "facts" | "continuity" | "summaries" | "codex")[] {
   const s = getSettings() ?? parseSettings({});
-  return [...(s.autoReview ? AUTO_REVIEW_CHECKS : []), ...(s.autoCodex ? (["codex"] as const) : [])];
+  // The codex check is on by default, so it waits until there is an AI to ask: with none set up, a run would only fail.
+  const codex = s.autoCodex && defaultRef(s, "cheap") !== null;
+  return [...(s.autoReview ? AUTO_REVIEW_CHECKS : []), ...(codex ? (["codex"] as const) : [])];
 }
 
 const sameChecks =(a: readonly string[] | undefined, b: readonly string[]) => !!a && a.length === b.length && b.every((c) => a.includes(c));

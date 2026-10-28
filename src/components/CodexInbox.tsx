@@ -31,6 +31,16 @@ async function post(url: string, body?: unknown): Promise<{ entry_id?: string }>
   return data;
 }
 
+/** The open and dismissed suggestions, for the whole story or one chapter. */
+async function fetchInbox(storyId: string, chapterId?: string): Promise<CodexSuggestion[]> {
+  const q = (status: string) => `/api/stories/${storyId}/codex-suggestions?status=${status}${chapterId ? `&chapter=${encodeURIComponent(chapterId)}` : ""}`;
+  const [open, dismissed] = await Promise.all([fetch(q("open")), fetch(q("dismissed"))]);
+  if (!open.ok || !dismissed.ok) throw new Error("Couldn't read the codex inbox.");
+  const a = (await open.json()) as { suggestions: CodexSuggestion[] };
+  const b = (await dismissed.json()) as { suggestions: CodexSuggestion[] };
+  return [...a.suggestions, ...b.suggestions];
+}
+
 export default function CodexInbox({ storyId, chapterId }: Props) {
   const [items, setItems] = useState<CodexSuggestion[] | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -41,19 +51,18 @@ export default function CodexInbox({ storyId, chapterId }: Props) {
   const [editing, setEditing] = useState<string | null>(null);
   const [showDismissed, setShowDismissed] = useState(false);
 
-  const load = useCallback(async () => {
-    const q = (status: string) => `/api/stories/${storyId}/codex-suggestions?status=${status}${chapterId ? `&chapter=${encodeURIComponent(chapterId)}` : ""}`;
-    try {
-      const [open, dismissed] = await Promise.all([fetch(q("open")), fetch(q("dismissed"))]);
-      if (!open.ok || !dismissed.ok) throw new Error("Couldn't read the codex inbox.");
-      const a = (await open.json()) as { suggestions: CodexSuggestion[] };
-      const b = (await dismissed.json()) as { suggestions: CodexSuggestion[] };
-      setItems([...a.suggestions, ...b.suggestions]);
-      setLoadError("");
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : String(e));
-    }
-  }, [storyId, chapterId]);
+  // State is set only in the promise's callbacks, never while the effect that calls this runs.
+  const load = useCallback(
+    () =>
+      fetchInbox(storyId, chapterId).then(
+        (list) => {
+          setItems(list);
+          setLoadError("");
+        },
+        (e: unknown) => setLoadError(e instanceof Error ? e.message : String(e)),
+      ),
+    [storyId, chapterId],
+  );
 
   useEffect(() => {
     void load();

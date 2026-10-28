@@ -71,6 +71,8 @@ try {
     ...(settingsBefore ?? {}),
     connections: [{ id: "c1", name: "Fake", kind: "custom", baseUrl: `${ai.url}/v1`, apiKey: "k", freeComfy: false, freeForPictures: false }],
     defaults: { main: { connectionId: "c1", model: "m" }, cheap: { connectionId: "c1", model: "m" } },
+    // No automatic codex check: it would add runs and AI calls this file counts.
+    autoCodex: false,
   });
 
   // One Generate, start to end.
