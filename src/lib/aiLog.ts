@@ -131,7 +131,7 @@ export type AiCallSummary = {
   error: string | null;
 };
 
-export type AiCallFilter = { source?: string; storyId?: string; chapterId?: string; runId?: string; failedOnly?: boolean; limit?: number };
+export type AiCallFilter = { source?: string; storyId?: string; chapterId?: string; runId?: string; itemKey?: string; failedOnly?: boolean; limit?: number };
 
 /** The newest calls first, without the prompt and reply texts. */
 export function listAiCalls(d: Database.Database, f: AiCallFilter = {}): AiCallSummary[] {
@@ -141,6 +141,7 @@ export function listAiCalls(d: Database.Database, f: AiCallFilter = {}): AiCallS
   if (f.storyId) { where.push("a.story_id = ?"); args.push(f.storyId); }
   if (f.chapterId) { where.push("a.chapter_id = ?"); args.push(f.chapterId); }
   if (f.runId) { where.push("a.run_id = ?"); args.push(f.runId); }
+  if (f.itemKey) { where.push("a.item_key = ?"); args.push(f.itemKey); }
   if (f.failedOnly) where.push("a.status = 'failed'");
   const limit = Math.min(Math.max(Math.floor(f.limit ?? AI_LOG_MAX_ROWS), 1), AI_LOG_MAX_ROWS);
   return d

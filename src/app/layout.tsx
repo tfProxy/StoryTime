@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import AiLogRecorder from "@/components/AiLogRecorder";
 import WorkQueueProvider from "@/components/WorkQueue";
 import WorkQueueStatus from "@/components/WorkQueueStatus";
 import SiteMenu from "@/components/SiteMenu";
@@ -15,6 +16,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en">
       <body>
         {/* Holds the picture jobs for the whole app, so they go on while pages change. */}
+        <AiLogRecorder />
         <WorkQueueProvider>
           <header className="site-header">
             <Link href="/" className="brand">

@@ -3794,3 +3794,152 @@ button.refine-fit {
   margin: 0;
   overflow-wrap: anywhere;
 }
+
+/* ---- The prompt history (/ai-log) ---- */
+
+.ai-log {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.ai-log > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.ai-log > button {
+  justify-self: start;
+}
+
+.ai-log .row button {
+  white-space: nowrap;
+}
+
+.ai-log-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: end;
+}
+
+.ai-log-filters label {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.ai-log-filters label.ai-log-check {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-bottom: 0.5rem;
+}
+
+.ai-log-filters input[type="checkbox"] {
+  width: auto;
+}
+
+.ai-log-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+button.ai-log-row {
+  display: grid;
+  gap: 0.15rem;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--line);
+}
+
+.ai-log-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.ai-log-line {
+  margin: 0;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.ai-log-bad {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.ai-log-facts {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.ai-log-facts > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+}
+
+.ai-log-facts dt {
+  color: var(--muted);
+  min-width: 6.5rem;
+}
+
+.ai-log-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.ai-log-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.75rem;
+}
+
+.ai-log-box {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  padding: 0.5rem 0.75rem 0.75rem;
+  min-width: 0;
+}
+
+.ai-log-box-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ai-log-box-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.ai-log-text {
+  margin: 0.5rem 0 0;
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+/* "Show the AI exchange": a small secondary link next to a heading or a task. */
+.ai-log-link {
+  font-size: 0.8rem;
+  font-weight: 400;
+}

@@ -62,6 +62,7 @@ export async function GET(request: Request) {
       storyId: q.get("story") || undefined,
       chapterId: q.get("chapter") || undefined,
       runId: q.get("run") || undefined,
+      itemKey: q.get("item") || undefined,
       failedOnly: q.get("failed") === "1",
       limit: Number.isFinite(limit) && limit > 0 ? limit : undefined,
     }),

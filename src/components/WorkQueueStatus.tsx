@@ -331,6 +331,7 @@ export function GenerateRow({ item, onStop, onDismiss }: { item: GenerateItem; o
       <div className="picture-queue-line">
         <span className="row" style={{ gap: "0.75rem" }}>
           <Link href={item.href}>Open</Link>
+          <Link href={`/ai-log?item=${encodeURIComponent(item.key)}`}>Show the AI exchange</Link>
           {item.text && (
             <button type="button" className="picture-queue-text-button" onClick={() => void copyText(item.text!)}>
               Copy text

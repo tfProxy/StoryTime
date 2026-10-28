@@ -17,6 +17,16 @@ const STATUS_WORDS: Record<string, string> = { todo: "to do", written: "written,
 
 type Edit = { label?: string; direction?: string; remove?: boolean };
 
+/** A small link to the prompt history, filtered to this run (and the task's chapter, where it has one). */
+function AiExchangeLink({ runId, chapterId }: { runId: string; chapterId?: string | null }) {
+  const q = `run=${encodeURIComponent(runId)}${chapterId ? `&chapter=${encodeURIComponent(chapterId)}` : ""}`;
+  return (
+    <div className="meta">
+      <Link href={`/ai-log?${q}`} className="ai-log-link">Show the AI exchange</Link>
+    </div>
+  );
+}
+
 export default function AiRunProgress({
   runId,
   chapterId,
@@ -248,6 +258,7 @@ export default function AiRunProgress({
                 </>
               )}
             </div>
+            {t.status !== "todo" && <AiExchangeLink runId={runId} chapterId={t.kind === "continuity" ? undefined : t.chapterId} />}
             {t.status === "failed" && (
               <>
                 <p className="error">{t.error}</p>
@@ -265,6 +276,7 @@ export default function AiRunProgress({
             <div>
               <Link href={`/c/${t.chapterId}/illustrate`}>{t.label ?? "A chapter"}</Link> <span className="meta">· {t.slot} · {t.status === "written" ? "prompt written, drawing" : STATUS_WORDS[t.status]}</span>
             </div>
+            {t.status !== "todo" && <AiExchangeLink runId={runId} chapterId={t.chapterId} />}
             {t.status === "done" && (
               <Link href={`/c/${t.chapterId}/illustrate`} className="picture-queue-thumbs" aria-label={`The ${t.slot} picture of “${t.label ?? "the chapter"}”`}>
                 {/* eslint-disable-next-line @next/next/no-img-element -- served by StoryTime */}
@@ -289,6 +301,7 @@ export default function AiRunProgress({
               {t.chapterId ? <Link href={`/c/${t.chapterId}`}>{t.label}</Link> : <span>{t.label}</span>} <span className="meta">· {STATUS_WORDS[t.status]}</span>
             </div>
             {t.direction && <div className="meta">{t.direction}</div>}
+            {t.status !== "todo" && <AiExchangeLink runId={runId} chapterId={t.chapterId} />}
             {t.status === "failed" && (
               <>
                 <p className="error">{t.error}</p>
@@ -304,6 +317,7 @@ export default function AiRunProgress({
         {failedPlans.map((t) => (
           <li key={t.id} className="ai-run-task ai-run-task-failed">
             <div>Planning the choices of this chapter <span className="meta">· failed</span></div>
+            <AiExchangeLink runId={runId} />
             <p className="error">{t.error}</p>
             <div className="row" style={{ gap: "0.75rem" }}>
               <button type="button" className="picture-queue-text-button" disabled={busy || goingHere} onClick={() => void act(async () => { await taskAction(t.id, "retry"); await startRun(runId); })}>Try again</button>

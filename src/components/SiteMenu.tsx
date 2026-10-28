@@ -51,6 +51,7 @@ export default function SiteMenu() {
         <div className="menu-group">
           <Link href="/drafts">Drafts</Link>
           <Link href="/queue">Queue</Link>
+          <Link href="/ai-log">Prompt history</Link>
           <Link href="/settings">Settings</Link>
         </div>
       </div>
