@@ -74,7 +74,56 @@ export function entryHistory(ops: CodexOp[], entryId: string): CodexOp[] {
   return orderOps(ops).filter((o) => o.entry_id === entryId);
 }
 
-const TYPE_HEADINGS: Record<EntryType, string> = {
+export type StoryEntrySummary = {
+  entry_id: string;
+  name: string;
+  type: EntryType;
+  /** The chapter the entry was created at (the shallowest, if several branches created it). */
+  first_chapter_id: string;
+  first_chapter_title: string;
+  /** True when the op that takes effect last is a retirement. */
+  retired: boolean;
+};
+
+/** One row per entry across every branch of a story, sorted by name. `ops` must carry `anchor_depth`. */
+export function storyEntrySummaries(ops: CodexOp[], chapterTitles: Map<string, string> | Record<string, string>): StoryEntrySummary[] {
+  const titleOf = (id: string) => (chapterTitles instanceof Map ? chapterTitles.get(id) : chapterTitles[id]) ?? "";
+  const byEntry = new Map<string, CodexOp[]>();
+  for (const op of orderOps(ops)) {
+    if (isDraftEntry(op.entry_id)) continue;
+    const list = byEntry.get(op.entry_id);
+    if (list) list.push(op);
+    else byEntry.set(op.entry_id, [op]);
+  }
+  const rows: StoryEntrySummary[] = [];
+  for (const [entry_id, list] of byEntry) {
+    const last = list[list.length - 1];
+    // Name and type come from the last op that carries them (a retire may leave them blank).
+    const named = [...list].reverse().find((o) => o.op !== "retire") ?? last;
+    const first = list.find((o) => o.op === "create") ?? list[0]; // list is shallowest first
+    rows.push({
+      entry_id,
+      name: named.name,
+      type: named.type,
+      first_chapter_id: first.anchor_chapter_id,
+      first_chapter_title: titleOf(first.anchor_chapter_id),
+      retired: last.op === "retire",
+    });
+  }
+  return rows.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.entry_id.localeCompare(b.entry_id));
+}
+
+/** One entry's type, as a word for a single entry ("Character"). */
+export const TYPE_LABELS: Record<EntryType, string> = {
+  character: "Character",
+  place: "Place",
+  item: "Item",
+  faction: "Faction",
+  lore: "Lore",
+  note: "Note",
+};
+
+export const TYPE_HEADINGS: Record<EntryType, string> = {
   character: "Characters",
   place: "Places",
   item: "Items",

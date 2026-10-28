@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db, newId } from "./db";
-import { ENTRY_TYPES, foldCodex, type CodexEntry, type CodexOp } from "./codex";
+import { ENTRY_TYPES, foldCodex, storyEntrySummaries, type CodexEntry, type CodexOp, type StoryEntrySummary } from "./codex";
 import { getPath, PostError } from "./stories";
 
 const text = (max: number) => z.string().trim().max(max);
@@ -84,6 +84,22 @@ export function getCodexOps(chapterId: string): CodexOp[] {
     )
     .all(...path.map((c) => c.id)) as Row[];
   return rows.map(toOp);
+}
+
+/** Every entry in a story, across all branches, one row each. */
+export function storyCodexEntries(storyId: string): StoryEntrySummary[] {
+  const rows = db()
+    .prepare(
+      `SELECT o.id, o.anchor_chapter_id, c.depth AS anchor_depth, o.entry_id, o.op, o.name, o.type, o.aliases,
+              o.content, o.always_include, o.posted_at
+         FROM codex_ops o JOIN chapters c ON c.id = o.anchor_chapter_id
+        WHERE c.story_id = ?
+        ORDER BY c.depth, o.posted_at, o.rowid`,
+    )
+    .all(storyId) as Row[];
+  if (rows.length === 0) return [];
+  const titles = db().prepare(`SELECT id, title FROM chapters WHERE story_id = ?`).all(storyId) as { id: string; title: string }[];
+  return storyEntrySummaries(rows.map(toOp), new Map(titles.map((t) => [t.id, t.title])));
 }
 
 export function getCodexState(chapterId: string): CodexEntry[] {

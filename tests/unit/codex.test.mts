@@ -1,4 +1,4 @@
-﻿import { foldCodex, retiredEntries, entryHistory, changedFields, addChange, draftOps, DRAFT_ANCHOR, type CodexChange, type CodexOp } from "../../src/lib/codex.ts";
+﻿import { foldCodex, storyEntrySummaries, retiredEntries, entryHistory, changedFields, addChange, draftOps, DRAFT_ANCHOR, type CodexChange, type CodexOp } from "../../src/lib/codex.ts";
 import { buildCodexBlock, mentions, generatePrompt, refinePrompt, choicesPrompt } from "../../src/lib/ai/prompts.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
@@ -77,3 +77,20 @@ const onPath = [op({ anchor_depth: 2, anchor_chapter_id: "c2", op: "replace", co
 const folded = foldCodex([...onPath, ...draftOps(held, 3)]);
 ok(folded[0].content === "a winged horse" && folded[0].op.anchor_chapter_id === DRAFT_ANCHOR, "draft changes override the path's codex");
 ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length === 1, "a retire held in the draft hides the entry");
+
+// story-wide entry summaries
+{
+  const titles = new Map([["c0", "One"], ["c1", "Two"], ["c3", "Four"]]);
+  const sum = storyEntrySummaries([
+    op({ entry_id: "mira", name: "Mira", posted_at: 1 }),
+    op({ entry_id: "mira", op: "replace", name: "Mira the Bold", anchor_depth: 3, anchor_chapter_id: "c3", posted_at: 2 }),
+    op({ entry_id: "zed", name: "zed", type: "place", anchor_depth: 1, anchor_chapter_id: "c1", posted_at: 3 }),
+    op({ entry_id: "zed", op: "retire", name: "", anchor_depth: 3, anchor_chapter_id: "c3", posted_at: 4 }),
+    op({ entry_id: "abe", name: "Abe", type: "item", posted_at: 5 }),
+    op({ entry_id: "draft-1", name: "Draft", posted_at: 6 }),
+  ], titles);
+  ok(sum.map((s) => s.entry_id).join() === "abe,mira,zed", "summaries: sorted by name, case-insensitive, drafts left out");
+  ok(sum[1].name === "Mira the Bold" && sum[1].first_chapter_id === "c0" && sum[1].first_chapter_title === "One", "summaries: latest name, first chapter from the create");
+  ok(sum[2].retired && sum[2].name === "zed" && sum[2].type === "place" && sum[2].first_chapter_title === "Two", "summaries: retire sets retired and keeps the last name");
+  ok(!sum[0].retired && sum[0].type === "item", "summaries: live entries are not retired");
+}
