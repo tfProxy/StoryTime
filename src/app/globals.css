@@ -2799,6 +2799,57 @@ fieldset.model-uses .inline-label input[type="checkbox"] {
   text-decoration: none;
 }
 
+/* Story Bible: the number of open items on a tab or an Overview card. */
+.count-chip {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: var(--line);
+  color: var(--fg);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.5;
+  vertical-align: 0.1em;
+}
+
+.bible-panel {
+  margin-top: 1rem;
+}
+
+/* Overview cards: two columns, one on a phone. Each card but Checks is a link to its tab. */
+.bible-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.bible-card {
+  margin: 0;
+  display: grid;
+  align-content: start;
+  gap: 0.25rem;
+}
+
+.bible-card h2 {
+  margin: 0;
+}
+
+.bible-card .meta {
+  margin: 0;
+}
+
+.bible-card-plain {
+  background: transparent;
+  border-style: dashed;
+}
+
+@media (max-width: 600px) {
+  .bible-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Six tabs don't fit a phone's width: they wrap onto a second row rather than scroll out of sight. */
 @media (max-width: 720px) {
   .settings-tabs {

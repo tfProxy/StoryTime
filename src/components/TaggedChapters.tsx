@@ -87,7 +87,7 @@ export default function TaggedChapters({ storyId, chapters, enabled }: { storyId
             {c.codexOffer && (
               <p className="meta" style={{ margin: "0.25rem 0" }} data-codex-offer={c.id}>
                 The codex may need to change here.{" "}
-                <Link href={`/s/${storyId}/review?chapter=${c.id}#codex`}>Update the codex for this change</Link>
+                <Link href={`/s/${storyId}/review?tab=codex&chapter=${c.id}`}>Update the codex for this change</Link>
               </p>
             )}
             <div className="row" style={{ flexWrap: "wrap" }}>

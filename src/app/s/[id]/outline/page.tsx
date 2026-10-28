@@ -183,14 +183,14 @@ export default async function OutlinePage({
       </SummaryProvider>
       <PageMenu>
         <Link href={`/s/${story.id}/pictures`}>Make missing pictures</Link>
-        <Link href={`/s/${story.id}/review`}>Review the story</Link>
+        <Link href={`/s/${story.id}/review`}>Story Bible</Link>
         {storyTags.map((t) => (
           <Link key={t} href={`/s/${story.id}/outline?highlight=${encodeURIComponent(t)}`}>
             Highlight: {t}
           </Link>
         ))}
         {highlighted && <Link href={`/s/${story.id}/outline`}>Stop highlighting</Link>}
-        <Link href={`/s/${story.id}/summaries`}>Redo the AI summaries</Link>
+        <Link href={`/s/${story.id}/review?tab=summaries`}>Redo the AI summaries</Link>
       </PageMenu>
     </div>
   );
