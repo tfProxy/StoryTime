@@ -51,7 +51,6 @@ await page.getByRole("button", { name: "Add entry" }).click();
 await page.getByRole("heading", { name: "Mira", level: 1 }).waitFor();
 ok(new RegExp(`/s/${story.story_id}/codex/[^/]+\\?at=${root}$`).test(page.url()), "adding an entry opens its page, at this chapter: " + page.url());
 ok((await editor.locator(".entry-keywords").innerText()).includes("the thief, Mir"), "the keywords show on the entry page");
-await editor.getByRole("button", { name: "Edit details" }).click();
 await page.getByLabel(/Always include/).check();
 await page.getByRole("button", { name: "Save changes" }).click();
 await editor.getByText("always included").waitFor();
@@ -79,7 +78,7 @@ await editor.getByRole("button", { name: "Save", exact: true }).click();
 await editor.getByText("She is shy.").waitFor();
 
 // history + restore
-await editor.getByText(/History \(3\)/).click();
+await editor.getByText(/3 versions/).click();
 ok(await editor.locator("ol.history li").first().innerText().then((t) => /Changed/.test(t) && /content/.test(t)), "history lists the change");
 await editor.getByRole("button", { name: "Restore this version" }).first().click();
 await editor.getByText("No notes.").waitFor();
@@ -119,7 +118,7 @@ ok(prompts.at(-1).includes("A human thief with a scar."), "continuation on B get
 // retire at A, from the entry's page
 await page.goto(`${BASE}/c/${A}/codex`);
 await card.click();
-await editor.getByRole("button", { name: "Retire" }).click();
+await editor.getByRole("button", { name: "Retire from here on" }).click();
 await page.getByRole("heading", { name: "Retired" }).waitFor();
 ok(page.url().endsWith(`/c/${A}/codex`), "retiring goes back to the chapter's codex");
 ok((await page.getByText("Now a horse").count()) === 0, "retired entry leaves the list");

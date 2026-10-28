@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ChapterSummary, NextChapters, nextChapters } from "@/components/CodexChapterNav";
 import CodexEntryEditor from "@/components/CodexEntryEditor";
 import { foldCodex, usedAspectsOf } from "@/lib/codex";
 import { entryLastAnchor, getCodexFacts, getCodexOps } from "@/lib/codexDb";
@@ -35,7 +36,8 @@ export default async function CodexEntryPage({ params, searchParams }: { params:
   // Chapters before the entry first appears can't show it.
   const firstDepth = Math.min(...ops.filter((o) => o.entry_id === entryId).map((o) => o.anchor_depth));
   const picture = codexPictureAt(story.id, entryId, at);
-  const waiting = listSuggestions(story.id, { status: "open" }).filter((s) => s.entry_id === entryId).length;
+  const after = nextChapters(at).map(({ id: chapterId, title }) => ({ id: chapterId, title }));
+  const waiting =listSuggestions(story.id, { status: "open" }).filter((s) => s.entry_id === entryId).length;
 
   return (
     <>
@@ -50,7 +52,9 @@ export default async function CodexEntryPage({ params, searchParams }: { params:
             {c.id === at ? <strong>{c.title}</strong> : c.depth < firstDepth ? c.title : <Link href={`/s/${story.id}/codex/${entryId}?at=${c.id}`}>{c.title}</Link>}
           </span>
         ))}
+        <NextChapters chapterId={at} hrefFor={(child) => `/s/${story.id}/codex/${entryId}?at=${child}`} />
       </p>
+      <ChapterSummary chapter={here} />
       <CodexEntryEditor
         entry={entry}
         ops={ops}
@@ -62,6 +66,7 @@ export default async function CodexEntryPage({ params, searchParams }: { params:
         pictureId={picture?.id ?? null}
         picturesHref={`/s/${story.id}/codex/${entryId}/pictures?at=${at}`}
         waiting={waiting}
+        after={after}
       />
     </>
   );

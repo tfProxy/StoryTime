@@ -60,6 +60,8 @@ type Props = {
   onFactsSaved?: () => void;
   /** How many open suggestions in the inbox are about this entry. */
   waiting?: number;
+  /** The chapters already written after `chapterId`: "Remove from this chapter only" keeps the entry in them. */
+  after?: { id: string; title: string }[];
 };
 
 /** The one place to read and change a codex entry: its details, keywords, form, facts, notes and history. */
@@ -80,11 +82,12 @@ export default function CodexEntryEditor({
   onRetired,
   onFactsSaved,
   waiting = 0,
+  after = [],
 }: Props) {
   const router = useRouter();
   const inDraft = variant === "drawer";
   const draftOnly = isDraftEntry(entry.entry_id);
-  const [details, setDetails] = useState(false);
+  const [savedNote, setSavedNote] = useState(false);
   const [notes, setNotes] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,6 +123,25 @@ export default function CodexEntryEditor({
     setBusy(false);
     if (problem) setError(problem);
     return !problem;
+  }
+
+  const here = titleOf(chapterId);
+
+  /** Takes the entry out of this chapter only; it stays, facts and all, in each chapter written after it. */
+  async function removeHere(): Promise<{ error?: string; keptIn: string[] }> {
+    try {
+      const res = await fetch("/api/codex/remove-here", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entry_id: entry.entry_id, chapter_id: chapterId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { error: data.error ?? `Request failed (${res.status})`, keptIn: [] };
+      router.refresh();
+      return { keptIn: Array.isArray(data.kept_in) ? data.kept_in : [] };
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e), keptIn: [] };
+    }
   }
 
   const fields = (): EntryFields => ({ name: entry.name, type: entry.type, aliases: entry.aliases, content: entry.content, always_include: entry.always_include });
@@ -180,20 +202,6 @@ export default function CodexEntryEditor({
           </div>
         </div>
         <div className="row entry-head-actions">
-          <button type="button" className="secondary" disabled={busy} onClick={() => setDetails(!details)}>
-            Edit details
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy}
-            onClick={async () => {
-              if (!window.confirm(`Retire “${entry.name}” from this chapter onward? Earlier chapters keep it.`)) return;
-              if (await change({ op: "retire", entry_id: entry.entry_id })) (onRetired ?? (() => router.push(`/c/${chapterId}/codex`)))();
-            }}
-          >
-            Retire
-          </button>
           {picturesHref && (
             <Link className="button secondary" href={picturesHref}>
               Pictures
@@ -206,25 +214,27 @@ export default function CodexEntryEditor({
           )}
         </div>
       </div>
-      <p className="entry-keywords">
-        <strong>Keywords:</strong> {entry.aliases.length > 0 ? entry.aliases.join(", ") : "none yet"}
-        <span className="meta"> Words in the story that bring this entry into the AI&apos;s prompt.</span>
-      </p>
       {error && <p className="error">{error}</p>}
 
-      {details && (
+      <section className="entry-section">
+        <h2>Details</h2>
         <EntryDetailsForm
+          key={[entry.op.id, entry.name, entry.type, entry.aliases.join("\n"), entry.always_include].join("|")}
           initial={entry}
           busy={busy}
           path={path}
           chapterId={chapterId}
           inDraft={inDraft}
-          onCancel={() => setDetails(false)}
+          keywordSources={entry.keywordSources}
+          saved={savedNote}
           onSave={async (f, anchor) => {
-            if (await replace(f, anchor)) setDetails(false);
+            if (await replace(f, anchor)) {
+              setSavedNote(true);
+              setTimeout(() => setSavedNote(false), 4000);
+            }
           }}
         />
-      )}
+      </section>
 
       {draftOnly ? (
         <section className="entry-section">
@@ -306,13 +316,18 @@ export default function CodexEntryEditor({
       </section>
 
       {waiting > 0 && storyId && (
-        <p className="notice">
-          {waiting} suggestion{waiting === 1 ? "" : "s"} waiting for {entry.name} · <Link href={`/s/${storyId}/review?tab=codex`}>Review</Link>
-        </p>
+        <section className="entry-section">
+          <h2>Suggestions waiting</h2>
+          <p style={{ margin: 0 }}>
+            {waiting} suggestion{waiting === 1 ? "" : "s"} waiting for {entry.name} · <Link href={`/s/${storyId}/review?tab=codex`}>Review</Link>
+          </p>
+        </section>
       )}
 
+      <section className="entry-section">
+        <h2>History</h2>
       <details className="entry-history">
-        <summary>History ({hist.length})</summary>
+        <summary>{hist.length} version{hist.length === 1 ? "" : "s"}</summary>
         <ol className="history">
           {[...hist].reverse().map((v, idx, arr) => {
             const prev = arr[idx + 1];
@@ -344,6 +359,52 @@ export default function CodexEntryEditor({
           })}
         </ol>
       </details>
+      </section>
+
+      <section className="entry-section entry-remove">
+        <h2>Remove</h2>
+        {/* Not in the writing drawer: the chapter being written isn't saved yet, so it would lose the entry too. */}
+        {!draftOnly && !inDraft && (
+        <div className="entry-remove-option">
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy || after.length === 0}
+            onClick={async () => {
+              if (!window.confirm(`Remove “${entry.name}” from “${here}” only? It stays in the chapters after it.`)) return;
+              setBusy(true);
+              setError(null);
+              const problem = await removeHere();
+              setBusy(false);
+              if (problem.error) return setError(problem.error);
+              if (onRetired) onRetired();
+              else router.push(`/s/${storyId}/codex/${entry.entry_id}?at=${problem.keptIn[0] ?? after[0]?.id}`);
+            }}
+          >
+            Remove from this chapter only
+          </button>
+          <p className="meta">
+            {after.length > 0
+              ? `${entry.name} stays in the ${after.length === 1 ? "chapter" : `${after.length} chapters`} after “${here}”.`
+              : "No chapter has been written after this one, so there is nothing to keep it in. Use Retire from here on."}
+          </p>
+        </div>
+        )}
+        <div className="entry-remove-option">
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={async () => {
+              if (!window.confirm(`Retire “${entry.name}” from this chapter onward? Earlier chapters keep it.`)) return;
+              if (await change({ op: "retire", entry_id: entry.entry_id })) (onRetired ?? (() => router.push(`/c/${chapterId}/codex`)))();
+            }}
+          >
+            Retire from here on
+          </button>
+          <p className="meta">Gone from “{here}” and every chapter after it. Earlier chapters keep it.</p>
+        </div>
+      </section>
     </div>
   );
 }
@@ -358,6 +419,8 @@ export function EntryDetailsForm({
   path,
   chapterId,
   inDraft,
+  keywordSources,
+  saved,
   onSave,
   onCancel,
 }: {
@@ -366,17 +429,34 @@ export function EntryDetailsForm({
   path: PathChapter[];
   chapterId: string;
   inDraft: boolean;
+  /** Where each of the entry's keywords was added, to show the inherited ones. */
+  keywordSources?: CodexEntry["keywordSources"];
+  /** Shows "Saved" beside the button. */
+  saved?: boolean;
   onSave: (f: { name: string; type: EntryType; aliases: string[]; always_include: boolean }, anchor: string) => void;
-  onCancel: () => void;
+  /** With it, the form is a pop-up form with Cancel; without it (for an existing entry) it is always on the page and Save waits for a change. */
+  onCancel?: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [type, setType] = useState<EntryType>(initial?.type ?? "character");
   const [aliases, setAliases] = useState((initial?.aliases ?? []).join(", "));
   const [always, setAlways] = useState(initial?.always_include ?? false);
   const [anchorId, setAnchorId] = useState(inDraft ? DRAFT_ANCHOR : chapterId);
+  const flat = Boolean(initial && !onCancel);
+  const parsed = keywordsOf(aliases);
+  const dirty =
+    !initial ||
+    name.trim() !== initial.name ||
+    type !== initial.type ||
+    always !== initial.always_include ||
+    parsed.join("\n") !== initial.aliases.join("\n");
+  const sourceOf = (alias: string) => {
+    const from = keywordSources?.find((k) => k.alias === alias)?.chapter_id;
+    return from && from !== chapterId && from !== DRAFT_ANCHOR ? path.find((p) => p.id === from)?.title : undefined;
+  };
   return (
     <form
-      className="fact-form entry-details-form"
+      className={flat ? "entry-details-form flat fact-form" : "fact-form entry-details-form"}
       onSubmit={(e) => {
         e.preventDefault();
         onSave({ name: name.trim(), type, aliases: keywordsOf(aliases), always_include: always }, anchorId);
@@ -401,9 +481,34 @@ export function EntryDetailsForm({
         <input value={aliases} onChange={(e) => setAliases(e.target.value)} />
       </label>
       {initial && (
+        <p className="entry-keywords">
+          <strong>Keywords:</strong>{" "}
+          {initial.aliases.length === 0
+            ? "none yet"
+            : initial.aliases.map((a, i) => {
+                const from = sourceOf(a);
+                return (
+                  <span key={a}>
+                    {i > 0 && ", "}
+                    {from ? (
+                      <>
+                        {a} <span className="kw-from">(from “{from}”)</span>
+                      </>
+                    ) : (
+                      a
+                    )}
+                  </span>
+                );
+              })}
+          <span className="meta"> Words in the story that bring this entry into the AI&apos;s prompt.</span>
+        </p>
+      )}
+      {initial && (
         <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
           <input type="checkbox" checked={always} onChange={(e) => setAlways(e.target.checked)} style={{ width: "auto" }} />
-          Always include in AI prompts <small>(otherwise only when a keyword or the name appears nearby)</small>
+          <span>
+            Always include in AI prompts <small>(otherwise only when a keyword or the name appears nearby)</small>
+          </span>
         </label>
       )}
       {initial && (inDraft || path.length > 1) && (
@@ -426,12 +531,19 @@ export function EntryDetailsForm({
         </label>
       )}
       <div className="row">
-        <button type="submit" disabled={busy || !name.trim()}>
+        <button type="submit" disabled={busy || !name.trim() || !dirty}>
           {busy ? "Saving…" : initial ? "Save changes" : "Add entry"}
         </button>
-        <button type="button" className="secondary" onClick={onCancel} disabled={busy}>
-          Cancel
-        </button>
+        {onCancel && (
+          <button type="button" className="secondary" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+        )}
+        {saved && !dirty && (
+          <span className="ok" role="status">
+            Saved
+          </span>
+        )}
       </div>
     </form>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -45,6 +45,9 @@ type Props = {
    * (and posted with the chapter); only changes anchored at an earlier chapter are saved straight away.
    */
   draft?: { changes: CodexChange[]; onChange: (next: CodexChange[]) => void };
+  /** The codex page's links to the chapters after this one (shown in the path), and the chapter's collapsed summary below it. */
+  nextLinks?: ReactNode;
+  summary?: ReactNode;
 };
 
 const localId = () => `draft-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
@@ -53,7 +56,7 @@ const localId = () => `draft-${Date.now().toString(36)}${Math.random().toString(
  * The codex as a compact list of entries (see `CodexEntryCards`), with "+ New entry". Each card opens the entry's
  * page; in the writing page's drawer it opens the entry in the drawer instead, so the draft is kept.
  */
-export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide, startEditing, chapterId, path, ops, facts, draft }: Props) {
+export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide, startEditing, chapterId, path, ops, facts, draft, nextLinks, summary }: Props) {
   const router = useRouter();
   // Each entry's picture as of this chapter (by entry id), for the thumbnails.
   const [pictures, setPictures] = useState<Record<string, { id: string }>>({});
@@ -70,6 +73,23 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
       live = false;
     };
   }, [storyId, chapterId]);
+  // The chapters already written after this one (the drawer's "Remove from this chapter only" keeps the entry in them).
+  const [after, setAfter] = useState<{ id: string; title: string }[]>([]);
+  useEffect(() => {
+    if (!embedded) return;
+    let live = true;
+    fetch(`/api/chapters/${encodeURIComponent(chapterId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { choices: { child_chapter_id: string | null }[] } | null) => {
+        if (live && d) setAfter(d.choices.flatMap((c) => (c.child_chapter_id ? [{ id: c.child_chapter_id, title: "" }] : [])));
+      })
+      .catch(() => {
+        // the button just stays disabled
+      });
+    return () => {
+      live = false;
+    };
+  }, [embedded, chapterId]);
   const titleOf = (id: string) => path.find((p) => p.id === id)?.title ?? "an earlier chapter";
 
   const allOps = draft ? [...ops, ...draftOps(draft.changes, (path.at(-1)?.depth ?? -1) + 1)] : ops;
@@ -168,6 +188,7 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
           held={pending.get(open.entry_id)}
           onDiscardHeld={() => discard(open.entry_id)}
           onRetired={() => setOpenId(null)}
+          after={after}
         />
       </div>
     );
@@ -183,8 +204,10 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
               {p.id === chapterId ? <strong>{p.title}</strong> : <Link href={`/c/${p.id}/codex`}>{p.title}</Link>}
             </span>
           ))}
+          {nextLinks}
         </nav>
       )}
+      {!embedded && !storyWide && summary}
       {draft ? (
         <p className="notice">
           Changes you make here belong to the chapter you&apos;re writing: the AI uses them straight away, and they are

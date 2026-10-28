@@ -134,7 +134,6 @@ ok(/changed in this draft/.test(await row("Zed").innerText()), "the preview mark
 ok(await page.getByText(/2 codex changes will be saved with this chapter/).isVisible(), "step 4 lists the held changes");
 // …unless an earlier chapter is picked
 await row("Qux").getByRole("button", { name: "Edit" }).click();
-await drawer.getByRole("button", { name: "Edit details" }).click();
 await drawer.getByLabel(/Keywords/).fill("the hermit");
 await drawer.getByLabel(/Takes effect from/).selectOption({ label: "Root (saved now)" });
 await drawer.getByRole("button", { name: "Save changes" }).click();

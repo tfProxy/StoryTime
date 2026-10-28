@@ -55,19 +55,17 @@ try {
   const path = await page.locator(".entry-path").innerText();
   ok(/Viewing at:\s*Root\s*›\s*Chapter A/.test(path) && (await page.locator(".entry-path a", { hasText: "Root" }).getAttribute("href")) === `/s/${sid}/codex/${rowan}?at=${R}`, "a Viewing at line links each chapter to the entry at that chapter: " + path);
 
-  // ---- keywords are always visible ----
+  // ---- keywords are always visible, under the field in the always-visible Details section ----
   const keywords = ed.locator(".entry-keywords");
-  ok((await keywords.innerText()).includes("Keywords: Ro, the traveller") && (await keywords.innerText()).includes("Words in the story that bring this entry into the AI's prompt."), "the keywords and their hint are on the page");
+  ok((await keywords.innerText()).includes("Keywords: Ro (from “Root”), the traveller (from “Root”)") && (await keywords.innerText()).includes("Words in the story that bring this entry into the AI's prompt."), "the keywords, where they came from, and their hint are on the page");
 
-  // ---- Edit details opens right below the header and saves keywords ----
-  await ed.getByRole("button", { name: "Edit details" }).click();
-  const details = ed.locator("form.entry-details-form");
-  await details.waitFor();
-  ok((await below(details, keywords)) && (await below(section("Form"), details)), "Edit details opens its form directly under the header, above the Form section");
+  // ---- Details is always there, above the Form section, and saves keywords ----
+  const details = section("Details").locator("form.entry-details-form");
+  ok((await details.isVisible()) && (await below(section("Form"), details)) && (await ed.getByRole("button", { name: "Edit details" }).count()) === 0, "the Details form is on the page without an Edit details button, above the Form section");
   ok((await details.getByLabel(/Takes effect from/).inputValue()) === A, "…with “Takes effect from” on this chapter");
   await details.getByLabel(/Keywords/).fill("Ro, the traveller, the fox");
   await details.getByRole("button", { name: "Save changes" }).click();
-  await keywords.getByText("Ro, the traveller, the fox").waitFor();
+  await keywords.getByText("the fox").waitFor();
   ok((await entryAt(A)).aliases.join() === "Ro,the traveller,the fox" && (await entryAt(R)).aliases.join() === "Ro,the traveller", "the keywords were saved at this chapter, not earlier");
 
   // ---- Change form opens beneath its button: pick an existing form, a stage, and see what the AI reads ----
@@ -193,10 +191,80 @@ try {
   await drawer.waitFor();
   await drawer.locator(".entry-card", { hasText: "Rowan" }).click();
   await drawer.getByRole("heading", { name: "Rowan" }).waitFor();
-  ok(page.url().includes("/write") && (await drawer.getByRole("button", { name: "Edit details" }).isVisible()) && (await drawer.locator(".entry-keywords").innerText()).includes("the fox"), "tapping a card opens the entry in the drawer, without leaving the page");
+  ok(page.url().includes("/write") && (await drawer.getByRole("button", { name: "Save changes" }).isVisible()) && (await drawer.locator(".entry-keywords").innerText()).includes("the fox"), "tapping a card opens the entry in the drawer, without leaving the page");
   await drawer.getByRole("button", { name: "← All entries" }).click();
   await drawer.locator(".entry-card", { hasText: "Rowan" }).waitFor();
   ok(true, "← All entries goes back to the list");
+
+  // ---- going forwards, inherited keywords, the always-visible Details form, and removing from one chapter ----
+  const hub = await post("/api/stories", { title: "Hub Tale", premise: "p", chapter: { title: "Hub", body: "A crossroads.", summary: "The travellers meet at the hub.", choices: ["Go down", "Climb up"] } });
+  const H = hub.chapter_id;
+  const [downChoice, upChoice] = (await send("GET", `/api/chapters/${H}`)).choices;
+  const cellar = (await post("/api/chapters", { choice_id: downChoice.id, title: "The cellar", body: "Damp.", choices: [] })).chapter_id;
+  const roof = (await post("/api/chapters", { choice_id: upChoice.id, title: "The roof", body: "Windy.", summary: "Wind and slate.", choices: [] })).chapter_id;
+  const lampFields = { name: "Lamp", type: "item", aliases: ["lantern"], content: "", always_include: false };
+  const lamp = (await post("/api/codex", { anchor_chapter_id: H, op: "create", ...lampFields })).entry_id;
+  await post("/api/codex", { anchor_chapter_id: cellar, op: "replace", entry_id: lamp, ...lampFields, content: "Cracked in the cellar." });
+  await post("/api/codex", { anchor_chapter_id: H, op: "replace", entry_id: lamp, ...lampFields, aliases: ["lantern", "lamp"] }); // added after the child changed
+  const lampUrl = (at) => `${BASE}/s/${hub.story_id}/codex/${lamp}?at=${at}`;
+
+  await page.goto(lampUrl(H));
+  await page.getByRole("heading", { name: "Lamp", level: 1 }).waitFor();
+  const next = page.locator(".entry-path .chapter-next");
+  ok((await next.innerText()).replace(/\s+/g, " ").trim() === "› Next: The cellar · The roof", "the Viewing at line ends with the chapters that come next: " + (await next.innerText()));
+  ok((await next.locator("a").first().getAttribute("href")) === `/s/${hub.story_id}/codex/${lamp}?at=${cellar}` && (await next.locator("a").first().getAttribute("title")) === "Choice: Go down", "…each linking to the entry at that chapter, with the choice as a tooltip");
+  const summary = page.locator("details.chapter-summary");
+  ok((await summary.locator("summary").innerText()) === "Summary of “Hub”" && !(await summary.evaluate((d) => d.open)), "a collapsed “Summary of …” sits under it");
+  await summary.locator("summary").click();
+  ok(await summary.getByText("The travellers meet at the hub.").isVisible(), "…and opens to the chapter's summary");
+  await next.getByRole("link", { name: "The cellar" }).click();
+  await page.waitForURL(lampUrl(cellar));
+  ok((await page.locator(".entry-path strong").innerText()) === "The cellar" && (await page.locator(".entry-path .chapter-next").count()) === 0, "a Next link goes to the entry at that chapter; a last chapter has no Next");
+  ok((await page.locator("details.chapter-summary").innerText()).includes("No summary yet.") && (await page.locator("details.chapter-summary a").getAttribute("href")) === `/c/${cellar}`, "a chapter without a summary says so and links to the chapter");
+
+  // keywords added at the root after the cellar changed its notes still reach the cellar, marked with where they came from
+  const kw = ed.locator(".entry-keywords");
+  const kwText = (await kw.innerText()).replace(/\s+/g, " ");
+  ok(kwText.includes("lantern (from “Hub”), lamp (from “Hub”)"), "inherited keywords say which chapter they came from: " + kwText);
+
+  // ---- the Details form is always there; Save waits for a change ----
+  const detailsForm = section("Details").locator("form.entry-details-form");
+  const saveDetails = detailsForm.getByRole("button", { name: "Save changes" });
+  ok(await detailsForm.isVisible() && (await saveDetails.isDisabled()), "Details is on the page without a button, and Save is disabled until something changes");
+  await detailsForm.getByLabel(/Keywords/).fill("lantern, lamp, brass");
+  ok(!(await saveDetails.isDisabled()), "…and turns on when a field changes");
+  await saveDetails.click();
+  await detailsForm.getByText("Saved", { exact: true }).waitFor();
+  ok((await saveDetails.isDisabled()), "…then waits again, with a brief “Saved”");
+  const kwAfter = (await kw.innerText()).replace(/\s+/g, " ");
+  ok(/brass(?! \(from)/.test(kwAfter) && kwAfter.includes("lamp (from “Hub”)"), "a keyword added here is plain, the others still say where from: " + kwAfter);
+  ok((await send("GET", `/api/chapters/${cellar}/codex`)).entries.find((e) => e.name === "Lamp").aliases.join() === "lantern,lamp,brass", "the keywords were saved at this chapter");
+
+  // ---- the codex page has the same Next links and summary ----
+  await page.goto(`${BASE}/c/${H}/codex`);
+  const timeline = page.locator("nav.timeline");
+  ok((await timeline.innerText()).replace(/\s+/g, " ").includes("Hub › Next: The cellar · The roof"), "the chapter codex page's path ends with the chapters that come next");
+  await page.locator("details.chapter-summary summary").click();
+  ok(await page.getByText("The travellers meet at the hub.").isVisible(), "…with the collapsed summary below it");
+  await timeline.getByRole("link", { name: "The roof" }).click();
+  await page.waitForURL(`${BASE}/c/${roof}/codex`);
+  ok(await page.getByText("Summary of “The roof”").isVisible(), "a Next link opens the codex at that chapter");
+
+  // ---- Remove from this chapter only ----
+  await page.goto(lampUrl(cellar));
+  const removeBlock = section("Remove");
+  ok((await removeBlock.getByRole("button", { name: "Remove from this chapter only" }).isDisabled()) && (await removeBlock.innerText()).includes("nothing to keep it in"), "with no chapter after it, “Remove from this chapter only” is disabled and says why");
+  await page.goto(lampUrl(H));
+  ok((await removeBlock.innerText()).includes("Lamp stays in the 2 chapters after “Hub”."), "…and otherwise says how many chapters keep the entry");
+  await removeBlock.getByRole("button", { name: "Remove from this chapter only" }).click();
+  await page.waitForURL(lampUrl(cellar));
+  ok(await page.getByRole("heading", { name: "Lamp", level: 1 }).isVisible(), "it goes to the entry at the first chapter that keeps it");
+  ok(!(await send("GET", `/api/chapters/${H}/codex`)).entries.some((e) => e.name === "Lamp"), "the entry is gone at that chapter…");
+  const keptRoof = (await send("GET", `/api/chapters/${roof}/codex`)).entries.find((e) => e.name === "Lamp");
+  ok(keptRoof && keptRoof.aliases.join() === "lantern,lamp", "…and still there in the other chapter after it, with its keywords");
+  await page.goto(`${BASE}/c/${H}/codex`);
+  await page.getByText("No entries yet at this point.").waitFor();
+  ok((await page.locator(".entry-card", { hasText: "Lamp" }).count()) === 0, "the chapter's codex page no longer lists it");
 } catch (e) {
   console.log("ERROR", e.message);
   failed = true;
