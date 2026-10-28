@@ -1,9 +1,9 @@
-// AI helpers for the codex: scan chapters for entries to add/change, and draft or update
-// a single entry. All of it runs in the browser with the user's own key; nothing is saved
-// until the user accepts and posts.
+// AI helpers for the codex: draft or update a single entry (runs in the browser with the user's own key; nothing is
+// saved until the user accepts and posts), and the JSON helpers other AI code shares. Reading chapters for codex
+// changes is the codex check (codexCheckAi.ts), which runs on the server.
 import { completeChat } from "./client";
 import { buildStorySoFar, estimateTokens, notesBlock, parseInstruction, type ContextChapter, type PromptParts } from "./prompts";
-import { ENTRY_TYPES, foldCodex, type CodexEntry, type CodexOp, type EntryType } from "../codex";
+import { ENTRY_TYPES, type CodexEntry, type EntryType } from "../codex";
 import type { Settings } from "../settings";
 
 export type PathChapter = ContextChapter & { id: string; depth: number };
@@ -16,20 +16,6 @@ export type EntryFields = {
   aliases: string[];
   content: string;
   always_include: boolean;
-};
-
-export type Proposal = EntryFields & {
-  key: string;
-  action: "create" | "replace" | "retire";
-  /** The existing entry id, or a temporary "new-N" id for an entry this run proposes to create. */
-  ref: string;
-  /** True if `ref` is temporary (the entry doesn't exist yet). */
-  isNew: boolean;
-  reason: string;
-  anchorChapterId: string;
-  anchorTitle: string;
-  /** What the entry looks like now, for showing what a replace changes. */
-  previous: { name: string; content: string } | null;
 };
 
 // ---------- JSON handling ----------
@@ -76,9 +62,9 @@ export function parseFields(raw: unknown): EntryFields | null {
   };
 }
 
-// ---------- scanning chapters ----------
+// ---------- the entry prompts ----------
 
-// What makes a good entry. Shared by both prompts below, because the model can't guess how the
+// What makes a good entry. Used by the prompt below, because the model can't guess how the
 // app uses entries: an entry is shown to a writer only when its name or an alias appears in the
 // recent text (or it is "always include"), it competes for a small token budget, and it is read
 // later as a single line with no other context.
@@ -91,213 +77,11 @@ const CODEX_GUIDE = `What makes a good entry:
 - always_include: almost always false. True only for something every future chapter needs, such as the protagonist or a rule of the whole world.
 Example of the style (illustrative; do not copy its details): {"name":"Harbour Master Oda","type":"character","aliases":["Oda","the Harbour Master"],"content":"Harbour master of Saltgate. Stern and observant; secretly pays the smugglers' guild to ignore certain ships. Distrusts the hero since the missing cargo.","always_include":false}`;
 
-const SYSTEM_ANALYZE = `You maintain the codex (a reference list of characters, places, items, factions and lore) for a branching story, so that future writers keep the facts consistent.
-You are given the codex as it stands and one chapter. List the changes this chapter establishes:
-- "create": a new character, place, item, faction or piece of lore that appears and is likely to recur or to constrain later chapters. Skip trivial one-off background details and anything already covered by an existing entry.
-- "replace": an existing entry whose facts changed or were significantly revealed. Give the COMPLETE updated entry, keeping details that are still true.
-- "retire": an entry that no longer applies and should stop being shown to writers. Prefer "replace" instead (for example a dead character is still worth remembering, so record that they died).
-Rules: use only what the chapter text says. Describe the current state, in present tense. Do not repeat an entry that hasn't changed. At most 8 changes, but fewer, more valuable changes are better than filling the list.
-
-${CODEX_GUIDE}
-
-Reply with JSON only, in this shape:
-{"changes":[{"action":"create|replace|retire","entry":"existing entry name (for replace/retire)","name":"","type":"character|place|item|faction|lore|note","aliases":[],"content":"","always_include":false,"reason":"one short sentence"}]}
-If nothing needs to change, reply {"changes":[]}.`;
-
 function describeCodex(entries: CodexEntry[]): string {
   if (entries.length === 0) return "(empty)";
   return entries
     .map((e) => `- ${e.name} [${e.type}]${e.aliases.length ? ` (also: ${e.aliases.join(", ")})` : ""}: ${e.description.replace(/\s+/g, " ").trim()}`)
     .join("\n");
-}
-
-const norm = (s: string) => s.trim().toLowerCase();
-
-function findEntry(entries: CodexEntry[], name: string): CodexEntry | undefined {
-  const n = norm(name);
-  if (!n) return undefined;
-  return entries.find((e) => norm(e.name) === n || e.aliases.some((a) => norm(a) === n));
-}
-
-export type AnalyzeOptions = {
-  story: StoryInfo;
-  /** Chapters from the root down to the selected chapter. */
-  path: PathChapter[];
-  /** Existing codex ops on that path. */
-  ops: CodexOp[];
-  /** "chapter" reads only the last chapter; "path" reads every chapter in order. */
-  scope: "chapter" | "path";
-  signal?: AbortSignal;
-  onProgress?: (done: number, total: number) => void;
-  /** Called after each chapter with all proposals so far. */
-  onProposals?: (proposals: Proposal[]) => void;
-};
-
-/**
- * The request for reading one chapter. The codex it shows is as it stood when the chapter began,
- * plus `virtualOps`: what a scan has proposed so far.
- */
-function buildAnalyze(
-  contextTokens: number,
-  opts: { story: StoryInfo; path: PathChapter[]; ops: CodexOp[]; chapter: PathChapter; virtualOps: CodexOp[] },
-): { state: CodexEntry[]; request: PromptParts } {
-  const { story, path, ops, chapter: ch, virtualOps } = opts;
-  const budget = Math.max(1000, contextTokens - 1500);
-  const state = foldCodex([...ops.filter((o) => o.anchor_depth <= ch.depth), ...virtualOps]);
-  const earlier = path.filter((c) => c.depth < ch.depth);
-  const soFar = earlier.length ? buildStorySoFar(earlier, Math.floor(budget * 0.35)) : "";
-  const body = ch.body.length > budget * 2 ? `${ch.body.slice(0, budget * 2)}…` : ch.body;
-
-  const message = [
-    `Story: ${story.title}${story.premise.trim() ? `\nPremise: ${story.premise.trim()}` : ""}`,
-    soFar && `${soFar}`,
-    `Codex so far:\n${describeCodex(state)}`,
-    `Chapter to read: "${ch.title}"\n${body}`,
-    "List the codex changes this chapter establishes, as JSON.",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-  return { state, request: { system: SYSTEM_ANALYZE, message } };
-}
-
-/**
- * The request a scan sends first: for the last chapter with "chapter", or for the first with
- * "path" (the ones after it also hold what the earlier ones proposed).
- */
-export function scanRequest(contextTokens: number, opts: Omit<AnalyzeOptions, "signal">): PromptParts {
-  const chapter = opts.scope === "chapter" ? opts.path.at(-1) : opts.path[0];
-  if (!chapter) throw new Error("There's no chapter to read.");
-  return buildAnalyze(contextTokens, { ...opts, chapter, virtualOps: [] }).request;
-}
-
-export async function analyzePath(settings: Settings, opts: AnalyzeOptions): Promise<Proposal[]> {
-  const { story, path, ops, scope } = opts;
-  const targets = scope === "chapter" ? path.slice(-1) : path;
-  const virtualOps: CodexOp[] = [];
-  const proposals: Proposal[] = [];
-  let counter = 0;
-
-  for (let i = 0; i < targets.length; i++) {
-    if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
-    opts.onProgress?.(i, targets.length);
-    const ch = targets[i];
-
-    const { state, request } = buildAnalyze(settings.contextTokens, { story, path, ops, chapter: ch, virtualOps });
-
-    const reply = await completeChat(settings, {
-      system: request.system,
-      messages: [{ role: "user", content: request.message }],
-      // A whole-path scan makes one call per chapter, so use the cheaper model for it.
-      role: scope === "path" ? "cheap" : "main",
-      signal: opts.signal,
-    });
-
-    const json = extractJson(reply) as { changes?: unknown };
-    const changes = Array.isArray(json.changes) ? json.changes : [];
-    for (const raw of changes.slice(0, 8)) {
-      const p = toProposal(raw, state, ch, () => `new-${++counter}`, `${i}-${proposals.length}`);
-      if (!p) continue;
-      proposals.push(p);
-      virtualOps.push(toVirtualOp(p, ch, virtualOps.length));
-    }
-    opts.onProposals?.([...proposals]);
-  }
-  opts.onProgress?.(targets.length, targets.length);
-  return proposals;
-}
-
-function toProposal(
-  raw: unknown,
-  state: CodexEntry[],
-  ch: PathChapter,
-  newRef: () => string,
-  key: string,
-): Proposal | null {
-  if (!raw || typeof raw !== "object") return null;
-  const o = raw as Record<string, unknown>;
-  const action = o.action === "replace" || o.action === "retire" || o.action === "create" ? o.action : null;
-  if (!action) return null;
-  const reason = asString(o.reason, 300);
-  const anchor = { anchorChapterId: ch.id, anchorTitle: ch.title };
-
-  if (action === "retire") {
-    const target = findEntry(state, asString(o.entry, 100) || asString(o.name, 100));
-    if (!target) return null;
-    return {
-      key, action, ref: target.entry_id, isNew: target.entry_id.startsWith("new-"), reason, ...anchor,
-      name: target.name, type: target.type, aliases: target.aliases, content: target.content,
-      always_include: target.always_include, previous: { name: target.name, content: target.content },
-    };
-  }
-
-  const fields = parseFields(o);
-  if (!fields) return null;
-  // A "create" of something that already exists is really a change to it; a "replace" of something
-  // we can't find is really a create.
-  const existing =
-    findEntry(state, asString(o.entry, 100)) ?? findEntry(state, fields.name) ?? undefined;
-  if (existing) {
-    const same =
-      existing.name === fields.name &&
-      existing.type === fields.type &&
-      existing.content === fields.content &&
-      existing.aliases.join("|") === fields.aliases.join("|") &&
-      existing.always_include === fields.always_include;
-    if (same) return null;
-    return {
-      key, action: "replace", ref: existing.entry_id, isNew: existing.entry_id.startsWith("new-"), reason, ...anchor,
-      ...fields, previous: { name: existing.name, content: existing.content },
-    };
-  }
-  return { key, action: "create", ref: newRef(), isNew: true, reason, ...anchor, ...fields, previous: null };
-}
-
-function toVirtualOp(p: Proposal, ch: PathChapter, n: number): CodexOp {
-  return {
-    id: `virtual-${n}`,
-    anchor_chapter_id: ch.id,
-    anchor_depth: ch.depth,
-    entry_id: p.ref,
-    op: p.action,
-    name: p.name,
-    type: p.type,
-    aliases: p.aliases,
-    content: p.content,
-    always_include: p.always_include,
-    posted_at: Date.now() + n,
-  };
-}
-
-/**
- * Posts accepted proposals in order. `send` posts one op and returns the entry id the server
- * used. Proposals that touch an entry this run was going to create (but the user rejected)
- * become creates themselves, or are skipped if they were retirements.
- */
-export async function applyProposals(
-  accepted: Proposal[],
-  send: (body: Record<string, unknown>) => Promise<string>,
-): Promise<number> {
-  const real = new Map<string, string>(); // temporary ref -> real entry id
-  let posted = 0;
-  for (const p of accepted) {
-    const fields = { name: p.name, type: p.type, aliases: p.aliases, content: p.content, always_include: p.always_include };
-    const base = { anchor_chapter_id: p.anchorChapterId };
-    if (p.action === "create") {
-      real.set(p.ref, await send({ ...base, op: "create", ...fields }));
-    } else {
-      const id = p.isNew ? real.get(p.ref) : p.ref;
-      if (!id) {
-        if (p.action === "retire") continue;
-        real.set(p.ref, await send({ ...base, op: "create", ...fields }));
-      } else if (p.action === "retire") {
-        await send({ ...base, op: "retire", entry_id: id });
-      } else {
-        await send({ ...base, op: "replace", entry_id: id, ...fields });
-      }
-    }
-    posted++;
-  }
-  return posted;
 }
 
 // ---------- drafting a single entry ----------

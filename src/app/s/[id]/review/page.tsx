@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import BulkSummaries from "@/components/BulkSummaries";
-import CodexAiScan from "@/components/CodexAiScan";
+import CodexCheck from "@/components/CodexCheck";
 import CodexEntryList from "@/components/CodexEntryList";
+import CodexInbox from "@/components/CodexInbox";
 import ContinuityCheck from "@/components/ContinuityCheck";
 import IssueActions from "@/components/IssueActions";
 import MarkReviewedButton from "@/components/MarkReviewedButton";
@@ -15,6 +16,7 @@ import TaggedChapters from "@/components/TaggedChapters";
 import { listRuns } from "@/lib/aiRuns";
 import { ENTRY_TYPES } from "@/lib/codex";
 import { getCodexOps, storyCodexEntries } from "@/lib/codexDb";
+import { openSuggestionCounts } from "@/lib/codexSuggestions";
 import { CHANGE_EVENT_TAGS } from "@/lib/continuity";
 import { codexEntryFor, reviewIssues, type ReviewIssue } from "@/lib/review";
 import { getPath, getStory } from "@/lib/stories";
@@ -94,11 +96,12 @@ export default async function StoryBiblePage({
   const unfinishedRun = (check: string, needsTasks = true) =>
     reviewRuns.find((r) => UNFINISHED.includes(r.status) && !r.options.automatic && (!needsTasks || r.counts.total > 0) && (r.options.checks ?? ["tags"]).includes(check as "tags"))?.id ?? null;
 
+  const inbox = openSuggestionCounts(story.id);
   const counts: Record<Tab, number> = {
     overview: 0,
     issues: ai.open.length + summaryIssues.open.length,
     continuity: clashes.open.length,
-    codex: gaps.open.length,
+    codex: gaps.open.length + (chosen ? (inbox.byChapter[chosen.id] ?? 0) : inbox.total),
     tags: waitingTags.length,
     summaries: 0,
   };
@@ -343,30 +346,16 @@ export default async function StoryBiblePage({
     );
     return (
       <>
+        <h2 id="inbox">Codex inbox</h2>
+        <CodexInbox storyId={story!.id} chapterId={chosen?.id} />
+
         <h2 id="codex">Not in the codex yet</h2>
         {gaps.open.length > 0 && <p className="meta">These names come up in several chapters on a path but have no codex entry.</p>}
         {issueLists<A>(gaps, gap, { open: ["later", "dismissed"], later: ["open", "dismissed"], dismissed: ["undo"] }, "No missing names found.", "A dismissed gap comes back if the chapter is edited.")}
 
         <h2>Check with the AI</h2>
-        <p className="meta">The AI checks one chapter at a time, or that chapter and the ones leading to it.</p>
-        {chosen && path.length > 0 ? (
-          <CodexAiScan
-            story={{ title: story!.title, premise: story!.premise }}
-            chapterId={chosen.id}
-            path={path.map((c) => ({
-              id: c.id,
-              title: c.title,
-              depth: c.depth,
-              body: c.body,
-              summary: c.summary,
-              path_summary: c.path_summary,
-            }))}
-            ops={getCodexOps(chosen.id)}
-            defaultOpen
-          />
-        ) : (
-          <p>Pick a chapter under Show, above, to check its codex.</p>
-        )}
+        <p className="meta">The AI reads chapters and leaves suggested fact changes in the inbox above.</p>
+        <CodexCheck storyId={story!.id} chapterId={chosen && path.length > 0 ? chosen.id : null} defaultOpen />
 
         <CodexEntryList storyId={story!.id} entries={codexEntries} type={entryType} baseHref={`${base}?tab=codex`} />
       </>

@@ -91,14 +91,16 @@ try {
   const redo = page.getByRole("link", { name: "Redo all the AI summaries" });
   ok((await redo.getAttribute("href")) === `/s/${s.story_id}/review?tab=summaries`, "Redo all the AI summaries links to the Summaries tab");
   await page.goto(`${BASE}/s/${s.story_id}/review?tab=codex`);
-  ok((await page.getByText("AI codex helper").count()) === 0 && await page.getByText("Pick a chapter under Show, above, to check its codex.").isVisible(), "no codex helper until a chapter is chosen");
+  await page.getByText("No codex suggestions waiting.").waitFor();
+  ok(true, "the codex inbox says when nothing waits");
+  ok((await page.getByRole("button", { name: "Check this chapter" }).count()) === 0 && await page.getByRole("button", { name: "Check every chapter", exact: true }).isVisible(), "no single-chapter check until a chapter is chosen");
 
   // Choosing a chapter with the Show picker.
   await page.locator("#bible-chapter").selectOption(stale);
   await page.getByRole("button", { name: "Show", exact: true }).click();
   await page.waitForURL(new RegExp(`tab=codex&chapter=${stale}`));
   ok(await page.getByText(/Showing .*Stale one.* only/).isVisible(), "choosing a chapter filters the page to it");
-  ok(await page.getByText("AI codex helper").first().isVisible(), "the AI codex helper is shown for the chosen chapter");
+  ok(await page.getByRole("button", { name: "Check this chapter" }).isVisible(), "the codex check buttons are shown for the chosen chapter");
   await page.goto(`${BASE}/s/${s.story_id}/review?tab=issues&chapter=${stale}`);
   ok((await page.getByRole("link", { name: "Fix the summary" }).count()) === 1 && (await page.getByRole("link", { name: "Redo all the AI summaries" }).count()) === 0, "only that chapter's issue is listed");
 

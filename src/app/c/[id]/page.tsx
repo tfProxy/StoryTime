@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { aiMarkOf, getChoices, getPath, getStory } from "@/lib/stories";
 import AiMark from "@/components/AiMark";
 import AiReviewNotice from "@/components/AiReviewNotice";
+import CodexInboxBanner from "@/components/CodexInboxBanner";
 import { appliedTagNames } from "@/lib/tags";
 import { contentNotes } from "@/lib/contentNotes";
 import { noteText, type ChapterNote } from "@/lib/contentNotesRoll";
@@ -43,6 +44,7 @@ export default async function ChapterPage({
           <Link href={`/c/${chapter.id}/codex?review=1`}>Review codex for this chapter</Link>
         </p>
       )}
+      <CodexInboxBanner storyId={story.id} chapterId={chapter.id} />
       {ai === "unreviewed" && (
         <AiReviewNotice chapterId={chapter.id} pathUnreviewed={path.slice(0, -1).filter((p) => aiMarkOf(p) === "unreviewed").length} />
       )}

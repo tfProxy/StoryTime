@@ -23,7 +23,7 @@ import {
 } from "@/lib/codex";
 import { useSettings } from "@/lib/settings";
 import { draftEntry, entryRequest, type PathChapter, type StoryInfo } from "@/lib/ai/codexAi";
-import CodexAiScan from "./CodexAiScan";
+import CodexCheck from "./CodexCheck";
 import CodexFacts from "./CodexFacts";
 import PromptButton from "./PromptButton";
 
@@ -33,7 +33,7 @@ type Props = {
   story: StoryInfo;
   /** The story's id, which lets each entry show its picture and link to its picture page (not in the writing page's drawer). */
   storyId?: string;
-  /** Open the AI helper section initially (used right after posting a chapter). */
+  /** Open the codex check section initially (used right after posting a chapter). */
   openAiHelper?: boolean;
   /** Shown inside the writing page's drawer: no chapter timeline or AI scan, just the entries. */
   embedded?: boolean;
@@ -191,7 +191,7 @@ export default function CodexPanel({ story, storyId, openAiHelper, embedded, sto
 
       {error && <p className="error">{error}</p>}
 
-      {!embedded && <CodexAiScan story={story} chapterId={chapterId} path={path} ops={ops} defaultOpen={openAiHelper} />}
+      {!embedded && !storyWide && storyId && <CodexCheck storyId={storyId} chapterId={chapterId} inboxHref={`/s/${storyId}/review?tab=codex`} defaultOpen={openAiHelper} />}
 
       {editing === null && (
         <div>

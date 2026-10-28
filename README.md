@@ -22,8 +22,8 @@ and, for pictures, your own ComfyUI machine.
   notes section on any writing page; a change is tried out on that page until you save it for the
   whole story.
 - **Codex**: per-branch notes on characters, places and facts (a character who turns into a horse
-  stays human on other branches). The AI can scan chapters for entries, draft entries, and bring an
-  entry up to date with the story. While writing, you can read, edit and add entries without leaving
+  stays human on other branches). The AI can draft entries, bring an entry up to date with the story,
+  and read chapters for changes (see **Codex inbox** below). While writing, you can read, edit and add entries without leaving
   the page; those changes stay in the draft and are saved with the chapter when it is posted (or
   straight away, if you date them to an earlier chapter). Entries can have pictures that change
   over the story too.
@@ -32,6 +32,16 @@ and, for pictures, your own ComfyUI machine.
   Changing an aspect later keeps the old version in its history. A character can have forms
   (human, vixen…): facts can belong to one form, and only the current form's facts go to the AI.
   **What the AI reads** shows the text the AI gets for the entry: its form, facts and notes.
+- **Codex inbox**: after you save a new or edited chapter, the AI (your cheaper model) reads it in
+  the background and leaves suggested fact changes in the inbox, on the **Codex** tab of the Story
+  Bible. Each suggestion is one fact, shows in red and green exactly what changes and the sentence it
+  is based on, and you **Accept**, **Edit** or **Dismiss** it (a dismissed one can be undone).
+  "Accept all for" an entry takes its changes in one go; where the chapter contradicts the codex you
+  choose **Update codex** or **Keep the codex**. A chapter shows "Codex: N suggestions from this
+  chapter" when some are waiting, and the chapter's codex page counts the ones on its branch. You can
+  also run the check yourself (**Check this chapter**, **Check every chapter on this branch**) from
+  the codex page or the Story Bible. Turn the automatic check on or off in Settings under "Suggest
+  codex changes after a chapter is saved".
 - **Review** (a story's menu): a page listing what may need fixing (missing, stale or wrong
   summaries, continuity slips, names with no codex entry, AI chapters not yet read) and the
   **tags** the AI suggests for chapters, for you to approve. See [Tags](#tags) below.

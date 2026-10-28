@@ -7,10 +7,18 @@
   --accent: #2f5d9e;
   --accent-fg: #ffffff;
   --warn: #9a5b00;
+  --diff-add-bg: #d7f0dc;
+  --diff-add-fg: #14532d;
+  --diff-del-bg: #f8d9d9;
+  --diff-del-fg: #7f1d1d;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
+    --diff-add-bg: #1d3a28;
+    --diff-add-fg: #a9e6bb;
+    --diff-del-bg: #4a2327;
+    --diff-del-fg: #f4b6b6;
     --bg: #17161a;
     --fg: #e9e6df;
     --muted: #9d98ad;
@@ -3548,4 +3556,96 @@ button.refine-fit {
   font-size: 0.9rem;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* The codex inbox: one card per suggested fact change. */
+.inbox-chapter {
+  margin: 1.25rem 0 0.25rem;
+  font-size: 1.05rem;
+}
+
+.inbox-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  margin: 0.75rem 0 0.25rem;
+}
+
+.inbox-entry h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.inbox-card {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+  min-width: 0;
+}
+
+.inbox-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+
+.inbox-diff {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--line);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.inbox-diff ins,
+.inbox-diff del {
+  border-radius: 3px;
+  padding: 0 0.1em;
+}
+
+.inbox-diff ins {
+  background: var(--diff-add-bg);
+  color: var(--diff-add-fg);
+  text-decoration: none;
+}
+
+.inbox-diff del {
+  background: var(--diff-del-bg);
+  color: var(--diff-del-fg);
+  text-decoration: line-through;
+}
+
+.inbox-quote {
+  margin: 0;
+  font-style: italic;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.inbox-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.inbox-edit {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.inbox-done {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  margin: 0.25rem 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.inbox-facts {
+  margin: 0;
+  padding-left: 1.25rem;
 }

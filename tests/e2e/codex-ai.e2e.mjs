@@ -1,6 +1,7 @@
 import http from "node:http";
 import { launch, useMockAi } from "./browser.mjs";
 
+// Drafting a single entry with the AI (the codex check and its inbox are in codex-inbox.e2e.mjs).
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const calls = [];
 const mock = http.createServer((req, res) => {
@@ -13,13 +14,7 @@ const mock = http.createServer((req, res) => {
     const system = body.messages[0].content, user = body.messages.at(-1).content;
     calls.push({ system, user, model: body.model });
     let out;
-    if (system.includes("maintain the codex")) {
-      if (user.includes('Chapter to read: "Start"')) out = { changes: [{ action: "create", name: "Mira", type: "character", aliases: ["the thief"], content: "A human thief.", reason: "Introduced in the opening." }] };
-      else if (user.includes("PATHSTORY")) out = { changes: [{ action: "replace", entry: "Mira", name: "Mira", type: "character", aliases: ["the thief"], content: "A horse.", reason: "She was transformed." }] };
-      else out = { changes: [
-        { action: "create", name: "Bram", type: "character", aliases: [], content: "A smith.", reason: "Appears." },
-        { action: "create", name: "Mira", type: "character", aliases: [], content: "Now a horse.", reason: "Transformed." } ] };
-    } else if (user.includes("Chapters since the entry was last updated")) {
+    if (user.includes("Chapters since the entry was last updated")) {
       out = { name: "Gideon", type: "character", aliases: [], content: "A smith who now keeps the inn.", always_include: false, changed_in: 1 };
     } else {
       out = { name: "Old Tam", type: "character", aliases: ["the ferryman"], content: "A grizzled ferryman.", always_include: false };
@@ -44,7 +39,6 @@ async function makeStory(title, rootTitle, rootBody, aTitle, aBody) {
 }
 const s1 = await makeStory("Single", "Start", "Mira stood in the market. Bram the smith waved.", "Horse", "Mira had turned into a horse.");
 await post("/api/codex", { anchor_chapter_id: s1.root, op: "create", name: "Gideon", type: "character", content: "A smith." });
-const s2 = await makeStory("Pathy", "Start", "Mira the thief crept PATHSTORY.", "Later", "She was a horse now. PATHSTORY");
 
 const browser = await launch();
 const ctx = await browser.newContext();
@@ -52,29 +46,15 @@ const ai = await useMockAi(BASE);
 const page = await ctx.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 page.on("dialog", (d) => d.accept());
-const card = (text) => page.locator("article.card", { hasText: text });
 
-// ---- single-chapter scan ----
-await page.goto(`${BASE}/c/${s1.a}`);
+// ---- after posting: the banner leads to the codex page with the check panel open ----
 await page.goto(`${BASE}/c/${s1.a}?posted=1`);
 ok(await page.getByRole("link", { name: "Review codex for this chapter" }).isVisible(), "post-publish banner offers a codex review");
 await page.getByRole("link", { name: "Review codex for this chapter" }).click();
 await page.waitForURL(/codex\?review=1/);
-ok(await page.locator("details.ai-panel").evaluate((d) => d.open), "review link opens the AI helper");
-await page.getByRole("button", { name: "Scan for codex changes" }).click();
-await page.getByText("Bram").first().waitFor();
-await page.getByRole("button", { name: /^Post 2 changes/ }).waitFor();
-ok(calls.at(-1).model === "main" && calls.at(-1).user.includes("Mira had turned into a horse."), "single scan uses main model and reads this chapter");
-ok(calls.at(-1).user.includes("Mira stood in the market"), "…with the earlier chapters as context");
-// reject Bram, tweak Mira
-await page.locator("article.card", { hasText: "Bram" }).getByRole("checkbox").uncheck();
-await page.getByRole("button", { name: /^Post 1 change/ }).waitFor();
-await page.locator("article.card", { hasText: "Transformed." }).getByLabel("Entry description").fill("Now a horse (edited by hand).");
-await page.getByRole("button", { name: /^Post 1 change/ }).click();
-await page.getByText("Posted 1 codex change.").waitFor();
-await page.locator("article.card", { hasText: "Mira" }).getByText("Now a horse (edited by hand).").first().waitFor();
-ok((await page.locator("article.card", { hasText: "Bram" }).count()) === 0, "rejected proposal wasn't posted");
-ok(await page.getByText("changed in this chapter").first().isVisible(), "accepted entry anchored at the scanned chapter");
+ok(await page.locator("details.ai-panel").evaluate((d) => d.open), "review link opens the codex check panel");
+ok(await page.getByRole("button", { name: "Check this chapter" }).isVisible(), "the panel has the check buttons");
+ok((await page.getByRole("button", { name: "Scan for codex changes" }).count()) === 0, "the old whole-entry scan is gone");
 
 // ---- entry assist: new entry, undo, save ----
 await page.getByRole("button", { name: "+ New entry" }).click();
@@ -107,35 +87,6 @@ await page.locator("article.card", { hasText: "Old Tam" }).waitFor();
 await page.goto(`${BASE}/c/${s1.root}/codex`);
 await page.locator("article.card", { hasText: "Gideon" }).getByText("A smith who now keeps the inn.").first().waitFor();
 ok(true, "the update took effect from the earlier chapter it was anchored at");
-
-// ---- whole-path scan ----
-await page.goto(`${BASE}/c/${s2.a}/codex`);
-await page.locator("details.ai-panel > summary").click();
-await page.getByLabel(/Every chapter up to here/).check();
-const before = calls.length;
-await page.getByRole("button", { name: "Scan for codex changes" }).click();
-await page.getByRole("button", { name: /^Post 2 changes/ }).waitFor();
-ok(calls.length - before === 2 && calls.slice(before).every((c) => c.model === "cheap"), "path scan: one call per chapter on the cheaper model");
-ok(calls.at(-1).user.includes("Mira [character] (also: the thief): A human thief."), "second chapter saw the first chapter's proposal");
-const cards = page.locator("article.card");
-ok((await cards.nth(0).innerText()).includes("New entry") && (await cards.nth(1).innerText()).includes("Change"), "create then change");
-await page.getByRole("button", { name: /^Post 2 changes/ }).click();
-await page.getByText("Posted 2 codex changes.").waitFor();
-await page.locator("article.card", { hasText: "Mira" }).getByText("A horse.").first().waitFor();
-ok(true, "both posted, entry shows the later version");
-await page.locator("article.card", { hasText: "Mira" }).getByRole("button", { name: /History/ }).click();
-ok((await page.locator("ol.history li").count()) === 2, "history shows the two versions");
-await page.goto(`${BASE}/c/${s2.root}/codex`);
-await page.locator("article.card", { hasText: "Mira" }).getByText("A human thief.").first().waitFor();
-ok(true, "the root of that story still has the human Mira (changes were anchored per chapter)");
-
-// ---- friendly error on a bad model reply ----
-await ai.breakConnection();
-await page.goto(`${BASE}/c/${s2.a}/codex`);
-await page.locator("details.ai-panel > summary").click();
-await page.getByRole("button", { name: "Scan for codex changes" }).click();
-await page.getByText(/Couldn't reach/).waitFor({ timeout: 5000 }).catch(() => {});
-ok(await page.getByText(/Couldn't reach/).isVisible().catch(() => false), "unreachable AI shows a clear error");
 
 await browser.close(); mock.close();
 await ai.restore();

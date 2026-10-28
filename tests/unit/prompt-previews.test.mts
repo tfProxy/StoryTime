@@ -1,7 +1,7 @@
 // The "view prompt" windows show the same request the buttons send: each preview is compared with
 // what a mock model actually receives.
 import http from "node:http";
-import { draftEntry, entryRequest, analyzePath, scanRequest } from "../../src/lib/ai/codexAi.ts";
+import { draftEntry, entryRequest } from "../../src/lib/ai/codexAi.ts";
 import { summarizeChapter, summaryRequest } from "../../src/lib/ai/summaries.ts";
 import { DEFAULT_SETTINGS } from "../../src/lib/settingsSchema.ts";
 
@@ -35,17 +35,6 @@ await summarizeChapter(settings, sOpts);
 const sr = summaryRequest(tokens, sOpts);
 ok(sent.at(-1)!.system === sr.system && sent.at(-1)!.user === sr.message, "summary preview is what summarizing sends");
 ok(sr.message.includes("Before.") && sr.message.includes("Mira became a horse."), "…and holds the previous summary and the chapter");
-
-// ---- codex scan ----
-reply = '{"changes":[]}';
-await analyzePath(settings, { story, path, ops: [], scope: "chapter" });
-const scan = scanRequest(tokens, { story, path, ops: [], scope: "chapter" });
-ok(sent.at(-1)!.system === scan.system && sent.at(-1)!.user === scan.message, "scan preview (this chapter) is what scanning sends");
-ok(scan.message.includes("Mira became a horse.") && !scan.message.includes('Chapter to read: "Root"'), "…and reads the last chapter");
-sent.length = 0;
-await analyzePath(settings, { story, path, ops: [], scope: "path" });
-const first = scanRequest(tokens, { story, path, ops: [], scope: "path" });
-ok(sent[0].user === first.message && first.message.includes('Chapter to read: "Root"'), "scan preview (every chapter) is the first request of the scan");
 
 // ---- codex entry ----
 reply = '{"name":"Old Tam","type":"character","aliases":[],"content":"A ferryman.","always_include":false}';

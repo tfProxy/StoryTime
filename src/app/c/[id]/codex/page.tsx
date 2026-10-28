@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import CodexPanel from "@/components/CodexPanel";
 import { getCodexFacts, getCodexOps } from "@/lib/codexDb";
+import { openSuggestionCounts } from "@/lib/codexSuggestions";
 import { getPath, getStory } from "@/lib/stories";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,8 @@ export default async function CodexPage({
   const chapter = path[path.length - 1];
   const story = getStory(chapter.story_id);
   if (!story) notFound();
+  const counts = openSuggestionCounts(story.id).byChapter;
+  const waiting = path.reduce((sum, c) => sum + (counts[c.id] ?? 0), 0);
 
   return (
     <>
@@ -31,6 +34,12 @@ export default async function CodexPage({
         Characters, places and facts the AI keeps in mind. Each branch has its own.{" "}
         <a href={`/api/chapters/${id}/codex?format=md`}>Download as Markdown</a>
       </p>
+      {waiting > 0 && (
+        <p className="meta">
+          Codex inbox: {waiting} suggestion{waiting === 1 ? "" : "s"} waiting on this branch ·{" "}
+          <Link href={`/s/${story.id}/review?tab=codex`}>Review</Link>
+        </p>
+      )}
       <CodexPanel
         openAiHelper={Boolean(review)}
         story={{ title: story.title, premise: story.premise }}

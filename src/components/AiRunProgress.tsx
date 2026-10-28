@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getRun } from "@/lib/aiRuns/api";
 import type { RunEvent } from "@/lib/aiRuns/runner";
-import type { AiRun, ContinuityTask, FactsTask, PictureTask, SummaryTask, TagsTask, WriteTask } from "@/lib/aiRuns/types";
+import type { AiRun, CodexTask, ContinuityTask, FactsTask, PictureTask, SummaryTask, TagsTask, WriteTask } from "@/lib/aiRuns/types";
 import { useWorkQueue, type RunItem } from "./WorkQueue";
 
 const plainFetch = (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init);
@@ -85,8 +85,8 @@ export default function AiRunProgress({
   const isPictures = run.mode === "pictures";
   const isTags = run.mode === "review";
   // A review run's tasks: the chapters read for tags and for facts.
-  const tagTasks = run.tasks.filter((t): t is TagsTask | FactsTask | ContinuityTask | SummaryTask => t.kind === "tags" || t.kind === "facts" || t.kind === "continuity" || t.kind === "summary");
-  const hasFacts = tagTasks.some((t) => t.kind === "facts" || t.kind === "continuity");
+  const tagTasks = run.tasks.filter((t): t is TagsTask | FactsTask | ContinuityTask | SummaryTask | CodexTask => t.kind === "tags" || t.kind === "facts" || t.kind === "continuity" || t.kind === "summary" || t.kind === "codex");
+  const hasFacts = tagTasks.some((t) => t.kind === "facts" || t.kind === "continuity" || t.kind === "codex");
   const onlySummaries = tagTasks.length > 0 && tagTasks.every((t) => t.kind === "summary");
   const pics = run.tasks.filter((t): t is PictureTask => t.kind === "picture");
   const writes = run.tasks.filter((t): t is WriteTask => t.kind === "write");
@@ -235,7 +235,16 @@ export default function AiRunProgress({
                 </>
               ) : (
                 <>
-                  <Link href={`/c/${t.chapterId}`}>{t.label ?? "A chapter"}</Link> <span className="meta">· {t.kind === "facts" ? "Facts: " : t.kind === "summary" ? "Summary: " : ""}{STATUS_WORDS[t.status]}{t.status === "done" && t.found ? (t.kind === "summary" ? ", doesn't match" : t.kind === "facts" ? `, ${t.found} fact${t.found === 1 ? "" : "s"}` : `, ${t.found} new suggestion${t.found === 1 ? "" : "s"}`) : ""}</span>
+                  {t.kind === "codex" ? (
+                    <>
+                      Check the codex for <Link href={`/c/${t.chapterId}`}>“{t.label ?? "a chapter"}”</Link>{" "}
+                      <span className="meta">· {STATUS_WORDS[t.status]}{t.status === "done" && t.found ? `, ${t.found} suggestion${t.found === 1 ? "" : "s"}` : ""}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Link href={`/c/${t.chapterId}`}>{t.label ?? "A chapter"}</Link> <span className="meta">· {t.kind === "facts" ? "Facts: " : t.kind === "summary" ? "Summary: " : ""}{STATUS_WORDS[t.status]}{t.status === "done" && t.found ? (t.kind === "summary" ? ", doesn't match" : t.kind === "facts" ? `, ${t.found} fact${t.found === 1 ? "" : "s"}` : `, ${t.found} new suggestion${t.found === 1 ? "" : "s"}`) : ""}</span>
+                    </>
+                  )}
                 </>
               )}
             </div>
