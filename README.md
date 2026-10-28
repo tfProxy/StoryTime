@@ -77,7 +77,7 @@ Each tab has its own address (`/settings#tags`), so a link or a reload comes bac
 
 ## Tags
 
-Tags (Settings > Tags) are written by you; **Find tags** on a story's Review page suggests where each
+Tags (Settings > Tags) are written by you; **Find tags** on the Tags tab of a story's Story Bible suggests where each
 applies, and you approve or reject each one. **Help me write it** drafts a rule from a rough idea, and
 **Try it** shows what a rule would tag before you save it. A tag can be shown to readers as a content
 note under each choice. Each story can switch tags off on its details page.

@@ -24,7 +24,7 @@ Everything below is built and passes its tests against fakes, but has not been t
 **With your own models and devices**
 - [ ] Story review against the real models: Find tags, Help me write it, Check continuity, Check summaries. Prompt quality with a small local model is unknown.
 - [ ] Run `npm run test:e2e` with Edge on the Windows machine (`AGENTS.md`); if any file fails only there, note which and why in `AGENTS.md`.
-- [ ] A real phone with touch: Review page tabs and checkboxes, the Refine screen.
+- [ ] A real phone with touch: Story Bible tabs and checkboxes, the Refine screen.
 
 ## To build
 
