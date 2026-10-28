@@ -577,6 +577,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
         role: "main",
         model: writeModel,
         signal: ctl.signal,
+        source: { label: "Rewrite passage", storyId },
       })) {
         text += piece;
         if (picked) {
@@ -612,6 +613,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       model: suggestModel,
       maxTokens: 60,
       signal,
+      source: { label: "Choice label", storyId },
     });
     return parseChoiceLabel(reply).slice(0, LIMITS.label);
   }
@@ -674,6 +676,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
         role: "cheap",
       model: suggestModel,
         maxTokens: 800,
+        source: { label: "Brainstorm ideas", storyId },
       });
       const found = parseIdeas(text);
       if (found.length === 0) throw new Error("The AI didn't suggest anything I could read. Try again.");
@@ -735,6 +738,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
         role: "cheap",
       model: suggestModel,
         maxTokens: 400,
+        source: { label: "Suggest choices", storyId },
       });
       const found = parseChoices(text);
       patch({ suggestions: found });

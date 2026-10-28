@@ -1,5 +1,6 @@
 // The work queue's worker, which runs inside the Next.js process (D1). `src/instrumentation.ts` starts it once when the
 // server starts; routes call `getWorker()`, which starts it if this module copy was not the one instrumentation used (D2).
+import { db } from "../db";
 import { workerState, type WorkerState } from "./bus";
 import { startLoop } from "./loop";
 import { deleteOldUploads } from "./uploads";
@@ -11,6 +12,9 @@ export function startWorker(): WorkerState {
   const worker = workerState();
   if (worker.started) return worker;
   worker.started = true;
+  // Opening the database also sets the recorder that fills the prompt history (installAiRecorder in db.ts), so the
+  // AI calls the worker makes are recorded from the first one.
+  db();
   deleteOldUploads();
   worker.timers.push(setInterval(deleteOldUploads, HOUR_MS).unref());
   // Restart recovery (D12) is part of the loop for what it recovers: Generate now, runs in 3.1, pictures in 4.4.

@@ -16,7 +16,49 @@ export type ChatRequest = {
   model?: ModelRef | null;
   maxTokens?: number;
   signal?: AbortSignal;
+  /** Where the call comes from, for the prompt history. A call without one is recorded as "Other". */
+  source?: AiSource;
 };
+
+/** The short, stable label of a call (they are the history's filter list), and what it was made for. */
+export type AiSource = { label: string; storyId?: string; chapterId?: string; runId?: string; itemKey?: string };
+
+/** What a helper takes from its caller: the ids. The helper adds its own label (`{ label: "Tags", ...opts.source }`). */
+export type AiSourceIds = Omit<AiSource, "label">;
+
+/** What the recorder gets once per call. The connection is its name, never its key. */
+export type ChatRecord = {
+  at: number;
+  ms: number;
+  source?: AiSource;
+  system?: string;
+  messages: ChatMessage[];
+  connection: string | null;
+  model: string | null;
+  role: "main" | "cheap" | null;
+  temperature: number | null;
+  thinkingOff: boolean;
+  reply: string;
+  status: "ok" | "failed" | "stopped";
+  error?: string;
+};
+export type ChatRecorder = (record: ChatRecord) => void | Promise<unknown>;
+
+// The recorder lives on globalThis, not in a module variable: Next.js loads this file more than once (the
+// instrumentation bundle, the route bundles), and the copy that makes a call must see the recorder whichever copy set it.
+const recorderHolder = globalThis as unknown as { __storytimeChatRecorder?: ChatRecorder };
+export function setChatRecorder(fn: ChatRecorder | undefined) {
+  recorderHolder.__storytimeChatRecorder = fn;
+}
+
+function report(record: ChatRecord) {
+  try {
+    // A recorder that fails, now or later, never changes the call.
+    void Promise.resolve(recorderHolder.__storytimeChatRecorder?.(record)).catch(() => {});
+  } catch {
+    // ignore
+  }
+}
 
 export class AiError extends Error {}
 
@@ -30,6 +72,8 @@ type Resolved = {
   disableThinking: boolean;
   /** Free ComfyUI's memory first (see Connection.freeComfy). */
   freeComfy: boolean;
+  /** The connection's name, for the prompt history. */
+  connection: string;
 };
 
 function checkConnection(c: Connection) {
@@ -56,6 +100,7 @@ function resolve(settings: Settings, req: Pick<ChatRequest, "role" | "model">): 
     // Set per starred model; a model that isn't starred is left to think as it does by default.
     disableThinking: favoriteFor(settings, ref)?.disableThinking ?? false,
     freeComfy: conn.freeComfy,
+    connection: conn.name || info.label,
   };
 }
 
@@ -130,9 +175,43 @@ async function* sseData(res: Response): AsyncGenerator<string> {
 const CORS_HINT =
   "The server may be down, the URL may be wrong, or it may not allow requests from this site (CORS). For Ollama, set OLLAMA_ORIGINS and restart it.";
 
-/** Streams the model's reply as text chunks. */
+/** Streams the model's reply as text chunks, and reports the call to the recorder (once, when it ends). */
 export async function* streamChat(settings: Settings, req: ChatRequest): AsyncGenerator<string> {
-  const r = resolve(settings, req);
+  const record: ChatRecord = {
+    at: Date.now(),
+    ms: 0,
+    source: req.source,
+    system: req.system,
+    messages: req.messages,
+    connection: null,
+    model: req.model?.model ?? null,
+    role: req.role ?? null,
+    temperature: null,
+    thinkingOff: false,
+    reply: "",
+    // Still "stopped" if the consumer stops reading early (the generator is returned from inside the loop below).
+    status: "stopped",
+  };
+  try {
+    const r = resolve(settings, req);
+    Object.assign(record, { connection: r.connection, model: r.model, temperature: r.temperature, thinkingOff: r.disableThinking });
+    for await (const piece of streamReply(settings, req, r)) {
+      record.reply += piece;
+      yield piece;
+    }
+    record.status = "ok";
+  } catch (e) {
+    const aborted = (e instanceof DOMException || e instanceof Error) && e.name === "AbortError";
+    record.status = aborted ? "stopped" : "failed";
+    if (!aborted) record.error = e instanceof Error ? e.message : String(e);
+    throw e;
+  } finally {
+    record.ms = Date.now() - record.at;
+    report(record);
+  }
+}
+
+async function* streamReply(settings: Settings, req: ChatRequest, r: Resolved): AsyncGenerator<string> {
   // A model sharing the graphics card with ComfyUI gets the memory first, when the connection asks for it.
   if (r.freeComfy && settings.comfy.url.trim()) await freeComfyMemory(settings.comfy.url);
 

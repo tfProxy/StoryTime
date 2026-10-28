@@ -2,7 +2,7 @@
 // branches, so the prompt is written from what is chosen: the premise and codex alone, those and the
 // first chapter, or a path from the first chapter to a chosen one. The request is pure;
 // `writeCoverPrompt` sends it from the browser like every other AI call.
-import { completeChat } from "./client";
+import { completeChat, type AiSourceIds } from "./client";
 import { parseImagePrompt, STYLE_RULES, type ImagePrompt } from "./imagePrompt";
 import {
   buildCodexBlock,
@@ -89,7 +89,7 @@ export function coverPromptRequest(contextTokens: number, opts: CoverPromptOptio
 
 export async function writeCoverPrompt(
   settings: Settings,
-  opts: CoverPromptOptions & { model?: ModelRef | null; signal?: AbortSignal },
+  opts: CoverPromptOptions & { model?: ModelRef | null; signal?: AbortSignal; aiSource?: AiSourceIds },
 ): Promise<ImagePrompt> {
   const request = coverPromptRequest(settings.contextTokens, opts);
   const reply = await completeChat(settings, {
@@ -98,6 +98,7 @@ export async function writeCoverPrompt(
     role: "cheap",
     model: opts.model,
     signal: opts.signal,
+    source: { label: "Cover prompt", ...opts.aiSource },
   });
   return parseImagePrompt(reply);
 }

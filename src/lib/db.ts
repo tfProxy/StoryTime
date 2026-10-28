@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { ensureAiLog, installAiRecorder } from "./aiLog";
 
 // Schema notes:
 // - Every chapter edit first copies the previous version into chapter_revisions, so nothing is
@@ -768,6 +769,9 @@ function open(): Database.Database {
       db.pragma(`user_version = ${v + 1}`);
     })();
   }
+  // The prompt history table is not a migration (see aiLog.ts), and its recorder is set wherever the database is.
+  ensureAiLog(db);
+  installAiRecorder(db);
   return db;
 }
 

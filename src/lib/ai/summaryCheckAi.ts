@@ -1,6 +1,6 @@
 // AI helper for the story review: does a chapter's summary match the chapter? Small prompt, one chapter and its summary,
 // answered with ok or a one-line problem. Runs in the browser or on the server with the user's own key.
-import { completeChat } from "./client";
+import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import type { Settings } from "../settings";
@@ -47,7 +47,7 @@ export function parseSummaryCheck(raw: unknown): SummaryCheckResult | null {
   return { ok: false, problem: problem || "The summary does not match the chapter." };
 }
 
-export type SummaryCheckOptions = SummaryCheckRequestOptions & { signal?: AbortSignal; role?: "main" | "cheap" };
+export type SummaryCheckOptions = SummaryCheckRequestOptions & { signal?: AbortSignal; role?: "main" | "cheap"; source?: AiSourceIds };
 
 /** Asks whether a chapter's summary matches it. Throws when the reply can't be read. */
 export async function summaryCheck(settings: Settings, opts: SummaryCheckOptions): Promise<SummaryCheckResult> {
@@ -57,6 +57,7 @@ export async function summaryCheck(settings: Settings, opts: SummaryCheckOptions
     messages: [{ role: "user", content: request.message }],
     role: opts.role ?? "cheap",
     signal: opts.signal,
+    source: { label: "Summary check", ...opts.source },
   });
   const result = parseSummaryCheck(extractJson(reply));
   if (!result) throw new Error("The AI's reply about the summary couldn't be read.");

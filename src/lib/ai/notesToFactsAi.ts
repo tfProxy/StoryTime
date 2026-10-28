@@ -1,7 +1,7 @@
 // AI helper for "turn notes into facts": the AI reads the author's free-text notes about one codex entry and splits them
 // into small lasting facts (and the entry's current form, when the notes give one). They go to the codex inbox with
 // source "notes", and the quote of each is words from the notes. Pure apart from `completeChat`; runs on the server.
-import { completeChat } from "./client";
+import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import { quoteInText } from "./tagAi";
@@ -106,7 +106,7 @@ export function parseNotesToFacts(reply: string, opts: NotesToFactsOptions): Sug
   return out;
 }
 
-export type RunNotesToFactsOptions = NotesToFactsOptions & { signal?: AbortSignal; role?: "main" | "cheap" };
+export type RunNotesToFactsOptions = NotesToFactsOptions & { signal?: AbortSignal; role?: "main" | "cheap"; source?: AiSourceIds };
 
 /** Asks the AI for the facts in one entry's notes. Throws when the reply can't be read. */
 export async function runNotesToFacts(settings: Settings, opts: RunNotesToFactsOptions): Promise<SuggestionInput[]> {
@@ -117,6 +117,7 @@ export async function runNotesToFacts(settings: Settings, opts: RunNotesToFactsO
     messages: [{ role: "user", content: request.message }],
     role: opts.role ?? "cheap",
     signal: opts.signal,
+    source: { label: "Notes to facts", ...opts.source },
   });
   return parseNotesToFacts(reply, opts);
 }

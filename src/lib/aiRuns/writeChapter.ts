@@ -1,7 +1,7 @@
 // What a run does to write one chapter, in three parts that can be called on their own (so the runner can group them
 // by model, D20): `writeText` (the main model), `planNext` (the cheap model: the new chapter's choices, each planned
 // together, D22) and `summarize` (the cheap model). The steps repeat what the writing page does, without its UI.
-import { streamChat, type ChatRequest } from "../ai/client";
+import { streamChat, type AiSourceIds, type ChatRequest } from "../ai/client";
 import {
   generatePrompt,
   matchSteps,
@@ -55,7 +55,7 @@ export function storyContextOf(context: ChapterContext, label: string | null, si
  * Makes sure the older chapters of the path have the rolling summaries a prompt needs, as the writing page does.
  * A failure falls back silently: the prompt then uses short excerpts.
  */
-export async function withPathSummaries(settings: Settings, ctx: StoryContext, signal?: AbortSignal, onStatus?: (text: string) => void, f?: typeof fetch): Promise<StoryContext> {
+export async function withPathSummaries(settings: Settings, ctx: StoryContext, signal?: AbortSignal, onStatus?: (text: string) => void, f?: typeof fetch, source?: AiSourceIds): Promise<StoryContext> {
   const upTo = neededSummaryIndex(ctx.path, settings.contextTokens);
   if (upTo < 0) return ctx;
   try {
@@ -63,6 +63,7 @@ export async function withPathSummaries(settings: Settings, ctx: StoryContext, s
       story: { title: ctx.storyTitle, premise: ctx.premise },
       signal,
       fetch: f,
+      source,
       onProgress: (done, total) => onStatus?.(`Summarizing the story so far (${Math.min(done + 1, total)} of ${total})…`),
     });
     return { ...ctx, path: ctx.path.map((c) => (c.id && made[c.id] ? { ...c, summary: made[c.id].summary, path_summary: made[c.id].path_summary } : c)) };
@@ -75,13 +76,13 @@ export async function withPathSummaries(settings: Settings, ctx: StoryContext, s
 /** Writes the chapter's text with the main model. No title falls back to the choice's text; an empty body is an error. */
 export async function writeText(
   settings: Settings,
-  p: { ctx: StoryContext; label: string; direction: string; options: RunOptions; signal?: AbortSignal; onText?: (text: string) => void; stream?: Stream },
+  p: { ctx: StoryContext; label: string; direction: string; options: RunOptions; signal?: AbortSignal; onText?: (text: string) => void; stream?: Stream; source?: AiSourceIds },
 ): Promise<{ title: string; body: string }> {
   const prompt = generatePrompt(p.ctx, p.direction, p.options.length ?? "medium", settings.contextTokens);
   const text = await complete(
     p.stream ?? defaultStream,
     settings,
-    { system: SYSTEM_CHAPTER, messages: [{ role: "user", content: prompt }], ...modelRequest(p.options, "main"), signal: p.signal },
+    { system: SYSTEM_CHAPTER, messages: [{ role: "user", content: prompt }], ...modelRequest(p.options, "main"), signal: p.signal, source: { label: "AI run: write", ...p.source } },
     p.onText && ((soFar) => p.onText!(soFar)),
   );
   const { title, body } = parseChapterOutput(text);
@@ -109,6 +110,7 @@ export async function planNext(
     options: RunOptions;
     signal?: AbortSignal;
     stream?: Stream;
+    source?: AiSourceIds;
     /** A plan task of its own: a failed or unreadable reply is an error, not "no plan". */
     strict?: boolean;
   },
@@ -124,6 +126,7 @@ export async function planNext(
       messages: [{ role: "user", content: prompt }],
       ...modelRequest(p.options, "cheap"),
       signal: p.signal,
+      source: { label: "AI run: plan choices", ...p.source },
     });
     const ideas = parseIdeas(reply, 12);
     if (ideas.length === 0) {
@@ -157,7 +160,7 @@ export async function planNext(
  */
 export async function summarize(
   settings: Settings,
-  p: { story: { title: string; premise: string }; previous: string | null; chapter: { title: string; body: string }; options: RunOptions; signal?: AbortSignal; stream?: Stream },
+  p: { story: { title: string; premise: string }; previous: string | null; chapter: { title: string; body: string }; options: RunOptions; signal?: AbortSignal; stream?: Stream; source?: AiSourceIds },
 ): Promise<Summaries | null> {
   const request = summaryRequest(settings.contextTokens, p);
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -168,6 +171,7 @@ export async function summarize(
         ...modelRequest(p.options, "cheap"),
         maxTokens: 1500,
         signal: p.signal,
+        source: { label: "Summary", ...p.source },
       });
       return parseSummaryReply(reply);
     } catch (e) {
@@ -191,16 +195,17 @@ export async function writeOneChapter(
     onText?: (text: string) => void;
     onStatus?: (text: string) => void;
     stream?: Stream;
+    source?: AiSourceIds;
     /** Saves the older chapters' summaries on the server (the worker's fetch; the page's by default). */
     fetch?: typeof fetch;
   },
 ): Promise<{ title: string; body: string; choices: PlannedChoice[]; summary?: string; path_summary?: string }> {
-  const ctx = await withPathSummaries(settings, storyContextOf(p.context, p.label), p.signal, p.onStatus, p.fetch);
-  const chapter = await writeText(settings, { ctx, label: p.label, direction: p.direction, options: p.options, signal: p.signal, onText: p.onText, stream: p.stream });
+  const ctx = await withPathSummaries(settings, storyContextOf(p.context, p.label), p.signal, p.onStatus, p.fetch, p.source);
+  const chapter = await writeText(settings, { ctx, label: p.label, direction: p.direction, options: p.options, signal: p.signal, onText: p.onText, stream: p.stream, source: p.source });
   p.onStatus?.("Planning the choices…");
-  const choices = await planNext(settings, { ctx: { ...ctx, siblingChoices: undefined }, chapter, given: p.given, suggest: p.suggest, options: p.options, signal: p.signal, stream: p.stream });
+  const choices = await planNext(settings, { ctx: { ...ctx, siblingChoices: undefined }, chapter, given: p.given, suggest: p.suggest, options: p.options, signal: p.signal, stream: p.stream, source: p.source });
   p.onStatus?.("Summarizing…");
   const parent = p.context.path.at(-1);
-  const s = await summarize(settings, { story: { title: ctx.storyTitle, premise: ctx.premise }, previous: parent?.path_summary ?? null, chapter, options: p.options, signal: p.signal, stream: p.stream });
+  const s = await summarize(settings, { story: { title: ctx.storyTitle, premise: ctx.premise }, previous: parent?.path_summary ?? null, chapter, options: p.options, signal: p.signal, stream: p.stream, source: p.source });
   return { ...chapter, choices, ...(s && { summary: s.summary, path_summary: s.path_summary }) };
 }

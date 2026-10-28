@@ -1,7 +1,7 @@
 // AI helper for the story review: list the durable facts a chapter states about characters, places
 // and things (eye colour, species, where someone lives, ...), each with a quote as evidence, so they
 // can be compared across chapters. Runs in the browser or on the server with the user's own key.
-import { completeChat } from "./client";
+import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, type PromptParts } from "./prompts";
 import { extractJson, type StoryInfo } from "./codexAi";
 import { quoteInText } from "./tagAi";
@@ -128,7 +128,7 @@ export function parseVerdict(raw: unknown): Verdict | null {
   return w === "contradiction" || w === "change" || w === "fine" ? w : null;
 }
 
-export type JudgeConflictOptions = JudgeRequestOptions & { signal?: AbortSignal; role?: "main" | "cheap" };
+export type JudgeConflictOptions = JudgeRequestOptions & { signal?: AbortSignal; role?: "main" | "cheap"; source?: AiSourceIds };
 
 /** Asks whether one clash is a contradiction, a change the story explains, or fine. Throws when the reply can't be read. */
 export async function judgeConflict(settings: Settings, opts: JudgeConflictOptions): Promise<Verdict> {
@@ -138,13 +138,14 @@ export async function judgeConflict(settings: Settings, opts: JudgeConflictOptio
     messages: [{ role: "user", content: request.message }],
     role: opts.role ?? "cheap",
     signal: opts.signal,
+    source: { label: "Continuity judge", ...opts.source },
   });
   const verdict = parseVerdict(extractJson(reply));
   if (!verdict) throw new Error("The AI's reply about the clash couldn't be read.");
   return verdict;
 }
 
-export type ExtractFactsOptions = FactRequestOptions & { signal?: AbortSignal; role?: "main" | "cheap" };
+export type ExtractFactsOptions = FactRequestOptions & { signal?: AbortSignal; role?: "main" | "cheap"; source?: AiSourceIds };
 
 export async function extractFacts(settings: Settings, opts: ExtractFactsOptions): Promise<Fact[]> {
   if (!opts.chapter.body.trim()) return [];
@@ -155,6 +156,7 @@ export async function extractFacts(settings: Settings, opts: ExtractFactsOptions
     // The main model, unless the caller is reading many chapters.
     role: opts.role ?? "main",
     signal: opts.signal,
+    source: { label: "Continuity facts", ...opts.source },
   });
   // A quote that isn't in the chapter is a sign the fact was made up, so it goes.
   return parseFactReply(extractJson(reply)).filter((f) => quoteInText(f.quote, opts.chapter.body));

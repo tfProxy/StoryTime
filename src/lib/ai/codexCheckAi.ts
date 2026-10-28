@@ -1,7 +1,7 @@
 // AI helper for the codex check: the AI reads one posted chapter and proposes changes to the codex, each one
 // fact-sized and with a quote from the chapter as evidence. They go to the codex inbox for the owner to accept, edit
 // or dismiss. Pure apart from `completeChat`; runs on the server (the work queue's review runs).
-import { completeChat } from "./client";
+import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, mentions, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import { quoteInText } from "./tagAi";
@@ -215,7 +215,7 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
   return out;
 }
 
-export type RunCodexCheckOptions = CodexCheckRequestOptions & { signal?: AbortSignal; role?: "main" | "cheap" };
+export type RunCodexCheckOptions = CodexCheckRequestOptions & { signal?: AbortSignal; role?: "main" | "cheap"; source?: AiSourceIds };
 
 /** Asks the AI what the chapter changes in the codex. Throws when the reply can't be read. */
 export async function runCodexCheck(settings: Settings, opts: RunCodexCheckOptions): Promise<SuggestionInput[]> {
@@ -226,6 +226,7 @@ export async function runCodexCheck(settings: Settings, opts: RunCodexCheckOptio
     messages: [{ role: "user", content: request.message }],
     role: opts.role ?? "cheap",
     signal: opts.signal,
+    source: { label: "Codex check", ...opts.source },
   });
   return parseCodexCheck(reply, { body: opts.chapter.body, entries: opts.entries, otherNames: opts.otherNames });
 }
