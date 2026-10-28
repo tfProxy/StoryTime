@@ -48,6 +48,8 @@ export type StoryExport = {
   chapters: ChapterRow[];
   choices: ChoiceRow[];
   codex: Record<string, unknown>[];
+  /** Small per-aspect statements about codex entries; exports made before facts existed have none. */
+  codex_facts: Record<string, unknown>[];
   /** Earlier versions of the chapters above, oldest first. */
   revisions: RevisionRow[];
   /** The chapters' illustrations, in reading order, header before footer; `data` is base64. */
@@ -105,6 +107,15 @@ export function loadStory(storyId: string): StoryExport | null {
     .filter((o) => ids.has(o.anchor_chapter_id as string))
     .map((o) => ({ ...o, aliases: safeJson(o.aliases), always_include: o.always_include === 1 }));
 
+  const codexFacts = (
+    db()
+      .prepare(
+        `SELECT anchor_chapter_id, entry_id, fact_id, op, aspect, form, text, quote, posted_at
+           FROM codex_facts WHERE story_id = ? ORDER BY posted_at, rowid`,
+      )
+      .all(storyId) as Record<string, unknown>[]
+  ).filter((f) => ids.has(f.anchor_chapter_id as string));
+
   const revisions = (
     db()
       .prepare(
@@ -143,6 +154,7 @@ export function loadStory(storyId: string): StoryExport | null {
     chapters,
     choices,
     codex,
+    codex_facts: codexFacts,
     revisions,
     images,
   };

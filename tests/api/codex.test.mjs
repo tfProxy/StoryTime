@@ -86,3 +86,42 @@ ok((await fetch(`${B}/api/chapters/${a3}/codex?format=pdf`)).status === 400 && (
 // pages
 for (const u of [`/c/${root}/codex`, `/c/${a2}/codex`, `/c/${b}/codex`]) { const x = await fetch(B + u); ok(x.status === 200, `${u} -> ${x.status}`); }
 ok((await fetch(`${B}/c/nope/codex`)).status === 404, "codex page 404");
+
+// ---- facts ----
+const fact = (anchor, body) => call("POST", "/api/codex/facts", { anchor_chapter_id: anchor, ...body });
+const kit = (await op(root, { op: "create", name: "Kit", type: "character", content: "A fox." })).json.entry_id;
+r = await fact(root, { entry_id: kit, op: "set", aspect: "Ears", text: "Tall russet fox ears.", quote: "Her ears twitched." });
+ok(r.status === 201 && r.json.fact_id && r.json.id, "set a fact");
+const earsId = r.json.fact_id;
+let kitAt = async (id) => (await state(id)).entries.find((e) => e.entry_id === kit);
+let k = await kitAt(root);
+ok(k.facts.length === 1 && k.facts[0].aspect === "Ears" && k.facts[0].quote === "Her ears twitched." && k.description === "Ears: Tall russet fox ears. A fox.", "entry shows the fact and a description");
+ok(k.content === "A fox.", "content stays the notes");
+r = await fact(a, { entry_id: kit, op: "set", aspect: "ears", text: "Short ears." });
+ok(r.status === 201 && r.json.fact_id === earsId, "the same aspect again reuses the fact id");
+ok((await kitAt(root)).facts[0].text === "Tall russet fox ears.", "a fact anchored at a child isn't visible at the parent");
+k = await kitAt(a2);
+ok(k.facts.length === 1 && k.facts[0].text === "Short ears." && (await state(a2)).facts.length === 2, "the child sees its own version, and both ops are listed");
+ok((await kitAt(b)).facts[0].text === "Tall russet fox ears.", "a sibling branch keeps the original");
+r = await fact(a, { entry_id: kit, op: "set", aspect: "Ears", form: "vixen", text: "Pointed ears." });
+ok(r.status === 201 && r.json.fact_id !== earsId, "the same aspect in another form is a different fact");
+await fact(a, { entry_id: kit, op: "set", aspect: "Tail", form: "human", text: "No tail." });
+r = await fact(a, { entry_id: kit, op: "set", aspect: "Form", form: "vixen", text: "change complete" });
+k = await kitAt(a2);
+ok(r.status === 201 && k.form?.name === "vixen" && k.description.startsWith("Form: vixen, change complete."), "the form fact sets the form: " + k.description);
+ok(k.description.includes("Pointed ears.") && k.description.includes("Short ears.") && !k.description.includes("No tail."), "only the current form's facts apply (plus every-form ones)");
+r = await fact(a, { entry_id: kit, op: "retire", fact_id: earsId });
+ok(r.status === 201 && (await kitAt(a2)).facts.every((f) => f.fact_id !== earsId), "retire a fact");
+ok((await kitAt(root)).facts.some((f) => f.fact_id === earsId), "…only below where it was retired");
+r = await fact(a, { entry_id: kit, op: "retire", fact_id: earsId });
+ok(r.status === 409, "retiring a retired fact conflicts");
+r = await fact(root, { entry_id: "nope", op: "set", aspect: "Ears", text: "x" });
+ok(r.status === 409, "a fact for an unknown entry conflicts");
+r = await fact("nope", { entry_id: kit, op: "set", aspect: "Ears", text: "x" });
+ok(r.status === 404, "a fact at an unknown chapter is 404");
+r = await fact(root, { entry_id: kit, op: "set", aspect: "Ears", text: "" });
+ok(r.status === 400, "a fact needs text");
+r = await fact(root, { entry_id: kit, op: "retire" });
+ok(r.status === 400, "retire needs a fact id");
+const factMd = await (await fetch(`${B}/api/chapters/${a2}/codex?format=md`)).text();
+ok(factMd.includes("Form: vixen, change complete.") && factMd.includes("A fox."), "the markdown download uses facts");

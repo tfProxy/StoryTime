@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import CodexPanel from "@/components/CodexPanel";
-import { getCodexOps } from "@/lib/codexDb";
+import { getCodexFacts, getCodexOps } from "@/lib/codexDb";
 import { getPath, getStory } from "@/lib/stories";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +45,7 @@ export default async function CodexPage({
           path_summary: c.path_summary,
         }))}
         ops={getCodexOps(id)}
+        facts={getCodexFacts(id)}
       />
     </>
   );

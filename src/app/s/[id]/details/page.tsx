@@ -5,7 +5,7 @@ import CoverEditor from "@/components/CoverEditor";
 import StoryDetailsForm from "@/components/StoryDetailsForm";
 import StoryPictureSettings from "@/components/StoryPictureSettings";
 import StoryTagSwitches from "@/components/StoryTagSwitches";
-import { getCodexOps } from "@/lib/codexDb";
+import { getCodexFacts, getCodexOps } from "@/lib/codexDb";
 import { coverRefPool } from "@/lib/referencePool";
 import { getChapter, getStory } from "@/lib/stories";
 import { listTags, storyTags } from "@/lib/tags";
@@ -74,6 +74,7 @@ export default async function StoryDetailsPage({ params }: { params: Promise<{ i
                 },
               ]}
               ops={getCodexOps(root.id)}
+              facts={getCodexFacts(root.id)}
             />
           </>
         ) : (

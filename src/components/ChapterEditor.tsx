@@ -32,7 +32,7 @@ import {
   type StoryContext,
 } from "@/lib/ai/prompts";
 import type { PathChapter } from "@/lib/ai/codexAi";
-import { draftOps, foldCodex, isDraftEntry, type CodexOp } from "@/lib/codex";
+import { draftOps, foldCodex, isDraftEntry, type CodexOp, type FactOp } from "@/lib/codex";
 import { deleteDraft, DraftConflict, emptyDraft, getDraft, saveDraft, type Draft } from "@/lib/drafts";
 import { applyAfterGenerate, applyGenerated, isBegun, pushUndo, startVersion } from "@/lib/generatedDraft";
 import { useWorkQueue, type GenerateItem } from "./WorkQueue";
@@ -76,7 +76,7 @@ type Props = {
   /** Start generating as soon as the (empty) draft loads. */
   autoGenerate?: boolean;
   /** The codex as of the chapter being continued; absent when there is no earlier chapter to anchor it to. */
-  codexPanel?: { chapterId: string; path: PathChapter[]; ops: CodexOp[] };
+  codexPanel?: { chapterId: string; path: PathChapter[]; ops: CodexOp[]; facts?: FactOp[] };
 };
 
 const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
@@ -420,12 +420,14 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const codexChanges = draft.codexChanges ?? [];
   const codex =
     codexPanel && codexChanges.length > 0
-      ? foldCodex([...codexPanel.ops, ...draftOps(codexChanges, (codexPanel.path.at(-1)?.depth ?? -1) + 1)]).map((e) => ({
+      ? foldCodex([...codexPanel.ops, ...draftOps(codexChanges, (codexPanel.path.at(-1)?.depth ?? -1) + 1)], codexPanel.facts ?? [], {
+          recentAnchor: codexPanel.path.at(-1)?.id,
+        }).map((e) => ({
           id: e.entry_id,
           name: e.name,
           type: e.type,
           aliases: e.aliases,
-          content: e.content,
+          content: e.description,
           always_include: e.always_include,
         }))
       : context.codex;
@@ -1607,6 +1609,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                   chapterId={codexPanel.chapterId}
                   path={codexPanel.path}
                   ops={codexPanel.ops}
+                  facts={codexPanel.facts}
                 />
               </aside>,
               document.body,

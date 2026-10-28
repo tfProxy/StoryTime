@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getChoices, getPath, getStory } from "@/lib/stories";
 import ChapterEditor from "@/components/ChapterEditor";
-import { getCodexOps, getContextCodex } from "@/lib/codexDb";
+import { getCodexFacts, getCodexOps, getContextCodex } from "@/lib/codexDb";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +71,7 @@ export default async function WritePage({
           chapterId: parent.id,
           path: path.map((c) => ({ id: c.id, title: c.title, depth: c.depth, body: c.body, summary: c.summary, path_summary: c.path_summary })),
           ops: getCodexOps(parent.id),
+          facts: getCodexFacts(parent.id),
         }}
       />
     </>

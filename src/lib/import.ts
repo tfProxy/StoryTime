@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db, newId } from "./db";
-import { ENTRY_TYPES } from "./codex";
+import { ENTRY_TYPES, FACT_LIMITS } from "./codex";
 import { CODEX_LIMITS } from "./codexDb";
 import { LIMITS } from "./limits";
 import { checkImage, IMAGE_MAX_BYTES, PostError } from "./stories";
@@ -46,6 +46,18 @@ const CodexOp = z.object({
   posted_at: time,
 });
 
+const CodexFact = z.object({
+  anchor_chapter_id: id,
+  entry_id: id,
+  fact_id: id,
+  op: z.enum(["set", "retire"]),
+  aspect: str(FACT_LIMITS.aspect).default(""),
+  form: str(FACT_LIMITS.form).default(""),
+  text: str(FACT_LIMITS.text).default(""),
+  quote: str(FACT_LIMITS.quote).default(""),
+  posted_at: time,
+});
+
 const Revision = z.object({
   chapter_id: id,
   revision: z.number().int().min(1),
@@ -87,6 +99,8 @@ export const ImportSchema = z.object({
   chapters: z.array(Chapter).min(1).max(5000),
   choices: z.array(Choice).max(60000).default([]),
   codex: z.array(CodexOp).max(20000).default([]),
+  // Exports made before codex facts have none.
+  codex_facts: z.array(CodexFact).max(50000).default([]),
   // Version 1 exports have no revision history.
   revisions: z.array(Revision).max(20000).default([]),
   // Exports made before chapter pictures have none.
@@ -120,6 +134,9 @@ export function importStory(input: ImportInput): { story_id: string; chapter_id:
   }
   for (const o of input.codex) {
     if (!chaptersById.has(o.anchor_chapter_id)) throw new PostError("A codex change is attached to a chapter that isn't in the file", 400);
+  }
+  for (const f of input.codex_facts) {
+    if (!chaptersById.has(f.anchor_chapter_id)) throw new PostError("A codex fact is attached to a chapter that isn't in the file", 400);
   }
   const seenRevisions = new Set<string>();
   for (const r of input.revisions) {
@@ -202,6 +219,17 @@ export function importStory(input: ImportInput): { story_id: string; chapter_id:
       insertOp.run(
         newId(), storyId, chapterIds.get(o.anchor_chapter_id), o.entry_id, o.op, o.name, o.type,
         JSON.stringify(o.aliases), o.content, o.always_include ? 1 : 0, o.posted_at,
+      );
+    }
+
+    const insertFact = db().prepare(
+      `INSERT INTO codex_facts (id, story_id, anchor_chapter_id, entry_id, fact_id, op, aspect, form, text, quote, posted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    for (const f of input.codex_facts) {
+      insertFact.run(
+        newId(), storyId, chapterIds.get(f.anchor_chapter_id), f.entry_id, f.fact_id, f.op, f.aspect, f.form, f.text,
+        f.quote, f.posted_at,
       );
     }
 

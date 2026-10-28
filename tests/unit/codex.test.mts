@@ -1,4 +1,5 @@
-﻿import { foldCodex, storyEntrySummaries, retiredEntries, entryHistory, changedFields, addChange, draftOps, DRAFT_ANCHOR, type CodexChange, type CodexOp } from "../../src/lib/codex.ts";
+﻿import { foldFacts, factHistory, describeEntry, type FactOp, type LiveFact } from "../../src/lib/codex.ts";
+import { foldCodex, storyEntrySummaries, retiredEntries, entryHistory, changedFields, addChange, draftOps, DRAFT_ANCHOR, type CodexChange, type CodexOp } from "../../src/lib/codex.ts";
 import { buildCodexBlock, mentions, generatePrompt, refinePrompt, choicesPrompt } from "../../src/lib/ai/prompts.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
@@ -93,4 +94,46 @@ ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length ==
   ok(sum[1].name === "Mira the Bold" && sum[1].first_chapter_id === "c0" && sum[1].first_chapter_title === "One", "summaries: latest name, first chapter from the create");
   ok(sum[2].retired && sum[2].name === "zed" && sum[2].type === "place" && sum[2].first_chapter_title === "Two", "summaries: retire sets retired and keeps the last name");
   ok(!sum[0].retired && sum[0].type === "item", "summaries: live entries are not retired");
+}
+
+// ---- facts ----
+{
+  let m = 0;
+  const fop = (over: Partial<FactOp>): FactOp => ({
+    id: `f${m++}`, anchor_chapter_id: "c0", anchor_depth: 0, entry_id: "mira", fact_id: "ears", op: "set", aspect: "Ears", form: "",
+    text: "Round ears.", quote: "", posted_at: 100 + m, ...over,
+  });
+  const ears = (l: Map<string, LiveFact[]>) => l.get("mira") ?? [];
+
+  ok(ears(foldFacts([fop({})])).length === 1, "facts: set");
+  let live = foldFacts([fop({}), fop({ text: "Tall ears.", anchor_depth: 1, anchor_chapter_id: "c1" })]);
+  ok(ears(live).length === 1 && ears(live)[0].text === "Tall ears.", "facts: a later set with the same fact_id replaces");
+  live = foldFacts([fop({}), fop({ op: "retire", anchor_depth: 2, anchor_chapter_id: "c2" })]);
+  ok(ears(live).length === 0, "facts: retire removes it");
+  live = foldFacts([
+    fop({ anchor_depth: 3, anchor_chapter_id: "c3", text: "Deep.", posted_at: 1 }),
+    fop({ anchor_depth: 1, anchor_chapter_id: "c1", text: "Retconned.", posted_at: 9000 }),
+  ]);
+  ok(ears(live)[0].text === "Deep.", "facts: the deeper anchor wins even if posted earlier");
+  ok(factHistory([fop({}), fop({ fact_id: "eyes" }), fop({ op: "retire", anchor_depth: 1 })], "ears").length === 2, "facts: history lists the versions of one fact");
+
+  const lf = (o: Partial<FactOp>): LiveFact => { const f = fop(o); return { fact_id: f.fact_id, aspect: f.aspect, form: f.form, text: f.text, quote: f.quote, op: f }; };
+  const formFact = lf({ fact_id: "form", aspect: "form", form: "vixen", text: "change complete" });
+  let d = describeEntry("Notes here.", [formFact, lf({ text: "Fox ears." }), lf({ fact_id: "tail", aspect: "Tail", form: "vixen", text: "Bushy tail." }), lf({ fact_id: "tail2", aspect: "Tail", form: "human", text: "No tail." }), lf({ fact_id: "loose", aspect: "", text: "Hates rain" })]);
+  ok(d === "Form: vixen, change complete. Ears: Fox ears. Tail: Bushy tail. Hates rain. Notes here.", "describe: form first, current form's facts, loose facts, notes last: " + d);
+  d = describeEntry("", [lf({ text: "Fox ears." })]);
+  ok(d === "Ears: Fox ears.", "describe: no form, no notes");
+  d = describeEntry("N.", [lf({ fact_id: "tail2", aspect: "Tail", form: "human", text: "No tail." })]);
+  ok(d === "N.", "describe: a form fact without a current form doesn't apply");
+  d = describeEntry("N.", [lf({ anchor_chapter_id: "prev", text: "Fox ears." }), lf({ fact_id: "x", aspect: "Eyes", text: "Green." })], "prev");
+  ok(d === "Ears: Fox ears (just changed). Eyes: Green. N.", "describe: recent anchor is marked: " + d);
+
+  let es = foldCodex([op({})], [fop({}), fop({ fact_id: "form", aspect: "form", form: "vixen", text: "" })]);
+  ok(es[0].facts.length === 2 && es[0].form?.name === "vixen" && es[0].forms.join() === "vixen" && es[0].description === "Form: vixen. Ears: Round ears. A human thief.", "foldCodex: facts folded into the entry: " + es[0].description);
+  es = foldCodex([op({}), op({ op: "retire", anchor_depth: 1, anchor_chapter_id: "c1" })], [fop({})]);
+  ok(es.length === 0, "foldCodex: a retired entry drops its facts");
+  es = foldCodex([op({})]);
+  ok(es[0].description === es[0].content && es[0].facts.length === 0 && es[0].form === null, "foldCodex: no facts gives description === content");
+  es = foldCodex([op({})], [fop({ anchor_chapter_id: "c1" })], { recentAnchor: "c1" });
+  ok(es[0].description.includes("(just changed)"), "foldCodex: recentAnchor passes through");
 }

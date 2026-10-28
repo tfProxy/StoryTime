@@ -20,43 +20,177 @@ export type CodexOp = {
   posted_at: number;
 };
 
+/**
+ * One change to one fact of an entry: "Ears: tall russet fox ears", anchored at the chapter where it became true.
+ * Facts sharing a `fact_id` are versions of one fact; the last one on the path wins, as with entry ops.
+ */
+export type FactOp = {
+  id: string;
+  anchor_chapter_id: string;
+  anchor_depth: number;
+  entry_id: string;
+  fact_id: string;
+  op: "set" | "retire";
+  /** What the fact describes ("Ears"); "" for a loose fact; FORM_ASPECT for the entry's current form. */
+  aspect: string;
+  /** The form the fact belongs to ("" = every form). On the FORM_ASPECT fact: the form the entry is in now. */
+  form: string;
+  text: string;
+  /** The sentence from the chapter that shows it; "" when there is none. */
+  quote: string;
+  posted_at: number;
+};
+
+/** The aspect of the fact that says which form an entry is in now. One per entry. */
+export const FORM_ASPECT = "form";
+
+export const FACT_LIMITS = { aspect: 40, form: 40, text: 1000, quote: 500 };
+
+/** Aspects offered when adding a fact, by entry type. Any other name may be typed. */
+export const STARTER_ASPECTS: Record<EntryType, string[]> = {
+  character: ["Sex", "Species", "Build", "Height", "Skin", "Fur", "Hair", "Ears", "Eyes", "Tail", "Hands", "Voice", "Clothing", "Personality", "Status", "Relationships"],
+  place: ["Location", "Appearance", "Controlled by", "Rules", "Status"],
+  item: ["Appearance", "Properties", "Held by", "Condition"],
+  faction: ["Leader", "Members", "Goals", "Allies", "Enemies"],
+  lore: ["Rules", "History"],
+  note: [],
+};
+
+export const isFormAspect = (aspect: string) => aspect.trim().toLowerCase() === FORM_ASPECT;
+export const sameAspect = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** A fact as it stands at a chapter. */
+export type LiveFact = {
+  fact_id: string;
+  aspect: string;
+  form: string;
+  text: string;
+  quote: string;
+  /** The op that set this version. */
+  op: FactOp;
+};
+
 export type CodexEntry = {
   entry_id: string;
   name: string;
   type: EntryType;
   aliases: string[];
+  /** The entry's own free text ("Notes"). What the AI reads is `description`. */
   content: string;
   always_include: boolean;
   /** The op that produced this version of the entry. */
   op: CodexOp;
+  /** Every live fact, in the order they were first set; facts of other forms included. */
+  facts: LiveFact[];
+  /** The form the entry is in now, from its FORM_ASPECT fact; null when it has none. */
+  form: { name: string; note: string; fact: LiveFact } | null;
+  /** Every form named by its facts (and the current one). */
+  forms: string[];
+  /** What the AI reads: the current form, the facts that apply to it, then the notes. */
+  description: string;
 };
 
+type Ordered = { anchor_depth: number; posted_at: number };
+
 /** Ops in the order they take effect: by anchor depth, then post time, then given order. */
-export function orderOps(ops: CodexOp[]): CodexOp[] {
+export function orderOps<T extends Ordered>(ops: T[]): T[] {
   return ops
     .map((op, i) => ({ op, i }))
     .sort((a, b) => a.op.anchor_depth - b.op.anchor_depth || a.op.posted_at - b.op.posted_at || a.i - b.i)
     .map((x) => x.op);
 }
 
-const fromOp = (op: CodexOp): CodexEntry => ({
-  entry_id: op.entry_id,
-  name: op.name,
-  type: op.type,
-  aliases: op.aliases,
-  content: op.content,
-  always_include: op.always_include,
-  op,
-});
+/** The live facts of each entry, by entry id, each list in the order its facts were first set. */
+export function foldFacts(facts: FactOp[]): Map<string, LiveFact[]> {
+  const live = new Map<string, Map<string, LiveFact>>();
+  for (const f of orderOps(facts)) {
+    let byId = live.get(f.entry_id);
+    if (!byId) live.set(f.entry_id, (byId = new Map()));
+    if (f.op === "retire") byId.delete(f.fact_id);
+    else if (byId.has(f.fact_id)) byId.set(f.fact_id, { ...byId.get(f.fact_id)!, aspect: f.aspect, form: f.form, text: f.text, quote: f.quote, op: f });
+    else byId.set(f.fact_id, { fact_id: f.fact_id, aspect: f.aspect, form: f.form, text: f.text, quote: f.quote, op: f });
+  }
+  return new Map([...live].map(([id, m]) => [id, [...m.values()]]));
+}
 
-/** The live entries produced by a set of ops (already limited to one root->chapter path). */
-export function foldCodex(ops: CodexOp[]): CodexEntry[] {
-  const state = new Map<string, CodexEntry>();
+/** Every version of one fact along the path, oldest first (retirements included). */
+export function factHistory(facts: FactOp[], factId: string): FactOp[] {
+  return orderOps(facts).filter((f) => f.fact_id === factId);
+}
+
+/** The facts that describe the entry now: every-form facts plus those of the current form (not the form fact itself). */
+export function applicableFacts(facts: LiveFact[], form: string | null): LiveFact[] {
+  return facts.filter((f) => !isFormAspect(f.aspect) && (f.form === "" || (form !== null && sameAspect(f.form, form))));
+}
+
+/**
+ * What the AI reads for an entry: "Form: vixen (change complete). Ears: tall fox ears. ... Notes."
+ * A fact anchored at `recentAnchor` (the chapter just before the one being written) is marked as just
+ * changed, so the writer shows the character noticing it.
+ */
+export function describeEntry(notes: string, facts: LiveFact[], recentAnchor?: string): string {
+  const recent = (f: LiveFact) => !!recentAnchor && f.op.anchor_chapter_id === recentAnchor;
+  // "Ears: fox ears (just changed)." — the mark goes inside the sentence's full stop.
+  const sentence = (s: string, f: LiveFact) => {
+    const t = s.trim().replace(/\s+/g, " ");
+    const m = recent(f) ? " (just changed)" : "";
+    if (/[.!?…]$/.test(t)) return `${t.slice(0, -1)}${m}${t.slice(-1)}`;
+    return /["”)]$/.test(t) && !m ? t : `${t}${m}.`;
+  };
+  const formFact = facts.find((f) => isFormAspect(f.aspect));
+  const parts: string[] = [];
+  if (formFact) {
+    const label = [formFact.form, formFact.text].map((s) => s.trim()).filter(Boolean).join(", ");
+    if (label) parts.push(sentence(`Form: ${label}`, formFact));
+  }
+  for (const f of applicableFacts(facts, formFact ? formFact.form : null)) {
+    if (!f.text.trim()) continue;
+    parts.push(sentence(f.aspect.trim() ? `${f.aspect.trim()}: ${f.text.trim()}` : f.text, f));
+  }
+  if (notes.trim()) parts.push(notes.trim());
+  return parts.join(" ");
+}
+
+function withFacts(op: CodexOp, facts: LiveFact[], recentAnchor?: string): CodexEntry {
+  const formFact = facts.find((f) => isFormAspect(f.aspect)) ?? null;
+  const forms: string[] = [];
+  for (const name of [formFact?.form ?? "", ...facts.filter((f) => !isFormAspect(f.aspect)).map((f) => f.form)]) {
+    if (name.trim() && !forms.some((n) => sameAspect(n, name))) forms.push(name.trim());
+  }
+  return {
+    entry_id: op.entry_id,
+    name: op.name,
+    type: op.type,
+    aliases: op.aliases,
+    content: op.content,
+    always_include: op.always_include,
+    op,
+    facts,
+    form: formFact ? { name: formFact.form, note: formFact.text, fact: formFact } : null,
+    forms,
+    description: describeEntry(op.content, facts, recentAnchor),
+  };
+}
+
+const fromOp = (op: CodexOp): CodexEntry => withFacts(op, []);
+
+export type FoldOptions = {
+  /** Facts anchored here are marked "(just changed)" in `description`. */
+  recentAnchor?: string;
+};
+
+/**
+ * The live entries produced by a set of ops (already limited to one root->chapter path), with the facts
+ * on the same path folded into each.
+ */
+export function foldCodex(ops: CodexOp[], facts: FactOp[] = [], options: FoldOptions = {}): CodexEntry[] {
+  const state = new Map<string, CodexOp>();
   for (const op of orderOps(ops)) {
     if (op.op === "retire") state.delete(op.entry_id);
-    else state.set(op.entry_id, fromOp(op)); // a replace of a missing/retired entry creates (or revives) it
+    else state.set(op.entry_id, op); // a replace of a missing/retired entry creates (or revives) it
   }
-  return [...state.values()].sort(
+  const liveFacts = facts.length ? foldFacts(facts) : new Map<string, LiveFact[]>();
+  return [...state.values()].map((op) => withFacts(op, liveFacts.get(op.entry_id) ?? [], options.recentAnchor)).sort(
     (a, b) => ENTRY_TYPES.indexOf(a.type) - ENTRY_TYPES.indexOf(b.type) || a.name.localeCompare(b.name),
   );
 }
@@ -146,7 +280,7 @@ export function toCodexMarkdown(storyTitle: string, chapterTitle: string, entrie
       if (e.aliases.length) notes.push(`Also known as: ${e.aliases.join(", ")}`);
       if (e.always_include) notes.push("Always included in AI prompts");
       if (notes.length) out.push(`*${notes.join(" · ")}*`);
-      out.push(e.content.trim() || "*(no description)*");
+      out.push(e.description.trim() || "*(no description)*");
     }
   }
   return `${out.join("\n\n")}\n`;

@@ -1,5 +1,5 @@
 import { foldCodex, toCodexMarkdown } from "@/lib/codex";
-import { getCodexOps } from "@/lib/codexDb";
+import { getCodexFacts, getCodexOps } from "@/lib/codexDb";
 import { slug } from "@/lib/export";
 import { getPath, getStory } from "@/lib/stories";
 
@@ -10,14 +10,15 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   const path = getPath(id);
   if (path.length === 0) return Response.json({ error: "Not found" }, { status: 404 });
   const ops = getCodexOps(id);
+  const facts = getCodexFacts(id);
   const format = new URL(request.url).searchParams.get("format");
-  if (format === null || format === "json") return Response.json({ entries: foldCodex(ops), ops });
+  if (format === null || format === "json") return Response.json({ entries: foldCodex(ops, facts), ops, facts });
   if (format !== "md") return Response.json({ error: "format must be md or json" }, { status: 400 });
 
   const chapter = path[path.length - 1];
   const story = getStory(chapter.story_id);
   if (!story) return Response.json({ error: "Not found" }, { status: 404 });
-  return new Response(toCodexMarkdown(story.title, chapter.title, foldCodex(ops)), {
+  return new Response(toCodexMarkdown(story.title, chapter.title, foldCodex(ops, facts)), {
     headers: {
       "Content-Type": "text/markdown; charset=utf-8",
       "Content-Disposition": `attachment; filename="${slug(story.title)}-codex-${slug(chapter.title)}.md"`,

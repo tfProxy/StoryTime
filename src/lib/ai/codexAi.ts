@@ -107,7 +107,7 @@ If nothing needs to change, reply {"changes":[]}.`;
 function describeCodex(entries: CodexEntry[]): string {
   if (entries.length === 0) return "(empty)";
   return entries
-    .map((e) => `- ${e.name} [${e.type}]${e.aliases.length ? ` (also: ${e.aliases.join(", ")})` : ""}: ${e.content.replace(/\s+/g, " ").trim()}`)
+    .map((e) => `- ${e.name} [${e.type}]${e.aliases.length ? ` (also: ${e.aliases.join(", ")})` : ""}: ${e.description.replace(/\s+/g, " ").trim()}`)
     .join("\n");
 }
 

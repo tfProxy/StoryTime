@@ -697,6 +697,26 @@ export const MIGRATIONS: string[] = [
   `,
   // 38: a tag can be shown to readers (in the notes under each choice, when content notes are on). Off by default.
   `ALTER TABLE tags ADD COLUMN show_readers INTEGER NOT NULL DEFAULT 0;`,
+  // 39: codex facts. One row per change to one fact of an entry ("Ears: tall fox ears"), anchored at a chapter
+  // like codex_ops and folded along the same root->chapter path; rows sharing a fact_id are versions of one fact.
+  // aspect 'form' is the entry's current form, held in the form column. See FactOp in src/lib/codex.ts.
+  `
+  CREATE TABLE codex_facts (
+    id                TEXT PRIMARY KEY,
+    story_id          TEXT NOT NULL REFERENCES stories(id),
+    anchor_chapter_id TEXT NOT NULL REFERENCES chapters(id),
+    entry_id          TEXT NOT NULL,
+    fact_id           TEXT NOT NULL,
+    op                TEXT NOT NULL CHECK (op IN ('set', 'retire')),
+    aspect            TEXT NOT NULL DEFAULT '',
+    form              TEXT NOT NULL DEFAULT '',
+    text              TEXT NOT NULL DEFAULT '',
+    quote             TEXT NOT NULL DEFAULT '',
+    posted_at         INTEGER NOT NULL
+  );
+  CREATE INDEX codex_facts_anchor ON codex_facts(anchor_chapter_id, posted_at);
+  CREATE INDEX codex_facts_entry ON codex_facts(story_id, entry_id);
+  `,
 ];
 
 function open(): Database.Database {

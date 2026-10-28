@@ -1,6 +1,19 @@
 import { z } from "zod";
 import { db, newId } from "./db";
-import { ENTRY_TYPES, foldCodex, storyEntrySummaries, type CodexEntry, type CodexOp, type StoryEntrySummary } from "./codex";
+import {
+  ENTRY_TYPES,
+  FACT_LIMITS,
+  FORM_ASPECT,
+  foldCodex,
+  isFormAspect,
+  sameAspect,
+  storyEntrySummaries,
+  type CodexEntry,
+  type CodexOp,
+  type FactOp,
+  type FoldOptions,
+  type StoryEntrySummary,
+} from "./codex";
 import { getPath, PostError } from "./stories";
 
 const text = (max: number) => z.string().trim().max(max);
@@ -86,6 +99,21 @@ export function getCodexOps(chapterId: string): CodexOp[] {
   return rows.map(toOp);
 }
 
+/** Facts that apply at a chapter: those anchored on the path from the root to it, in effect order. */
+export function getCodexFacts(chapterId: string): FactOp[] {
+  const path = getPath(chapterId);
+  if (path.length === 0) return [];
+  return db()
+    .prepare(
+      `SELECT f.id, f.anchor_chapter_id, c.depth AS anchor_depth, f.entry_id, f.fact_id, f.op, f.aspect, f.form,
+              f.text, f.quote, f.posted_at
+         FROM codex_facts f JOIN chapters c ON c.id = f.anchor_chapter_id
+        WHERE f.anchor_chapter_id IN (${path.map(() => "?").join(",")})
+        ORDER BY c.depth, f.posted_at, f.rowid`,
+    )
+    .all(...path.map((c) => c.id)) as FactOp[];
+}
+
 /** Every entry in a story, across all branches, one row each. */
 export function storyCodexEntries(storyId: string): StoryEntrySummary[] {
   const rows = db()
@@ -102,8 +130,64 @@ export function storyCodexEntries(storyId: string): StoryEntrySummary[] {
   return storyEntrySummaries(rows.map(toOp), new Map(titles.map((t) => [t.id, t.title])));
 }
 
-export function getCodexState(chapterId: string): CodexEntry[] {
-  return foldCodex(getCodexOps(chapterId));
+export function getCodexState(chapterId: string, options?: FoldOptions): CodexEntry[] {
+  return foldCodex(getCodexOps(chapterId), getCodexFacts(chapterId), options);
+}
+
+export const NewFactOpSchema = z
+  .object({
+    anchor_chapter_id: z.string().min(1),
+    entry_id: z.string().min(1),
+    /** Omit to add a fact (or to set the same aspect again, which updates the live one). Required to retire. */
+    fact_id: z.string().min(1).optional(),
+    op: z.enum(["set", "retire"]),
+    aspect: text(FACT_LIMITS.aspect).default(""),
+    form: text(FACT_LIMITS.form).default(""),
+    text: text(FACT_LIMITS.text).default(""),
+    quote: text(FACT_LIMITS.quote).default(""),
+  })
+  .refine((v) => v.op !== "retire" || v.fact_id !== undefined, { message: "fact_id is required to retire a fact" })
+  .refine((v) => v.op !== "set" || (isFormAspect(v.aspect) ? v.form.length > 0 || v.text.length > 0 : v.text.length > 0), {
+    message: "text is required",
+  });
+
+/** Appends a fact change anchored at a chapter. Setting an aspect that is already live on the entry updates that fact. */
+export function createFactOp(input: z.infer<typeof NewFactOpSchema>): { id: string; fact_id: string } {
+  return db().transaction(() => {
+    const path = getPath(input.anchor_chapter_id);
+    if (path.length === 0) throw new PostError("That chapter does not exist", 404);
+    const anchor = path[path.length - 1];
+
+    const entry = foldCodex(getCodexOps(anchor.id), getCodexFacts(anchor.id)).find((e) => e.entry_id === input.entry_id);
+    if (!entry) throw new PostError("That entry doesn't exist at this point in the story", 409);
+
+    const aspect = isFormAspect(input.aspect) ? FORM_ASPECT : input.aspect;
+    let factId: string;
+    if (input.op === "retire") {
+      factId = input.fact_id!;
+      if (!entry.facts.some((f) => f.fact_id === factId)) throw new PostError("That fact doesn't exist at this point in the story", 409);
+    } else if (input.fact_id !== undefined) {
+      factId = input.fact_id;
+      // A retired fact may be set again, but only on the entry it belongs to.
+      if (!db().prepare(`SELECT 1 FROM codex_facts WHERE fact_id = ? AND entry_id = ? AND story_id = ?`).get(factId, input.entry_id, anchor.story_id)) {
+        throw new PostError("That fact doesn't belong to this entry", 409);
+      }
+    } else {
+      const same = aspect
+        ? entry.facts.find((f) => sameAspect(f.aspect, aspect) && (isFormAspect(aspect) || sameAspect(f.form, input.form)))
+        : undefined;
+      factId = same ? same.fact_id : newId();
+    }
+
+    const id = newId();
+    db()
+      .prepare(
+        `INSERT INTO codex_facts (id, story_id, anchor_chapter_id, entry_id, fact_id, op, aspect, form, text, quote, posted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(id, anchor.story_id, anchor.id, input.entry_id, factId, input.op, aspect, input.form, input.text, input.quote, Date.now());
+    return { id, fact_id: factId };
+  })();
 }
 
 export function createCodexOp(input: z.infer<typeof NewCodexOpSchema>): { id: string; entry_id: string } {
@@ -148,12 +232,12 @@ export function createCodexOp(input: z.infer<typeof NewCodexOpSchema>): { id: st
 /** The codex in the shape the AI prompt builder takes. */
 export function getContextCodex(chapterId: string | null) {
   if (!chapterId) return [];
-  return getCodexState(chapterId).map((e) => ({
+  return getCodexState(chapterId, { recentAnchor: chapterId }).map((e) => ({
     id: e.entry_id,
     name: e.name,
     type: e.type,
     aliases: e.aliases,
-    content: e.content,
+    content: e.description,
     always_include: e.always_include,
   }));
 }
@@ -163,12 +247,17 @@ export function getContextCodex(chapterId: string | null) {
  * written on any branch. Null when the story has no such entry.
  */
 export function codexEntryAt(storyId: string, entryId: string, chapterId: string | null): { name: string; type: CodexEntry["type"]; aliases: string[]; content: string } | null {
+  const asDescribed = (e: CodexEntry) => ({ name: e.name, type: e.type, aliases: e.aliases, content: e.description });
   const live = chapterId ? getCodexState(chapterId).find((e) => e.entry_id === entryId) : undefined;
-  if (live) return live;
+  if (live) return asDescribed(live);
   const row = db()
-    .prepare(`SELECT name, type, aliases, content FROM codex_ops WHERE story_id = ? AND entry_id = ? AND op != 'retire' ORDER BY posted_at DESC, rowid DESC LIMIT 1`)
-    .get(storyId, entryId) as { name: string; type: CodexEntry["type"]; aliases: string; content: string } | undefined;
-  return row ? { ...row, aliases: JSON.parse(row.aliases) as string[] } : null;
+    .prepare(`SELECT name, type, aliases, content, anchor_chapter_id FROM codex_ops WHERE story_id = ? AND entry_id = ? AND op != 'retire' ORDER BY posted_at DESC, rowid DESC LIMIT 1`)
+    .get(storyId, entryId) as { name: string; type: CodexEntry["type"]; aliases: string; content: string; anchor_chapter_id: string } | undefined;
+  if (!row) return null;
+  // As it read where it was last written, facts included, if it is live there.
+  const there = getCodexState(row.anchor_chapter_id).find((e) => e.entry_id === entryId);
+  if (there) return asDescribed(there);
+  return { name: row.name, type: row.type, aliases: JSON.parse(row.aliases) as string[], content: row.content };
 }
 
 /** The latest name of each of these codex entries (any branch) and its story's title, by entry id; entries that don't exist are left out. */

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ChapterEditEntry from "@/components/ChapterEditEntry";
-import { getCodexOps, getContextCodex } from "@/lib/codexDb";
+import { getCodexFacts, getCodexOps, getContextCodex } from "@/lib/codexDb";
 import { countDescendants, getChoices, getIncomingChoice, getPath, getStory } from "@/lib/stories";
 
 export const dynamic = "force-dynamic";
@@ -58,6 +58,7 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
                   .slice(0, -1)
                   .map((c) => ({ id: c.id, title: c.title, depth: c.depth, body: c.body, summary: c.summary, path_summary: c.path_summary })),
                 ops: getCodexOps(path[path.length - 2].id),
+                facts: getCodexFacts(path[path.length - 2].id),
               }
             : undefined
         }

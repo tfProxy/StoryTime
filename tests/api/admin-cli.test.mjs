@@ -39,6 +39,11 @@ ok((await putPicture(child, "header")).status === 200 && (await putPicture(root,
 const logJob = (chapter_id, n) => api("POST", "/api/picture-jobs", { chapter_id, prompt_id: `cli-${n}`, prompt: "p", width: 64, height: 64, seed: 1, count: 1, images: [{ filename: `cli_${n}.png`, subfolder: "", type: "output" }] });
 const jobsOf = async (chapter) => (await api("GET", `/api/picture-jobs?chapter=${chapter}`)).json.jobs.length;
 ok((await logJob(child, 1)).status === 201 && (await logJob(root, 2)).status === 201, "the chapters have picture jobs");
+// ...and a codex fact each
+const entry = (await api("POST", "/api/codex", { anchor_chapter_id: root, op: "create", name: "Cli Fox", type: "character" })).json.entry_id;
+const addFact = (anchor_chapter_id, text) => api("POST", "/api/codex/facts", { anchor_chapter_id, entry_id: entry, op: "set", aspect: "Ears", text });
+ok((await addFact(root, "human")).status === 201 && (await addFact(child, "fox ears")).status === 201, "the chapters have codex facts");
+const factsAt = (chapter) => new Database(DB, { readonly: true }).prepare(`SELECT COUNT(*) AS n FROM codex_facts WHERE anchor_chapter_id = ?`).get(chapter).n;
 
 r = cli("stats");
 ok(/stories: \d+/.test(r.out) && /chapters: \d+/.test(r.out), "stats prints counts");
@@ -55,6 +60,7 @@ ok(r.code === 0 && /Deleted 1 chapter/.test(r.out), "delete permanently: " + r.o
 ok((await api("GET", `/api/chapters/${child}`)).status === 404, "readers no longer see it");
 ok(!(await hasPicture(child, "header")) && (await hasPicture(root, "footer")), "its picture is deleted with it, and the other chapter's is kept");
 ok(await jobsOf(child) === 0 && await jobsOf(root) === 1, "its picture jobs are deleted with it, and the other chapter's are kept");
+ok(factsAt(child) === 0 && factsAt(root) === 1, "its codex facts are deleted with it, and the other chapter's are kept");
 ok((await api("GET", `/api/chapters/${root}`)).json.choices[0].child_chapter_id === null, "the slot is open again");
 
 // deleting a choice takes the chapter written for it, with everything below

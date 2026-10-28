@@ -27,6 +27,11 @@ and, for pictures, your own ComfyUI machine.
   the page; those changes stay in the draft and are saved with the chapter when it is posted (or
   straight away, if you date them to an earlier chapter). Entries can have pictures that change
   over the story too.
+- **Codex facts**: on the codex page, an entry can hold small facts, one per aspect ("Ears: tall
+  fox ears"), each dated to the chapter where it became true, with the sentence that shows it.
+  Changing an aspect later keeps the old version in its history. A character can have forms
+  (human, vixen…): facts can belong to one form, and only the current form's facts go to the AI.
+  **What the AI reads** shows the text the AI gets for the entry: its form, facts and notes.
 - **Review** (a story's menu): a page listing what may need fixing (missing, stale or wrong
   summaries, continuity slips, names with no codex entry, AI chapters not yet read) and the
   **tags** the AI suggests for chapters, for you to approve. See [Tags](#tags) below.

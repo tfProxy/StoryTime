@@ -12,7 +12,9 @@ const story = r.json.story_id, root = r.json.chapter_id;
 const choices = (await call("GET", `/api/chapters/${root}`)).json.choices;
 const left = (await call("POST", "/api/chapters", { choice_id: choices[0].id, title: "Left", body: "left text", summary: "sum-left", path_summary: "ps-left", choices: ["Deeper"] })).json.chapter_id;
 await call("POST", "/api/chapters", { choice_id: (await call("GET", `/api/chapters/${left}`)).json.choices[0].id, title: "Deep", body: "deep text" });
-await call("POST", "/api/codex", { anchor_chapter_id: left, op: "create", name: "Mira", type: "character", content: "A thief.", aliases: ["the thief"], always_include: true });
+const miraEntry = (await call("POST", "/api/codex", { anchor_chapter_id: left, op: "create", name: "Mira", type: "character", content: "A thief.", aliases: ["the thief"], always_include: true })).json.entry_id;
+r = await call("POST", "/api/codex/facts", { anchor_chapter_id: left, entry_id: miraEntry, op: "set", aspect: "Ears", text: "Tall russet fox ears.", quote: "Her ears twitched." });
+ok(r.status === 201, "setup: a codex fact");
 r = await call("PATCH", `/api/chapters/${root}`, { base_revision: 1, title: "Start v2", body: "It began again.", edit_note: "polish", summary: "sum-root2", path_summary: "ps-root2" });
 ok(r.status === 200, "setup: root chapter edited once");
 
@@ -31,16 +33,26 @@ const strip = (d) => {
     chapters: d.chapters.map((c) => ({ ...c, id: cid.get(c.id), parent_choice_id: hid.get(c.parent_choice_id) ?? null })),
     choices: d.choices.map((c) => ({ ...c, id: hid.get(c.id), parent_chapter_id: cid.get(c.parent_chapter_id) })),
     codex: d.codex.map((o) => ({ ...o, id: 0, anchor_chapter_id: cid.get(o.anchor_chapter_id) })),
+    codex_facts: d.codex_facts.map((o) => ({ ...o, anchor_chapter_id: cid.get(o.anchor_chapter_id) })),
     revisions: d.revisions.map((o) => ({ ...o, chapter_id: cid.get(o.chapter_id) })),
   });
 };
+ok(data.codex_facts.length === 1 && data.codex_facts[0].aspect === "Ears" && data.codex_facts[0].quote === "Her ears twitched.", "export carries codex facts");
 ok(strip(copy) === strip(data), "re-exporting the copy gives the same content (text, summaries, codex, revisions, timestamps)");
 ok(!copy.chapters.some((c) => c.id === data.chapters[0].id), "the copy has its own ids");
+ok(copy.codex_facts.length === 1 && copy.codex_facts[0].anchor_chapter_id !== left && copy.codex_facts[0].entry_id === miraEntry, "import keeps codex facts on the copied chapter");
 
 const page = await fetch(`${B}/c/${r.json.chapter_id}`);
 ok(page.status === 200 && (await page.text()).includes("Start v2"), "the imported story can be read");
 const listed = (await (await fetch(`${B}/api/stories`)).json()).filter((s) => s.title === "Round Trip");
 ok(listed.length === 2, "both copies are listed");
+{
+  const old = structuredClone(data);
+  delete old.codex_facts;
+  old.story.title = "Before Facts";
+  r = await call("POST", "/api/stories/import", old);
+  ok(r.status === 201 && (await exportOf(r.json.story_id)).codex_facts.length === 0, "an export made before codex facts still imports");
+}
 
 // ---- the art style ----
 ok(data.story.art_style === "", "setup: the original has no art style");
@@ -117,6 +129,7 @@ await bad("chapter after a missing choice", (d) => { d.chapters[1].parent_choice
 await bad("two roots", (d) => { d.chapters[1].parent_choice_id = null; });
 await bad("duplicate chapter id", (d) => { d.chapters[1].id = d.chapters[0].id; });
 await bad("codex on unknown chapter", (d) => { d.codex[0].anchor_chapter_id = "nope"; });
+await bad("codex fact on unknown chapter", (d) => { d.codex_facts[0].anchor_chapter_id = "nope"; });
 await bad("choice on unknown chapter", (d) => { d.choices[0].parent_chapter_id = "nope"; });
 await bad("too-long title", (d) => { d.chapters[0].title = "x".repeat(500); });
 await bad("revision not older than the live one", (d) => { d.revisions[0].revision = 2; });

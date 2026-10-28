@@ -12,15 +12,19 @@ import {
   entryHistory,
   foldCodex,
   isDraftEntry,
+  isFormAspect,
+  sameAspect,
   retiredEntries,
   type CodexChange,
   type CodexEntry,
   type CodexOp,
   type EntryType,
+  type FactOp,
 } from "@/lib/codex";
 import { useSettings } from "@/lib/settings";
 import { draftEntry, entryRequest, type PathChapter, type StoryInfo } from "@/lib/ai/codexAi";
 import CodexAiScan from "./CodexAiScan";
+import CodexFacts from "./CodexFacts";
 import PromptButton from "./PromptButton";
 
 type PathItem = PathChapter;
@@ -42,6 +46,8 @@ type Props = {
   path: PathItem[];
   /** Every op on the path from the story root to this chapter. */
   ops: CodexOp[];
+  /** Every fact op on the same path as `ops`. */
+  facts?: FactOp[];
   /**
    * Changes held in the draft of the next chapter. When given, changes are kept there by default
    * (and posted with the chapter); only changes anchored at an earlier chapter are saved straight away.
@@ -55,7 +61,7 @@ type Change = { op: CodexOp["op"]; entry_id?: string; anchor?: string } & Partia
 const when = (t: number) => new Date(t).toISOString().replace("T", " ").slice(0, 16) + " UTC";
 const localId = () => `draft-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 
-export default function CodexPanel({ story, storyId, openAiHelper, embedded, storyWide, startEditing, chapterId, path, ops, draft }: Props) {
+export default function CodexPanel({ story, storyId, openAiHelper, embedded, storyWide, startEditing, chapterId, path, ops, facts, draft }: Props) {
   const router = useRouter();
   // Each entry's picture as of this chapter (by entry id), for the thumbnails and the picture links.
   const [pictures, setPictures] = useState<Record<string, { id: string }>>({});
@@ -76,7 +82,13 @@ export default function CodexPanel({ story, storyId, openAiHelper, embedded, sto
     id === DRAFT_ANCHOR ? "this chapter (not posted yet)" : (path.find((p) => p.id === id)?.title ?? "an earlier chapter");
 
   const allOps = draft ? [...ops, ...draftOps(draft.changes, (path.at(-1)?.depth ?? -1) + 1)] : ops;
-  const entries = foldCodex(allOps);
+  const entries = foldCodex(allOps, facts ?? []);
+  const usedAspects: string[] = [];
+  for (const e of entries) {
+    for (const f of e.facts) {
+      if (f.aspect.trim() && !isFormAspect(f.aspect) && !usedAspects.some((a) => sameAspect(a, f.aspect))) usedAspects.push(f.aspect.trim());
+    }
+  }
   const retired = retiredEntries(allOps);
   const pending = new Map((draft?.changes ?? []).map((c) => [c.entry_id, c]));
   const discard = (entryId: string) => draft?.onChange(draft.changes.filter((c) => c.entry_id !== entryId));
@@ -278,7 +290,24 @@ export default function CodexPanel({ story, storyId, openAiHelper, embedded, sto
                       )}
                     </div>
                   </div>
-                  <p style={{ whiteSpace: "pre-wrap", margin: "0.5rem 0" }}>{e.content || <em>(no description)</em>}</p>
+                  {isDraftEntry(e.entry_id) ? (
+                    <p className="meta" style={{ margin: "0.5rem 0 0" }}>Post the chapter to add facts.</p>
+                  ) : (
+                    <CodexFacts
+                      entry={e}
+                      factOps={facts ?? []}
+                      path={path}
+                      chapterId={chapterId}
+                      usedAspects={usedAspects}
+                      onSaved={() => router.refresh()}
+                    />
+                  )}
+                  {(e.content || e.facts.length === 0) && (
+                    <>
+                      {e.facts.length > 0 && <div className="meta" style={{ margin: "0.5rem 0 0" }}>Notes</div>}
+                      <p style={{ whiteSpace: "pre-wrap", margin: "0.5rem 0" }}>{e.content || <em>(no description)</em>}</p>
+                    </>
+                  )}
                   <div className="meta" style={{ margin: 0 }}>
                     {hist.length > 1 || !here ? `Last changed in “${titleOf(e.op.anchor_chapter_id)}”` : "Created here"} ·{" "}
                     <button type="button" className="linkish" onClick={() => setHistoryOf(historyOf === e.entry_id ? null : e.entry_id)}>

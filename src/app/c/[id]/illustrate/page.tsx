@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import IllustrateWorkspace from "@/components/IllustrateWorkspace";
 import { chapterImageMade, chapterImageVersions } from "@/lib/chapterImages";
 import { foldCodex } from "@/lib/codex";
-import { getCodexOps } from "@/lib/codexDb";
+import { getCodexFacts, getCodexOps } from "@/lib/codexDb";
 import { chapterPictureJobs, storyChapterTitles } from "@/lib/pictureJobs";
 import { chapterRefPool } from "@/lib/referencePool";
 import { getPictureDraft } from "@/lib/pictureDrafts";
@@ -22,12 +22,12 @@ export default async function IllustratePage({ params }: { params: Promise<{ id:
   const story = getStory(chapter.story_id);
   if (!story) notFound();
   const versions = chapterImageVersions([chapter.id]).get(chapter.id)!;
-  const codex = foldCodex(getCodexOps(chapter.id)).map((e) => ({
+  const codex = foldCodex(getCodexOps(chapter.id), getCodexFacts(chapter.id)).map((e) => ({
     id: e.entry_id,
     name: e.name,
     type: e.type,
     aliases: e.aliases,
-    content: e.content,
+    content: e.description,
     always_include: e.always_include,
   }));
 

@@ -2,7 +2,7 @@
 
 import type { StoryContext } from "@/lib/ai/prompts";
 import type { PathChapter } from "@/lib/ai/codexAi";
-import type { CodexOp } from "@/lib/codex";
+import type { CodexOp, FactOp } from "@/lib/codex";
 import ChapterEditor from "./ChapterEditor";
 import StoryDetailsForm from "./StoryDetailsForm";
 
@@ -20,7 +20,7 @@ type Props = {
   storyId: string;
   draftLabel: string;
   /** The codex as of the previous chapter; absent for a story's first chapter. */
-  codexPanel?: { chapterId: string; path: PathChapter[]; ops: CodexOp[] };
+  codexPanel?: { chapterId: string; path: PathChapter[]; ops: CodexOp[]; facts?: FactOp[] };
   /** Present only for a story's first chapter. */
   story: { id: string; title: string; premise: string } | null;
 };
