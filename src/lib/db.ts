@@ -554,7 +554,7 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE chapters ADD COLUMN ai_run_id TEXT;
   ALTER TABLE chapters ADD COLUMN ai_reviewed_at INTEGER;
   `,
-  // 32: the work queue on the server (see ./worker and docs/server-queue-plan.md): what is waiting, being made or
+  // 32: the work queue on the server (see ./worker): what is waiting, being made or
   // finished, so a restart loses nothing. data is JSON, per type (worker/items.ts). A run the author stopped, or
   // that waits for the plan to be checked, is 'paused'. work_uploads holds pictures the browser sent for a job
   // (a picked file, Refine's flattened picture, a painted mask); they are deleted after a day.

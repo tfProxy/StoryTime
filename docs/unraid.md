@@ -42,7 +42,11 @@ Notes:
 - The site has no logins, so anyone who can reach it can read, post and edit. Keep it on your home
   network, reach it over a VPN such as Tailscale, or put it behind a reverse proxy that adds its own
   authentication before exposing it any further.
-- Local AI with Ollama: the browser talks to Ollama directly, so Ollama must allow the site's
-  address (`OLLAMA_ORIGINS`), and the Ollama URL in each person's Settings must be reachable from
-  their browser (use the PC's or server's LAN address, not `localhost`, unless Ollama runs on the
-  same machine as the browser).
+- AI and ComfyUI addresses: the container makes the picture jobs, AI runs and Generates itself, so the
+  addresses in Settings must work from inside the container. Use LAN addresses, not `localhost`
+  (Settings › Test from server checks each one). A few AI calls (the codex scan, writing a picture
+  prompt) still go from the browser, so with Ollama the address must also work from your browser
+  and Ollama must allow the site's address (`OLLAMA_ORIGINS`). The browser also loads pictures
+  straight from ComfyUI.
+- A reverse proxy in front of StoryTime must not buffer `text/event-stream`, or the queue's live
+  updates (the header counts, progress) stop arriving.

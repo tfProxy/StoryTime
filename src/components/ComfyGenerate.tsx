@@ -411,6 +411,7 @@ export default function ComfyGenerate({
         ×
         <input
           type="number"
+          // Not "Size …": the tests find the Size menu with getByLabel("Size"), which would match this too.
           aria-label="Scale by"
           min={0.5}
           max={2}

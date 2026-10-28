@@ -2,12 +2,12 @@
 
 # StoryTime
 
-A single-writer branching-story app: Next.js (read `AGENTS.md` above first), React client components, SQLite through better-sqlite3, AI calls made from the browser.
+A single-writer branching-story app: Next.js (read `AGENTS.md` above first), React client components, SQLite through better-sqlite3. The server's work queue (`src/lib/worker/`) makes the ComfyUI jobs, AI runs and Generates; some one-off AI calls (codex scan, prompt writing) still go from the browser.
 
 ## Docs
 
-- Before changing the Illustrate page or anything in `src/lib/comfy/`, read `docs/illustrate.md` (how it works). Do not read the other files in `docs/` unless asked: `docs/pictures.md` and `docs/unraid.md` are setup guides for the owner. Planned work is in `TODO.md`; the task list for the story review (checks and tags) is `docs/review-plan.md`.
-- When behaviour that `docs/illustrate.md` describes changes, update it in the same change.
+- Planned work is in `TODO.md`. `README.md` and `docs/` are for the owner and say how to use and set up the app; do not read them unless asked, and do not put implementation details in them. When a change alters what the owner sees or sets up, update the matching guide (`docs/pictures.md` for pictures and ComfyUI, `docs/unraid.md` for the container).
+- Notes for agents live next to the code, in a folder's `CLAUDE.md` (`src/lib/comfy/`, `src/lib/worker/`), and are loaded when you read files there. Keep them to rules and quirks the code can't show locally; explain everything else in code comments where it applies. Don't write design docs or plans into the repo: put the open items in `TODO.md`.
 
 ## File editing
 
