@@ -76,6 +76,7 @@ Background: an entry's AI text is built from its facts (one per aspect, such as 
 - [ ] A nightly review run for chapters changed that day. Only if asked.
 
 **Server and code**
+- [ ] Prompt history: a ☰ page listing the last 200 text AI calls (3 days) with their prompts, replies, source and model, for tuning prompts. Planned and approved: `handoff/prompt-history.md`.
 - [ ] Route the remaining one-off AI calls (codex scan, tag suggestions, summaries, Write prompt, Refine's prompt) through a server `POST /api/ai/chat` stream, so the browser never calls providers and no CORS setup is needed.
 - [ ] A `/api/comfy/view` proxy so the Refine canvas can load ComfyUI pictures without CORS.
 - [ ] `src/lib/aiRuns/api.ts` goes through a self fetch to the server's own API; it could use SQLite directly.
