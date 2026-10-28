@@ -78,8 +78,10 @@ export type CodexEntry = {
   /** The entry's own free text ("Notes"). What the AI reads is `description`. */
   content: string;
   always_include: boolean;
-  /** The op that produced this version of the entry. */
+  /** The last op that changed the entry, carrying the entry's folded fields. */
   op: CodexOp;
+  /** Each keyword and the chapter whose change added it (for showing inherited keywords). */
+  keywordSources: KeywordSource[];
   /** Every live fact, in the order they were first set; facts of other forms included. */
   facts: LiveFact[];
   /** The form the entry is in now, from its FORM_ASPECT fact; null when it has none. */
@@ -168,13 +170,14 @@ export function usedAspectsOf(entries: CodexEntry[]): string[] {
   return out;
 }
 
-function withFacts(op: CodexOp, facts: LiveFact[], recentAnchor?: string): CodexEntry {
+function withFacts(op: CodexOp, facts: LiveFact[], recentAnchor?: string, keywordSources?: KeywordSource[]): CodexEntry {
   const formFact = facts.find((f) => isFormAspect(f.aspect)) ?? null;
   const forms: string[] = [];
   for (const name of [formFact?.form ?? "", ...facts.filter((f) => !isFormAspect(f.aspect)).map((f) => f.form)]) {
     if (name.trim() && !forms.some((n) => sameAspect(n, name))) forms.push(name.trim());
   }
   return {
+    keywordSources: keywordSources ?? op.aliases.map((alias) => ({ alias, chapter_id: op.anchor_chapter_id })),
     entry_id: op.entry_id,
     name: op.name,
     type: op.type,
@@ -189,8 +192,6 @@ function withFacts(op: CodexOp, facts: LiveFact[], recentAnchor?: string): Codex
   };
 }
 
-const fromOp = (op: CodexOp): CodexEntry => withFacts(op, []);
-
 export type FoldOptions = {
   /** Facts anchored here are marked "(just changed)" in `description`. */
   recentAnchor?: string;
@@ -201,23 +202,102 @@ export type FoldOptions = {
  * on the same path folded into each.
  */
 export function foldCodex(ops: CodexOp[], facts: FactOp[] = [], options: FoldOptions = {}): CodexEntry[] {
-  const state = new Map<string, CodexOp>();
-  for (const op of orderOps(ops)) {
-    if (op.op === "retire") state.delete(op.entry_id);
-    else state.set(op.entry_id, op); // a replace of a missing/retired entry creates (or revives) it
-  }
   const liveFacts = facts.length ? foldFacts(facts) : new Map<string, LiveFact[]>();
-  return [...state.values()].map((op) => withFacts(op, liveFacts.get(op.entry_id) ?? [], options.recentAnchor)).sort(
-    (a, b) => ENTRY_TYPES.indexOf(a.type) - ENTRY_TYPES.indexOf(b.type) || a.name.localeCompare(b.name),
-  );
+  return [...foldEntries(ops).values()]
+    .filter((s) => s.alive)
+    .map((s) => withFacts(s.op, liveFacts.get(s.op.entry_id) ?? [], options.recentAnchor, s.sources))
+    .sort((a, b) => ENTRY_TYPES.indexOf(a.type) - ENTRY_TYPES.indexOf(b.type) || a.name.localeCompare(b.name));
 }
 
 /** Entries that were retired on this path, as they last looked before retirement. */
 export function retiredEntries(ops: CodexOp[]): CodexEntry[] {
-  const live = new Set(foldCodex(ops).map((e) => e.entry_id));
-  const last = new Map<string, CodexOp>();
-  for (const op of orderOps(ops)) if (op.op !== "retire") last.set(op.entry_id, op);
-  return [...last.values()].filter((op) => !live.has(op.entry_id)).map(fromOp);
+  return [...foldEntries(ops).values()].filter((s) => !s.alive).map((s) => withFacts(s.op, [], undefined, s.sources));
+}
+
+/** Where a keyword came from: the chapter whose change added it. */
+export type KeywordSource = { alias: string; chapter_id: string };
+
+// ---- Folding entry ops field by field ----
+//
+// An op stores a whole copy of the entry, but it only *changes* the fields that differ from the entry as it
+// stood when the op was posted (on the same path). So a later edit at an earlier chapter (a keyword added at
+// the first chapter) still reaches a chapter below that changed something else (its notes). Keywords are a
+// set: an op adds and removes single keywords. A create, or an op with nothing before it, sets everything.
+
+type Fields = Pick<CodexOp, "name" | "type" | "aliases" | "content" | "always_include">;
+type Delta = { full: true; fields: Fields } | { full: false; patch: Partial<Omit<Fields, "aliases">>; add: string[]; remove: string[] };
+type Folded = { alive: boolean; fields: Fields; op: CodexOp; sources: KeywordSource[] };
+
+const lc = (s: string) => s.trim().toLowerCase();
+const fieldsOf = (op: CodexOp): Fields => ({ name: op.name, type: op.type, aliases: op.aliases, content: op.content, always_include: op.always_include });
+
+function deltaOf(op: CodexOp, before: Fields | null): Delta {
+  if (op.op === "create" || before === null) return { full: true, fields: fieldsOf(op) };
+  const patch: Partial<Omit<Fields, "aliases">> = {};
+  if (op.name !== before.name) patch.name = op.name;
+  if (op.type !== before.type) patch.type = op.type;
+  if (op.content !== before.content) patch.content = op.content;
+  if (op.always_include !== before.always_include) patch.always_include = op.always_include;
+  const had = new Set(before.aliases.map(lc));
+  const has = new Set(op.aliases.map(lc));
+  return { full: false, patch, add: op.aliases.filter((a) => !had.has(lc(a))), remove: before.aliases.filter((a) => !has.has(lc(a))) };
+}
+
+/** Applies one entry's ops (in effect order) with their deltas. With `ignoreRetire`, the last known version even if retired. */
+function applyDeltas(ops: CodexOp[], deltas: Map<CodexOp, Delta>, ignoreRetire: boolean): Folded | null {
+  let cur = null as Folded | null;
+  for (const op of ops) {
+    if (op.op === "retire") {
+      if (cur && !ignoreRetire) cur = { ...cur, alive: false, op: { ...op, ...cur.fields } };
+      continue;
+    }
+    const d = deltas.get(op);
+    if (!d) continue;
+    if (d.full || cur === null) {
+      const fields = d.full ? d.fields : fieldsOf(op);
+      cur = { alive: true, fields, op, sources: fields.aliases.map((alias) => ({ alias, chapter_id: op.anchor_chapter_id })) };
+    } else {
+      const gone = new Set(d.remove.map(lc));
+      const aliases = cur.fields.aliases.filter((a) => !gone.has(lc(a)));
+      const sources = cur.sources.filter((s) => !gone.has(lc(s.alias)));
+      for (const a of d.add) {
+        if (aliases.some((x) => lc(x) === lc(a))) continue;
+        aliases.push(a);
+        sources.push({ alias: a, chapter_id: op.anchor_chapter_id });
+      }
+      cur = { alive: true, fields: { ...cur.fields, ...d.patch, aliases }, op, sources };
+    }
+  }
+  // The entry reads as its fields, whatever the last op itself stored.
+  return cur && { ...cur, op: { ...cur.op, ...cur.fields } };
+}
+
+/** Each entry on the path, folded field by field: alive or retired, its fields, and the last op that changed it. */
+function foldEntries(ops: CodexOp[]): Map<string, Folded> {
+  const byEntry = new Map<string, CodexOp[]>();
+  for (const op of orderOps(ops)) {
+    const list = byEntry.get(op.entry_id);
+    if (list) list.push(op);
+    else byEntry.set(op.entry_id, [op]);
+  }
+  const out = new Map<string, Folded>();
+  for (const [id, list] of byEntry) {
+    // Work out each op's change in the order they were posted (a draft's last: it was made from everything else).
+    const isDraft = (o: CodexOp) => o.anchor_chapter_id === DRAFT_ANCHOR;
+    const posted = [...list].sort((a, b) => Number(isDraft(a)) - Number(isDraft(b)) || a.posted_at - b.posted_at);
+    const deltas = new Map<CodexOp, Delta>();
+    for (const op of posted) {
+      if (op.op === "retire") continue;
+      // Compared with the entry's last known version from the ops posted before it (retirements ignored, so a
+      // revival only changes what differs from the entry before it was retired).
+      // Only what was visible at the op's own chapter: its own and earlier chapters, not those below it.
+      const before = applyDeltas(list.filter((o) => deltas.has(o) && o.anchor_depth <= op.anchor_depth), deltas, true);
+      deltas.set(op, deltaOf(op, before ? before.fields : null));
+    }
+    const folded = applyDeltas(list, deltas, false);
+    if (folded) out.set(id, folded);
+  }
+  return out;
 }
 
 /** All versions of one entry along the path, oldest first (retirements included). */

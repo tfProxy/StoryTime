@@ -14,7 +14,7 @@ import {
   type FoldOptions,
   type StoryEntrySummary,
 } from "./codex";
-import { getPath, PostError } from "./stories";
+import { getChoices, getPath, PostError } from "./stories";
 
 const text = (max: number) => z.string().trim().max(max);
 
@@ -228,6 +228,27 @@ export function createCodexOp(input: z.infer<typeof NewCodexOpSchema>): { id: st
     return { id, entry_id: entryId };
   })();
 }
+
+/**
+ * Takes an entry out of one chapter only: it is retired at the chapter and brought back, unchanged, at each chapter
+ * written after it, so the chapters below keep it (with its facts). For an entry added a chapter too early.
+ */
+export function removeEntryAtChapter(input: { entry_id: string; chapter_id: string }): { retired: string; kept_in: string[] } {
+  return db().transaction(() => {
+    const path = getPath(input.chapter_id);
+    if (path.length === 0) throw new PostError("That chapter does not exist", 404);
+    const anchor = path[path.length - 1];
+    const entry = getCodexState(anchor.id).find((e) => e.entry_id === input.entry_id);
+    if (!entry) throw new PostError("That entry doesn't exist at this point in the story", 409);
+    const fields = { name: entry.name, type: entry.type, aliases: entry.aliases, content: entry.content, always_include: entry.always_include };
+    const retired = createCodexOp({ anchor_chapter_id: anchor.id, op: "retire", entry_id: entry.entry_id, ...fields });
+    const children = getChoices(anchor.id).flatMap((c) => (c.child_chapter_id ? [c.child_chapter_id] : []));
+    for (const child of children) createCodexOp({ anchor_chapter_id: child, op: "replace", entry_id: entry.entry_id, ...fields });
+    return { retired: retired.id, kept_in: children };
+  })();
+}
+
+export const RemoveEntryAtChapterSchema = z.object({ entry_id: z.string().min(1), chapter_id: z.string().min(1) });
 
 /** The codex in the shape the AI prompt builder takes. */
 export function getContextCodex(chapterId: string | null) {

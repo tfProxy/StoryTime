@@ -137,3 +137,44 @@ ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length ==
   es = foldCodex([op({})], [fop({ anchor_chapter_id: "c1" })], { recentAnchor: "c1" });
   ok(es[0].description.includes("(just changed)"), "foldCodex: recentAnchor passes through");
 }
+
+// ---- entry ops fold field by field: a later edit at an earlier chapter reaches the chapters below ----
+{
+  const c0 = (o: Partial<CodexOp>) => op({ anchor_chapter_id: "c0", anchor_depth: 0, ...o });
+  const c2 = (o: Partial<CodexOp>) => op({ anchor_chapter_id: "c2", anchor_depth: 2, op: "replace", ...o });
+  // c2 changes the notes first; later a keyword is added at c0 (its op copies the old notes as seen at c0).
+  let es = foldCodex([
+    c0({ posted_at: 1 }),
+    c2({ content: "Notes at c2.", posted_at: 2 }),
+    c0({ op: "replace", aliases: ["Mi"], posted_at: 3 }),
+  ]);
+  ok(es[0].aliases.join() === "Mi" && es[0].content === "Notes at c2.", "a keyword added later at the first chapter reaches a chapter that changed only its notes");
+  ok(es[0].keywordSources.length === 1 && es[0].keywordSources[0].chapter_id === "c0", "…and it is shown as coming from the first chapter");
+  // both chapters add a keyword: both are kept, each with its own source
+  es = foldCodex([
+    c0({ posted_at: 1 }),
+    c2({ aliases: ["Thief"], posted_at: 2 }),
+    c0({ op: "replace", aliases: ["Mi"], posted_at: 3 }),
+  ]);
+  const src = Object.fromEntries(es[0].keywordSources.map((k) => [k.alias, k.chapter_id]));
+  ok(es[0].aliases.length === 2 && src.Mi === "c0" && src.Thief === "c2", "keywords added at two chapters are both kept, with where they came from");
+  // a keyword removed at c2 stays removed there, while one added later at c0 arrives
+  es = foldCodex([
+    c0({ aliases: ["Old"], posted_at: 1 }),
+    c2({ aliases: [], posted_at: 2 }),
+    c0({ op: "replace", aliases: ["Old", "New"], posted_at: 3 }),
+  ]);
+  ok(es[0].aliases.join() === "New", "a keyword removed below stays removed, and a later one from above arrives");
+  // a field the deeper op did change still wins over a later change above
+  es = foldCodex([c0({ posted_at: 1 }), c2({ name: "Mira the Mare", posted_at: 2 }), c0({ op: "replace", name: "Mira Vale", posted_at: 3 })]);
+  ok(es[0].name === "Mira the Mare", "a field changed below still wins there");
+  es = foldCodex([c0({ posted_at: 1 }), c0({ op: "replace", name: "Mira Vale", posted_at: 3 })]);
+  ok(es[0].name === "Mira Vale", "…and the change above applies where nothing below changed it");
+  // removed from one chapter only: retired at c1, revived at c2 with the same fields; a later keyword at c0 still arrives at c2
+  const c1 = (o: Partial<CodexOp>) => op({ anchor_chapter_id: "c1", anchor_depth: 1, ...o });
+  const removed = [c0({ posted_at: 1 }), c1({ op: "retire", posted_at: 2 }), c2({ posted_at: 2 })];
+  ok(foldCodex(removed.filter((o) => o.anchor_depth <= 1)).length === 0, "removed from one chapter: not there");
+  ok(retiredEntries(removed.filter((o) => o.anchor_depth <= 1)).length === 1, "…where it is listed as retired");
+  es = foldCodex([...removed, c0({ op: "replace", aliases: ["Mi"], posted_at: 4 })]);
+  ok(es.length === 1 && es[0].aliases.join() === "Mi" && es[0].content === "A human thief.", "…but back in the chapter below, with a keyword added later above");
+}

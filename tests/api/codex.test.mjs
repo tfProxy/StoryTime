@@ -125,3 +125,18 @@ r = await fact(root, { entry_id: kit, op: "retire" });
 ok(r.status === 400, "retire needs a fact id");
 const factMd = await (await fetch(`${B}/api/chapters/${a2}/codex?format=md`)).text();
 ok(factMd.includes("Form: vixen, change complete.") && factMd.includes("A fox."), "the markdown download uses facts");
+
+// removing an entry from one chapter keeps it in the chapters after it
+const tam = (await op(root, { op: "create", name: "Tamsin", type: "character", content: "A fox-woman." })).json.entry_id;
+await fact(root, { entry_id: tam, op: "set", aspect: "Ears", text: "tall fox ears" });
+const has = async (chapter) => (await state(chapter)).entries.find((e) => e.entry_id === tam);
+r = await call("POST", "/api/codex/remove-here", { entry_id: tam, chapter_id: root });
+ok(r.status === 201 && r.json.kept_in.length === 2, "remove from one chapter: kept in its two next chapters");
+ok(!(await has(root)), "…gone from that chapter");
+const atA = await has(a);
+ok(atA && atA.content === "A fox-woman." && atA.facts.some((f) => f.text === "tall fox ears"), "…still in the next chapter, with its notes and facts");
+ok(!!(await has(a2)) && !!(await has(b)), "…and further down every branch");
+r = await call("POST", "/api/codex/remove-here", { entry_id: tam, chapter_id: root });
+ok(r.status === 409, "removing it again there conflicts");
+r = await call("POST", "/api/codex/remove-here", { entry_id: tam, chapter_id: "nope" });
+ok(r.status === 404, "an unknown chapter is 404");
