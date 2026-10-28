@@ -1,6 +1,6 @@
 # TODO
 
-What is left to do, as a simple list. Finished work isn't listed; the code and tests describe it. Before touching the Illustrate page read `docs/illustrate.md`. `TODO/` holds the plans the finished work followed (server queue, story review, inpainting), written for agents; read one only if you need to change that code.
+What is left to do, as a simple list. Finished work isn't listed; the code and tests describe it.
 
 Last checked against the code: 2026-10-27.
 
@@ -47,7 +47,7 @@ Roughly in order of usefulness. Nothing here is agreed to start without asking w
 - [ ] Later: a region per character for two-character scenes (IP-Adapter `attn_mask`), the face adapter, Flux Redux for the Flux family.
 
 **Inpainting**
-- [ ] Masks with the edit models (Qwen-Image-Edit, Kontext): technically small (`TODO/inpaint-plan.md`, phase E), but needs a decision on where "edit by instruction, only here" lives in Refine.
+- [ ] Masks with the edit models (Qwen-Image-Edit, Kontext): needs a decision on where "edit by instruction, only here" lives in Refine. Technically small: add `mask?` to `EditParams`, call `redrawOnlyMask(wf, mask, "11", "13", …)` in `buildEdit`, and allow masks on edits in `maskOf`, `sameJob` and `pictureJobs.ts` (which rejects them today).
 - [ ] Flux Fill and inpaint-trained checkpoints (phase F), and outpainting. Only worth it if Flux redraws still show seams.
 
 **Story review and tags**
@@ -62,5 +62,4 @@ Roughly in order of usefulness. Nothing here is agreed to start without asking w
 - [ ] Route the remaining one-off AI calls (codex scan, tag suggestions, summaries, Write prompt, Refine's prompt) through a server `POST /api/ai/chat` stream, so the browser never calls providers and no CORS setup is needed.
 - [ ] A `/api/comfy/view` proxy so the Refine canvas can load ComfyUI pictures without CORS.
 - [ ] `src/lib/aiRuns/api.ts` goes through a self fetch to the server's own API; it could use SQLite directly.
-- [ ] `CLAUDE.md` still says AI calls are made from the browser. It needs updating now that the server makes them (the owner approves edits to that line).
 - [ ] Fix the one known lint error, in `src/components/OutlineSummaries.tsx` (set-state-in-effect).

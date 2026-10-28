@@ -1,5 +1,5 @@
 // Accept on the Refine screen: keeps the picture the author sees as a pinned picture on the Illustrate page. Plain
-// functions over fetch; the planning on top is pure code. See docs/illustrate.md (Refine screen).
+// functions over fetch; the planning on top is pure code.
 import { uploadImage, type ComfyImage } from "../comfy/client";
 import { chapterIdOf, type PictureTarget } from "../pictureTarget";
 import type { RefineState } from "../refineHistory";

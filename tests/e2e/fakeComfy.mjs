@@ -98,7 +98,8 @@ export const EDIT_FILES = {
   vae: ["qwen_image_vae.safetensors", "ae.safetensors"],
 };
 
-// The nodes the fake knows; /object_info answers {} for any other.
+// The nodes the fake knows; /object_info answers {} for any other. A workflow that uses a node class not listed
+// here fails in the browser tests with "Cannot execute because node X does not exist", so add every new one.
 const NODES = [
   "CheckpointLoaderSimple", "KSampler", "KSamplerAdvanced", "EmptyLatentImage", "CLIPTextEncode", "VAEDecode", "VAEEncode", "SaveImage", "LoadImage",
   "RepeatLatentBatch", "ImageScale", "UNETLoader", "CLIPLoader", "DualCLIPLoader", "VAELoader", "TextEncodeQwenImageEditPlus",

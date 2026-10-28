@@ -1,7 +1,7 @@
 "use client";
 
 // The work queue as the browser sees it. The work itself (picture jobs sent to ComfyUI, AI runs, Generates) is done by
-// the StoryTime server, which keeps going with every tab closed (src/lib/worker, TODO/server-queue-plan.md). This is a
+// the StoryTime server, which keeps going with every tab closed (src/lib/worker). This is a
 // client of it: it follows the server's items over server-sent events (`/api/queue/events`), asks and stops through
 // its routes, and hands a chapter's (or a Refine session's) finished jobs to the page that is open on it. It lives in
 // the root layout, which stays while pages change.

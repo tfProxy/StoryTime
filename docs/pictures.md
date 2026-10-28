@@ -1,6 +1,34 @@
 # Pictures with ComfyUI
 
-How to set up the machine that makes StoryTime's pictures, and how to use presets, LoRAs and the edit models. The code behind the Illustrate page is described in `docs/illustrate.md`.
+How to use StoryTime's picture pages, and how to set up the machine that makes the pictures: presets, LoRAs and the edit models.
+
+## Using the picture pages
+
+**Where pictures are made.** Each chapter has an Illustrate page (header and footer pictures). The story has a cover page (Make a cover, on the story's details page), and each codex entry has a picture page (from the Codex panel). They all work the same way: write or let the AI write a prompt, press **Queue**, and pick from the results.
+
+**The queue runs on the StoryTime server.** Jobs carry on when you close the tab, change page or lock the phone. The header shows how many are being made and how many are ready; **Open queue** lists them, with Pause, Move up/down and Do next. Writing (Generate, write-ahead runs) shares the same queue, and by default writing and pictures take turns on the machine (Settings › Queue). Because the server talks to ComfyUI and the AI, the addresses in Settings must work from the NAS, not just from your browser (**Test from server** checks this). Your browser still needs to reach ComfyUI to show the pictures.
+
+**Quick clicks become one job.** Clicking Queue several times within a second, with nothing changed, makes one job of up to 8 pictures (turn this off in Settings › Drawing). **Pictures per click** beside Queue does the same in one click. **Keep seed** repeats a seed you like.
+
+**Keeping and throwing away.** Every picture has a pin, a reject ✕ and a ☰ menu (use as header, footer, cover or codex picture; Instruct changes; Use as reference; Refine…; Load prompt; Info). The Pictures panel opens on **Pinned & new**: when you come back later, only pinned pictures show. **All**, **Rejected** and **Other chapters** show the rest. Saving a picture as the header or footer pins it. A green ✦ New marks pictures that finished while you were away. Click a picture to view it full size (← → or swipe, P pins, X rejects).
+
+**Text added to every prompt.** The story's art style, the drawing preset's own prompt and the chapter's **Always include** box are added when a picture is asked for. They are shown under the Prompt box rather than put into it.
+
+**Instruct changes** (Illustrate page) changes a picture by an instruction ("make it night") with an edit model. See "Edit models" below to set one up.
+
+**Refine…** opens a picture in its own screen to paint on, mask and redraw:
+- Paint on the picture, or paint a **mask** over the part to redraw. With no mask the whole picture is redrawn.
+- **Strength** sets how much changes (low keeps the picture, high redraws freely). Lower strengths are also faster.
+- **Under the paint** (shown while a mask is painted): *Keep what's there* redraws starting from what is under the mask; *Blur it* or *Grey* hide it first, which works better for removing something.
+- A small masked area is redrawn at full detail and pasted back, so hands and faces come out sharp.
+- **Go** makes results. Click one to compare it with the picture, then **Apply** it (Undo works) or **Trash** it. **Keep picture** saves what you see and goes back; **Cancel** throws the session away.
+- Refine's results are temporary and stay out of the Pictures panel unless kept. Tick "Include temporary inpainting images" to see them.
+
+**References** (up to 4: a character, item, place or style) keep a character or place looking the same. Add them from **Add reference** (suggestions, your pictures, codex pictures, or an upload) or from a picture's ☰ › Use as reference. A story can also have a **style picture** (details page › Pictures) that is added to every job. These need IP-Adapter in ComfyUI: see "Reference pictures" below.
+
+**Make missing pictures** (outline menu, or a chapter's ☰) writes prompts for every chapter without a header or footer, then draws them all in the queue.
+
+**Sharing ComfyUI** with other people or another StoryTime is fine: StoryTime only shows and records its own jobs.
 
 ## Picture presets
 
