@@ -39,6 +39,9 @@ const mock = http.createServer((req, res) => {
 await new Promise((r) => mock.listen(3222, r));
 
 // ---- a story with two chapters and a codex entry ----
+// No automatic codex check of the chapters made here: it would ask the fake model too.
+const before = (await call("GET", "/api/settings")).settings;
+await putSettings({ ...(before ?? {}), autoCodex: false });
 const NOOB = "noobaiXL_vpred10.safetensors";
 const created = await call("POST", "/api/stories", { title: "Codex pictures saga", premise: "A keeper guards a lonely beacon.", chapter: { title: "The lamp", body: "Zephyr climbed the stairs.", choices: ["Go down"] } });
 const { story_id: storyId, chapter_id: first } = created;
@@ -47,7 +50,6 @@ const second = (await call("POST", "/api/chapters", { choice_id: choice.id, titl
 const zephyr = (await call("POST", "/api/codex", { anchor_chapter_id: first, op: "create", name: "Zephyr", type: "character", aliases: ["the Keeper"], content: "An old lighthouse keeper with a grey beard and an oilskin coat." })).entry_id;
 const cellarEntry = (await call("POST", "/api/codex", { anchor_chapter_id: first, op: "create", name: "Cellar", type: "place", content: "A flooded stone cellar." })).entry_id;
 
-const before = (await call("GET", "/api/settings")).settings;
 const ai = await useMockAi(BASE, { favorites: [], imagePromptModel: null });
 const comfy = await startFakeComfy({
   port: COMFY_PORT, steps: 2, stepDelay: 50, startDelay: 80, checkpoints: [NOOB], ipAdapter: true,

@@ -42,6 +42,8 @@ export async function useMockAi(base, { main = "main", cheap = "cheap", ...extra
     connections: [conn],
     favorites: [],
     defaults: { main: { connectionId: "t", model: main }, cheap: cheap ? { connectionId: "t", model: cheap } : null },
+    // No automatic codex check after a chapter is saved: it would add AI requests and queue items the tests don't expect.
+    autoCodex: false,
     ...extra,
   };
   await put(settings);

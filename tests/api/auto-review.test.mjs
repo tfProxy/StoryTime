@@ -48,7 +48,7 @@ const ai = await startFakeAi({
 });
 
 const settingsBefore = (await call("GET", "/api/settings")).json.settings;
-const setAuto = (on) => call("PUT", "/api/settings", { ...(settingsBefore ?? {}), connections: [{ id: "c1", name: "Fake", kind: "custom", baseUrl: `${ai.url}/v1`, apiKey: "k", freeComfy: false, freeForPictures: false }], defaults: { main: { connectionId: "c1", model: "m" }, cheap: { connectionId: "c1", model: "m" } }, autoReview: on });
+const setAuto = (on) => call("PUT", "/api/settings", { ...(settingsBefore ?? {}), connections: [{ id: "c1", name: "Fake", kind: "custom", baseUrl: `${ai.url}/v1`, apiKey: "k", freeComfy: false, freeForPictures: false }], defaults: { main: { connectionId: "c1", model: "m" }, cheap: { connectionId: "c1", model: "m" } }, autoReview: on, autoCodex: false });
 let story = null;
 const extraStories = [];
 try {

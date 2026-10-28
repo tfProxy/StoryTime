@@ -2,6 +2,8 @@
 // the runner can be tested against a fake server.
 import type { ContextChapter, ContextCodexEntry } from "../ai/prompts";
 import type { Fact } from "../ai/factAi";
+import type { SuggestionInput } from "../ai/codexCheckAi";
+import type { CodexEntry } from "../codex";
 import type { TagRule, TagSuggestion } from "../ai/tagAi";
 import type { PathFacts } from "../continuity";
 import type { AiRun, RunStatus, RunTask } from "./types";
@@ -78,6 +80,13 @@ export const postTagSuggestions = (f: Fetch, chapterId: string, revision: number
 /** Saves the facts the AI read from a chapter revision (replacing the chapter's facts); 409 when the chapter was edited meanwhile. */
 export const postFacts = (f: Fetch, chapterId: string, revision: number, facts: Fact[]) =>
   call<{ saved: number }>(f, "POST", `/api/chapters/${chapterId}/facts`, { revision, facts });
+
+/** The codex as it stands at a chapter: the live entries with their facts. */
+export const getChapterCodex = (f: Fetch, chapterId: string) => call<{ entries: CodexEntry[] }>(f, "GET", `/api/chapters/${chapterId}/codex`);
+
+/** Saves what the AI read from a chapter revision into the codex inbox (replacing the chapter's open suggestions); 409 when the chapter was edited meanwhile. */
+export const postCodexSuggestions = (f: Fetch, chapterId: string, revision: number, suggestions: SuggestionInput[]) =>
+  call<{ saved: number }>(f, "POST", `/api/chapters/${chapterId}/codex-suggestions`, { revision, suggestions });
 
 /** Saves the AI's check of a chapter's summary; 409 when the chapter or its summary was edited meanwhile. */
 export const postSummaryCheck = (f: Fetch, chapterId: string, body: { revision: number; summary: string; verdict: "ok" | "wrong"; problem?: string }) =>

@@ -17,6 +17,10 @@ const until = async (fn, what, tries = 100) => {
   return false;
 };
 
+// No automatic codex check of the chapters made here: its run would show in the queue.
+const before = (await call("GET", "/api/settings")).settings;
+await putSettings({ ...(before ?? {}), autoCodex: false });
+
 // Three chapters of one story, so their jobs are for different targets and can be moved past each other.
 const story = await call("POST", "/api/stories", { title: "Queue page tale", chapter: { title: "Chapter One", body: "one", choices: ["on"] } });
 const ids = [story.chapter_id];
@@ -27,9 +31,8 @@ for (const title of ["Chapter Two", "Chapter Three"]) {
 const names = ["Chapter One", "Chapter Two", "Chapter Three"];
 const words = ["harbourword", "marketword", "forestword"];
 
-const before = (await call("GET", "/api/settings")).settings;
 const comfy = await startFakeComfy({ port: COMFY_PORT, steps: 6, stepDelay: 150, startDelay: 200 });
-await putSettings({ ...(before ?? {}), comfy: comfySettings({ url: comfy.url, checkpoint: "fake_sdxl_a.safetensors", count: 1 }) });
+await putSettings({ ...(before ?? {}), autoCodex: false, comfy: comfySettings({ url: comfy.url, checkpoint: "fake_sdxl_a.safetensors", count: 1 }) });
 
 const browser = await launch();
 const context = await browser.newContext({ viewport: { width: 1000, height: 1400 } });

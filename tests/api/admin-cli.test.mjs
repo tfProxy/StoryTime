@@ -43,7 +43,10 @@ ok((await logJob(child, 1)).status === 201 && (await logJob(root, 2)).status ===
 const entry = (await api("POST", "/api/codex", { anchor_chapter_id: root, op: "create", name: "Cli Fox", type: "character" })).json.entry_id;
 const addFact = (anchor_chapter_id, text) => api("POST", "/api/codex/facts", { anchor_chapter_id, entry_id: entry, op: "set", aspect: "Ears", text });
 ok((await addFact(root, "human")).status === 201 && (await addFact(child, "fox ears")).status === 201, "the chapters have codex facts");
-const factsAt = (chapter) => new Database(DB, { readonly: true }).prepare(`SELECT COUNT(*) AS n FROM codex_facts WHERE anchor_chapter_id = ?`).get(chapter).n;
+// ...and a codex inbox suggestion (which also records that the chapter was read)
+ok((await api("POST", `/api/chapters/${child}/codex-suggestions`, { revision: 1, suggestions: [{ kind: "set", entry_id: entry, aspect: "Tail", after: "bushy tail", quote: "child text" }] })).json?.saved === 1, "the child has a codex suggestion");
+const suggestionsAt = (chapter) => { const d = new Database(DB, { readonly: true }); try { return d.prepare(`SELECT (SELECT COUNT(*) FROM codex_suggestions WHERE chapter_id = ?) + (SELECT COUNT(*) FROM codex_checks WHERE chapter_id = ?) AS n`).get(chapter, chapter).n; } finally { d.close(); } };
+const factsAt = (chapter) =>new Database(DB, { readonly: true }).prepare(`SELECT COUNT(*) AS n FROM codex_facts WHERE anchor_chapter_id = ?`).get(chapter).n;
 
 r = cli("stats");
 ok(/stories: \d+/.test(r.out) && /chapters: \d+/.test(r.out), "stats prints counts");
@@ -61,6 +64,7 @@ ok((await api("GET", `/api/chapters/${child}`)).status === 404, "readers no long
 ok(!(await hasPicture(child, "header")) && (await hasPicture(root, "footer")), "its picture is deleted with it, and the other chapter's is kept");
 ok(await jobsOf(child) === 0 && await jobsOf(root) === 1, "its picture jobs are deleted with it, and the other chapter's are kept");
 ok(factsAt(child) === 0 && factsAt(root) === 1, "its codex facts are deleted with it, and the other chapter's are kept");
+ok(suggestionsAt(child) === 0, "its codex suggestions are deleted with it");
 ok((await api("GET", `/api/chapters/${root}`)).json.choices[0].child_chapter_id === null, "the slot is open again");
 
 // deleting a choice takes the chapter written for it, with everything below
@@ -68,7 +72,7 @@ const grand = (await api("POST", "/api/chapters", { choice_id: choice.id, title:
 const onChoice = (await api("GET", `/api/chapters/${grand}`)).json.choices[0];
 const great = (await api("POST", "/api/chapters", { choice_id: onChoice.id, title: "Further", body: "further" })).json.chapter_id;
 r = cli("delete", "choice", choice.id, "--yes");
-ok(r.code === 0 && /Deleted 2 chapters/.test(r.out), "deleting a choice deletes its chapter and what is below: " + r.out.trim());
+ok(r.code === 0 && /Deleted 2 chapters/.test(r.out), "deleting a choice deletes its chapter and what is below: " + r.out.trim() + r.err.trim());
 ok((await api("GET", `/api/chapters/${grand}`)).status === 404 && (await api("GET", `/api/chapters/${great}`)).status === 404, "both chapters are gone");
 ok((await api("GET", `/api/chapters/${root}`)).json.choices.length === 0, "the choice is gone");
 
@@ -100,7 +104,7 @@ ok(await jobsOf(root) === 0 && (await api("GET", `/api/picture-jobs?story=${s.js
 const s2 = await api("POST", "/api/stories", { title: "CLI revert", chapter: { title: "Orig", body: "original text" } });
 await api("PATCH", `/api/chapters/${s2.json.chapter_id}`, { base_revision: 1, title: "Changed", body: "changed text" });
 r = cli("revert", s2.json.chapter_id, "1");
-ok(r.code === 0 && /revision 3/.test(r.out), "revert: " + r.out.trim());
+ok(r.code === 0 && /revision 3/.test(r.out), "revert: " + r.out.trim() + r.err.trim());
 ok((await api("GET", `/api/chapters/${s2.json.chapter_id}`)).json.chapter.body === "original text", "the original text is back");
 
 // backup: a consistent copy that opens as a database with the same content

@@ -145,6 +145,10 @@ export function deleteItem(db, kind, id) {
     // Codex facts go with their chapters (or story) too; they aren't counted with the codex changes.
     if (kind === "story") db.prepare(`DELETE FROM codex_facts WHERE story_id = ?`).run(id);
     else if (chapterIds.length) db.prepare(`DELETE FROM codex_facts WHERE anchor_chapter_id IN (${marks})`).run(...chapterIds);
+    // So do the codex inbox's suggestions and its record of which chapters were read.
+    if (kind === "story") db.prepare(`DELETE FROM codex_suggestions WHERE story_id = ?`).run(id);
+    else if (chapterIds.length) db.prepare(`DELETE FROM codex_suggestions WHERE chapter_id IN (${marks})`).run(...chapterIds);
+    if (chapterIds.length) db.prepare(`DELETE FROM codex_checks WHERE chapter_id IN (${marks})`).run(...chapterIds);
     // AI runs go with their story, or with the chapter they started from (or one below it).
     if (kind === "story") db.prepare(`DELETE FROM ai_runs WHERE story_id = ?`).run(id);
     else if (chapterIds.length) db.prepare(`DELETE FROM ai_runs WHERE start_chapter_id IN (${marks})`).run(...chapterIds);
@@ -158,7 +162,8 @@ export function deleteItem(db, kind, id) {
     if (kind === "choice") db.prepare(`DELETE FROM choices WHERE id = ?`).run(id);
     if (kind === "story") db.prepare(`DELETE FROM stories WHERE id = ?`).run(id);
     return { chapters: chapterIds.length, codexOps: codex };
-  })();
+    // Immediate: take the write lock first, so the busy timeout waits for the running app instead of failing halfway ("database is locked").
+  }).immediate();
 }
 
 /**
@@ -190,5 +195,5 @@ export function revertChapter(db, chapterId, revision) {
       db.prepare(`UPDATE chapters SET path_summary = NULL WHERE id IN (${below.map(() => "?").join(",")})`).run(...below);
     }
     return { revision: next };
-  })();
+  }).immediate();
 }

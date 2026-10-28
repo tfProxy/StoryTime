@@ -78,6 +78,8 @@ export type Settings = {
   autoSuggestChoices: boolean;
   /** After a chapter is saved, queue a review run for it (tags, facts, continuity, summary). Off by default. */
   autoReview: boolean;
+  /** After a chapter is saved, the AI reads it for codex changes and leaves suggestions in the codex inbox. On by default. */
+  autoCodex: boolean;
   /** Under each choice, list the reader-visible tags that come next or later on that branch. */
   contentNotes: boolean;
   /** What the outline shows after each chapter's name. */
@@ -181,6 +183,7 @@ export const DEFAULT_SETTINGS: Settings = {
   contextTokens: 8000,
   autoSuggestChoices: false,
   autoReview: false,
+  autoCodex: true,
   contentNotes: true,
   outline: DEFAULT_OUTLINE,
   imagePromptStyle: "tags",
@@ -339,6 +342,7 @@ const settingsSchema = z.object({
   contextTokens: z.number().int().min(1000).max(2_000_000).catch(DEFAULT_SETTINGS.contextTokens),
   autoSuggestChoices: z.boolean().catch(false),
   autoReview: z.boolean().catch(false),
+  autoCodex: z.boolean().catch(true),
   contentNotes: z.boolean().catch(true),
   // A part that is missing or isn't true/false is shown, as before the options existed.
   outline: z

@@ -717,6 +717,36 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX codex_facts_anchor ON codex_facts(anchor_chapter_id, posted_at);
   CREATE INDEX codex_facts_entry ON codex_facts(story_id, entry_id);
   `,
+  // 40: the codex inbox. After a chapter is posted the AI reads it and leaves suggestions (one fact-sized change each,
+  // with a quote from the chapter as evidence) for the owner to accept, edit or dismiss. 'before' is the fact's text when
+  // the suggestion was made; 'entry' holds a proposed new entry as JSON. codex_checks says which chapter revision was
+  // read, so it isn't read again automatically.
+  `
+  CREATE TABLE codex_suggestions (
+    id         TEXT PRIMARY KEY,
+    story_id   TEXT NOT NULL REFERENCES stories(id),
+    chapter_id TEXT NOT NULL REFERENCES chapters(id),
+    revision   INTEGER NOT NULL,
+    kind       TEXT NOT NULL CHECK (kind IN ('set', 'form', 'retire', 'entry', 'conflict')),
+    entry_id   TEXT,
+    aspect     TEXT NOT NULL DEFAULT '',
+    form       TEXT NOT NULL DEFAULT '',
+    before     TEXT NOT NULL DEFAULT '',
+    after      TEXT NOT NULL DEFAULT '',
+    quote      TEXT NOT NULL DEFAULT '',
+    entry      TEXT NOT NULL DEFAULT '{}',
+    status     TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'accepted', 'dismissed')),
+    created_at INTEGER NOT NULL,
+    decided_at INTEGER
+  );
+  CREATE INDEX codex_suggestions_story ON codex_suggestions(story_id, status);
+  CREATE INDEX codex_suggestions_chapter ON codex_suggestions(chapter_id);
+  CREATE TABLE codex_checks (
+    chapter_id TEXT PRIMARY KEY REFERENCES chapters(id),
+    revision   INTEGER NOT NULL,
+    checked_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 function open(): Database.Database {

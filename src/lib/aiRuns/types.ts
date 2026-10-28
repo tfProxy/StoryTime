@@ -128,7 +128,22 @@ export type SummaryTask = {
   error?: string;
 };
 
-export type RunTask = WriteTask | PlanTask | PictureTask | TagsTask | FactsTask | ContinuityTask | SummaryTask;
+/** Codex check: the AI reads one chapter (at `revision`) for changes to the codex and leaves suggestions in the inbox. Made by the server when a review run asks for it. */
+export type CodexTask = {
+  kind: "codex";
+  id: string;
+  chapterId: string;
+  /** The chapter's revision when the run was made; a chapter edited since is skipped. */
+  revision: number;
+  /** The chapter's title, for the task list. */
+  label?: string;
+  status: TaskStatus;
+  /** How many suggestions were left in the inbox (set when the chapter was read). */
+  found?: number;
+  error?: string;
+};
+
+export type RunTask = WriteTask | PlanTask | PictureTask | TagsTask | FactsTask | ContinuityTask | SummaryTask | CodexTask;
 
 export type RunOptions = {
   // writing modes
@@ -160,7 +175,9 @@ export type RunOptions = {
   /** A review run the server started by itself after a save or an AI run. */
   automatic?: boolean;
   // review: what to read each chapter for (tags unless said otherwise)
-  checks?: ("tags" | "facts" | "continuity" | "summaries")[];
+  checks?: ("tags" | "facts" | "continuity" | "summaries" | "codex")[];
+  /** With "codex": read chapters again that were read at their current revision already. */
+  recheck?: boolean;
 };
 
 /** `queued`: waiting its turn in a tab's work queue. `running` with a lapsed lease means the tab that ran it is gone. */

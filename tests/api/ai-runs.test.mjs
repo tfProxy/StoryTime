@@ -45,7 +45,7 @@ ok((await call("POST", "/api/ai-runs", newRun({ tasks: plans }))).status === 201
 r = await call("GET", `/api/stories/${story}/ai-runs`);
 const mine = r.json.runs.find((x) => x.id === run);
 ok(r.status === 200 && mine && !("tasks" in mine) && mine.counts.todo === 2 && mine.counts.total === 2, "a story's runs list task counts, not tasks");
-ok((await call("GET", `/api/stories/${story}/ai-runs?start=${leftCh}`)).json.runs.length === 0, "…narrowed by start chapter");
+ok((await call("GET", `/api/stories/${story}/ai-runs?start=${leftCh}&mode=fill`)).json.runs.length === 0, "…narrowed by start chapter (an automatic codex check may have a run of its own there)");
 ok((await call("GET", `/api/stories/${story}/ai-runs?mode=pictures`)).json.runs.every((x) => x.mode === "pictures"), "…and by mode");
 ok((await call("GET", `/api/stories/${story}/ai-runs?mode=bogus`)).status === 400 && (await call("GET", "/api/stories/nope/ai-runs")).status === 404, "a bad mode is 400 and an unknown story 404");
 
