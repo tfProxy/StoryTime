@@ -61,7 +61,6 @@ const SYSTEM_BASE = `You are a skilled fiction co-author helping write one chapt
 const OUTPUT_FORMAT = `Output format: the first line is "# " followed by the chapter title. Then a blank line, then the chapter text.`;
 
 export const SYSTEM_CHAPTER = `${SYSTEM_BASE}\n\n${OUTPUT_FORMAT}`;
-export const SYSTEM_CHOICES = `You help write branching stories. You reply with a JSON array of strings and nothing else.`;
 
 /**
  * Splits text the author typed into the request itself and any "[...]" notes in it, which are
@@ -357,8 +356,15 @@ export function passageRefinePrompt(
 /** What makes a set of choices worth offering; shared by the choice and idea prompts. */
 const CHOICE_QUALITY = `Good options lead to meaningfully different outcomes (not variations of one action), are things the protagonist could plausibly do right now, and don't make one option the obvious right answer. Mix kinds, for example one bold, one cautious and one unexpected. Word them consistently, as short imperative phrases like "Follow the stranger".`;
 
-/** How many choices one "Suggest choices" asks for. */
+/** How many choices one "Suggest choices" asks for: the ordinary ones, then the erotic or NSFW ones. */
 export const SUGGESTED_CHOICES = 6;
+export const SUGGESTED_NSFW_CHOICES = 2;
+
+/** What a good choice is lives here, so the message holds only the story and the task. */
+export const SYSTEM_CHOICES = `You help write branching stories: you suggest the choices a reader could pick at the end of a chapter.
+${CHOICE_QUALITY}
+Each option is a short action or decision, under 12 words, written as button text (no numbering).
+You reply with a JSON array of strings and nothing else.`;
 
 const quotedList = (items: string[]) => items.map((e) => `- "${e}"`).join("\n");
 
@@ -375,9 +381,9 @@ export function choicesPrompt(
   contextTokens: number,
   earlier: string[] = [],
 ): string {
-  const n = SUGGESTED_CHOICES;
+  const n = SUGGESTED_CHOICES + SUGGESTED_NSFW_CHOICES;
   const task = [
-    `TASK: Suggest ${n} distinct options the reader could pick at the end of the chapter above. ${CHOICE_QUALITY} Each is a short action or decision, under 12 words, written as button text (no numbering).`,
+    `TASK: Suggest ${n} distinct options the reader could pick at the end of the chapter above: ${SUGGESTED_CHOICES} ordinary ones, then ${SUGGESTED_NSFW_CHOICES} that take the story in an erotic or NSFW direction while still fitting the characters and the moment.`,
     existing.length
       ? `The chapter already has these choices. Do not suggest them again, reworded, or anything that comes down to the same action:\n${quotedList(existing)}`
       : "",
@@ -616,10 +622,10 @@ export function parseChoices(text: string): string[] {
   if (arr) {
     try {
       const parsed = JSON.parse(arr[0]);
-      if (Array.isArray(parsed)) return parsed.map(clean).filter(Boolean).slice(0, 6);
+      if (Array.isArray(parsed)) return parsed.map(clean).filter(Boolean).slice(0, SUGGESTED_CHOICES + SUGGESTED_NSFW_CHOICES);
     } catch {
       // fall through to line parsing
     }
   }
-  return text.split("\n").map(clean).filter(Boolean).slice(0, 6);
+  return text.split("\n").map(clean).filter(Boolean).slice(0, SUGGESTED_CHOICES + SUGGESTED_NSFW_CHOICES);
 }

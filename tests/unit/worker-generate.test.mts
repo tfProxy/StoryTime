@@ -24,7 +24,8 @@ const ai = await startFakeAi({
   delay: 5,
   reply: (body: { stream?: boolean }) => {
     const sent = JSON.stringify(body);
-    if (sent.includes(SYSTEM_CHOICES)) return '["Go left", "Go right"]';
+    // As it appears inside the JSON body (its newlines and quotes escaped).
+    if (sent.includes(JSON.stringify(SYSTEM_CHOICES).slice(1, -1))) return '["Go left", "Go right"]';
     if (sent.includes(SYSTEM_CHOICE_LABEL)) return "Open the door.";
     return chapter;
   },

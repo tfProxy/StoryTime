@@ -103,7 +103,7 @@ await viewPrompt("Summarize chapter").click();
 ok((await dialog.innerText()).includes("Generated text here.") && (await dialog.innerText()).includes("cheaper"), "Summarize chapter shows its prompt, with a note about the model");
 await page.keyboard.press("Escape");
 await viewPrompt("Suggest choices").click();
-ok((await dialog.innerText()).includes("Suggest 6 distinct options"), "Suggest choices shows its prompt");
+ok((await dialog.innerText()).includes("Suggest 8 distinct options"), "Suggest choices shows its prompt");
 await page.keyboard.press("Escape");
 
 // ---- the settings page ----

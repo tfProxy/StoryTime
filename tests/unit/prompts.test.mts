@@ -1,4 +1,4 @@
-import { parseBracketNotes, parseInstruction, SYSTEM_CHAPTER, refinePrompt, passageRefinePrompt, choicesPrompt, buildStorySoFar, parseChapterOutput, parseChoices, generatePrompt, estimateTokens, explainCodex, buildCodexBlock, ideasPrompt, parseIdeas, parseChoiceLabel, planStepsPrompt, matchSteps, SYSTEM_PLAN_STEPS } from "../../src/lib/ai/prompts.ts";
+import { parseBracketNotes, parseInstruction, SYSTEM_CHAPTER, refinePrompt, passageRefinePrompt, choicesPrompt, buildStorySoFar, parseChapterOutput, parseChoices, generatePrompt, estimateTokens, explainCodex, buildCodexBlock, ideasPrompt, parseIdeas, parseChoiceLabel, planStepsPrompt, matchSteps, SYSTEM_PLAN_STEPS, SYSTEM_CHOICES } from "../../src/lib/ai/prompts.ts";
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const ch = (n: number, extra: any = {}) => ({ title: `Ch${n}`, body: `body${n} `.repeat(200), summary: null, path_summary: null, ...extra });
 const path = [1,2,3,4,5,6].map((n) => ch(n));
@@ -33,7 +33,7 @@ const base = { storyTitle: "T", premise: "P", path: [ch(1)], choiceLabel: null }
 ok(SYSTEM_CHAPTER.includes("Pick up exactly where the story left off") && SYSTEM_CHAPTER.includes("open situation with real stakes"), "chapter system prompt covers the opening and the ending");
 ok(refinePrompt(base, { title: "A", body: "B" }, "snappier", 8000).includes("keep every other sentence exactly as written"), "refine prompt keeps untouched text");
 ok(passageRefinePrompt(base, { title: "A", before: "x ", passage: "y", after: " z" }, "shorter", 8000).includes("keep roughly the same length"), "passage prompt keeps the length");
-ok(choicesPrompt(base, { title: "A", body: "B" }, [], 8000).includes("meaningfully different outcomes") && ip0().includes("meaningfully different outcomes") && ip0().includes("differ in kind"), "choice and idea prompts say what a good choice is");
+ok(SYSTEM_CHOICES.includes("meaningfully different outcomes") && !choicesPrompt(base, { title: "A", body: "B" }, [], 8000).includes("meaningfully different outcomes") && ip0().includes("meaningfully different outcomes") && ip0().includes("differ in kind"), "choice and idea prompts say what a good choice is");
 function ip0() { return ideasPrompt(base, 8000); }
 {
   const cp = choicesPrompt(base, { title: "A", body: "The chapter text." }, ["Open the door"], 8000, ["Run away"]);
@@ -41,6 +41,8 @@ function ip0() { return ideasPrompt(base, 8000); }
   ok(cp.includes('reworded') && cp.includes('- "Open the door"'), "choices prompt says not to repeat the chapter's choices, even reworded");
   ok(cp.includes('not picked') && cp.includes('- "Run away"'), "choices prompt steers away from the ones suggested before");
   ok(!choicesPrompt(base, { title: "A", body: "B" }, [], 8000).includes("not picked"), "…and says nothing of them when there are none");
+  ok(cp.includes("Suggest 8 distinct options") && cp.includes("2 that take the story in an erotic or NSFW direction") && cp.includes("JSON array of 8 strings"), "choices prompt asks for 6 ordinary and 2 NSFW options");
+  ok(parseChoices(JSON.stringify(["a", "b", "c", "d", "e", "f", "g", "h", "i"])).length === 8, "all 8 suggested choices are kept");
 }
 
 // ---- [bracketed notes] are extra instructions ----
