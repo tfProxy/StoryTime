@@ -3824,6 +3824,115 @@ button.refine-fit {
   }
 }
 
+/* "Takes effect from" (ChapterPathPicker): quick-choice pills, the path of chapters under "Earlier…", and a line saying what the pick means. */
+.chapter-picker {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr);
+  column-gap: 0.75rem;
+  align-items: start;
+}
+
+.chapter-picker-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding-top: 0.35rem;
+}
+
+.chapter-picker-body {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.chapter-picker-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chapter-picker-pill {
+  padding: 0.3rem 0.75rem;
+  border-radius: 1rem;
+  background: var(--card);
+  color: var(--fg);
+  border-color: var(--line);
+  font-size: 0.9rem;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.chapter-picker-pill[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+
+.chapter-picker-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.1rem;
+  padding: 0.6rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.chapter-picker-chapter {
+  padding: 0.2rem 0.45rem;
+  background: none;
+  border-color: transparent;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-size: 0.9rem;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.chapter-picker-sep {
+  color: var(--muted);
+  padding: 0 0.15rem;
+}
+
+.chapter-picker-chapter[data-tint="after"] {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.chapter-picker-chapter[data-tint="chosen"] {
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.chapter-picker-explain {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 640px) {
+  .chapter-picker {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0.25rem;
+  }
+
+  .chapter-picker-label {
+    padding-top: 0;
+  }
+
+  .chapter-picker-path {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .chapter-picker-sep {
+    display: none;
+  }
+}
+
 /* The chapter path: earlier chapters (wrapping in their own block), the current one, then the chapters after it stacked. */
 .chapter-nav {
   margin: 0;

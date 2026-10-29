@@ -21,6 +21,7 @@ import type { PathChapter } from "@/lib/ai/codexAi";
 import AiRunProgress from "./AiRunProgress";
 import { INBOX_CHANGED } from "./CodexInbox";
 import CodexFacts from "./CodexFacts";
+import ChapterPathPicker from "./ChapterPathPicker";
 
 export type EntryFields = { name: string; type: EntryType; aliases: string[]; content: string; always_include: boolean };
 /** A change to an entry. `anchor` is the chapter it takes effect from; without it, the editor's own default applies. */
@@ -506,23 +507,7 @@ export function EntryDetailsForm({
         </label>
       )}
       {initial && (inDraft || path.length > 1) && (
-        <label>
-          Takes effect from
-          <select value={anchorId} onChange={(e) => setAnchorId(e.target.value)}>
-            {inDraft && <option value={DRAFT_ANCHOR}>This chapter (saved when you post it)</option>}
-            {path.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.title}
-                {inDraft ? " (saved now)" : c.id === chapterId ? " (this chapter)" : ""}
-              </option>
-            ))}
-          </select>
-          <small>
-            {inDraft
-              ? "the chapter you're writing, or an earlier one if it changed before; an earlier chapter is saved now and reaches every branch below it"
-              : "that chapter and everything after it on this branch"}
-          </small>
-        </label>
+        <ChapterPathPicker path={path} currentId={chapterId} value={anchorId} onChange={setAnchorId} draft={inDraft} />
       )}
       <div className="row">
         <button type="submit" disabled={busy || !name.trim() || !dirty}>

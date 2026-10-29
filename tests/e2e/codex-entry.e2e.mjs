@@ -64,7 +64,7 @@ try {
   // (The label's box starts where its text does; a field on the same row starts at the same height, to its right.)
   await page.setViewportSize({ width: 1280, height: 800 });
   const dForm = detailsBox.locator("form.entry-details-form");
-  const labelOf = (text) => dForm.locator("label", { hasText: new RegExp(`^${text}`) });
+  const labelOf = (text) => dForm.locator("label, .chapter-picker-label", { hasText: new RegExp(`^${text}`) });
   const sameRow = async (text, control) => Math.abs((await box(control)).y - (await box(labelOf(text))).y) < 6 && (await box(control)).x > (await box(labelOf(text))).x + 100;
   ok(
     (await sameRow("Name", dForm.getByLabel("Name"))) &&
@@ -89,7 +89,7 @@ try {
   // ---- Details is always there, above the Form section, and saves keywords ----
   const details = section("Details").locator("form.entry-details-form");
   ok((await details.isVisible()) && (await below(section("Form"), details)) && (await ed.getByRole("button", { name: "Edit details" }).count()) === 0, "the Details form is on the page without an Edit details button, above the Form section");
-  ok((await details.getByLabel(/Takes effect from/).inputValue()) === A, "…with “Takes effect from” on this chapter");
+  ok((await details.getByRole("button", { name: "This chapter", exact: true }).getAttribute("aria-pressed")) === "true", "…with “Takes effect from” on this chapter");
   await details.getByLabel(/Keywords/).fill("Ro, the traveller, the fox");
   await details.getByRole("button", { name: "Save changes" }).click();
   await details.getByText("Saved", { exact: true }).waitFor();

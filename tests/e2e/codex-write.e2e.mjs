@@ -135,7 +135,9 @@ ok(await page.getByText(/2 codex changes will be saved with this chapter/).isVis
 // …unless an earlier chapter is picked
 await row("Qux").getByRole("button", { name: "Edit" }).click();
 await drawer.getByLabel(/Keywords/).fill("the hermit");
-await drawer.getByLabel(/Takes effect from/).selectOption({ label: "Root (saved now)" });
+ok((await drawer.getByRole("button", { name: "This chapter", exact: true }).getAttribute("aria-pressed")) === "true", "in the draft, “Takes effect from” starts on this chapter (saved when you post)");
+await drawer.getByRole("button", { name: "Previous chapter (Root)" }).click();
+ok(await drawer.getByText(/Saved now/).isVisible(), "…and an earlier chapter says it is saved now");
 await drawer.getByRole("button", { name: "Save changes" }).click();
 for (let i = 0; i < 50 && (await codexAt(root)).find((e) => e.name === "Qux").aliases.join() !== "the hermit"; i++) await page.waitForTimeout(100);
 ok((await codexAt(root)).find((e) => e.name === "Qux").aliases.join() === "the hermit", "picking an earlier chapter saves straight away");

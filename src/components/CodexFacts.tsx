@@ -14,6 +14,7 @@ import {
   type LiveFact,
 } from "@/lib/codex";
 import type { PathChapter } from "@/lib/ai/codexAi";
+import ChapterPathPicker from "./ChapterPathPicker";
 
 type Props = {
   entry: CodexEntry;
@@ -234,19 +235,8 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
   );
 }
 
-function ChapterSelect({ path, value, onChange }: { path: PathChapter[]; value: string; onChange: (v: string) => void }) {
-  return (
-    <label>
-      Takes effect from
-      <select aria-label="Takes effect from" value={value} onChange={(e) => onChange(e.target.value)}>
-        {path.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.title}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
+function ChapterSelect({ path, chapterId, value, onChange }: { path: PathChapter[]; chapterId: string; value: string; onChange: (v: string) => void }) {
+  return <ChapterPathPicker path={path} currentId={chapterId} value={value} onChange={onChange} />;
 }
 
 function FactForm({
@@ -332,7 +322,7 @@ function FactForm({
         Quote from the chapter
         <input aria-label="Quote from the chapter" placeholder="optional" value={quote} maxLength={FACT_LIMITS.quote} onChange={(e) => setQuote(e.target.value)} />
       </label>
-      <ChapterSelect path={path} value={anchor} onChange={setAnchor} />
+      <ChapterSelect path={path} chapterId={chapterId} value={anchor} onChange={setAnchor} />
       <div className="row">
         <button
           type="button"
@@ -399,7 +389,7 @@ function FormForm({
       <p className="meta" style={{ margin: 0 }} aria-live="polite">
         {line ? <>The AI will read: <strong>{line}</strong></> : "Pick or name a form to see what the AI will read."}
       </p>
-      <ChapterSelect path={path} value={anchor} onChange={setAnchor} />
+      <ChapterSelect path={path} chapterId={chapterId} value={anchor} onChange={setAnchor} />
       <div className="row">
         <button
           type="button"
