@@ -11,6 +11,7 @@ import { noteText, type ChapterNote } from "@/lib/contentNotesRoll";
 import Prose from "@/components/Prose";
 import EditLink from "@/components/EditLink";
 import AddChoice from "@/components/AddChoice";
+import RemoveChoice from "@/components/RemoveChoice";
 import SuggestChoices from "@/components/SuggestChoices";
 import ChapterImage from "@/components/ChapterImage";
 import { PageMenu } from "@/components/SiteMenu";
@@ -111,12 +112,15 @@ export default async function ChapterPage({
               )}
             </Link>
           ) : (
-            <Link key={c.id} href={`/c/${chapter.id}/write?choice=${c.id}`} className="card choice-unwritten" title="Not written yet. Write it?">
-              <svg className="choice-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19z M14.5 6.5l3 3" />
-              </svg>
-              {c.label}
-            </Link>
+            <div key={c.id} className="choice-slot">
+              <Link href={`/c/${chapter.id}/write?choice=${c.id}`} className="card choice-unwritten" title="Not written yet. Write it?">
+                <svg className="choice-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19z M14.5 6.5l3 3" />
+                </svg>
+                {c.label}
+              </Link>
+              <RemoveChoice chapterId={chapter.id} choiceId={c.id} label={c.label} />
+            </div>
           ),
         )}
         {!trashed && (

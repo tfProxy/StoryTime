@@ -89,6 +89,36 @@ ok(await page.getByRole("heading", { name: "The Door" }).isVisible(), "posted ch
 ok((await page.locator(".card.choice-unwritten").count()) === 2, "two unwritten choices shown");
 const chapterUrl = page.url().split("?")[0];
 
+// an unwritten choice can be removed with its "x"; its draft box follows the choice's text
+{
+  const chId = chapterUrl.split("/c/")[1];
+  const post = async (path, body, method = "POST") =>
+    fetch(`${BASE}${path}`, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  await post(`/api/chapters/${chId}/choices`, { label: "Temp choice" });
+  await page.reload();
+  const temp = page.locator(".choice-slot", { hasText: "Temp choice" });
+  ok((await temp.locator(".choice-remove").count()) === 1, "an unwritten choice has a remove button");
+  const box = await temp.boundingBox(), btn = await temp.locator(".choice-remove").boundingBox();
+  ok(btn.x + btn.width > box.x + box.width - 40, "the remove button is at the right edge");
+  await temp.locator(".choice-remove").click();
+  await page.locator(".choice-slot", { hasText: "Temp choice" }).waitFor({ state: "detached" });
+  ok((await page.locator(".card.choice-unwritten").count()) === 2, "the choice is gone after removing it");
+
+  // a draft saved for a slot whose choice text has changed since: the box shows the choice's current text
+  await post(`/api/chapters/${chId}/choices`, { label: "Current name" });
+  await page.reload();
+  const href = await page.locator("a.card.choice-unwritten", { hasText: "Current name" }).getAttribute("href");
+  const choiceId = href.split("choice=")[1];
+  const key = `fill:${choiceId}`;
+  const draft = { key, href, label: "x", updatedAt: 0, storyTitle: "", premise: "", newChoiceLabel: "Stale name", title: "", body: "", choices: [""], prompt: "", undo: [] };
+  await fetch(`${BASE}/api/drafts/${encodeURIComponent(key)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft, base: null }) });
+  await page.goto(`${BASE}${href}`);
+  await page.getByLabel(/^Choice text/).waitFor();
+  ok((await page.getByLabel(/^Choice text/).inputValue()) === "Current name", "a stale draft's choice text follows the choice");
+  await fetch(`${BASE}/api/drafts/${encodeURIComponent(key)}`, { method: "DELETE" });
+  await post(`/api/chapters/${chId}/choices/${choiceId}`, null, "DELETE");
+}
+
 // the draft is gone, and the story's details page now leads to reading it
 ok((await (await fetch(`${BASE}/api/drafts/first:${storyId}`)).json()).draft == null, "draft cleared after posting");
 await page.goto(`${BASE}/s/${storyId}/details`);

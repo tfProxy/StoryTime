@@ -683,6 +683,20 @@ export function addChoice(chapterId: string, input: z.infer<typeof AddChoiceSche
   })();
 }
 
+/** Removes one unwritten choice from a chapter (same rules as removing it on the edit page). */
+export function removeChoice(chapterId: string, choiceId: string): { ok: true } {
+  return db().transaction(() => {
+    const c = getChoices(chapterId).find((x) => x.id === choiceId);
+    if (!c) throw new PostError("That choice isn't on this chapter", 404);
+    if (c.child_chapter_id) throw new PostError(`"${c.label}" already has a chapter written for it and can't be removed`, 409);
+    if (db().prepare(`SELECT 1 FROM chapters WHERE parent_choice_id = ?`).get(choiceId)) {
+      throw new PostError(`"${c.label}" has a chapter in the trash and can't be removed`, 409);
+    }
+    db().prepare(`DELETE FROM choices WHERE id = ?`).run(choiceId);
+    return { ok: true as const };
+  })();
+}
+
 export function editStory(storyId: string, input: z.infer<typeof EditStorySchema>): { ok: true } {
   return db().transaction(() => {
     const story = getStory(storyId);

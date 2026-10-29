@@ -50,3 +50,17 @@ ok((await call("GET", `/api/stories/${story}`)).json.title === "New Title", "sto
 for (const u of [`/c/${root}`, `/c/${root}/edit`, `/c/${root}/history`, `/c/${leftCh}/history`]) { const x = await fetch(B + u); ok(x.status === 200, `${u} -> ${x.status}`); }
 const h = (await (await fetch(`${B}/c/${root}/history`)).text()).replace(/<!-- -->/g, "");
 ok(h.includes("Revision 1") && h.includes("root body"), "history page shows revision 1 text");
+
+// ---- removing one unwritten choice (DELETE /api/chapters/:id/choices/:choiceId) ----
+{
+  const s = (await call("POST", "/api/stories", { title: "Rm", premise: "p", chapter: { title: "R", body: "b", path_summary: "ps", choices: ["Open", "Done"] } })).json;
+  const [open, done] = (await call("GET", `/api/chapters/${s.chapter_id}`)).json.choices;
+  await call("POST", "/api/chapters", { choice_id: done.id, title: "D", body: "d", path_summary: "pd" });
+  let x = await call("DELETE", `/api/chapters/${s.chapter_id}/choices/${done.id}`);
+  ok(x.status === 409, "a written choice can't be removed");
+  x = await call("DELETE", `/api/chapters/${s.chapter_id}/choices/nope`);
+  ok(x.status === 404, "an unknown choice is a 404");
+  x = await call("DELETE", `/api/chapters/${s.chapter_id}/choices/${open.id}`);
+  ok(x.status === 200, "an unwritten choice is removed");
+  ok((await call("GET", `/api/chapters/${s.chapter_id}`)).json.choices.length === 1, "only the written choice is left");
+}

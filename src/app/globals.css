@@ -497,6 +497,41 @@ a.card:hover {
   opacity: 0.7;
 }
 
+/* The wrapper holds the card link and the remove "x" pinned to its right edge. */
+.choice-slot {
+  position: relative;
+}
+
+.choice-slot > .card {
+  padding-right: 3rem;
+}
+
+.choice-remove {
+  position: absolute;
+  top: 50%;
+  right: 0.5rem;
+  transform: translateY(-50%);
+  margin: 0;
+  padding: 0.4rem;
+  line-height: 0;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+}
+
+.choice-remove:hover:not(:disabled) {
+  color: var(--fg);
+}
+
+.choice-remove svg {
+  width: 1.1em;
+  height: 1.1em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
 .tag {
   color: var(--warn);
   font-size: 0.85rem;
