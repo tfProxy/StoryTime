@@ -35,6 +35,13 @@ ok(refinePrompt(base, { title: "A", body: "B" }, "snappier", 8000).includes("kee
 ok(passageRefinePrompt(base, { title: "A", before: "x ", passage: "y", after: " z" }, "shorter", 8000).includes("keep roughly the same length"), "passage prompt keeps the length");
 ok(choicesPrompt(base, { title: "A", body: "B" }, [], 8000).includes("meaningfully different outcomes") && ip0().includes("meaningfully different outcomes") && ip0().includes("differ in kind"), "choice and idea prompts say what a good choice is");
 function ip0() { return ideasPrompt(base, 8000); }
+{
+  const cp = choicesPrompt(base, { title: "A", body: "The chapter text." }, ["Open the door"], 8000, ["Run away"]);
+  ok(cp.indexOf("The chapter text.") < cp.indexOf("\n---\n") && cp.indexOf("\n---\n") < cp.indexOf("TASK:"), "choices prompt puts the task after the chapter, behind a separator");
+  ok(cp.includes('reworded') && cp.includes('- "Open the door"'), "choices prompt says not to repeat the chapter's choices, even reworded");
+  ok(cp.includes('not picked') && cp.includes('- "Run away"'), "choices prompt steers away from the ones suggested before");
+  ok(!choicesPrompt(base, { title: "A", body: "B" }, [], 8000).includes("not picked"), "…and says nothing of them when there are none");
+}
 
 // ---- [bracketed notes] are extra instructions ----
 let bn = parseBracketNotes("Jim picks up the ring [he does not slip it on, he is nervous].");

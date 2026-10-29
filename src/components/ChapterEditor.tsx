@@ -714,14 +714,27 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     }
   }
 
+  /** The choices this chapter will have: the ones it has (when editing, unless removed) and the new ones typed or picked. */
+  const choicesSoFar = () => {
+    const kept =
+      target.kind === "edit"
+        ? target.existingChoices
+            .filter((c) => !draft.choiceEdits?.[c.id]?.removed)
+            .map((c) => draft.choiceEdits?.[c.id]?.label ?? c.label)
+        : [];
+    return [...kept, ...draft.choices].map((c) => c.trim()).filter(Boolean);
+  };
+
   /** `chapter` is the text to suggest for when it isn't in the draft yet (just written). */
   const choicesRequest = (chapter?: { title: string; body: string }): PromptParts => ({
     system: SYSTEM_CHOICES,
     message: choicesPrompt(
       ctx,
       chapter ?? { title: draft.title, body: draft.body },
-      draft.choices.filter((c) => c.trim()),
+      choicesSoFar(),
       settings.contextTokens,
+      // Suggesting again for the same text means the ones shown weren't wanted.
+      chapter ? [] : suggestions,
     ),
   });
 
@@ -740,7 +753,9 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
         maxTokens: 400,
         source: { label: "Suggest choices", storyId },
       });
-      const found = parseChoices(text);
+      // A model sometimes hands back a choice it was told the chapter already has.
+      const taken = new Set(choicesSoFar().map((c) => c.toLowerCase()));
+      const found = parseChoices(text).filter((c) => !taken.has(c.toLowerCase()));
       patch({ suggestions: found });
     } catch (e) {
       if (!quiet) setError(e instanceof Error ? e.message : String(e));
@@ -1497,9 +1512,9 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                 {suggestPicker}
               </div>
               {suggestions.length > 0 && (
-                <div className="row" style={{ flexWrap: "wrap" }}>
+                <div style={{ display: "grid", justifyItems: "start", gap: "0.4rem" }}>
                   {suggestions.map((s) => (
-                    <button key={s} type="button" className="chip" onClick={() => addChoice(s)}>
+                    <button key={s} type="button" className="chip" style={{ textAlign: "left", borderRadius: "0.9rem" }} onClick={() => addChoice(s)}>
                       + {s}
                     </button>
                   ))}

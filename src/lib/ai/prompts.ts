@@ -357,18 +357,38 @@ export function passageRefinePrompt(
 /** What makes a set of choices worth offering; shared by the choice and idea prompts. */
 const CHOICE_QUALITY = `Good options lead to meaningfully different outcomes (not variations of one action), are things the protagonist could plausibly do right now, and don't make one option the obvious right answer. Mix kinds, for example one bold, one cautious and one unexpected. Word them consistently, as short imperative phrases like "Follow the stranger".`;
 
+/** How many choices one "Suggest choices" asks for. */
+export const SUGGESTED_CHOICES = 6;
+
+const quotedList = (items: string[]) => items.map((e) => `- "${e}"`).join("\n");
+
+/**
+ * Asks for choices for the end of `current`. `existing` are the choices the chapter already has
+ * (none of them may come back, even reworded); `earlier` were suggested before and not picked.
+ * The story and the chapter come first, then a separator and the task, so a small model can
+ * tell what to read from what to do.
+ */
 export function choicesPrompt(
   ctx: StoryContext,
   current: { title: string; body: string },
   existing: string[],
   contextTokens: number,
+  earlier: string[] = [],
 ): string {
+  const n = SUGGESTED_CHOICES;
+  const task = [
+    `TASK: Suggest ${n} distinct options the reader could pick at the end of the chapter above. ${CHOICE_QUALITY} Each is a short action or decision, under 12 words, written as button text (no numbering).`,
+    existing.length
+      ? `The chapter already has these choices. Do not suggest them again, reworded, or anything that comes down to the same action:\n${quotedList(existing)}`
+      : "",
+    earlier.length ? `These were suggested before and not picked, so give different ones:\n${quotedList(earlier)}` : "",
+    `Reply with only a JSON array of ${n} strings.`,
+  ];
   return [
     storyHeader(ctx, Math.floor(budgetFor(contextTokens) * 0.5), current.body),
-    `Here is the chapter that was just written:\n# ${current.title || "Untitled"}\n\n${current.body}`,
-    `Suggest 3 distinct options the reader could pick at the end of this chapter. ${CHOICE_QUALITY} Each is a short action or decision, under 12 words, written as button text (no numbering).` +
-      (existing.length ? ` Do not repeat these existing options: ${existing.map((e) => `"${e}"`).join(", ")}.` : "") +
-      `\nReply with only a JSON array of 3 strings.`,
+    `The chapter that was just written:\n# ${current.title || "Untitled"}\n\n${current.body}`,
+    "---",
+    task.filter(Boolean).join("\n\n"),
   ].join("\n\n");
 }
 
