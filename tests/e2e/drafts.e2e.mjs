@@ -136,6 +136,37 @@ const leftLocal = await old.evaluate(async () => (await indexedDB.databases()).s
 ok(!leftLocal, "…and the browser's copy is cleared");
 await json("DELETE", `/api/drafts/${encodeURIComponent(`fill:${turnBack.id}`)}`);
 
+// ---- Discard draft: the post button's menu deletes the draft, after asking ----
+{
+  const ctx = await browser.newContext();
+  const p = await ctx.newPage();
+  p.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
+  const dialogs = [];
+  let accept = false;
+  p.on("dialog", (d) => { dialogs.push(d.message()); return accept ? d.accept() : d.dismiss(); });
+  const discardUrl = `/api/drafts/${encodeURIComponent(`fill:${turnBack.id}`)}`;
+  await p.goto(`${BASE}/c/${root}/write?choice=${turnBack.id}`);
+  await p.getByLabel("Chapter text").fill("To be thrown away.");
+  await p.waitForFunction(() => /Draft saved/.test(document.body.innerText));
+  await p.waitForTimeout(700);
+  ok((await json("GET", discardUrl)).draft?.body === "To be thrown away.", "a new draft is saved before discarding");
+  await p.getByRole("button", { name: "More ways to post" }).click();
+  await p.getByRole("menuitemradio", { name: /^Discard draft/ }).click();
+  const main = p.locator(".split-button > button").first();
+  ok((await main.textContent()) === "Discard draft" && (await main.getAttribute("class"))?.includes("danger"), "choosing Discard draft turns the main button red");
+  await main.click();
+  await p.waitForTimeout(500);
+  ok(dialogs.length === 1 && /can't be undone/.test(dialogs[0]), "it asks first: " + dialogs[0]);
+  ok((await json("GET", discardUrl)).draft?.body === "To be thrown away.", "saying no keeps the draft");
+  accept = true;
+  await main.click();
+  await p.waitForURL((u) => u.pathname === `/c/${root}`);
+  ok(true, "saying yes goes back to the chapter above");
+  await p.waitForTimeout(700);
+  ok(!(await json("GET", discardUrl)).draft, "…and the draft is gone");
+  await ctx.close();
+}
+
 await json("PUT", "/api/settings", settingsBefore ?? {});
 await browser.close();
 mock.close();

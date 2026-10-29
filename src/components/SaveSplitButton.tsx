@@ -2,34 +2,46 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
-/** How the edit page saves: just the edit; the edit and the chapters below go to the trash; or only the move to the trash. */
-export type SaveMode = "save" | "replace" | "trash";
+/**
+ * How the page saves. The edit page: just the edit; the edit and the chapters below go to the trash; or only the move to
+ * the trash. A new chapter's page: post it, or discard the draft.
+ */
+export type SaveMode = "save" | "replace" | "trash" | "discard";
 
-const MODES: { id: SaveMode; label: string; hint: string }[] = [
-  { id: "save", label: "Save changes", hint: "Saves your edit." },
-  { id: "replace", label: "Replace branch…", hint: "Saves your edit and moves the chapters below this one to the trash; their choices stay, unwritten." },
-  { id: "trash", label: "Move to trash…", hint: "Moves this chapter and everything below it to the trash. Your edits here are not saved." },
+type Mode = { id: SaveMode; label: string; button: string; hint: string };
+
+const EDIT_MODES: Mode[] = [
+  { id: "save", label: "Save changes", button: "Save changes", hint: "Saves your edit." },
+  { id: "replace", label: "Replace branch…", button: "Replace branch", hint: "Saves your edit and moves the chapters below this one to the trash; their choices stay, unwritten." },
+  { id: "trash", label: "Move to trash…", button: "Move to trash", hint: "Moves this chapter and everything below it to the trash. Your edits here are not saved." },
 ];
 
-const BUTTON_LABEL: Record<SaveMode, string> = { save: "Save changes", replace: "Replace branch", trash: "Move to trash" };
+const POST_MODES: Mode[] = [
+  { id: "save", label: "Post chapter", button: "Post chapter", hint: "Adds the chapter to the story." },
+  { id: "discard", label: "Discard draft…", button: "Discard draft", hint: "Deletes this draft and everything saved with it. This can't be undone." },
+];
 
-// [ Save changes | ▾ ] for the edit page. The ▾ opens a menu of modes; picking one changes the main button's label and
-// colour, and the main button then does that mode (the caller asks "are you sure" for the two that move chapters).
+// [ Save changes | ▾ ] for the edit page, [ Post chapter | ▾ ] for a new chapter. The ▾ opens a menu of modes; picking
+// one changes the main button's label and colour, and the main button then does that mode (the caller asks "are you
+// sure" for the ones that move chapters or discard the draft).
 export default function SaveSplitButton({
+  variant = "edit",
   mode,
   onMode,
-  canReplace,
-  canTrash,
+  canReplace = false,
+  canTrash = false,
   busyLabel,
   disabled,
   onMain,
 }: {
+  /** "edit" for the edit page; "post" for a new chapter's draft. */
+  variant?: "edit" | "post";
   mode: SaveMode;
   onMode: (mode: SaveMode) => void;
   /** The chapter has written chapters below it. */
-  canReplace: boolean;
+  canReplace?: boolean;
   /** Not the story's first chapter. */
-  canTrash: boolean;
+  canTrash?: boolean;
   /** Shown on the main button instead of its label while it works; null when idle. */
   busyLabel: string | null;
   disabled: boolean;
@@ -38,7 +50,9 @@ export default function SaveSplitButton({
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const more = useRef<HTMLButtonElement>(null);
-  const modes = MODES.filter((m) => m.id === "save" || (m.id === "replace" ? canReplace : canTrash));
+  const modes =
+    variant === "post" ? POST_MODES : EDIT_MODES.filter((m) => m.id === "save" || (m.id === "replace" ? canReplace : canTrash));
+  const verb = variant === "post" ? "post" : "save";
 
   useEffect(() => {
     if (!open) return;
@@ -68,17 +82,17 @@ export default function SaveSplitButton({
     items[(at + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
   }
 
-  const style = mode === "trash" ? "danger" : mode === "replace" ? "warning" : undefined;
+  const style = mode === "trash" || mode === "discard" ? "danger" : mode === "replace" ? "warning" : undefined;
   return (
     <div className="split-button" ref={wrap}>
       <button type="button" className={style} onClick={onMain} disabled={disabled}>
-        {busyLabel ?? BUTTON_LABEL[mode]}
+        {busyLabel ?? (modes.find((m) => m.id === mode) ?? modes[0]).button}
       </button>
       <button
         ref={more}
         type="button"
         className={`split-more ${style ?? ""}`}
-        aria-label="More ways to save"
+        aria-label={`More ways to ${verb}`}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
@@ -87,7 +101,7 @@ export default function SaveSplitButton({
         <span aria-hidden="true">▾</span>
       </button>
       {open && (
-        <div className="split-menu" role="menu" aria-label="Ways to save" onKeyDown={onMenuKey}>
+        <div className="split-menu" role="menu" aria-label={`Ways to ${verb}`}onKeyDown={onMenuKey}>
           {modes.map((m) => (
             <button
               key={m.id}

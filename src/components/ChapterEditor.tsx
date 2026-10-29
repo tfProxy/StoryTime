@@ -885,12 +885,18 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   // The split button's modes only exist when they make sense: replacing needs chapters below, and the first chapter can't go.
   const canReplace = target.kind === "edit" && target.existingChoices.some((c) => c.hasChild);
   const canTrash = target.kind === "edit" && target.incomingLabel !== null;
-  const mode: SaveMode = saveMode === "replace" && !canReplace ? "save" : saveMode === "trash" && !canTrash ? "save" : saveMode;
+  // Discarding is for a new chapter's draft; the edit page has Move to trash instead.
+  const mode: SaveMode =
+    saveMode === "replace" && !canReplace ? "save"
+    : saveMode === "trash" && !canTrash ? "save"
+    : saveMode === "discard" && target.kind === "edit" ? "save"
+    : saveMode;
   const below = target.kind === "edit" ? target.descendantCount : 0;
   const belowText = `${below} chapter${below === 1 ? "" : "s"}`;
 
   /** Save; changed text with an unchanged summary asks first, whether to keep the summary or write a new one. */
   function requestPost() {
+    if (mode === "discard") return void discardDraft();
     if (target.kind === "edit" && mode === "trash") return void trashBranch();
     if (target.kind === "edit" && mode === "replace" && !window.confirm(`Save your edit and move the ${belowText} below “${target.initialTitle}” to the trash?`)) return;
     if (needsSummaryChoice) setAskSummary(true);
@@ -913,6 +919,24 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       await deleteDraft(draftKey).catch(() => {});
       router.push(`/c/${data.parent_chapter_id}`);
     } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setBusy(null);
+    }
+  }
+
+  /** Discard draft: deletes the draft and everything saved with it, then goes back to where the chapter would have hung. */
+  async function discardDraft() {
+    if (target.kind === "edit") return;
+    if (!window.confirm("Discard this draft? Its text, choices and everything else saved with it are deleted. This can't be undone.")) return;
+    startBusy("post");
+    setError(null);
+    try {
+      loadedRef.current = false; // stop autosave from re-creating the draft
+      await saveChainRef.current;
+      await deleteDraft(draftKey);
+      router.push(target.kind === "first" ? `/s/${target.storyId}` : `/c/${target.parentChapterId}`);
+    } catch (e) {
+      loadedRef.current = true;
       setError(e instanceof Error ? e.message : String(e));
       setBusy(null);
     }
@@ -1591,6 +1615,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
             </p>
           ) : target.kind === "edit" && mode === "trash" ? (
             <p className="meta">Moves this chapter and everything below it to the trash. Your edits here are not saved.</p>
+          ) : mode === "discard" ? (
+            <p className="meta">Deletes this draft and everything saved with it. This can&apos;t be undone.</p>
           ) : problems.length > 0 ? (
             <p>
               <strong>{target.kind === "edit" ? "Can't save yet:" : "Can't post yet:"}</strong>{" "}
@@ -1636,9 +1662,14 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
             onMain={requestPost}
           />
         ) : (
-          <button type="button" onClick={requestPost} disabled={busy !== null || problems.length > 0}>
-            {posting ? "Saving…" : "Post chapter"}
-          </button>
+          <SaveSplitButton
+            variant="post"
+            mode={mode}
+            onMode={setSaveMode}
+            busyLabel={posting ? (mode === "discard" ? "Discarding…" : "Saving…") : null}
+            disabled={busy !== null || (mode !== "discard" && problems.length > 0)}
+            onMain={requestPost}
+          />
         )}
       </div>
 
