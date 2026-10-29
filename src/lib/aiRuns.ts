@@ -547,7 +547,7 @@ export function reviewRun(id: string, input: z.infer<typeof ReviewRunSchema>): A
 /** Marks every chapter the run wrote as reviewed (those already marked keep their time). */
 export function markRunReviewed(id: string): { marked: number } {
   rowOf(id);
-  const { changes } = db().prepare(`UPDATE chapters SET ai_reviewed_at = ? WHERE ai_run_id = ? AND ai_reviewed_at IS NULL`).run(Date.now(), id);
+  const { changes } = db().prepare(`UPDATE chapters SET ai_reviewed_at = ? WHERE ai_run_id = ? AND ai_reviewed_at IS NULL AND ai_owned_at IS NULL`).run(Date.now(), id);
   return { marked: changes };
 }
 

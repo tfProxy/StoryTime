@@ -22,6 +22,7 @@ type ChapterRow = {
   summary: string | null;
   ai_run_id: string | null;
   ai_reviewed_at: number | null;
+  ai_owned_at: number | null;
 };
 
 export type StoryChapter = {
@@ -83,7 +84,7 @@ export function getSubtree(chapterId: string, maxDepth: number): TreeNode | null
 function buildTree(storyId: string, rootId: string, maxDepth: number, baseDepth: number): TreeNode | null {
   const chapters = db()
     .prepare(
-      `SELECT id, title, depth, parent_choice_id, edited_at, summary, ai_run_id, ai_reviewed_at
+      `SELECT id, title, depth, parent_choice_id, edited_at, summary, ai_run_id, ai_reviewed_at, ai_owned_at
          FROM chapters WHERE story_id = ?`,
     )
     .all(storyId) as ChapterRow[];

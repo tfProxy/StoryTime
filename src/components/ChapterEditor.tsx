@@ -63,6 +63,8 @@ export type Target =
       existingChoices: { id: string; label: string; hasChild: boolean }[];
       /** Text of the choice leading here, or null for a story's first chapter. */
       incomingLabel: string | null;
+      /** The chapter currently has an AI mark, so it can be declared the author's own. */
+      aiMarked?: boolean;
     };
 
 type Props = {
@@ -168,6 +170,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const [conflict, setConflict] = useState<{ current: Draft | null } | null>(null);
   // Saving changed text asks whether to keep the chapter's summary or write a new one.
   const [askSummary, setAskSummary] = useState(false);
+  // "This is my writing now": an edit of an AI-marked chapter that also drops the mark. Not kept in the draft.
+  const [mine, setMine] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const loadedRef = useRef(false);
   // The server's `updatedAt` for the version this page has; each save says it builds on it.
@@ -952,6 +956,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
         rename_choices: existingChoices.filter((c) => !c.removed && c.label.trim() !== c.original).map((c) => ({ id: c.id, label: c.label.trim() })),
         remove_choices: existingChoices.filter((c) => c.removed).map((c) => c.id),
         add_choices: finalChoices,
+        mine: target.aiMarked && mine ? true : undefined,
         codex_changes,
         codex_fact_changes,
       };
@@ -1553,6 +1558,12 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                   maxLength={LIMITS.label}
                   onChange={(e) => patch({ editNote: e.target.value })}
                 />
+              </label>
+            )}
+            {target.kind === "edit" && target.aiMarked && (
+              <label className="inline-label">
+                <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} /> This is my writing now{" "}
+                <small>(Removes the AI mark.)</small>
               </label>
             )}
             {heldIds.length > 0 && (

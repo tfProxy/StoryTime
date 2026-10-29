@@ -47,6 +47,7 @@ type Row = {
   prev_summary: string | null;
   ai_run_id: string | null;
   ai_reviewed_at: number | null;
+  ai_owned_at: number | null;
 };
 
 type Decision = { chapter_id: string; kind: string; fingerprint: string; status: string; revision: number; note: string | null };
@@ -60,7 +61,7 @@ export function reviewIssues(storyId: string): ReviewIssue[] {
   const rows = db()
     .prepare(
       `SELECT c.id, ch.parent_chapter_id AS parent_id, c.title, c.depth, c.revision, c.summary, c.body,
-              r.body AS prev_body, r.summary AS prev_summary, c.ai_run_id, c.ai_reviewed_at
+              r.body AS prev_body, r.summary AS prev_summary, c.ai_run_id, c.ai_reviewed_at, c.ai_owned_at
          FROM chapters c
          LEFT JOIN choices ch ON ch.id = c.parent_choice_id
          LEFT JOIN chapter_revisions r ON r.chapter_id = c.id AND r.revision = c.revision - 1
@@ -97,7 +98,7 @@ export function reviewIssues(storyId: string): ReviewIssue[] {
     } else if (c.revision > 1 && c.prev_body !== null && c.prev_body !== c.body && c.prev_summary === c.summary) {
       add("summary-stale", "The last edit changed the text but not the summary.");
     }
-    if (c.ai_run_id !== null && c.ai_reviewed_at === null) {
+    if (c.ai_run_id !== null && c.ai_reviewed_at === null && c.ai_owned_at === null) {
       add("ai-unreviewed", "Written by AI and not read yet.");
     }
   }

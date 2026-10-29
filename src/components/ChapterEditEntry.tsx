@@ -16,6 +16,7 @@ type Props = {
   initialPathSummary: string | null;
   existingChoices: { id: string; label: string; hasChild: boolean }[];
   incomingLabel: string | null;
+  aiMarked: boolean;
   context: StoryContext;
   storyId: string;
   draftLabel: string;
@@ -46,6 +47,7 @@ export default function ChapterEditEntry({ story, ...p }: Props) {
           initialPathSummary: p.initialPathSummary,
           existingChoices: p.existingChoices,
           incomingLabel: p.incomingLabel,
+          aiMarked: p.aiMarked,
         }}
         context={p.context}
         storyId={p.storyId}

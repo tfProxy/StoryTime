@@ -114,6 +114,26 @@ try {
   ok((await page.locator(".outline-page svg.ai-mark").count()) === 0, "with AI-written off the outline has no robots");
   await page.goto(`${BASE}/c/${A}`);
   ok((await page.locator("p.chapter-meta svg.ai-mark").count()) === 1, "…but the chapter page still does");
+
+  // This is my writing now
+  const mineBox = page.getByRole("checkbox", { name: /This is my writing now/ });
+  await page.goto(`${BASE}/c/${C}/edit`);
+  await page.getByRole("button", { name: "Save changes" }).waitFor();
+  ok((await mineBox.count()) === 0, "a chapter the owner wrote has no 'This is my writing now' on its edit page");
+  await page.goto(`${BASE}/c/${A1}/edit`);
+  await mineBox.waitFor();
+  ok(!(await mineBox.isChecked()) && (await page.getByText("Removes the AI mark.").count()) === 1, "an AI chapter's edit page has it, unticked, with its hint");
+  await shoot("edit-mine");
+  await mineBox.check();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.waitForURL(`${BASE}/c/${A1}`);
+  await page.locator("p.chapter-meta").waitFor();
+  ok((await page.locator(".ai-mark").count()) === 0 && (await page.locator(".ai-review-notice").count()) === 0, "saving with it ticked removes the robot and the notice from the chapter");
+  await page.goto(`${BASE}/c/${A}`);
+  ok((await card("deeper").first().locator("svg.ai-mark").count()) === 0, "…and from the choice card that leads to it");
+  await page.goto(`${BASE}/c/${A1}/edit`);
+  await page.getByRole("button", { name: "Save changes" }).waitFor();
+  ok((await mineBox.count()) === 0, "…and the edit page no longer offers it");
 } finally {
   await putSettings(settingsBefore ?? {});
   await browser.close();

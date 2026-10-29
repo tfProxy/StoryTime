@@ -753,6 +753,11 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE codex_suggestions ADD COLUMN source TEXT NOT NULL DEFAULT 'chapter';
   `,
+  // 42: when the owner declared an AI-written chapter their own writing ("This is my writing now"). The AI mark is
+  // gone for good then; ai_run_id stays, because the run still lists the chapter.
+  `
+  ALTER TABLE chapters ADD COLUMN ai_owned_at INTEGER;
+  `,
 ];
 
 function open(): Database.Database {

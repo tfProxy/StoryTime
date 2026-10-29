@@ -42,13 +42,15 @@ export type Chapter = {
   ai_run_id: string | null;
   /** When the author marked an AI-written chapter reviewed; null until then. */
   ai_reviewed_at: number | null;
+  /** When the author declared the chapter their own writing; the AI mark is gone from then on. */
+  ai_owned_at: number | null;
 };
 
-/** Whether the AI wrote a chapter, and if so whether the author has reviewed it (D3a). null = written by the author. */
+/** Whether the AI wrote a chapter, and if so whether the author has reviewed it (D3a). null = written by the author (or taken over). */
 export type AiMark = null | "unreviewed" | "reviewed";
 
-export const aiMarkOf = (c: { ai_run_id: string | null; ai_reviewed_at: number | null }): AiMark =>
-  c.ai_run_id === null ? null : c.ai_reviewed_at === null ? "unreviewed" : "reviewed";
+export const aiMarkOf = (c: { ai_run_id: string | null; ai_reviewed_at: number | null; ai_owned_at: number | null }): AiMark =>
+  c.ai_run_id === null || c.ai_owned_at !== null ? null : c.ai_reviewed_at === null ? "unreviewed" : "reviewed";
 
 export type Choice = {
   id: string;
@@ -121,6 +123,8 @@ export const EditChapterSchema = z.object({
   rename_choices: z.array(z.object({ id: z.string().min(1), label: required(LIMITS.label) })).max(LIMITS.choices).default([]),
   remove_choices: z.array(z.string().min(1)).max(LIMITS.choices).default([]),
   add_choices: z.array(required(LIMITS.label)).max(LIMITS.choices).default([]),
+  /** "This is my writing now": drops the AI mark from an AI-written chapter for good. */
+  mine: z.boolean().optional(),
 });
 
 export const AddChoiceSchema = z.object({
@@ -215,7 +219,7 @@ export function getStory(id: string): Story | undefined {
 }
 
 const CHAPTER_COLS = `c.id, c.story_id, c.parent_choice_id, c.depth, c.title, c.body, c.summary, c.path_summary,
-  c.posted_at, c.revision, c.edited_at, c.edit_note, c.ai_run_id, c.ai_reviewed_at`;
+  c.posted_at, c.revision, c.edited_at, c.edit_note, c.ai_run_id, c.ai_reviewed_at, c.ai_owned_at`;
 
 export function getChapter(id: string): Chapter | undefined {
   return db()
@@ -247,19 +251,19 @@ export function storyTitles(ids: string[]): Record<string, string> {
 export function getChoices(chapterId: string): Choice[] {
   const rows = db()
     .prepare(
-      `SELECT ch.id, ch.parent_chapter_id, ch.label, ch.posted_at, c.id AS child_chapter_id, c.ai_run_id, c.ai_reviewed_at
+      `SELECT ch.id, ch.parent_chapter_id, ch.label, ch.posted_at, c.id AS child_chapter_id, c.ai_run_id, c.ai_reviewed_at, c.ai_owned_at
          FROM choices ch LEFT JOIN chapters c ON c.parent_choice_id = ch.id
         WHERE ch.parent_chapter_id = ?
         ORDER BY ch.posted_at, ch.rowid`,
     )
-    .all(chapterId) as (Omit<Choice, "child_ai"> & { ai_run_id: string | null; ai_reviewed_at: number | null })[];
-  return rows.map(({ ai_run_id, ai_reviewed_at, ...choice }) => ({ ...choice, child_ai: aiMarkOf({ ai_run_id, ai_reviewed_at }) }));
+    .all(chapterId) as (Omit<Choice, "child_ai"> & { ai_run_id: string | null; ai_reviewed_at: number | null; ai_owned_at: number | null })[];
+  return rows.map(({ ai_run_id, ai_reviewed_at, ai_owned_at, ...choice }) => ({ ...choice, child_ai: aiMarkOf({ ai_run_id, ai_reviewed_at, ai_owned_at }) }));
 }
 
 /** Marks an AI-written chapter reviewed (those already reviewed, and chapters the author wrote, keep as they are). Returns how many were marked. */
 export function markReviewed(chapterId: string): { marked: number } {
   if (!getChapter(chapterId)) throw new PostError("That chapter does not exist", 404);
-  const { changes } = db().prepare(`UPDATE chapters SET ai_reviewed_at = ? WHERE id = ? AND ai_run_id IS NOT NULL AND ai_reviewed_at IS NULL`).run(now(), chapterId);
+  const { changes } = db().prepare(`UPDATE chapters SET ai_reviewed_at = ? WHERE id = ? AND ai_run_id IS NOT NULL AND ai_reviewed_at IS NULL AND ai_owned_at IS NULL`).run(now(), chapterId);
   return { marked: changes };
 }
 
@@ -269,7 +273,7 @@ export function markPathReviewed(chapterId: string): { marked: number } {
   if (path.length === 0) throw new PostError("That chapter does not exist", 404);
   const ids = path.map((c) => c.id);
   const { changes } = db()
-    .prepare(`UPDATE chapters SET ai_reviewed_at = ? WHERE id IN (${ids.map(() => "?").join(",")}) AND ai_run_id IS NOT NULL AND ai_reviewed_at IS NULL`)
+    .prepare(`UPDATE chapters SET ai_reviewed_at = ? WHERE id IN (${ids.map(() => "?").join(",")}) AND ai_run_id IS NOT NULL AND ai_reviewed_at IS NULL AND ai_owned_at IS NULL`)
     .run(now(), ...ids);
   return { marked: changes };
 }
@@ -508,6 +512,11 @@ export function editChapter(chapterId: string, input: z.infer<typeof EditChapter
         input.edit_note || null,
         chapterId,
       );
+
+    // ai_run_id stays: the run still lists the chapter. Only the mark goes.
+    if (input.mine === true) {
+      db().prepare(`UPDATE chapters SET ai_owned_at = ? WHERE id = ? AND ai_run_id IS NOT NULL AND ai_owned_at IS NULL`).run(t, chapterId);
+    }
 
     // Rolling summaries of everything below this chapter build on this chapter's own. They are only a
     // cache, so when it changes clear them and let clients regenerate them when they next need them.

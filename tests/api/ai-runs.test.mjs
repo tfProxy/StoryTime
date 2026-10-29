@@ -172,3 +172,24 @@ ok((await call("GET", `/api/chapters/${root}/subtree?depth=9`)).status === 400 &
 ok((await call("GET", "/api/chapters/nope/subtree")).status === 404, "an unknown chapter is 404");
 const tree = (await call("GET", `/api/chapters/${root}/subtree?depth=8`)).json;
 ok(tree.choices.length === 2, "the whole story can be read with depth 8");
+
+// ---- "This is my writing now" ----
+const mineCh = (await call("POST", "/api/chapters", { parent_chapter_id: deep, new_choice_label: "Mine", title: "Mine", body: "m", ai_run_id: run })).json.chapter_id;
+const markIn = async (id) => ({
+  tree: (await call("GET", `/api/chapters/${id}/subtree?depth=0`)).json.ai,
+  card: (await call("GET", `/api/chapters/${deep}`)).json.choices.find((c) => c.child_chapter_id === id)?.child_ai,
+});
+ok((await markIn(mineCh)).tree === "unreviewed" && (await markIn(mineCh)).card === "unreviewed", "a fresh AI chapter is unreviewed");
+const edit = { base_revision: 1, title: "Mine", body: "m", edit_note: "" };
+r = await call("PATCH", `/api/chapters/${mineCh}`, { ...edit, mine: false });
+ok(r.status === 200 && (await markIn(mineCh)).card === "unreviewed", "saving without mine keeps the mark");
+r = await call("PATCH", `/api/chapters/${mineCh}`, { ...edit, base_revision: 2, mine: true });
+ok(r.status === 200 && (await markIn(mineCh)).tree === null && (await markIn(mineCh)).card === null, "saving with mine removes the mark from the subtree and the parent's choices");
+const mc = (await call("GET", `/api/chapters/${mineCh}`)).json;
+ok(mc.chapter.ai_run_id === run && mc.chapter.ai_owned_at > 0, "…the chapter keeps its run and records when it was taken over");
+ok((await call("POST", `/api/chapters/${mineCh}/reviewed`)).json.marked === 0, "an owned chapter is not marked reviewed");
+const ownedAt = mc.chapter.ai_owned_at;
+await call("PATCH", `/api/chapters/${mineCh}`, { ...edit, base_revision: 3, mine: true });
+ok((await call("GET", `/api/chapters/${mineCh}`)).json.chapter.ai_owned_at === ownedAt, "ticking it again changes nothing");
+const plain = (await call("PATCH", `/api/chapters/${leftCh}`, { base_revision: 1, title: "Left", body: "l", edit_note: "", mine: true }));
+ok(plain.status === 200 && (await call("GET", `/api/chapters/${leftCh}`)).json.chapter.ai_owned_at === null, "mine on a chapter the author wrote does nothing");
