@@ -87,6 +87,15 @@ export function moveDraft(from: string, to: string, patch: { href: string; label
   })();
 }
 
+/** Which of these keys have a draft saved. */
+export function draftKeysSaved(keys: string[]): Set<string> {
+  if (keys.length === 0) return new Set();
+  const rows = db()
+    .prepare(`SELECT key FROM drafts WHERE key IN (${keys.map(() => "?").join(", ")})`)
+    .all(...keys) as { key: string }[];
+  return new Set(rows.map((r) => r.key));
+}
+
 export function deleteDraft(key: string): boolean {
   return db().prepare("DELETE FROM drafts WHERE key = ?").run(key).changes > 0;
 }

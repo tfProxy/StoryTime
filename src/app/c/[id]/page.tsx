@@ -16,6 +16,7 @@ import SuggestChoices from "@/components/SuggestChoices";
 import ChapterImage from "@/components/ChapterImage";
 import { PageMenu } from "@/components/SiteMenu";
 import { chapterImageVersions } from "@/lib/chapterImages";
+import { draftKeysSaved } from "@/lib/draftStore";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,8 @@ export default async function ChapterPage({
   const images = chapterImageVersions([chapter.id]).get(chapter.id)!;
   const tagNames = appliedTagNames(story.id, chapter.id).get(chapter.id) ?? [];
   const notes = choices.some((c) => c.child_chapter_id) ? contentNotes(story.id) : new Map<string, ChapterNote>();
+  // Unwritten choices with a draft saved (the write page keys a choice's draft "fill:<choice id>").
+  const drafted = trashed ? new Set<string>() : draftKeysSaved(choices.filter((c) => !c.child_chapter_id).map((c) => `fill:${c.id}`));
 
   return (
     <>
@@ -113,11 +116,24 @@ export default async function ChapterPage({
             </Link>
           ) : (
             <div key={c.id} className="choice-slot">
-              <Link href={`/c/${chapter.id}/write?choice=${c.id}`} className="card choice-unwritten" title="Not written yet. Write it?">
+              <Link
+                href={`/c/${chapter.id}/write?choice=${c.id}`}
+                className="card choice-unwritten"
+                title={drafted.has(`fill:${c.id}`) ? "Not written yet, but a draft is saved. Carry on with it?" : "Not written yet. Write it?"}
+              >
                 <svg className="choice-icon" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19z M14.5 6.5l3 3" />
                 </svg>
                 {c.label}
+                {drafted.has(`fill:${c.id}`) && (
+                  <span className="choice-draft">
+                    {/* A page with lines of text: the choice has a draft saved. */}
+                    <svg className="choice-icon" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M6 3h8l4 4v14H6z M14 3v4h4 M9 12h6 M9 16h6" />
+                    </svg>
+                    <span className="visually-hidden">(draft saved)</span>
+                  </span>
+                )}
               </Link>
               <RemoveChoice chapterId={chapter.id} choiceId={c.id} label={c.label} />
             </div>

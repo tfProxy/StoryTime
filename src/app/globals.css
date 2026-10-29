@@ -497,6 +497,18 @@ a.card:hover {
   opacity: 0.7;
 }
 
+/* The "draft saved" page icon, at the right of an unwritten choice. */
+.choice-unwritten .choice-draft {
+  float: right;
+  margin-left: 0.5rem;
+  color: var(--accent);
+}
+
+.choice-unwritten .choice-draft .choice-icon {
+  opacity: 1;
+  margin-right: 0;
+}
+
 /* The wrapper holds the card link and the remove "x" pinned to its right edge. */
 .choice-slot {
   position: relative;

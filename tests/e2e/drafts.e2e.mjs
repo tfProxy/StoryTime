@@ -150,6 +150,11 @@ await json("DELETE", `/api/drafts/${encodeURIComponent(`fill:${turnBack.id}`)}`)
   await p.waitForFunction(() => /Draft saved/.test(document.body.innerText));
   await p.waitForTimeout(700);
   ok((await json("GET", discardUrl)).draft?.body === "To be thrown away.", "a new draft is saved before discarding");
+  const draftIcon = (pg) => pg.locator(".choice-unwritten", { hasText: "Turn back" }).locator(".choice-draft");
+  const reader = await ctx.newPage();
+  await reader.goto(`${BASE}/c/${root}`);
+  ok((await draftIcon(reader).count()) === 1, "the reading page shows a draft icon on the choice with a saved draft");
+  await reader.close();
   await p.getByRole("button", { name: "More ways to post" }).click();
   await p.getByRole("menuitemradio", { name: /^Discard draft/ }).click();
   const main = p.locator(".split-button > button").first();
@@ -164,6 +169,8 @@ await json("DELETE", `/api/drafts/${encodeURIComponent(`fill:${turnBack.id}`)}`)
   ok(true, "saying yes goes back to the chapter above");
   await p.waitForTimeout(700);
   ok(!(await json("GET", discardUrl)).draft, "…and the draft is gone");
+  await p.reload();
+  ok((await draftIcon(p).count()) === 0, "…so the choice no longer shows the draft icon");
   await ctx.close();
 }
 
