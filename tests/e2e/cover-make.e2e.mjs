@@ -61,7 +61,11 @@ page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); pageErrors.pu
 const promptBox = page.getByRole("textbox", { name: "Prompt", exact: true });
 const negativeBox = page.getByRole("textbox", { name: "Negative prompt", exact: true });
 const source = page.getByLabel("Write the cover from");
-const pathEnd = page.getByLabel("Path ends at");
+const pathEnd = page.locator("#cover-path-end");
+const pickPathEnd = async (chapterTitle) => {
+  await pathEnd.click();
+  await page.getByRole("dialog", { name: "Choose a chapter" }).getByRole("button", { name: new RegExp(`^${chapterTitle}`) }).click();
+};
 const queueButton = page.getByRole("button", { name: "Queue", exact: true });
 const size = page.getByLabel("Size");
 const tiles = page.locator(".candidates li.picture-tile");
@@ -94,8 +98,11 @@ try {
   ok((await source.locator("option").allInnerTexts()).join("|") === "The summary and codex|The first chapter|A path through the story", "Write from offers the summary, the first chapter and a path");
   ok((await source.inputValue()) === "premise" && (await pathEnd.count()) === 0, "…and starts on the summary, with no path menu");
   await source.selectOption({ label: "A path through the story" });
-  ok((await pathEnd.locator("option").allInnerTexts()).join("|") === "The lamp|– The cellar", "choosing a path shows Path ends at, listing the story's chapters in order");
-  ok((await pathEnd.inputValue()) === second, "…which starts on the last chapter");
+  await pathEnd.click();
+  const pathPanel = page.getByRole("dialog", { name: "Choose a chapter" });
+  ok((await pathPanel.locator(".chapter-tree-title").allInnerTexts()).join("|") === "The lamp|The cellar", "choosing a path shows the path-end picker, listing the story's chapters as a tree");
+  await page.keyboard.press("Escape");
+  ok((await pathEnd.innerText()).includes("The cellar"), "…which starts on the last chapter");
 
   // ---- writing the prompt ----
   await page.getByRole("button", { name: "Write prompt", exact: true }).waitFor();
@@ -108,14 +115,15 @@ try {
 
   // ---- kept for next time ----
   await source.selectOption({ label: "A path through the story" });
-  await pathEnd.selectOption(second);
+  await pickPathEnd("The lamp");
+  await pickPathEnd("The cellar");
   await promptBox.fill("a kept cover prompt");
   await negativeBox.fill("a kept negative");
   await page.waitForTimeout(1200); // (the boxes are saved after a short wait)
   await page.reload();
   await page.getByRole("heading", { name: "Cover prompt" }).waitFor();
   ok((await promptBox.inputValue()) === "a kept cover prompt" && (await negativeBox.inputValue()) === "a kept negative", "after a reload the Prompt and Negative prompt boxes come back");
-  ok((await source.inputValue()) === "path" && (await pathEnd.inputValue()) === second, "…and so do the source and the chosen path end");
+  ok((await source.inputValue()) === "path" && (await pathEnd.innerText()).includes("The cellar"), "…and so do the source and the chosen path end");
 
   // ---- making a picture at the cover size ----
   ok(((await size.locator("option").first().evaluate((o) => o.textContent)).replace(/\s+/g, " ")).includes("Book") && (await size.locator("option").first().evaluate((o) => o.textContent)).includes("832 × 1216"), "the Size menu lists the book size first");

@@ -34,6 +34,8 @@ export type StoryChapter = {
   depth: number;
   /** The chapter this one continues from; null for the first chapter. */
   parent_id: string | null;
+  /** The label of the choice that leads here; null for the first chapter. */
+  choice_label: string | null;
 };
 
 /** Every live chapter reachable from a story's first chapter, parents before children. */
@@ -42,7 +44,7 @@ export function getStoryChapters(storyId: string): StoryChapter[] {
   if (!story?.root_chapter_id) return [];
   const rows = db()
     .prepare(
-      `SELECT c.id, c.revision, c.title, c.body, c.summary, c.path_summary, c.depth, ch.parent_chapter_id AS parent_id
+      `SELECT c.id, c.revision, c.title, c.body, c.summary, c.path_summary, c.depth, ch.parent_chapter_id AS parent_id, ch.label AS choice_label
          FROM chapters c LEFT JOIN choices ch ON ch.id = c.parent_choice_id
         WHERE c.story_id = ? ORDER BY c.depth, c.posted_at, c.rowid`,
     )

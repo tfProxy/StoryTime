@@ -12,8 +12,8 @@ import { getStoryTree, type TreeNode } from "@/lib/tree";
 export const dynamic = "force-dynamic";
 
 /** Every written chapter, in the outline's order (each chapter, then what follows it, choice by choice). */
-function inOrder(node: TreeNode): CoverChapter[] {
-  return [{ id: node.id, title: node.title, depth: node.depth }, ...node.choices.flatMap((c) => (c.child ? inOrder(c.child) : []))];
+function inOrder(node: TreeNode, parent: string | null = null, label: string | null = null): CoverChapter[] {
+  return [{ id: node.id, title: node.title, parent_id: parent, label }, ...node.choices.flatMap((c) => (c.child ? inOrder(c.child, node.id, c.label) : []))];
 }
 
 /** The path from the first chapter to this one, and the codex there; null when the chapter is gone. */

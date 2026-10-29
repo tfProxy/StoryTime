@@ -40,6 +40,7 @@ const pressed = async (loc) => (await loc.getAttribute("aria-pressed")) === "tru
 
 try {
   await sectionA();
+  await sectionB();
 } finally {
   await send("DELETE", `/api/stories/${sid}`);
   await ai.restore();
@@ -170,4 +171,153 @@ async function sectionA() {
   const label = await box(details.locator(".chapter-picker-label"));
   ok((await box(group)).y > label.y + label.height - 2, "…with the label above the buttons");
   await page.setViewportSize({ width: 1280, height: 800 });
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// B: any chapter of the story (ChapterTreePicker): the Story Bible's "Show" and the cover's "ending at".
+async function sectionB() {
+  console.log("-- B: any chapter (tree and search)");
+  // A story with two branches: the marsh (three deep) and the forest (two deep).
+  const T = { root: "Hollow Start", marsh: "Marsh Road", ferry: "The Ferry Landing", moon: "Second Moon", forest: "Forest Road", mill: "Wolves at the old mill" };
+  const made = await post("/api/stories", { title: "Tree Tale", premise: "p", chapter: { title: T.root, body: "Start.", choices: ["Take the marsh path", "Take the forest path"] } });
+  const bid = made.story_id;
+  const id = { root: made.chapter_id };
+  try {
+    const choicesOf = async (chapter) => (await send("GET", `/api/chapters/${chapter}`)).choices;
+    const add = async (parent, n, key, more = []) => (id[key] = (await post("/api/chapters", { choice_id: (await choicesOf(parent))[n].id, title: T[key], body: `${key}.`, choices: more })).chapter_id);
+    await add(id.root, 0, "marsh", ["Wait for the ferry"]);
+    await add(id.marsh, 0, "ferry", ["Wait"]);
+    await add(id.ferry, 0, "moon");
+    await add(id.root, 1, "forest", ["Follow the wolves"]);
+    await add(id.forest, 0, "mill");
+
+    const review = (q = "") => `${BASE}/s/${bid}/review${q}`;
+    const button = page.locator("#bible-chapter");
+    const dialog = page.getByRole("dialog", { name: "Choose a chapter" });
+    const tree = dialog.locator(".chapter-tree-body");
+    const row = (title) => tree.getByRole("button", { name: new RegExp(`^${title}`) });
+    const visible = async (title) => (await row(title).count()) > 0 && (await row(title).first().isVisible());
+
+    // ---- Story Bible, desktop ----
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(review(`?tab=issues&chapter=${id.moon}`));
+    await button.waitFor();
+    ok((await button.locator(".chapter-tree-button-title").innerText()) === T.moon && (await button.locator(".chapter-tree-button-path").innerText()) === `${T.root} › ${T.marsh} › ${T.ferry}`, "the button shows the chosen chapter and, under it, the chapters before it");
+    ok((await button.locator(".chapter-tree-button-change").innerText()) === "Change…" && (await button.getAttribute("aria-expanded")) === "false" && (await dialog.count()) === 0, "…with Change…, closed (aria-expanded false)");
+    await button.click();
+    await dialog.waitFor();
+    ok((await button.getAttribute("aria-expanded")) === "true", "the button opens the panel (aria-expanded true)");
+    ok((await dialog.getByText("Choose a chapter", { exact: true }).isVisible()) && (await dialog.getByRole("button", { name: "Close" }).isVisible()) && (await dialog.getByRole("searchbox", { name: "Search chapter titles" }).isVisible()), "the panel has a heading, Close and a search box");
+    const desktop = await box(button);
+    const panelBox = await box(dialog);
+    ok(panelBox.y >= desktop.y + desktop.height - 1 && panelBox.x < 40 + desktop.x, "on a desktop the panel sits under the button, inline");
+
+    // the chosen branch is open, the others folded with how many chapters they hold
+    ok((await visible(T.moon)) && (await visible(T.ferry)) && (await visible(T.marsh)) && (await visible(T.forest)), "the chosen chapter's branch is open, and the first chapter's other choice shows");
+    ok(!(await visible(T.mill)) && (await row(T.forest).innerText()).includes("1 more"), "the other branch is folded, with “1 more”");
+    ok((await row(T.moon).getAttribute("aria-current")) === "true" && (await row(T.forest).getAttribute("aria-current")) === null, "the chosen chapter is marked");
+    const weight = async (title) => Number(await row(title).evaluate((e) => getComputedStyle(e).fontWeight));
+    ok((await weight(T.marsh)) >= 600 && (await weight(T.forest)) < 600, "the chapters on the path are bold, the others not");
+    ok((await row(T.marsh).innerText()).includes("“Take the marsh path”") && (await row(T.forest).innerText()).includes("“Take the forest path”"), "each chapter shows the choice that leads to it");
+
+    // fold and unfold
+    await tree.getByRole("button", { name: `Open “${T.forest}”` }).click();
+    ok((await visible(T.mill)) && !(await row(T.forest).innerText()).includes("more"), "▸ opens a branch: its chapter shows and “N more” goes away");
+    await tree.getByRole("button", { name: `Fold “${T.forest}”` }).click();
+    ok(!(await visible(T.mill)) && (await row(T.forest).innerText()).includes("1 more"), "▾ folds it again, and “1 more” is back");
+    await tree.getByRole("button", { name: `Fold “${T.marsh}”` }).click();
+    ok(!(await visible(T.ferry)) && (await row(T.marsh).innerText()).includes("2 more"), "the chosen branch can be folded too (“2 more”)");
+    await tree.getByRole("button", { name: `Open “${T.marsh}”` }).click();
+
+    // search
+    const search = dialog.getByRole("searchbox", { name: "Search chapter titles" });
+    await search.fill("MILL");
+    const hit = dialog.locator(".chapter-tree-results li");
+    ok((await hit.count()) === 1 && (await hit.locator("mark").innerText()) === "mill" && (await hit.locator("mark").evaluate((m) => m.parentElement.textContent)) === T.mill, "searching shows a flat list of the matches, the matched part marked");
+    ok((await hit.locator(".chapter-tree-path").innerText()) === `${T.root} › ${T.forest}`, "…each with its path underneath");
+    await search.fill("road");
+    ok((await hit.count()) === 2, "a search matches in any branch (two “road” chapters)");
+    await search.fill("nothing like it");
+    ok((await dialog.getByText("No chapter title has “nothing like it”.").isVisible()), "no match says so");
+    await search.fill("");
+    ok(await visible(T.marsh), "clearing the search brings the tree back");
+
+    // Escape closes
+    await page.keyboard.press("Escape");
+    ok((await dialog.count()) === 0 && (await button.getAttribute("aria-expanded")) === "false", "Escape closes the panel");
+    await button.click();
+    await dialog.getByRole("button", { name: "Close" }).click();
+    ok((await dialog.count()) === 0, "Close closes it too");
+
+    // picking from the search changes the page and keeps the tab
+    await button.click();
+    await dialog.getByRole("searchbox", { name: "Search chapter titles" }).fill("mill");
+    await dialog.locator(".chapter-tree-results button").click();
+    await page.waitForURL(new RegExp(`tab=issues&chapter=${id.mill}`));
+    ok((await dialog.count()) === 0 && (await button.locator(".chapter-tree-button-title").innerText()) === T.mill, "picking closes the panel, goes to that chapter and keeps the tab");
+    ok((await button.locator(".chapter-tree-button-path").innerText()) === `${T.root} › ${T.forest}`, "…and the button shows its path");
+    // picking from the tree
+    await button.click();
+    await row(T.marsh).click();
+    await page.waitForURL(new RegExp(`tab=issues&chapter=${id.marsh}`));
+    ok(true, "picking in the tree goes to the chapter");
+    // the first chapter has no path
+    await button.click();
+    await row(T.root).click();
+    await page.waitForURL(new RegExp(`chapter=${id.root}`));
+    ok((await button.locator(".chapter-tree-button-path").innerText()) === "The first chapter", "the first chapter says “The first chapter”");
+    // the whole story
+    await button.click();
+    await dialog.getByRole("button", { name: "The whole story" }).click();
+    await page.waitForURL(/chapter=$/);
+    ok((await button.locator(".chapter-tree-button-title").innerText()) === "The whole story" && (await page.getByText(/^Showing .* only/).count()) === 0, "“The whole story” is offered at the top and shows everything");
+
+    // ---- Story Bible, phone ----
+    const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    try {
+      const p = await phone.newPage();
+      p.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
+      await p.goto(review(`?chapter=${id.moon}`));
+      await p.locator("#bible-chapter").tap();
+      const sheet = p.getByRole("dialog", { name: "Choose a chapter" });
+      await sheet.waitFor();
+      const b = await sheet.boundingBox();
+      const view = await p.evaluate(() => [window.innerWidth, window.innerHeight]);
+      ok(Math.abs(b.y + b.height - view[1]) <= 1, "on a phone the panel is a bottom sheet: its bottom edge is at the bottom of the screen");
+      ok(Math.abs(b.x) <= 1 && Math.abs(b.width - view[0]) <= 1, "…full width");
+      ok(b.height <= view[1] * 0.8 + 1, "…at most 80% of the screen high");
+      ok(await p.locator(".chapter-tree-backdrop").isVisible(), "…with a backdrop");
+      ok((await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)), "…and the page doesn't scroll sideways");
+      await p.mouse.click(190, 20);
+      ok((await sheet.count()) === 0, "tapping the backdrop closes it");
+      await p.locator("#bible-chapter").tap();
+      await sheet.getByRole("button", { name: `Open “${T.forest}”` }).tap();
+      await sheet.getByRole("button", { name: new RegExp(`^${T.mill}`) }).tap();
+      await p.waitForURL(new RegExp(`chapter=${id.mill}`));
+      ok(true, "picking on the phone goes to the chapter");
+    } finally {
+      await phone.close();
+    }
+
+    // ---- the cover ----
+    await page.goto(`${BASE}/s/${bid}/cover`);
+    await page.getByRole("heading", { name: "Cover prompt" }).waitFor();
+    await page.getByLabel("Write the cover from").selectOption({ label: "A path through the story" });
+    const end = page.locator("#cover-path-end");
+    await end.waitFor();
+    ok((await end.locator(".chapter-tree-button-title").innerText()) !== "" && (await end.getAttribute("aria-expanded")) === "false", "the cover's “ending at” is a picker button");
+    await end.click();
+    ok((await dialog.getByRole("button", { name: "The whole story" }).count()) === 0, "…which has no “The whole story”");
+    await row(T.forest).waitFor();
+    ok((await visible(T.ferry)) === false && (await row(T.marsh).innerText()).includes("2 more"), "…and the chapters are listed as a tree, the other branch folded");
+    await dialog.getByRole("searchbox", { name: "Search chapter titles" }).fill("ferry");
+    await dialog.locator(".chapter-tree-results button").click();
+    ok((await dialog.count()) === 0 && (await end.locator(".chapter-tree-button-title").innerText()) === T.ferry && (await end.locator(".chapter-tree-button-path").innerText()) === `${T.root} › ${T.marsh}`, "picking a chapter fills “ending at”");
+    await page.waitForTimeout(1200); // (the boxes are saved after a short wait)
+    await page.reload();
+    await end.waitFor();
+    ok((await end.locator(".chapter-tree-button-title").innerText()) === T.ferry, "…and it is kept after a reload");
+  } finally {
+    await send("DELETE", `/api/stories/${bid}`);
+  }
 }
