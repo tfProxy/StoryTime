@@ -3794,3 +3794,127 @@ button.refine-fit {
   margin: 0;
   overflow-wrap: anywhere;
 }
+
+/* Labels and their fields share a line in the codex forms (label above field on a phone). */
+.fact-form > label {
+  grid-template-columns: 10rem minmax(0, 1fr);
+  column-gap: 0.75rem;
+  align-items: center;
+}
+
+.fact-form > label > small {
+  grid-column: 2;
+}
+
+.fact-form > .fact-form-extra {
+  margin-left: 10.75rem;
+}
+
+@media (max-width: 640px) {
+  .fact-form > label {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fact-form > label > small {
+    grid-column: 1;
+  }
+
+  .fact-form > .fact-form-extra {
+    margin-left: 0;
+  }
+}
+
+/* The chapter path: earlier chapters (wrapping in their own block), the current one, then the chapters after it stacked. */
+.chapter-nav {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.chapter-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+
+.chapter-nav-prefix {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.chapter-nav-prev {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.4rem;
+  min-width: 0;
+}
+
+.chapter-nav-prev > .chapter-nav-item + .chapter-nav-item::before {
+  content: "›";
+  margin-right: 0.4rem;
+}
+
+.chapter-nav-sep {
+  flex: none;
+}
+
+.chapter-nav-current {
+  flex: 0 1 auto;
+  min-width: 8rem;
+}
+
+.chapter-nav-current {
+  color: var(--fg);
+}
+
+.chapter-nav-next {
+  display: grid;
+  flex: none;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chapter-nav-more {
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  .chapter-nav-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.25rem;
+  }
+
+  .chapter-nav-sep {
+    display: none;
+  }
+
+  .chapter-nav-prev {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 0.15rem;
+    font-size: 0.85em;
+    opacity: 0.9;
+  }
+
+  .chapter-nav-prev > .chapter-nav-item + .chapter-nav-item::before {
+    content: none;
+  }
+
+  .chapter-nav-current {
+    padding-left: 0.5rem;
+    border-left: 3px solid var(--accent);
+  }
+
+  .chapter-nav-next {
+    gap: 0.25rem;
+    padding-left: 0.5rem;
+  }
+
+  .chapter-nav-next > li::before {
+    content: "↳ ";
+    color: var(--muted);
+  }
+}

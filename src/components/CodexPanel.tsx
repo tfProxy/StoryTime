@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   addChange,
@@ -45,8 +44,8 @@ type Props = {
    * (and posted with the chapter); only changes anchored at an earlier chapter are saved straight away.
    */
   draft?: { changes: CodexChange[]; onChange: (next: CodexChange[]) => void };
-  /** The codex page's links to the chapters after this one (shown in the path), and the chapter's collapsed summary below it. */
-  nextLinks?: ReactNode;
+  /** The codex page's chapter path (with the chapters after this one), and the chapter's collapsed summary below it. */
+  nav?: ReactNode;
   summary?: ReactNode;
 };
 
@@ -56,7 +55,7 @@ const localId = () => `draft-${Date.now().toString(36)}${Math.random().toString(
  * The codex as a compact list of entries (see `CodexEntryCards`), with "+ New entry". Each card opens the entry's
  * page; in the writing page's drawer it opens the entry in the drawer instead, so the draft is kept.
  */
-export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide, startEditing, chapterId, path, ops, facts, draft, nextLinks, summary }: Props) {
+export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide, startEditing, chapterId, path, ops, facts, draft, nav, summary }: Props) {
   const router = useRouter();
   // Each entry's picture as of this chapter (by entry id), for the thumbnails.
   const [pictures, setPictures] = useState<Record<string, { id: string }>>({});
@@ -197,15 +196,7 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
   return (
     <div style={{ display: "grid", gap: "1.25rem" }}>
       {!embedded && !storyWide && (
-        <nav className="timeline" aria-label="Chapters on this path">
-          {path.map((p, i) => (
-            <span key={p.id}>
-              {i > 0 && " › "}
-              {p.id === chapterId ? <strong>{p.title}</strong> : <Link href={`/c/${p.id}/codex`}>{p.title}</Link>}
-            </span>
-          ))}
-          {nextLinks}
-        </nav>
+        nav
       )}
       {!embedded && !storyWide && summary}
       {draft ? (

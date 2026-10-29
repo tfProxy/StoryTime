@@ -50,7 +50,7 @@ await page.getByLabel(/Keywords/).fill("the thief, Mir");
 await page.getByRole("button", { name: "Add entry" }).click();
 await page.getByRole("heading", { name: "Mira", level: 1 }).waitFor();
 ok(new RegExp(`/s/${story.story_id}/codex/[^/]+\\?at=${root}$`).test(page.url()), "adding an entry opens its page, at this chapter: " + page.url());
-ok((await editor.locator(".entry-keywords").innerText()).includes("the thief, Mir"), "the keywords show on the entry page");
+ok((await editor.getByLabel(/Keywords/).inputValue()) === "the thief, Mir" && (await editor.locator(".entry-keywords").count()) === 0, "the keywords show in the entry page's box, with no Inherited line");
 await page.getByLabel(/Always include/).check();
 await page.getByRole("button", { name: "Save changes" }).click();
 await editor.getByText("always included").waitFor();

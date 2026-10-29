@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChapterSummary, NextChapters } from "@/components/CodexChapterNav";
+import { ChapterPathNav, ChapterSummary } from "@/components/CodexChapterNav";
 import CodexPanel from "@/components/CodexPanel";
 import { getCodexFacts, getCodexOps } from "@/lib/codexDb";
 import { openSuggestionCounts } from "@/lib/codexSuggestions";
@@ -56,7 +56,7 @@ export default async function CodexPage({
         }))}
         ops={getCodexOps(id)}
         facts={getCodexFacts(id)}
-        nextLinks={<NextChapters chapterId={id} hrefFor={(child) => `/c/${child}/codex`} />}
+        nav={<ChapterPathNav path={path} currentId={id} hrefFor={(chapterId) => `/c/${chapterId}/codex`} />}
         summary={<ChapterSummary chapter={chapter} />}
       />
     </>

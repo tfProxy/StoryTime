@@ -454,6 +454,11 @@ export function EntryDetailsForm({
     const from = keywordSources?.find((k) => k.alias === alias)?.chapter_id;
     return from && from !== chapterId && from !== DRAFT_ANCHOR ? path.find((p) => p.id === from)?.title : undefined;
   };
+  // The saved keywords that came from an earlier chapter (the box shows all of them, but not where they came from).
+  const inherited = (initial?.aliases ?? []).flatMap((alias) => {
+    const from = sourceOf(alias);
+    return from ? [{ alias, from }] : [];
+  });
   return (
     <form
       className={flat ? "entry-details-form flat fact-form" : "fact-form entry-details-form"}
@@ -477,30 +482,19 @@ export function EntryDetailsForm({
         </select>
       </label>
       <label>
-        Keywords <small>(comma-separated: words in the story that bring the entry into the AI&apos;s prompt)</small>
+        Keywords
         <input value={aliases} onChange={(e) => setAliases(e.target.value)} />
+        <small>comma-separated; words in the story that bring this entry into the AI&apos;s prompt</small>
       </label>
-      {initial && (
-        <p className="entry-keywords">
-          <strong>Keywords:</strong>{" "}
-          {initial.aliases.length === 0
-            ? "none yet"
-            : initial.aliases.map((a, i) => {
-                const from = sourceOf(a);
-                return (
-                  <span key={a}>
-                    {i > 0 && ", "}
-                    {from ? (
-                      <>
-                        {a} <span className="kw-from">(from “{from}”)</span>
-                      </>
-                    ) : (
-                      a
-                    )}
-                  </span>
-                );
-              })}
-          <span className="meta"> Words in the story that bring this entry into the AI&apos;s prompt.</span>
+      {inherited.length > 0 && (
+        <p className="entry-keywords meta">
+          Inherited:{" "}
+          {inherited.map(({ alias, from }, i) => (
+            <span key={alias}>
+              {i > 0 && ", "}
+              {alias} <span className="kw-from">(from “{from}”)</span>
+            </span>
+          ))}
         </p>
       )}
       {initial && (
@@ -513,12 +507,7 @@ export function EntryDetailsForm({
       )}
       {initial && (inDraft || path.length > 1) && (
         <label>
-          Takes effect from{" "}
-          <small>
-            {inDraft
-              ? "(the chapter you're writing, or an earlier one if it changed before; an earlier chapter is saved now and reaches every branch below it)"
-              : "(that chapter and everything after it on this branch)"}
-          </small>
+          Takes effect from
           <select value={anchorId} onChange={(e) => setAnchorId(e.target.value)}>
             {inDraft && <option value={DRAFT_ANCHOR}>This chapter (saved when you post it)</option>}
             {path.map((c) => (
@@ -528,6 +517,11 @@ export function EntryDetailsForm({
               </option>
             ))}
           </select>
+          <small>
+            {inDraft
+              ? "the chapter you're writing, or an earlier one if it changed before; an earlier chapter is saved now and reaches every branch below it"
+              : "that chapter and everything after it on this branch"}
+          </small>
         </label>
       )}
       <div className="row">

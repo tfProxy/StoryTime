@@ -291,7 +291,7 @@ function FactForm({
   return (
     <div className="fact-form">
       <label>
-        Aspect <small>(what it describes, such as Ears; leave empty for a loose fact)</small>
+        Aspect
         <input
           aria-label="Aspect"
           list={`aspects-${entry.entry_id}`}
@@ -304,6 +304,7 @@ function FactForm({
             <option key={s} value={s} />
           ))}
         </datalist>
+        <small>what it describes, such as Ears; leave empty for a loose fact</small>
       </label>
       {showForm && (
         <label>
@@ -320,7 +321,7 @@ function FactForm({
         </label>
       )}
       {showForm && formSel === NEW_FORM && (
-        <input aria-label="New form name" placeholder="New form name" value={newForm} maxLength={FACT_LIMITS.form} onChange={(e) => setNewForm(e.target.value)} />
+        <input className="fact-form-extra" aria-label="New form name" placeholder="New form name" value={newForm} maxLength={FACT_LIMITS.form} onChange={(e) => setNewForm(e.target.value)} />
       )}
       <label>
         Text
@@ -328,8 +329,8 @@ function FactForm({
       </label>
       {replaced && !editing && <p className="meta" style={{ margin: 0 }}>This replaces: {replaced.text}</p>}
       <label>
-        Quote from the chapter <small>(optional)</small>
-        <input aria-label="Quote from the chapter" value={quote} maxLength={FACT_LIMITS.quote} onChange={(e) => setQuote(e.target.value)} />
+        Quote from the chapter
+        <input aria-label="Quote from the chapter" placeholder="optional" value={quote} maxLength={FACT_LIMITS.quote} onChange={(e) => setQuote(e.target.value)} />
       </label>
       <ChapterSelect path={path} value={anchor} onChange={setAnchor} />
       <div className="row">
@@ -376,7 +377,7 @@ function FormForm({
   return (
     <div className="fact-form">
       <label>
-        Form <small>(which form {entry.name} is in now; only its facts go to the AI)</small>
+        Form
         <select aria-label="Form" value={sel} onChange={(e) => setSel(e.target.value)}>
           {entry.forms.map((f) => (
             <option key={f} value={f}>
@@ -385,13 +386,15 @@ function FormForm({
           ))}
           <option value={NEW_FORM}>New form…</option>
         </select>
+        <small>which form {entry.name} is in now; only its facts go to the AI</small>
       </label>
       {sel === NEW_FORM && (
-        <input aria-label="New form name" placeholder="New form name" value={newName} maxLength={FACT_LIMITS.form} onChange={(e) => setNewName(e.target.value)} />
+        <input className="fact-form-extra" aria-label="New form name" placeholder="New form name" value={newName} maxLength={FACT_LIMITS.form} onChange={(e) => setNewName(e.target.value)} />
       )}
       <label>
-        Stage (optional) <small>(how far along it is, such as “halfway”)</small>
+        Stage (optional)
         <input aria-label="Stage (optional)" placeholder="e.g. halfway, complete" value={stage} maxLength={FACT_LIMITS.text} onChange={(e) => setStage(e.target.value)} />
+        <small>how far along it is, such as “halfway”</small>
       </label>
       <p className="meta" style={{ margin: 0 }} aria-live="polite">
         {line ? <>The AI will read: <strong>{line}</strong></> : "Pick or name a form to see what the AI will read."}

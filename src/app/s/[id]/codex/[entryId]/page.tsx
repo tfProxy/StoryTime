@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChapterSummary, NextChapters, nextChapters } from "@/components/CodexChapterNav";
+import { ChapterPathNav, ChapterSummary, nextChapters } from "@/components/CodexChapterNav";
 import CodexEntryEditor from "@/components/CodexEntryEditor";
 import { foldCodex, usedAspectsOf } from "@/lib/codex";
 import { entryLastAnchor, getCodexFacts, getCodexOps } from "@/lib/codexDb";
@@ -44,16 +44,14 @@ export default async function CodexEntryPage({ params, searchParams }: { params:
       <p className="crumbs">
         <Link href={`/c/${at}/codex`}>← Codex at “{here.title}”</Link>
       </p>
-      <p className="meta entry-path">
-        Viewing at:{" "}
-        {path.map((c, i) => (
-          <span key={c.id}>
-            {i > 0 && " › "}
-            {c.id === at ? <strong>{c.title}</strong> : c.depth < firstDepth ? c.title : <Link href={`/s/${story.id}/codex/${entryId}?at=${c.id}`}>{c.title}</Link>}
-          </span>
-        ))}
-        <NextChapters chapterId={at} hrefFor={(child) => `/s/${story.id}/codex/${entryId}?at=${child}`} />
-      </p>
+      <ChapterPathNav
+        className="entry-path"
+        prefix="Viewing at:"
+        path={path}
+        currentId={at}
+        hrefFor={(chapterId) => `/s/${story.id}/codex/${entryId}?at=${chapterId}`}
+        isPlain={(chapterId) => (path.find((c) => c.id === chapterId)?.depth ?? 0) < firstDepth}
+      />
       <ChapterSummary chapter={here} />
       <CodexEntryEditor
         entry={entry}

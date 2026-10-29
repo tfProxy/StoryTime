@@ -57,7 +57,34 @@ try {
 
   // ---- keywords are always visible, under the field in the always-visible Details section ----
   const keywords = ed.locator(".entry-keywords");
-  ok((await keywords.innerText()).includes("Keywords: Ro (from “Root”), the traveller (from “Root”)") && (await keywords.innerText()).includes("Words in the story that bring this entry into the AI's prompt."), "the keywords, where they came from, and their hint are on the page");
+  const detailsBox = section("Details");
+  ok((await keywords.innerText()).replace(/\s+/g, " ") === "Inherited: Ro (from “Root”), the traveller (from “Root”)", "keywords that come from an earlier chapter are listed once, with where from, under the box");
+  ok(!(await detailsBox.innerText()).includes("Keywords:") && (await detailsBox.getByLabel(/Keywords/).inputValue()) === "Ro, the traveller" && (await detailsBox.innerText()).includes("comma-separated; words in the story that bring this entry into the AI's prompt") && (await detailsBox.getByText("bring this entry into the AI's prompt").count()) === 1, "…with no Keywords: summary line, and one short hint");
+  // labels and fields share a row on a wide screen
+  // (The label's box starts where its text does; a field on the same row starts at the same height, to its right.)
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const dForm = detailsBox.locator("form.entry-details-form");
+  const labelOf = (text) => dForm.locator("label", { hasText: new RegExp(`^${text}`) });
+  const sameRow = async (text, control) => Math.abs((await box(control)).y - (await box(labelOf(text))).y) < 6 && (await box(control)).x > (await box(labelOf(text))).x + 100;
+  ok(
+    (await sameRow("Name", dForm.getByLabel("Name"))) &&
+      (await sameRow("Type", dForm.locator("select").first())) &&
+      (await sameRow("Keywords", dForm.getByLabel(/Keywords/))) &&
+      (await sameRow("Takes effect from", dForm.getByLabel(/Takes effect from/))),
+    "Name, Type, Keywords and Takes effect from each have their field on the same row as the label, to its right",
+  );
+  await page.goto(entryUrl(R));
+  await ed.waitFor();
+  ok((await ed.locator(".entry-keywords").count()) === 0 && (await section("Details").getByLabel(/Keywords/).inputValue()) === "Ro, the traveller", "an entry whose keywords were all added here has no Inherited line");
+  await page.goto(entryUrl(A));
+  await ed.waitFor();
+  // a phone shows the label above its field, and the path as a vertical list
+  await page.setViewportSize({ width: 390, height: 800 });
+  ok((await box(dForm.getByLabel("Name"))).y > (await box(labelOf("Name"))).y + 5, "on a phone the field is under its label");
+  const phoneCurrent = await box(page.locator(".entry-path .chapter-nav-current"));
+  const phonePrev = await box(page.locator(".entry-path .chapter-nav-prev"));
+  ok(phoneCurrent.y >= phonePrev.y + phonePrev.height - 1, "on a phone the current chapter is below the earlier ones");
+  await page.setViewportSize({ width: 1280, height: 800 });
 
   // ---- Details is always there, above the Form section, and saves keywords ----
   const details = section("Details").locator("form.entry-details-form");
@@ -65,7 +92,7 @@ try {
   ok((await details.getByLabel(/Takes effect from/).inputValue()) === A, "…with “Takes effect from” on this chapter");
   await details.getByLabel(/Keywords/).fill("Ro, the traveller, the fox");
   await details.getByRole("button", { name: "Save changes" }).click();
-  await keywords.getByText("the fox").waitFor();
+  await details.getByText("Saved", { exact: true }).waitFor();
   ok((await entryAt(A)).aliases.join() === "Ro,the traveller,the fox" && (await entryAt(R)).aliases.join() === "Ro,the traveller", "the keywords were saved at this chapter, not earlier");
 
   // ---- Change form opens beneath its button: pick an existing form, a stage, and see what the AI reads ----
@@ -191,7 +218,7 @@ try {
   await drawer.waitFor();
   await drawer.locator(".entry-card", { hasText: "Rowan" }).click();
   await drawer.getByRole("heading", { name: "Rowan" }).waitFor();
-  ok(page.url().includes("/write") && (await drawer.getByRole("button", { name: "Save changes" }).isVisible()) && (await drawer.locator(".entry-keywords").innerText()).includes("the fox"), "tapping a card opens the entry in the drawer, without leaving the page");
+  ok(page.url().includes("/write") && (await drawer.getByRole("button", { name: "Save changes" }).isVisible()) && (await drawer.getByLabel(/Keywords/).inputValue()).includes("the fox"), "tapping a card opens the entry in the drawer, without leaving the page");
   await drawer.getByRole("button", { name: "← All entries" }).click();
   await drawer.locator(".entry-card", { hasText: "Rowan" }).waitFor();
   ok(true, "← All entries goes back to the list");
@@ -201,7 +228,9 @@ try {
   const H = hub.chapter_id;
   const [downChoice, upChoice] = (await send("GET", `/api/chapters/${H}`)).choices;
   const cellar = (await post("/api/chapters", { choice_id: downChoice.id, title: "The cellar", body: "Damp.", choices: [] })).chapter_id;
-  const roof = (await post("/api/chapters", { choice_id: upChoice.id, title: "The roof", body: "Windy.", summary: "Wind and slate.", choices: [] })).chapter_id;
+  const roof = (await post("/api/chapters", { choice_id: upChoice.id, title: "The roof", body: "Windy.", summary: "Wind and slate.", choices: ["Climb higher"] })).chapter_id;
+  const roofChoice = (await send("GET", `/api/chapters/${roof}`)).choices[0];
+  await post("/api/chapters", { choice_id: roofChoice.id, title: "The chimney", body: "Soot.", choices: [] }); // so the roof has a chapter after it
   const lampFields = { name: "Lamp", type: "item", aliases: ["lantern"], content: "", always_include: false };
   const lamp = (await post("/api/codex", { anchor_chapter_id: H, op: "create", ...lampFields })).entry_id;
   await post("/api/codex", { anchor_chapter_id: cellar, op: "replace", entry_id: lamp, ...lampFields, content: "Cracked in the cellar." });
@@ -210,22 +239,27 @@ try {
 
   await page.goto(lampUrl(H));
   await page.getByRole("heading", { name: "Lamp", level: 1 }).waitFor();
-  const next = page.locator(".entry-path .chapter-next");
-  ok((await next.innerText()).replace(/\s+/g, " ").trim() === "› Next: The cellar · The roof", "the Viewing at line ends with the chapters that come next: " + (await next.innerText()));
+  const next = page.locator(".entry-path .chapter-nav-next");
+  const nextItems = next.locator("li");
+  ok((await nextItems.count()) === 2 && (await nextItems.allInnerTexts()).map((t) => t.replace(/\s+/g, " ").trim()).join("|") === "The cellar|The roof …", "the chapters that come next are a stack, one element each, with … only after the one that has chapters after it: " + (await nextItems.allInnerTexts()).join("|"));
+  ok(!(await page.locator(".entry-path").innerText()).includes("Next"), "…and the word Next is gone");
+  const [n1, n2, cur] = [await box(nextItems.nth(0)), await box(nextItems.nth(1)), await box(page.locator(".entry-path .chapter-nav-current"))];
+  ok(n2.y >= n1.y + n1.height - 1 && Math.abs(n1.x - n2.x) < 2 && n1.x > cur.x + cur.width - 1, "…stacked one above the other, to the right of the current chapter");
   ok((await next.locator("a").first().getAttribute("href")) === `/s/${hub.story_id}/codex/${lamp}?at=${cellar}` && (await next.locator("a").first().getAttribute("title")) === "Choice: Go down", "…each linking to the entry at that chapter, with the choice as a tooltip");
+  ok((await page.locator(".entry-path .chapter-nav-prev").count()) === 0 && (await page.locator(".entry-path .chapter-nav-sep").count()) === 1, "the first chapter has no earlier chapters, and only one separator (before the stack)");
   const summary = page.locator("details.chapter-summary");
   ok((await summary.locator("summary").innerText()) === "Summary of “Hub”" && !(await summary.evaluate((d) => d.open)), "a collapsed “Summary of …” sits under it");
   await summary.locator("summary").click();
   ok(await summary.getByText("The travellers meet at the hub.").isVisible(), "…and opens to the chapter's summary");
   await next.getByRole("link", { name: "The cellar" }).click();
   await page.waitForURL(lampUrl(cellar));
-  ok((await page.locator(".entry-path strong").innerText()) === "The cellar" && (await page.locator(".entry-path .chapter-next").count()) === 0, "a Next link goes to the entry at that chapter; a last chapter has no Next");
+  ok((await page.locator(".entry-path strong").innerText()) === "The cellar" && (await page.locator(".entry-path .chapter-nav-next").count()) === 0 && (await page.locator(".entry-path .chapter-nav-sep").count()) === 1, "a link in the stack goes to the entry at that chapter; a last chapter has no stack and no trailing separator");
   ok((await page.locator("details.chapter-summary").innerText()).includes("No summary yet.") && (await page.locator("details.chapter-summary a").getAttribute("href")) === `/c/${cellar}`, "a chapter without a summary says so and links to the chapter");
 
   // keywords added at the root after the cellar changed its notes still reach the cellar, marked with where they came from
   const kw = ed.locator(".entry-keywords");
   const kwText = (await kw.innerText()).replace(/\s+/g, " ");
-  ok(kwText.includes("lantern (from “Hub”), lamp (from “Hub”)"), "inherited keywords say which chapter they came from: " + kwText);
+  ok(kwText === "Inherited: lantern (from “Hub”), lamp (from “Hub”)", "inherited keywords say which chapter they came from: " + kwText);
 
   // ---- the Details form is always there; Save waits for a change ----
   const detailsForm = section("Details").locator("form.entry-details-form");
@@ -237,13 +271,13 @@ try {
   await detailsForm.getByText("Saved", { exact: true }).waitFor();
   ok((await saveDetails.isDisabled()), "…then waits again, with a brief “Saved”");
   const kwAfter = (await kw.innerText()).replace(/\s+/g, " ");
-  ok(/brass(?! \(from)/.test(kwAfter) && kwAfter.includes("lamp (from “Hub”)"), "a keyword added here is plain, the others still say where from: " + kwAfter);
+  ok(!kwAfter.includes("brass") && kwAfter.includes("lamp (from “Hub”)") && (await detailsForm.getByLabel(/Keywords/).inputValue()) === "lantern, lamp, brass", "a keyword added here is only in the box; the inherited line still says where the others came from: " + kwAfter);
   ok((await send("GET", `/api/chapters/${cellar}/codex`)).entries.find((e) => e.name === "Lamp").aliases.join() === "lantern,lamp,brass", "the keywords were saved at this chapter");
 
   // ---- the codex page has the same Next links and summary ----
   await page.goto(`${BASE}/c/${H}/codex`);
   const timeline = page.locator("nav.timeline");
-  ok((await timeline.innerText()).replace(/\s+/g, " ").includes("Hub › Next: The cellar · The roof"), "the chapter codex page's path ends with the chapters that come next");
+  ok((await timeline.locator(".chapter-nav-next li").allInnerTexts()).map((t) => t.replace(/\s+/g, " ").trim()).join("|") === "The cellar|The roof …" && (await timeline.locator(".chapter-nav-current").innerText()) === "Hub", "the chapter codex page's path has the same stack of the chapters that come next");
   await page.locator("details.chapter-summary summary").click();
   ok(await page.getByText("The travellers meet at the hub.").isVisible(), "…with the collapsed summary below it");
   await timeline.getByRole("link", { name: "The roof" }).click();
