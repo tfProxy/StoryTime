@@ -117,6 +117,8 @@ export type OutlineOptions = {
   readToHere: boolean;
   /** An icon, for a chapter with a header picture, that shows it. */
   headerPicture: boolean;
+  /** The same for the middle picture. */
+  middlePicture: boolean;
   /** The same for the footer picture. */
   footerPicture: boolean;
   /** A paintbrush that opens the chapter's Illustrate page. */
@@ -137,6 +139,7 @@ export const OUTLINE_PARTS = [
   { id: "summary", label: "Summary", hint: "a button that shows the chapter's summary, and Show all summaries above the outline" },
   { id: "readToHere", label: "Read to here", hint: "a link to the story from the start down to the chapter, on one page" },
   { id: "headerPicture", label: "Header picture", hint: "an icon, for chapters that have one, that shows it in a popup" },
+  { id: "middlePicture", label: "Middle picture", hint: "the same for the middle picture" },
   { id: "footerPicture", label: "Footer picture", hint: "the same for the footer picture" },
   { id: "illustrate", label: "Illustrate", hint: "a paintbrush that opens the chapter's Illustrate page" },
   { id: "review", label: "Review marker", hint: "a ⚠ count on chapters with something to check or tags waiting for your approval, which opens the Review page" },
@@ -147,7 +150,7 @@ export const OUTLINE_PARTS = [
 ] as const satisfies readonly { id: keyof OutlineOptions; label: string; hint: string }[];
 
 // Tags and trashed branches are off until chosen, so an outline does not change when these first come in.
-export const DEFAULT_OUTLINE: OutlineOptions = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, review: true, aiWritten: true, tags: false, highlight: true, trashed: false };
+export const DEFAULT_OUTLINE: OutlineOptions = { summary: true, readToHere: true, headerPicture: true, middlePicture: true, footerPicture: true, illustrate: true, review: true, aiWritten: true, tags: false, highlight: true, trashed: false };
 
 export type ComfySettings = {
   /** Where ComfyUI is, e.g. https://comfy.example.ts.net; "" when there is none. */
@@ -353,6 +356,7 @@ const settingsSchema = z.object({
       summary: z.boolean().catch(true),
       readToHere: z.boolean().catch(true),
       headerPicture: z.boolean().catch(true),
+      middlePicture: z.boolean().catch(true),
       footerPicture: z.boolean().catch(true),
       illustrate: z.boolean().catch(true),
       review: z.boolean().catch(true),

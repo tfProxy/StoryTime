@@ -41,6 +41,17 @@ export function HeaderIcon() {
   );
 }
 
+/** A page with its middle band filled: the middle picture. */
+export function MiddleIcon() {
+  return (
+    <svg {...svg} strokeWidth={1.6}>
+      <rect x="4" y="3" width="16" height="18" rx="2" />
+      <path d="M4 9.5h16v5H4Z" fill="currentColor" />
+      <path d="M8 6h8M8 18h8" />
+    </svg>
+  );
+}
+
 /** A page with its bottom band filled: the footer picture. */
 export function FooterIcon() {
   return (

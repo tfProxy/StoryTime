@@ -13,12 +13,13 @@ const MAX_SIDE = 1600;
 
 const LABELS: Record<SavedSlot, { title: string }> = {
   header: { title: "Header picture" },
+  middle: { title: "Middle picture" },
   footer: { title: "Footer picture" },
   cover: { title: "Cover" },
 };
 
 type Props = {
-  /** The chapter (for its header or footer) or the story (for its cover). */
+  /** The chapter (for its header, middle or footer) or the story (for its cover). */
   target: PictureTarget;
   slot: SavedSlot;
   version: number | null;
@@ -95,7 +96,7 @@ export default function ChapterImageEditor({ target, slot, version: initial, mad
               version !== null && made && onLoadPrompt && loadPromptItem(() => onLoadPrompt(made)),
               url !== null && openItem(url),
               version !== null && {
-                label: slot === "header" ? "Clear Header" : slot === "footer" ? "Clear Footer" : "Clear Cover",
+                label: slot === "header" ? "Clear Header" : slot === "middle" ? "Clear Middle" : slot === "footer" ? "Clear Footer" : "Clear Cover",
                 title: unavailable,
                 disabled: busy,
                 run: () => void run(async () => (await request({ method: "DELETE" }), { version: null, text: "Picture removed." })),

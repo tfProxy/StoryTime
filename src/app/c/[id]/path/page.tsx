@@ -32,7 +32,7 @@ export default async function PathPage({ params }: { params: Promise<{ id: strin
             {i + 1}. <Link href={`/c/${p.id}`}>{p.title}</Link>
           </h2>
           <ChapterImage chapterId={p.id} slot="header" version={images.get(p.id)!.header} />
-          <Prose text={p.body} />
+          <Prose text={p.body} middle={<ChapterImage chapterId={p.id} slot="middle" version={images.get(p.id)!.middle} />} />
           <ChapterImage chapterId={p.id} slot="footer" version={images.get(p.id)!.footer} />
         </section>
       ))}

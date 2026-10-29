@@ -17,7 +17,7 @@ import {
 import type { ImagePromptStyle, ModelRef, Settings } from "../settingsSchema";
 
 /** Which part of the chapter the picture shows. */
-export type ImageMoment = "start" | "end";
+export type ImageMoment = "start" | "middle" | "end";
 
 export type ImagePromptOptions = {
   story: { title: string; premise: string };
@@ -82,6 +82,7 @@ Reply with JSON only: {"scene":"","prompt":"","negative":""}
 
 const MOMENT_TASK: Record<ImageMoment, string> = {
   start: "This picture shows the start of the chapter, so it should set the scene: show where and when the chapter takes place, and who is there, near its beginning.",
+  middle: "This picture shows the middle of the chapter, so it should show a key moment from around the middle of the chapter, not its opening or its ending.",
   end: "This picture shows the end of the chapter, so it should show the chapter's closing moment, without giving away anything that happens later.",
 };
 
@@ -103,7 +104,14 @@ export function imagePromptRequest(contextTokens: number, opts: ImagePromptOptio
 
   // The chapter itself gets what is left; a very long one keeps the part the picture is about.
   const room = Math.max(500, budget - estimateTokens(parts.join("\n\n"))) * 4;
-  const body = chapter.body.length <= room ? chapter.body : opts.moment === "start" ? `${chapter.body.slice(0, room)}…` : `…${chapter.body.slice(-room)}`;
+  let body = chapter.body;
+  if (body.length > room) {
+    if (opts.moment === "start") body = `${body.slice(0, room)}…`;
+    else if (opts.moment === "middle") {
+      const from = Math.max(0, Math.floor((body.length - room) / 2));
+      body = `…${body.slice(from, from + room)}…`;
+    } else body = `…${body.slice(-room)}`;
+  }
   parts.push(`The chapter to illustrate, "${chapter.title}":\n${body}`);
 
   parts.push(MOMENT_TASK[opts.moment]);

@@ -9,7 +9,7 @@ import { fetchImage, type ComfyImage } from "@/lib/comfy/client";
 // Saved pictures keep at most this many pixels on their longest side, like uploads.
 const MAX_SIDE = 1600;
 
-export const SLOT_NAMES: Record<PictureSlot, string> = { header: "header picture", footer: "footer picture", cover: "cover", codex: "codex picture" };
+export const SLOT_NAMES: Record<PictureSlot, string> = { header: "header picture", middle: "middle picture", footer: "footer picture", cover: "cover", codex: "codex picture" };
 
 /** Whose slot it is, in words: "the chapter's header picture", "the story's cover". */
 export const slotOf = (slot: PictureSlot) =>
@@ -19,7 +19,7 @@ export const slotOf = (slot: PictureSlot) =>
 export type SaveAnchor = { id: string | null; /** In words, for the menu: "from the start", "from “Title” on". */ words: string };
 
 export type PictureSaver = {
-  /** The slots pictures can be saved in here: the chapter's header and footer, the story's cover, or the entry's picture. */
+  /** The slots pictures can be saved in here: the chapter's header, middle and footer, the story's cover, or the entry's picture. */
   slots: readonly PictureSlot[];
   /** The ways a picture can be saved in a slot: one, except for a codex picture (from the start, or from the chapter the author came from). */
   anchors: (slot: PictureSlot) => SaveAnchor[];
@@ -32,7 +32,7 @@ export type PictureSaver = {
 const shortTitle = (title: string) => (title.length > 30 ? `${title.slice(0, 29).trimEnd()}…` : title);
 
 /**
- * Saves one of ComfyUI's pictures as the chapter's header or footer, as the story's cover, or as a codex
+ * Saves one of ComfyUI's pictures as the chapter's header, middle or footer, as the story's cover, or as a codex
  * entry's picture. `jobId` is the picture job's record in StoryTime, which lets it keep the prompt with the
  * picture, and `index` which of the job's pictures it is, so the page can mark it as in use. Progress and
  * errors go to `report`. `from` is the chapter a codex page was opened from (`?at=`), which a codex picture

@@ -31,7 +31,7 @@ export function setChapterImage(chapterId: string, slot: ImageSlot, bytes: Buffe
          job_id = excluded.job_id, prompt = excluded.prompt, negative = excluded.negative, image_index = excluded.image_index`,
     )
     .run(chapterId, slot, bytes, type, version, made ? jobId : null, made?.prompt ?? null, made?.negative ?? null, at);
-  // A picture chosen as a header or footer is worth keeping, so it is pinned (also when it was trashed before).
+  // A picture chosen as a header, middle or footer picture is worth keeping, so it is pinned (also when it was trashed before).
   if (jobId && at !== null) setPictureMark(jobId, at, "pinned");
   return { version };
 }
@@ -51,7 +51,7 @@ export function getChapterImage(chapterId: string, slot: ImageSlot): { type: str
 
 /** What each saved picture of a chapter was made from; a slot is null when empty or when the picture was uploaded. */
 export function chapterImageMade(chapterId: string): Record<ImageSlot, ImageMade | null> {
-  const out: Record<ImageSlot, ImageMade | null> = { header: null, footer: null };
+  const out: Record<ImageSlot, ImageMade | null> = { header: null, middle: null, footer: null };
   const rows = db()
     .prepare(
       // A picture saved before its index was kept is still known when its job made only one.
@@ -81,7 +81,7 @@ export function chapterImageMade(chapterId: string): Record<ImageSlot, ImageMade
 
 /** The image versions of each of the given chapters (chapters without images get nulls). */
 export function chapterImageVersions(chapterIds: string[]): Map<string, ImageVersions> {
-  const out = new Map<string, ImageVersions>(chapterIds.map((id) => [id, { header: null, footer: null }]));
+  const out = new Map<string, ImageVersions>(chapterIds.map((id) => [id, { header: null, middle: null, footer: null }]));
   if (chapterIds.length === 0) return out;
   const rows = db()
     .prepare(`SELECT chapter_id, slot, updated_at FROM chapter_images WHERE chapter_id IN (${chapterIds.map(() => "?").join(",")})`)

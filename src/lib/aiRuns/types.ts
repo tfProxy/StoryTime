@@ -60,7 +60,7 @@ export type PictureTask = {
   kind: "picture";
   id: string;
   chapterId: string;
-  slot: "header" | "footer";
+  slot: "header" | "middle" | "footer";
   /** The chapter's title, for the task list. */
   label?: string;
   /** `todo`: no prompt yet; `written`: its prompt is written and the picture is being made; `done`: saved as the slot. */

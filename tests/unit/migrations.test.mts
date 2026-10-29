@@ -71,8 +71,18 @@ try { job("j2", "x"); } catch { twice = true; }
 ok(twice, "one ComfyUI job is recorded once per chapter");
 job("j3", "x", "a2");
 let badMoment = false;
-try { job("j4", "y", "a", "middle"); } catch { badMoment = true; }
-ok(badMoment, "a moment other than start or end is refused");
+try { job("j4", "y", "a", "late"); } catch { badMoment = true; }
+ok(badMoment, "a moment other than start, middle or end is refused");
+job("j6", "m", "a", "middle");
+ok((d.prepare(`SELECT moment FROM picture_jobs WHERE id = 'j6'`).get() as { moment: string }).moment === "middle", "a job can be for a chapter's middle");
+ok(d.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'index' AND name IN ('picture_jobs_prompt','picture_jobs_cover_prompt','picture_jobs_story','picture_jobs_entry','picture_jobs_unseen')`).all().length === 5, "the picture job indexes are all there");
+d.prepare(`INSERT INTO chapter_images (chapter_id, slot, image, type, updated_at) VALUES ('a', 'middle', x'89504e47', 'image/png', 1)`).run();
+d.prepare(`INSERT INTO picture_prompts (chapter_id, moment, prompt, negative, scene, direction, updated_at) VALUES ('a', 'middle', 'p', '', '', '', 1)`).run();
+let badSlot = false;
+try { d.prepare(`INSERT INTO chapter_images (chapter_id, slot, image, type, updated_at) VALUES ('a', 'side', x'89', 'image/png', 1)`).run(); } catch { badSlot = true; }
+ok(badSlot, "a picture slot other than header, middle or footer is refused");
+d.prepare(`DELETE FROM chapter_images WHERE slot = 'middle'`).run();
+d.prepare(`DELETE FROM picture_prompts WHERE moment = 'middle'`).run();
 let orphan = false;
 try { job("j5", "z", "no-such-chapter"); } catch { orphan = true; }
 ok(orphan, "a job needs a chapter that exists");

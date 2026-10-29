@@ -23,7 +23,7 @@ import { chapterTarget } from "@/lib/pictureTarget";
 import { referenceChoices, restoreReference, type RefPool } from "@/lib/comfy/referenceChoices";
 import { useReferences, type RefRequest } from "./useReferences";
 
-const MOMENT_NAMES: Record<ImageMoment, string> = { start: "Chapter Start", end: "Chapter End" };
+const MOMENT_NAMES: Record<ImageMoment, string> = { start: "Chapter Start", middle: "Chapter Middle", end: "Chapter End" };
 
 const short = (text: string, max: number) => (text.length > max ? `${text.slice(0, max).trimEnd()}…` : text);
 
@@ -90,7 +90,7 @@ type Props = {
 
 /**
  * Writes a prompt for an image generator from the chapter and the codex entries it mentions. Each moment
- * (chapter start, chapter end) has its own boxes, so switching between them brings each one's prompt back;
+ * (chapter start, middle, end) has its own boxes, so switching between them brings each one's prompt back;
  * they are kept for the chapter on the server, so they are there again next time.
  */
 export default function ImagePromptPanel({ chapterId, story, chapterPreset = null, path, codex, pool, refRequest = null, pinned = [], loaded = null, start = null, onClearStart, editModels, onPictures, onQueue, draft = null, fixedPrompt = "", dock = null, codexSlot = null }: Props) {
@@ -98,15 +98,15 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
   const chapter = path[path.length - 1];
   const [moment, setMoment] = useState<ImageMoment>(draft?.moment ?? "start");
   // Each moment's boxes; those of the moment chosen are shown.
-  const [boxes, setBoxes] = useState<Record<ImageMoment, PictureBoxes>>(() => ({ start: draft?.start ?? EMPTY_BOXES, end: draft?.end ?? EMPTY_BOXES }));
+  const [boxes, setBoxes] = useState<Record<ImageMoment, PictureBoxes>>(() => ({ start: draft?.start ?? EMPTY_BOXES, middle: draft?.middle ?? EMPTY_BOXES, end: draft?.end ?? EMPTY_BOXES }));
   const result = boxes[moment];
   const direction = result.direction;
   const change = (m: ImageMoment, patch: Partial<PictureBoxes>) => setBoxes((prev) => ({ ...prev, [m]: { ...prev[m], ...patch } }));
   // The reference pictures, one list per moment, kept with the boxes.
-  const refState = useReferences({ start: draft?.start.refs ?? [], end: draft?.end.refs ?? [] }, pool, settings.comfy.url);
+  const refState = useReferences({ start: draft?.start.refs ?? [], middle: draft?.middle.refs ?? [], end: draft?.end.refs ?? [] }, pool, settings.comfy.url);
   const saveError = usePictureDraft(chapterId, { ...result, refs: refState.stored(moment), moment }, draft);
   // The moments a prompt was written for on this visit.
-  const [written, setWritten] = useState<Record<ImageMoment, boolean>>({ start: false, end: false });
+  const [written, setWritten] = useState<Record<ImageMoment, boolean>>({ start: false, middle: false, end: false });
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -115,9 +115,9 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
   if (loaded && loaded.nonce !== seenLoad) {
     setSeenLoad(loaded.nonce);
     // A cover's prompt goes to the moment shown.
-    const into = loaded.moment === "start" || loaded.moment === "end" ? loaded.moment : moment;
+    const into = loaded.moment === "start" || loaded.moment === "middle" || loaded.moment === "end" ? loaded.moment : moment;
     change(into, { scene: "", prompt: loaded.prompt, negative: loaded.negative });
-    // A picture made with references brings them back (a saved header or footer doesn't know its own).
+    // A picture made with references brings them back (a saved header, middle or footer doesn't know its own).
     if (loaded.refs) refState.replace(into, loaded.refs);
     setMoment(into);
     setStatus({ ok: true, text: "Prompt loaded from the picture." });

@@ -5,7 +5,7 @@ import { StoredRefSchema } from "./pictureJobs";
 import { PostError } from "./stories";
 
 // What was in the Illustrate page's prompt boxes for a chapter (see migration 14), one set per moment
-// (chapter start, chapter end), so the page opens with them again, on any device.
+// (chapter start, middle, end), so the page opens with them again, on any device.
 
 /** One moment's prompt boxes, as saved: the moment saved last is the one the page opens on. */
 export const PictureDraftSchema = z.object({
@@ -17,7 +17,7 @@ export const PictureDraftSchema = z.object({
   direction: z.string().max(LIMITS.label).default(""),
   /** The reference pictures chosen for this moment (at most 4; uploads are never kept). */
   refs: z.array(StoredRefSchema).max(4).default([]),
-  moment: z.enum(["start", "end"]).default("start"),
+  moment: z.enum(["start", "middle", "end"]).default("start"),
 });
 export type PictureDraftInput = z.infer<typeof PictureDraftSchema>;
 
@@ -35,7 +35,7 @@ export function getPictureDraft(chapterId: string): PictureDraft | null {
     .prepare(`SELECT moment, prompt, negative, scene, direction, refs FROM picture_prompts WHERE chapter_id = ? ORDER BY updated_at DESC`)
     .all(chapterId) as (Omit<PictureBoxes, "refs"> & { moment: PictureMoment; refs: string | null })[];
   if (rows.length === 0) return null;
-  const draft: PictureDraft = { moment: rows[0].moment, start: { ...EMPTY_BOXES }, end: { ...EMPTY_BOXES } };
+  const draft: PictureDraft = { moment: rows[0].moment, start: { ...EMPTY_BOXES }, middle: { ...EMPTY_BOXES }, end: { ...EMPTY_BOXES } };
   for (const { moment, refs, ...boxes } of rows) draft[moment] = { ...boxes, refs: refs ? (JSON.parse(refs) as PictureBoxes["refs"]) : [] };
   return draft;
 }

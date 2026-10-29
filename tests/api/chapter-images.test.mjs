@@ -1,4 +1,4 @@
-// Chapter illustrations: a header and a footer picture per chapter. Upload, fetch, replace and remove, and what is refused.
+// Chapter illustrations: a header, a middle and a footer picture per chapter. Upload, fetch, replace and remove, and what is refused.
 const B = process.env.BASE_URL ?? "http://localhost:3111";
 const ok = (c, m) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const json = async (method, url, body) => {
@@ -47,7 +47,10 @@ ok(r.headers.get("content-type") === "image/jpeg" && Buffer.from(await r.arrayBu
 
 ok((await put("nope", "header", png)).status === 404, "a chapter that doesn't exist can't be given a picture");
 ok((await del("nope", "header")).status === 404, "removing one from a chapter that doesn't exist is a 404");
-ok((await put(chapter, "middle", png)).status === 404 && (await get(chapter, "middle")).status === 404 && (await del(chapter, "middle")).status === 404, "a slot other than header or footer is a 404");
+ok((await put(chapter, "side", png)).status === 404 && (await get(chapter, "side")).status === 404 && (await del(chapter, "side")).status === 404, "a slot other than header, middle or footer is a 404");
+r = await put(chapter, "middle", png);
+ok(r.status === 200 && (await get(chapter, "middle")).headers.get("content-type") === "image/png", "the middle slot takes its own picture");
+ok((await del(chapter, "middle")).status === 200 && (await get(chapter, "middle")).status === 404, "…and it can be removed");
 
 r = await del(chapter, "header");
 ok(r.status === 200 && (await r.json()).ok === true && (await get(chapter, "header")).status === 404, "removing the header empties the slot");

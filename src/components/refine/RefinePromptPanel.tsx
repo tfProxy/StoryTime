@@ -60,7 +60,7 @@ async function loadContext(target: RefineSession["target"]): Promise<Context> {
     const id = target.chapterId;
     const [preset, draft, fixed] = await Promise.all([getJson(`/api/chapters/${id}/picture-preset`), getJson(`/api/chapters/${id}/picture-draft`), getJson(`/api/chapters/${id}/picture-fixed`)]);
     const d = draft?.draft as Record<string, unknown> | null | undefined;
-    const moment = d?.moment === "end" ? "end" : "start";
+    const moment = d?.moment === "end" || d?.moment === "middle" ? d.moment : "start";
     return { ...base, ownPreset: strOrNull(preset?.draw_preset), always: str(fixed?.fixed), draft: d ? boxesOf(d[moment]) : null, moment };
   }
   if (target.kind === "cover") {

@@ -5,13 +5,13 @@ import type { PictureSlot } from "@/lib/pictureTarget";
 import type { ComfyImage } from "@/lib/comfy/client";
 import type { PictureMark } from "@/lib/pictureJobs";
 import { SLOT_NAMES, slotOf, type PictureSaver } from "./usePictureSaver";
-import { CodexIcon, CoverIcon, FooterIcon, HeaderIcon, MenuIcon, PencilIcon, PinIcon, TrashIcon } from "./PictureIcons";
+import { CodexIcon, CoverIcon, FooterIcon, HeaderIcon, MenuIcon, MiddleIcon, PencilIcon, PinIcon, TrashIcon } from "./PictureIcons";
 import type { StartRequest } from "./pictures";
 
 // The buttons and badge on a picture, the same on a tile in the Pictures panel and in the full-size viewer.
 
-const SLOT_TITLES: Record<PictureSlot, string> = { header: "Header", footer: "Footer", cover: "Cover", codex: "Codex" };
-const SLOT_ICONS: Record<PictureSlot, () => React.JSX.Element> = { header: HeaderIcon, footer: FooterIcon, cover: CoverIcon, codex: CodexIcon };
+const SLOT_TITLES: Record<PictureSlot, string> = { header: "Header", middle: "Middle", footer: "Footer", cover: "Cover", codex: "Codex" };
+const SLOT_ICONS: Record<PictureSlot, () => React.JSX.Element> = { header: HeaderIcon, middle: MiddleIcon, footer: FooterIcon, cover: CoverIcon, codex: CodexIcon };
 
 /** On the picture's top left corner: which slots (the chapter's, or the story's cover) it is saved in now, if any, and whether it is the picture being edited or redrawn. */
 export function InUseBadge({ inUse, editing = false, isNew = false }: { inUse: PictureSlot[]; editing?: boolean; isNew?: boolean }) {
@@ -90,13 +90,13 @@ type Props = {
 };
 
 /**
- * On the picture's top right corner: pin and trash, and a ☰ menu with Use as header or footer picture
+ * On the picture's top right corner: pin and trash, and a ☰ menu with Use as header, middle or footer picture
  * and the rest. Which slot the picture is in now shows as a badge on its other corner (InUseBadge).
  */
 export default function PictureButtons({ image, tileKey, jobId, index, saver, inUse, missing, mark = null, onMark, pinHint = "", trashHint = "", menu }: Props) {
   // A picture whose job couldn't be recorded has nothing to keep a mark on.
   const unmarkable = jobId === null ? "StoryTime couldn't record this picture, so it can't be pinned or trashed" : undefined;
-  // Use as header and footer come first in the menu; the one it is already is shown, but can't be chosen.
+  // Use as header, middle and footer come first in the menu; the one it is already is shown, but can't be chosen.
   const slotItems: MenuItem[] = missing
     ? []
     : saver.slots.flatMap((slot) =>

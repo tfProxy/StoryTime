@@ -32,7 +32,7 @@ export const NewJobSchema = z
     height: z.number().int().min(1).max(16384),
     seed: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
     count: z.number().int().min(1).max(64),
-    moment: z.enum(["start", "end", "cover", "codex"]).nullish(),
+    moment: z.enum(["start", "middle", "end", "cover", "codex"]).nullish(),
     source: text(1000).nullish(),
     denoise: z.number().min(0).max(1).nullish(),
     /** A redraw of only a painted part: the mask picture's name in ComfyUI's input folder. Needs a starting picture. */
@@ -72,7 +72,7 @@ export type PictureJob = {
   height: number;
   seed: number;
   count: number;
-  moment: "start" | "end" | "cover" | "codex" | null;
+  moment: "start" | "middle" | "end" | "cover" | "codex" | null;
   source: string | null;
   denoise: number | null;
   mask: string | null;

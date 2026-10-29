@@ -91,7 +91,7 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
     }
     if (request === "reference") {
       // Not a starting picture: the picture joins the References, where the prompt panel takes it from here.
-      const label = as?.label ?? (picture.slot === "header" ? "Header" : picture.slot === "footer" ? "Footer" : picture.slot === "cover" ? "Cover" : "Picture");
+      const label = as?.label ?? (picture.slot === "header" ? "Header" : picture.slot === "middle" ? "Middle" : picture.slot === "footer" ? "Footer" : picture.slot === "cover" ? "Cover" : "Picture");
       setRefRequest((prev) => ({ ref: asReference(picture, label, as?.role ?? "character"), nonce: (prev?.nonce ?? 0) + 1 }));
       document.getElementById("picture-references")?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;

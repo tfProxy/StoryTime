@@ -20,20 +20,20 @@ const empty = { prompt: "", negative: "", scene: "", direction: "", refs: [] };
 r = await call("PUT", url(one), full);
 ok(r.status === 200 && r.json.ok === true, "the prompt boxes can be saved");
 r = await call("GET", url(one));
-ok(JSON.stringify(r.json.draft) === JSON.stringify({ moment: "end", start: empty, end: fullBoxes }), "…and are read back as saved, quotes and all, under their moment, the other moment empty");
+ok(JSON.stringify(r.json.draft) === JSON.stringify({ moment: "end", start: empty, middle: empty, end: fullBoxes }), "…and are read back as saved, quotes and all, under their moment, the other moments empty");
 ok((await call("GET", url(two))).json.draft === null, "…for that chapter only");
 
 r = await call("PUT", url(one), { prompt: "only a prompt" });
 r = await call("GET", url(one));
 const onlyStart = { ...empty, prompt: "only a prompt" };
-ok(JSON.stringify(r.json.draft) === JSON.stringify({ moment: "start", start: onlyStart, end: fullBoxes }), "saving the other moment keeps the first one's boxes; a missing field is saved empty, the moment is start, and it is now the current one");
+ok(JSON.stringify(r.json.draft) === JSON.stringify({ moment: "start", start: onlyStart, middle: empty, end: fullBoxes }), "saving the other moment keeps the first one's boxes; a missing field is saved empty, the moment is start, and it is now the current one");
 await call("PUT", url(one), { ...full, prompt: "end again" });
 r = await call("GET", url(one));
 ok(r.json.draft.moment === "end" && r.json.draft.end.prompt === "end again" && r.json.draft.start.prompt === "only a prompt", "saving a moment again replaces its boxes and makes it the current one");
 await call("PUT", url(one), { prompt: "only a prompt" });
 
-r = await call("PUT", url(one), { ...full, moment: "middle" });
-ok(r.status === 400 && /moment/.test(r.json.error), "a moment other than start or end is refused");
+r = await call("PUT", url(one), { ...full, moment: "late" });
+ok(r.status === 400 && /moment/.test(r.json.error), "a moment other than start, middle or end is refused");
 r = await call("PUT", url(one), { ...full, prompt: "x".repeat(20001) });
 ok(r.status === 400 && /prompt/.test(r.json.error), "a prompt longer than 20,000 characters is refused");
 r = await call("PUT", url(one), { ...full, direction: "x".repeat(201) });

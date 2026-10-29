@@ -77,8 +77,26 @@ await page.getByLabel("Footer picture file").setInputFiles({ name: "footer.png",
 await card("Footer picture").getByText("Picture saved.").waitFor();
 ok((await stored("footer")).headers.get("content-type") === "image/jpeg", "the footer is stored too");
 
+// ---- middle ----
+await page.getByLabel("Middle picture file").setInputFiles({ name: "middle.png", mimeType: "image/png", buffer: png });
+await card("Middle picture").getByText("Picture saved.").waitFor();
+ok((await menuItems("Middle picture")).join("|") === "Upload picture|Open in a new tab|Clear Middle", "after uploading the middle picture, its menu offers Clear Middle");
+{
+  const put = await fetch(`${BASE}/api/chapters/${root}/images/middle`, { method: "PUT", headers: { "Content-Type": "image/png" }, body: png });
+  const got = await stored("middle");
+  ok(put.status === 200 && got.status === 200, "a picture saved to the middle slot can be fetched again");
+}
+
 // ---- where the chapter is read ----
 await page.goto(`${BASE}/c/${root}`);
+await page.locator("img.chapter-image-middle").waitFor();
+ok(
+  await page.locator(".prose").evaluate((el) => {
+    const kids = [...el.children].map((k) => k.tagName + "." + (k.className || ""));
+    return kids.length === 3 && kids[0] === "P." && kids[1].startsWith("IMG.chapter-image chapter-image-middle") && kids[2] === "P.";
+  }),
+  "the middle picture sits between the two paragraphs",
+);
 const header = page.locator("img.chapter-image.chapter-image-header");
 const footer = page.locator("img.chapter-image.chapter-image-footer");
 await header.waitFor();

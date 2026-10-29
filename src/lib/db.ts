@@ -768,6 +768,88 @@ export const MIGRATIONS: string[] = [
   CREATE UNIQUE INDEX chapters_one_child_per_choice
     ON chapters(parent_choice_id) WHERE parent_choice_id IS NOT NULL AND trashed_at IS NULL;
   `,
+  // 44: a picture in the middle of a chapter: the chapter_images slot 'middle' and the moment 'middle' (for the
+  // prompt boxes and the picture jobs). SQLite can't change a CHECK in place, so the three tables are rebuilt
+  // with every column and index kept; the marks are put aside while picture_jobs goes, as in migrations 20 and 25.
+  `
+  CREATE TEMP TABLE marks_aside AS SELECT * FROM picture_marks;
+  DELETE FROM picture_marks;
+
+  CREATE TABLE chapter_images_new (
+    chapter_id  TEXT NOT NULL REFERENCES chapters(id),
+    slot        TEXT NOT NULL CHECK (slot IN ('header', 'middle', 'footer')),
+    image       BLOB NOT NULL,
+    type        TEXT NOT NULL,
+    updated_at  INTEGER NOT NULL,
+    job_id      TEXT,
+    prompt      TEXT,
+    negative    TEXT,
+    image_index INTEGER,
+    PRIMARY KEY (chapter_id, slot)
+  );
+  INSERT INTO chapter_images_new (chapter_id, slot, image, type, updated_at, job_id, prompt, negative, image_index)
+    SELECT chapter_id, slot, image, type, updated_at, job_id, prompt, negative, image_index FROM chapter_images;
+  DROP TABLE chapter_images;
+  ALTER TABLE chapter_images_new RENAME TO chapter_images;
+
+  CREATE TABLE picture_prompts_new (
+    chapter_id TEXT NOT NULL REFERENCES chapters(id),
+    moment     TEXT NOT NULL CHECK (moment IN ('start', 'middle', 'end')),
+    prompt     TEXT NOT NULL DEFAULT '',
+    negative   TEXT NOT NULL DEFAULT '',
+    scene      TEXT NOT NULL DEFAULT '',
+    direction  TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL,
+    refs       TEXT,
+    PRIMARY KEY (chapter_id, moment)
+  );
+  INSERT INTO picture_prompts_new (chapter_id, moment, prompt, negative, scene, direction, updated_at, refs)
+    SELECT chapter_id, moment, prompt, negative, scene, direction, updated_at, refs FROM picture_prompts;
+  DROP TABLE picture_prompts;
+  ALTER TABLE picture_prompts_new RENAME TO picture_prompts;
+
+  CREATE TABLE picture_jobs_new (
+    id          TEXT PRIMARY KEY,
+    story_id    TEXT NOT NULL REFERENCES stories(id),
+    chapter_id  TEXT REFERENCES chapters(id),
+    entry_id    TEXT,
+    prompt_id   TEXT NOT NULL,
+    prompt      TEXT NOT NULL,
+    negative    TEXT NOT NULL DEFAULT '',
+    checkpoint  TEXT NOT NULL DEFAULT '',
+    width       INTEGER NOT NULL,
+    height      INTEGER NOT NULL,
+    seed        INTEGER NOT NULL,
+    count       INTEGER NOT NULL,
+    moment      TEXT CHECK (moment IN ('start', 'middle', 'end', 'cover', 'codex')),
+    source      TEXT,
+    denoise     REAL,
+    images      TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    instruction TEXT,
+    edit_model  TEXT,
+    seen_at     INTEGER,
+    mask        TEXT,
+    refs        TEXT,
+    temporary   INTEGER NOT NULL DEFAULT 0,
+    CHECK ((chapter_id IS NULL) = (moment IS 'cover' OR moment IS 'codex')),
+    CHECK ((entry_id IS NOT NULL) = (moment IS 'codex'))
+  );
+  INSERT INTO picture_jobs_new (id, story_id, chapter_id, entry_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
+                                moment, source, denoise, images, created_at, instruction, edit_model, seen_at, mask, refs, temporary)
+    SELECT id, story_id, chapter_id, entry_id, prompt_id, prompt, negative, checkpoint, width, height, seed, count,
+           moment, source, denoise, images, created_at, instruction, edit_model, seen_at, mask, refs, temporary FROM picture_jobs;
+  DROP TABLE picture_jobs;
+  ALTER TABLE picture_jobs_new RENAME TO picture_jobs;
+  CREATE UNIQUE INDEX picture_jobs_prompt ON picture_jobs(chapter_id, prompt_id);
+  CREATE UNIQUE INDEX picture_jobs_cover_prompt ON picture_jobs(story_id, prompt_id) WHERE chapter_id IS NULL;
+  CREATE INDEX picture_jobs_story ON picture_jobs(story_id);
+  CREATE INDEX picture_jobs_entry ON picture_jobs(story_id, entry_id) WHERE entry_id IS NOT NULL;
+  CREATE INDEX picture_jobs_unseen ON picture_jobs(created_at) WHERE seen_at IS NULL;
+
+  INSERT INTO picture_marks SELECT * FROM marks_aside;
+  DROP TABLE marks_aside;
+  `,
 ];
 
 function open(): Database.Database {

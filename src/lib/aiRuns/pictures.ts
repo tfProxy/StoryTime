@@ -56,8 +56,8 @@ export async function loadSetup(f: Fetch, chapterId: string): Promise<PictureSet
 /** The drawing preset the chapter's pictures use: its own, else the story's, else the first. */
 export const presetOf = (settings: Settings, setup: PictureSetup): DrawPreset => drawPresetFor(settings.comfy.drawPresets, setup.chapterPreset, setup.story.draw_preset);
 
-/** The moment a slot's picture shows: the chapter's start for a header, its end for a footer. */
-export const momentOf = (slot: PictureTask["slot"]) => (slot === "header" ? ("start" as const) : ("end" as const));
+/** The moment a slot's picture shows: the chapter's start for a header, its middle for a middle picture, its end for a footer. */
+export const momentOf = (slot: PictureTask["slot"]) => (slot === "header" ? ("start" as const) : slot === "middle" ? ("middle" as const) : ("end" as const));
 
 /** Whether the chapter already has this picture (made by hand meanwhile, or by an earlier run). */
 export async function hasPicture(f: Fetch, chapterId: string, slot: PictureTask["slot"]): Promise<boolean> {
@@ -117,7 +117,7 @@ function styleReference(setup: PictureSetup, comfyUrl: string): Reference | null
   } else if (source.startsWith("saved:")) {
     const [, owner, slot] = source.split(":");
     if (slot === "cover") picture = fromSaved(coverTarget(owner), "cover", Date.now());
-    else if (slot === "header" || slot === "footer") picture = fromSaved(chapterTarget(setup.story.id, owner), slot, Date.now());
+    else if (slot === "header" || slot === "middle" || slot === "footer") picture = fromSaved(chapterTarget(setup.story.id, owner), slot, Date.now());
   }
   return picture ? asReference(picture, stored.label, "style", stored.weight) : null;
 }

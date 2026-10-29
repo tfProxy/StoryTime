@@ -202,7 +202,7 @@ export default function QueuePage() {
                   <Link href={targetHref(target)}>{title}</Link>
                   <span className="meta">
                     {label?.story_title ? `${label.story_title} · ` : ""}
-                    {j.moment === "start" || j.moment === "end" ? `${MOMENTS[j.moment]} · ` : ""}
+                    {j.moment === "start" || j.moment === "middle" || j.moment === "end" ? `${MOMENTS[j.moment]} · ` : ""}
                     {pictures(j.images.length)} · {new Date(j.created_at).toLocaleString()}
                   </span>
                 </div>

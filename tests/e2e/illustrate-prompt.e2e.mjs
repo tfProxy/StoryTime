@@ -103,7 +103,7 @@ try {
   // ---- write a prompt for the chapter's end ----
   ok(await page.getByText(/^For$/).count() === 0 && await page.getByRole("option", { name: "Footer picture" }).count() === 0, "there is no For header/footer choice");
   const moment = page.getByLabel("Moment to show");
-  ok((await moment.inputValue()) === "start" && (await moment.locator("option").allInnerTexts()).join("|") === "Chapter Start|Chapter End", "the moment menu offers Chapter Start and Chapter End, starting on Chapter Start");
+  ok((await moment.inputValue()) === "start" && (await moment.locator("option").allInnerTexts()).join("|") === "Chapter Start|Chapter Middle|Chapter End", "the moment menu offers Chapter Start, Chapter Middle and Chapter End, starting on Chapter Start");
   const order = await page.evaluate(() => {
     const menu = document.querySelector('[aria-label="Moment to show"]');
     const model = document.querySelector('[aria-label="Model for picture prompts"]');

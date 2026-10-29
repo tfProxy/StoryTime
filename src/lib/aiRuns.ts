@@ -70,7 +70,7 @@ export const PictureTaskSchema = z.object({
   kind: z.literal("picture"),
   id: taskId,
   chapterId: z.string().min(1).max(100),
-  slot: z.enum(["header", "footer"]),
+  slot: z.enum(["header", "middle", "footer"]),
   label: text(LIMITS.title).optional(),
   status: taskStatus,
   prompt: text(LIMITS.picturePrompt).optional(),

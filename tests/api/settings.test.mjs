@@ -70,7 +70,7 @@ ok(r.json.settings.autoSuggestChoices === true && (await call("GET", "/api/setti
 
 // ---- the outline's parts ----
 // Tags and trashed branches are the parts that start off.
-const allOutline = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, review: true, aiWritten: true, tags: false, highlight: true, trashed: false };
+const allOutline = { summary: true, readToHere: true, headerPicture: true, middlePicture: true, footerPicture: true, illustrate: true, review: true, aiWritten: true, tags: false, highlight: true, trashed: false };
 ok(JSON.stringify((await call("GET", "/api/settings")).json.settings.outline) === JSON.stringify(allOutline), "the outline's parts are shown unless turned off, and tags and trashed branches are off until turned on");
 r = await call("PUT", "/api/settings", { ...conns, outline: { ...allOutline, readToHere: false, illustrate: false } });
 ok(JSON.stringify(r.json.settings.outline) === JSON.stringify({ ...allOutline, readToHere: false, illustrate: false }) && (await call("GET", "/api/settings")).json.settings.outline.readToHere === false, "parts turned off are kept");

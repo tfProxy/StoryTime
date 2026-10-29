@@ -399,14 +399,14 @@ try {
   ok(await items.first().getByRole("button", { name: "Load prompt" }).count() === 0 && await items.first().getByRole("button", { name: "Instruct changes" }).count() === 0, "Load prompt and Instruct changes are not buttons on the tile");
   await more.click();
   const menu = items.first().getByRole("menu");
-  ok((await menu.getByRole("menuitem").allInnerTexts()).join("|") === "This is the header picture|Use as footer picture|Instruct changes|Use as reference|Refine…|Load prompt|Info|Open in a new tab" && await more.getAttribute("aria-expanded") === "true", "…but in the ☰ menu, after Use as header and footer, with Use as reference, Info and Open in a new tab");
+  ok((await menu.getByRole("menuitem").allInnerTexts()).join("|") === "This is the header picture|Use as middle picture|Use as footer picture|Instruct changes|Use as reference|Refine…|Load prompt|Info|Open in a new tab" && await more.getAttribute("aria-expanded") === "true", "…but in the ☰ menu, after Use as header, middle and footer, with Use as reference, Info and Open in a new tab");
   const inUseItem = menu.getByRole("menuitem", { name: "This is the header picture" });
   ok(await inUseItem.getAttribute("aria-disabled") === "true", "…where the slot the picture is in says so, and can't be chosen again");
   await inUseItem.click({ force: true });
   ok(await menu.count() === 1 && (await savedWith()).find((i) => i.slot === "header").prompt === "a lighthouse at dawn, gulls", "…(clicking it does nothing)");
   ok(await inUseItem.evaluate((e) => e === document.activeElement), "…which puts the keyboard on its first item");
   await page.keyboard.press("ArrowDown");
-  ok(await menu.getByRole("menuitem", { name: "Use as footer picture" }).evaluate((e) => e === document.activeElement), "…↓ moves down it");
+  ok(await menu.getByRole("menuitem", { name: "Use as middle picture" }).evaluate((e) => e === document.activeElement), "…↓ moves down it");
   await page.keyboard.press("Escape");
   ok(await menu.count() === 0 && await more.evaluate((e) => e === document.activeElement), "Esc closes it, back on the ☰ button");
   await more.click();

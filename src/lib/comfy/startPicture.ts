@@ -39,7 +39,7 @@ export function fromCodex(storyId: string, pictureId: string): StartPicture {
 }
 
 /**
- * A chapter's saved header or footer picture, or the story's saved cover (`saved:<story id>:cover`);
+ * A chapter's saved header, middle or footer picture, or the story's saved cover (`saved:<story id>:cover`);
  * `version` is its current version.
  */
 export function fromSaved(target: PictureTarget, slot: PictureSlot, version: number): StartPicture {

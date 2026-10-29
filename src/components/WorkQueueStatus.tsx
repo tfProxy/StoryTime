@@ -32,7 +32,7 @@ export const runHref = (run: Pick<RunItem, "runId" | "storyId" | "startChapterId
 
 export type Labels = Record<string, { title: string; story_title: string }>;
 
-export const MOMENTS = { start: "Chapter start", end: "Chapter end" } as const;
+export const MOMENTS = { start: "Chapter start", middle: "Chapter middle", end: "Chapter end" } as const;
 export const pictures = (n: number) => `${n} ${n === 1 ? "picture" : "pictures"}`;
 
 /** The titles of the chapters (and the stories, for covers) the jobs are for, by `targetKey`, fetched as new ones turn up. */
@@ -211,7 +211,7 @@ export function JobRow({
         <Link href={href}>{title}</Link>
         <span className="meta">
           {label?.story_title ? `${label.story_title} · ` : ""}
-          {job.moment === "start" || job.moment === "end" ? MOMENTS[job.moment] : ""}
+          {job.moment === "start" || job.moment === "middle" || job.moment === "end" ? MOMENTS[job.moment] : ""}
         </span>
       </div>
       {job.state === "making" && (

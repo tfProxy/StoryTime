@@ -127,8 +127,8 @@ export function pictureCaption(c: { seed: number; checkpoint: string; width: num
     .join(" · ");
 }
 
-const MOMENT_NAMES: Record<ImageMoment, string> = { start: "chapter start", end: "chapter end" };
-const SLOT_NAMES: Record<string, string> = { header: "header picture", footer: "footer picture" };
+const MOMENT_NAMES: Record<ImageMoment, string> = { start: "chapter start", middle: "chapter middle", end: "chapter end" };
+const SLOT_NAMES: Record<string, string> = { header: "header picture", middle: "middle picture", footer: "footer picture" };
 
 /** The file path ComfyUI keeps a picture under. */
 const filePath = (image: ComfyImage) => `${image.subfolder ? `${image.subfolder}/` : ""}${image.filename}`;
@@ -138,7 +138,7 @@ export function sourceText(source: string, titles: Record<string, string>): stri
   if (source.startsWith("comfy:")) return `ComfyUI picture ${source.slice("comfy:".length)}`;
   if (source.startsWith("codex:")) return "a saved codex picture";
   if (/^saved:.+:cover$/.test(source)) return "the story's saved cover";
-  const saved = /^saved:(.+):(header|footer)$/.exec(source);
+  const saved = /^saved:(.+):(header|middle|footer)$/.exec(source);
   if (saved) {
     const title = titles[saved[1]];
     return `the saved ${SLOT_NAMES[saved[2]]} of ${title ? `“${title}”` : "a chapter that has been removed"}`;
@@ -159,7 +159,7 @@ export function pictureDetails(p: Picture, titles: Record<string, string>): Pict
   return [
     p.chapterId === null
       ? { label: "For", value: p.moment === "codex" ? "a codex entry's picture" : "the story's cover" }
-      : { label: "Chapter", value: p.moment === "start" || p.moment === "end" ? `${chapter}, ${MOMENT_NAMES[p.moment]}` : chapter },
+      : { label: "Chapter", value: p.moment === "start" || p.moment === "middle" || p.moment === "end" ? `${chapter}, ${MOMENT_NAMES[p.moment]}` : chapter },
     { label: "Made", value: new Date(p.madeAt).toLocaleString() },
     ...(p.editModel
       ? [{ label: "Edit model", value: `${editModel(p.editModel)?.name ?? p.editModel} (${p.checkpoint})` }]

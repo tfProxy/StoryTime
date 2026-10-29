@@ -61,7 +61,7 @@ async function viaSelf(path: string, what: string): Promise<Blob> {
  * The picture a source names, as the browser's `StartPicture` and `Reference` sources spell them:
  *   upload:<id>                 a picture the browser sent (see `saveUpload`)
  *   comfy:<subfolder/file>      one of ComfyUI's own pictures, in its output folder
- *   saved:<owner>:<slot>        a chapter's header or footer (owner is the chapter), or the story's cover (owner is the story)
+ *   saved:<owner>:<slot>        a chapter's header, middle or footer (owner is the chapter), or the story's cover (owner is the story)
  *   codex:<picture id>          a codex entry's saved picture
  */
 export async function resolveSource(source: string): Promise<Blob> {

@@ -52,7 +52,7 @@ export type StoryExport = {
   codex_facts: Record<string, unknown>[];
   /** Earlier versions of the chapters above, oldest first. */
   revisions: RevisionRow[];
-  /** The chapters' illustrations, in reading order, header before footer; `data` is base64. */
+  /** The chapters' illustrations, in reading order, header, middle, footer; `data` is base64. */
   images: ImageRow[];
 };
 

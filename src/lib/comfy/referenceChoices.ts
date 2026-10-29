@@ -7,7 +7,7 @@ import { mentions } from "../ai/prompts";
 import { asReference, type Reference, type ReferenceRole, type StoredReference } from "./references";
 import { fromCodex, fromComfyImage, fromSaved, type StartPicture } from "./startPicture";
 
-/** A saved header, footer or cover that can be a reference (`chapterId` null: the story's cover). */
+/** A saved header, middle, footer or cover that can be a reference (`chapterId` null: the story's cover). */
 export type SavedChoice = { chapterId: string | null; slot: SavedSlot; version: number; /** The chapter's title; empty for the cover. */ title: string };
 
 /**
@@ -48,7 +48,7 @@ export type PinnedChoice = { image: ComfyImage };
 
 const shortTitle = (title: string) => (title.length > 24 ? `${title.slice(0, 23).trimEnd()}…` : title);
 
-const SLOT_WORDS: Record<SavedSlot, string> = { header: "header", footer: "footer", cover: "cover" };
+const SLOT_WORDS: Record<SavedSlot, string> = { header: "header", middle: "middle", footer: "footer", cover: "cover" };
 
 /** The picture of a saved choice. */
 export const savedPicture = (pool: RefPool, c: SavedChoice): StartPicture => fromSaved(targetOfIds(pool.storyId, c.chapterId),c.slot, c.version);
@@ -56,7 +56,7 @@ export const savedPicture = (pool: RefPool, c: SavedChoice): StartPicture => fro
 /** A saved picture's label as a reference: “Header”, “Footer”, “Cover”, or “Ch. <title> footer” for another chapter's. */
 export function savedLabel(c: SavedChoice, ownChapterId: string | null): string {
   if (c.slot === "cover") return "Cover";
-  if (c.chapterId === ownChapterId) return c.slot === "header" ? "Header" : "Footer";
+  if (c.chapterId === ownChapterId) return c.slot === "header" ? "Header" : c.slot === "middle" ? "Middle" : "Footer";
   return `Ch. ${shortTitle(c.title)} ${SLOT_WORDS[c.slot]}`;
 }
 
@@ -81,8 +81,8 @@ export function restoreReference(stored: StoredReference, ctx: { pool: RefPool; 
 }
 
 /**
- * The pictures to offer: `suggested` are the ones that usually fit what is being made (making a footer, this
- * chapter's header; making a header, the previous chapter's footer and header; on the cover page, the saved
+ * The pictures to offer: `suggested` are the ones that usually fit what is being made (making a middle, this
+ * chapter's header; making a footer, its header and middle; making a header, the previous chapter's footer and header; on the cover page, the saved
  * cover), `pictures` everything else that can be chosen: this page's pinned pictures, the headers and footers
  * on the path (latest first), and the cover. Only saved pictures that exist are offered.
  */
@@ -115,9 +115,14 @@ export function referenceChoices(opts: {
   const suggestedFrom: [SavedChoice | undefined, string][] =
     chapterId === null
       ? [[find(null, "cover"), "The saved cover"]]
-      : moment === "end"
+      : moment === "middle"
         ? [[find(chapterId, "header"), "This chapter's header"]]
-        : [
+        : moment === "end"
+          ? [
+              [find(chapterId, "header"), "This chapter's header"],
+              [find(chapterId, "middle"), "This chapter's middle picture"],
+            ]
+          : [
             [pool.parentId ? find(pool.parentId, "footer") : undefined, "The previous chapter's footer"],
             [pool.parentId ? find(pool.parentId, "header") : undefined, "The previous chapter's header"],
             [find(chapterId, "footer"), "This chapter's footer"],
@@ -134,7 +139,7 @@ export function referenceChoices(opts: {
   // The path's headers and footers, the latest chapter first (a footer comes after its header in the chapter).
   const onPath = pool.saved.filter((c) => c.chapterId !== null).reverse();
   for (const c of onPath.slice(0, 10)) {
-    pictures.push(saved(c, c.chapterId === chapterId ? "This chapter" : shortTitle(c.title), "Headers and footers on the path"));
+    pictures.push(saved(c, c.chapterId === chapterId ? "This chapter" : shortTitle(c.title), "Chapter pictures on the path"));
   }
   const cover = find(null, "cover");
   if (cover) pictures.push(saved(cover, "The saved cover", "Cover"));

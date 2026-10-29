@@ -49,7 +49,7 @@ await refuse("a negative seed", { seed: -1 });
 await refuse("a seed with a fraction", { seed: 1.5 });
 await refuse("zero width", { width: 0 });
 await refuse("no pictures made", { count: 0 });
-await refuse("an unknown moment", { moment: "middle" });
+await refuse("an unknown moment", { moment: "late" });
 await refuse("a strength over 1", { denoise: 1.5 });
 await refuse("a prompt over 20,000 characters", { prompt: "x".repeat(20001) });
 const notJson = await fetch(`${B}/api/picture-jobs`, { method: "POST", body: "{nope" });

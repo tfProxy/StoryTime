@@ -6,7 +6,7 @@ import Link from "next/link";
 import { chapterImageUrl, type ImageSlot, type ImageVersions } from "@/lib/imageSlots";
 import type { OutlineOptions } from "@/lib/settingsSchema";
 import type { AiMark as AiMarkState } from "@/lib/stories";
-import { BrushIcon, FooterIcon, HeaderIcon } from "./PictureIcons";
+import { BrushIcon, FooterIcon, HeaderIcon, MiddleIcon } from "./PictureIcons";
 import AiMark from "./AiMark";
 
 // Summaries in the outline: each chapter has its own toggle, and one button shows or hides them all.
@@ -29,10 +29,11 @@ export function ToggleAllSummaries() {
   );
 }
 
-const SLOT_LABEL: Record<ImageSlot, string> = { header: "Header picture", footer: "Footer picture" };
+const SLOT_LABEL: Record<ImageSlot, string> = { header: "Header picture", middle: "Middle picture", footer: "Footer picture" };
+const SLOT_ICON: Record<ImageSlot, () => React.JSX.Element> = { header: HeaderIcon, middle: MiddleIcon, footer: FooterIcon };
 
 /**
- * A small icon button that opens a chapter's header or footer picture in a popup. It sits in the chapter's row,
+ * A small icon button that opens a chapter's header, middle or footer picture in a popup. It sits in the chapter's row,
  * which is the <summary> of its branch, so the click must not fold the branch; and the popup is drawn into
  * <body>, because a click inside it would otherwise count as a click on the row.
  */
@@ -43,6 +44,7 @@ function PictureButton({ chapterId, title, slot, version }: { chapterId: string;
     if (open && dialog.current && !dialog.current.open) dialog.current.showModal();
   }, [open]);
   const label = `${SLOT_LABEL[slot]} of “${title}”`;
+  const Icon = SLOT_ICON[slot];
   return (
     <>
       <button
@@ -55,7 +57,7 @@ function PictureButton({ chapterId, title, slot, version }: { chapterId: string;
           setOpen(true);
         }}
       >
-        {slot === "header" ? <HeaderIcon /> : <FooterIcon />}
+        <Icon />
       </button>
       {open &&
         createPortal(
@@ -86,7 +88,7 @@ function PictureButton({ chapterId, title, slot, version }: { chapterId: string;
 
 // Sits inside the chapter's row, which is the <summary> of its branch, so clicks must not fold the branch.
 // `children` (the 'read to here' link) sit right after the button. `via` is the choice that was taken to reach the chapter; it is shown ahead of the summary.
-// After them come icons: the chapter's header and footer pictures (when it has them), and a paintbrush to its Illustrate page.
+// After them come icons: the chapter's header, middle and footer pictures (when it has them), and a paintbrush to its Illustrate page.
 // `show` says which of these parts are turned on in Settings (Outline); `children` is only given when one of its links (the Review marker, 'read to here') is on.
 // With every part off there is nothing to show, not even the brackets.
 // `tags` are the chapter's approved tag names, shown in brackets of their own after the first ones; the page gives none when Settings has them off.
@@ -119,6 +121,7 @@ export function NodeSummary({
   }, [allOpen, n]);
   const showSummary = show.summary;
   const header = show.headerPicture && images.header !== null ? images.header : null;
+  const middle = show.middlePicture && images.middle !== null ? images.middle : null;
   const footer = show.footerPicture && images.footer !== null ? images.footer : null;
   // The words come first, separated by commas; the icons follow them.
   const words: ReactNode[] = [];
@@ -141,7 +144,7 @@ export function NodeSummary({
   }
   if (children) words.push(<span key="read">{children}</span>);
   const aiMark = show.aiWritten ? ai : null;
-  const hasIcons = header !== null || footer !== null || show.illustrate || aiMark !== null;
+  const hasIcons = header !== null || middle !== null || footer !== null || show.illustrate || aiMark !== null;
   return (
     <>
       {(words.length > 0 || hasIcons) && (
@@ -156,6 +159,7 @@ export function NodeSummary({
                 </span>
               )}
               {header !== null && <PictureButton chapterId={chapterId} title={title} slot="header" version={header} />}
+              {middle !== null && <PictureButton chapterId={chapterId} title={title} slot="middle" version={middle} />}
               {footer !== null && <PictureButton chapterId={chapterId} title={title} slot="footer" version={footer} />}
               {show.illustrate && (
                 <Link

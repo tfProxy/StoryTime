@@ -8,9 +8,9 @@ const fail = (e: unknown) => {
   if (e instanceof PostError) return Response.json({ error: e.message }, { status: e.status });
   throw e;
 };
-const badSlot = () => Response.json({ error: "The slot must be header or footer" }, { status: 404 });
+const badSlot = () => Response.json({ error: "The slot must be header, middle or footer" }, { status: 404 });
 
-// A chapter's header or footer picture, as the bytes that were uploaded.
+// A chapter's header, middle or footer picture, as the bytes that were uploaded.
 export async function GET(request: Request, ctx: Ctx) {
   const { id, slot } = await ctx.params;
   if (!isImageSlot(slot)) return badSlot();

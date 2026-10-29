@@ -59,9 +59,9 @@ export function readTag(extra: unknown): JobTag | null {
   const j = t.job;
   if (!isString(j.prompt) || !isString(j.negative) || !isString(j.checkpoint)) return null;
   if (!isNumber(j.width) || !isNumber(j.height) || !isNumber(j.seed) || !isNumber(j.count)) return null;
-  // A cover job has no chapter (nor an entry), a codex job has an entry instead, and a chapter's job is for its start or end.
+  // A cover job has no chapter (nor an entry), a codex job has an entry instead, and a chapter's job is for its start, middle or end.
   if (t.entryId !== undefined && !isString(t.entryId)) return null;
-  if (t.chapterId === null ? (t.entryId === undefined ? j.moment !== "cover" : j.moment !== "codex") : t.entryId !== undefined || (j.moment !== "start" && j.moment !== "end")) return null;
+  if (t.chapterId === null ? (t.entryId === undefined ? j.moment !== "cover" : j.moment !== "codex") : t.entryId !== undefined || (j.moment !== "start" && j.moment !== "middle" && j.moment !== "end")) return null;
   if ((j.source !== undefined && !isString(j.source)) || (j.instruction !== undefined && !isString(j.instruction)) || (j.edit_model !== undefined && !isString(j.edit_model))) return null;
   if (j.denoise !== undefined && j.denoise !== null && !isNumber(j.denoise)) return null;
   if (j.mask !== undefined && j.mask !== null && (!isString(j.mask) || j.mask.length === 0 || j.mask.length > 300)) return null;

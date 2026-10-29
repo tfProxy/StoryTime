@@ -59,14 +59,14 @@ export async function markPicture(jobId: string, index: number, mark: "pinned" |
 }
 
 /** The chapter's moment: the one of the job that made the picture when known, else the one saved with the chapter's boxes, else "start". */
-async function chapterMoment(target: PictureTarget, known: string | null): Promise<"start" | "end" | "cover" | "codex"> {
+async function chapterMoment(target: PictureTarget, known: string | null): Promise<"start" | "middle" | "end" | "cover" | "codex"> {
   if (target.kind === "cover") return "cover";
   if (target.kind === "codex") return "codex";
-  if (known === "start" || known === "end") return known;
+  if (known === "start" || known === "middle" || known === "end") return known;
   try {
     const res = await fetch(`/api/chapters/${encodeURIComponent(chapterIdOf(target)!)}/picture-draft`, { cache: "no-store" });
     const d = res.ok ? (((await res.json()) as { draft?: { moment?: unknown } | null }).draft ?? null) : null;
-    return d?.moment === "end" ? "end" : "start";
+    return d?.moment === "end" || d?.moment === "middle" ? d.moment : "start";
   } catch {
     return "start";
   }

@@ -1,17 +1,21 @@
 import { contentNotes } from "./contentNotes";
 import { noteText } from "./contentNotesRoll";
 import { finishedBranches, routeTo, type StoryExport } from "./export";
+import { middleBreak, splitParagraphs } from "./imageSlots";
 
 // A single self-contained HTML file that plays the story in any browser: no server, no network, no
 // libraries. It remembers which chapters the reader has seen (in that browser's localStorage, keyed
 // by story) and can forget them again. Only finished branches are included, like the Twine export.
 
-/** h and f are the header and footer pictures as data: URIs, when the chapter has them. */
-type Page = { t: string; b: string; c: [string, string, string?][]; p: string | null; h?: string; f?: string };
+/**
+ * h, m and f are the header, middle and footer pictures as data: URIs, when the chapter has them; mb is how many
+ * paragraphs come before the middle picture (see middleBreak).
+ */
+type Page = { t: string; b: string; c: [string, string, string?][]; p: string | null; h?: string; m?: string; mb?: number; f?: string };
 
 /** Each chapter's pictures as data: URIs, so the exported file works offline. */
 function imageUris(data: StoryExport) {
-  const uris = new Map<string, { header?: string; footer?: string }>();
+  const uris = new Map<string, { header?: string; middle?: string; footer?: string }>();
   for (const i of data.images) {
     const entry = uris.get(i.chapter_id) ?? {};
     entry[i.slot] = `data:${i.type};base64,${i.data}`;
@@ -117,7 +121,9 @@ const SCRIPT = String.raw`
     var kids = [];
     if (page.h) kids.push(el("img", { class: "chapter-image chapter-image-header", alt: "", src: page.h }));
     kids.push(el("h2", {}, [page.t]));
-    kids.push(el("div", { class: "prose" }, paragraphs(page.b)));
+    var ps = paragraphs(page.b);
+    if (page.m) ps.splice(page.mb, 0, el("img", { class: "chapter-image chapter-image-middle", alt: "", src: page.m }));
+    kids.push(el("div", { class: "prose" }, ps));
     if (page.f) kids.push(el("img", { class: "chapter-image chapter-image-footer", alt: "", src: page.f }));
     if (page.c.length) {
       kids.push(el("div", { class: "choices" }, page.c.map(function (c) {
@@ -152,16 +158,17 @@ export function toPathHtml(data: StoryExport, chapterId: string): string | null 
   const found = routeTo(data, chapterId);
   if (!found) return null;
   const { route, viaOf, toBeContinued } = found;
-  const paras = (text: string) =>
-    text
-      .split(/\n\s*\n/)
-      .filter((p) => p.trim())
-      .map((p) => `<p>${escapeHtml(p.trim())}</p>`)
-      .join("\n");
   const uris = imageUris(data);
-  const img = (id: string, slot: "header" | "footer") => {
+  const img = (id: string, slot: "header" | "middle" | "footer") => {
     const uri = uris.get(id)?.[slot];
     return uri ? `<img class="chapter-image chapter-image-${slot}" alt="" src="${escapeHtml(uri)}">` : "";
+  };
+  // The middle picture goes at the paragraph break nearest the middle of the text.
+  const paras = (id: string, text: string) => {
+    const ps = splitParagraphs(text).map((p) => `<p>${escapeHtml(p.trim())}</p>`);
+    const middle = img(id, "middle");
+    if (middle) ps.splice(middleBreak(splitParagraphs(text)), 0, middle);
+    return ps.join("\n");
   };
   const s = data.story;
   const body = [
@@ -174,7 +181,7 @@ ${via ? `<p class="via">${escapeHtml(via.label)}</p>` : ""}
 ${img(c.id, "header")}
 <h2>${i + 1}. ${escapeHtml(c.title)}</h2>
 <div class="prose">
-${paras(c.body)}
+${paras(c.id, c.body)}
 </div>
 ${img(c.id, "footer")}
 </section>`;
@@ -222,6 +229,7 @@ export function toHtml(data: StoryExport): string {
     pages[c.id] = {
       t: c.title, b: c.body.trim(), c: list, p: null,
       ...(pictures?.header ? { h: pictures.header } : {}),
+      ...(pictures?.middle ? { m: pictures.middle, mb: middleBreak(splitParagraphs(c.body)) } : {}),
       ...(pictures?.footer ? { f: pictures.footer } : {}),
     };
   }

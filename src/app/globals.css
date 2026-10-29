@@ -1454,7 +1454,7 @@ main:has(.library) {
   width: 7.5rem;
 }
 
-/* A chapter's header and footer pictures, where it is read. Tall pictures are kept within the screen. */
+/* A chapter's header, middle and footer pictures, where it is read. Tall pictures are kept within the screen. */
 .chapter-image {
   display: block;
   max-width: 100%;

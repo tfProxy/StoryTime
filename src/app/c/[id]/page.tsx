@@ -88,7 +88,7 @@ export default async function ChapterPage({
         </p>
       )}
       <ChapterImage chapterId={chapter.id} slot="header" version={images.header} />
-      <Prose text={chapter.body} />
+      <Prose text={chapter.body} middle={<ChapterImage chapterId={chapter.id} slot="middle" version={images.middle} />} />
       <ChapterImage chapterId={chapter.id} slot="footer" version={images.footer} />
 
       <section className="choices">

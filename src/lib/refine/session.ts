@@ -168,7 +168,7 @@ export function newSession(init: { target: PictureTarget; original: StoredOrigin
 export function originalOf(p: { image?: ComfyImage; slot?: string; source: string; key: string }): StoredOriginal | null {
   if (p.image) return { kind: "comfy", image: { filename: p.image.filename, subfolder: p.image.subfolder, type: p.image.type } };
   if (p.source.startsWith("codex:")) return { kind: "codex", pictureId: p.source.slice("codex:".length) };
-  if (p.slot === "header" || p.slot === "footer" || p.slot === "cover") {
+  if (p.slot === "header" || p.slot === "middle" || p.slot === "footer" || p.slot === "cover") {
     const version = Number(p.key.split(":").pop());
     return Number.isFinite(version) ? { kind: "saved", slot: p.slot, version } : null;
   }
@@ -194,7 +194,7 @@ export function readOriginal(v: unknown): StoredOriginal | null {
     }
     return null;
   }
-  if (v.kind === "saved" && (v.slot === "header" || v.slot === "footer" || v.slot === "cover") && isNum(v.version)) return { kind: "saved", slot: v.slot, version: v.version };
+  if (v.kind === "saved" && (v.slot === "header" || v.slot === "middle" || v.slot === "footer" || v.slot === "cover") && isNum(v.version)) return { kind: "saved", slot: v.slot, version: v.version };
   if (v.kind === "codex" && isStr(v.pictureId)) return { kind: "codex", pictureId: v.pictureId };
   return null;
 }

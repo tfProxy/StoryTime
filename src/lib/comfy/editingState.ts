@@ -45,7 +45,7 @@ export function readStart(chapterId: string): StoredStart | null {
   if (isObject(im) && typeof im.filename === "string" && typeof im.subfolder === "string" && typeof im.type === "string") {
     return { mode: "edit", image: { filename: im.filename, subfolder: im.subfolder, type: im.type } };
   }
-  if (v.slot === "header" || v.slot === "footer" || v.slot === "cover") return { mode: "edit", slot: v.slot };
+  if (v.slot === "header" || v.slot === "middle" || v.slot === "footer" || v.slot === "cover") return { mode: "edit", slot: v.slot };
   return null;
 }
 
