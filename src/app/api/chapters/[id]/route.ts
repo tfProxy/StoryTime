@@ -1,7 +1,8 @@
 import { handlePost } from "@/lib/api";
 import { queueAutoReview } from "@/lib/autoReview";
 import { CodexChangesSchema, saveWithCodexChanges } from "@/lib/codexDb";
-import { editChapter, EditChapterSchema, getChoices, getPath } from "@/lib/stories";
+import { choiceDraftKey, editChapter, EditChapterSchema, getChoices, getPath } from "@/lib/stories";
+import { stopGenerate } from "@/lib/worker/generate";
 
 // Returns the chapter, its choices, and the full path from the story root.
 // The browser uses the path to assemble AI context.
@@ -20,6 +21,8 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     EditChapterSchema.and(CodexChangesSchema),
     (input) => {
       const saved = saveWithCodexChanges(input,() => editChapter(id, input), () => id);
+      // The removed choices' drafts went with them; stop any Generate still writing into one.
+      for (const c of input.remove_choices) stopGenerate(choiceDraftKey(c), { discard: true });
       void queueAutoReview(id);
       return saved;
     },

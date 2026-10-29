@@ -80,10 +80,14 @@ export function startGenerate(input: z.infer<typeof generateRequest>): WorkRow<"
   return createItem({ key: itemKey, type: "generate", state: "waiting", data: { draftKey: input.key, href: input.href, label: input.label, request: input } });
 }
 
-/** Stops a Generate: one going is aborted (the text so far stays in the draft); one waiting is removed. False when there is none. */
-export function stopGenerate(draftKey: string): boolean {
+/**
+ * Stops a Generate: one going is aborted (the text so far stays in the draft, unless `discard`, for a draft that was
+ * deleted); one waiting is removed. False when there is none.
+ */
+export function stopGenerate(draftKey: string, opts: { discard?: boolean } = {}): boolean {
   const running = workerState().generates.get(draftKey);
   if (running) {
+    if (opts.discard) running.discard = true;
     running.ctl.abort();
     return true;
   }
@@ -128,7 +132,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
   }
   const req = item.data.request as GenerateRequest;
   const settings = getSettings() ?? parseSettings({});
-  const run = { text: "", ctl: new AbortController() };
+  const run: { text: string; ctl: AbortController; discard?: boolean } = { text: "", ctl: new AbortController() };
   workerState().generates.set(draftKey, run);
   updateItem(itemKey, { state: "working", data: { note: undefined, error: undefined, text: undefined } });
   const tell = (event: GenerateEvent) => publish(genChannel(draftKey), event);
@@ -188,8 +192,8 @@ export async function runGenerate(draftKey: string): Promise<void> {
     updateItem(itemKey, { state: "done" });
   } catch (e) {
     if (isAbort(e)) {
-      // Stopped: what was written stays in the draft.
-      if (run.text) {
+      // Stopped: what was written stays in the draft (unless the draft was deleted).
+      if (run.text && !run.discard) {
         try {
           saveGenerated(req, run.text);
         } catch {

@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { db, newId } from "./db";
 import { LIMITS } from "./limits";
+import { deleteDraft } from "./draftStore";
+
+/** The key of the draft for writing an unwritten choice (the write page's `fill:` draft). */
+export const choiceDraftKey = (choiceId: string) => `fill:${choiceId}`;
 import type { StoredReference } from "./comfy/references";
 
 export type Story = {
@@ -643,6 +647,7 @@ export function editChapter(chapterId: string, input: z.infer<typeof EditChapter
         throw new PostError(`"${c.label}" has a chapter in the trash and can't be removed`, 409);
       }
       db().prepare(`DELETE FROM choices WHERE id = ?`).run(id);
+      deleteDraft(choiceDraftKey(id));
     }
     const remaining = live.length - input.remove_choices.length;
     if (remaining + input.add_choices.length > LIMITS.choices) {
@@ -693,6 +698,7 @@ export function removeChoice(chapterId: string, choiceId: string): { ok: true } 
       throw new PostError(`"${c.label}" has a chapter in the trash and can't be removed`, 409);
     }
     db().prepare(`DELETE FROM choices WHERE id = ?`).run(choiceId);
+    deleteDraft(choiceDraftKey(choiceId));
     return { ok: true as const };
   })();
 }

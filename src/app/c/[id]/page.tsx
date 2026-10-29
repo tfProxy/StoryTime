@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { aiMarkOf, getChoices, getIncomingChoice, getPath, getStory, restoreBlocker } from "@/lib/stories";
+import { aiMarkOf, choiceDraftKey, getChoices, getIncomingChoice, getPath, getStory, restoreBlocker } from "@/lib/stories";
 import AiMark from "@/components/AiMark";
 import TrashNotice from "@/components/TrashNotice";
 import AiReviewNotice from "@/components/AiReviewNotice";
@@ -43,7 +43,7 @@ export default async function ChapterPage({
   const tagNames = appliedTagNames(story.id, chapter.id).get(chapter.id) ?? [];
   const notes = choices.some((c) => c.child_chapter_id) ? contentNotes(story.id) : new Map<string, ChapterNote>();
   // Unwritten choices with a draft saved (the write page keys a choice's draft "fill:<choice id>").
-  const drafted = trashed ? new Set<string>() : draftKeysSaved(choices.filter((c) => !c.child_chapter_id).map((c) => `fill:${c.id}`));
+  const drafted = trashed ? new Set<string>() : draftKeysSaved(choices.filter((c) => !c.child_chapter_id).map((c) => choiceDraftKey(c.id)));
 
   return (
     <>
@@ -119,13 +119,13 @@ export default async function ChapterPage({
               <Link
                 href={`/c/${chapter.id}/write?choice=${c.id}`}
                 className="card choice-unwritten"
-                title={drafted.has(`fill:${c.id}`) ? "Not written yet, but a draft is saved. Carry on with it?" : "Not written yet. Write it?"}
+                title={drafted.has(choiceDraftKey(c.id)) ? "Not written yet, but a draft is saved. Carry on with it?" : "Not written yet. Write it?"}
               >
                 <svg className="choice-icon" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19z M14.5 6.5l3 3" />
                 </svg>
                 {c.label}
-                {drafted.has(`fill:${c.id}`) && (
+                {drafted.has(choiceDraftKey(c.id)) && (
                   <span className="choice-draft">
                     {/* A page with lines of text: the choice has a draft saved. */}
                     <svg className="choice-icon" viewBox="0 0 24 24" aria-hidden="true">

@@ -57,7 +57,8 @@ export type WorkerState = {
   /** Intervals the worker keeps, so they can be stopped. */
   timers: ReturnType<typeof setInterval>[];
   /** The Generates going now, by draft key: the text so far, and how to stop it. */
-  generates: Map<string, { text: string; ctl: AbortController }>;
+  /** `discard`: stopped because its draft is gone (its choice was removed), so the text so far is not saved. */
+  generates: Map<string, { text: string; ctl: AbortController; discard?: boolean }>;
   /** What each picture run (Fill missing pictures) has asked for, retried once, and finished but not yet put on the run. */
   pictureRuns: Map<string, { asked: Set<string>; retried: Set<string>; results: { taskId: string; jobId?: string; error?: string }[]; flushing: boolean }>;
   /** For the API and browser tests only (the test routes set it): recording a finished job fails with this message. */

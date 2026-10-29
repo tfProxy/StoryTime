@@ -64,3 +64,19 @@ ok(h.includes("Revision 1") && h.includes("root body"), "history page shows revi
   ok(x.status === 200, "an unwritten choice is removed");
   ok((await call("GET", `/api/chapters/${s.chapter_id}`)).json.choices.length === 1, "only the written choice is left");
 }
+
+// ---- removing a choice also deletes its draft (both from the reading page and from the edit page) ----
+{
+  const s = (await call("POST", "/api/stories", { title: "RmDraft", premise: "p", chapter: { title: "R", body: "b", path_summary: "ps", choices: ["One", "Two", "Kept"] } })).json;
+  const [one, two, kept] = (await call("GET", `/api/chapters/${s.chapter_id}`)).json.choices;
+  const draftUrl = (c) => `/api/drafts/${encodeURIComponent(`fill:${c.id}`)}`;
+  for (const c of [one, two, kept]) await call("PUT", draftUrl(c), { draft: { key: `fill:${c.id}`, href: "/", label: c.label, body: "started" }, base: null });
+  ok((await call("GET", draftUrl(one))).status === 200, "a choice's draft is saved");
+  await call("DELETE", `/api/chapters/${s.chapter_id}/choices/${one.id}`);
+  ok((await call("GET", draftUrl(one))).status === 404, "removing the choice deletes its draft");
+  const x = await call("PATCH", `/api/chapters/${s.chapter_id}`, { base_revision: 1, title: "R", body: "b", remove_choices: [two.id] });
+  ok(x.status === 200, "the edit page removes a choice");
+  ok((await call("GET", draftUrl(two))).status === 404, "…and its draft goes too");
+  ok((await call("GET", draftUrl(kept))).status === 200, "other choices' drafts stay");
+  await call("DELETE", draftUrl(kept));
+}
