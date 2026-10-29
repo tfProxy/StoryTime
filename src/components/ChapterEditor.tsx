@@ -5,9 +5,9 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LIMITS } from "@/lib/limits";
-import { defaultRef, modelLabel, usableRef, useSettings, type ModelRef } from "@/lib/settings";
+import { usableRef, useSettings, type ModelRef } from "@/lib/settings";
 import { completeChat, streamChat } from "@/lib/ai/client";
-import { ensurePathSummaries, neededSummaryIndex, summarizeChapter, summaryRequest, type Summaries } from "@/lib/ai/summaries";
+import { ensurePathSummaries, neededSummaryIndex, summarizeChapter, type Summaries } from "@/lib/ai/summaries";
 import {
   choicesPrompt,
   choiceLabelPrompt,
@@ -41,7 +41,6 @@ import AutoTextarea from "./AutoTextarea";
 import CodexPanel from "./CodexPanel";
 import { PageMenu } from "./SiteMenu";
 import CodexPreview from "./CodexPreview";
-import PromptButton from "./PromptButton";
 import ModelPicker from "./ModelPicker";
 import SaveSplitButton, { type SaveMode } from "./SaveSplitButton";
 
@@ -410,11 +409,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   // Models picked for this draft; null means the default from Settings (also when the picked one's connection is gone).
   const writeModel = usableRef(settings, draft.models?.write);
   const suggestModel = usableRef(settings, draft.models?.suggest);
-  const modelName = (ref: ModelRef | null, role: "main" | "cheap") => {
-    const r = ref ?? defaultRef(settings, role);
-    return r ? modelLabel(settings, r) : "no model (pick one in Settings)";
-  };
-  const suggestNote = `Sent to ${modelName(suggestModel, "cheap")}.`;
   const setModel = (job: "write" | "suggest", ref: ModelRef | null) =>
     setDraft((d) => (d ? { ...d, models: { ...d.models, [job]: ref ?? undefined } } : d));
   const writePicker = (
@@ -665,11 +659,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       >
         {busy === "label" ? "Thinking…" : "Regenerate"}
       </button>
-      <PromptButton
-        label="Regenerate choice text"
-        note={suggestNote}
-        build={() => choiceLabelRequest(draft.body.trim() ? { title: draft.title, body: draft.body } : null, ctx)}
-      />
     </>
   );
 
@@ -1082,7 +1071,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               <button type="button" className="secondary" onClick={suggestIdeas} disabled={busy !== null}>
                 {busy === "ideas" ? "Thinking…" : ideaPages.length ? "Suggest more" : "Suggest ideas"}
               </button>
-              <PromptButton label="Suggest ideas" note={suggestNote} build={ideasRequest} />
               {suggestPicker}
               {ideaPages.length > 1 && (
                 <>
@@ -1298,11 +1286,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               <button type="button" onClick={() => runAi("generate")} disabled={busy !== null}>
                 {busy === "generate" ? (generating?.state === "waiting" ? "Waiting…" : "Writing…") : draft.body ? "Generate a new draft" : "Generate chapter"}
               </button>
-              <PromptButton
-                label="Generate chapter"
-                note={`Sent to ${modelName(writeModel, "main")}. If earlier chapters need summarizing first, that happens before sending, so the story-so-far part may differ slightly.`}
-                build={() => chapterRequest("generate", ctx, null)}
-              />
               {writePicker}
               {(working || generating) && (
                 <button type="button" className="secondary" onClick={stopWork}>
@@ -1415,12 +1398,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               <button type="button" onClick={() => runAi("refine")} disabled={busy !== null || !hasBody || !instruction.trim()}>
                 {busy === "refine" ? "Revising…" : picked ? "Revise selection" : "Revise"}
               </button>
-              <PromptButton
-                label={picked ? "Revise selection" : "Revise"}
-                note={`Sent to ${modelName(writeModel, "main")}. If earlier chapters need summarizing first, that happens before sending, so the story-so-far part may differ slightly.`}
-                disabled={!hasBody}
-                build={() => chapterRequest("refine", ctx, picked)}
-              />
               {writePicker}
               <button type="button" className="secondary" onClick={undo} disabled={busy !== null || draft.undo.length === 0}>
                 Undo
@@ -1458,18 +1435,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               <button type="button" className="secondary" onClick={summarize} disabled={busy !== null || !draft.body.trim()}>
                 {busy === "summary" ? "Summarizing…" : ownSummary ? "Summarize again" : "Summarize chapter"}
               </button>
-              <PromptButton
-                label="Summarize chapter"
-                note="Sent to your cheaper (summary) model. If the previous chapter has no story-so-far summary yet, that is made first."
-                disabled={!draft.body.trim()}
-                build={() =>
-                  summaryRequest(settings.contextTokens, {
-                    story: storyInfo,
-                    previous: ctx.path.at(-1)?.path_summary ?? null,
-                    chapter: { title: draft.title, body: draft.body },
-                  })
-                }
-              />
               {busy === "summary" && (
                 <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
                   Stop
@@ -1562,12 +1527,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                 >
                   {busy === "choices" ? "Thinking…" : "Suggest choices"}
                 </button>
-                <PromptButton
-                  label="Suggest choices"
-                  note={suggestNote}
-                  disabled={!draft.body.trim()}
-                  build={() => choicesRequest()}
-                />
                 {suggestPicker}
               </div>
               {suggestions.length > 0 && (

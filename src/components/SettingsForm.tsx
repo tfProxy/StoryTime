@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { PROVIDERS, providerInfo, type ProviderKind } from "@/lib/ai/providers";
 import { AiError, listModels, streamChat } from "@/lib/ai/client";
 import { checkFromServer, type ServerCheck } from "@/lib/serverCheck";
-import PromptButton from "./PromptButton";
 import NumberInput from "./NumberInput";
 import ComfyConnection from "./ComfyConnection";
 import { DrawingSettings, EditSettings, usePictureSetup } from "./PictureSettings";
@@ -641,7 +640,6 @@ export default function SettingsForm() {
             <button type="button" className="secondary" onClick={tryIt} disabled={trying}>
               {trying ? "Generating…" : "Try a sample reply"}
             </button>
-            <PromptButton label="Try a sample reply" note="Sent to your default model." build={() => SAMPLE_REQUEST} />
             {trying && (
               <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
                 Stop

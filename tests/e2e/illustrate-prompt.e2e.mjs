@@ -66,7 +66,7 @@ try {
   ok((await used.innerText()) === "Codex entries used: Jim, Zed", "…and an entry named in what to show is added");
   await direction.fill("");
   ok((await used.innerText()) === "Codex entries used: Jim", "…and dropped again when it is removed");
-  ok(await page.getByRole("button", { name: "Write prompt", exact: true }).isVisible() && await page.getByRole("button", { name: "View prompt" }).isVisible(), "the page offers Write prompt and the eye button");
+  ok(await page.getByRole("button", { name: "Write prompt", exact: true }).isVisible(), "the page offers Write prompt");
 
   // ---- the Prompt and Negative prompt fields are there from the start, so you can type your own ----
   const typedPrompt = page.getByRole("textbox", { name: "Prompt", exact: true });
@@ -172,15 +172,6 @@ try {
   await page.getByRole("button", { name: "Write prompt", exact: true }).click();
   await page.waitForFunction(() => document.querySelector(".image-prompt-result textarea")?.value.endsWith(", pencil sketch"));
   ok(true, "a changed story art style is added to the next prompt written");
-
-  // ---- the eye button shows what would be sent ----
-  await direction.fill("Jim at the table");
-  await page.getByRole("button", { name: "View prompt" }).click();
-  const dialog = page.getByRole("dialog");
-  await dialog.waitFor();
-  const shown = await dialog.innerText();
-  ok(shown.includes("Prompt: Write prompt") && shown.includes("The author wants the picture to show: Jim at the table") && shown.includes("Jim [character]"), "the eye button shows the prompt as it would be sent now");
-  await page.keyboard.press("Escape");
 
   // ---- bad replies ----
   const bad = async (text, pattern, what) => {

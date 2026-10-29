@@ -3,9 +3,8 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useSettings } from "@/lib/settings";
-import { summarizeChapter, summaryRequest } from "@/lib/ai/summaries";
+import { summarizeChapter } from "@/lib/ai/summaries";
 import type { StoryChapter } from "@/lib/tree";
-import PromptButton from "./PromptButton";
 
 type Props = {
   story: { title: string; premise: string };
@@ -76,14 +75,6 @@ export default function BulkSummaries({ story, chapters }: Props) {
         <button type="button" onClick={run} disabled={running}>
           {running ? "Working…" : "Redo summaries"}
         </button>
-        <PromptButton
-          label="Redo summaries"
-          note={`This is the first of ${chapters.length} requests, for the story's first chapter. Each later one has the same instructions and also holds the new story-so-far from the chapter before it. Sent to your cheaper (summary) model.`}
-          build={() => {
-            if (chapters.length === 0) throw new Error("This story has no chapters to summarize.");
-            return summaryRequest(settings.contextTokens, { story, previous: null, chapter: chapters[0] });
-          }}
-        />
         {running && (
           <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
             Stop

@@ -83,9 +83,6 @@ try {
   ok(await form().getByLabel("Choices on each new chapter").inputValue() === "3" && await form().getByLabel("Length").inputValue() === "medium", "the settings default to medium length and 3 choices on each new chapter");
   ok(await form().getByLabel("Group by model, fewer model loads").isChecked(), "…and to grouping by model");
   ok(!(await form().getByLabel("Let me check the plan first").isChecked()), "…with checking the plan off");
-  await form().getByRole("button", { name: "View prompt" }).click().catch(async () => { await page.getByRole("button", { name: /prompt/i }).first().click(); });
-  ok(await page.getByText(/Write the next chapter, about 600 words/).isVisible().catch(() => false), "View prompt shows the first chapter's prompt");
-  await page.keyboard.press("Escape");
   await page.screenshot({ path: `${SHOTS}/write-ahead-form-desktop.png`, fullPage: true });
 
   // ---- a Fill run writes both ----

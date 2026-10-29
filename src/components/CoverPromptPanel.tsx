@@ -5,7 +5,7 @@ import { saveSettings, useSettings } from "@/lib/settings";
 import { LIMITS } from "@/lib/limits";
 import { codexBudget, budgetFor, explainCodex, type ContextChapter, type ContextCodexEntry } from "@/lib/ai/prompts";
 import { withArtStyle, withoutGiven } from "@/lib/ai/imagePrompt";
-import { coverPromptRequest, writeCoverPrompt } from "@/lib/ai/coverPrompt";
+import { writeCoverPrompt } from "@/lib/ai/coverPrompt";
 import type { CoverDraft } from "@/lib/coverPictures";
 import type { CoverSource } from "@/lib/pictureTarget";
 import type { StartPicture } from "@/lib/comfy/startPicture";
@@ -14,7 +14,6 @@ import { referenceChoices, restoreReference, type RefPool } from "@/lib/comfy/re
 import { useReferences, type RefRequest } from "./useReferences";
 import ChapterTreePicker, { type PickerChapter } from "./ChapterTreePicker";
 import ModelPicker from "./ModelPicker";
-import PromptButton from "./PromptButton";
 import PromptFields from "./PromptFields";
 import ComfyGenerate from "./ComfyGenerate";
 import { coverTarget } from "@/lib/pictureTarget";
@@ -230,7 +229,6 @@ export default function CoverPromptPanel({
           <button type="button" onClick={() => void write()} disabled={busy || loading}>
             {busy ? "Writing…" : loading ? "Loading the path…" : written ? "Write again" : "Write prompt"}
           </button>
-          <PromptButton label="Write prompt" build={() => coverPromptRequest(settings.contextTokens, options())} disabled={loading} />
           {busy && (
             <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
               Stop

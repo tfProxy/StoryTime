@@ -4,7 +4,7 @@
 // The form is built so later modes (grow the tree, reach a goal) can join "What to write" as more options.
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { arcPlanPrompt, generatePrompt, parseIdeas, SYSTEM_ARC_PLAN, SYSTEM_CHAPTER, type StoryContext } from "@/lib/ai/prompts";
+import { arcPlanPrompt, parseIdeas, SYSTEM_ARC_PLAN, type StoryContext } from "@/lib/ai/prompts";
 import { estimateArc, estimateFill, estimateTree, planArc, planFill, planTree, DEFAULT_END_CHOICES, type ArcStep, type PlanNode } from "@/lib/aiRuns/plan";
 import { completeChat } from "@/lib/ai/client";
 import type { RunOptions } from "@/lib/aiRuns/types";
@@ -13,7 +13,6 @@ import { usableRef, useSettings, type ModelRef } from "@/lib/settings";
 import AiRunProgress from "./AiRunProgress";
 import ModelPicker from "./ModelPicker";
 import NumberInput from "./NumberInput";
-import PromptButton from "./PromptButton";
 import { useWorkQueue } from "./WorkQueue";
 
 /** A chapter's own choices that nobody has written: counted down the tree when `below`. */
@@ -84,21 +83,6 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
   // Nothing to write: no open choices (Fill), the tree already has everything to that depth and breadth (Grow the tree), or no plan yet (Reach a goal).
   const none = what === "tree" ? estimate.chapters === 0 : what === "arc" ? !steps || steps.length === 0 : (scope === "children" ? openHere : openBelow) === 0;
   const tooMany = estimate.chapters > LIMITS.runChapters;
-
-  /** The prompt of the first chapter the run would write, for View prompt. */
-  const firstPrompt = () => {
-    const walk = (n: PlanNode): PlanNode[] => [n, ...n.choices.flatMap((c) => (c.child ? walk(c.child) : []))];
-    const first = walk(tree).find((n) => n.choices.some((c) => !c.child));
-    if (!first || (what === "fill" && scope === "children" && first.id !== tree.id)) {
-      throw new Error(what === "tree" ? "The first choices are made by the plan before any chapter is written, so there is no chapter prompt yet." : "There is no open choice to write.");
-    }
-    const label = first.choices.find((c) => !c.child)!.label;
-    // Only the start chapter's story-so-far is known here; a deeper chapter's prompt has more path.
-    return {
-      system: SYSTEM_CHAPTER,
-      message: generatePrompt({ ...context, choiceLabel: label }, options.guidance ?? "", length, settings.contextTokens),
-    };
-  };
 
   /** The story so far for the plan, following the choice the author starts from when there is one. */
   const planContext: StoryContext = { ...context, choiceLabel: startChoice?.label ?? null, siblingChoices: startChoice ? [] : context.siblingChoices };
@@ -261,7 +245,6 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
                 <button type="button" disabled={planning || !objective.trim()} onClick={() => void planChapters()}>
                   {planning ? "Planning…" : steps ? "Plan again" : "Plan the chapters"}
                 </button>
-                <PromptButton label="Plan the chapters" build={planRequest} disabled={!objective.trim()} note="Sent to the writing model." />
               </div>
               {steps && (
                 <ol className="ai-run-tasks" aria-label="The plan">
@@ -356,9 +339,6 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
           <button type="submit" disabled={busy || none || tooMany}>
             {confirming ? `Yes, write ${estimate.chapters} chapters` : what === "arc" ? (steps ? `Write ${steps.length} ${steps.length === 1 ? "chapter" : "chapters"}` : "Write chapters") : "Start"}
           </button>
-          {what !== "arc" && (
-            <PromptButton label="First chapter" build={firstPrompt} disabled={none} note="The first chapter the run would write. Its direction comes from the plan made first, so it isn't in this prompt." />
-          )}
           {what === "arc" && !steps && <span className="meta">Plan the chapters first, then edit the plan.</span>}
           {confirming && (
             <button type="button" className="secondary" onClick={() => setConfirming(false)}>

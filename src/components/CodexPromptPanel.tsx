@@ -5,7 +5,7 @@ import { saveSettings, useSettings } from "@/lib/settings";
 import { LIMITS } from "@/lib/limits";
 import type { EntryType } from "@/lib/codex";
 import { withArtStyle, withoutGiven } from "@/lib/ai/imagePrompt";
-import { codexPromptRequest, writeCodexPrompt } from "@/lib/ai/codexPrompt";
+import { writeCodexPrompt } from "@/lib/ai/codexPrompt";
 import type { CodexDraft } from "@/lib/codexPictures";
 import { codexTarget } from "@/lib/pictureTarget";
 import type { StartPicture } from "@/lib/comfy/startPicture";
@@ -13,7 +13,6 @@ import { drawPresetFor } from "@/lib/comfy/presets";
 import { referenceChoices, restoreReference, type RefPool } from "@/lib/comfy/referenceChoices";
 import { useReferences, type RefRequest } from "./useReferences";
 import ModelPicker from "./ModelPicker";
-import PromptButton from "./PromptButton";
 import PromptFields from "./PromptFields";
 import ComfyGenerate from "./ComfyGenerate";
 import { StoryPicturesLine, type IllustratedStory, type LoadedPrompt } from "./ImagePromptPanel";
@@ -139,7 +138,6 @@ export default function CodexPromptPanel({
           <button type="button" onClick={() => void write()} disabled={busy}>
             {busy ? "Writing…" : written ? "Write again" : "Write prompt"}
           </button>
-          <PromptButton label="Write prompt" build={() => codexPromptRequest(options())} />
           {busy && (
             <button type="button" className="secondary" onClick={() => abortRef.current?.abort()}>
               Stop

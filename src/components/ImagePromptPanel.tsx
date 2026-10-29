@@ -6,10 +6,9 @@ import Link from "next/link";
 import { saveSettings, useSettings } from "@/lib/settings";
 import { LIMITS } from "@/lib/limits";
 import { codexBudget, budgetFor, explainCodex, type ContextChapter, type ContextCodexEntry } from "@/lib/ai/prompts";
-import { combinePrompts, imagePromptRequest, withArtStyle, withoutGiven, writeImagePrompt, type ImageMoment } from "@/lib/ai/imagePrompt";
+import { combinePrompts, withArtStyle, withoutGiven, writeImagePrompt, type ImageMoment } from "@/lib/ai/imagePrompt";
 import AutoTextarea from "./AutoTextarea";
 import ModelPicker from "./ModelPicker";
-import PromptButton from "./PromptButton";
 import PromptFields from "./PromptFields";
 import ComfyGenerate from "./ComfyGenerate";
 import { RedoIcon, SparkleIcon, StopIcon } from "./PictureIcons";
@@ -246,7 +245,6 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
           value={model}
           onChange={(ref) => void saveSettings({ ...settings, imagePromptModel: ref })}
         />
-        {/* The write button and the eye that shows its prompt stay together on one line. */}
         <span className="row prompt-writer-buttons" style={{ flexWrap: "nowrap", gap: "0.4rem" }}>
           <button
             type="button"
@@ -257,7 +255,6 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
           >
             {busy ? <StopIcon /> : written[moment] ? <RedoIcon /> : <SparkleIcon />}
           </button>
-          <PromptButton label="Write prompt" build={() => imagePromptRequest(settings.contextTokens, options())} />
         </span>
       </div>
 
