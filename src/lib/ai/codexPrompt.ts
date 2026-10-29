@@ -1,7 +1,7 @@
 // A codex entry's picture prompt: one clear picture of a character, item or place, written from the entry's
 // text as of a chapter (so it follows the entry as the story changes it). Like the cover's (see ./coverPrompt)
 // and the chapters' (see ./imagePrompt), the request is pure and `writeCodexPrompt` sends it from the browser.
-import { completeChat } from "./client";
+import { completeChat, type AiSourceIds } from "./client";
 import { parseImagePrompt, STYLE_RULES, type ImagePrompt } from "./imagePrompt";
 import { notesBlock, parseBracketNotes, type PromptParts } from "./prompts";
 import type { EntryType } from "../codex";
@@ -60,7 +60,7 @@ export function codexPromptRequest(opts: CodexPromptOptions): PromptParts {
 
 export async function writeCodexPrompt(
   settings: Settings,
-  opts: CodexPromptOptions & { model?: ModelRef | null; signal?: AbortSignal },
+  opts: CodexPromptOptions & { model?: ModelRef | null; signal?: AbortSignal; source?: AiSourceIds },
 ): Promise<ImagePrompt> {
   const request = codexPromptRequest(opts);
   const reply = await completeChat(settings, {
@@ -69,6 +69,7 @@ export async function writeCodexPrompt(
     role: "cheap",
     model: opts.model,
     signal: opts.signal,
+    source: { label: "Codex picture prompt", ...opts.source },
   });
   return parseImagePrompt(reply);
 }

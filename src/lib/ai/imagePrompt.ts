@@ -1,7 +1,7 @@
 // Picture prompts: turns a chapter (and the codex entries it mentions) into a prompt for an image
 // model such as Stable Diffusion. The request and the reply parsing are pure; `writeImagePrompt`
 // sends it from the browser like every other AI call.
-import { completeChat } from "./client";
+import { completeChat, type AiSourceIds } from "./client";
 import { extractJson } from "./codexAi";
 import {
   buildCodexBlock,
@@ -175,7 +175,7 @@ export function combinePrompts(style: ImagePromptStyle, ...parts: string[]): str
 
 export async function writeImagePrompt(
   settings: Settings,
-  opts: ImagePromptOptions & { model?: ModelRef | null; signal?: AbortSignal },
+  opts: ImagePromptOptions & { model?: ModelRef | null; signal?: AbortSignal; source?: AiSourceIds },
 ): Promise<ImagePrompt> {
   const request = imagePromptRequest(settings.contextTokens, opts);
   const reply = await completeChat(settings, {
@@ -184,6 +184,7 @@ export async function writeImagePrompt(
     role: "cheap",
     model: opts.model,
     signal: opts.signal,
+    source: { label: "Picture prompt", ...opts.source },
   });
   return parseImagePrompt(reply);
 }

@@ -135,9 +135,11 @@ export async function runGenerate(draftKey: string): Promise<void> {
   let lastSave = 0;
   let lastTold = 0;
   try {
-    const ready = await withPathSummaries(settings, req.ctx, run.ctl.signal, undefined, selfFetch);
+    // A Generate knows no story or chapter id (the request has the story as text), so its calls carry its queue item.
+    const ids = { itemKey };
+    const ready = await withPathSummaries(settings, req.ctx, run.ctl.signal, undefined, selfFetch, ids);
     const message = generatePrompt(ready, req.direction, req.length, settings.contextTokens);
-    for await (const piece of streamChat(settings, { system: SYSTEM_CHAPTER, messages: [{ role: "user", content: message }], role: "main", model: req.model, signal: run.ctl.signal })) {
+    for await (const piece of streamChat(settings, { system: SYSTEM_CHAPTER, messages: [{ role: "user", content: message }], role: "main", model: req.model, signal: run.ctl.signal, source: { label: "Generate", ...ids } })) {
       run.text += piece;
       // The text so far goes out at most four times a second (the end sends it whole, below).
       if (Date.now() - lastTold >= TEXT_MS) {
@@ -158,7 +160,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
           const reply = await completeChat(settings, {
             system: SYSTEM_CHOICE_LABEL,
             messages: [{ role: "user", content: choiceLabelPrompt({ ...ready, choiceLabel: null }, shown, settings.contextTokens) }],
-            role: "cheap", model: req.suggestModel, maxTokens: 60, signal: run.ctl.signal,
+            role: "cheap", model: req.suggestModel, maxTokens: 60, signal: run.ctl.signal, source: { label: "Generate: choice text", ...ids },
           });
           const label = parseChoiceLabel(reply).slice(0, LIMITS.label);
           if (label) after.choiceLabel = label;
@@ -171,7 +173,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
           const reply = await completeChat(settings, {
             system: SYSTEM_CHOICES,
             messages: [{ role: "user", content: choicesPrompt(ready, shown, [], settings.contextTokens) }],
-            role: "cheap", model: req.suggestModel, maxTokens: 400, signal: run.ctl.signal,
+            role: "cheap", model: req.suggestModel, maxTokens: 400, signal: run.ctl.signal, source: { label: "Generate: choices", ...ids },
           });
           const found = parseChoices(reply);
           if (found.length) after.suggestions = found;

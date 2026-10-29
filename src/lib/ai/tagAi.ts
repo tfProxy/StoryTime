@@ -1,7 +1,7 @@
 // AI helpers for story tags: suggest which tags apply to a chapter (with a quote as evidence), and
 // help the author write a precise tag rule from a rough idea. All of it runs in the browser with
 // the user's own key; nothing is saved until the user accepts.
-import { completeChat } from "./client";
+import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, type PromptParts } from "./prompts";
 import { extractJson, type StoryInfo } from "./codexAi";
 import type { Settings } from "../settings";
@@ -128,7 +128,7 @@ export function quoteInText(quote: string, body: string): boolean {
   return squash(body).includes(q);
 }
 
-export type SuggestOptions = TagRequestOptions & { signal?: AbortSignal; role?: "main" | "cheap" };
+export type SuggestOptions = TagRequestOptions & { signal?: AbortSignal; role?: "main" | "cheap"; source?: AiSourceIds };
 
 export async function suggestTagsForChapter(settings: Settings, opts: SuggestOptions): Promise<TagSuggestion[]> {
   if (opts.tags.length === 0) return [];
@@ -139,6 +139,7 @@ export async function suggestTagsForChapter(settings: Settings, opts: SuggestOpt
     // Like a single-chapter codex scan: the main model, unless the caller is tagging many chapters.
     role: opts.role ?? "main",
     signal: opts.signal,
+    source: { label: "Tags", ...opts.source },
   });
   const found = parseTagReply(extractJson(reply), opts.tags);
   // A quote that isn't in the chapter is a sign the tag was made up, so the suggestion goes too.
@@ -195,7 +196,7 @@ export function parseRuleReply(raw: unknown, idea: string, name?: string): RuleD
   };
 }
 
-export type DraftRuleOptions = RuleOptions & { signal?: AbortSignal };
+export type DraftRuleOptions = RuleOptions & { signal?: AbortSignal; source?: AiSourceIds };
 
 export async function draftRule(settings: Settings, opts: DraftRuleOptions): Promise<RuleDraft> {
   const request = ruleRequest(settings.contextTokens, opts);
@@ -203,6 +204,7 @@ export async function draftRule(settings: Settings, opts: DraftRuleOptions): Pro
     system: request.system,
     messages: [{ role: "user", content: request.message }],
     signal: opts.signal,
+    source: { label: "Tag rule", ...opts.source },
   });
   let json: unknown = null;
   try {

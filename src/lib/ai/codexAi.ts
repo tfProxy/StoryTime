@@ -1,7 +1,7 @@
 // AI helpers for the codex: draft or update a single entry (runs in the browser with the user's own key; nothing is
 // saved until the user accepts and posts), and the JSON helpers other AI code shares. Reading chapters for codex
 // changes is the codex check (codexCheckAi.ts), which runs on the server.
-import { completeChat } from "./client";
+import { completeChat, type AiSourceIds } from "./client";
 import { buildStorySoFar, estimateTokens, notesBlock, parseInstruction, type ContextChapter, type PromptParts } from "./prompts";
 import { ENTRY_TYPES, type CodexEntry, type EntryType } from "../codex";
 import type { Settings } from "../settings";
@@ -107,6 +107,7 @@ export type DraftEntryOptions = {
   /** Chapters to re-read in "update" mode, oldest first. */
   since?: PathChapter[];
   signal?: AbortSignal;
+  source?: AiSourceIds;
 };
 
 export type DraftEntryResult = { fields: EntryFields; changedInChapterId: string | null };
@@ -175,6 +176,7 @@ export async function draftEntry(settings: Settings, opts: DraftEntryOptions): P
     system: request.system,
     messages: [{ role: "user", content: request.message }],
     signal: opts.signal,
+    source: { label: "Codex entry draft", ...opts.source },
   });
   const json = extractJson(reply) as Record<string, unknown>;
   const fields = parseFields(json);

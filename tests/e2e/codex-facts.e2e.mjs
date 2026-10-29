@@ -79,8 +79,9 @@ await page.getByLabel("New form name").fill("vixen");
 await page.getByLabel("Stage (optional)").fill("change complete");
 ok(await ed.getByText("The AI will read: Form: vixen, change complete.").isVisible(), "the form form shows what the AI will read");
 await page.getByRole("button", { name: "Save", exact: true }).click();
-await ed.getByText("Form: vixen").first().waitFor();
-ok(await ed.getByText(/change complete/).first().isVisible(), "form stage shown");
+// Wait for the saved line itself: the form's preview already says "Form: vixen, change complete" before the save.
+const savedForm = ed.locator(".facts-form", { hasText: "change complete" });
+ok(await savedForm.waitFor().then(() => true, () => false), "form stage shown");
 await addFact({ aspect: "Tail", form: "vixen", text: "a bushy russet tail" });
 await line("a bushy russet tail").waitFor();
 ok(await ed.getByText("human (not current: not sent to the AI)").isVisible(), "human group marked not current");

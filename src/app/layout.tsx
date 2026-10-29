@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import AiLogRecorder from "@/components/AiLogRecorder";
 import WorkQueueProvider from "@/components/WorkQueue";
 import WorkQueueStatus from "@/components/WorkQueueStatus";
 import SiteMenu from "@/components/SiteMenu";
@@ -14,6 +15,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en">
       <body>
+        {/* Sends this browser's AI calls to the prompt history. */}
+        <AiLogRecorder />
         {/* Holds the picture jobs for the whole app, so they go on while pages change. */}
         <WorkQueueProvider>
           <header className="site-header">

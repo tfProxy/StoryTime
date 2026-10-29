@@ -3,6 +3,7 @@
 // The drawing itself goes through the app's picture queue (see `WorkQueue`), so it is recorded in the job log and
 // shows in the header; this file only prepares and finishes it.
 import { combinePrompts, withArtStyle, withoutGiven, writeImagePrompt, type ImagePrompt } from "../ai/imagePrompt";
+import type { AiSourceIds } from "../ai/client";
 import { fetchImage, type ComfyImage } from "../comfy/client";
 import { drawPresetFamily, drawPresetIpAdapter, toEditModels, type EditModels } from "../comfy/editModelsData";
 import { modelChecksFor } from "../comfy/check";
@@ -74,7 +75,7 @@ export async function writePicturePrompt(
   setup: PictureSetup,
   task: PictureTask,
   options: RunOptions,
-  deps: { write?: typeof writeImagePrompt; signal?: AbortSignal } = {},
+  deps: { write?: typeof writeImagePrompt; signal?: AbortSignal; source?: AiSourceIds } = {},
 ): Promise<WrittenPrompt> {
   const draw = presetOf(settings, setup);
   const style = draw.promptStyle;
@@ -89,6 +90,7 @@ export async function writePicturePrompt(
     fixed: combinePrompts(style, setup.fixed, draw.prompt),
     model: options.suggestModel ?? null,
     signal: deps.signal,
+    source: deps.source,
   });
   const prompt = withArtStyle(withoutGiven(made.prompt, [setup.fixed, draw.prompt], style), setup.story.art_style, style);
   const negative = withoutGiven(made.negative, [draw.negative], style);

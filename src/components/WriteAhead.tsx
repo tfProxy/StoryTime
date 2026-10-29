@@ -113,7 +113,7 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
     setError(null);
     try {
       const request = planRequest();
-      const reply = await completeChat(settings, { system: request.system, messages: [{ role: "user", content: request.message }], role: "main", model: usableRef(settings, writeModel) });
+      const reply = await completeChat(settings, { system: request.system, messages: [{ role: "user", content: request.message }], role: "main", model: usableRef(settings, writeModel), source: { label: "Write ahead", storyId, chapterId: chapter.id } });
       const found = parseIdeas(reply, arcCount);
       if (found.length === 0) throw new Error("The model's plan could not be read. Try Plan again.");
       setSteps(found.map((i) => ({ choice: i.choice.slice(0, LIMITS.label), direction: i.direction })));

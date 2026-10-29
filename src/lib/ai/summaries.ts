@@ -2,7 +2,7 @@
 // `path_summary` of the whole story up to and including it, so later prompts can condense old
 // chapters without sending them. They are generated in the browser with the user's own
 // (cheaper) model and saved to the server for reuse.
-import { completeChat } from "./client";
+import { completeChat, type AiSourceIds } from "./client";
 import { extractJson } from "./codexAi";
 import { summaryCoverageIndex, type ContextChapter, type PromptParts } from "./prompts";
 import { LIMITS } from "../limits";
@@ -61,6 +61,7 @@ export async function summarizeChapter(
   settings: Settings,
   opts: SummaryInput & {
     signal?: AbortSignal;
+    source?: AiSourceIds;
     /** Called as the reply streams in, with whatever of the two summaries has been written so far. */
     onText?: (partial: Summaries) => void;
   },
@@ -79,6 +80,7 @@ export async function summarizeChapter(
         role: "cheap",
         maxTokens: 1500,
         signal: opts.signal,
+        source: { label: "Summary", ...opts.source },
       },
       opts.onText && ((soFar) => opts.onText!(parsePartialSummaryReply(soFar, own))),
     );
@@ -136,6 +138,8 @@ export type SummaryOptions = {
   signal?: AbortSignal;
   /** The fetch that saves the summaries on the server: the page's own by default; the server's worker passes one that reaches its own routes. */
   fetch?: typeof fetch;
+  /** Who is asking; each call is also marked with the chapter it summarizes. */
+  source?: AiSourceIds;
   onProgress?: (done: number, total: number) => void;
   /** Streamed text for the chapter at `index` in the path, as in summarizeChapter. */
   onText?: (partial: Summaries, index: number) => void;
@@ -169,6 +173,7 @@ export async function ensurePathSummaries(
       previous,
       chapter: c,
       signal: opts.signal,
+      source: { ...opts.source, chapterId: c.id ?? opts.source?.chapterId },
       onText: opts.onText && ((p) => opts.onText!(p, i)),
     });
     // Saving is best-effort: the summary is still useful for this prompt if the server refuses.

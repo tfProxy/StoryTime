@@ -159,6 +159,11 @@ export default function CodexInbox({ storyId, chapterId }: Props) {
           <h3 className="inbox-chapter">
             <Link href={`/c/${ch.id}/codex`}>{ch.title}</Link>
           </h3>
+          <div className="meta">
+            <Link href={`/ai-log?chapter=${encodeURIComponent(ch.id)}&source=${encodeURIComponent("Codex check")}`} className="ai-log-link">
+              Show the AI exchange
+            </Link>
+          </div>
           {ch.entries.map((en) => {
             const eligible = en.list.filter((s) => s.status === "open" && s.kind !== "conflict" && s.kind !== "entry");
             return (

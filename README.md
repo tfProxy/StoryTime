@@ -75,6 +75,9 @@ and, for pictures, your own ComfyUI machine.
   server (the header shows it; **Open queue** for the list). It keeps going with every tab closed. So
   the AI and ComfyUI addresses in Settings must work from the machine StoryTime runs on; **Test from
   server** in Settings checks them.
+- **Prompt history** (in the ☰ menu) shows what the app recently sent to the AI and what came back, so
+  you can copy an exchange and have a prompt improved. It records by itself and keeps only the last
+  200 calls from the last 3 days.
 - **The codex follows the branch.** A codex change is dated to a chapter and applies to that chapter
   and everything after it on that branch only.
 - **Summaries keep prompts short.** Each chapter has a summary (yours, or the AI's when you post).

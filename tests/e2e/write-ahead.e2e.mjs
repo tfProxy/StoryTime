@@ -98,7 +98,7 @@ try {
   ok(await page.getByText(/Wrote 2 chapters, marked not reviewed\./).isVisible(), "the page ends with “Wrote 2 chapters, marked not reviewed”");
   ok(await page.getByRole("link", { name: "Open in outline" }).isVisible() && await page.getByText(/codex isn't updated by a run/i).isVisible(), "…with Open in outline and the codex note");
   ok((await page.getByRole("list").filter({ hasText: "Go left" }).first().innerText()).includes("They face Go left."), "…and each task shows what was planned to happen");
-  const links = await page.locator(".ai-run-tasks a").count();
+  const links = await page.locator(".ai-run-tasks a:not(.ai-log-link)").count();
   ok(links === 2, "…and the written ones link to their chapters");
   await page.getByRole("button", { name: "Mark all reviewed" }).click();
   ok(await until(async () => await page.getByText(/Marked 2 reviewed/).isVisible(), "marked"), "Mark all reviewed marks them");

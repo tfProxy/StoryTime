@@ -430,6 +430,7 @@ export default function SettingsForm() {
         messages: [{ role: "user", content: SAMPLE_REQUEST.message }],
         maxTokens: 120,
         signal: ctl.signal,
+        source: { label: "Connection test" },
       })) {
         text += piece;
         setReply(text);

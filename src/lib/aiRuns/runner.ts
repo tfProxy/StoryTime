@@ -39,6 +39,7 @@ import { extractFacts, judgeConflict } from "../ai/factAi";
 import { summaryCheck } from "../ai/summaryCheckAi";
 import { CHANGE_EVENT_TAGS, continuityFingerprint, findConflicts, type Conflict } from "../continuity";
 import { suggestTagsForChapter } from "../ai/tagAi";
+import type { AiSourceIds } from "../ai/client";
 import { planNext, storyContextOf, summarize, withPathSummaries, writeOneChapter, writeText, type PlannedChoice, type Stream } from "./writeChapter";
 
 /** How often a run renews its lease while a step works (the server lets it lapse after two minutes). */
@@ -73,7 +74,9 @@ export type StepEnv = {
 const fetcher = (deps?: RunnerDeps): Fetch => deps?.fetch ?? ((input, init) => fetch(input, init));
 const norm = (s: string) => s.toLowerCase().replace(/[\s"'“”‘’.!?]+/g, " ").trim();
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-const unfinished = (t: RunTask) => t.status === "todo" || t.status === "written";
+/** What an AI call made for this run records as its source (the prompt history): the story, the run and the chapter. */
+const sourceOf = (run: AiRun, chapterId?: string | null): AiSourceIds => ({ storyId: run.story_id, runId: run.id, chapterId: chapterId ?? undefined });
+const unfinished =(t: RunTask) => t.status === "todo" || t.status === "written";
 const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
 
 /** Takes the run's lease for this tab and returns the run. Throws an `ApiError` with status 409 when another tab has it. */
@@ -278,10 +281,10 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<StepResult> {
 /** Does the step's work; returns the task list with the task updated (and the tasks it planned, for a plan). Posts and adds choices on the server; the caller saves the run. */
 async function doStep(picked: Pick, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
   if (picked.kind === "tags") return doTags(picked.task as TagsTask, run, list, env, f);
-  if (picked.kind === "facts") return doFacts(picked.task as FactsTask, list, env, f);
-  if (picked.kind === "summary") return doSummary(picked.task as SummaryTask, list, env, f);
-  if (picked.kind === "codex") return doCodex(picked.task as CodexTask, list, env, f);
-  if (picked.kind === "notes") return doNotes(picked.task as NotesTask, list, env, f);
+  if (picked.kind === "facts") return doFacts(picked.task as FactsTask, run, list, env, f);
+  if (picked.kind === "summary") return doSummary(picked.task as SummaryTask, run, list, env, f);
+  if (picked.kind === "codex") return doCodex(picked.task as CodexTask, run, list, env, f);
+  if (picked.kind === "notes") return doNotes(picked.task as NotesTask, run, list, env, f);
   if (picked.kind === "continuity") return doContinuity(picked.task as ContinuityTask, run, list, env, f);
   if (picked.kind === "prompt") return doPrompt(picked.task as PictureTask, run, list, env, f);
   if (picked.kind === "plan") return doPlan(picked.task as PlanTask, run, list, env, f);
@@ -337,6 +340,7 @@ async function doPlan(task: PlanTask, run: AiRun, list: RunTask[], env: StepEnv,
     options: run.options,
     signal,
     stream: env.deps?.stream,
+    source: sourceOf(run, task.chapterId),
     strict: true,
   });
   let current = context;
@@ -364,8 +368,8 @@ async function doWrite(task: WriteTask, run: AiRun, list: RunTask[], env: StepEn
   let planned: PlannedChoice[];
   if (grouped) {
     // The text alone, with the choices it was given; its summaries and suggested choices follow in the cheap-model phase.
-    const ctx = await withPathSummaries(settings, storyContextOf(parent, task.label), signal, (s) => onEvent?.({ type: "status", text: s }), f);
-    const out = await writeText(settings, { ctx, label: task.label, direction, options: run.options, signal, onText: text, stream: env.deps?.stream });
+    const ctx = await withPathSummaries(settings, storyContextOf(parent, task.label), signal, (s) => onEvent?.({ type: "status", text: s }), f, sourceOf(run));
+    const out = await writeText(settings, { ctx, label: task.label, direction, options: run.options, signal, onText: text, stream: env.deps?.stream, source: sourceOf(run) });
     planned = task.choices.given.map((label) => ({ label, direction: "", isNew: false }));
     chapter = { ...out, choices: task.choices.given, ai_run_id: run.id, ...target };
   } else {
@@ -380,6 +384,7 @@ async function doWrite(task: WriteTask, run: AiRun, list: RunTask[], env: StepEn
       onText: text,
       onStatus: (s) => onEvent?.({ type: "status", text: s }),
       stream: env.deps?.stream,
+      source: sourceOf(run),
       fetch: f,
     });
     planned = out.choices;
@@ -416,7 +421,7 @@ async function doFinish(task: WriteTask, run: AiRun, list: RunTask[], env: StepE
 
   if (!chapter.summary || !chapter.path_summary) {
     onEvent?.({ type: "status", text: "Summarizing…" });
-    const s = await summarize(settings, { story, previous: before.at(-1)?.path_summary ?? null, chapter, options: run.options, signal, stream: env.deps?.stream });
+    const s = await summarize(settings, { story, previous: before.at(-1)?.path_summary ?? null, chapter, options: run.options, signal, stream: env.deps?.stream, source: sourceOf(run, task.chapterId) });
     if (s) await putSummary(f, chapter.id, chapter.revision, s.summary, s.path_summary).catch(() => {});
   }
 
@@ -433,6 +438,7 @@ async function doFinish(task: WriteTask, run: AiRun, list: RunTask[], env: StepE
     options: run.options,
     signal,
     stream: env.deps?.stream,
+    source: sourceOf(run, task.chapterId),
   });
   for (const p of planned.filter((x) => x.isNew)) await addChoice(f, chapter.id, p.label);
   if (planned.some((p) => p.isNew)) context = await getContext(f, chapter.id);
@@ -450,7 +456,7 @@ async function doPrompt(task: PictureTask, run: AiRun, list: RunTask[], env: Ste
   if (await hasPicture(f, task.chapterId, task.slot)) return replace(list, { ...task, status: "done", error: undefined });
   env.onEvent?.({ type: "status", text: `Writing the picture prompt for “${task.label ?? "the chapter"}”…` });
   const setup = await loadSetup(f, task.chapterId);
-  const written = await writePicturePrompt(env.settings, f, setup, task, run.options, { write: env.deps?.writePrompt, signal: env.signal });
+  const written = await writePicturePrompt(env.settings, f, setup, task, run.options, { write: env.deps?.writePrompt, signal: env.signal, source: sourceOf(run, task.chapterId) });
   return replace(list, { ...task, status: "written", prompt: written.prompt, negative: written.negative, error: undefined });
 }
 
@@ -480,6 +486,7 @@ async function doTags(task: TagsTask, run: AiRun, list: RunTask[], env: StepEnv,
     tags: rules,
     signal: env.signal,
     role: "cheap",
+    source: sourceOf(run, task.chapterId),
   });
   let added = 0;
   try {
@@ -498,7 +505,7 @@ async function doTags(task: TagsTask, run: AiRun, list: RunTask[], env: StepEnv,
  * chapter is read again here, since the run may be old: one edited since the run was made (or while the AI read it) is
  * skipped.
  */
-async function doFacts(task: FactsTask, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
+async function doFacts(task: FactsTask, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
   const context = await getContext(f, task.chapterId);
   const chapter = context.path.at(-1)!;
   const skip = (why: string) => replace(list, { ...task, status: "skipped", error: why });
@@ -509,6 +516,7 @@ async function doFacts(task: FactsTask, list: RunTask[], env: StepEnv, f: Fetch)
     codexNames: context.codex.map((c) => c.name),
     signal: env.signal,
     role: "cheap",
+    source: sourceOf(run, task.chapterId),
   });
   let saved = 0;
   try {
@@ -525,7 +533,7 @@ async function doFacts(task: FactsTask, list: RunTask[], env: StepEnv, f: Fetch)
  * The chapter is read again here, since the run may be old: one edited since the run was made (or while the AI read it)
  * is skipped.
  */
-async function doCodex(task: CodexTask, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
+async function doCodex(task: CodexTask, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
   const context = await getContext(f, task.chapterId);
   const chapter = context.path.at(-1)!;
   const skip = (why: string) => replace(list, { ...task, status: "skipped", error: why });
@@ -540,6 +548,7 @@ async function doCodex(task: CodexTask, list: RunTask[], env: StepEnv, f: Fetch)
     otherNames: entries.filter((e) => !shown.has(e)).map((e) => e.name),
     signal: env.signal,
     role: "cheap",
+    source: sourceOf(run, task.chapterId),
   });
   let saved = 0;
   try {
@@ -556,7 +565,7 @@ async function doCodex(task: CodexTask, list: RunTask[], env: StepEnv, f: Fetch)
  * leaves the facts it finds in the codex inbox, anchored at that chapter. The codex is read again here, since the run may
  * be old: an entry that is gone or has no notes, or a chapter edited since the run was made (or while the AI read), is skipped.
  */
-async function doNotes(task: NotesTask, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
+async function doNotes(task: NotesTask, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
   const context = await getContext(f, task.chapterId);
   const chapter = context.path.at(-1)!;
   const skip = (why: string) => replace(list, { ...task, status: "skipped", error: why });
@@ -566,7 +575,7 @@ async function doNotes(task: NotesTask, list: RunTask[], env: StepEnv, f: Fetch)
   if (!entry) return skip("Skipped: the entry is no longer in the codex.");
   if (!entry.content.trim()) return skip("Skipped: the entry has no notes.");
   env.onEvent?.({ type: "status", text: `Reading the notes of “${entry.name}”…` });
-  const suggestions = await runNotesToFacts(env.settings, { entry, signal: env.signal, role: "cheap" });
+  const suggestions = await runNotesToFacts(env.settings, { entry, signal: env.signal, role: "cheap", source: sourceOf(run, task.chapterId) });
   let saved = 0;
   try {
     saved = (await postNotesSuggestions(f, task.chapterId, task.revision, task.entryId, suggestions)).saved;
@@ -582,7 +591,7 @@ async function doNotes(task: NotesTask, list: RunTask[], env: StepEnv, f: Fetch)
  * the summary text it was about. The chapter is read again here, since the run may be old: one edited since the run was
  * made (or while the AI read it), or whose summary is now empty, is skipped.
  */
-async function doSummary(task: SummaryTask, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
+async function doSummary(task: SummaryTask, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
   const context = await getContext(f, task.chapterId);
   const chapter = context.path.at(-1)!;
   const skip = (why: string) => replace(list, { ...task, status: "skipped", error: why });
@@ -590,7 +599,7 @@ async function doSummary(task: SummaryTask, list: RunTask[], env: StepEnv, f: Fe
   const summary = chapter.summary ?? "";
   if (!summary.trim()) return skip("Skipped: the chapter has no summary.");
   env.onEvent?.({ type: "status", text: `Checking the summary of “${chapter.title}”…` });
-  const result = await summaryCheck(env.settings, { chapter: { title: chapter.title, body: chapter.body }, summary, signal: env.signal, role: "cheap" });
+  const result = await summaryCheck(env.settings, { chapter: { title: chapter.title, body: chapter.body }, summary, signal: env.signal, role: "cheap", source: sourceOf(run, task.chapterId) });
   try {
     await postSummaryCheck(f, task.chapterId, { revision: task.revision, summary, verdict: result.ok ? "ok" : "wrong", ...(!result.ok && { problem: result.problem }) });
   } catch (e) {
@@ -642,6 +651,7 @@ async function doContinuity(task: ContinuityTask, run: AiRun, list: RunTask[], e
       chapterTitles: { before: before.title, after: after.title },
       signal: env.signal,
       role: "cheap",
+      source: sourceOf(run, conflict.after.chapterId),
     });
     await postVerdict(f, run.story_id, {
       verdict,

@@ -30,6 +30,7 @@ Match the checks to the size of the change. GitHub Actions runs everything (type
 - Screenshots: `node tests/shot.mjs <path>... --out=<scratchpad>` with the app running takes each page at desktop and phone width and prints the PNG paths. Look at the result and describe what you see, rather than relying on tests alone.
 - The API and browser suites run against the existing build, so build first after changing app code, or a stale build gives false failures.
 - React: never put hooks or effects after an early `return`.
+- The prompt-history table `ai_calls_v*` (`src/lib/aiLog.ts`) is never migrated and is not in `MIGRATIONS`: when its shape changes, rename it (`ai_calls_v2`); on start the server drops the old one and creates the new one.
 - SQL: the number of `?` placeholders must match the parameters passed.
 - After adding a migration (`MIGRATIONS` in `src/lib/db.ts`), restart the dev server: it caches the database connection and will not pick up the new schema.
 - When finishing, say plainly what you could not verify (touch, a real phone, the NAS, a real ComfyUI) and give a one- or two-step manual check for it.
