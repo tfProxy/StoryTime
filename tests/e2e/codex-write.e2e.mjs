@@ -92,8 +92,12 @@ await drawer.getByRole("button", { name: "Add entry" }).click();
 await drawer.getByRole("heading", { name: "Newbie" }).waitFor();
 // a fact on the new entry is held in the draft as well
 await drawer.getByRole("button", { name: "+ Add a fact" }).click();
-const factEffect = drawer.locator(".facts").getByLabel("Takes effect from", { exact: true });
-ok((await factEffect.inputValue()) === "draft" && (await factEffect.locator("option").count()) === 1, "a new entry's fact can only take effect from this chapter");
+const factEffect = drawer.locator(".facts .chapter-picker");
+ok(
+  (await factEffect.getByRole("button", { name: "This chapter", exact: true }).getAttribute("aria-pressed")) === "true" &&
+    (await factEffect.locator(".chapter-picker-pill").count()) === 1,
+  "a new entry's fact can only take effect from this chapter",
+);
 await drawer.getByLabel("Aspect").first().fill("Hair");
 await drawer.getByLabel("Fact", { exact: true }).fill("Bright red hair.");
 await drawer.getByRole("button", { name: "Save", exact: true }).click();
@@ -143,7 +147,9 @@ ok(await page.getByText(/Codex changes to 2 entries will be saved with this chap
 // …unless an earlier chapter is picked
 await row("Qux").getByRole("button", { name: "Edit" }).click();
 await drawer.getByLabel(/Keywords/).fill("the hermit");
-await drawer.getByLabel(/Takes effect from/).selectOption({ label: "Root (saved now)" });
+ok((await drawer.getByRole("button", { name: "This chapter", exact: true }).getAttribute("aria-pressed")) === "true", "in the draft, “Takes effect from” starts on this chapter (saved when you post)");
+await drawer.getByRole("button", { name: "Previous chapter (Root)" }).click();
+ok(await drawer.getByText(/Saved now/).isVisible(), "…and an earlier chapter says it is saved now");
 await drawer.getByRole("button", { name: "Save changes" }).click();
 for (let i = 0; i < 50 && (await codexAt(root)).find((e) => e.name === "Qux").aliases.join() !== "the hermit"; i++) await page.waitForTimeout(100);
 ok((await codexAt(root)).find((e) => e.name === "Qux").aliases.join() === "the hermit", "picking an earlier chapter saves straight away");
@@ -167,8 +173,13 @@ ok(await drawer.locator(".entry-card", { hasText: "Newbie" }).isVisible(), "the 
 await drawer.locator(".entry-card", { hasText: "Zed" }).click();
 await drawer.getByRole("heading", { name: "Zed" }).waitFor();
 await drawer.getByRole("button", { name: "+ Add a fact" }).click();
-const effect = await factEffect.locator("option").allInnerTexts();
-ok(effect[0] === "This chapter (saved when you save it)" && effect.length === 2 && effect[1] === "Root (saved now)", "the chapter being edited is “this chapter”; only earlier ones save now: " + effect.join(" | "));
+const effect = (await factEffect.locator(".chapter-picker-pill").allInnerTexts()).join(" | ");
+ok(
+  effect === "This chapter | Previous chapter (Root)" &&
+    (await factEffect.getByRole("button", { name: "This chapter", exact: true }).getAttribute("aria-pressed")) === "true" &&
+    /Saved when you save it/.test(await factEffect.locator(".chapter-picker-explain").innerText()),
+  "the chapter being edited is “this chapter”, saved with the edit; the one before it is offered too: " + effect,
+);
 await drawer.getByLabel("Aspect").first().fill("Mood");
 await drawer.getByLabel("Fact", { exact: true }).fill("Cheerful at last.");
 await drawer.getByRole("button", { name: "Save", exact: true }).click();

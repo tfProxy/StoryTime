@@ -12,6 +12,7 @@ import type { StartPicture } from "@/lib/comfy/startPicture";
 import { drawPresetFor } from "@/lib/comfy/presets";
 import { referenceChoices, restoreReference, type RefPool } from "@/lib/comfy/referenceChoices";
 import { useReferences, type RefRequest } from "./useReferences";
+import ChapterTreePicker, { type PickerChapter } from "./ChapterTreePicker";
 import ModelPicker from "./ModelPicker";
 import PromptButton from "./PromptButton";
 import PromptFields from "./PromptFields";
@@ -28,8 +29,8 @@ const SOURCE_NAMES: Record<CoverSource, string> = {
   path: "A path through the story",
 };
 
-/** A chapter the path can end at, in the outline's order; `depth` 0 is the first chapter. */
-export type CoverChapter = { id: string; title: string; depth: number };
+/** A chapter the path can end at, in the outline's order; `parent_id` is null for the first chapter, `label` the choice that leads here. */
+export type CoverChapter = PickerChapter;
 
 /** What the prompt can be written from: chapters from the first one on, and the codex at the last of them. */
 export type CoverContext = { path: ContextChapter[]; codex: ContextCodexEntry[] };
@@ -191,21 +192,18 @@ export default function CoverPromptPanel({
             </select>
           </label>
           {boxes.source === "path" && (
-            <label className="row" style={{ gap: "0.4rem", minWidth: 0 }}>
-              ending at
-              <select
-                aria-label="Path ends at"
-                value={pathEnd ?? ""}
-                onChange={(e) => change({ path_chapter_id: e.target.value })}
-                style={{ width: "auto", minWidth: 0, maxWidth: "100%" }}
-              >
-                {chapters.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {`${"– ".repeat(c.depth)}${c.title}`}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="row" style={{ gap: "0.4rem", minWidth: 0, flex: "1 1 16rem", alignItems: "start" }}>
+              <label id="cover-path-end-label" htmlFor="cover-path-end" style={{ paddingTop: "0.45rem" }}>
+                ending at
+              </label>
+              <ChapterTreePicker
+                id="cover-path-end"
+                labelledBy="cover-path-end-label"
+                chapters={chapters}
+                value={pathEnd}
+                onChange={(id) => change({ path_chapter_id: id })}
+              />
+            </div>
           )}
         </div>
         {!opening && <p className="meta" style={{ margin: 0 }}>The story has no chapters yet, so the cover is written from its summary.</p>}

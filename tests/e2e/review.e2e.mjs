@@ -69,8 +69,11 @@ try {
   ok((await tabLink("Issues").getAttribute("aria-current")) === "page", "clicking an Overview card opens that tab");
 
   // The Show picker narrows to a chapter and keeps the tab.
-  await page.locator("#bible-chapter").selectOption(noSummary);
-  await page.getByRole("button", { name: "Show", exact: true }).click();
+  const showChapter = async (title) => {
+    await page.locator("#bible-chapter").click();
+    await page.getByRole("dialog", { name: "Choose a chapter" }).getByRole("button", { name: new RegExp(`^${title}`) }).click();
+  };
+  await showChapter("Missing one");
   await page.waitForURL(new RegExp(`tab=issues&chapter=${noSummary}`));
   ok((await tabLink("Issues").getAttribute("aria-current")) === "page" && (await page.getByRole("link", { name: "Fix the summary" }).count()) === 1, "the Show picker narrows to a chapter and keeps the tab");
   await page.getByRole("link", { name: "Show the whole story" }).click();
@@ -96,8 +99,7 @@ try {
   ok((await page.getByRole("button", { name: "Check this chapter" }).count()) === 0 && await page.getByRole("button", { name: "Check every chapter", exact: true }).isVisible(), "no single-chapter check until a chapter is chosen");
 
   // Choosing a chapter with the Show picker.
-  await page.locator("#bible-chapter").selectOption(stale);
-  await page.getByRole("button", { name: "Show", exact: true }).click();
+  await showChapter("Stale one");
   await page.waitForURL(new RegExp(`tab=codex&chapter=${stale}`));
   ok(await page.getByText(/Showing .*Stale one.* only/).isVisible(), "choosing a chapter filters the page to it");
   ok(await page.getByRole("button", { name: "Check this chapter" }).isVisible(), "the codex check buttons are shown for the chosen chapter");

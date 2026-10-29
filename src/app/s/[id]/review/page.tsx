@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import BulkSummaries from "@/components/BulkSummaries";
+import ChapterTreePicker from "@/components/ChapterTreePicker";
 import CodexCheck from "@/components/CodexCheck";
 import CodexEntryCards from "@/components/CodexEntryCards";
 import CodexEntryList from "@/components/CodexEntryList";
@@ -70,6 +71,7 @@ export default async function StoryBiblePage({
     const s = q.toString();
     return s ? `${base}?${s}` : base;
   };
+  const pickerChapters = chapters.map((c) => ({ id: c.id, title: c.title, parent_id: c.parent_id, label: c.choice_label }));
   const treeChapters = chapters.map((c) => ({ id: c.id, title: c.title, parent_id: c.parent_id }));
 
   // Issues, narrowed to the chosen chapter, by kind and status.
@@ -114,23 +116,20 @@ export default async function StoryBiblePage({
         <Link href={`/s/${story.id}/outline`}>← Outline of {story.title}</Link>
       </p>
       <h1>Story Bible</h1>
-      <form method="get" className="row" style={{ alignItems: "end", margin: "0.5rem 0 1rem" }}>
+      <form method="get" className="row" style={{ alignItems: "start", margin: "0.5rem 0 1rem" }}>
         {tab !== "overview" && <input type="hidden" name="tab" value={tab} />}
-        <label htmlFor="bible-chapter" style={{ display: "grid", gap: "0.15rem" }}>
-          <span className="meta" style={{ margin: 0 }}>Show</span>
-          <select id="bible-chapter" name="chapter" defaultValue={chosen?.id ?? ""}>
-            <option value="">The whole story</option>
-            {chapters.map((c) => (
-              <option key={c.id} value={c.id}>
-                {"· ".repeat(c.depth)}
-                {c.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="submit" className="secondary">
+        <label id="bible-chapter-label" htmlFor="bible-chapter" className="meta" style={{ margin: 0, paddingTop: "0.55rem" }}>
           Show
-        </button>
+        </label>
+        <ChapterTreePicker
+          id="bible-chapter"
+          labelledBy="bible-chapter-label"
+          name="chapter"
+          submitOnPick
+          allowWhole
+          chapters={pickerChapters}
+          value={chosen?.id ?? null}
+        />
       </form>
       {chosen && (
         <p className="meta">
@@ -449,18 +448,12 @@ export default async function StoryBiblePage({
           />
         )}
         {!chosen && (
-          <form method="get">
+          <form method="get" className="row" style={{ alignItems: "start" }}>
             <input type="hidden" name="tab" value="tags" />
-            <label htmlFor="tag-chapter">Tag a chapter by hand</label>
-            <select id="tag-chapter" name="chapter">
-              {chapters.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {"· ".repeat(c.depth)}
-                  {c.title}
-                </option>
-              ))}
-            </select>{" "}
-            <button type="submit">Choose</button>
+            <label id="tag-chapter-label" htmlFor="tag-chapter" style={{ paddingTop: "0.45rem" }}>
+              Tag a chapter by hand
+            </label>
+            <ChapterTreePicker id="tag-chapter" labelledBy="tag-chapter-label" name="chapter" submitOnPick chapters={pickerChapters} value={chapters[0].id} />
           </form>
         )}
 

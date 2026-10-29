@@ -103,6 +103,8 @@ const again = sumCalls().length;
 // browser starts fresh rather than racing it.
 const draftUrl = `${BASE}/api/drafts/${encodeURIComponent(`new:${lastId}`)}`;
 for (let i = 0; i < 100 && !(await (await fetch(draftUrl)).json()).draft?.body; i++) await new Promise((r) => setTimeout(r, 100));
+// Leave the writing page first: while it is open its autosave can put the draft back after the delete.
+await page.goto("about:blank");
 await fetch(draftUrl, { method: "DELETE" });
 const page2 = await (await browser.newContext()).newPage();
 await page2.goto(`${BASE}/c/${lastId}/write?ai=1`);

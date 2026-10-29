@@ -3824,6 +3824,325 @@ button.refine-fit {
   }
 }
 
+/* "Takes effect from" (ChapterPathPicker): quick-choice pills, the path of chapters under "Earlier…", and a line saying what the pick means. */
+.chapter-picker {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr);
+  column-gap: 0.75rem;
+  align-items: start;
+}
+
+.chapter-picker-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding-top: 0.35rem;
+}
+
+.chapter-picker-body {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.chapter-picker-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chapter-picker-pill {
+  padding: 0.3rem 0.75rem;
+  border-radius: 1rem;
+  background: var(--card);
+  color: var(--fg);
+  border-color: var(--line);
+  font-size: 0.9rem;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.chapter-picker-pill[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+
+.chapter-picker-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.1rem;
+  padding: 0.6rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.chapter-picker-chapter {
+  padding: 0.2rem 0.45rem;
+  background: none;
+  border-color: transparent;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-size: 0.9rem;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.chapter-picker-sep {
+  color: var(--muted);
+  padding: 0 0.15rem;
+}
+
+.chapter-picker-chapter[data-tint="after"] {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.chapter-picker-chapter[data-tint="chosen"] {
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.chapter-picker-explain {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 640px) {
+  .chapter-picker {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0.25rem;
+  }
+
+  .chapter-picker-label {
+    padding-top: 0;
+  }
+
+  .chapter-picker-path {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .chapter-picker-sep {
+    display: none;
+  }
+}
+
+/* Any chapter of the story (ChapterTreePicker): a button showing the chapter and its path, and a panel with the story as a tree and a search box; a bottom sheet on a phone. */
+.chapter-tree-picker {
+  flex: 1 1 14rem;
+  min-width: 0;
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+}
+
+button.chapter-tree-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.05rem;
+  width: 100%;
+  max-width: 28rem;
+  padding: 0.45rem 0.75rem;
+  background: var(--card);
+  color: var(--fg);
+  border-color: var(--line);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.chapter-tree-button-title {
+  font-weight: 600;
+}
+
+.chapter-tree-button-path {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.chapter-tree-button-change {
+  font-size: 0.8rem;
+  color: var(--accent);
+}
+
+.chapter-tree-backdrop {
+  display: none;
+}
+
+.chapter-tree-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  max-height: 26rem;
+  max-width: 40rem;
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px -16px rgba(0, 0, 0, 0.45);
+}
+
+.chapter-tree-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.chapter-tree-head button {
+  padding: 0.15rem 0.7rem;
+  font-size: 0.9rem;
+}
+
+.chapter-tree-search {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.chapter-tree-body {
+  overflow-y: auto;
+  padding: 0.4rem 0.4rem 0.7rem;
+}
+
+.chapter-tree-body ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.chapter-tree-body ul ul {
+  margin-left: 0.6rem;
+  padding-left: 1rem;
+  border-left: 1px dashed var(--line);
+}
+
+.chapter-tree-node {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.1rem;
+}
+
+.chapter-tree-body button {
+  background: none;
+  color: var(--fg);
+  border-color: transparent;
+}
+
+.chapter-tree-body button:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+button.chapter-tree-fold,
+span.chapter-tree-fold {
+  flex: none;
+  width: 1.75rem;
+  padding: 0.25rem 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.chapter-tree-chapter,
+.chapter-tree-results button,
+.chapter-tree-whole {
+  text-align: left;
+  padding: 0.25rem 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+.chapter-tree-chapter {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.5rem;
+}
+
+.chapter-tree-chapter[data-on-path="true"] {
+  font-weight: 600;
+}
+
+.chapter-tree-body button[aria-current="true"] {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.chapter-tree-more,
+.chapter-tree-choice,
+.chapter-tree-path {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.chapter-tree-body button[aria-current="true"] .chapter-tree-more,
+.chapter-tree-body button[aria-current="true"] .chapter-tree-choice,
+.chapter-tree-body button[aria-current="true"] .chapter-tree-path {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.chapter-tree-whole {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.3rem;
+  font-weight: 600;
+}
+
+.chapter-tree-results button {
+  display: grid;
+  width: 100%;
+  gap: 0.05rem;
+}
+
+.chapter-tree-results .chapter-tree-title {
+  font-weight: 600;
+}
+
+.chapter-tree-results mark {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
+
+.chapter-tree-empty {
+  margin: 0;
+  padding: 0.6rem;
+  color: var(--muted);
+}
+
+@media (max-width: 640px) {
+  .chapter-tree-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.45);
+  }
+
+  .chapter-tree-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1001;
+    max-width: none;
+    max-height: 80vh;
+    max-height: 80dvh;
+    border-radius: 12px 12px 0 0;
+    border-bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
 /* The chapter path: earlier chapters (wrapping in their own block), the current one, then the chapters after it stacked. */
 .chapter-nav {
   margin: 0;

@@ -15,6 +15,7 @@ import {
   type LiveFact,
 } from "@/lib/codex";
 import type { PathChapter } from "@/lib/ai/codexAi";
+import ChapterPathPicker from "./ChapterPathPicker";
 
 type Props = {
   entry: CodexEntry;
@@ -37,6 +38,8 @@ type Props = {
 type Body = { op: "set" | "retire"; aspect: string; form: string; text: string; quote: string; fact_id?: string; anchor: string };
 /** A fact change for the draft to hold: no fact_id for a new fact. */
 export type HeldFact = Omit<Body, "anchor">;
+/** A held change is saved when the new chapter is posted, or when the edited chapter is saved. */
+type Held = "post" | "save";
 
 const NEW_FORM = "\u0000new";
 
@@ -56,7 +59,7 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
   const since = (id: string) => (id === DRAFT_ANCHOR ? "from this chapter" : path[0]?.id === id ? "from the start" : `since “${titleOf(id)}”`);
   // In the drawer, changes are held in the draft unless an earlier chapter is picked.
   const startAnchor = hold ? DRAFT_ANCHOR : chapterId;
-  const heldLabel = hold ? `This chapter (saved when you ${editingChapter ? "save" : "post"} it)` : undefined;
+  const heldLabel: Held | undefined = hold ? (editingChapter ? "save" : "post") : undefined;
 
   async function send(b: Body): Promise<boolean> {
     if (hold && b.anchor === DRAFT_ANCHOR) {
@@ -257,21 +260,20 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
   );
 }
 
-function ChapterSelect({ path, held, value, onChange }: { path: PathChapter[]; held?: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <label>
-      Takes effect from
-      <select aria-label="Takes effect from" value={value} onChange={(e) => onChange(e.target.value)}>
-        {held && <option value={DRAFT_ANCHOR}>{held}</option>}
-        {path.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.title}
-            {held ? " (saved now)" : ""}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
+function ChapterSelect({
+  path,
+  chapterId,
+  held,
+  value,
+  onChange,
+}: {
+  path: PathChapter[];
+  chapterId: string;
+  held?: Held;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return <ChapterPathPicker path={path} currentId={chapterId} value={value} onChange={onChange} draft={!!held} editing={held === "save"} />;
 }
 
 function FactForm({
@@ -290,8 +292,8 @@ function FactForm({
   path: PathChapter[];
   /** The chapter picked at first under "Takes effect from" (DRAFT_ANCHOR when `held` is given). */
   chapterId: string;
-  /** The label of the "held in the draft" choice, when there is one. */
-  held?: string;
+  /** When "This chapter" is held in the draft: whether it is saved when the chapter is posted or saved. */
+  held?: Held;
   usedAspects: string[];
   busy: boolean;
   onCancel: () => void;
@@ -361,7 +363,7 @@ function FactForm({
         Quote from the chapter
         <input aria-label="Quote from the chapter" placeholder="optional" value={quote} maxLength={FACT_LIMITS.quote} onChange={(e) => setQuote(e.target.value)} />
       </label>
-      <ChapterSelect path={path} held={held} value={anchor} onChange={setAnchor} />
+      <ChapterSelect path={path} chapterId={chapterId} held={held} value={anchor} onChange={setAnchor} />
       <div className="row">
         <button
           type="button"
@@ -392,7 +394,7 @@ function FormForm({
   entry: CodexEntry;
   path: PathChapter[];
   chapterId: string;
-  held?: string;
+  held?: Held;
   busy: boolean;
   onCancel: () => void;
   onSave: (b: Body) => void;
@@ -430,7 +432,7 @@ function FormForm({
       <p className="meta" style={{ margin: 0 }} aria-live="polite">
         {line ? <>The AI will read: <strong>{line}</strong></> : "Pick or name a form to see what the AI will read."}
       </p>
-      <ChapterSelect path={path} held={held} value={anchor} onChange={setAnchor} />
+      <ChapterSelect path={path} chapterId={chapterId} held={held} value={anchor} onChange={setAnchor} />
       <div className="row">
         <button
           type="button"
