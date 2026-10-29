@@ -5,6 +5,7 @@ import {
   FACT_LIMITS,
   FORM_ASPECT,
   foldCodex,
+  isDraftEntry,
   isFormAspect,
   sameAspect,
   storyEntrySummaries,
@@ -40,20 +41,48 @@ export const NewCodexOpSchema = checkChange(
   z.object({ anchor_chapter_id: z.string().min(1), ...changeFields }),
 );
 
-/** Codex changes sent along with a chapter; they are anchored at that chapter when it is saved. */
+const factFields = {
+  entry_id: z.string().min(1),
+  /** Omit to add a fact (or to set the same aspect again, which updates the live one). Required to retire. */
+  fact_id: z.string().min(1).optional(),
+  op: z.enum(["set", "retire"]),
+  aspect: text(FACT_LIMITS.aspect).default(""),
+  form: text(FACT_LIMITS.form).default(""),
+  text: text(FACT_LIMITS.text).default(""),
+  quote: text(FACT_LIMITS.quote).default(""),
+};
+
+const checkFact = <T extends z.ZodType<{ op: string; fact_id?: string; aspect: string; form: string; text: string }>>(schema: T) =>
+  schema
+    .refine((v) => v.op !== "retire" || v.fact_id !== undefined, { message: "fact_id is required to retire a fact" })
+    .refine((v) => v.op !== "set" || (isFormAspect(v.aspect) ? v.form.length > 0 || v.text.length > 0 : v.text.length > 0), {
+      message: "text is required",
+    });
+
+/**
+ * Codex changes sent along with a chapter; they are anchored at that chapter when it is saved. A "create"
+ * may carry the draft's local entry id (`draft-…`), so fact changes for that new entry can name it.
+ */
 export const CodexChangesSchema = z.object({
   codex_changes: z.array(checkChange(z.object(changeFields))).max(50).default([]),
+  codex_fact_changes: z.array(checkFact(z.object(factFields))).max(200).default([]),
 });
 
 /** Runs `save` (which posts or edits a chapter) and anchors the codex changes at that chapter, all or nothing. */
-export function saveWithCodexChanges<R>(
-  changes: z.infer<typeof CodexChangesSchema>["codex_changes"],
-  save: () => R,
-  anchorOf: (r: R) => string,
-): R {
+export function saveWithCodexChanges<R>(input: z.infer<typeof CodexChangesSchema>, save: () => R, anchorOf: (r: R) => string): R {
   return db().transaction(() => {
     const result = save();
-    for (const c of changes) createCodexOp({ ...c, anchor_chapter_id: anchorOf(result) });
+    const anchor = anchorOf(result);
+    const created = new Map<string, string>();
+    for (const c of input.codex_changes) {
+      const op = createCodexOp({ ...c, anchor_chapter_id: anchor });
+      if (c.op === "create" && c.entry_id) created.set(c.entry_id, op.entry_id);
+    }
+    for (const f of input.codex_fact_changes) {
+      const entryId = created.get(f.entry_id) ?? f.entry_id;
+      if (isDraftEntry(entryId)) throw new PostError("A fact belongs to a new entry that isn't in this chapter's changes", 400);
+      createFactOp({ ...f, entry_id: entryId, anchor_chapter_id: anchor });
+    }
     return result;
   })();
 }
@@ -134,22 +163,7 @@ export function getCodexState(chapterId: string, options?: FoldOptions): CodexEn
   return foldCodex(getCodexOps(chapterId), getCodexFacts(chapterId), options);
 }
 
-export const NewFactOpSchema = z
-  .object({
-    anchor_chapter_id: z.string().min(1),
-    entry_id: z.string().min(1),
-    /** Omit to add a fact (or to set the same aspect again, which updates the live one). Required to retire. */
-    fact_id: z.string().min(1).optional(),
-    op: z.enum(["set", "retire"]),
-    aspect: text(FACT_LIMITS.aspect).default(""),
-    form: text(FACT_LIMITS.form).default(""),
-    text: text(FACT_LIMITS.text).default(""),
-    quote: text(FACT_LIMITS.quote).default(""),
-  })
-  .refine((v) => v.op !== "retire" || v.fact_id !== undefined, { message: "fact_id is required to retire a fact" })
-  .refine((v) => v.op !== "set" || (isFormAspect(v.aspect) ? v.form.length > 0 || v.text.length > 0 : v.text.length > 0), {
-    message: "text is required",
-  });
+export const NewFactOpSchema = checkFact(z.object({ anchor_chapter_id: z.string().min(1), ...factFields }));
 
 /** Appends a fact change anchored at a chapter. Setting an aspect that is already live on the entry updates that fact. */
 export function createFactOp(input: z.infer<typeof NewFactOpSchema>): { id: string; fact_id: string } {

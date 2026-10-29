@@ -90,14 +90,26 @@ await drawer.getByLabel("Name", { exact: true }).fill("Newbie");
 await drawer.getByLabel(/Keywords/).fill("the newcomer");
 await drawer.getByRole("button", { name: "Add entry" }).click();
 await drawer.getByRole("heading", { name: "Newbie" }).waitFor();
-ok(await drawer.getByText("Post the chapter to add facts.").isVisible(), "a new entry opens in the drawer, and its facts wait for the post");
-await drawer.getByRole("button", { name: "Edit", exact: true }).click();
+// a fact on the new entry is held in the draft as well
+await drawer.getByRole("button", { name: "+ Add a fact" }).click();
+const factEffect = drawer.locator(".facts .chapter-picker");
+ok(
+  (await factEffect.getByRole("button", { name: "This chapter", exact: true }).getAttribute("aria-pressed")) === "true" &&
+    (await factEffect.locator(".chapter-picker-pill").count()) === 1,
+  "a new entry's fact can only take effect from this chapter",
+);
+await drawer.getByLabel("Aspect").first().fill("Hair");
+await drawer.getByLabel("Fact", { exact: true }).fill("Bright red hair.");
+await drawer.getByRole("button", { name: "Save", exact: true }).click();
+await drawer.locator(".fact-row", { hasText: "Bright red hair." }).getByText("not saved yet").waitFor();
+ok((await drawer.locator(".fact-ai").innerText()).includes("Bright red hair"), "a new entry opens in the drawer, and its facts are held in the draft");
+await drawer.getByRole("button", { name: "Edit", exact: true }).last().click();
 await drawer.getByLabel("Notes", { exact: true }).fill("Added from the writing page.");
 await drawer.getByRole("button", { name: "Save", exact: true }).click();
 await drawer.locator(".entry-notes", { hasText: "Added from the writing page." }).waitFor();
 await drawer.getByRole("button", { name: "← All entries" }).click();
-await drawer.locator(".entry-card", { hasText: "Newbie" }).getByText("No facts yet").waitFor();
-ok(true, "back to the list, where the new entry has no facts yet");
+await drawer.locator(".entry-card", { hasText: "Newbie" }).getByText(/Bright red hair/).waitFor();
+ok(true, "back to the list, where the new entry shows its held fact");
 await page.getByRole("button", { name: "Close", exact: true }).click();
 ok(/of 5 entries/.test(await summary.innerText()), "the preview picks up the new entry");
 ok((await page.getByLabel("Chapter text").inputValue()).includes("Hello there"), "the draft was kept");
@@ -131,11 +143,13 @@ const codexAt = async (id) => (await (await fetch(`${BASE}/api/chapters/${id}/co
 let atRoot = await codexAt(root);
 ok(!atRoot.some((e) => e.name === "Newbie") && atRoot.find((e) => e.name === "Zed").content === "A grumpy ferryman.", "nothing is saved before posting");
 ok(/changed in this draft/.test(await row("Zed").innerText()), "the preview marks entries changed in the draft");
-ok(await page.getByText(/2 codex changes will be saved with this chapter/).isVisible(), "step 4 lists the held changes");
+ok(await page.getByText(/Codex changes to 2 entries will be saved with this chapter/).isVisible(), "step 4 lists the held changes");
 // …unless an earlier chapter is picked
 await row("Qux").getByRole("button", { name: "Edit" }).click();
 await drawer.getByLabel(/Keywords/).fill("the hermit");
-await drawer.getByLabel(/Takes effect from/).selectOption({ label: "Root (saved now)" });
+ok((await drawer.getByRole("button", { name: "This chapter", exact: true }).getAttribute("aria-pressed")) === "true", "in the draft, “Takes effect from” starts on this chapter (saved when you post)");
+await drawer.getByRole("button", { name: "Previous chapter (Root)" }).click();
+ok(await drawer.getByText(/Saved now/).isVisible(), "…and an earlier chapter says it is saved now");
 await drawer.getByRole("button", { name: "Save changes" }).click();
 for (let i = 0; i < 50 && (await codexAt(root)).find((e) => e.name === "Qux").aliases.join() !== "the hermit"; i++) await page.waitForTimeout(100);
 ok((await codexAt(root)).find((e) => e.name === "Qux").aliases.join() === "the hermit", "picking an earlier chapter saves straight away");
@@ -148,6 +162,34 @@ const atNew = await codexAt(posted);
 ok(atNew.find((e) => e.name === "Zed").content === "A cheerful ferryman now." && atNew.some((e) => e.name === "Newbie"), "posting saves the held changes at the new chapter");
 atRoot = await codexAt(root);
 ok(atRoot.find((e) => e.name === "Zed").content === "A grumpy ferryman." && !atRoot.some((e) => e.name === "Newbie"), "…and the chapter before it is unchanged");
+ok(atNew.find((e) => e.name === "Newbie").facts.some((f) => f.text === "Bright red hair." && f.op.anchor_chapter_id === posted), "the held fact is saved at the new chapter too");
+
+// editing a posted chapter: the drawer shows that chapter's own codex, and its changes are saved with the edit
+await page.goto(`${BASE}/c/${posted}/edit`);
+await page.locator(".site-menu > summary").click();
+await page.getByRole("button", { name: "Codex", exact: true }).click();
+await drawer.waitFor();
+ok(await drawer.locator(".entry-card", { hasText: "Newbie" }).isVisible(), "the edit page's drawer has the entries added at the chapter being edited");
+await drawer.locator(".entry-card", { hasText: "Zed" }).click();
+await drawer.getByRole("heading", { name: "Zed" }).waitFor();
+await drawer.getByRole("button", { name: "+ Add a fact" }).click();
+const effect = (await factEffect.locator(".chapter-picker-pill").allInnerTexts()).join(" | ");
+ok(
+  effect === "This chapter | Previous chapter (Root)" &&
+    (await factEffect.getByRole("button", { name: "This chapter", exact: true }).getAttribute("aria-pressed")) === "true" &&
+    /Saved when you save it/.test(await factEffect.locator(".chapter-picker-explain").innerText()),
+  "the chapter being edited is “this chapter”, saved with the edit; the one before it is offered too: " + effect,
+);
+await drawer.getByLabel("Aspect").first().fill("Mood");
+await drawer.getByLabel("Fact", { exact: true }).fill("Cheerful at last.");
+await drawer.getByRole("button", { name: "Save", exact: true }).click();
+await drawer.locator(".fact-row", { hasText: "Cheerful at last." }).getByText("not saved yet").waitFor();
+ok(!(await codexAt(posted)).find((e) => e.name === "Zed").facts.some((f) => f.text === "Cheerful at last."), "a fact added while editing waits for the save");
+await page.getByRole("button", { name: "Close", exact: true }).click();
+await page.getByRole("button", { name: "Save changes" }).click();
+await page.waitForURL(new RegExp(`/c/${posted}(\\?|$)`));
+ok((await codexAt(posted)).find((e) => e.name === "Zed").facts.some((f) => f.text === "Cheerful at last." && f.op.anchor_chapter_id === posted), "saving the edit saves the fact at the edited chapter");
+ok(!(await codexAt(root)).find((e) => e.name === "Zed").facts.some((f) => f.text === "Cheerful at last."), "…not at the chapter before it");
 
 // ideas for a new branch
 await page.goto(`${BASE}/c/${root}/write`);

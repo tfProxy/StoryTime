@@ -20,7 +20,8 @@ import type { AiRun, NotesTask } from "@/lib/aiRuns/types";
 import type { PathChapter } from "@/lib/ai/codexAi";
 import AiRunProgress from "./AiRunProgress";
 import { INBOX_CHANGED } from "./CodexInbox";
-import CodexFacts from "./CodexFacts";
+import CodexFacts, { type HeldFact } from "./CodexFacts";
+import ChapterPathPicker from "./ChapterPathPicker";
 
 export type EntryFields = { name: string; type: EntryType; aliases: string[]; content: string; always_include: boolean };
 /** A change to an entry. `anchor` is the chapter it takes effect from; without it, the editor's own default applies. */
@@ -40,6 +41,12 @@ type Props = {
   facts: FactOp[];
   /** The chapters from the story's first to `chapterId`. */
   path: PathChapter[];
+  /** The chapters offered under "Takes effect from" (default `path`); in the drawer for an edited chapter, the ones before it. */
+  anchorPath?: PathChapter[];
+  /** In the drawer: holds a fact change in the draft (facts anchored at "this chapter"). */
+  holdFact?: (f: HeldFact) => void;
+  /** In the drawer: the draft edits an existing chapter (saved when it is saved) rather than writing a new one. */
+  editingChapter?: boolean;
   /** The chapter the entry is viewed and edited at. */
   chapterId: string;
   storyId?: string;
@@ -70,6 +77,7 @@ export default function CodexEntryEditor({
   ops,
   facts,
   path,
+  anchorPath = path,
   chapterId,
   storyId,
   usedAspects,
@@ -77,6 +85,8 @@ export default function CodexEntryEditor({
   picturesHref,
   variant = "page",
   save,
+  holdFact,
+  editingChapter = false,
   held,
   onDiscardHeld,
   onRetired,
@@ -198,7 +208,12 @@ export default function CodexEntryEditor({
           <div className="meta" style={{ margin: 0 }}>
             {TYPE_LABELS[entry.type]}
             {entry.always_include && <span className="tag"> · always included</span>}
-            {held && <span className="tag"> · {held.op === "create" ? "new" : "changed"} in this chapter, saved when you post</span>}
+            {held && (
+              <span className="tag">
+                {" "}
+                · {held.op === "create" ? "new" : "changed"} in this chapter, saved when you {editingChapter ? "save" : "post"} it
+              </span>
+            )}
           </div>
         </div>
         <div className="row entry-head-actions">
@@ -223,8 +238,10 @@ export default function CodexEntryEditor({
           initial={entry}
           busy={busy}
           path={path}
+          anchorPath={anchorPath}
           chapterId={chapterId}
           inDraft={inDraft}
+          editingChapter={editingChapter}
           keywordSources={entry.keywordSources}
           saved={savedNote}
           onSave={async (f, anchor) => {
@@ -236,13 +253,23 @@ export default function CodexEntryEditor({
         />
       </section>
 
-      {draftOnly ? (
+      {draftOnly && !holdFact ? (
         <section className="entry-section">
           <h2>Facts</h2>
           <p className="meta">Post the chapter to add facts.</p>
         </section>
       ) : (
-        <CodexFacts entry={entry} factOps={facts} path={path} chapterId={chapterId} usedAspects={usedAspects} onSaved={refreshed} />
+        <CodexFacts
+          entry={entry}
+          factOps={facts}
+          path={path}
+          anchorPath={draftOnly ? [] : anchorPath}
+          chapterId={chapterId}
+          usedAspects={usedAspects}
+          onSaved={refreshed}
+          hold={holdFact}
+          editingChapter={editingChapter}
+        />
       )}
 
       <section className="entry-section">
@@ -417,8 +444,10 @@ export function EntryDetailsForm({
   initial,
   busy,
   path,
+  anchorPath = path,
   chapterId,
   inDraft,
+  editingChapter = false,
   keywordSources,
   saved,
   onSave,
@@ -427,8 +456,12 @@ export function EntryDetailsForm({
   initial: CodexEntry | null;
   busy: boolean;
   path: PathChapter[];
+  /** The chapters offered under "Takes effect from" (default `path`). */
+  anchorPath?: PathChapter[];
   chapterId: string;
   inDraft: boolean;
+  /** The draft edits an existing chapter, so held changes are saved when it is saved. */
+  editingChapter?: boolean;
   /** Where each of the entry's keywords was added, to show the inherited ones. */
   keywordSources?: CodexEntry["keywordSources"];
   /** Shows "Saved" beside the button. */
@@ -506,23 +539,7 @@ export function EntryDetailsForm({
         </label>
       )}
       {initial && (inDraft || path.length > 1) && (
-        <label>
-          Takes effect from
-          <select value={anchorId} onChange={(e) => setAnchorId(e.target.value)}>
-            {inDraft && <option value={DRAFT_ANCHOR}>This chapter (saved when you post it)</option>}
-            {path.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.title}
-                {inDraft ? " (saved now)" : c.id === chapterId ? " (this chapter)" : ""}
-              </option>
-            ))}
-          </select>
-          <small>
-            {inDraft
-              ? "the chapter you're writing, or an earlier one if it changed before; an earlier chapter is saved now and reaches every branch below it"
-              : "that chapter and everything after it on this branch"}
-          </small>
-        </label>
+        <ChapterPathPicker path={anchorPath} currentId={chapterId} value={anchorId} onChange={setAnchorId} draft={inDraft} editing={editingChapter} />
       )}
       <div className="row">
         <button type="submit" disabled={busy || !name.trim() || !dirty}>

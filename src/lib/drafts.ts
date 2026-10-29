@@ -4,7 +4,7 @@
 // is part of the story until Post. Drafts from before this lived in this browser's IndexedDB;
 // they are moved to the server the first time drafts are loaded.
 
-import type { CodexChange } from "./codex";
+import type { CodexChange, FactChange } from "./codex";
 import type { CodexOverrides, Idea, Length } from "./ai/prompts";
 import type { ModelRef } from "./settingsSchema";
 
@@ -43,6 +43,8 @@ export type Draft = {
   aiSummary?: { summary: string; path_summary: string; body: string };
   /** Codex changes made while writing; they are anchored at this chapter when it is posted. */
   codexChanges?: CodexChange[];
+  /** Fact changes made while writing, saved with the chapter like `codexChanges`. */
+  codexFactChanges?: FactChange[];
 
   // Working state of the page, kept so a reload (or another browser) picks up where you were:
   /** Chapter length asked for when generating. */

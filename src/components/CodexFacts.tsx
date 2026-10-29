@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  DRAFT_ANCHOR,
   FACT_LIMITS,
   factHistory,
   FORM_ASPECT,
@@ -14,6 +15,7 @@ import {
   type LiveFact,
 } from "@/lib/codex";
 import type { PathChapter } from "@/lib/ai/codexAi";
+import ChapterPathPicker from "./ChapterPathPicker";
 
 type Props = {
   entry: CodexEntry;
@@ -25,9 +27,19 @@ type Props = {
   /** Aspects used anywhere in this codex, offered when adding a fact. */
   usedAspects: string[];
   onSaved: () => void;
+  /** The chapters offered under "Takes effect from" (default `path`). */
+  anchorPath?: PathChapter[];
+  /** In the writing page's drawer: holds a change in the draft, offered as "This chapter" and picked by default. */
+  hold?: (f: HeldFact) => void;
+  /** The draft edits an existing chapter, so held changes are saved when it is saved. */
+  editingChapter?: boolean;
 };
 
 type Body = { op: "set" | "retire"; aspect: string; form: string; text: string; quote: string; fact_id?: string; anchor: string };
+/** A fact change for the draft to hold: no fact_id for a new fact. */
+export type HeldFact = Omit<Body, "anchor">;
+/** A held change is saved when the new chapter is posted, or when the edited chapter is saved. */
+type Held = "post" | "save";
 
 const NEW_FORM = "\u0000new";
 
@@ -35,7 +47,7 @@ const NEW_FORM = "\u0000new";
  * An entry's form and facts. Every form opens directly beneath the button (or row) that opened it, and the
  * add form at the end of the list.
  */
-export default function CodexFacts({ entry, factOps, path, chapterId, usedAspects, onSaved }: Props) {
+export default function CodexFacts({ entry, factOps, path, chapterId, usedAspects, onSaved, anchorPath = path, hold, editingChapter = false }: Props) {
   const [formOpen, setFormOpen] = useState(false);
   // A fact's id while it is being changed, "new" while one is being added.
   const [editing, setEditing] = useState<string | null>(null);
@@ -43,10 +55,17 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const titleOf = (id: string) => path.find((p) => p.id === id)?.title ?? "an earlier chapter";
-  const since = (id: string) => (path[0]?.id === id ? "from the start" : `since “${titleOf(id)}”`);
+  const titleOf = (id: string) => (id === DRAFT_ANCHOR ? "this chapter" : (path.find((p) => p.id === id)?.title ?? "an earlier chapter"));
+  const since = (id: string) => (id === DRAFT_ANCHOR ? "from this chapter" : path[0]?.id === id ? "from the start" : `since “${titleOf(id)}”`);
+  // In the drawer, changes are held in the draft unless an earlier chapter is picked.
+  const startAnchor = hold ? DRAFT_ANCHOR : chapterId;
+  const heldLabel: Held | undefined = hold ? (editingChapter ? "save" : "post") : undefined;
 
   async function send(b: Body): Promise<boolean> {
+    if (hold && b.anchor === DRAFT_ANCHOR) {
+      hold({ op: b.op, aspect: b.aspect, form: b.form, text: b.text, quote: b.quote, fact_id: b.fact_id });
+      return true;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -116,8 +135,9 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
           {formOpen && (
             <FormForm
               entry={entry}
-              path={path}
-              chapterId={chapterId}
+              path={anchorPath}
+              chapterId={startAnchor}
+              held={heldLabel}
               busy={busy}
               onCancel={() => setFormOpen(false)}
               onSave={async (b) => {
@@ -144,7 +164,11 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
                     </div>
                     <div className="meta" style={{ margin: 0 }}>
                       {since(f.op.anchor_chapter_id)}
-                      {f.op.anchor_chapter_id === chapterId && <span className="tag"> · changed here</span>}
+                      {f.op.anchor_chapter_id === DRAFT_ANCHOR ? (
+                        <span className="tag"> · not saved yet</span>
+                      ) : (
+                        f.op.anchor_chapter_id === chapterId && <span className="tag"> · changed here</span>
+                      )}
                     </div>
                   </div>
                   <div className="row" style={{ margin: "0.4rem 0 0" }}>
@@ -157,7 +181,7 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
                       disabled={busy}
                       onClick={() => {
                         if (window.confirm(`Remove “${f.aspect || f.text}” from this chapter onward? Earlier chapters keep it.`)) {
-                          void send({ op: "retire", aspect: f.aspect, form: f.form, text: "", quote: "", fact_id: f.fact_id, anchor: chapterId });
+                          void send({ op: "retire", aspect: f.aspect, form: f.form, text: "", quote: "", fact_id: f.fact_id, anchor: startAnchor });
                         }
                       }}
                     >
@@ -172,8 +196,9 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
                       key={f.fact_id}
                       entry={entry}
                       editing={f}
-                      path={path}
-                      chapterId={chapterId}
+                      path={anchorPath}
+                      chapterId={startAnchor}
+                      held={heldLabel}
                       usedAspects={usedAspects}
                       busy={busy}
                       onCancel={() => setEditing(null)}
@@ -213,8 +238,9 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
             key="new"
             entry={entry}
             editing={null}
-            path={path}
-            chapterId={chapterId}
+            path={anchorPath}
+            chapterId={startAnchor}
+            held={heldLabel}
             usedAspects={usedAspects}
             busy={busy}
             onCancel={() => setEditing(null)}
@@ -234,19 +260,20 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
   );
 }
 
-function ChapterSelect({ path, value, onChange }: { path: PathChapter[]; value: string; onChange: (v: string) => void }) {
-  return (
-    <label>
-      Takes effect from
-      <select aria-label="Takes effect from" value={value} onChange={(e) => onChange(e.target.value)}>
-        {path.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.title}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
+function ChapterSelect({
+  path,
+  chapterId,
+  held,
+  value,
+  onChange,
+}: {
+  path: PathChapter[];
+  chapterId: string;
+  held?: Held;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return <ChapterPathPicker path={path} currentId={chapterId} value={value} onChange={onChange} draft={!!held} editing={held === "save"} />;
 }
 
 function FactForm({
@@ -254,6 +281,7 @@ function FactForm({
   editing,
   path,
   chapterId,
+  held,
   usedAspects,
   busy,
   onCancel,
@@ -262,7 +290,10 @@ function FactForm({
   entry: CodexEntry;
   editing: LiveFact | null;
   path: PathChapter[];
+  /** The chapter picked at first under "Takes effect from" (DRAFT_ANCHOR when `held` is given). */
   chapterId: string;
+  /** When "This chapter" is held in the draft: whether it is saved when the chapter is posted or saved. */
+  held?: Held;
   usedAspects: string[];
   busy: boolean;
   onCancel: () => void;
@@ -332,7 +363,7 @@ function FactForm({
         Quote from the chapter
         <input aria-label="Quote from the chapter" placeholder="optional" value={quote} maxLength={FACT_LIMITS.quote} onChange={(e) => setQuote(e.target.value)} />
       </label>
-      <ChapterSelect path={path} value={anchor} onChange={setAnchor} />
+      <ChapterSelect path={path} chapterId={chapterId} held={held} value={anchor} onChange={setAnchor} />
       <div className="row">
         <button
           type="button"
@@ -355,6 +386,7 @@ function FormForm({
   entry,
   path,
   chapterId,
+  held,
   busy,
   onCancel,
   onSave,
@@ -362,6 +394,7 @@ function FormForm({
   entry: CodexEntry;
   path: PathChapter[];
   chapterId: string;
+  held?: Held;
   busy: boolean;
   onCancel: () => void;
   onSave: (b: Body) => void;
@@ -399,7 +432,7 @@ function FormForm({
       <p className="meta" style={{ margin: 0 }} aria-live="polite">
         {line ? <>The AI will read: <strong>{line}</strong></> : "Pick or name a form to see what the AI will read."}
       </p>
-      <ChapterSelect path={path} value={anchor} onChange={setAnchor} />
+      <ChapterSelect path={path} chapterId={chapterId} held={held} value={anchor} onChange={setAnchor} />
       <div className="row">
         <button
           type="button"

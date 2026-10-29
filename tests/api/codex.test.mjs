@@ -71,6 +71,29 @@ r = await call("PATCH", `/api/chapters/${bc.json.chapter_id}`, { base_revision: 
   codex_changes: [{ op: "create", name: "Lamp", type: "item", content: "Brass." }] });
 ok(r.status === 200 && (await state(bc.json.chapter_id)).entries.some((x) => x.name === "Lamp") && !(await state(b)).entries.some((x) => x.name === "Lamp"), "an edit can carry codex changes, anchored at the edited chapter");
 
+// fact changes ride along too: for an existing entry, and for one new in the same draft (named by its draft id)
+const factsAt = async (id) => (await call("GET", `/api/chapters/${id}/codex`)).json.entries;
+r = await call("POST", "/api/chapters", { parent_chapter_id: a2, new_choice_label: "Facts", title: "A5", body: "x",
+  codex_changes: [{ op: "create", entry_id: "draft-pip", name: "Pip", type: "character" }],
+  codex_fact_changes: [
+    { op: "set", entry_id: "draft-pip", aspect: "Ears", text: "Fox ears." },
+    { op: "set", entry_id: mira, aspect: "Wings", text: "White wings." },
+  ] });
+ok(r.status === 201, "a chapter can be posted with fact changes: " + r.json?.error);
+const a5 = r.json.chapter_id;
+let es = await factsAt(a5);
+const pip = es.find((e) => e.name === "Pip");
+ok(pip && pip.entry_id !== "draft-pip" && pip.facts.some((f) => f.text === "Fox ears." && f.op.anchor_chapter_id === a5), "a new entry's facts follow it to its real id, anchored at the chapter");
+ok(es.find((e) => e.entry_id === mira).facts.some((f) => f.text === "White wings." && f.op.anchor_chapter_id === a5), "an existing entry's fact is anchored at the chapter");
+ok(!(await factsAt(a2)).find((e) => e.entry_id === mira).facts.some((f) => f.text === "White wings."), "…and the parent doesn't see it");
+const wings = es.find((e) => e.entry_id === mira).facts.find((f) => f.text === "White wings.");
+r = await call("PATCH", `/api/chapters/${a5}`, { base_revision: 1, title: "A5", body: "x!",
+  codex_fact_changes: [{ op: "retire", entry_id: mira, fact_id: wings.fact_id }] });
+ok(r.status === 200 && !(await factsAt(a5)).find((e) => e.entry_id === mira).facts.some((f) => f.fact_id === wings.fact_id), "an edit can retire a fact at the edited chapter");
+r = await call("POST", "/api/chapters", { parent_chapter_id: a2, new_choice_label: "Orphan", title: "A6", body: "x",
+  codex_fact_changes: [{ op: "set", entry_id: "draft-gone", aspect: "Ears", text: "None." }] });
+ok(r.status === 400, "a fact for a draft entry that isn't being created is rejected: " + r.json?.error);
+
 // Markdown download of the codex at a chapter
 const md = await fetch(`${B}/api/chapters/${a3}/codex?format=md`);
 const mdText = await md.text();

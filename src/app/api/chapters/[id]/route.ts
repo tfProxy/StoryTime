@@ -19,7 +19,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     request,
     EditChapterSchema.and(CodexChangesSchema),
     (input) => {
-      const saved = saveWithCodexChanges(input.codex_changes, () => editChapter(id, input), () => id);
+      const saved = saveWithCodexChanges(input,() => editChapter(id, input), () => id);
       void queueAutoReview(id);
       return saved;
     },

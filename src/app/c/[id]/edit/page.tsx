@@ -44,24 +44,19 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
             .slice(0, -1)
             .map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary })),
           choiceLabel: incoming?.label ?? null,
-          // Codex as it stood before this chapter, so its own consequences aren't fed back in.
-          codex: getContextCodex(path.length > 1 ? path[path.length - 2].id : null),
+          // The codex as of this chapter, its own changes included: what the drawer shows and edits.
+          codex: getContextCodex(id),
         }}
         storyId={story.id}
         draftLabel={`${story.title}: editing “${chapter.title}”`}
-        // Codex changes made while editing apply from the previous chapter, like the codex the AI sees here.
-        codexPanel={
-          path.length > 1
-            ? {
-                chapterId: path[path.length - 2].id,
-                path: path
-                  .slice(0, -1)
-                  .map((c) => ({ id: c.id, title: c.title, depth: c.depth, body: c.body, summary: c.summary, path_summary: c.path_summary })),
-                ops: getCodexOps(path[path.length - 2].id),
-                facts: getCodexFacts(path[path.length - 2].id),
-              }
-            : undefined
-        }
+        // Codex changes made while editing are held in the draft and saved at this chapter with the edit.
+        codexPanel={{
+          chapterId: id,
+          editing: true,
+          path: path.map((c) => ({ id: c.id, title: c.title, depth: c.depth, body: c.body, summary: c.summary, path_summary: c.path_summary })),
+          ops: getCodexOps(id),
+          facts: getCodexFacts(id),
+        }}
         story={path.length === 1 ? { id: story.id, title: story.title, premise: story.premise } : null}
       />
     </>
