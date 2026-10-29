@@ -32,7 +32,7 @@ import {
   type StoryContext,
 } from "@/lib/ai/prompts";
 import type { PathChapter } from "@/lib/ai/codexAi";
-import { draftOps, foldCodex, isDraftEntry, type CodexOp, type FactOp } from "@/lib/codex";
+import { draftFactOps, draftOps, foldCodex, isDraftEntry, isDraftFact, type CodexOp, type FactOp } from "@/lib/codex";
 import { deleteDraft, DraftConflict, emptyDraft, getDraft, saveDraft, type Draft } from "@/lib/drafts";
 import { applyAfterGenerate, applyGenerated, isBegun, pushUndo, startVersion } from "@/lib/generatedDraft";
 import { useWorkQueue, type GenerateItem } from "./WorkQueue";
@@ -76,7 +76,8 @@ type Props = {
   /** Start generating as soon as the (empty) draft loads. */
   autoGenerate?: boolean;
   /** The codex as of the chapter being continued; absent when there is no earlier chapter to anchor it to. */
-  codexPanel?: { chapterId: string; path: PathChapter[]; ops: CodexOp[]; facts?: FactOp[] };
+  /** `editing`: the last chapter of `path` is the one being edited, so changes held in the draft are saved at it. */
+  codexPanel?: { chapterId: string; editing?: boolean; path: PathChapter[]; ops: CodexOp[]; facts?: FactOp[] };
 };
 
 const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
@@ -112,6 +113,7 @@ function isBlank(d: Draft, target: Target): boolean {
       (d.summary ?? "") === (target.initialSummary ?? "") &&
       !d.choices.some((c) => c.trim()) &&
       !d.codexChanges?.length &&
+      !d.codexFactChanges?.length &&
       Object.keys(d.choiceEdits ?? {}).length === 0 &&
       (d.incomingLabel ?? target.incomingLabel) === target.incomingLabel
     );
@@ -126,6 +128,7 @@ function isBlank(d: Draft, target: Target): boolean {
     d.prompt ||
     d.summary ||
     d.codexChanges?.length ||
+    d.codexFactChanges?.length ||
     d.choices.some((c) => c.trim())
   );
 }
@@ -418,9 +421,11 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const storyInfo = { title: context.storyTitle, premise: context.premise };
   // Codex changes held in this draft apply to the chapter being written.
   const codexChanges = draft.codexChanges ?? [];
+  const factChanges = draft.codexFactChanges ?? [];
+  const draftDepth = (codexPanel?.path.at(-1)?.depth ?? -1) + 1;
   const codex =
-    codexPanel && codexChanges.length > 0
-      ? foldCodex([...codexPanel.ops, ...draftOps(codexChanges, (codexPanel.path.at(-1)?.depth ?? -1) + 1)], codexPanel.facts ?? [], {
+    codexPanel && (codexChanges.length > 0 || factChanges.length > 0)
+      ? foldCodex([...codexPanel.ops, ...draftOps(codexChanges, draftDepth)], [...(codexPanel.facts ?? []), ...draftFactOps(factChanges, draftDepth)], {
           recentAnchor: codexPanel.path.at(-1)?.id,
         }).map((e) => ({
           id: e.entry_id,
@@ -431,6 +436,9 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
           always_include: e.always_include,
         }))
       : context.codex;
+  // The entries with a change (details or facts) waiting in the draft.
+  const heldIds = [...new Set([...codexChanges.map((c) => c.entry_id), ...factChanges.map((f) => f.entry_id)])];
+  const heldNames = heldIds.flatMap((id) => codexChanges.find((c) => c.entry_id === id)?.name ?? codex?.find((e) => e.id === id)?.name ?? []);
   // The story's style notes are edited on its details page.
   const style = context.style ?? "";
   const ctx: StoryContext = {
@@ -905,8 +913,14 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     const summaryFields = summaries ?? {};
 
     const chapter ={ title: draft.title, body: draft.body, choices: finalChoices, ...summaryFields };
-    // Saved with the chapter and anchored at it. Entries created in the draft get their real id from the server.
-    const codex_changes = codexChanges.map((c) => (isDraftEntry(c.entry_id) ? { ...c, entry_id: undefined } : c));
+    // Saved with the chapter and anchored at it. Entries created in the draft get their real id from the server,
+    // which matches their facts to them by the draft id; facts new in the draft get theirs too.
+    const codex_changes = codexChanges;
+    const newEntries = new Set(codexChanges.filter((c) => c.op === "create").map((c) => c.entry_id));
+    const retiredEntries = new Set(codexChanges.filter((c) => c.op === "retire").map((c) => c.entry_id));
+    const codex_fact_changes = factChanges
+      .filter((f) => (!isDraftEntry(f.entry_id) || newEntries.has(f.entry_id)) && !retiredEntries.has(f.entry_id))
+      .map((f) => (isDraftFact(f.fact_id) ? { ...f, fact_id: undefined } : f));
     let url: string;
     let method = "POST";
     let payload: unknown;
@@ -924,18 +938,19 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
         remove_choices: existingChoices.filter((c) => c.removed).map((c) => c.id),
         add_choices: finalChoices,
         codex_changes,
+        codex_fact_changes,
       };
     } else if (target.kind === "first") {
       url = `/api/stories/${target.storyId}/first-chapter`;
       payload = chapter;
     } else if (target.kind === "fill" && draft.newChoiceLabel.trim() === target.label.trim()) {
       url = "/api/chapters";
-      payload = { ...chapter, choice_id: target.choiceId, codex_changes };
+      payload = { ...chapter, choice_id: target.choiceId, codex_changes, codex_fact_changes };
     } else {
       // A new choice on the parent chapter. For "fill" this means the author changed the text, so the
       // choice they started from is left as it was.
       url = "/api/chapters";
-      payload = { ...chapter, parent_chapter_id: target.parentChapterId, new_choice_label: draft.newChoiceLabel, codex_changes };
+      payload = { ...chapter, parent_chapter_id: target.parentChapterId, new_choice_label: draft.newChoiceLabel, codex_changes, codex_fact_changes };
     }
 
       const res = await fetch(url, {
@@ -1120,7 +1135,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               onChange={(next) => patch({ codexOverrides: next })}
               onEdit={codexPanel ? (id) => openCodex(id) : undefined}
               onNew={codexPanel ? () => openCodex("new") : undefined}
-              held={codexChanges.map((c) => c.entry_id)}
+              held={heldIds}
             />
           </div>
         </div>
@@ -1525,10 +1540,10 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                 />
               </label>
             )}
-            {codexChanges.length > 0 && (
+            {heldIds.length > 0 && (
               <p className="meta">
-                {codexChanges.length} codex change{codexChanges.length === 1 ? "" : "s"} will be saved with this chapter
-                ({codexChanges.map((c) => c.name).join(", ")}).
+                Codex changes to {heldIds.length} entr{heldIds.length === 1 ? "y" : "ies"} will be saved with this chapter
+                ({heldNames.join(", ")}).
               </p>
             )}
             <p className="meta">
@@ -1616,7 +1631,13 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                   embedded
                   storyId={storyId}
                   startEditing={codexStart.editing}
-                  draft={{ changes: codexChanges, onChange: (next) => patch({ codexChanges: next }) }}
+                  draft={{
+                    changes: codexChanges,
+                    onChange: (next) => patch({ codexChanges: next }),
+                    facts: factChanges,
+                    onFactsChange: (next) => patch({ codexFactChanges: next }),
+                    editing: codexPanel.editing,
+                  }}
                   story={{ title: context.storyTitle, premise: context.premise }}
                   chapterId={codexPanel.chapterId}
                   path={codexPanel.path}

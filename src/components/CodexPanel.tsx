@@ -4,7 +4,9 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   addChange,
+  addFactChange,
   DRAFT_ANCHOR,
+  draftFactOps,
   draftOps,
   foldCodex,
   isDraftEntry,
@@ -13,12 +15,14 @@ import {
   type CodexChange,
   type CodexOp,
   type EntryType,
+  type FactChange,
   type FactOp,
 } from "@/lib/codex";
 import type { PathChapter, StoryInfo } from "@/lib/ai/codexAi";
 import CodexCheck from "./CodexCheck";
 import CodexEntryCards from "./CodexEntryCards";
 import CodexEntryEditor, { EntryDetailsForm, type EntryChange } from "./CodexEntryEditor";
+import type { HeldFact } from "./CodexFacts";
 
 type Props = {
   story?: StoryInfo;
@@ -40,10 +44,17 @@ type Props = {
   /** Every fact op on the same path as `ops`. */
   facts?: FactOp[];
   /**
-   * Changes held in the draft of the next chapter. When given, changes are kept there by default
-   * (and posted with the chapter); only changes anchored at an earlier chapter are saved straight away.
+   * Changes held in the draft of the chapter being written or edited. When given, changes (entries and
+   * facts) are kept there by default and saved with the chapter; only changes anchored at an earlier
+   * chapter are saved straight away. `editing`: the last chapter of `path` is the one being edited.
    */
-  draft?: { changes: CodexChange[]; onChange: (next: CodexChange[]) => void };
+  draft?: {
+    changes: CodexChange[];
+    onChange: (next: CodexChange[]) => void;
+    facts: FactChange[];
+    onFactsChange: (next: FactChange[]) => void;
+    editing?: boolean;
+  };
   /** The codex page's chapter path (with the chapters after this one), and the chapter's collapsed summary below it. */
   nav?: ReactNode;
   summary?: ReactNode;
@@ -91,13 +102,27 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
   }, [embedded, chapterId]);
   const titleOf = (id: string) => path.find((p) => p.id === id)?.title ?? "an earlier chapter";
 
-  const allOps = draft ? [...ops, ...draftOps(draft.changes, (path.at(-1)?.depth ?? -1) + 1)] : ops;
-  const entries = foldCodex(allOps, facts ?? []);
+  const draftDepth = (path.at(-1)?.depth ?? -1) + 1;
+  const allOps = draft ? [...ops, ...draftOps(draft.changes, draftDepth)] : ops;
+  const allFacts = draft ? [...(facts ?? []), ...draftFactOps(draft.facts, draftDepth)] : (facts ?? []);
+  const entries = foldCodex(allOps, allFacts);
   const usedAspects = usedAspectsOf(entries);
   const retired = retiredEntries(allOps);
   const pending = new Map((draft?.changes ?? []).map((c) => [c.entry_id, c]));
-  const held = Object.fromEntries([...pending].map(([id, c]) => [id, c.op]));
-  const discard = (entryId: string) => draft?.onChange(draft.changes.filter((c) => c.entry_id !== entryId));
+  const held = Object.fromEntries([
+    ...(draft?.facts ?? []).map((f) => [f.entry_id, "replace"]),
+    ...[...pending].map(([id, c]) => [id, c.op]),
+  ]);
+  /** Drops what the draft holds for an entry: its details change and its fact changes. */
+  const discard = (entryId: string) => {
+    if (!draft) return;
+    draft.onChange(draft.changes.filter((c) => c.entry_id !== entryId));
+    draft.onFactsChange(draft.facts.filter((f) => f.entry_id !== entryId));
+  };
+  // When editing a chapter, the chapter itself is "this chapter" (held); only the ones before it are saved now.
+  const anchorPath = draft?.editing ? path.slice(0, -1) : path;
+  const holdFact = (entryId: string) => (f: HeldFact) =>
+    draft?.onFactsChange(addFactChange(draft.facts, { ...f, entry_id: entryId, fact_id: f.fact_id ?? `draft-fact-${localId().slice(6)}` }));
 
   const [creating, setCreating] = useState(startEditing === "new");
   // The entry open in the drawer.
@@ -135,7 +160,7 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
       const data = await res.json();
       if (!res.ok) return { error: data.error ?? `Request failed (${res.status})` };
       // The saved version now holds what the form showed, so a held change to the same entry would only override it.
-      if (change.entry_id) discard(change.entry_id);
+      if (change.entry_id && draft) draft.onChange(draft.changes.filter((c) => c.entry_id !== change.entry_id));
       router.refresh();
       return { id: data.entry_id ?? change.entry_id };
     } catch (e) {
@@ -177,14 +202,22 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
           variant="drawer"
           entry={open}
           ops={allOps}
-          facts={facts ?? []}
+          facts={allFacts}
           path={path}
+          anchorPath={anchorPath}
           chapterId={chapterId}
           storyId={storyId}
           usedAspects={usedAspects}
           pictureId={pictures[open.entry_id]?.id}
           save={async (c) => (await post(c)).error ?? null}
-          held={pending.get(open.entry_id)}
+          holdFact={draft ? holdFact(open.entry_id) : undefined}
+          editingChapter={draft?.editing}
+          held={
+            pending.get(open.entry_id) ??
+            (held[open.entry_id]
+              ? { op: "replace", entry_id: open.entry_id, name: open.name, type: open.type, aliases: open.aliases, content: open.content, always_include: open.always_include }
+              : undefined)
+          }
           onDiscardHeld={() => discard(open.entry_id)}
           onRetired={() => setOpenId(null)}
           after={after}
@@ -201,10 +234,20 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
       {!embedded && !storyWide && summary}
       {draft ? (
         <p className="notice">
-          Changes you make here belong to the chapter you&apos;re writing: the AI uses them straight away, and they are
-          saved with the chapter when you post it, for it and the chapters after it. To record something that happened
-          earlier, pick that chapter under &ldquo;Takes effect from&rdquo;; that is saved immediately and reaches every
-          branch below it.
+          {draft.editing ? (
+            <>
+              This is the codex as of <strong>{titleOf(chapterId)}</strong>, the chapter you&apos;re editing. Changes you
+              make here (details and facts) belong to it: the AI uses them straight away, and they are saved with the
+              chapter when you save it, for it and the chapters after it.
+            </>
+          ) : (
+            <>
+              Changes you make here (details and facts) belong to the chapter you&apos;re writing: the AI uses them
+              straight away, and they are saved with the chapter when you post it, for it and the chapters after it.
+            </>
+          )}{" "}
+          To record something that happened earlier, pick that chapter under &ldquo;Takes effect from&rdquo;; that is
+          saved immediately and reaches every branch below it.
         </p>
       ) : storyWide ? (
         <p className="notice">
@@ -225,7 +268,7 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
 
       {creating ? (
         <div>
-          <EntryDetailsForm initial={null} busy={busy} path={path} chapterId={chapterId} inDraft={!!draft} onCancel={() => setCreating(false)} onSave={(f) => create(f)} />
+          <EntryDetailsForm initial={null} busy={busy} path={path} anchorPath={anchorPath} chapterId={chapterId} inDraft={!!draft} editingChapter={draft?.editing} onCancel={() => setCreating(false)} onSave={(f) => create(f)} />
         </div>
       ) : (
         <div>

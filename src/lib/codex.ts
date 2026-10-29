@@ -127,11 +127,11 @@ export function applicableFacts(facts: LiveFact[], form: string | null): LiveFac
 
 /**
  * What the AI reads for an entry: "Form: vixen, change complete. Ears: tall fox ears. ..." The notes are left out.
- * A fact anchored at `recentAnchor` (the chapter just before the one being written) is marked as just
- * changed, so the writer shows the character noticing it.
+ * A fact anchored at `recentAnchor` (the chapter just before the one being written, or the chapter being
+ * edited) or held in the draft is marked as just changed, so the writer shows the character noticing it.
  */
 export function describeEntry(facts: LiveFact[], recentAnchor?: string): string {
-  const recent = (f: LiveFact) => !!recentAnchor && f.op.anchor_chapter_id === recentAnchor;
+  const recent = (f: LiveFact) => !!recentAnchor && (f.op.anchor_chapter_id === recentAnchor || f.op.anchor_chapter_id === DRAFT_ANCHOR);
   // "Ears: fox ears (just changed)." — the mark goes inside the sentence's full stop.
   const sentence = (s: string, f: LiveFact) => {
     const t = s.trim().replace(/\s+/g, " ");
@@ -419,6 +419,28 @@ export function draftOps(changes: CodexChange[], depth: number): CodexOp[] {
     anchor_chapter_id: DRAFT_ANCHOR,
     anchor_depth: depth,
     posted_at: 0, // not posted; the depth alone puts these last
+  }));
+}
+
+/** A fact change waiting in a draft. New facts get a local id (`draft-fact-…`) until posted. */
+export type FactChange = Pick<FactOp, "op" | "entry_id" | "fact_id" | "aspect" | "form" | "text" | "quote">;
+
+export const isDraftFact = (factId: string) => factId.startsWith("draft-fact-");
+
+/** Adds a fact change to a draft's list, one per fact; retiring a fact that only exists in the draft drops it. */
+export function addFactChange(changes: FactChange[], next: FactChange): FactChange[] {
+  const rest = changes.filter((c) => c.fact_id !== next.fact_id);
+  return next.op === "retire" && isDraftFact(next.fact_id) ? rest : [...rest, next];
+}
+
+/** The draft's fact changes as fact ops at `depth`, after everything posted. */
+export function draftFactOps(changes: FactChange[], depth: number): FactOp[] {
+  return changes.map((c, i) => ({
+    ...c,
+    id: `draft-op-${c.fact_id}`,
+    anchor_chapter_id: DRAFT_ANCHOR,
+    anchor_depth: depth,
+    posted_at: i, // kept in the order they were made
   }));
 }
 

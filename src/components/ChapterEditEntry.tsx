@@ -20,7 +20,7 @@ type Props = {
   storyId: string;
   draftLabel: string;
   /** The codex as of the previous chapter; absent for a story's first chapter. */
-  codexPanel?: { chapterId: string; path: PathChapter[]; ops: CodexOp[]; facts?: FactOp[] };
+  codexPanel?: { chapterId: string; editing?: boolean; path: PathChapter[]; ops: CodexOp[]; facts?: FactOp[] };
   /** Present only for a story's first chapter. */
   story: { id: string; title: string; premise: string } | null;
 };
