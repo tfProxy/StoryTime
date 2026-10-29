@@ -10,6 +10,7 @@ import { noteText, type ChapterNote } from "@/lib/contentNotesRoll";
 import Prose from "@/components/Prose";
 import EditLink from "@/components/EditLink";
 import AddChoice from "@/components/AddChoice";
+import SuggestChoices from "@/components/SuggestChoices";
 import ChapterImage from "@/components/ChapterImage";
 import { PageMenu } from "@/components/SiteMenu";
 import { chapterImageVersions } from "@/lib/chapterImages";
@@ -32,6 +33,8 @@ export default async function ChapterPage({
   if (!story) notFound();
   const ai = aiMarkOf(chapter);
   const choices = getChoices(chapter.id);
+  // The choice the reader took to get here, for the prompt.
+  const incoming = path.length > 1 ? (getChoices(path[path.length - 2].id).find((c) => c.child_chapter_id === chapter.id)?.label ?? null) : null;
   const images = chapterImageVersions([chapter.id]).get(chapter.id)!;
   const tagNames = appliedTagNames(story.id, chapter.id).get(chapter.id) ?? [];
   const notes = choices.some((c) => c.child_chapter_id) ? contentNotes(story.id) : new Map<string, ChapterNote>();
@@ -109,6 +112,7 @@ export default async function ChapterPage({
           ),
         )}
         <AddChoice chapterId={chapter.id} />
+        <SuggestChoices storyId={story.id} chapterId={chapter.id} incoming={incoming} choices={choices.map((c) => c.label)} />
         <p className="row">
           <Link className="button secondary" href={`/c/${chapter.id}/write`}>
             Draft a different idea

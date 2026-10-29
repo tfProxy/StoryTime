@@ -18,7 +18,7 @@ const mock = http.createServer((req, res) => {
     if (system.includes("running summary")) {
       const title = /Chapter: "([^"]*)"/.exec(user)?.[1];
       text = JSON.stringify({ summary: `SUM(${title})`, story_so_far: `SOFAR(${title})` });
-    } else if (user.includes("Suggest 3 distinct options")) {
+    } else if (user.includes("distinct options the reader could pick")) {
       text = JSON.stringify(["Go left", "Go right", "Hide"]);
     } else if (user.includes("[[START]]")) {
       text = "  REWRITTEN  ";
@@ -98,7 +98,7 @@ const newSlot = async (title) => {
   const st = await post("/api/stories", { title, premise: "p", chapter: { title: "Root", body: "Mira stood there.", choices: ["Open the door"] } });
   return `/c/${st.chapter_id}/write?choice=${(await get(`/api/chapters/${st.chapter_id}`)).choices[0].id}`;
 };
-const suggestCalls = () => prompts.filter((p) => p.user.includes("Suggest 3 distinct options")).length;
+const suggestCalls = () => prompts.filter((p) => p.user.includes("distinct options the reader could pick")).length;
 
 await put(withSetting(false));
 await page.goto(BASE + (await newSlot("Suggest off")));
@@ -117,6 +117,26 @@ await page.getByRole("button", { name: "+ Go left" }).click();
 ok((await page.getByPlaceholder("Choice 1").inputValue()) === "Go left", "a suggestion can be added with one click");
 
 await put(settingsNow ? withSetting(settingsNow.autoSuggestChoices) : withSetting(false));
+
+// ---- the reading page suggests choices too, and adds the ones picked ----
+{
+  const st = await post("/api/stories", { title: "Suggest on reading", premise: "p", chapter: { title: "Root", body: "Mira stood there.", choices: ["Open the door"] } });
+  await page.goto(`${BASE}/c/${st.chapter_id}`);
+  const before = suggestCalls();
+  await page.getByRole("button", { name: "Suggest choices" }).click();
+  await page.getByRole("button", { name: "+ Go left" }).waitFor();
+  const sent = prompts.filter((p) => p.user.includes("distinct options the reader could pick")).at(-1).user;
+  ok(suggestCalls() === before + 1 && sent.includes("# Root\n\nMira stood there.") && sent.includes('- "Open the door"'), "reading page: Suggest choices asks about this chapter, naming the choices it has");
+  ok((await page.locator("button.chip").count()) === 3, "reading page: the suggestions are listed");
+  await page.getByRole("button", { name: "+ Go left" }).click();
+  await page.locator("a.choice-unwritten", { hasText: "Go left" }).waitFor();
+  ok((await get(`/api/chapters/${st.chapter_id}`)).choices.map((c) => c.label).join() === "Open the door,Go left", "reading page: a picked suggestion becomes an unwritten choice");
+  ok((await page.getByRole("button", { name: "+ Go left" }).count()) === 0, "…and leaves the list");
+  await page.getByRole("button", { name: "Suggest choices" }).click();
+  for (let i = 0; i < 50 && suggestCalls() < before + 2; i++) await page.waitForTimeout(100);
+  const again = prompts.filter((p) => p.user.includes("distinct options the reader could pick")).at(-1).user;
+  ok(again.includes('- "Go left"') && /not picked[^]*- "Go right"/.test(again), "reading page: suggesting again names the new choice and the ones not picked");
+}
 
 await browser.close();
 mock.close();
