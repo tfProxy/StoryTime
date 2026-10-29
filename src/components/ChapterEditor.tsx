@@ -225,7 +225,12 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
 
   // An edit draft saved before summaries were carried into it has no summary field: start it from the chapter's.
   function upgraded(d: Draft): Draft {
-    if (target.kind === "fill" && !d.newChoiceLabel) return { ...d, newChoiceLabel: target.label };
+    if (target.kind === "fill") {
+      // A box left as the slot's text (or empty, or from a draft saved before slotLabel existed) shows the slot's current
+      // text, which may have been renamed since the draft was saved. Text the author changed on purpose is kept.
+      const untouched = !d.newChoiceLabel.trim() || d.slotLabel === undefined || d.newChoiceLabel === d.slotLabel;
+      return untouched ? { ...d, newChoiceLabel: target.label, slotLabel: target.label } : d;
+    }
     return target.kind === "edit" && d.summary === undefined && target.initialSummary ? { ...d, summary: target.initialSummary } : d;
   }
 
@@ -235,7 +240,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     const fresh = (): Draft => {
       const d = emptyDraft(draftKey, resumeHref, draftLabel);
       // Filling in an existing choice starts with its text in the choice box; changing it makes a new choice instead.
-      if (target.kind === "fill") return { ...d, newChoiceLabel: target.label };
+      if (target.kind === "fill") return { ...d, newChoiceLabel: target.label, slotLabel: target.label };
       if (target.kind !== "edit") return d;
       return {
         ...d,

@@ -27,6 +27,11 @@ export type Draft = {
   /** A new story's style notes. (Older drafts may hold unsaved changes to an existing story's; those are ignored.) */
   style?: string;
   newChoiceLabel: string;
+  /**
+   * Filling an unwritten choice: the choice's text when the box was last set from it. If the box still holds this, the
+   * author hasn't changed it, so it follows the choice's current text (the choice may have been renamed since).
+   */
+  slotLabel?: string;
   title: string;
   body: string;
   choices: string[];
