@@ -27,6 +27,8 @@ export type ChapterContext = {
   path: (Required<Pick<ContextChapter, "id" | "revision">> & ContextChapter & { depth: number })[];
   codex: ContextCodexEntry[];
   choices: { id: string; label: string; child_chapter_id: string | null }[];
+  /** The chapter is in the trash: a run skips what it was to do there. */
+  trashed?: boolean;
 };
 
 async function call<T>(f: Fetch, method: string, url: string, body?: unknown): Promise<T> {

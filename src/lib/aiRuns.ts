@@ -415,6 +415,7 @@ export function createRun(input: z.infer<typeof NewRunSchema>): { id: string } {
   if (input.start_chapter_id !== null) {
     const chapter = getChapter(input.start_chapter_id);
     if (!chapter || chapter.story_id !== input.story_id) throw new PostError("That chapter is not in this story", 404);
+    if (chapter.trashed_at !== null) throw new PostError("That chapter is in the trash. Restore it before starting a run there.", 409);
   }
   const tasks: RunTask[] =
     input.mode === "review"

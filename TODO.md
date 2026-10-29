@@ -75,6 +75,9 @@ Background: an entry's AI text is built from its facts (one per aspect, such as 
 - [ ] State tags (a stretch like `species: wolf` from one chapter to another, folded along a path). Not wanted for now.
 - [ ] A nightly review run for chapters changed that day. Only if asked.
 
+**The trash**
+- [ ] Emptying the trash: trashed branches are kept for good; deleting them for real (admin script or a button) isn't built.
+
 **Server and code**
 - [ ] Route the remaining one-off AI calls (codex scan, tag suggestions, summaries, Write prompt, Refine's prompt) through a server `POST /api/ai/chat` stream, so the browser never calls providers and no CORS setup is needed.
 - [ ] A `/api/comfy/view` proxy so the Refine canvas can load ComfyUI pictures without CORS.

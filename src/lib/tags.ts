@@ -188,7 +188,7 @@ const toChapterTag = (r: ChapterTagRow): ChapterTag => ({ ...r, stale: r.stale =
 export function chapterTags(storyId: string, opts: { chapterId?: string } = {}): ChapterTag[] {
   const where = opts.chapterId ? ` AND ct.chapter_id = ?` : "";
   const rows = db()
-    .prepare(`${CHAPTER_TAG_SELECT} WHERE c.story_id = ?${where} ORDER BY c.depth, c.posted_at, lower(t.name)`)
+    .prepare(`${CHAPTER_TAG_SELECT} WHERE c.story_id = ? AND c.trashed_at IS NULL${where} ORDER BY c.depth, c.posted_at, lower(t.name)`)
     .all(...(opts.chapterId ? [storyId, opts.chapterId] : [storyId])) as ChapterTagRow[];
   return rows.map(toChapterTag);
 }
@@ -295,7 +295,7 @@ export function checkedTagIdsByChapter(storyId: string): Map<string, string[]> {
   const rows = db()
     .prepare(
       `SELECT k.chapter_id, k.tag_ids FROM chapter_tag_checks k JOIN chapters c ON c.id = k.chapter_id
-        WHERE c.story_id = ? AND k.revision = c.revision`,
+        WHERE c.story_id = ? AND c.trashed_at IS NULL AND k.revision = c.revision`,
     )
     .all(storyId) as { chapter_id: string; tag_ids: string }[];
   return new Map(rows.map((r) => [r.chapter_id, JSON.parse(r.tag_ids) as string[]]));
@@ -389,7 +389,7 @@ export function pendingTagCounts(storyId: string): Map<string, number> {
          FROM chapter_tags ct
          JOIN chapters c ON c.id = ct.chapter_id AND ${TAG_ON}
          JOIN tags t ON t.id = ct.tag_id AND t.removed_at IS NULL
-        WHERE c.story_id = ? AND ct.status = 'suggested'
+        WHERE c.story_id = ? AND c.trashed_at IS NULL AND ct.status = 'suggested'
         GROUP BY ct.chapter_id`,
     )
     .all(storyId) as { chapter_id: string; n: number }[];

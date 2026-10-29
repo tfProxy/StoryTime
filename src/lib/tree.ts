@@ -9,9 +9,16 @@ export type TreeNode = {
   summary: string | null;
   /** Written by an AI run (and whether the author reviewed it); null when the author wrote it. */
   ai: AiMark;
-  /** Choices on this chapter; `child` is null while the choice is still unwritten. */
-  choices: { id: string; label: string; child: TreeNode | null }[];
+  /** In the trash (only in a tree built with `trashed: true`). */
+  trashed: boolean;
+  /**
+   * Choices on this chapter; `child` is null while the choice has no live chapter. `trashed` lists the chapters
+   * of that choice in the trash, and is always empty unless the tree was built with `trashed: true`.
+   */
+  choices: { id: string; label: string; child: TreeNode | null; trashed: TreeNode[] }[];
 };
+
+export type TreeOptions = { trashed?: boolean };
 
 type ChapterRow = {
   id: string;
@@ -23,6 +30,7 @@ type ChapterRow = {
   ai_run_id: string | null;
   ai_reviewed_at: number | null;
   ai_owned_at: number | null;
+  trashed_at: number | null;
 };
 
 export type StoryChapter = {
@@ -47,7 +55,7 @@ export function getStoryChapters(storyId: string): StoryChapter[] {
     .prepare(
       `SELECT c.id, c.revision, c.title, c.body, c.summary, c.path_summary, c.depth, ch.parent_chapter_id AS parent_id, ch.label AS choice_label
          FROM chapters c LEFT JOIN choices ch ON ch.id = c.parent_choice_id
-        WHERE c.story_id = ? ORDER BY c.depth, c.posted_at, c.rowid`,
+        WHERE c.story_id = ? AND c.trashed_at IS NULL ORDER BY c.depth, c.posted_at, c.rowid`,
     )
     .all(storyId) as StoryChapter[];
   // Only chapters reachable from the root.
@@ -60,13 +68,13 @@ export function getStoryChapters(storyId: string): StoryChapter[] {
 }
 
 /**
- * Every live chapter of a story as a nested tree, for the outline view. Removed chapters and
- * choices (and anything below them) are left out.
+ * Every live chapter of a story as a nested tree, for the outline view. Trashed chapters are left out, unless
+ * `trashed` is set: then they are listed under their choice, after the live one.
  */
-export function getStoryTree(storyId: string): TreeNode | null {
+export function getStoryTree(storyId: string, options: TreeOptions = {}): TreeNode | null {
   const story = getStory(storyId);
   if (!story?.root_chapter_id) return null;
-  return buildTree(storyId, story.root_chapter_id, Infinity, 0);
+  return buildTree(storyId, story.root_chapter_id, Infinity, 0, options);
 }
 
 /**
@@ -75,17 +83,18 @@ export function getStoryTree(storyId: string): TreeNode | null {
  * is there too; the children one level past the limit are stubs (`choices: []`), so a choice written below the
  * limit is never mistaken for an unwritten one.
  */
-export function getSubtree(chapterId: string, maxDepth: number): TreeNode | null {
+export function getSubtree(chapterId: string, maxDepth: number, options: TreeOptions = {}): TreeNode | null {
   const chapter = getChapter(chapterId);
   if (!chapter) return null;
-  return buildTree(chapter.story_id, chapterId, maxDepth, chapter.depth);
+  // A trashed chapter can still be opened, but only as itself: what hangs below it is in the trash too.
+  return buildTree(chapter.story_id, chapterId, maxDepth, chapter.depth, options);
 }
 
-function buildTree(storyId: string, rootId: string, maxDepth: number, baseDepth: number): TreeNode | null {
+function buildTree(storyId: string, rootId: string, maxDepth: number, baseDepth: number, options: TreeOptions): TreeNode | null {
   const chapters = db()
     .prepare(
-      `SELECT id, title, depth, parent_choice_id, edited_at, summary, ai_run_id, ai_reviewed_at, ai_owned_at
-         FROM chapters WHERE story_id = ?`,
+      `SELECT id, title, depth, parent_choice_id, edited_at, summary, ai_run_id, ai_reviewed_at, ai_owned_at, trashed_at
+         FROM chapters WHERE story_id = ? ORDER BY posted_at, rowid`,
     )
     .all(storyId) as ChapterRow[];
   const choices = db()
@@ -98,7 +107,12 @@ function buildTree(storyId: string, rootId: string, maxDepth: number, baseDepth:
     .all(storyId) as { id: string; parent_chapter_id: string; label: string }[];
 
   const childOfChoice = new Map<string, ChapterRow>();
-  for (const c of chapters) if (c.parent_choice_id) childOfChoice.set(c.parent_choice_id, c);
+  const trashedOfChoice = new Map<string, ChapterRow[]>();
+  for (const c of chapters) {
+    if (!c.parent_choice_id) continue;
+    if (c.trashed_at === null) childOfChoice.set(c.parent_choice_id, c);
+    else if (options.trashed) trashedOfChoice.set(c.parent_choice_id, [...(trashedOfChoice.get(c.parent_choice_id) ?? []), c]);
+  }
   const choicesOf = new Map<string, typeof choices>();
   for (const ch of choices) {
     const list = choicesOf.get(ch.parent_chapter_id) ?? [];
@@ -113,10 +127,11 @@ function buildTree(storyId: string, rootId: string, maxDepth: number, baseDepth:
     edited: c.edited_at !== null,
     summary: c.summary,
     ai: aiMarkOf(c),
+    trashed: c.trashed_at !== null,
     // Chapters one level past the limit are only stubs: they say a choice is written, with no choices of their own.
     choices: c.depth - baseDepth > maxDepth ? [] : (choicesOf.get(c.id) ?? []).map((ch) => {
       const child = childOfChoice.get(ch.id);
-      return { id: ch.id, label: ch.label, child: child ? build(child) : null };
+      return { id: ch.id, label: ch.label, child: child ? build(child) : null, trashed: (trashedOfChoice.get(ch.id) ?? []).map(build) };
     }),
   });
 

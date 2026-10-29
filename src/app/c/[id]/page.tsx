@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { aiMarkOf, getChoices, getPath, getStory } from "@/lib/stories";
+import { aiMarkOf, getChoices, getIncomingChoice, getPath, getStory, restoreBlocker } from "@/lib/stories";
 import AiMark from "@/components/AiMark";
+import TrashNotice from "@/components/TrashNotice";
 import AiReviewNotice from "@/components/AiReviewNotice";
 import CodexInboxBanner from "@/components/CodexInboxBanner";
 import { appliedTagNames } from "@/lib/tags";
@@ -34,13 +35,15 @@ export default async function ChapterPage({
   const ai = aiMarkOf(chapter);
   const choices = getChoices(chapter.id);
   // The choice the reader took to get here, for the prompt.
-  const incoming = path.length > 1 ? (getChoices(path[path.length - 2].id).find((c) => c.child_chapter_id === chapter.id)?.label ?? null) : null;
+  const incoming = getIncomingChoice(chapter.id)?.label ?? null;
+  const trashed = chapter.trashed_at !== null;
   const images = chapterImageVersions([chapter.id]).get(chapter.id)!;
   const tagNames = appliedTagNames(story.id, chapter.id).get(chapter.id) ?? [];
   const notes = choices.some((c) => c.child_chapter_id) ? contentNotes(story.id) : new Map<string, ChapterNote>();
 
   return (
     <>
+      {trashed && <TrashNotice chapterId={chapter.id} blocker={restoreBlocker(chapter.id)} />}
       {posted && (
         <p className="notice">
           Chapter posted. Want the codex to catch up with what happened?{" "}
@@ -87,7 +90,12 @@ export default async function ChapterPage({
       <section className="choices">
         <h2>{choices.length > 0 ? "What happens next?" : "The story ends here, for now."}</h2>
         {choices.map((c) =>
-          c.child_chapter_id ? (
+          trashed ? (
+            // Nothing is written below a chapter in the trash; restore the branch first.
+            <div key={c.id} className="card choice-unwritten">
+              {c.label}
+            </div>
+          ) : c.child_chapter_id ? (
             <Link key={c.id} href={`/c/${c.child_chapter_id}`} className="card choice-written" title="Written">
               <svg className="choice-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M4 5.5C6.5 4.5 9.5 4.5 12 6c2.5-1.5 5.5-1.5 8-.5v13c-2.5-1-5.5-1-8 .5-2.5-1.5-5.5-1.5-8-.5z M12 6v13" />
@@ -111,20 +119,24 @@ export default async function ChapterPage({
             </Link>
           ),
         )}
-        <AddChoice chapterId={chapter.id} />
-        <SuggestChoices storyId={story.id} chapterId={chapter.id} incoming={incoming} choices={choices.map((c) => c.label)} />
-        <p className="row">
-          <Link className="button secondary" href={`/c/${chapter.id}/write`}>
-            Draft a different idea
-          </Link>
-        </p>
+        {!trashed && (
+          <>
+            <AddChoice chapterId={chapter.id} />
+            <SuggestChoices storyId={story.id} chapterId={chapter.id} incoming={incoming} choices={choices.map((c) => c.label)} />
+            <p className="row">
+              <Link className="button secondary" href={`/c/${chapter.id}/write`}>
+                Draft a different idea
+              </Link>
+            </p>
+          </>
+        )}
       </section>
       <PageMenu
         codexHref={`/c/${chapter.id}/codex`}
         codexGroup={<Link href={`/c/${chapter.id}/summary`}>{chapter.summary && chapter.path_summary ? "Summary" : "Summary (missing)"}</Link>}
       >
-        <EditLink chapterId={chapter.id} />
-        <Link href={`/c/${chapter.id}/write-ahead`}>Write ahead with AI…</Link>
+        {!trashed && <EditLink chapterId={chapter.id} />}
+        {!trashed && <Link href={`/c/${chapter.id}/write-ahead`}>Write ahead with AI…</Link>}
         <Link href={`/c/${chapter.id}/illustrate`}>Illustrate chapter</Link>
         <Link href={`/s/${story.id}/pictures?from=${chapter.id}`}>Make missing pictures…</Link>
         <Link href={`/c/${chapter.id}/path`}>Read this path</Link>

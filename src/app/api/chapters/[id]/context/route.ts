@@ -16,5 +16,6 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
     path: path.map(({ id, revision, depth, title, body, summary, path_summary }) => ({ id, revision, depth, title, body, summary, path_summary })),
     codex: getContextCodex(id),
     choices: getChoices(id),
+    trashed: path[path.length - 1].trashed_at !== null,
   });
 }

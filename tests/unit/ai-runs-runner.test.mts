@@ -41,6 +41,8 @@ function makeServer(opts: { options: RunOptions; open: string[]; written?: strin
     return out;
   };
   const images = new Set<string>();
+  /** Chapters moved to the trash while the run waited. */
+  const trashed = new Set<string>();
   const pictureDrafts: { chapterId: string; prompt: string; negative: string; scene: string; moment: string }[] = [];
   const log = { posts: [] as { body: any }[], summaries: [] as { id: string; summary: string }[], choiceAdds: [] as string[], patches: 0 };
   const tree = (c: Ch): PlanNode => ({ id: c.id, depth: c.depth, choices: choices.filter((x) => x.parent === c.id).map((x) => ({ id: x.id, label: x.label, child: childOf(x.id) ? tree(childOf(x.id)!) : null })) });
@@ -63,6 +65,7 @@ function makeServer(opts: { options: RunOptions; open: string[]; written?: strin
         path: path.map(({ id, revision, depth, title, body, summary, path_summary }) => ({ id, revision, depth, title, body, summary, path_summary })),
         codex: [],
         choices: choices.filter((c) => c.parent === m![1]).map((c) => ({ id: c.id, label: c.label, child_chapter_id: childOf(c.id)?.id ?? null })),
+        trashed: trashed.has(m[1]),
       });
     }
     if (url === "/api/chapters" && method === "POST") {
@@ -118,7 +121,7 @@ function makeServer(opts: { options: RunOptions; open: string[]; written?: strin
     id: runId, story_id: "s1", start_chapter_id: root.id, mode: opts.tasks ? "arc" : opts.tree ? "tree" : "fill", options: opts.options, tasks: opts.tasks ? opts.tasks(root.id) : opts.tree ? planTree(tree(root), opts.options) : planFill(tree(root), { scope: "children", endChoices: 2, ...opts.options }),
     status: "ready", review_depth: null, error: null, version: 1, finished_at: null, created_at: 1, updated_at: 1,
   };
-  return { fetch: fetchFake, state, chapters, choices, log, root, open, pre, childOf, runId, tree, addCh, addChoice, images, pictureDrafts };
+  return { fetch: fetchFake, state, chapters, choices, log, root, open, pre, childOf, runId, tree, addCh, addChoice, images, pictureDrafts, trashed };
 }
 
 type Call = { kind: "chapter" | "plan" | "summary"; role?: string; model?: string; message: string };
@@ -235,6 +238,16 @@ async function drive(server: ReturnType<typeof makeServer>, ai: ReturnType<typeo
   await skipTask(s.runId, ids[0], token, { fetch: s.fetch });
   const { run } = await drive(s, makeAi());
   ok(run.status === "done" && s.log.posts.length === 1 && (run.tasks.find((t) => t.id === ids[0]) as WriteTask).status === "skipped", "a skipped task isn't written, the others are");
+}
+
+// ---- a chapter moved to the trash while the run waited ----
+{
+  const s = makeServer({ options: { models: "each", endChoices: 0 }, open: ["A", "B"] });
+  s.trashed.add(s.root.id);
+  const { run } = await drive(s, makeAi());
+  const writes = run.tasks.filter((t) => t.kind === "write") as WriteTask[];
+  const planTask = run.tasks.find((t) => t.kind === "plan");
+  ok(run.status === "done" && s.log.posts.length === 0 && writes.length === 2 && writes.every((t) => t.status === "skipped") && planTask?.status === "skipped" && /trash/i.test(planTask.error ?? ""), "tasks below a trashed chapter are skipped, nothing is posted, and the run finishes");
 }
 
 // ---- Stop (abort) pauses ----

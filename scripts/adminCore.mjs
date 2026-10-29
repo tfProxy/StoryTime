@@ -132,8 +132,9 @@ export function deleteItem(db, kind, id) {
     } else if (kind === "chapter") {
       chapterIds = [id, ...descendantIds(db, id)];
     } else if (kind === "choice") {
-      const child = db.prepare(`SELECT id FROM chapters WHERE parent_choice_id = ?`).get(id);
-      chapterIds = child ? [child.id, ...descendantIds(db, child.id)] : [];
+      // A choice can have trashed chapters besides its live one; they go too.
+      const children = db.prepare(`SELECT id FROM chapters WHERE parent_choice_id = ?`).all(id);
+      chapterIds = children.flatMap((child) => [child.id, ...descendantIds(db, child.id)]);
     } else {
       chapterIds = [];
     }

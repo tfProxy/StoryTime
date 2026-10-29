@@ -63,7 +63,7 @@ export function loadStory(storyId: string): StoryExport | null {
   const allChapters = db()
     .prepare(
       `SELECT id, parent_choice_id, depth, title, body, summary, path_summary, posted_at, edited_at, edit_note, revision
-         FROM chapters WHERE story_id = ? ORDER BY depth, posted_at, rowid`,
+         FROM chapters WHERE story_id = ? AND trashed_at IS NULL ORDER BY depth, posted_at, rowid`,
     )
     .all(storyId) as ChapterRow[];
   const allChoices = db()

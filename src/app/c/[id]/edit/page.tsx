@@ -15,6 +15,20 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
   if (!story) notFound();
   const incoming = getIncomingChoice(id);
 
+  if (chapter.trashed_at !== null) {
+    return (
+      <>
+        <p className="crumbs">
+          <Link href={`/c/${id}`}>← Back to “{chapter.title}”</Link>
+        </p>
+        <h1>Edit chapter</h1>
+        <p className="notice">
+          This chapter is in the trash. <Link href={`/c/${id}`}>Open it</Link> to restore it before editing.
+        </p>
+      </>
+    );
+  }
+
   return (
     <>
       <p className="crumbs">

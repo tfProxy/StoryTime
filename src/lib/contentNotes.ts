@@ -17,7 +17,7 @@ export function contentNotes(storyId: string): Map<string, ChapterNote> {
          FROM chapter_tags ct
          JOIN chapters c ON c.id = ct.chapter_id
          JOIN tags t ON t.id = ct.tag_id AND t.removed_at IS NULL AND t.show_readers = 1
-        WHERE c.story_id = ? AND ct.status = 'approved'
+        WHERE c.story_id = ? AND c.trashed_at IS NULL AND ct.status = 'approved'
           AND NOT EXISTS (SELECT 1 FROM story_tags st WHERE st.story_id = c.story_id AND st.tag_id = ct.tag_id AND st.enabled = 0)`,
     )
     .all(storyId) as { chapter_id: string; name: string; value: string | null }[];

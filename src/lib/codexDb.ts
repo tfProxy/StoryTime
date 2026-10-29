@@ -150,7 +150,7 @@ export function storyCodexEntries(storyId: string): StoryEntrySummary[] {
       `SELECT o.id, o.anchor_chapter_id, c.depth AS anchor_depth, o.entry_id, o.op, o.name, o.type, o.aliases,
               o.content, o.always_include, o.posted_at
          FROM codex_ops o JOIN chapters c ON c.id = o.anchor_chapter_id
-        WHERE c.story_id = ?
+        WHERE c.story_id = ? AND c.trashed_at IS NULL
         ORDER BY c.depth, o.posted_at, o.rowid`,
     )
     .all(storyId) as Row[];
@@ -298,7 +298,7 @@ export function codexEntryAt(storyId: string, entryId: string, chapterId: string
 /** The chapter where an entry was last written (the anchor of its latest op that isn't a retirement); null if it has none. */
 export function entryLastAnchor(storyId: string, entryId: string): string | null {
   const row = db()
-    .prepare(`SELECT anchor_chapter_id FROM codex_ops WHERE story_id = ? AND entry_id = ? AND op != 'retire' ORDER BY posted_at DESC, rowid DESC LIMIT 1`)
+    .prepare(`SELECT anchor_chapter_id FROM codex_ops WHERE story_id = ? AND entry_id = ? AND op != 'retire' AND anchor_chapter_id NOT IN (SELECT id FROM chapters WHERE trashed_at IS NOT NULL) ORDER BY posted_at DESC, rowid DESC LIMIT 1`)
     .get(storyId, entryId) as { anchor_chapter_id: string } | undefined;
   return row?.anchor_chapter_id ?? null;
 }

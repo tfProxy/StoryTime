@@ -825,6 +825,97 @@ button.danger {
   border-color: #c0392b;
 }
 
+button.warning {
+  background: transparent;
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+/* ---- Trash: the edit page's split save button, the trashed notice and the outline's greyed branches ---- */
+.split-button {
+  position: relative;
+  display: inline-flex;
+  /* At the right of the action bar even when it wraps onto a row of its own, so the menu (anchored right) stays on screen. */
+  margin-left: auto;
+}
+
+.split-button > button:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.split-button > .split-more {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  margin-left: -1px;
+  padding-left: 0.6rem;
+  padding-right: 0.6rem;
+}
+
+.split-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 0.4rem);
+  z-index: 30;
+  display: grid;
+  min-width: min(20rem, calc(100vw - 2rem));
+  padding: 0.25rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+
+.split-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  white-space: normal;
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid transparent;
+  padding: 0.4rem 0.6rem;
+}
+
+.split-menu button:hover,
+.split-menu button:focus-visible {
+  background: var(--bg);
+  border-color: var(--line);
+}
+
+.split-menu button[aria-checked="true"] {
+  font-weight: 600;
+}
+
+.split-menu small {
+  display: block;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.trash-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.outline li.outline-trashed > details > summary,
+.outline li.outline-trashed:not(:has(details)) {
+  opacity: 0.55;
+}
+
+.outline-trashed a {
+  color: var(--muted);
+}
+
+.outline-trashed-label {
+  font-size: 0.8rem;
+  font-style: italic;
+  margin-left: 0.25rem;
+}
+
 .outline {
   list-style: none;
   margin: 0;

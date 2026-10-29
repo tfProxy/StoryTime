@@ -129,6 +129,8 @@ export type OutlineOptions = {
   tags: boolean;
   /** "Highlight: <tag>" entries in the outline's menu, which mark the chapters with an approved tag. */
   highlight: boolean;
+  /** Branches moved to the trash, greyed, under their choice so they can be opened and restored. */
+  trashed: boolean;
 };
 
 export const OUTLINE_PARTS = [
@@ -141,10 +143,11 @@ export const OUTLINE_PARTS = [
   { id: "highlight", label: "Highlight by tag", hint: "Adds \"Highlight a tag\" to the outline's menu." },
   { id: "aiWritten", label: "AI-written", hint: "a robot on chapters the AI wrote by itself, filled until you mark them reviewed" },
   { id: "tags", label: "Tags", hint: "the chapter's approved tags, e.g. [tf, tg], in brackets after the others" },
+  { id: "trashed", label: "Trashed branches", hint: "branches you moved to the trash, greyed, so you can open and restore them" },
 ] as const satisfies readonly { id: keyof OutlineOptions; label: string; hint: string }[];
 
-// Tags are off until chosen, so an outline does not change when this first comes in.
-export const DEFAULT_OUTLINE: OutlineOptions = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, review: true, aiWritten: true, tags: false, highlight: true };
+// Tags and trashed branches are off until chosen, so an outline does not change when these first come in.
+export const DEFAULT_OUTLINE: OutlineOptions = { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, review: true, aiWritten: true, tags: false, highlight: true, trashed: false };
 
 export type ComfySettings = {
   /** Where ComfyUI is, e.g. https://comfy.example.ts.net; "" when there is none. */
@@ -356,6 +359,7 @@ const settingsSchema = z.object({
       aiWritten: z.boolean().catch(true),
       tags: z.boolean().catch(false),
       highlight: z.boolean().catch(true),
+      trashed: z.boolean().catch(false),
     })
     .catch(DEFAULT_OUTLINE),
   imagePromptStyle: z.enum(["tags", "booru", "natural"]).catch("tags"),

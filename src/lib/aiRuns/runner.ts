@@ -292,6 +292,9 @@ async function doStep(picked: Pick, run: AiRun, list: RunTask[], env: StepEnv, f
   return doWrite(picked.task as WriteTask, run, list, env, f);
 }
 
+/** Why a step is skipped when the chapter it works on (or below) was moved to the trash after the run was made. */
+const TRASHED = "Skipped: the chapter is in the trash.";
+
 /** Finds the chapter already written for the task's slot, if there is one (a crash after posting, or somebody wrote it). */
 function writtenFor(task: WriteTask, slot: ReturnType<typeof resolveSlot>, parent: ChapterContext): string | null {
   const choice = "choiceId" in slot ? parent.choices.find((c) => c.id === slot.choiceId) : parent.choices.find((c) => norm(c.label) === norm(slot.newLabel));
@@ -326,6 +329,7 @@ function withExpansion(before: RunTask[], after: RunTask[], options: AiRun["opti
 async function doPlan(task: PlanTask, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
   const { settings, signal } = env;
   const context = await getContext(f, task.chapterId);
+  if (context.trashed) return replace(list, { ...task, status: "skipped", error: TRASHED } as RunTask);
   const chapter = context.path.at(-1)!;
   const open = new Set(context.choices.filter((c) => !c.child_chapter_id).map((c) => norm(c.label)));
   const labels = task.labels.filter((l) => open.has(norm(l)));
@@ -357,6 +361,7 @@ async function doWrite(task: WriteTask, run: AiRun, list: RunTask[], env: StepEn
   const { settings, signal, onEvent } = env;
   const slot = resolveSlot(task, list);
   const parent = await getContext(f, parentOf(task, list));
+  if (parent.trashed) return replace(list, { ...task, status: "skipped", error: "Skipped: the chapter it goes below is in the trash." } as RunTask);
   const already = writtenFor(task, slot, parent);
   if (already) return doneWith(task, already, f, list);
 
@@ -415,6 +420,7 @@ async function doFinish(task: WriteTask, run: AiRun, list: RunTask[], env: StepE
   const { settings, signal, onEvent } = env;
   if (!task.chapterId) throw new Error("This chapter was not posted.");
   let context = await getContext(f, task.chapterId);
+  if (context.trashed) return replace(list, { ...task, status: "skipped", error: TRASHED } as RunTask);
   const chapter = context.path.at(-1)!;
   const before = context.path.slice(0, -1);
   const story = { title: context.story.title, premise: context.story.premise };
@@ -469,6 +475,7 @@ async function doTags(task: TagsTask, run: AiRun, list: RunTask[], env: StepEnv,
   const context = await getContext(f, task.chapterId);
   const chapter = context.path.at(-1)!;
   const skip = (why: string) => replace(list, { ...task, status: "skipped", error: why });
+  if (context.trashed) return skip(TRASHED);
   if (chapter.revision !== task.revision) return skip("Skipped: the chapter was edited after the run was made.");
   const { tags, enabled } = await getStoryTags(f, run.story_id);
   const on = tags.filter((t) => enabled.includes(t.id));
@@ -509,6 +516,7 @@ async function doFacts(task: FactsTask, run: AiRun, list: RunTask[], env: StepEn
   const context = await getContext(f, task.chapterId);
   const chapter = context.path.at(-1)!;
   const skip = (why: string) => replace(list, { ...task, status: "skipped", error: why });
+  if (context.trashed) return skip(TRASHED);
   if (chapter.revision !== task.revision) return skip("Skipped: the chapter was edited after the run was made.");
   env.onEvent?.({ type: "status", text: `Reading “${chapter.title}” for facts…` });
   const facts = await extractFacts(env.settings, {
@@ -537,6 +545,7 @@ async function doCodex(task: CodexTask, run: AiRun, list: RunTask[], env: StepEn
   const context = await getContext(f, task.chapterId);
   const chapter = context.path.at(-1)!;
   const skip = (why: string) => replace(list, { ...task, status: "skipped", error: why });
+  if (context.trashed) return skip(TRASHED);
   if (chapter.revision !== task.revision) return skip("Skipped: the chapter was edited after the run was made.");
   env.onEvent?.({ type: "status", text: `Reading “${chapter.title}” for codex changes…` });
   const { entries } = await getChapterCodex(f, task.chapterId);
@@ -569,6 +578,7 @@ async function doNotes(task: NotesTask, run: AiRun, list: RunTask[], env: StepEn
   const context = await getContext(f, task.chapterId);
   const chapter = context.path.at(-1)!;
   const skip = (why: string) => replace(list, { ...task, status: "skipped", error: why });
+  if (context.trashed) return skip(TRASHED);
   if (chapter.revision !== task.revision) return skip("Skipped: the chapter was edited after the run was made.");
   const { entries } = await getChapterCodex(f, task.chapterId);
   const entry = entries.find((e) => e.entry_id === task.entryId);
@@ -595,6 +605,7 @@ async function doSummary(task: SummaryTask, run: AiRun, list: RunTask[], env: St
   const context = await getContext(f, task.chapterId);
   const chapter = context.path.at(-1)!;
   const skip = (why: string) => replace(list, { ...task, status: "skipped", error: why });
+  if (context.trashed) return skip(TRASHED);
   if (chapter.revision !== task.revision) return skip("Skipped: the chapter was edited after the run was made.");
   const summary = chapter.summary ?? "";
   if (!summary.trim()) return skip("Skipped: the chapter has no summary.");

@@ -43,6 +43,7 @@ import { PageMenu } from "./SiteMenu";
 import CodexPreview from "./CodexPreview";
 import PromptButton from "./PromptButton";
 import ModelPicker from "./ModelPicker";
+import SaveSplitButton, { type SaveMode } from "./SaveSplitButton";
 
 export type Target =
   /** The first chapter of a story that has none yet. */
@@ -172,6 +173,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const [askSummary, setAskSummary] = useState(false);
   // "This is my writing now": an edit of an AI-marked chapter that also drops the mark. Not kept in the draft.
   const [mine, setMine] = useState(false);
+  // The edit page's split button: save, save and replace the branch below, or only move the branch to the trash.
+  const [saveMode, setSaveMode] = useState<SaveMode>("save");
   const abortRef = useRef<AbortController | null>(null);
   const loadedRef = useRef(false);
   // The server's `updatedAt` for the version this page has; each save says it builds on it.
@@ -885,10 +888,40 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   // The text changed but the summary didn't: only the author knows whether it still describes the chapter.
   const needsSummaryChoice = keptSummary && textChanged && !(draft.aiSummary && draft.aiSummary.body === draft.body);
 
+  // The split button's modes only exist when they make sense: replacing needs chapters below, and the first chapter can't go.
+  const canReplace = target.kind === "edit" && target.existingChoices.some((c) => c.hasChild);
+  const canTrash = target.kind === "edit" && target.incomingLabel !== null;
+  const mode: SaveMode = saveMode === "replace" && !canReplace ? "save" : saveMode === "trash" && !canTrash ? "save" : saveMode;
+  const below = target.kind === "edit" ? target.descendantCount : 0;
+  const belowText = `${below} chapter${below === 1 ? "" : "s"}`;
+
   /** Save; changed text with an unchanged summary asks first, whether to keep the summary or write a new one. */
   function requestPost() {
+    if (target.kind === "edit" && mode === "trash") return void trashBranch();
+    if (target.kind === "edit" && mode === "replace" && !window.confirm(`Save your edit and move the ${belowText} below “${target.initialTitle}” to the trash?`)) return;
     if (needsSummaryChoice) setAskSummary(true);
     else void post();
+  }
+
+  /** Move to trash: the chapter and everything below it; the edits on the page are not saved, and the draft goes. */
+  async function trashBranch() {
+    if (target.kind !== "edit") return;
+    const what = below > 0 ? `and the ${belowText} below it ` : "";
+    if (!window.confirm(`Move “${target.initialTitle}” ${what}to the trash?`)) return;
+    startBusy("post");
+    setError(null);
+    try {
+      const res = await fetch(`/api/chapters/${target.chapterId}/trash`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+      loadedRef.current = false; // stop autosave from re-creating the draft
+      await saveChainRef.current;
+      await deleteDraft(draftKey).catch(() => {});
+      router.push(`/c/${data.parent_chapter_id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setBusy(null);
+    }
   }
 
   async function post(resummarize = false) {
@@ -957,6 +990,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
         remove_choices: existingChoices.filter((c) => c.removed).map((c) => c.id),
         add_choices: finalChoices,
         mine: target.aiMarked && mine ? true : undefined,
+        replace_branch: mode === "replace" ? true : undefined,
         codex_changes,
         codex_fact_changes,
       };
@@ -1591,6 +1625,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               <strong className="ask">You changed the chapter text.</strong> Does the existing summary still fit, or should
               it be written again from the new text? Re-summarizing also refreshes the story-so-far for the chapters after it.
             </p>
+          ) : target.kind === "edit" && mode === "trash" ? (
+            <p className="meta">Moves this chapter and everything below it to the trash. Your edits here are not saved.</p>
           ) : problems.length > 0 ? (
             <p>
               <strong>{target.kind === "edit" ? "Can't save yet:" : "Can't post yet:"}</strong>{" "}
@@ -1625,9 +1661,19 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               Re-summarize
             </button>
           </>
+        ) : target.kind === "edit" ? (
+          <SaveSplitButton
+            mode={mode}
+            onMode={setSaveMode}
+            canReplace={canReplace}
+            canTrash={canTrash}
+            busyLabel={posting ? (mode === "trash" ? "Moving…" : "Saving…") : null}
+            disabled={busy !== null || (mode !== "trash" && problems.length > 0)}
+            onMain={requestPost}
+          />
         ) : (
           <button type="button" onClick={requestPost} disabled={busy !== null || problems.length > 0}>
-            {posting ? "Saving…" : target.kind === "edit" ? "Save changes" : "Post chapter"}
+            {posting ? "Saving…" : "Post chapter"}
           </button>
         )}
       </div>

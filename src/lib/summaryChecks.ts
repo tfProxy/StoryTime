@@ -42,7 +42,7 @@ export function currentSummaryChecks(storyId: string): CurrentSummaryCheck[] {
       .prepare(
         `SELECT k.chapter_id, k.verdict, k.problem
            FROM summary_checks k JOIN chapters c ON c.id = k.chapter_id AND c.revision = k.revision AND c.summary = k.summary
-          WHERE c.story_id = ? ORDER BY k.checked_at, k.rowid`,
+          WHERE c.story_id = ? AND c.trashed_at IS NULL ORDER BY k.checked_at, k.rowid`,
       )
       .all(storyId) as { chapter_id: string; verdict: "ok" | "wrong"; problem: string | null }[]
   ).map((r) => ({ chapterId: r.chapter_id, verdict: r.verdict, problem: r.problem ?? "" }));

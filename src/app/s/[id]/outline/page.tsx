@@ -25,9 +25,9 @@ function count(node: TreeNode, t: Totals) {
   }
 }
 
-/** The id of every chapter in the tree. */
+/** The id of every chapter in the tree, trashed ones too (when the tree has them). */
 function idsOf(node: TreeNode): string[] {
-  return [node.id, ...node.choices.flatMap((c) => (c.child ? idsOf(c.child) : []))];
+  return [node.id, ...node.choices.flatMap((c) => [...(c.child ? idsOf(c.child) : []), ...c.trashed.flatMap(idsOf)])];
 }
 
 type Mark = "hit" | "path" | "dim";
@@ -62,8 +62,9 @@ function Node({
   storyId: string;
   show: OutlineOptions;
 }) {
-  // Only written chapters are listed; unwritten choices are left to the story page.
-  const written = node.choices.filter((c) => c.child);
+  // Only written chapters are listed; unwritten choices are left to the story page. A choice with trashed
+  // chapters (shown only when the setting is on) lists them after its live one.
+  const written = node.choices.flatMap((c) => [...(c.child ? [{ node: c.child, label: c.label }] : []), ...c.trashed.map((t) => ({ node: t, label: c.label }))]);
   const n = issues.get(node.id)?.n ?? 0;
   // The marker opens the Review tab that has something; the tags tab only when tag suggestions are all there is.
   const tagsOnly = issues.get(node.id)?.tags ?? false;
@@ -90,6 +91,7 @@ function Node({
   const summary = (
     <span className="outline-row" data-highlight={mark}>
       <Link href={`/c/${node.id}`}>{node.title}</Link>
+      {node.trashed && <span className="meta outline-trashed-label">(trashed)</span>}
       {" "}
       <NodeSummary
         chapterId={node.id}
@@ -105,15 +107,16 @@ function Node({
       </NodeSummary>
     </span>
   );
-  if (written.length === 0) return <li id={`c-${node.id}`}>{summary}</li>;
+  const cls = node.trashed ? "outline-trashed" : undefined;
+  if (written.length === 0) return <li id={`c-${node.id}`} className={cls}>{summary}</li>;
   return (
-    <li id={`c-${node.id}`}>
+    <li id={`c-${node.id}`} className={cls}>
       {/* Everything starts open; a branch can still be folded away. */}
       <details open>
         <summary>{summary}</summary>
         <ul className="outline">
           {written.map((c) => (
-            <Node key={c.id} node={c.child!} via={c.label} marks={marks} images={images} issues={issues} tagNames={tagNames} storyId={storyId} show={show} />
+            <Node key={c.node.id} node={c.node} via={c.label} marks={marks} images={images} issues={issues} tagNames={tagNames} storyId={storyId} show={show} />
           ))}
         </ul>
       </details>
@@ -131,14 +134,14 @@ export default async function OutlinePage({
   const { id } = await params;
   const { highlight: highlightParam } = await searchParams;
   const story = getStory(id);
-  const tree = story ? getStoryTree(id) : null;
+  // The setting is read here, not in the browser, so trashed branches are never drawn first and then hidden.
+  const show = (getSettings() ?? { outline: DEFAULT_OUTLINE }).outline;
+  const tree = story ? getStoryTree(id, { trashed: show.trashed }) : null;
   if (!story || !tree) notFound();
 
   const totals: Totals = { chapters: 0, unwritten: 0, ends: 0, deepest: 0 };
   count(tree, totals);
   const images = chapterImageVersions(idsOf(tree));
-  // Read here, not in the browser, so a part turned off in Settings is never drawn first and then hidden.
-  const show = (getSettings() ?? { outline: DEFAULT_OUTLINE }).outline;
   const tagNames = show.tags ? appliedTagNames(id) : new Map<string, string[]>();
   // Highlighting by tag: found from the approved tags whether or not the chips are shown.
   const approved = show.highlight ? appliedTagNames(id) : new Map<string, string[]>();

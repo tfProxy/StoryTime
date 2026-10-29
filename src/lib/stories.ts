@@ -44,6 +44,8 @@ export type Chapter = {
   ai_reviewed_at: number | null;
   /** When the author declared the chapter their own writing; the AI mark is gone from then on. */
   ai_owned_at: number | null;
+  /** When the chapter was moved to the trash (with its branch); null for a live chapter. */
+  trashed_at: number | null;
 };
 
 /** Whether the AI wrote a chapter, and if so whether the author has reviewed it (D3a). null = written by the author (or taken over). */
@@ -125,6 +127,8 @@ export const EditChapterSchema = z.object({
   add_choices: z.array(required(LIMITS.label)).max(LIMITS.choices).default([]),
   /** "This is my writing now": drops the AI mark from an AI-written chapter for good. */
   mine: z.boolean().optional(),
+  /** "Replace branch": after saving, moves the chapters below this one to the trash; their choices stay, unwritten. */
+  replace_branch: z.boolean().optional(),
 });
 
 export const AddChoiceSchema = z.object({
@@ -201,7 +205,7 @@ export function listStories(): (Story & { chapter_count: number })[] {
   const rows = db()
     .prepare(
       `SELECT s.id, s.title, s.premise, s.style, s.art_style, s.image_prompt_style, s.checkpoint, s.draw_preset, s.style_ref, s.root_chapter_id, s.created_at, s.cover_updated_at AS cover_version,
-              (SELECT COUNT(*) FROM chapters c WHERE c.story_id = s.id) AS chapter_count
+              (SELECT COUNT(*) FROM chapters c WHERE c.story_id = s.id AND c.trashed_at IS NULL) AS chapter_count
          FROM stories s ORDER BY s.created_at DESC`,
     )
     .all() as (Omit<Story, "style_ref"> & { style_ref: string | null; chapter_count: number })[];
@@ -219,7 +223,7 @@ export function getStory(id: string): Story | undefined {
 }
 
 const CHAPTER_COLS = `c.id, c.story_id, c.parent_choice_id, c.depth, c.title, c.body, c.summary, c.path_summary,
-  c.posted_at, c.revision, c.edited_at, c.edit_note, c.ai_run_id, c.ai_reviewed_at, c.ai_owned_at`;
+  c.posted_at, c.revision, c.edited_at, c.edit_note, c.ai_run_id, c.ai_reviewed_at, c.ai_owned_at, c.trashed_at`;
 
 export function getChapter(id: string): Chapter | undefined {
   return db()
@@ -252,7 +256,7 @@ export function getChoices(chapterId: string): Choice[] {
   const rows = db()
     .prepare(
       `SELECT ch.id, ch.parent_chapter_id, ch.label, ch.posted_at, c.id AS child_chapter_id, c.ai_run_id, c.ai_reviewed_at, c.ai_owned_at
-         FROM choices ch LEFT JOIN chapters c ON c.parent_choice_id = ch.id
+         FROM choices ch LEFT JOIN chapters c ON c.parent_choice_id = ch.id AND c.trashed_at IS NULL
         WHERE ch.parent_chapter_id = ?
         ORDER BY ch.posted_at, ch.rowid`,
     )
@@ -314,11 +318,11 @@ export function countDescendants(chapterId: string): number {
   const row = db()
     .prepare(
       `WITH RECURSIVE d(id) AS (
-         SELECT c.id FROM choices ch JOIN chapters c ON c.parent_choice_id = ch.id
+         SELECT c.id FROM choices ch JOIN chapters c ON c.parent_choice_id = ch.id AND c.trashed_at IS NULL
           WHERE ch.parent_chapter_id = ?
          UNION ALL
          SELECT c.id FROM d JOIN choices ch ON ch.parent_chapter_id = d.id
-           JOIN chapters c ON c.parent_choice_id = ch.id
+           JOIN chapters c ON c.parent_choice_id = ch.id AND c.trashed_at IS NULL
        )
        SELECT COUNT(*) AS n FROM d`,
     )
@@ -413,6 +417,7 @@ export function createChapter(input: z.infer<typeof NewChapterSchema>): Posted {
     if (!parentChapter) {
       throw new PostError("That chapter does not exist", 404);
     }
+    if (parentChapter.trashed_at !== null) throw new PostError("That chapter is in the trash. Restore it before writing below it.", 409);
 
     if (input.ai_run_id !== undefined) {
       const run = db().prepare(`SELECT story_id FROM ai_runs WHERE id = ?`).get(input.ai_run_id) as { story_id: string } | undefined;
@@ -456,9 +461,98 @@ function chapterRevision(chapterId: string) {
   return row;
 }
 
-export function editChapter(chapterId: string, input: z.infer<typeof EditChapterSchema>): { revision: number } {
+/** The chapter and every live chapter below it get `t` as their trashed_at. Branches trashed earlier keep their own time. Returns how many. */
+function trashLive(chapterId: string, t: number): number {
+  return db()
+    .prepare(
+      `WITH RECURSIVE d(id) AS (
+         SELECT id FROM chapters WHERE id = ? AND trashed_at IS NULL
+         UNION ALL
+         SELECT c.id FROM d JOIN choices ch ON ch.parent_chapter_id = d.id
+           JOIN chapters c ON c.parent_choice_id = ch.id AND c.trashed_at IS NULL
+       )
+       UPDATE chapters SET trashed_at = ? WHERE id IN (SELECT id FROM d)`,
+    )
+    .run(chapterId, t).changes;
+}
+
+/** Moves a chapter and everything below it to the trash. The story's first chapter can't go. */
+export function trashBranch(chapterId: string): { trashed: number; parent_chapter_id: string } {
+  return db().transaction(() => {
+    const chapter = getChapter(chapterId);
+    if (!chapter) throw new PostError("That chapter does not exist", 404);
+    if (chapter.trashed_at !== null) throw new PostError("That branch is already in the trash", 409);
+    const parent = db()
+      .prepare(`SELECT ch.parent_chapter_id AS id FROM choices ch WHERE ch.id = ?`)
+      .get(chapter.parent_choice_id) as { id: string } | undefined;
+    if (!parent) throw new PostError("The story's first chapter can't be moved to the trash", 400);
+    return { trashed: trashLive(chapterId, now()), parent_chapter_id: parent.id };
+  })();
+}
+
+/** The chapter to restore first when this trashed chapter's parent is in the trash too (the highest trashed chapter above it); null when it can be restored itself. */
+export function restoreBlocker(chapterId: string): { id: string; title: string } | null {
+  const row = db()
+    .prepare(
+      `WITH RECURSIVE up(id, parent_id, trashed_at) AS (
+         SELECT c.id, ch.parent_chapter_id, c.trashed_at FROM chapters c LEFT JOIN choices ch ON ch.id = c.parent_choice_id WHERE c.id = ?
+         UNION ALL
+         SELECT p.id, pch.parent_chapter_id, p.trashed_at FROM up
+           JOIN chapters p ON p.id = up.parent_id AND p.trashed_at IS NOT NULL
+           LEFT JOIN choices pch ON pch.id = p.parent_choice_id
+       )
+       SELECT c.id, c.title FROM up JOIN chapters c ON c.id = up.id WHERE up.id <> ? ORDER BY c.depth LIMIT 1`,
+    )
+    .get(chapterId, chapterId) as { id: string; title: string } | undefined;
+  return row ?? null;
+}
+
+/**
+ * Brings a trashed branch back: the chapters trashed together with it. If the choice it hung from has a live chapter
+ * now, the branch moves to a new choice on the parent, "<label> (old)".
+ */
+export function restoreBranch(chapterId: string): { restored: number; choice_id: string } {
+  return db().transaction(() => {
+    const chapter = getChapter(chapterId);
+    if (!chapter) throw new PostError("That chapter does not exist", 404);
+    if (chapter.trashed_at === null) throw new PostError("That chapter is not in the trash", 409);
+    const blocker = restoreBlocker(chapterId);
+    if (blocker) throw new PostError(`This branch is below “${blocker.title}”, which is in the trash too. Restore that first.`, 409);
+    let choiceId = chapter.parent_choice_id!;
+    const taken = db().prepare(`SELECT 1 FROM chapters WHERE parent_choice_id = ? AND trashed_at IS NULL`).get(choiceId);
+    if (taken) {
+      const choice = db().prepare(`SELECT parent_chapter_id, label FROM choices WHERE id = ?`).get(choiceId) as { parent_chapter_id: string; label: string };
+      const labels = (db().prepare(`SELECT label FROM choices WHERE parent_chapter_id = ?`).all(choice.parent_chapter_id) as { label: string }[]).map((r) => r.label);
+      if (labels.length >= LIMITS.choices) {
+        throw new PostError("The choice this branch came from has a chapter now, and the parent chapter has no room for another choice. Remove a choice there first.", 409);
+      }
+      const base = choice.label.slice(0, LIMITS.label - 12);
+      let label = `${base} (old)`;
+      for (let n = 2; labels.includes(label); n++) label = `${base} (old ${n})`;
+      choiceId = insertChoices(choice.parent_chapter_id, [label], now())[0];
+      db().prepare(`UPDATE chapters SET parent_choice_id = ? WHERE id = ?`).run(choiceId, chapterId);
+    }
+    const restored = db()
+      .prepare(
+        `WITH RECURSIVE d(id) AS (
+           SELECT id FROM chapters WHERE id = ?
+           UNION ALL
+           SELECT c.id FROM d JOIN choices ch ON ch.parent_chapter_id = d.id
+             JOIN chapters c ON c.parent_choice_id = ch.id AND c.trashed_at = ?
+         )
+         UPDATE chapters SET trashed_at = NULL WHERE id IN (SELECT id FROM d)`,
+      )
+      .run(chapterId, chapter.trashed_at).changes;
+    return { restored, choice_id: choiceId };
+  })();
+}
+
+export function editChapter(chapterId: string, input: z.infer<typeof EditChapterSchema>): { revision: number; trashed: number } {
   return db().transaction(() => {
     const row = chapterRevision(chapterId);
+    if (db().prepare(`SELECT 1 FROM chapters WHERE id = ? AND trashed_at IS NOT NULL`).get(chapterId)) {
+      throw new PostError("This chapter is in the trash. Restore it before editing.", 409);
+    }
     if (row.revision !== input.base_revision) {
       throw new PostError("This chapter was edited somewhere else since you started. Reload it and redo your changes.", 409);
     }
@@ -545,6 +639,9 @@ export function editChapter(chapterId: string, input: z.infer<typeof EditChapter
       const c = byId.get(id);
       if (!c) throw new PostError("A choice you removed isn't on this chapter", 400);
       if (c.child_chapter_id) throw new PostError(`"${c.label}" already has a chapter written for it and can't be removed`, 409);
+      if (db().prepare(`SELECT 1 FROM chapters WHERE parent_choice_id = ?`).get(id)) {
+        throw new PostError(`"${c.label}" has a chapter in the trash and can't be removed`, 409);
+      }
       db().prepare(`DELETE FROM choices WHERE id = ?`).run(id);
     }
     const remaining = live.length - input.remove_choices.length;
@@ -558,7 +655,17 @@ export function editChapter(chapterId: string, input: z.infer<typeof EditChapter
         .prepare(`UPDATE choices SET label = ? WHERE id = (SELECT parent_choice_id FROM chapters WHERE id = ?)`)
         .run(input.incoming_label, chapterId);
     }
-    return { revision };
+
+    // Replace branch: the edit above is saved as usual; the chapters below it go to the trash, each as its own
+    // branch with the same time. Their choices stay and are unwritten now.
+    let trashed = 0;
+    if (input.replace_branch === true) {
+      const children = db()
+        .prepare(`SELECT c.id FROM choices ch JOIN chapters c ON c.parent_choice_id = ch.id AND c.trashed_at IS NULL WHERE ch.parent_chapter_id = ?`)
+        .all(chapterId) as { id: string }[];
+      for (const child of children) trashed += trashLive(child.id, t);
+    }
+    return { revision, trashed };
   })();
 }
 

@@ -194,7 +194,7 @@ export function listSuggestions(storyId: string, filter: { status?: SuggestionSt
       `SELECT s.id, s.story_id, s.chapter_id, s.revision, s.kind, s.entry_id, s.aspect, s.form, s.before, s.after, s.quote, s.entry, s.source, s.status,
               s.created_at, s.decided_at, c.title AS chapter_title, c.revision AS chapter_revision
          FROM codex_suggestions s JOIN chapters c ON c.id = s.chapter_id
-        WHERE s.story_id = ? ${filter.status ? "AND s.status = ?" : ""} ${filter.chapterId ? "AND s.chapter_id = ?" : ""}
+        WHERE s.story_id = ? AND c.trashed_at IS NULL ${filter.status ? "AND s.status = ?" : ""} ${filter.chapterId ? "AND s.chapter_id = ?" : ""}
         ORDER BY c.depth, s.created_at, s.rowid`,
     )
     .all(storyId, ...(filter.status ? [filter.status] : []), ...(filter.chapterId ? [filter.chapterId] : [])) as (Row & { chapter_title: string; chapter_revision: number })[];
@@ -241,7 +241,7 @@ export function openSuggestionCounts(storyId: string): { total: number; byChapte
   const rows = db()
     .prepare(
       `SELECT s.chapter_id, COUNT(*) AS n FROM codex_suggestions s JOIN chapters c ON c.id = s.chapter_id AND c.revision = s.revision
-        WHERE s.story_id = ? AND s.status = 'open' GROUP BY s.chapter_id`,
+        WHERE s.story_id = ? AND s.status = 'open' AND c.trashed_at IS NULL GROUP BY s.chapter_id`,
     )
     .all(storyId) as { chapter_id: string; n: number }[];
   return { total: rows.reduce((sum, r) => sum + r.n, 0), byChapter: Object.fromEntries(rows.map((r) => [r.chapter_id, r.n])) };

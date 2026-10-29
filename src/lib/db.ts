@@ -758,6 +758,16 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE chapters ADD COLUMN ai_owned_at INTEGER;
   `,
+  // 43: the trash. A trashed chapter keeps everything (pictures, codex, tags, revisions); trashing a branch gives the
+  // chapter and each descendant that is not trashed already the same trashed_at, so restoring it brings back exactly
+  // that branch. The one-child-per-choice index only counts live chapters, so a choice whose child is trashed can be
+  // written again.
+  `
+  ALTER TABLE chapters ADD COLUMN trashed_at INTEGER;
+  DROP INDEX chapters_one_child_per_choice;
+  CREATE UNIQUE INDEX chapters_one_child_per_choice
+    ON chapters(parent_choice_id) WHERE parent_choice_id IS NOT NULL AND trashed_at IS NULL;
+  `,
 ];
 
 function open(): Database.Database {

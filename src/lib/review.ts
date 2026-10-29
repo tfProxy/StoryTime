@@ -65,7 +65,7 @@ export function reviewIssues(storyId: string): ReviewIssue[] {
          FROM chapters c
          LEFT JOIN choices ch ON ch.id = c.parent_choice_id
          LEFT JOIN chapter_revisions r ON r.chapter_id = c.id AND r.revision = c.revision - 1
-        WHERE c.story_id = ?
+        WHERE c.story_id = ? AND c.trashed_at IS NULL
         ORDER BY c.depth, c.posted_at, c.rowid`,
     )
     .all(storyId) as Row[];
@@ -75,7 +75,7 @@ export function reviewIssues(storyId: string): ReviewIssue[] {
         .prepare(
           `SELECT ri.chapter_id, ri.kind, ri.fingerprint, ri.status, ri.revision, ri.note
              FROM review_items ri JOIN chapters c ON c.id = ri.chapter_id
-            WHERE c.story_id = ? AND ri.revision = c.revision`,
+            WHERE c.story_id = ? AND c.trashed_at IS NULL AND ri.revision = c.revision`,
         )
         .all(storyId) as Decision[]
     ).map((d) => [`${d.chapter_id}\n${d.kind}\n${d.fingerprint}`, d]),
@@ -166,7 +166,7 @@ function codexGaps(
     .prepare(
       `SELECT f.chapter_id, f.entity
          FROM chapter_facts f JOIN chapters c ON c.id = f.chapter_id AND c.revision = f.revision
-        WHERE c.story_id = ? ORDER BY f.rowid`,
+        WHERE c.story_id = ? AND c.trashed_at IS NULL ORDER BY f.rowid`,
     )
     .all(storyId) as { chapter_id: string; entity: string }[];
   if (factRows.length === 0) return [];
