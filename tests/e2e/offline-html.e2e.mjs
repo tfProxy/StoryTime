@@ -42,14 +42,19 @@ await page.getByRole("heading", { name: "Start" }).waitFor();
 ok(await page.getByText("Second paragraph </script><b>not bold</b>").isVisible() && (await page.locator("main b").count()) === 0, "chapter text is shown as plain text, never as HTML");
 ok((await page.locator(".prose p").count()) === 2, "blank lines split paragraphs");
 ok(await page.getByRole("button", { name: /Go left/ }).isVisible() && await page.getByRole("button", { name: /Go right/ }).isVisible(), "choices are buttons");
-ok(!(await page.getByText("Wait").isVisible()) && !(await page.getByText("Unfinished").count()), "a branch that is not finished is left out");
+ok(await page.getByRole("button", { name: /Wait/ }).isVisible(), "a branch that is not finished is still offered");
+await page.getByRole("button", { name: /Wait/ }).click();
+await page.getByRole("heading", { name: "Unfinished" }).waitFor();
+ok(await page.getByText("…to be continued.").isVisible() && !(await page.getByText("Later").count()), "it is marked to be continued, without its unwritten choice");
+await page.getByRole("button", { name: /Previous chapter/ }).click();
+await page.getByRole("heading", { name: "Start" }).waitFor();
 
 await page.getByRole("button", { name: /Go left/ }).click();
 await page.getByRole("heading", { name: "Left" }).waitFor();
 ok(await page.getByText("The end of this branch.").isVisible(), "an ending is marked");
 await page.getByRole("button", { name: /Previous chapter/ }).click();
 await page.getByRole("heading", { name: "Start" }).waitFor();
-ok(/Go left\s*\(read\)/.test(await page.getByRole("button", { name: /Go left/ }).innerText()) && !/\(read\)/.test(await page.getByRole("button", { name: /Go right/ }).innerText()), "chapters already read are marked on their choices");
+ok(/Go left\s*\(read\)/.test(await page.getByRole("button", { name: /Go left/ }).innerText()) && /Wait\s*\(read\)/.test(await page.getByRole("button", { name: /Wait/ }).innerText()) && !/\(read\)/.test(await page.getByRole("button", { name: /Go right/ }).innerText()), "chapters already read are marked on their choices");
 
 // closing and reopening remembers where you were and what you read
 await page.getByRole("button", { name: /Go right/ }).click();
@@ -58,7 +63,7 @@ await page.close();
 const again = await ctx.newPage();
 again.on("dialog", (d) => d.accept());
 await again.goto(url);
-ok(await again.getByText("You have read 3 of 3 chapters.").isVisible(), "what was read is remembered across visits");
+ok(await again.getByText("You have read 4 of 4 chapters.").isVisible(), "what was read is remembered across visits");
 await again.getByRole("button", { name: /Continue where you left off: Right/ }).click();
 await again.getByRole("heading", { name: "Right" }).waitFor();
 ok(true, "it can continue where you left off");

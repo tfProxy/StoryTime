@@ -1,17 +1,17 @@
 import { contentNotes } from "./contentNotes";
 import { noteText } from "./contentNotesRoll";
-import { finishedBranches, routeTo, type StoryExport } from "./export";
+import { playableStory, routeTo, type StoryExport } from "./export";
 import { middleBreak, splitParagraphs } from "./imageSlots";
 
 // A single self-contained HTML file that plays the story in any browser: no server, no network, no
 // libraries. It remembers which chapters the reader has seen (in that browser's localStorage, keyed
-// by story) and can forget them again. Only finished branches are included, like the Twine export.
+// by story) and can forget them again. Every written chapter is included; unwritten choices are hidden, like the Twine export.
 
 /**
  * h, m and f are the header, middle and footer pictures as data: URIs, when the chapter has them; mb is how many
- * paragraphs come before the middle picture (see middleBreak).
+ * paragraphs come before the middle picture (see middleBreak); u is set when the chapter's choices are all unwritten.
  */
-type Page = { t: string; b: string; c: [string, string, string?][]; p: string | null; h?: string; m?: string; mb?: number; f?: string };
+type Page = { t: string; b: string; c: [string, string, string?][]; p: string | null; h?: string; m?: string; mb?: number; f?: string; u?: 1 };
 
 /** Each chapter's pictures as data: URIs, so the exported file works offline. */
 function imageUris(data: StoryExport) {
@@ -133,7 +133,7 @@ const SCRIPT = String.raw`
         return el("button", { class: "choice", onclick: function () { go(c[1]); } }, inner);
       })));
     } else {
-      kids.push(el("p", { class: "end" }, ["The end of this branch."]));
+      kids.push(el("p", { class: "end" }, [page.u ? "…to be continued." : "The end of this branch."]));
     }
     var nav = [];
     if (page.p) nav.push(el("button", { class: "secondary", onclick: function () { go(page.p); } }, ["\u2190 Previous chapter"]));
@@ -211,23 +211,22 @@ ${body}
 }
 
 export function toHtml(data: StoryExport): string {
-  const { chapters, childBy, choicesBy, leadsToKept } = finishedBranches(data);
+  const { chapters, writtenChoices, toBeContinued } = playableStory(data);
   const pages: Record<string, Page> = {};
   const parentOf = new Map<string, string>();
   const uris = imageUris(data);
   const notes = contentNotes(data.story.id);
   for (const c of chapters) {
     const list: [string, string, string?][] = [];
-    for (const ch of choicesBy.get(c.id) ?? []) {
-      if (!leadsToKept(ch)) continue;
-      const child = childBy.get(ch.id)!;
+    for (const { choice, child } of writtenChoices(c)) {
       const note = noteText(notes.get(child.id));
-      list.push(note ? [ch.label, child.id, note] : [ch.label, child.id]);
+      list.push(note ? [choice.label, child.id, note] : [choice.label, child.id]);
       parentOf.set(child.id, c.id);
     }
     const pictures = uris.get(c.id);
     pages[c.id] = {
       t: c.title, b: c.body.trim(), c: list, p: null,
+      ...(toBeContinued(c) ? { u: 1 as const } : {}),
       ...(pictures?.header ? { h: pictures.header } : {}),
       ...(pictures?.middle ? { m: pictures.middle, mb: middleBreak(splitParagraphs(c.body)) } : {}),
       ...(pictures?.footer ? { f: pictures.footer } : {}),

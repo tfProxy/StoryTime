@@ -74,21 +74,24 @@ ok(home.includes(`/api/stories/${story}/export?format=twee`) && home.includes(`/
 const viaStory = await fetch(B + `/s/${story}`, { redirect: "manual" });
 ok(viaStory.status >= 300 && viaStory.status < 400 && viaStory.headers.get("location").includes("/c/"), "a story's own address goes to its first chapter");
 
-// ---- Twee leaves out unfinished branches ----
-// Start -> Pending (only an unwritten choice), and Left -> Deep stays finished.
+// ---- Twee keeps unfinished branches ----
+// Start -> Pending (only an unwritten choice), and Left -> Side (only an unwritten choice) next to Left -> Deep.
 const pending = (await call("POST", "/api/chapters", { parent_chapter_id: root, new_choice_label: "Wait here", title: "Pending", body: "p", choices: ["Later"] })).json.chapter_id;
 const mixed = (await call("POST", "/api/chapters", { parent_chapter_id: left, new_choice_label: "Side road", title: "Side", body: "s", choices: ["Nowhere yet"] })).json.chapter_id;
 x = await get(`/api/stories/${story}/export?format=twee`);
-ok(pending && mixed && !x.text.includes("Pending") && !x.text.includes("Wait here") && !x.text.includes("Later"), "a branch that only leads to unwritten choices is left out");
-ok(!x.text.includes(":: Side") && !x.text.includes("Side road") && x.text.includes("[[Deeper->Deep]]") && x.text.includes(":: Left\n"), "an unfinished side branch is dropped but the finished one stays");
-ok((x.text.match(/^:: /gm) ?? []).length === 5, "still only the finished chapters");
+ok(pending && mixed && x.text.includes("[[Wait here->Pending]]") && x.text.includes(":: Pending\np\n\n…to be continued."), "a branch that only leads to unwritten choices is kept and marked to be continued");
+ok(x.text.includes(":: Side\n") && x.text.includes("[[Side road->Side]]") && x.text.includes("[[Deeper->Deep]]"), "an unfinished side branch is kept next to the finished one");
+ok(!x.text.includes("Later") && !x.text.includes("Nowhere yet"), "unwritten choices are still left out");
+ok(!/:: Deep\n[^:]*to be continued/.test(x.text), "an ending is not marked to be continued");
+ok((x.text.match(/^:: /gm) ?? []).length === 7, "every written chapter is a passage");
 // ---- offline HTML ----
 x = await get(`/api/stories/${story}/export?format=html`);
 ok(x.status === 200 && /text\/html/.test(x.headers.get("content-type")) && /filename="the-export-tale\.html"/.test(x.headers.get("content-disposition")), "html download");
 const embedded = JSON.parse(/<script id="story-data" type="application\/json">([\s\S]*?)<\/script>/.exec(x.text)[1]);
 const titles = Object.values(embedded.pages).map((p) => p.t).sort().join();
-ok(embedded.title === "The Export: Tale!" && embedded.pages[embedded.start].t === "Start" && titles === "Deep,Left,Start", "the embedded story has only the finished chapters: " + titles);
-ok(!x.text.includes("Pending") && !x.text.includes("Wait here"), "unfinished branches are left out of the html too");
+ok(embedded.title === "The Export: Tale!" && embedded.pages[embedded.start].t === "Start" && titles === "Deep,Left,Pending,Side,Start", "the embedded story has every written chapter: " + titles);
+ok(embedded.pages[pending].u === 1 && embedded.pages[pending].c.length === 0 && !embedded.pages[deep].u, "a chapter with only unwritten choices is marked to be continued, an ending isn't");
+ok(!x.text.includes("Later") && !x.text.includes("Nowhere yet"), "unwritten choices are left out of the html too");
 ok(!x.text.includes(":: not a passage</script>") && (x.text.match(/<\/script>/g) ?? []).length === 2, "story text can't close the script element");
 // ---- one route as Markdown ----
 x = await get(`/api/stories/${story}/export?format=md&to=${deep}`);

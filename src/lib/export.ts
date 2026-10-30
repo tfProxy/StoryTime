@@ -255,39 +255,25 @@ export function toPathMarkdown(data: StoryExport, chapterId: string): string | n
 }
 
 /**
- * The playable part of a story, for exports that can't show "not written yet": a chapter is kept
- * if it ends the story (no choices) or has a choice that leads to a kept chapter. Choices nobody
- * has written yet, and chapters that can only lead to them, are left out. The first chapter always
- * stays so there is somewhere to start, even if nothing is finished yet.
+ * Every written chapter, for the playable exports, which can't show "not written yet": choices nobody
+ * has written are hidden, and a chapter whose choices are all unwritten is marked to be continued.
  */
-export function finishedBranches(data: StoryExport) {
+export function playableStory(data: StoryExport) {
   const childBy = new Map<string, ChapterRow>();
   for (const c of data.chapters) if (c.parent_choice_id) childBy.set(c.parent_choice_id, c);
   const choicesBy = new Map<string, ChoiceRow[]>();
   for (const c of data.choices) choicesBy.set(c.parent_chapter_id, [...(choicesBy.get(c.parent_chapter_id) ?? []), c]);
-
-  const finished = new Map<string, boolean>();
-  const isFinished = (c: ChapterRow): boolean => {
-    const known = finished.get(c.id);
-    if (known !== undefined) return known;
-    const list = choicesBy.get(c.id) ?? [];
-    const result = list.length === 0 || list.some((ch) => { const child = childBy.get(ch.id); return !!child && isFinished(child); });
-    finished.set(c.id, result);
-    return result;
-  };
-  const chapters = data.chapters.filter((c, i) => i === 0 || isFinished(c));
-  const kept = new Set(chapters.map((c) => c.id));
-  /** The chapter a choice leads to, if it is part of the playable story. */
-  const leadsToKept = (ch: ChoiceRow) => {
-    const child = childBy.get(ch.id);
-    return !!child && kept.has(child.id) && isFinished(child);
-  };
-  return { chapters, childBy, choicesBy, leadsToKept };
+  /** The written choices of a chapter, each with the chapter it leads to. */
+  const writtenChoices = (c: ChapterRow) =>
+    (choicesBy.get(c.id) ?? []).flatMap((ch) => { const child = childBy.get(ch.id); return child ? [{ choice: ch, child }] : []; });
+  /** True when the chapter has choices but none of them is written yet. */
+  const toBeContinued = (c: ChapterRow) => (choicesBy.get(c.id) ?? []).length > 0 && writtenChoices(c).length === 0;
+  return { chapters: data.chapters, writtenChoices, toBeContinued };
 }
 
-/** Twee 3 source, importable into Twine 2 (Library > Import). Only finished branches are included. */
+/** Twee 3 source, importable into Twine 2 (Library > Import). Unwritten choices are left out. */
 export function toTwee(data: StoryExport): string {
-  const { chapters, childBy, choicesBy, leadsToKept } = finishedBranches(data);
+  const { chapters, writtenChoices, toBeContinued } = playableStory(data);
 
   const names = new Map<string, string>();
   const used = new Set<string>();
@@ -309,11 +295,11 @@ export function toTwee(data: StoryExport): string {
   ];
   for (const c of chapters) {
     const lines = [safe(c.body.trim()), ""];
-    for (const ch of choicesBy.get(c.id) ?? []) {
-      if (!leadsToKept(ch)) continue;
-      const label = ch.label.replace(/[[\]|<>-]+/g, " ").replace(/\s+/g, " ").trim() || "Continue";
-      lines.push(`[[${label}->${names.get(childBy.get(ch.id)!.id)}]]`);
+    for (const { choice, child } of writtenChoices(c)) {
+      const label = choice.label.replace(/[[\]|<>-]+/g, " ").replace(/\s+/g, " ").trim() || "Continue";
+      lines.push(`[[${label}->${names.get(child.id)}]]`);
     }
+    if (toBeContinued(c)) lines.push("…to be continued.");
     out.push(`:: ${names.get(c.id)}\n${lines.join("\n").trimEnd()}`);
   }
   return `${out.join("\n\n")}\n`;

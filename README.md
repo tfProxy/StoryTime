@@ -60,7 +60,7 @@ and, for pictures, your own ComfyUI machine.
   on the story's details page, or let the story use a generated cover.
 - **Outline and export**: a tree view of every branch, and downloads as readable Markdown, a single
   HTML file that plays the story offline (it remembers what the reader has seen, and can forget it),
-  Twine (Twee) or full JSON. The HTML and Twine files include only finished branches. Any
+  Twine (Twee) or full JSON. The HTML and Twine files include every written chapter but leave out choices you haven't written yet; a chapter whose choices are all unwritten ends with "…to be continued." Any
   chapter (from its page or the outline) can also export just the route from the first chapter to
   it as one continuous Markdown read, and the codex page downloads that branch's codex as a
   Markdown "story bible".
