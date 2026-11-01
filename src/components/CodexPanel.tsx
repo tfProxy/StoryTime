@@ -311,6 +311,7 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
         pictures={pictures}
         held={held}
         onOpen={embedded ? (e) => setOpenId(e.entry_id) : undefined}
+        fleshOut={!embedded && !storyWide && !draft}
         empty={creating ? undefined : "No entries yet at this point. Add characters, places or facts the story should remember."}
       />
 

@@ -153,7 +153,25 @@ export const NotesTaskSchema = z.object({
   error: text(LIMITS.summary).optional(),
 });
 
-export const RunTaskSchema = z.discriminatedUnion("kind", [WriteTaskSchema, PlanTaskSchema, PictureTaskSchema, TagsTaskSchema, FactsTaskSchema, ContinuityTaskSchema, SummaryTaskSchema, CodexTaskSchema, NotesTaskSchema]);
+export const ExpandTaskSchema = z.object({
+  kind: z.literal("expand"),
+  id: taskId,
+  /** The codex entry to flesh out. */
+  entryId: z.string().min(1).max(100),
+  /** The chapter the codex is read at; the suggested facts are saved at this chapter. */
+  chapterId: z.string().min(1).max(100),
+  revision: z.number().int().min(1),
+  mode: z.enum(["invent", "close"]),
+  hint: text(200).optional(),
+  /** The entry's name. */
+  label: text(LIMITS.title).optional(),
+  status: taskStatus,
+  /** How many suggestions were left in the codex inbox. */
+  found: z.number().int().min(0).optional(),
+  error: text(LIMITS.summary).optional(),
+});
+
+export const RunTaskSchema = z.discriminatedUnion("kind", [WriteTaskSchema, PlanTaskSchema, PictureTaskSchema, TagsTaskSchema, FactsTaskSchema, ContinuityTaskSchema, SummaryTaskSchema, CodexTaskSchema, NotesTaskSchema, ExpandTaskSchema]);
 export const RunTasksSchema = z.array(RunTaskSchema).max(LIMITS.runTasks);
 
 export const RunOptionsSchema = z.object({
@@ -183,9 +201,12 @@ export const RunOptionsSchema = z.object({
   // continuity, after the facts, asks the AI about each clash between chapters; summaries checks each summary against its chapter).
   // "codex": reads each chapter for changes to the codex and leaves suggestions in the codex inbox.
   // "notes": turns the notes of the codex entries (as of the start chapter) into suggested facts; see `entryIds`.
-  checks: z.array(z.enum(["tags", "facts", "continuity", "summaries", "codex", "notes"])).max(6).optional(),
-  // With "notes": only these entries (all those with notes when absent).
+  // "expand": the AI proposes new facts for the entry in `entryIds`, as the codex stands at the start chapter.
+  checks: z.array(z.enum(["tags", "facts", "continuity", "summaries", "codex", "notes", "expand"])).max(7).optional(),
+  // With "notes": only these entries (all those with notes when absent). With "expand": the entry to flesh out.
   entryIds: z.array(z.string().min(1).max(100)).max(200).optional(),
+  expandMode: z.enum(["invent", "close"]).optional(),
+  expandHint: text(200).optional(),
   // With "codex": read chapters again that were read at their current revision already.
   recheck: z.boolean().optional(),
   // The depths whose plans the owner has already checked (D23), so a run that goes on doesn't stop there again.
@@ -331,7 +352,7 @@ function checkTasks(tasks: RunTask[]) {
  * (every tag that is on for the story is decided for them, as the review page's Find tags counts them); a facts task if
  * facts are asked for, leaving out the chapters read for facts at their current revision.
  */
-export function reviewTasks(storyId: string, startChapterId: string | null, scope: NonNullable<RunOptions["tagScope"]>, checks: NonNullable<RunOptions["checks"]>, chapterIds: string[] = [], recheck = false, entryIds?: string[]): RunTask[] {
+export function reviewTasks(storyId: string, startChapterId: string | null, scope: NonNullable<RunOptions["tagScope"]>, checks: NonNullable<RunOptions["checks"]>, chapterIds: string[] = [], recheck = false, entryIds?: string[], expand?: { mode: "invent" | "close"; hint?: string }): RunTask[] {
   const chapters = getStoryChapters(storyId);
   let chosen = chapters;
   if (scope === "chapters") {
@@ -401,6 +422,26 @@ export function reviewTasks(storyId: string, startChapterId: string | null, scop
       tasks.push({ kind: "notes", id: `t${tasks.length + 1}`, entryId: e.entry_id, chapterId: anchor.id, revision: anchor.revision, label: e.name.slice(0, LIMITS.title), status: "todo" });
     }
   }
+  if (checks.includes("expand")) {
+    // One task for the entry named in `entryIds`, read at the start chapter (where its new facts will take effect).
+    if (startChapterId === null) throw new PostError("Fleshing out an entry needs a chapter to read the codex at", 400);
+    const start = chapters.find((c) => c.id === startChapterId);
+    if (!start) throw new PostError("That chapter is not in this story's tree", 404);
+    for (const e of getCodexState(startChapterId)) {
+      if (!entryIds?.includes(e.entry_id)) continue;
+      tasks.push({
+        kind: "expand",
+        id: `t${tasks.length + 1}`,
+        entryId: e.entry_id,
+        chapterId: start.id,
+        revision: start.revision,
+        mode: expand?.mode ?? "invent",
+        ...(expand?.hint?.trim() && { hint: expand.hint.trim() }),
+        label: e.name.slice(0, LIMITS.title),
+        status: "todo",
+      });
+    }
+  }
   if (checks.includes("continuity")) {
     // One task, after the facts: it judges the clashes along the way to each chapter in scope that has no child in scope.
     const inScope = new Set(chosen.map((c) => c.id));
@@ -419,7 +460,7 @@ export function createRun(input: z.infer<typeof NewRunSchema>): { id: string } {
   }
   const tasks: RunTask[] =
     input.mode === "review"
-      ? reviewTasks(input.story_id, input.start_chapter_id, input.options.tagScope ?? (input.start_chapter_id === null ? "story" : "chapter"), input.options.checks ?? ["tags"], input.options.chapterIds, input.options.recheck, input.options.entryIds)
+      ? reviewTasks(input.story_id, input.start_chapter_id, input.options.tagScope ?? (input.start_chapter_id === null ? "story" : "chapter"), input.options.checks ?? ["tags"], input.options.chapterIds, input.options.recheck, input.options.entryIds, { mode: input.options.expandMode ?? "invent", hint: input.options.expandHint })
       : (input.tasks ?? []);
   if (tasks.length > LIMITS.runTasks) throw new PostError(`A run can have at most ${LIMITS.runTasks} tasks`, 400);
   checkTasks(tasks);

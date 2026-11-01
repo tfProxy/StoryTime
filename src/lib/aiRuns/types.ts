@@ -159,7 +159,29 @@ export type NotesTask = {
   error?: string;
 };
 
-export type RunTask = WriteTask | PlanTask | PictureTask | TagsTask | FactsTask | ContinuityTask | SummaryTask | CodexTask | NotesTask;
+/**
+ * Flesh out: the AI reads one codex entry and the story down to `chapterId` (the chapter the entry is viewed at) and leaves
+ * suggested new facts in the inbox, anchored at that chapter. `mode` "invent" adds new details; "close" sticks to the chapters.
+ */
+export type ExpandTask = {
+  kind: "expand";
+  id: string;
+  entryId: string;
+  chapterId: string;
+  /** That chapter's revision when the run was made; a chapter edited since is skipped. */
+  revision: number;
+  mode: "invent" | "close";
+  /** What the author wants more of, if they said. */
+  hint?: string;
+  /** The entry's name, for the task list. */
+  label?: string;
+  status: TaskStatus;
+  /** How many suggestions were left in the inbox. */
+  found?: number;
+  error?: string;
+};
+
+export type RunTask = WriteTask | PlanTask | PictureTask | TagsTask | FactsTask | ContinuityTask | SummaryTask | CodexTask | NotesTask | ExpandTask;
 
 export type RunOptions = {
   // writing modes
@@ -191,9 +213,12 @@ export type RunOptions = {
   /** A review run the server started by itself after a save or an AI run. */
   automatic?: boolean;
   // review: what to read each chapter for (tags unless said otherwise)
-  checks?: ("tags" | "facts" | "continuity" | "summaries" | "codex" | "notes")[];
-  /** With "notes": only these entries (all those with notes when absent). */
+  checks?: ("tags" | "facts" | "continuity" | "summaries" | "codex" | "notes" | "expand")[];
+  /** With "notes": only these entries (all those with notes when absent). With "expand": the entry to flesh out. */
   entryIds?: string[];
+  /** With "expand": add new details ("invent", the default) or only elaborate on what the chapters show ("close"), and what to focus on. */
+  expandMode?: "invent" | "close";
+  expandHint?: string;
   /** With "codex": read chapters again that were read at their current revision already. */
   recheck?: boolean;
 };

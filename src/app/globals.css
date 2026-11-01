@@ -3757,6 +3757,19 @@ button.refine-fit {
   border-color: var(--accent);
 }
 
+/* "Flesh out" under an entry's card (the card is a link, so the button can't be inside it). */
+.flesh-out {
+  margin-top: 0.35rem;
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+}
+.flesh-out > .fact-form,
+.flesh-out > p {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .entry-card-text {
   display: grid;
   gap: 0.15rem;

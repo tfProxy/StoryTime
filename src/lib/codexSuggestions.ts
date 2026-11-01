@@ -37,7 +37,7 @@ export const SuggestionInputSchema = z
   .refine((v) => (v.kind === "entry" ? v.entry !== undefined : v.entry_id !== undefined), { message: "an entry suggestion needs entry; the others need entry_id" });
 
 /** Where a suggestion came from: reading a chapter, or turning an entry's notes into facts. */
-export const SUGGESTION_SOURCES = ["chapter", "notes"] as const;
+export const SUGGESTION_SOURCES = ["chapter", "notes", "expand"] as const;
 export type SuggestionSource = (typeof SUGGESTION_SOURCES)[number];
 
 export const SaveSuggestionsSchema = z
@@ -48,7 +48,7 @@ export const SaveSuggestionsSchema = z
     /** For source "notes": the entry whose notes were read (so its earlier open suggestions are replaced even when none are new). */
     entry_id: z.string().min(1).optional(),
   })
-  .refine((v) => v.source !== "notes" || v.entry_id !== undefined, { message: "a notes reading needs entry_id" });
+  .refine((v) => v.source === "chapter" || v.entry_id !== undefined, { message: "a notes reading or a flesh out needs entry_id" });
 
 export const AcceptEditsSchema = z.object({
   aspect: text(FACT_LIMITS.aspect).optional(),
@@ -100,9 +100,10 @@ export function saveSuggestions(chapterId: string, revision: number, list: Sugge
     const chapter = db().prepare(`SELECT story_id, revision FROM chapters WHERE id = ?`).get(chapterId) as { story_id: string; revision: number } | undefined;
     if (!chapter) throw new PostError("That chapter does not exist", 404);
     if (chapter.revision !== revision) throw new PostError("The chapter was edited meanwhile", 409);
-    if (source === "notes") {
-      if (!notesEntryId) throw new PostError("A notes reading needs the entry", 400);
-      db().prepare(`DELETE FROM codex_suggestions WHERE chapter_id = ? AND status = 'open' AND source = 'notes' AND entry_id = ?`).run(chapterId, notesEntryId);
+    // "notes" and "expand" (flesh out) are about one entry: they replace only that entry's open ones of their own source.
+    if (source === "notes" || source === "expand") {
+      if (!notesEntryId) throw new PostError("A notes reading or a flesh out needs the entry", 400);
+      db().prepare(`DELETE FROM codex_suggestions WHERE chapter_id = ? AND status = 'open' AND source = ? AND entry_id = ?`).run(chapterId, source, notesEntryId);
     } else {
       db().prepare(`DELETE FROM codex_suggestions WHERE chapter_id = ? AND status = 'open' AND source = 'chapter'`).run(chapterId);
     }
@@ -119,7 +120,7 @@ export function saveSuggestions(chapterId: string, revision: number, list: Sugge
     const now = Date.now();
     let saved = 0;
     for (const s of list) {
-      if (source === "notes" && (s.kind === "entry" || s.entry_id !== notesEntryId)) continue; // notes only ever suggest facts for their own entry
+      if (source !== "chapter" && (s.kind === "entry" || s.entry_id !== notesEntryId)) continue; // they only ever suggest facts for their own entry
       let before = "";
       let who: string;
       if (s.kind === "entry") {
@@ -175,7 +176,7 @@ export type CodexSuggestion = {
   quote: string;
   /** The proposed entry, for kind "entry". */
   entry: z.infer<typeof SuggestedEntrySchema> | null;
-  /** "chapter": from reading the chapter (`quote` is from its text); "notes": from the entry's notes (`quote` is from the notes). */
+  /** "chapter": from reading the chapter (`quote` is from its text); "notes": from the entry's notes (`quote` is from the notes); "expand": the AI fleshing the entry out (`quote` is "" unless it stayed close to the story). */
   source: SuggestionSource;
   /** The fact's text at the chapter now (so the page can see it moved since); "" if there is none. */
   current: string;
