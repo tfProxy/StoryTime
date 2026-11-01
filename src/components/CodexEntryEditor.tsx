@@ -22,6 +22,7 @@ import AiRunProgress from "./AiRunProgress";
 import { INBOX_CHANGED } from "./CodexInbox";
 import CodexFacts, { type HeldFact } from "./CodexFacts";
 import ChapterPathPicker from "./ChapterPathPicker";
+import LinkedEntryDetails from "./LinkedEntryDetails";
 
 export type EntryFields = { name: string; type: EntryType; aliases: string[]; content: string; always_include: boolean };
 /** A change to an entry. `anchor` is the chapter it takes effect from; without it, the editor's own default applies. */
@@ -236,11 +237,14 @@ export default function CodexEntryEditor({
 
       <section className="entry-section">
         <h2>Details</h2>
-        {shared ? (
+        {shared && !inDraft ? (
+          <LinkedEntryDetails entry={entry} chapterId={chapterId} chapterTitle={here} />
+        ) : shared ? (
           <>
             <p className="notice">
-              This entry is shared: its name, type, keywords and notes come from the <Link href={`/shared/${shared}`}>shared entry</Link>, and
-              changing them there changes them in every story that uses it. The facts below can be changed for this story alone.
+              This entry is shared: its name, type, keywords and notes come from the <Link href={`/shared/${shared}`}>shared entry</Link>.
+              Open it from its page (not the writing page&apos;s drawer) to change them for this story, or edit the shared entry to change
+              them in every story. The facts below can be changed for this story alone.
             </p>
             <p className="meta">
               Keywords: {entry.aliases.length > 0 ? entry.aliases.join(", ") : "none"}
@@ -293,6 +297,8 @@ export default function CodexEntryEditor({
         <div className="fact-ai">{entry.description || <em>Nothing yet — add facts. Notes are not sent to the AI.</em>}</div>
       </section>
 
+      {/* A linked entry's notes are changed with its other details above. */}
+      {!(shared && !inDraft) && (
       <section className="entry-section">
         <h2>Your notes (not sent to the AI)</h2>
         {shared ? (
@@ -359,6 +365,7 @@ export default function CodexEntryEditor({
           </p>
         )}
       </section>
+      )}
 
       {waiting > 0 && storyId && (
         <section className="entry-section">
@@ -450,6 +457,43 @@ export default function CodexEntryEditor({
           <p className="meta">Gone from “{here}” and every chapter after it. Earlier chapters keep it.</p>
         </div>
       </section>
+
+      {!shared && !draftOnly && !inDraft && storyId && (
+        <section className="entry-section">
+          <h2>Use in other stories</h2>
+          <p className="meta">
+            Make this a shared entry, as it reads at “{here}”, so other stories can add it too. This story keeps reading it just as it does now.
+          </p>
+          <div>
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy}
+              onClick={async () => {
+                if (!window.confirm(`Add “${entry.name}” to the shared codex, as it reads at “${here}”?`)) return;
+                setBusy(true);
+                setError(null);
+                try {
+                  const res = await fetch("/api/codex/share", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ anchor_chapter_id: chapterId, entry_id: entry.entry_id }),
+                  });
+                  const data = await res.json().catch(() => ({}));
+                  if (!res.ok) setError(data.error ?? `Request failed (${res.status})`);
+                  else router.refresh();
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : String(e));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Share this entry
+            </button>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import {
   DRAFT_ANCHOR,
   FACT_LIMITS,
   factHistory,
+  factSharedState,
   FORM_ASPECT,
   formLine,
   isFormAspect,
@@ -60,6 +61,39 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
   // In the drawer, changes are held in the draft unless an earlier chapter is picked.
   const startAnchor = hold ? DRAFT_ANCHOR : chapterId;
   const heldLabel: Held | undefined = hold ? (editingChapter ? "save" : "post") : undefined;
+
+  // On a linked entry: which facts are the shared entry's own, changed by this story, or only the story's.
+  const sharedState = (factId: string) => factSharedState(factHistory(factOps, factId));
+  // Shared facts this story has hidden (its latest version of them is a removal).
+  const hiddenShared = entry.shared_entry_id
+    ? [...new Set(factOps.filter((o) => o.entry_id === entry.entry_id).map((o) => o.fact_id))].flatMap((id) => {
+        const h = factHistory(factOps, id);
+        const last = h[h.length - 1];
+        if (!last || last.op !== "retire" || !h.some((o) => o.id.startsWith("shared-"))) return [];
+        const shown = [...h].reverse().find((o) => o.op === "set") ?? last;
+        return [{ fact_id: id, aspect: shown.aspect, text: shown.text }];
+      })
+    : [];
+
+  /** Takes this story's changes to a shared fact back (the fact reads as the shared entry has it). */
+  async function resetShared(factId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/codex/reset-fact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ anchor_chapter_id: chapterId, entry_id: entry.entry_id, fact_id: factId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) setError(data.error ?? `Request failed (${res.status})`);
+      else onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function send(b: Body): Promise<boolean> {
     if (hold && b.anchor === DRAFT_ANCHOR) {
@@ -169,6 +203,9 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
                       ) : (
                         f.op.anchor_chapter_id === chapterId && <span className="tag"> · changed here</span>
                       )}
+                      {entry.shared_entry_id && sharedState(f.fact_id) === "base" && <span className="tag"> · shared</span>}
+                      {entry.shared_entry_id && sharedState(f.fact_id) === "changed" && <span className="tag"> · shared, changed in this story</span>}
+                      {entry.shared_entry_id && sharedState(f.fact_id) === "own" && <span className="tag"> · this story only</span>}
                     </div>
                   </div>
                   <div className="row" style={{ margin: "0.4rem 0 0" }}>
@@ -187,6 +224,11 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
                     >
                       Remove
                     </button>
+                    {entry.shared_entry_id && !hold && sharedState(f.fact_id) === "changed" && (
+                      <button type="button" className="secondary" disabled={busy} onClick={() => void resetShared(f.fact_id)}>
+                        Reset to the shared fact
+                      </button>
+                    )}
                     <button type="button" className="linkish" aria-expanded={history.includes(f.fact_id)} onClick={() => toggleHistory(f.fact_id)}>
                       History
                     </button>
@@ -254,6 +296,23 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
               + Add a fact
             </button>
           </p>
+        )}
+        {hiddenShared.length > 0 && (
+          <div className="fact-group dim">
+            <h3 className="fact-heading">Hidden from the shared entry</h3>
+            {hiddenShared.map((h) => (
+              <div key={h.fact_id} className="fact-row">
+                <div className="fact-line">
+                  {h.aspect && <strong>{h.aspect}</strong>} <span>{h.text}</span>
+                </div>
+                <div className="row" style={{ margin: "0.4rem 0 0" }}>
+                  <button type="button" className="secondary" disabled={busy} onClick={() => void resetShared(h.fact_id)}>
+                    Show again
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </section>
     </>

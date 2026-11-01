@@ -5,9 +5,8 @@ import { useRouter } from "next/navigation";
 import {
   addChange,
   addFactChange,
+  applyDraft,
   DRAFT_ANCHOR,
-  draftFactOps,
-  draftOps,
   foldCodex,
   isDraftEntry,
   retiredEntries,
@@ -104,8 +103,9 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
   const titleOf = (id: string) => path.find((p) => p.id === id)?.title ?? "an earlier chapter";
 
   const draftDepth = (path.at(-1)?.depth ?? -1) + 1;
-  const allOps = draft ? [...ops, ...draftOps(draft.changes, draftDepth)] : ops;
-  const allFacts = draft ? [...(facts ?? []), ...draftFactOps(draft.facts, draftDepth)] : (facts ?? []);
+  const applied = draft ? applyDraft(ops, facts ?? [], draft.changes, draft.facts, draftDepth) : null;
+  const allOps = applied ? applied.ops : ops;
+  const allFacts = applied ? applied.facts : (facts ?? []);
   const entries = foldCodex(allOps, allFacts);
   const usedAspects = usedAspectsOf(entries);
   const retired = retiredEntries(allOps);
@@ -276,8 +276,31 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
           <button type="button" onClick={() => setCreating(true)}>
             + New entry
           </button>
-          {/* Saved at once at a chapter on this branch, so not in the drawer, whose chapter isn't saved yet. */}
-          {!embedded && !draft && <SharedEntryLink chapterId={chapterId} path={path} entries={entries} />}
+          {/* On the codex page it is saved at once; in the drawer it can also be held in the draft, for the chapter being written. */}
+          <SharedEntryLink
+            chapterId={chapterId}
+            path={anchorPath}
+            entries={entries}
+            editing={draft?.editing}
+            onHold={
+              draft
+                ? (b) =>
+                    draft.onChange(
+                      addChange(draft.changes, {
+                        op: "create",
+                        entry_id: localId(),
+                        name: b.name,
+                        type: b.type,
+                        aliases: b.aliases,
+                        content: b.content,
+                        always_include: b.always_include,
+                        shared_entry_id: b.id,
+                        shared: { id: b.id, name: b.name, type: b.type, aliases: b.aliases, content: b.content, always_include: b.always_include, facts: b.facts },
+                      }),
+                    )
+                : undefined
+            }
+          />
         </div>
       )}
 

@@ -136,3 +136,22 @@ ok(firstHeader > 0 && firstHeader < at("<h2>1. Start</h2>"), "a header picture c
 ok(at("<h2>3. Deep</h2>") < x.text.lastIndexOf('class="chapter-image chapter-image-footer"') && x.text.lastIndexOf('class="chapter-image chapter-image-header"') < at("<h2>3. Deep</h2>"), "…and the footer after the chapter text");
 x = await get(`/api/stories/${story}/export?format=html&to=${left}`);
 ok((x.text.match(/<img /g) ?? []).length === 1, "a route only shows the pictures of its own chapters");
+
+// ---- linked (shared) codex entries ----
+{
+  const sh = (await call("POST", "/api/shared", { name: "Export Shared", type: "character", aliases: ["Exo"], content: "Base notes." })).json.id;
+  const earsId = (await call("POST", `/api/shared/${sh}/facts`, { aspect: "Ears", text: "Round ears." })).json.id;
+  await call("POST", `/api/shared/${sh}/facts`, { aspect: "Eyes", text: "Green." });
+  const r2 = (await call("POST", "/api/stories", { title: "Linked Export", chapter: { title: "One", body: "one", choices: ["Next"] } })).json;
+  const next = await fill((await call("GET", `/api/chapters/${r2.chapter_id}`)).json.choices[0], "Two");
+  const eid = (await call("POST", "/api/codex/link", { anchor_chapter_id: r2.chapter_id, shared_entry_id: sh })).json.entry_id;
+  await call("POST", "/api/codex/override", { anchor_chapter_id: next, entry_id: eid, content: "Our notes.", aliases: ["Exo", "Extra"] });
+  await call("POST", "/api/codex/facts", { anchor_chapter_id: next, entry_id: eid, op: "set", aspect: "Ears", text: "Fox ears." });
+  const linked = JSON.parse((await get(`/api/stories/${r2.story_id}/export?format=json`)).text);
+  ok(linked.shared_entries.length === 1 && linked.shared_entries[0].id === sh && linked.shared_entries[0].name === "Export Shared" && linked.shared_entries[0].facts.length === 2 && linked.shared_entries[0].facts[0].id === earsId, "json carries the shared entries the story links to, with their facts");
+  const ops = linked.codex.filter((o) => o.entry_id === eid);
+  ok(ops.length === 2 && ops.every((o) => o.shared_entry_id === sh) && ops[0].overrides === null && ops[1].overrides?.content === "Our notes.", "linked codex ops carry shared_entry_id and overrides");
+  ok(linked.codex_facts.some((f) => f.fact_id === earsId && f.text === "Fox ears."), "the story's change to a base fact is exported");
+  ok(JSON.parse((await get(`/api/stories/${story}/export?format=json`)).text).shared_entries.length === 0, "a story without links exports no shared entries");
+  for (const f of ["md", "html", "twee"]) ok((await get(`/api/stories/${r2.story_id}/export?format=${f}`)).status === 200, `${f} export works for a story with linked entries`);
+}

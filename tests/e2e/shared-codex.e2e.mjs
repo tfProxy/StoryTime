@@ -68,9 +68,42 @@ try {
   await card.click();
   await page.getByRole("heading", { name: "Mara Vale", level: 1 }).waitFor();
   const body = await page.locator(".entry-editor").innerText();
-  ok(body.includes("This entry is shared") && body.includes("Base notes."), "the entry page says it is shared and shows the base's notes");
+  ok(body.includes("This entry is shared") && (await page.getByLabel("Your notes (not sent to the AI)").inputValue()) === "Base notes.", "the entry page says it is shared and shows the base's notes");
   ok((await page.getByRole("link", { name: "shared entry", exact: true }).getAttribute("href")) === `/shared/${sid}`, "…and links to the base");
-  ok((await page.getByRole("button", { name: "Save changes" }).count()) === 0, "…with no form for the details");
+  ok((await page.getByLabel("Name").count()) === 0, "…and the name can't be changed here");
+
+  // ---- changing the linked entry for this story only, and taking it back ----
+  const mine = (await send("GET", `/api/chapters/${A}/codex`)).entries.find((e) => e.name === "Mara Vale").entry_id;
+  const mineUrl = `${BASE}/s/${story.story_id}/codex/${mine}?at=${A}`;
+  await page.goto(mineUrl);
+  await page.getByLabel("Your notes (not sent to the AI)").fill("Our own notes.");
+  await page.getByRole("button", { name: "Save for this story" }).click();
+  await page.getByText("changed in this story").first().waitFor();
+  ok((await send("GET", `/api/chapters/${A}/codex`)).entries.find((e) => e.name === "Mara Vale").content === "Our own notes.", "the story's notes are changed for the story");
+  ok((await send("GET", `/api/shared/${sid}`)).entry.content === "Base notes.", "…and the shared entry's are not");
+  await page.getByRole("button", { name: "Reset to the shared notes" }).click();
+  await page.getByRole("button", { name: "Reset to the shared notes" }).waitFor({ state: "detached" });
+  ok((await send("GET", `/api/chapters/${A}/codex`)).entries.find((e) => e.name === "Mara Vale").content === "Base notes.", "Reset takes the notes back from the shared entry");
+
+  // a fact changed in the story is marked, and can be reset
+  await post("/api/codex/facts", { anchor_chapter_id: A, entry_id: mine, op: "set", aspect: "Ears", text: "fox ears, torn" });
+  await page.goto(mineUrl);
+  await page.getByText("shared, changed in this story").waitFor();
+  await page.getByRole("button", { name: "Reset to the shared fact" }).click();
+  await page.getByText("tall russet fox ears").first().waitFor();
+  ok((await page.getByRole("button", { name: "Reset to the shared fact" }).count()) === 0, "a changed fact can be reset to the shared one");
+
+  // ---- sharing a story's own entry ----
+  const pip = (await post("/api/codex", { anchor_chapter_id: R, op: "create", name: "Pip Tern", type: "character", content: "Own notes." })).entry_id;
+  await post("/api/codex/facts", { anchor_chapter_id: R, entry_id: pip, op: "set", aspect: "Eyes", text: "Green." });
+  await page.goto(`${BASE}/s/${story.story_id}/codex/${pip}?at=${R}`);
+  await page.getByRole("button", { name: "Share this entry" }).click();
+  await page.getByText("This entry is shared.").waitFor();
+  const list = (await send("GET", "/api/shared")).entries;
+  const pipShared = list.find((e) => e.name === "Pip Tern");
+  made.push(pipShared?.id);
+  ok(pipShared && pipShared.facts.length === 1 && pipShared.content === "Own notes.", "Share this entry adds it to the shared codex with its facts");
+  ok((await page.getByRole("link", { name: "Edit the shared entry (all stories)" }).getAttribute("href")) === `/shared/${pipShared.id}`, "…and the story's entry now links to it");
 
   // ---- the base page lists the story ----
   await page.goto(sharedUrl);

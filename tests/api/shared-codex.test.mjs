@@ -98,3 +98,76 @@ ok((await call("DELETE", `/api/shared/${spare}`)).status === 200 && (await call(
 ok((await call("DELETE", `/api/shared/${sid}/facts/${eyesId}`)).status === 200, "a fact can be removed from the base");
 ok(!find(await state(a2), "Mara Vale").description.includes("Eyes") && !find(await state(other), "Mara Vale").description.includes("Eyes"), "…and is gone from every story");
 void b;
+
+// ---- phase 2: a story's changes to a linked entry, resetting, and sharing a story's own entry ----
+{
+  const rootX = await mk("Override tale", ["Next"]);
+  const nextX = await fill((await call("GET", `/api/chapters/${rootX}`)).json.choices[0], "Next");
+  const rootY = await mk("Override other");
+  const s = (await call("POST", "/api/shared", { name: "Oda", type: "character", aliases: ["O"], content: "Base notes." })).json.id;
+  await call("POST", `/api/shared/${s}/facts`, { aspect: "Ears", text: "Round ears." });
+  const eid = (await call("POST", "/api/codex/link", { anchor_chapter_id: rootX, shared_entry_id: s })).json.entry_id;
+  const eidY = (await call("POST", "/api/codex/link", { anchor_chapter_id: rootY, shared_entry_id: s })).json.entry_id;
+  const oda = async (id) => find(await state(id), "Oda");
+
+  r = await call("POST", "/api/codex/override", { anchor_chapter_id: nextX, entry_id: eid, type: "item", content: "Our notes.", aliases: ["O", "Odie"], always_include: true });
+  ok(r.status === 201, "override a linked entry's details for the story");
+  let e = await oda(nextX);
+  ok(e.type === "item" && e.content === "Our notes." && e.aliases.join() === "O,Odie" && e.always_include === true && e.overridden.join() === "type,content,always_include,aliases", "the story reads its own type, notes, keywords and flag: " + e.overridden.join());
+  e = await oda(rootX);
+  ok(e.type === "character" && e.content === "Base notes.", "…from that chapter on, not above it");
+  e = await oda(rootY);
+  ok(e.type === "character" && e.content === "Base notes." && e.overridden.length === 0, "…and the other story is untouched");
+  await call("PATCH", `/api/shared/${s}`, { content: "Newer base notes.", aliases: ["O", "Oda-san"] });
+  e = await oda(nextX);
+  ok(e.content === "Our notes." && e.aliases.join() === "O,Oda-san,Odie", "the story's changes survive a base edit (its keyword is added to the base's): " + e.aliases.join());
+  ok((await oda(rootY)).content === "Newer base notes." && (await oda(rootY)).aliases.join() === "O,Oda-san", "…which the other story follows");
+  r = await call("POST", "/api/codex/override", { anchor_chapter_id: nextX, entry_id: eid, reset: ["content", "aliases"] });
+  e = await oda(nextX);
+  ok(r.status === 201 && e.content === "Newer base notes." && e.aliases.join() === "O,Oda-san" && e.type === "item", "reset takes fields back from the base, and leaves the others: " + e.overridden.join());
+  r = await call("POST", "/api/codex/override", { anchor_chapter_id: nextX, entry_id: eid, type: "character" });
+  e = await oda(nextX);
+  ok(!e.overridden.includes("type") && e.type === "character", "setting a field to what the base has takes it back too");
+  ok((await call("POST", "/api/codex/override", { anchor_chapter_id: nextX, entry_id: eid })).status === 400, "an empty override is refused");
+  ok((await call("POST", "/api/codex/override", { anchor_chapter_id: nextX, entry_id: "nope", type: "item" })).status === 409, "an entry that isn't linked is refused");
+
+  // facts: reset
+  const ears = (await call("GET", `/api/shared/${s}`)).json.entry.facts[0].id;
+  await call("POST", "/api/codex/facts", { anchor_chapter_id: nextX, entry_id: eid, op: "set", aspect: "Ears", text: "Fox ears." });
+  ok((await oda(nextX)).description === "Ears: Fox ears.", "a story changes a base fact");
+  r = await call("POST", "/api/codex/reset-fact", { anchor_chapter_id: nextX, entry_id: eid, fact_id: ears });
+  ok(r.status === 200 && r.json.reset === 1 && (await oda(nextX)).description === "Ears: Round ears.", "reset-fact takes it back to the shared text");
+  await call("POST", "/api/codex/facts", { anchor_chapter_id: nextX, entry_id: eid, op: "retire", fact_id: ears });
+  ok((await oda(nextX)).description === "", "a story hides a base fact");
+  await call("POST", "/api/codex/reset-fact", { anchor_chapter_id: nextX, entry_id: eid, fact_id: ears });
+  ok((await oda(nextX)).description === "Ears: Round ears.", "…and reset-fact brings it back");
+  ok((await call("POST", "/api/codex/reset-fact", { anchor_chapter_id: nextX, entry_id: eid, fact_id: "nope" })).status === 409, "a fact that isn't the shared entry's is refused");
+  void eidY;
+
+  // the codex inbox: a fact accepted for a linked entry stays in the story
+  // (suggestions write ordinary fact ops, so the base is never touched)
+
+  // sharing a story's own entry
+  const rootZ = await mk("Share tale", ["Later"]);
+  const laterZ = await fill((await call("GET", `/api/chapters/${rootZ}`)).json.choices[0], "Later");
+  const zid = (await call("POST", "/api/codex", { anchor_chapter_id: rootZ, op: "create", name: "Pip", type: "character", aliases: ["P"], content: "Early notes." })).json.entry_id;
+  await call("POST", "/api/codex/facts", { anchor_chapter_id: rootZ, entry_id: zid, op: "set", aspect: "Ears", text: "Round ears." });
+  await call("POST", "/api/codex/facts", { anchor_chapter_id: laterZ, entry_id: zid, op: "set", aspect: "Ears", text: "Fox ears." });
+  await call("POST", "/api/codex/facts", { anchor_chapter_id: rootZ, entry_id: zid, op: "set", aspect: "Eyes", text: "Green." });
+  await call("POST", "/api/codex", { anchor_chapter_id: laterZ, op: "replace", entry_id: zid, name: "Pip", type: "character", aliases: ["P", "Pippin"], content: "Later notes." });
+  const before = { root: await oda2(rootZ), later: await oda2(laterZ) };
+  async function oda2(id) { const x = find(await state(id), "Pip"); return JSON.stringify({ c: x.content, a: x.aliases, d: x.description, t: x.type }); }
+  r = await call("POST", "/api/codex/share", { anchor_chapter_id: laterZ, entry_id: zid });
+  ok(r.status === 201 && r.json.shared_entry_id, "share a story's own entry");
+  const sh = r.json.shared_entry_id;
+  ok((await oda2(rootZ)) === before.root && (await oda2(laterZ)) === before.later, "the story reads exactly as it did before, at both chapters");
+  const base = (await call("GET", `/api/shared/${sh}`)).json;
+  ok(base.entry.name === "Pip" && base.entry.content === "Later notes." && base.entry.facts.length === 2 && base.used_in.length === 1, "the shared entry holds the entry as it read at that chapter, with its facts");
+  ok(find(await state(rootZ), "Pip").shared_entry_id === sh && find(await state(rootZ), "Pip").overridden.includes("content"), "the story's earlier notes are now its own change");
+  r = await call("POST", "/api/codex/share", { anchor_chapter_id: laterZ, entry_id: zid });
+  ok(r.status === 409, "an entry that is already shared can't be shared again");
+  await call("PATCH", `/api/shared/${sh}`, { name: "Pippin Brook" });
+  ok(find(await state(laterZ), "Pippin Brook") && find(await state(rootZ), "Pippin Brook"), "…and renaming it renames it in the story");
+  const other2 = await mk("Share other");
+  ok((await call("POST", "/api/codex/link", { anchor_chapter_id: other2, shared_entry_id: sh })).status === 201, "another story can then use it");
+}

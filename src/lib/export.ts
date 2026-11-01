@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { db } from "./db";
 import { getStory } from "./stories";
+import { loadSharedBases } from "./sharedCodex";
 import { IMAGE_SLOTS, type ImageSlot } from "./imageSlots";
 
 // Whole-story exports. No internal bookkeeping appears.
@@ -47,7 +48,10 @@ export type StoryExport = {
   /** In reading order: depth-first from the first chapter. */
   chapters: ChapterRow[];
   choices: ChoiceRow[];
+  /** Codex changes; ones of a linked (shared) entry also carry `shared_entry_id` and the story's `overrides`. */
   codex: Record<string, unknown>[];
+  /** The shared entries the codex links to (the base as exported); an importer reuses one it already has. */
+  shared_entries: { id: string; name: string; type: string; aliases: string[]; content: string; always_include: boolean; facts: { id: string; aspect: string; form: string; text: string }[] }[];
   /** Small per-aspect statements about codex entries; exports made before facts existed have none. */
   codex_facts: Record<string, unknown>[];
   /** Earlier versions of the chapters above, oldest first. */
@@ -99,13 +103,34 @@ export function loadStory(storyId: string): StoryExport | null {
   const codex = (
     db()
       .prepare(
-        `SELECT id, anchor_chapter_id, entry_id, op, name, type, aliases, content, always_include, posted_at
+        `SELECT id, anchor_chapter_id, entry_id, op, name, type, aliases, content, always_include, posted_at,
+                shared_entry_id, overrides
            FROM codex_ops WHERE story_id = ? ORDER BY posted_at, rowid`,
       )
       .all(storyId) as Record<string, unknown>[]
   )
     .filter((o) => ids.has(o.anchor_chapter_id as string))
-    .map((o) => ({ ...o, aliases: safeJson(o.aliases), always_include: o.always_include === 1 }));
+    .map((o) => ({
+      ...o,
+      aliases: safeJson(o.aliases),
+      always_include: o.always_include === 1,
+      overrides: o.overrides ? safeJson(o.overrides, null) : null,
+    }));
+
+  // The shared entries the story links to, as they are now, so the file reads the same in a database that lacks them.
+  const sharedIds = codex.flatMap((o) => {
+    const linked = (o as { shared_entry_id?: unknown }).shared_entry_id;
+    return typeof linked === "string" ? [linked] : [];
+  });
+  const sharedEntries = [...loadSharedBases(sharedIds).values()].map((b) => ({
+    id: b.id,
+    name: b.name,
+    type: b.type,
+    aliases: b.aliases,
+    content: b.content,
+    always_include: b.always_include,
+    facts: b.facts.map((f) => ({ id: f.id, aspect: f.aspect, form: f.form, text: f.text })),
+  }));
 
   const codexFacts = (
     db()
@@ -155,16 +180,17 @@ export function loadStory(storyId: string): StoryExport | null {
     choices,
     codex,
     codex_facts: codexFacts,
+    shared_entries: sharedEntries,
     revisions,
     images,
   };
 }
 
-function safeJson(s: unknown): unknown {
+function safeJson(s: unknown, fallback: unknown = []): unknown {
   try {
     return JSON.parse(String(s));
   } catch {
-    return [];
+    return fallback;
   }
 }
 

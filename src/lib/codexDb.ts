@@ -8,6 +8,8 @@ import {
   foldCodex,
   isDraftEntry,
   isFormAspect,
+  OVERRIDE_FIELDS,
+  overridesFor,
   resolveShared,
   sameAspect,
   sharedFactOps,
@@ -16,10 +18,11 @@ import {
   type CodexOp,
   type FactOp,
   type FoldOptions,
+  type OverrideField,
   type Overrides,
   type StoryEntrySummary,
 } from "./codex";
-import { getSharedEntry, loadSharedBases } from "./sharedCodex";
+import { createSharedEntryFrom, getSharedEntry, loadSharedBases } from "./sharedCodex";
 import { getChoices, getPath, PostError } from "./stories";
 
 const text = (max: number) => z.string().trim().max(max);
@@ -35,6 +38,8 @@ const changeFields = {
   aliases: z.array(text(CODEX_LIMITS.alias).min(1)).max(CODEX_LIMITS.aliases).default([]),
   content: text(CODEX_LIMITS.content).default(""),
   always_include: z.boolean().default(false),
+  /** On a create: link this shared entry instead of making a plain entry (the other fields are then ignored). */
+  shared_entry_id: z.string().min(1).optional(),
 };
 
 const checkChange = <T extends z.ZodType<{ op: string; entry_id?: string; name: string }>>(schema: T) =>
@@ -80,7 +85,8 @@ export function saveWithCodexChanges<R>(input: z.infer<typeof CodexChangesSchema
     const anchor = anchorOf(result);
     const created = new Map<string, string>();
     for (const c of input.codex_changes) {
-      const op = createCodexOp({ ...c, anchor_chapter_id: anchor });
+      // A shared entry added while writing is linked at the chapter, not copied.
+      const op = c.op === "create" && c.shared_entry_id ? linkSharedEntry({ anchor_chapter_id: anchor, shared_entry_id: c.shared_entry_id }) : createCodexOp({ ...c, anchor_chapter_id: anchor });
       if (c.op === "create" && c.entry_id) created.set(c.entry_id, op.entry_id);
     }
     for (const f of input.codex_fact_changes) {
@@ -216,9 +222,10 @@ export function createFactOp(input: z.infer<typeof NewFactOpSchema>): { id: stri
     } else if (input.fact_id !== undefined) {
       factId = input.fact_id;
       // A retired fact may be set again, but only on the entry it belongs to.
-      if (!db().prepare(`SELECT 1 FROM codex_facts WHERE fact_id = ? AND entry_id = ? AND story_id = ?`).get(factId, input.entry_id, anchor.story_id)) {
-        throw new PostError("That fact doesn't belong to this entry", 409);
-      }
+      // (A fact of a linked entry's shared entry counts: the story changes it for itself under the same id.)
+      const ownFact = db().prepare(`SELECT 1 FROM codex_facts WHERE fact_id = ? AND entry_id = ? AND story_id = ?`).get(factId, input.entry_id, anchor.story_id);
+      const sharedFact = entry.shared_entry_id && getSharedEntry(entry.shared_entry_id)?.facts.some((f) => f.id === factId);
+      if (!ownFact && !sharedFact) throw new PostError("That fact doesn't belong to this entry", 409);
     } else {
       const same = aspect
         ? entry.facts.find((f) => sameAspect(f.aspect, aspect) && (isFormAspect(aspect) || sameAspect(f.form, input.form)))
@@ -283,6 +290,127 @@ export function linkSharedEntry(input: z.infer<typeof LinkSharedSchema>): { id: 
       // The columns keep the base as it is now; the fold reads the live base (see `resolveShared`).
       .run(id, anchor.story_id, anchor.id, entryId, base.name, base.type, JSON.stringify(base.aliases), base.content, base.always_include ? 1 : 0, Date.now(), base.id);
     return { id, entry_id: entryId };
+  })();
+}
+
+export const OverrideSharedSchema = z
+  .object({
+    anchor_chapter_id: z.string().min(1),
+    entry_id: z.string().min(1),
+    type: z.enum(ENTRY_TYPES).optional(),
+    content: text(CODEX_LIMITS.content).optional(),
+    always_include: z.boolean().optional(),
+    aliases: z.array(text(CODEX_LIMITS.alias).min(1)).max(CODEX_LIMITS.aliases).optional(),
+    /** Fields to take back from the shared entry. */
+    reset: z.array(z.enum(OVERRIDE_FIELDS)).max(OVERRIDE_FIELDS.length).optional(),
+  })
+  .refine((v) => [v.type, v.content, v.always_include, v.aliases, v.reset].some((x) => x !== undefined), { message: "nothing to change" });
+
+/** The shared entry a linked entry reads from, and whether the entry is live at the chapter; throws when it isn't linked. */
+function linkedBase(chapterId: string, entryId: string) {
+  const ops = getCodexOps(chapterId);
+  const sharedId = ops.find((o) => o.entry_id === entryId && o.shared_entry_id)?.shared_entry_id;
+  const base = sharedId ? getSharedEntry(sharedId) : null;
+  if (!base) throw new PostError("That entry isn't linked to a shared entry", 409);
+  const entry = foldCodex(ops).find((e) => e.entry_id === entryId);
+  if (!entry) throw new PostError("That entry doesn't exist at this point in the story", 409);
+  return { base, entry };
+}
+
+/**
+ * Changes a linked entry's type, notes, keywords or "always include" for this story only, from a chapter on (a field
+ * that matches the shared entry again is taken back from it). The name and the shared entry itself are not touched.
+ */
+export function overrideSharedEntry(input: z.infer<typeof OverrideSharedSchema>): { id: string } {
+  return db().transaction(() => {
+    const path = getPath(input.anchor_chapter_id);
+    if (path.length === 0) throw new PostError("That chapter does not exist", 404);
+    const anchor = path[path.length - 1];
+    const { base, entry } = linkedBase(anchor.id, input.entry_id);
+    const reset = new Set(input.reset ?? []);
+    const want = {
+      type: input.type,
+      content: input.content,
+      always_include: input.always_include,
+      aliases: input.aliases,
+    };
+    const patch = overridesFor(base, want);
+    const resets = new Set<OverrideField>([...(patch.reset ?? []), ...reset]);
+    // A field given and also reset: the reset wins.
+    for (const f of reset) {
+      if (f === "aliases") {
+        delete patch.aliases_add;
+        delete patch.aliases_remove;
+      } else delete patch[f];
+    }
+    patch.reset = [...resets];
+    if (patch.reset.length === 0) delete patch.reset;
+    // The columns keep what the entry will read; the fold takes the fields from the shared entry and these overrides.
+    const next = {
+      type: reset.has("type") ? base.type : (input.type ?? entry.type),
+      content: reset.has("content") ? base.content : (input.content ?? entry.content),
+      always_include: reset.has("always_include") ? base.always_include : (input.always_include ?? entry.always_include),
+      aliases: reset.has("aliases") ? base.aliases : (input.aliases ?? entry.aliases),
+    };
+    const id = newId();
+    db()
+      .prepare(
+        `INSERT INTO codex_ops (id, story_id, anchor_chapter_id, entry_id, op, name, type, aliases, content, always_include, posted_at, shared_entry_id, overrides)
+         VALUES (?, ?, ?, ?, 'replace', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(id, anchor.story_id, anchor.id, input.entry_id, base.name, next.type, JSON.stringify(next.aliases), next.content, next.always_include ? 1 : 0, Date.now(), base.id, JSON.stringify(patch));
+    return { id };
+  })();
+}
+
+export const ResetSharedFactSchema = z.object({ anchor_chapter_id: z.string().min(1), entry_id: z.string().min(1), fact_id: z.string().min(1) });
+
+/**
+ * Takes this story's changes to a shared entry's fact back: its versions anchored on the way to this chapter are
+ * dropped, so the fact reads as the shared entry has it (also when this story hid it).
+ */
+export function resetSharedFact(input: z.infer<typeof ResetSharedFactSchema>): { reset: number } {
+  return db().transaction(() => {
+    const path = getPath(input.anchor_chapter_id);
+    if (path.length === 0) throw new PostError("That chapter does not exist", 404);
+    const anchor = path[path.length - 1];
+    const { base } = linkedBase(anchor.id, input.entry_id);
+    if (!base.facts.some((f) => f.id === input.fact_id)) throw new PostError("That isn't a fact of the shared entry", 409);
+    const r = db()
+      .prepare(`DELETE FROM codex_facts WHERE story_id = ? AND entry_id = ? AND fact_id = ? AND anchor_chapter_id IN (${path.map(() => "?").join(",")})`)
+      .run(anchor.story_id, input.entry_id, input.fact_id, ...path.map((c) => c.id));
+    return { reset: r.changes };
+  })();
+}
+
+export const ShareEntrySchema = z.object({ anchor_chapter_id: z.string().min(1), entry_id: z.string().min(1) });
+
+/**
+ * Turns a story's own entry into a shared one: the entry as it reads at this chapter (and its facts) becomes the
+ * shared entry, and the story's entry is linked to it. What the entry's earlier and later ops said that differs from
+ * that becomes this story's overrides, so the story reads the same as before.
+ */
+export function shareEntry(input: z.infer<typeof ShareEntrySchema>): { shared_entry_id: string } {
+  return db().transaction(() => {
+    const path = getPath(input.anchor_chapter_id);
+    if (path.length === 0) throw new PostError("That chapter does not exist", 404);
+    const anchor = path[path.length - 1];
+    const entry = getCodexState(anchor.id).find((e) => e.entry_id === input.entry_id);
+    if (!entry) throw new PostError("That entry doesn't exist at this point in the story", 409);
+    if (entry.shared_entry_id) throw new PostError("That entry is already shared", 409);
+    const base = createSharedEntryFrom(
+      { name: entry.name, type: entry.type, aliases: entry.aliases, content: entry.content, always_include: entry.always_include },
+      entry.facts.map((f) => ({ fact_id: f.fact_id, aspect: f.aspect, form: f.form, text: f.text })),
+    );
+    const rows = db().prepare(`SELECT id, op, name, type, aliases, content, always_include FROM codex_ops WHERE story_id = ? AND entry_id = ?`).all(anchor.story_id, input.entry_id) as Row[];
+    const update = db().prepare(`UPDATE codex_ops SET shared_entry_id = ?, overrides = ? WHERE id = ?`);
+    for (const r of rows) {
+      const o = toOp(r);
+      // The name stays the shared entry's; a retire carries nothing.
+      const patch = o.op === "retire" ? null : overridesFor(base, { type: o.type, content: o.content, always_include: o.always_include, aliases: o.aliases });
+      update.run(base.id, patch ? JSON.stringify(patch) : null, r.id);
+    }
+    return { shared_entry_id: base.id };
   })();
 }
 

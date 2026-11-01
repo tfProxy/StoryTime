@@ -107,6 +107,21 @@ export function createSharedEntry(input: z.infer<typeof NewSharedEntrySchema>): 
   return { id };
 }
 
+/**
+ * Makes a shared entry from an entry of a story. Its facts keep the story's fact ids, so the story's own fact
+ * changes on them (earlier versions, other branches) go on reading as changes to the base.
+ */
+export function createSharedEntryFrom(
+  fields: z.infer<typeof NewSharedEntrySchema>,
+  facts: { fact_id: string; aspect: string; form: string; text: string }[],
+): SharedBase {
+  const { id } = createSharedEntry(fields);
+  const now = Date.now();
+  const insert = db().prepare(`INSERT INTO shared_facts (id, shared_entry_id, aspect, form, text, created_at) VALUES (?, ?, ?, ?, ?, ?)`);
+  facts.forEach((f, i) => insert.run(f.fact_id, id, f.aspect, f.form, f.text, now + i));
+  return { id, ...fields, facts: facts.map((f) => ({ id: f.fact_id, aspect: f.aspect, form: f.form, text: f.text })) };
+}
+
 export function updateSharedEntry(id: string, patch: z.infer<typeof SharedEntryPatchSchema>): SharedEntry {
   const cur = getSharedEntry(id);
   if (!cur) throw new PostError("That shared entry doesn't exist", 404);

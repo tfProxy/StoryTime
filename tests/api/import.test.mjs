@@ -143,3 +143,70 @@ await badPics("unknown slot", (d) => { d.images[0].slot = "sidebar"; });
 const before = (await (await fetch(`${B}/api/stories`)).json()).length;
 ok((await call("POST", "/api/stories/import", "nonsense")).status === 400, "non-object body rejected");
 ok((await (await fetch(`${B}/api/stories`)).json()).length === before, "failed imports leave nothing behind");
+
+// ---- linked (shared) codex entries ----
+{
+  const sh = (await call("POST", "/api/shared", { name: "Import Shared", type: "character", aliases: ["Imp"], content: "Base notes." })).json.id;
+  const earsId = (await call("POST", `/api/shared/${sh}/facts`, { aspect: "Ears", text: "Round ears." })).json.id;
+  await call("POST", `/api/shared/${sh}/facts`, { aspect: "Eyes", text: "Green." });
+  const s = (await call("POST", "/api/stories", { title: "Linked Tale", chapter: { title: "One", body: "one", choices: ["Next"] } })).json;
+  const next = (await call("POST", "/api/chapters", { choice_id: (await call("GET", `/api/chapters/${s.chapter_id}`)).json.choices[0].id, title: "Two", body: "two" })).json.chapter_id;
+  const eid = (await call("POST", "/api/codex/link", { anchor_chapter_id: s.chapter_id, shared_entry_id: sh })).json.entry_id;
+  await call("POST", "/api/codex/override", { anchor_chapter_id: next, entry_id: eid, content: "Our notes.", aliases: ["Imp", "Extra"], always_include: true });
+  await call("POST", "/api/codex/facts", { anchor_chapter_id: next, entry_id: eid, op: "set", aspect: "Ears", text: "Fox ears." });
+  const orig = await exportOf(s.story_id);
+  const view = async (chapterId) => (await call("GET", `/api/chapters/${chapterId}/codex`)).json.entries.map((e) => ({
+    name: e.name, type: e.type, content: e.content, aliases: e.aliases, always_include: e.always_include,
+    description: e.description, shared_entry_id: e.shared_entry_id, overridden: e.overridden,
+  }));
+  const lastOf = async (id) => { const d = await exportOf(id); return d.chapters[d.chapters.length - 1].id; };
+  const before = await view(next);
+  ok(before.length === 1 && before[0].content === "Our notes." && before[0].description.startsWith("Ears: Fox ears."), "setup: the story reads its own changes to the linked entry");
+
+  // The shared entry is already here: reused, the file's copy of it is ignored.
+  const edited = structuredClone(orig);
+  edited.shared_entries[0].content = "A stale copy.";
+  edited.shared_entries[0].facts[0].text = "Stale ears.";
+  edited.story.title = "Linked Copy";
+  let x = await call("POST", "/api/stories/import", edited);
+  ok(x.status === 201, "a story with linked entries imports");
+  const copy = await exportOf(x.json.story_id);
+  ok(copy.codex.every((o) => o.shared_entry_id === sh) && copy.codex.some((o) => o.overrides?.content === "Our notes."), "the copy links to the same shared entry, with its overrides");
+  ok(JSON.stringify(await view(await lastOf(x.json.story_id))) === JSON.stringify(before), "the copy's codex reads the same as the original");
+  ok((await call("GET", `/api/shared/${sh}`)).json.entry.content === "Base notes." && (await call("GET", "/api/shared")).json.entries.filter((e) => e.name === "Import Shared").length === 1, "the existing shared entry is not overwritten or duplicated");
+  ok(copy.shared_entries.length === 1 && copy.shared_entries[0].id === sh && copy.shared_entries[0].facts[0].text === "Round ears.", "…and the copy exports the owner's base");
+
+  // The shared entry is not here: made with the same ids.
+  const fresh = structuredClone(orig);
+  const rename = new Map([[sh, "fresh-shared-id"], ...orig.shared_entries[0].facts.map((f, i) => [f.id, `fresh-fact-${i}`])]);
+  let text = JSON.stringify(fresh);
+  for (const [a, b] of rename) text = text.split(a).join(b);
+  const moved = JSON.parse(text);
+  moved.story.title = "Linked Fresh";
+  x = await call("POST", "/api/stories/import", moved);
+  ok(x.status === 201, "a shared entry the database lacks is created on import");
+  const made = await call("GET", "/api/shared/fresh-shared-id");
+  ok(made.status === 200 && made.json.entry.name === "Import Shared" && made.json.entry.facts.length === 2 && made.json.entry.facts[0].id === "fresh-fact-0" && made.json.entry.facts[0].text === "Round ears.", "…with the file's fields and fact ids");
+  const fview = await view(await lastOf(x.json.story_id));
+  ok(fview.length === 1 && fview[0].shared_entry_id === "fresh-shared-id" && fview[0].content === "Our notes." && fview[0].description === before[0].description, "…and the story reads the same as the original");
+  await call("POST", "/api/stories/import", { ...moved, story: { ...moved.story, title: "Linked Fresh Again" } });
+  ok((await call("GET", "/api/shared")).json.entries.filter((e) => e.id === "fresh-shared-id").length === 1, "importing again reuses it");
+
+  // No shared entry in the file or here: a plain entry.
+  const orphan = structuredClone(orig);
+  orphan.shared_entries = [];
+  orphan.story.title = "Linked Orphan";
+  for (const o of orphan.codex) o.shared_entry_id = "never-existed";
+  x = await call("POST", "/api/stories/import", orphan);
+  const plain = (await exportOf(x.json.story_id)).codex;
+  ok(x.status === 201 && plain.length > 0 && plain.every((o) => o.shared_entry_id === null && o.overrides === null), "a link to a shared entry that is nowhere becomes a plain entry");
+
+  // Old files without the new fields.
+  const old = structuredClone(orig);
+  delete old.shared_entries;
+  for (const o of old.codex) { delete o.shared_entry_id; delete o.overrides; }
+  old.story.title = "Linked Old";
+  x = await call("POST", "/api/stories/import", old);
+  ok(x.status === 201 && (await exportOf(x.json.story_id)).codex.every((o) => o.shared_entry_id === null), "an export without the new fields still imports");
+  void earsId;
+}

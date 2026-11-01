@@ -4,19 +4,34 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { PathChapter } from "@/lib/ai/codexAi";
-import type { CodexEntry } from "@/lib/codex";
+import { DRAFT_ANCHOR, type CodexEntry } from "@/lib/codex";
 import type { SharedEntry } from "@/lib/sharedCodex";
 
 /**
  * "+ Shared entry": adds an entry from the shared codex to the story, from a chapter on this branch (the one being
  * viewed unless another is picked). It is saved at once. Entries already in the codex here are not offered again.
  */
-export default function SharedEntryLink({ chapterId, path, entries }: { chapterId: string; path: PathChapter[]; entries: CodexEntry[] }) {
+export default function SharedEntryLink({
+  chapterId,
+  path,
+  entries,
+  onHold,
+  editing = false,
+}: {
+  chapterId: string;
+  /** The saved chapters it can be added from. */
+  path: PathChapter[];
+  entries: CodexEntry[];
+  /** In the writing page's drawer: holds the entry in the draft (for the chapter being written, the default) instead of saving it at once. */
+  onHold?: (entry: SharedEntry) => void;
+  /** The draft edits an existing chapter. */
+  editing?: boolean;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [shared, setShared] = useState<SharedEntry[] | null>(null);
   const [sharedId, setSharedId] = useState("");
-  const [anchor, setAnchor] = useState(chapterId);
+  const [anchor, setAnchor] = useState(onHold ? DRAFT_ANCHOR : chapterId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,6 +52,12 @@ export default function SharedEntryLink({ chapterId, path, entries }: { chapterI
   const chosen = sharedId && offered.some((s) => s.id === sharedId) ? sharedId : (offered[0]?.id ?? "");
 
   async function add() {
+    if (onHold && anchor === DRAFT_ANCHOR) {
+      const base = offered.find((s) => s.id === chosen);
+      if (base) onHold(base);
+      setOpen(false);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -90,18 +111,19 @@ export default function SharedEntryLink({ chapterId, path, entries }: { chapterI
               ))}
             </select>
           </label>
-          {path.length > 1 && (
+          {(onHold || path.length > 1) && (
             <label>
               Appears from
               <select value={anchor} onChange={(e) => setAnchor(e.target.value)}>
+                {onHold && <option value={DRAFT_ANCHOR}>This chapter (saved when you {editing ? "save" : "post"} it)</option>}
                 {path.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.title}
-                    {c.id === chapterId ? " (this chapter)" : ""}
+                    {!onHold && c.id === chapterId ? " (this chapter)" : ""}
                   </option>
                 ))}
               </select>
-              <small>it is in the codex from this chapter on, on this branch</small>
+              <small>it is in the codex from this chapter on, on this branch{onHold ? "; an earlier chapter is saved at once" : ""}</small>
             </label>
           )}
         </>

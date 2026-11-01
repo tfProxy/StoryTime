@@ -25,7 +25,7 @@ import {
   type StoryContext,
 } from "@/lib/ai/prompts";
 import type { PathChapter } from "@/lib/ai/codexAi";
-import { draftFactOps, draftOps, foldCodex, isDraftEntry, isDraftFact, type CodexOp, type FactOp } from "@/lib/codex";
+import { foldWithDraft, isDraftEntry, isDraftFact, type CodexOp, type FactOp } from "@/lib/codex";
 import { deleteDraft, DraftConflict, emptyDraft, getDraft, saveDraft, type Draft } from "@/lib/drafts";
 import { applyAfterGenerate, applyGenerated, isBegun, pushUndo, startVersion } from "@/lib/generatedDraft";
 import { useWorkQueue, type GenerateItem } from "./WorkQueue";
@@ -411,7 +411,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const draftDepth = (codexPanel?.path.at(-1)?.depth ?? -1) + 1;
   const codex =
     codexPanel && (codexChanges.length > 0 || factChanges.length > 0)
-      ? foldCodex([...codexPanel.ops, ...draftOps(codexChanges, draftDepth)], [...(codexPanel.facts ?? []), ...draftFactOps(factChanges, draftDepth)], {
+      ? foldWithDraft(codexPanel.ops, codexPanel.facts ?? [], codexChanges, factChanges, draftDepth, {
           recentAnchor: codexPanel.path.at(-1)?.id,
         }).map((e) => ({
           id: e.entry_id,

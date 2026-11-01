@@ -1,4 +1,4 @@
-import { foldCodex, mergeOverrides, resolveShared, retiredEntries, sharedFactOps, type CodexOp, type FactOp, type SharedBase } from "../../src/lib/codex.ts";
+import { factSharedState, foldCodex, mergeOverrides, overridesFor, resolveShared, retiredEntries, sharedFactOps, type CodexOp, type FactOp, type SharedBase } from "../../src/lib/codex.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 
@@ -71,3 +71,19 @@ ok(resolveShared(orphan, new Map()) === orphan, "a link whose base is gone keeps
 // Merging overrides
 const m = mergeOverrides({ content: "a", aliases_add: ["X"], aliases_remove: ["Y"] }, { content: "b", aliases_add: ["Y"], aliases_remove: ["X"] });
 ok(m.content === "b" && m.aliases_add?.join() === "Y" && m.aliases_remove?.join() === "X", "later keyword changes undo earlier ones: " + JSON.stringify(m));
+
+// Resets take a field back from the base; overridesFor writes only what differs
+{
+  const b = base();
+  const o1 = op({});
+  const o2 = op({ op: "replace", anchor_chapter_id: "c2", anchor_depth: 2, overrides: { content: "Mine", type: "item", aliases_add: ["Mari"] } });
+  const o3 = op({ op: "replace", anchor_chapter_id: "c3", anchor_depth: 3, overrides: { reset: ["content", "aliases"] } });
+  let es2 = fold([o1, o2, o3], [], b);
+  ok(es2[0].content === "Base notes." && es2[0].type === "item" && es2[0].aliases.join() === "Mar" && es2[0].overridden.join() === "type", "reset takes some fields back and keeps the rest: " + es2[0].overridden.join());
+  ok(mergeOverrides({ content: "a" }, { reset: ["content"], type: "item" }).content === undefined && mergeOverrides({ content: "a" }, { reset: ["content"], type: "item" }).type === "item", "reset clears before the same op's own changes apply");
+  const p = overridesFor(b, { type: "character", content: "Mine", aliases: ["Mari"], always_include: false });
+  ok(p.type === undefined && p.content === "Mine" && p.aliases_add?.join() === "Mari" && p.aliases_remove?.join() === "Mar" && p.reset?.join() === "type,always_include,aliases", "overridesFor sets what differs and resets what matches: " + JSON.stringify(p));
+  es2 = fold([o1, op({ op: "replace", anchor_chapter_id: "c2", anchor_depth: 2, overrides: p })], [], b);
+  ok(es2[0].content === "Mine" && es2[0].aliases.join() === "Mari" && es2[0].overridden.join() === "content,aliases", "…and the entry reads as wanted");
+  ok(factSharedState([fop({ id: "shared-x-1" })]) === "base" && factSharedState([fop({ id: "shared-x-1" }), fop({})]) === "changed" && factSharedState([fop({})]) === "own", "a fact's state: base, changed or the story's own");
+}

@@ -36,7 +36,12 @@ export type Overrides = {
   always_include?: boolean;
   aliases_add?: string[];
   aliases_remove?: string[];
+  /** Fields to take back from the base: cleared before this op's own changes are applied ("aliases" clears both keyword lists). */
+  reset?: OverrideField[];
 };
+
+export const OVERRIDE_FIELDS = ["type", "content", "always_include", "aliases"] as const;
+export type OverrideField = (typeof OVERRIDE_FIELDS)[number];
 
 /** A shared entry as the codex fold needs it: its fields and its facts. It belongs to no story and has no chapter. */
 export type SharedBase = {
@@ -349,11 +354,20 @@ const sameWord = (a: string, b: string) => a.trim().toLowerCase() === b.trim().t
 export function mergeOverrides(earlier: Overrides, later: Overrides | null | undefined): Overrides {
   if (!later) return earlier;
   const out: Overrides = { ...earlier };
+  delete out.reset; // a reset only matters to what came before it
+  const reset = new Set(later.reset ?? []);
+  for (const f of reset) {
+    if (f === "aliases") {
+      delete out.aliases_add;
+      delete out.aliases_remove;
+    } else delete out[f];
+  }
   if (later.type !== undefined) out.type = later.type;
   if (later.content !== undefined) out.content = later.content;
   if (later.always_include !== undefined) out.always_include = later.always_include;
-  const add = [...(earlier.aliases_add ?? []), ...(later.aliases_add ?? [])].filter((a) => !(later.aliases_remove ?? []).some((r) => sameWord(r, a)));
-  const remove = [...(earlier.aliases_remove ?? []), ...(later.aliases_remove ?? [])].filter((a) => !(later.aliases_add ?? []).some((r) => sameWord(r, a)));
+  const kept = (list: string[] | undefined) => (reset.has("aliases") ? [] : (list ?? []));
+  const add = [...kept(earlier.aliases_add), ...(later.aliases_add ?? [])].filter((a) => !(later.aliases_remove ?? []).some((r) => sameWord(r, a)));
+  const remove = [...kept(earlier.aliases_remove), ...(later.aliases_remove ?? [])].filter((a) => !(later.aliases_add ?? []).some((r) => sameWord(r, a)));
   if (add.length) out.aliases_add = add;
   else delete out.aliases_add;
   if (remove.length) out.aliases_remove = remove;
@@ -408,12 +422,48 @@ export function resolveShared(ops: CodexOp[], bases: ReadonlyMap<string, SharedB
   for (const op of orderOps(ops.filter((o) => linked.has(o.entry_id)))) {
     const base = linked.get(op.entry_id)!;
     let patch = patches.get(op.entry_id) ?? {};
-    if (op.op === "create") patch = op.overrides ?? {};
+    if (op.op === "create") patch = mergeOverrides({}, op.overrides);
     else if (op.op === "replace") patch = mergeOverrides(patch, op.overrides);
     patches.set(op.entry_id, patch);
     resolved.set(op, { ...op, ...sharedFields(base, patch), shared_entry_id: base.id, overridden: overriddenFields(patch) });
   }
   return ops.map((o) => resolved.get(o) ?? o);
+}
+
+/**
+ * The overrides an op should store so that a linked entry reads `want` in its story: a field that differs from the
+ * base is set, one that matches it is taken back from the base. Only the fields in `want` are touched.
+ */
+export function overridesFor(base: SharedBase, want: Partial<Pick<SharedBase, "type" | "content" | "always_include" | "aliases">>): Overrides {
+  const out: Overrides = {};
+  const reset: OverrideField[] = [];
+  if (want.type !== undefined) {
+    if (want.type === base.type) reset.push("type");
+    else out.type = want.type;
+  }
+  if (want.content !== undefined) {
+    if (want.content === base.content) reset.push("content");
+    else out.content = want.content;
+  }
+  if (want.always_include !== undefined) {
+    if (want.always_include === base.always_include) reset.push("always_include");
+    else out.always_include = want.always_include;
+  }
+  if (want.aliases !== undefined) {
+    reset.push("aliases");
+    const add = want.aliases.filter((a) => !base.aliases.some((b) => sameWord(a, b)));
+    const remove = base.aliases.filter((b) => !want.aliases!.some((a) => sameWord(a, b)));
+    if (add.length) out.aliases_add = add;
+    if (remove.length) out.aliases_remove = remove;
+  }
+  if (reset.length) out.reset = reset;
+  return out;
+}
+
+/** Where a fact of a linked entry stands in its story: the shared base's as it is, changed or hidden by the story, or the story's own. */
+export function factSharedState(history: FactOp[]): "base" | "changed" | "own" {
+  if (!history.some((f) => f.id.startsWith("shared-"))) return "own";
+  return history[history.length - 1].id.startsWith("shared-") ? "base" : "changed";
 }
 
 /**
@@ -540,8 +590,14 @@ export function toCodexMarkdown(storyTitle: string, chapterTitle: string, entrie
 /** Stands in for the chapter being written, which has no id until it is posted. */
 export const DRAFT_ANCHOR = "draft";
 
-/** A codex change waiting in a draft. New entries get a local id (`draft-…`) until posted. */
-export type CodexChange = Pick<CodexOp, "op" | "entry_id" | "name" | "type" | "aliases" | "content" | "always_include">;
+/**
+ * A codex change waiting in a draft. New entries get a local id (`draft-…`) until posted. A "create" may add a shared
+ * entry (`shared_entry_id`), carrying a copy of it (`shared`, with its facts) so the draft can show it before it is saved.
+ */
+export type CodexChange = Pick<CodexOp, "op" | "entry_id" | "name" | "type" | "aliases" | "content" | "always_include"> & {
+  shared_entry_id?: string;
+  shared?: SharedBase;
+};
 
 export const isDraftEntry = (entryId: string) => entryId.startsWith("draft-");
 
@@ -553,7 +609,7 @@ export const isDraftEntry = (entryId: string) => entryId.startsWith("draft-");
 export function addChange(changes: CodexChange[], next: CodexChange): CodexChange[] {
   const prev = changes.find((c) => c.entry_id === next.entry_id);
   const rest = changes.filter((c) => c.entry_id !== next.entry_id);
-  if (prev?.op === "create") return next.op === "retire" ? rest : [...rest, { ...next, op: "create" }];
+  if (prev?.op === "create") return next.op === "retire" ? rest : [...rest, { ...next, op: "create", shared_entry_id: prev.shared_entry_id, shared: prev.shared }];
   return [...rest, next];
 }
 
@@ -577,6 +633,29 @@ export const isDraftFact = (factId: string) => factId.startsWith("draft-fact-");
 export function addFactChange(changes: FactChange[], next: FactChange): FactChange[] {
   const rest = changes.filter((c) => c.fact_id !== next.fact_id);
   return next.op === "retire" && isDraftFact(next.fact_id) ? rest : [...rest, next];
+}
+
+/**
+ * The codex as the chapter being written will have it: the posted ops and facts (already resolved against the shared
+ * entries by the server) with the draft's changes on top, shared entries the draft adds included.
+ */
+export function foldWithDraft(
+  ops: CodexOp[],
+  facts: FactOp[],
+  changes: CodexChange[],
+  factChanges: FactChange[],
+  depth: number,
+  options?: FoldOptions,
+): CodexEntry[] {
+  const all = applyDraft(ops, facts, changes, factChanges, depth);
+  return foldCodex(all.ops, all.facts, options);
+}
+
+/** The posted ops and facts with the draft's changes added (see `foldWithDraft`). */
+export function applyDraft(ops: CodexOp[], facts: FactOp[], changes: CodexChange[], factChanges: FactChange[], depth: number): { ops: CodexOp[]; facts: FactOp[] } {
+  const dOps = draftOps(changes, depth);
+  const bases = new Map(changes.flatMap((c) => (c.shared ? [[c.shared.id, c.shared] as const] : [])));
+  return { ops: [...ops, ...resolveShared(dOps, bases)], facts: [...facts, ...sharedFactOps(dOps, bases), ...draftFactOps(factChanges, depth)] };
 }
 
 /** The draft's fact changes as fact ops at `depth`, after everything posted. */

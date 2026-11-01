@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { db, newId } from "./db";
-import { ENTRY_TYPES, FACT_LIMITS } from "./codex";
+import { ENTRY_TYPES, FACT_LIMITS, OVERRIDE_FIELDS } from "./codex";
 import { CODEX_LIMITS } from "./codexDb";
+import { SHARED_LIMITS } from "./sharedCodex";
 import { LIMITS } from "./limits";
 import { checkImage, IMAGE_MAX_BYTES, PostError } from "./stories";
 import { IMAGE_SLOTS } from "./imageSlots";
@@ -34,7 +35,37 @@ const Choice = z.object({
   posted_at: time,
 });
 
+// A story's own changes to a linked entry (see Overrides in ./codex).
+const Overrides = z.object({
+  type: z.enum(ENTRY_TYPES).optional(),
+  content: str(CODEX_LIMITS.content).optional(),
+  always_include: z.boolean().optional(),
+  aliases_add: z.array(str(CODEX_LIMITS.alias)).max(CODEX_LIMITS.aliases).optional(),
+  aliases_remove: z.array(str(CODEX_LIMITS.alias)).max(CODEX_LIMITS.aliases).optional(),
+  reset: z.array(z.enum(OVERRIDE_FIELDS)).optional(),
+});
+
+const SharedFact = z.object({
+  id,
+  aspect: str(FACT_LIMITS.aspect).default(""),
+  form: str(FACT_LIMITS.form).default(""),
+  text: str(FACT_LIMITS.text).default(""),
+});
+
+const SharedEntry = z.object({
+  id,
+  name: str(SHARED_LIMITS.name).min(1),
+  type: z.enum(ENTRY_TYPES).default("note"),
+  aliases: z.array(str(SHARED_LIMITS.alias)).max(SHARED_LIMITS.aliases).default([]),
+  content: str(SHARED_LIMITS.content).default(""),
+  always_include: z.boolean().default(false),
+  facts: z.array(SharedFact).max(SHARED_LIMITS.facts).default([]),
+});
+
 const CodexOp = z.object({
+  // Set when the op belongs to an entry linked to the shared codex; exports made before it have neither.
+  shared_entry_id: id.nullish(),
+  overrides: Overrides.nullish(),
   anchor_chapter_id: id,
   entry_id: id,
   op: z.enum(["create", "replace", "retire"]),
@@ -101,6 +132,8 @@ export const ImportSchema = z.object({
   codex: z.array(CodexOp).max(20000).default([]),
   // Exports made before codex facts have none.
   codex_facts: z.array(CodexFact).max(50000).default([]),
+  // Exports made before shared codex entries have none.
+  shared_entries: z.array(SharedEntry).max(5000).default([]),
   // Version 1 exports have no revision history.
   revisions: z.array(Revision).max(20000).default([]),
   // Exports made before chapter pictures have none.
@@ -211,14 +244,42 @@ export function importStory(input: ImportInput): { story_id: string; chapter_id:
     const rootId = chapterIds.get(roots[0].id)!;
     db().prepare(`UPDATE stories SET root_chapter_id = ? WHERE id = ?`).run(rootId, storyId);
 
+    // Shared entries: one the database already has is used as it is (the owner's current base wins over the
+    // file's); one it lacks is made with the file's id and fact ids, so the story's changes to those facts still apply.
+    const known = new Set<string>();
+    const hasEntry = db().prepare(`SELECT 1 FROM shared_entries WHERE id = ?`);
+    const hasFact = db().prepare(`SELECT 1 FROM shared_facts WHERE id = ?`);
+    const insertShared = db().prepare(
+      `INSERT INTO shared_entries (id, name, type, aliases, content, always_include, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    const insertSharedFact = db().prepare(
+      `INSERT INTO shared_facts (id, shared_entry_id, aspect, form, text, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+    );
+    const now = Date.now();
+    for (const s of input.shared_entries) {
+      if (known.has(s.id)) continue;
+      if (!hasEntry.get(s.id)) {
+        insertShared.run(s.id, s.name, s.type, JSON.stringify(s.aliases), s.content, s.always_include ? 1 : 0, now, now);
+        s.facts.forEach((f, i) => {
+          if (hasFact.get(f.id)) throw new PostError(`A fact of the shared entry “${s.name}” clashes with one already in the codex library`, 400);
+          insertSharedFact.run(f.id, s.id, f.aspect, f.form, f.text, now + i);
+        });
+      }
+      known.add(s.id);
+    }
+
     const insertOp = db().prepare(
-      `INSERT INTO codex_ops (id, story_id, anchor_chapter_id, entry_id, op, name, type, aliases, content, always_include, posted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO codex_ops (id, story_id, anchor_chapter_id, entry_id, op, name, type, aliases, content, always_include, posted_at,
+                              shared_entry_id, overrides)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const o of input.codex) {
+      // A link to a shared entry that is neither in the file nor here becomes a plain entry.
+      const shared = o.shared_entry_id && (known.has(o.shared_entry_id) || hasEntry.get(o.shared_entry_id)) ? o.shared_entry_id : null;
       insertOp.run(
         newId(), storyId, chapterIds.get(o.anchor_chapter_id), o.entry_id, o.op, o.name, o.type,
         JSON.stringify(o.aliases), o.content, o.always_include ? 1 : 0, o.posted_at,
+        shared, shared && o.overrides ? JSON.stringify(o.overrides) : null,
       );
     }
 
