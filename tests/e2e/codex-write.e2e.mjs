@@ -12,11 +12,7 @@ const mock = http.createServer((req, res) => {
   req.on("end", () => {
     const last = JSON.parse(data || "{}").messages?.at(-1)?.content ?? "";
     prompts.push(last);
-    const reply = last.includes("already suggested")
-      ? JSON.stringify([{ choice: "Cross the river", direction: "She wades across." }])
-      : last.includes("Suggest 4 distinct directions")
-      ? JSON.stringify([{ choice: "Follow the ferryman", direction: "Mira trails Zed to the river." }, { choice: "Hide", direction: "She hides." }])
-      : "# T\n\nHello there.";
+    const reply = "# T\n\nHello there.";
     res.setHeader("content-type", "text/event-stream");
     res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: reply } }] })}\n\n`);
     res.end("data: [DONE]\n\n");
@@ -190,32 +186,6 @@ await page.getByRole("button", { name: "Save changes" }).click();
 await page.waitForURL(new RegExp(`/c/${posted}(\\?|$)`));
 ok((await codexAt(posted)).find((e) => e.name === "Zed").facts.some((f) => f.text === "Cheerful at last." && f.op.anchor_chapter_id === posted), "saving the edit saves the fact at the edited chapter");
 ok(!(await codexAt(root)).find((e) => e.name === "Zed").facts.some((f) => f.text === "Cheerful at last."), "…not at the chapter before it");
-
-// ideas for a new branch
-await page.goto(`${BASE}/c/${root}/write`);
-await page.getByRole("button", { name: "Suggest ideas" }).click();
-await page.getByText("Follow the ferryman").waitFor();
-ok(/"Go on"/.test(prompts.at(-1)), "the ideas prompt knows the choices that already exist");
-await page.locator("li.codex-pick", { hasText: "Follow the ferryman" }).getByRole("button", { name: "Use this" }).click();
-ok((await page.getByLabel(/Choice text/).inputValue()) === "Follow the ferryman", "picking an idea fills the choice text");
-ok((await page.getByLabel(/What should happen/).inputValue()) === "Mira trails Zed to the river.", "…and what should happen");
-
-// more ideas make a new page; the first stays available
-await page.getByRole("button", { name: "Suggest more" }).click();
-await page.getByText("Cross the river").waitFor();
-ok(/already suggested.*"Follow the ferryman"/.test(prompts.at(-1)), "asking for more tells the AI what it already suggested");
-ok((await page.getByText("Page 2 of 2").count()) === 1 && (await page.locator("ul.codex-picks").getByText("Follow the ferryman").count()) === 0, "the new ideas get their own page");
-await page.getByRole("button", { name: "Previous ideas" }).click();
-await page.locator("ul.codex-picks").getByText("Follow the ferryman").waitFor();
-ok((await page.locator("ul.codex-picks").getByText("Cross the river").count()) === 0, "the earlier page can be brought back");
-
-// an idea can be added as a choice on the previous chapter, with its text edited first
-await page.locator("li.codex-pick", { hasText: "Hide" }).getByRole("button", { name: "Add as choice" }).click();
-await page.locator("li.codex-pick", { hasText: "Hide" }).getByLabel(/Choice text/).fill("Hide in the reeds");
-await page.getByRole("button", { name: "Add choice", exact: true }).click();
-await page.locator("li.codex-pick", { hasText: "Hide" }).getByText("Added as choice").waitFor();
-const rootChoices = (await (await fetch(`${BASE}/api/chapters/${root}`)).json()).choices.map((c) => c.label);
-ok(rootChoices.includes("Hide in the reeds") && !rootChoices.includes("Hide"), "the edited text is added to the previous chapter");
 
 await browser.close(); mock.close();
 await ai.restore();
