@@ -14,7 +14,7 @@ export async function GET(request: Request, ctx: Ctx) {
   return new Response(new Uint8Array(picture.bytes), { headers: { ...headers, "Content-Type": picture.type } });
 }
 
-// Removes a picture: the entry shows the one before it again.
+// Removes a picture: the entry shows the one before it again. A shared picture goes for every story.
 export async function DELETE(_request: Request, ctx: Ctx) {
   const { id, pictureId } = await ctx.params;
   try {

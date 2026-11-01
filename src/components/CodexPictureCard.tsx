@@ -19,6 +19,8 @@ type Props = {
   titles: Record<string, string>;
   /** What the workspace lets this card do (start from the picture, load its prompt). */
   workspace: WorkspaceDestination;
+  /** For an entry linked to a shared entry: whether new pictures are kept for every story that uses it. Null for any other entry. */
+  scope: { everyStory: boolean; onChange: (everyStory: boolean) => void } | null;
 };
 
 /**
@@ -26,15 +28,16 @@ type Props = {
  * compare new pictures with, and the same ☰ menu as a picture in the Pictures panel. New pictures are saved
  * from their own ☰ menu (Use as codex picture: from the start, or from the chapter on).
  */
-export default function CodexPictureCard({ storyId, entry, current, titles, workspace }: Props) {
+export default function CodexPictureCard({ storyId, entry, current, titles, workspace, scope }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const url = current ? codexPictureUrl(storyId, current.id) : null;
-  const from = current ? (current.anchor_chapter_id === null ? "From the start" : `From “${titles[current.anchor_chapter_id] ?? "a chapter"}” on`) : null;
+  const from = current ? (current.shared ? "Shared with every story that uses this entry" : current.anchor_chapter_id === null ? "From the start" : `From “${titles[current.anchor_chapter_id] ?? "a chapter"}” on`) : null;
 
   async function remove() {
     if (!current) return;
+    if (current.shared && !window.confirm("This picture is shared, so removing it removes it from every story that uses this entry. Remove it?")) return;
     setBusy(true);
     setStatus(null);
     try {
@@ -83,7 +86,21 @@ export default function CodexPictureCard({ storyId, entry, current, titles, work
           </div>
         )}
       </div>
-      {from && <p className="meta" style={{ margin: 0 }}>{from}</p>}
+      {from && (
+        <p className="meta" style={{ margin: 0 }}>
+          {from}
+          {current?.shared && <span className="tag"> · shared</span>}
+        </p>
+      )}
+      {scope && (
+        <label className="meta" style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+          Use for
+          <select value={scope.everyStory ? "all" : "story"} onChange={(e) => scope.onChange(e.target.value === "all")} aria-label="Use for">
+            <option value="story">this story only</option>
+            <option value="all">every story that uses this entry</option>
+          </select>
+        </label>
+      )}
       {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
     </section>
   );

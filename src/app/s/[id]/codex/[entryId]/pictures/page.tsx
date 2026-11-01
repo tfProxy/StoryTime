@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import CodexWorkspace from "@/components/CodexWorkspace";
 import { codexEntryAt } from "@/lib/codexDb";
-import { codexPictureAt, getCodexDraft, getCodexPreset } from "@/lib/codexPictures";
+import { codexPictureAt, getCodexDraft, getCodexPreset, sharedIdOfEntry } from "@/lib/codexPictures";
 import { codexPictureJobs, storyChapterTitles } from "@/lib/pictureJobs";
 import { codexRefPool } from "@/lib/referencePool";
 import { getPath, getStory } from "@/lib/stories";
@@ -47,6 +47,7 @@ export default async function CodexPicturePage({ params, searchParams }: { param
         titles={storyChapterTitles(story.id)}
         current={codexPictureAt(story.id, entryId, from?.id ?? null)}
         from={from ? { id: from.id, title: from.title } : null}
+        linked={sharedIdOfEntry(story.id, entryId) !== null}
         jobs={codexPictureJobs(story.id, entryId)}
       />
     </>

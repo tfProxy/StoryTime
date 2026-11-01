@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type ComponentProps } from "react";
+import { useMemo, useState, type ComponentProps } from "react";
 import type { CodexPicture } from "@/lib/codexPictures";
 import type { PictureJob } from "@/lib/pictureJobs";
 import { codexTarget } from "@/lib/pictureTarget";
@@ -17,13 +17,16 @@ type Props = Omit<ComponentProps<typeof CodexPromptPanel>, "loaded" | "refReques
   from: { id: string; title: string } | null;
   /** The entry's picture jobs as the page opened, newest first, with their marks. */
   jobs: PictureJob[];
+  /** True when the entry is linked to a shared entry, so a picture can be kept for every story that uses it. */
+  linked: boolean;
 };
 
 /**
  * The codex entry's picture page: the prompt and Make pictures on one side; the entry's current picture and
  * the new pictures on the other (see `PictureWorkspace`).
  */
-export default function CodexWorkspace({ titles, current, from, jobs, ...panel }: Props) {
+export default function CodexWorkspace({ titles, current, from, jobs, linked, ...panel }: Props) {
+  const [everyStory, setEveryStory] = useState(false);
   const versions = useMemo(() => ({}), []);
   const madeBySlot = useMemo(() => ({ codex: current?.made ?? null }), [current]);
 
@@ -35,7 +38,17 @@ export default function CodexWorkspace({ titles, current, from, jobs, ...panel }
       versions={versions}
       made={madeBySlot}
       codexFrom={from}
-      destination={(w) => <CodexPictureCard storyId={panel.story.id} entry={panel.entry} current={current} titles={titles} workspace={w} />}
+      codexShared={linked && everyStory}
+      destination={(w) => (
+        <CodexPictureCard
+          storyId={panel.story.id}
+          entry={panel.entry}
+          current={current}
+          titles={titles}
+          workspace={w}
+          scope={linked ? { everyStory, onChange: setEveryStory } : null}
+        />
+      )}
       controls={(w) => (
         <CodexPromptPanel
           {...panel}

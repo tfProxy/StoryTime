@@ -45,13 +45,17 @@ export function usePictureSaver(
   /** A saved picture is pinned by the server; this is told which one, so the page can show it. */
   onPinned?: (jobId: string, index: number) => void,
   from: { id: string; title: string } | null = null,
+  /** A codex picture of a linked entry is kept for every story that uses the entry (it then has no starting chapter). */
+  shared = false,
 ): PictureSaver {
   const router = useRouter();
   const [saving, setSaving] = useState<string | null>(null);
 
   const anchors = (slot: PictureSlot): SaveAnchor[] =>
     slot === "codex"
-      ? [{ id: null, words: "from the start" }, ...(from ? [{ id: from.id, words: `from “${shortTitle(from.title)}” on` }] : [])]
+      ? shared
+        ? [{ id: null, words: "for every story that uses this entry" }]
+        : [{ id: null, words: "from the start" }, ...(from ? [{ id: from.id, words: `from “${shortTitle(from.title)}” on` }] : [])]
       : [{ id: null, words: "" }];
 
   async function use(tileKey: string, image: ComfyImage, jobId: string | null, index: number, slot: PictureSlot, anchor: SaveAnchor = { id: null, words: "" }) {
@@ -60,7 +64,7 @@ export function usePictureSaver(
     try {
       const blob = await prepareImage(await fetchImage(comfyUrl, image), MAX_SIDE);
       const api = savedPictureApi(target, slot);
-      const query = [jobId ? `job=${encodeURIComponent(jobId)}&index=${index}` : "", target.kind === "codex" && anchor.id ? `anchor=${encodeURIComponent(anchor.id)}` : ""].filter(Boolean).join("&");
+      const query = [jobId ? `job=${encodeURIComponent(jobId)}&index=${index}` : "", target.kind === "codex" && anchor.id && !shared ? `anchor=${encodeURIComponent(anchor.id)}` : "", target.kind === "codex" && shared ? "shared=1" : ""].filter(Boolean).join("&");
       const url = query ? `${api}${api.includes("?") ? "&" : "?"}${query}` : api;
       const res = await fetch(url, { method: target.kind === "codex" ? "POST" : "PUT", headers: { "Content-Type": "image/jpeg" }, body: blob });
       const data = await res.json().catch(() => ({}));

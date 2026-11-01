@@ -878,6 +878,13 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE codex_ops ADD COLUMN overrides TEXT;
   CREATE INDEX codex_ops_shared ON codex_ops(shared_entry_id) WHERE shared_entry_id IS NOT NULL;
   `,
+  // 46: shared codex pictures. A codex_pictures row with shared_entry_id set is a picture of a shared entry: every story
+  // that links the entry shows it. It keeps story_id and entry_id of the story it was made in (its job and prompts belong
+  // there), and has no anchor chapter.
+  `
+  ALTER TABLE codex_pictures ADD COLUMN shared_entry_id TEXT REFERENCES shared_entries(id);
+  CREATE INDEX codex_pictures_shared ON codex_pictures(shared_entry_id) WHERE shared_entry_id IS NOT NULL;
+  `,
 ];
 
 function open(): Database.Database {

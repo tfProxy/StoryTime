@@ -113,3 +113,55 @@ ok((await call("GET", preset)).json.draw_preset === null, "an entry follows the 
 ok((await call("PUT", preset, { draw_preset: "anime" })).status === 200 && (await call("GET", preset)).json.draw_preset === "anime", "it can choose its own");
 await call("PUT", draft, { prompt: "again" });
 ok((await call("GET", preset)).json.draw_preset === "anime", "saving the boxes leaves the preset alone");
+
+// ---- shared pictures: a linked entry's picture is shown in every story that links it ----
+{
+  const mkStory = async (title) => {
+    const x = await call("POST", "/api/stories", { title, chapter: { title: `${title} root`, body: "r", choices: ["Go"] } });
+    const c = (await call("GET", `/api/chapters/${x.json.chapter_id}`)).json.choices[0];
+    const next = (await call("POST", "/api/chapters", { choice_id: c.id, title: `${title} next`, body: "n", choices: [] })).json.chapter_id;
+    return { story: x.json.story_id, root: x.json.chapter_id, next };
+  };
+  const s1 = await mkStory("Shared pics one"), s2 = await mkStory("Shared pics two"), s3 = await mkStory("Shared pics three");
+  const sid = (await call("POST", "/api/shared", { name: "Oda", type: "character", content: "Base." })).json.id;
+  const e1 = (await call("POST", "/api/codex/link", { anchor_chapter_id: s1.root, shared_entry_id: sid })).json.entry_id;
+  const e2 = (await call("POST", "/api/codex/link", { anchor_chapter_id: s2.root, shared_entry_id: sid })).json.entry_id;
+  const plain = (await call("POST", "/api/codex", { anchor_chapter_id: s1.root, op: "create", name: "Plain", type: "place", content: "x" })).json.entry_id;
+  const u = (story) => `/api/stories/${story}/codex-pictures`;
+  const post = (story, entry, query = "") => fetch(`${B}${u(story)}?entry=${entry}${query}`, { method: "POST", headers: { "Content-Type": "image/png" }, body: png });
+  const cur = async (story, chapter, entry) => (await call("GET", `${u(story)}?chapter=${chapter}`)).json.pictures[entry]?.id ?? null;
+
+  ok((await post(s1.story, plain, "&shared=1")).status === 400, "an entry that isn't linked can't have a shared picture");
+  ok((await cur(s1.story, s1.next, plain)) === null, "…and nothing was saved");
+  r = await post(s1.story, e1, "&shared=1&anchor=" + s1.next);
+  const shared = (await r.json()).id;
+  ok(r.status === 201, "a linked entry's picture can be saved as shared (any anchor is ignored)");
+  ok((await cur(s2.story, s2.next, e2)) === shared && (await cur(s2.story, s2.root, e2)) === shared, "story 2 shows it at its chapters, under story 2's own entry id");
+  ok((await cur(s1.story, s1.root, e1)) === shared, "…and so does the story it was made in");
+  r = await call("GET", `${u(s2.story)}?chapter=${s2.next}&entry=${e2}`);
+  ok(r.json.pictures.length === 1 && r.json.pictures[0].shared === true && r.json.pictures[0].entry_id === e2 && r.json.current.id === shared, "story 2's list for the entry has it, tagged shared");
+  ok((await call("GET", `${u(s2.story)}?chapter=${s2.next}`)).json.ids.includes(shared), "…its id is one a kept codex: reference may use");
+  r = await fetch(`${B}${u(s2.story)}/${shared}`);
+  ok(r.status === 200 && Buffer.from(await r.arrayBuffer()).equals(png), "its bytes are served to story 2");
+  ok((await fetch(`${B}${u(s3.story)}/${shared}`)).status === 404, "…but not to a story that doesn't link the entry");
+  ok((await call("GET", `${u(s3.story)}?chapter=${s3.next}`)).json.ids.length === 0, "…and it isn't one of that story's pictures");
+  ok((await fetch(`${B}${u(s3.story)}/${shared}`, { method: "DELETE" })).status === 404, "…which can't remove it either");
+
+  await new Promise((x) => setTimeout(x, 5));
+  const shared2 = (await (await post(s1.story, e1, "&shared=1")).json()).id;
+  ok((await cur(s2.story, s2.next, e2)) === shared2, "among shared pictures the latest wins");
+
+  const own = (await (await post(s2.story, e2, "&anchor=" + s2.next)).json()).id;
+  ok((await cur(s2.story, s2.next, e2)) === own && (await cur(s2.story, s2.root, e2)) === shared2, "a story's own picture beats the shared one where it applies");
+  ok((await cur(s1.story, s1.next, e1)) === shared2, "…and the other story still shows the shared one");
+  r = await call("GET", `${u(s2.story)}?chapter=${s2.next}&entry=${e2}`);
+  ok(r.json.pictures.length === 3 && r.json.pictures.filter((p) => p.shared).length === 2 && !r.json.pictures.find((p) => p.id === own).shared, "the list has own and shared pictures, newest first");
+  const wholeOwn = (await (await post(s2.story, e2)).json()).id;
+  ok((await cur(s2.story, s2.root, e2)) === wholeOwn, "an own whole-story picture beats a newer shared one too");
+  await fetch(`${B}${u(s2.story)}/${wholeOwn}`, { method: "DELETE" });
+  await fetch(`${B}${u(s2.story)}/${own}`, { method: "DELETE" });
+  ok((await cur(s2.story, s2.next, e2)) === shared2, "removing the own pictures shows the shared one again");
+
+  ok((await fetch(`${B}${u(s2.story)}/${shared2}`, { method: "DELETE" })).status === 200, "a shared picture can be removed from a story that links it");
+  ok((await cur(s1.story, s1.next, e1)) === shared && (await fetch(`${B}${u(s1.story)}/${shared2}`)).status === 404, "…which removes it for every story: the earlier shared picture shows");
+}

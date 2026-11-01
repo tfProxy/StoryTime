@@ -150,6 +150,12 @@ export function deleteItem(db, kind, id) {
     if (kind === "story") db.prepare(`DELETE FROM codex_suggestions WHERE story_id = ?`).run(id);
     else if (chapterIds.length) db.prepare(`DELETE FROM codex_suggestions WHERE chapter_id IN (${marks})`).run(...chapterIds);
     if (chapterIds.length) db.prepare(`DELETE FROM codex_checks WHERE chapter_id IN (${marks})`).run(...chapterIds);
+    // Codex pictures go with their story (a shared picture made in it too: the other stories lose it), and a picture
+    // that starts at a deleted chapter goes with the chapter.
+    if (kind === "story") {
+      db.prepare(`DELETE FROM codex_pictures WHERE story_id = ?`).run(id);
+      db.prepare(`DELETE FROM codex_picture_prompts WHERE story_id = ?`).run(id);
+    } else if (chapterIds.length) db.prepare(`DELETE FROM codex_pictures WHERE anchor_chapter_id IN (${marks})`).run(...chapterIds);
     // AI runs go with their story, or with the chapter they started from (or one below it).
     if (kind === "story") db.prepare(`DELETE FROM ai_runs WHERE story_id = ?`).run(id);
     else if (chapterIds.length) db.prepare(`DELETE FROM ai_runs WHERE start_chapter_id IN (${marks})`).run(...chapterIds);

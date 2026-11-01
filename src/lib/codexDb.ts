@@ -153,6 +153,20 @@ export function getCodexOps(chapterId: string): CodexOp[] {
   return withSharedBases(rows.map(toOp));
 }
 
+/** Every op the story has, on any branch, in the order they were written, as the fold reads them (linked entries resolved). */
+export function getStoryCodexOps(storyId: string): CodexOp[] {
+  const rows = db()
+    .prepare(
+      `SELECT o.id, o.anchor_chapter_id, c.depth AS anchor_depth, o.entry_id, o.op, o.name, o.type, o.aliases,
+              o.content, o.always_include, o.posted_at, o.shared_entry_id, o.overrides
+         FROM codex_ops o JOIN chapters c ON c.id = o.anchor_chapter_id
+        WHERE o.story_id = ?
+        ORDER BY o.posted_at, o.rowid`,
+    )
+    .all(storyId) as Row[];
+  return withSharedBases(rows.map(toOp));
+}
+
 /** Facts that apply at a chapter: those anchored on the path from the root to it, in effect order. */
 export function getCodexFacts(chapterId: string): FactOp[] {
   const path = getPath(chapterId);

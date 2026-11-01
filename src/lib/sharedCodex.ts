@@ -157,6 +157,7 @@ export function deleteSharedEntry(id: string): { deleted: true } {
       409,
     );
   }
+  db().prepare(`DELETE FROM codex_pictures WHERE shared_entry_id = ?`).run(id);
   db().prepare(`DELETE FROM shared_entries WHERE id = ?`).run(id);
   return { deleted: true };
 }

@@ -45,6 +45,8 @@ type Props = {
   destination?: (w: WorkspaceDestination) => ReactNode;
   /** For a codex entry: the chapter the page was opened from, which a picture can be saved from. */
   codexFrom?: { id: string; title: string } | null;
+  /** For a codex entry: save pictures as the shared entry's, for every story that links it. */
+  codexShared?: boolean;
 };
 
 /**
@@ -52,7 +54,7 @@ type Props = {
  * the new pictures on the other. On a phone the chosen header and footer come first (CSS moves them), then
  * the controls and the pictures. The state they share is kept by `usePictureWorkspace`.
  */
-export default function PictureWorkspace({ target, jobs, titles, versions, made, controls, destination, codexFrom = null }: Props) {
+export default function PictureWorkspace({ target, jobs, titles, versions, made, controls, destination, codexFrom = null, codexShared = false }: Props) {
   const { gridProps, resizerProps, setDock, ...w } = usePictureWorkspace(target, jobs, versions);
   const { comfy } = w;
   const slots = slotsFor(target);
@@ -104,6 +106,7 @@ export default function PictureWorkspace({ target, jobs, titles, versions, made,
           <ChapterPictures
             target={target}
             codexFrom={codexFrom}
+            codexShared={codexShared}
             titles={titles}
             comfyUrl={comfy.url}
             pictures={w.pictures}

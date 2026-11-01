@@ -10,6 +10,8 @@ How to use StoryTime's picture pages, and how to set up the machine that makes t
 
 **Quick clicks become one job.** Clicking Queue several times within a second, with nothing changed, makes one job of up to 8 pictures (turn this off in Settings › Drawing). **Pictures per click** beside Queue does the same in one click. **Keep seed** repeats a seed you like.
 
+**Shared codex entries.** On the picture page of an entry that is linked to a shared entry, **Use for** chooses whether a picture you save is for this story only (the default) or for every story that uses the entry. A shared picture is marked "shared" and shows in all those stories, unless a story has a picture of its own for the entry, which always wins. Removing a shared picture removes it from every story.
+
 **Keeping and throwing away.** Every picture has a pin, a reject ✕ and a ☰ menu (use as header, middle, footer, cover or codex picture; Instruct changes; Use as reference; Refine…; Load prompt; Info). The Pictures panel opens on **Pinned & new**: when you come back later, only pinned pictures show. **All**, **Rejected** and **Other chapters** show the rest. Saving a picture as the header, middle or footer pins it. A green ✦ New marks pictures that finished while you were away. Click a picture to view it full size (← → or swipe, P pins, X rejects).
 
 **Text added to every prompt.** The story's art style, the drawing preset's own prompt and the chapter's **Always include** box are added when a picture is asked for. They are shown under the Prompt box rather than put into it.

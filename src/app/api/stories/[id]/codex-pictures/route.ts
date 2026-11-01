@@ -32,6 +32,7 @@ export async function GET(request: Request, ctx: Ctx) {
 // Saves a picture for an entry: the body is the image (PNG, JPEG, GIF or WebP), ?entry=<entry id>, and
 // ?anchor=<chapter id> to start it at that chapter (and its descendants) or no anchor for the whole story.
 // ?job=<picture job id>&index=<n> say which picture made it, so its prompts are kept with it and it is pinned.
+// ?shared=1 saves it as the shared entry's picture (the entry must be linked to one), shown in every story that links it.
 export async function POST(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const q = new URL(request.url).searchParams;
@@ -39,7 +40,7 @@ export async function POST(request: Request, ctx: Ctx) {
   if (!entry) return Response.json({ error: "Give the entry" }, { status: 400 });
   const index = q.get("index");
   try {
-    const saved = saveCodexPicture(id, entry, q.get("anchor") || null, Buffer.from(await request.arrayBuffer()), q.get("job"), index === null || !/^\d+$/.test(index) ? null : Number(index));
+    const saved = saveCodexPicture(id, entry, q.get("anchor") || null, Buffer.from(await request.arrayBuffer()), q.get("job"), index === null || !/^\d+$/.test(index) ? null : Number(index), q.get("shared") === "1");
     return Response.json(saved, { status: 201 });
   } catch (e) {
     return fail(e);
