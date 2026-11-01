@@ -850,6 +850,34 @@ export const MIGRATIONS: string[] = [
   INSERT INTO picture_marks SELECT * FROM marks_aside;
   DROP TABLE marks_aside;
   `,
+  // 45: shared codex entries. A shared entry is a base (fields and facts) that belongs to no story; a story links to it
+  // with a codex_ops 'create' row whose shared_entry_id names it, anchored at the chapter where the entry first appears.
+  // From there the entry reads from the base, live. codex_ops.overrides (JSON, see Overrides in src/lib/codex.ts) is what
+  // the story changes from the base; a story's own codex_facts rows on a base fact's id change or hide that fact for it.
+  `
+  CREATE TABLE shared_entries (
+    id             TEXT PRIMARY KEY,
+    name           TEXT NOT NULL,
+    type           TEXT NOT NULL DEFAULT 'note',
+    aliases        TEXT NOT NULL DEFAULT '[]',
+    content        TEXT NOT NULL DEFAULT '',
+    always_include INTEGER NOT NULL DEFAULT 0,
+    created_at     INTEGER NOT NULL,
+    updated_at     INTEGER NOT NULL
+  );
+  CREATE TABLE shared_facts (
+    id              TEXT PRIMARY KEY,
+    shared_entry_id TEXT NOT NULL REFERENCES shared_entries(id) ON DELETE CASCADE,
+    aspect          TEXT NOT NULL DEFAULT '',
+    form            TEXT NOT NULL DEFAULT '',
+    text            TEXT NOT NULL DEFAULT '',
+    created_at      INTEGER NOT NULL
+  );
+  CREATE INDEX shared_facts_entry ON shared_facts(shared_entry_id, created_at);
+  ALTER TABLE codex_ops ADD COLUMN shared_entry_id TEXT REFERENCES shared_entries(id);
+  ALTER TABLE codex_ops ADD COLUMN overrides TEXT;
+  CREATE INDEX codex_ops_shared ON codex_ops(shared_entry_id) WHERE shared_entry_id IS NOT NULL;
+  `,
 ];
 
 function open(): Database.Database {

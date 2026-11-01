@@ -4,17 +4,22 @@ import {
   ENTRY_TYPES,
   FACT_LIMITS,
   FORM_ASPECT,
+  entryHistory,
   foldCodex,
   isDraftEntry,
   isFormAspect,
+  resolveShared,
   sameAspect,
+  sharedFactOps,
   storyEntrySummaries,
   type CodexEntry,
   type CodexOp,
   type FactOp,
   type FoldOptions,
+  type Overrides,
   type StoryEntrySummary,
 } from "./codex";
+import { getSharedEntry, loadSharedBases } from "./sharedCodex";
 import { getChoices, getPath, PostError } from "./stories";
 
 const text = (max: number) => z.string().trim().max(max);
@@ -99,6 +104,8 @@ type Row = {
   content: string;
   always_include: number;
   posted_at: number;
+  shared_entry_id: string | null;
+  overrides: string | null;
 };
 
 function toOp(r: Row): CodexOp {
@@ -109,7 +116,19 @@ function toOp(r: Row): CodexOp {
   } catch {
     // leave empty
   }
-  return { ...r, aliases, always_include: r.always_include === 1 };
+  let overrides: Overrides | null = null;
+  try {
+    if (r.overrides) overrides = JSON.parse(r.overrides) as Overrides;
+  } catch {
+    // no overrides
+  }
+  return { ...r, aliases, always_include: r.always_include === 1, overrides };
+}
+
+/** Ops as the fold reads them: a linked (shared) entry's ops carry the base's fields with the story's changes laid over. */
+function withSharedBases(ops: CodexOp[]): CodexOp[] {
+  const ids = ops.flatMap((o) => (o.shared_entry_id ? [o.shared_entry_id] : []));
+  return ids.length ? resolveShared(ops, loadSharedBases(ids)) : ops;
 }
 
 /** Ops that apply at a chapter: those anchored on the path from the root to it, in effect order. */
@@ -119,28 +138,42 @@ export function getCodexOps(chapterId: string): CodexOp[] {
   const rows = db()
     .prepare(
       `SELECT o.id, o.anchor_chapter_id, c.depth AS anchor_depth, o.entry_id, o.op, o.name, o.type, o.aliases,
-              o.content, o.always_include, o.posted_at
+              o.content, o.always_include, o.posted_at, o.shared_entry_id, o.overrides
          FROM codex_ops o JOIN chapters c ON c.id = o.anchor_chapter_id
         WHERE o.anchor_chapter_id IN (${path.map(() => "?").join(",")})
         ORDER BY c.depth, o.posted_at, o.rowid`,
     )
     .all(...path.map((c) => c.id)) as Row[];
-  return rows.map(toOp);
+  return withSharedBases(rows.map(toOp));
 }
 
 /** Facts that apply at a chapter: those anchored on the path from the root to it, in effect order. */
 export function getCodexFacts(chapterId: string): FactOp[] {
   const path = getPath(chapterId);
   if (path.length === 0) return [];
-  return db()
+  const marks = path.map(() => "?").join(",");
+  const own = db()
     .prepare(
       `SELECT f.id, f.anchor_chapter_id, c.depth AS anchor_depth, f.entry_id, f.fact_id, f.op, f.aspect, f.form,
               f.text, f.quote, f.posted_at
          FROM codex_facts f JOIN chapters c ON c.id = f.anchor_chapter_id
-        WHERE f.anchor_chapter_id IN (${path.map(() => "?").join(",")})
+        WHERE f.anchor_chapter_id IN (${marks})
         ORDER BY c.depth, f.posted_at, f.rowid`,
     )
     .all(...path.map((c) => c.id)) as FactOp[];
+  // A linked entry's base facts come first, so the story's own facts on the same ids change or hide them.
+  const links = db()
+    .prepare(
+      `SELECT o.id, o.anchor_chapter_id, c.depth AS anchor_depth, o.entry_id, o.op, o.name, o.type, o.aliases,
+              o.content, o.always_include, o.posted_at, o.shared_entry_id, o.overrides
+         FROM codex_ops o JOIN chapters c ON c.id = o.anchor_chapter_id
+        WHERE o.anchor_chapter_id IN (${marks}) AND o.shared_entry_id IS NOT NULL
+        ORDER BY c.depth, o.posted_at, o.rowid`,
+    )
+    .all(...path.map((c) => c.id)) as Row[];
+  if (links.length === 0) return own;
+  const bases = loadSharedBases(links.map((r) => r.shared_entry_id!));
+  return [...sharedFactOps(links.map(toOp), bases), ...own];
 }
 
 /** Every entry in a story, across all branches, one row each. */
@@ -148,7 +181,7 @@ export function storyCodexEntries(storyId: string): StoryEntrySummary[] {
   const rows = db()
     .prepare(
       `SELECT o.id, o.anchor_chapter_id, c.depth AS anchor_depth, o.entry_id, o.op, o.name, o.type, o.aliases,
-              o.content, o.always_include, o.posted_at
+              o.content, o.always_include, o.posted_at, o.shared_entry_id, o.overrides
          FROM codex_ops o JOIN chapters c ON c.id = o.anchor_chapter_id
         WHERE c.story_id = ? AND c.trashed_at IS NULL
         ORDER BY c.depth, o.posted_at, o.rowid`,
@@ -156,7 +189,7 @@ export function storyCodexEntries(storyId: string): StoryEntrySummary[] {
     .all(storyId) as Row[];
   if (rows.length === 0) return [];
   const titles = db().prepare(`SELECT id, title FROM chapters WHERE story_id = ?`).all(storyId) as { id: string; title: string }[];
-  return storyEntrySummaries(rows.map(toOp), new Map(titles.map((t) => [t.id, t.title])));
+  return storyEntrySummaries(withSharedBases(rows.map(toOp)), new Map(titles.map((t) => [t.id, t.title])));
 }
 
 export function getCodexState(chapterId: string, options?: FoldOptions): CodexEntry[] {
@@ -204,6 +237,55 @@ export function createFactOp(input: z.infer<typeof NewFactOpSchema>): { id: stri
   })();
 }
 
+/**
+ * A linked entry reads its details from the shared base, so a plain "replace" can't change them (it would be ignored).
+ * A replace that repeats what the entry reads now is fine: bringing it back, or keeping it in the chapters after one.
+ */
+function assertSharedUnchanged(chapterId: string, entryId: string, input: z.infer<typeof NewCodexOpSchema>) {
+  const ops = getCodexOps(chapterId);
+  if (!ops.some((o) => o.entry_id === entryId && o.shared_entry_id)) return;
+  const last = entryHistory(ops, entryId).at(-1);
+  if (!last) return;
+  const same =
+    last.name === input.name &&
+    last.type === input.type &&
+    last.content === input.content &&
+    last.always_include === input.always_include &&
+    last.aliases.join("\n") === input.aliases.join("\n");
+  if (!same) throw new PostError("This entry is shared, so its details are changed in the Shared codex, which changes them in every story.", 409);
+}
+
+export const LinkSharedSchema = z.object({ anchor_chapter_id: z.string().min(1), shared_entry_id: z.string().min(1) });
+
+/**
+ * Adds a shared entry to a story from a chapter on: a "create" op that names the base. From there the entry (and its
+ * facts) read from the shared entry, so a change to it reaches every story that links to it.
+ */
+export function linkSharedEntry(input: z.infer<typeof LinkSharedSchema>): { id: string; entry_id: string } {
+  return db().transaction(() => {
+    const path = getPath(input.anchor_chapter_id);
+    if (path.length === 0) throw new PostError("That chapter does not exist", 404);
+    const anchor = path[path.length - 1];
+    const base = getSharedEntry(input.shared_entry_id);
+    if (!base) throw new PostError("That shared entry doesn't exist", 404);
+    const live = getCodexState(anchor.id);
+    if (live.some((e) => e.shared_entry_id === base.id)) throw new PostError(`“${base.name}” is already in the codex at this point in the story`, 409);
+    if (live.some((e) => e.name.trim().toLowerCase() === base.name.trim().toLowerCase())) {
+      throw new PostError(`This branch already has an entry called “${base.name}”. Remove or rename it first.`, 409);
+    }
+    const id = newId();
+    const entryId = newId();
+    db()
+      .prepare(
+        `INSERT INTO codex_ops (id, story_id, anchor_chapter_id, entry_id, op, name, type, aliases, content, always_include, posted_at, shared_entry_id)
+         VALUES (?, ?, ?, ?, 'create', ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      // The columns keep the base as it is now; the fold reads the live base (see `resolveShared`).
+      .run(id, anchor.story_id, anchor.id, entryId, base.name, base.type, JSON.stringify(base.aliases), base.content, base.always_include ? 1 : 0, Date.now(), base.id);
+    return { id, entry_id: entryId };
+  })();
+}
+
 export function createCodexOp(input: z.infer<typeof NewCodexOpSchema>): { id: string; entry_id: string } {
   return db().transaction(() => {
     const path = getPath(input.anchor_chapter_id);
@@ -218,6 +300,7 @@ export function createCodexOp(input: z.infer<typeof NewCodexOpSchema>): { id: st
       if (input.op === "retire" && !foldCodex(getCodexOps(anchor.id)).some((e) => e.entry_id === entryId)) {
         throw new PostError("That entry doesn't exist at this point in the story", 409);
       }
+      if (input.op === "replace") assertSharedUnchanged(anchor.id, entryId, input);
     }
 
     const id = newId();

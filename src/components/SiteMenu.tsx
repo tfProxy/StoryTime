@@ -49,6 +49,7 @@ export default function SiteMenu() {
           <div id="page-menu-codex-slot" style={{ display: "contents" }} />
         </div>
         <div className="menu-group">
+          <Link href="/shared">Shared codex</Link>
           <Link href="/drafts">Drafts</Link>
           <Link href="/queue">Queue</Link>
           <Link href="/ai-log">Prompt history</Link>

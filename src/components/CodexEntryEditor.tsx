@@ -97,6 +97,8 @@ export default function CodexEntryEditor({
   const router = useRouter();
   const inDraft = variant === "drawer";
   const draftOnly = isDraftEntry(entry.entry_id);
+  /** The shared entry this one is linked to; its details are read from it and changed there. */
+  const shared = entry.shared_entry_id;
   const [savedNote, setSavedNote] = useState(false);
   const [notes, setNotes] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -208,6 +210,7 @@ export default function CodexEntryEditor({
           <div className="meta" style={{ margin: 0 }}>
             {TYPE_LABELS[entry.type]}
             {entry.always_include && <span className="tag"> · always included</span>}
+            {shared && <span className="tag"> · shared</span>}
             {held && (
               <span className="tag">
                 {" "}
@@ -233,6 +236,18 @@ export default function CodexEntryEditor({
 
       <section className="entry-section">
         <h2>Details</h2>
+        {shared ? (
+          <>
+            <p className="notice">
+              This entry is shared: its name, type, keywords and notes come from the <Link href={`/shared/${shared}`}>shared entry</Link>, and
+              changing them there changes them in every story that uses it. The facts below can be changed for this story alone.
+            </p>
+            <p className="meta">
+              Keywords: {entry.aliases.length > 0 ? entry.aliases.join(", ") : "none"}
+              {entry.always_include && " · always included in AI prompts"}
+            </p>
+          </>
+        ) : (
         <EntryDetailsForm
           key={[entry.op.id, entry.name, entry.type, entry.aliases.join("\n"), entry.always_include].join("|")}
           initial={entry}
@@ -251,6 +266,7 @@ export default function CodexEntryEditor({
             }
           }}
         />
+        )}
       </section>
 
       {draftOnly && !holdFact ? (
@@ -279,7 +295,9 @@ export default function CodexEntryEditor({
 
       <section className="entry-section">
         <h2>Your notes (not sent to the AI)</h2>
-        {notes === null ? (
+        {shared ? (
+          entry.content ? <p className="entry-notes">{entry.content}</p> : <p className="meta">No notes.</p>
+        ) : notes === null ? (
           <>
             {entry.content ? <p className="entry-notes">{entry.content}</p> : <p className="meta">No notes.</p>}
             <div className="row">

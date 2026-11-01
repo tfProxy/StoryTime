@@ -18,6 +18,35 @@ export type CodexOp = {
   content: string;
   always_include: boolean;
   posted_at: number;
+  /** Set on the op that links a shared entry into the story (see `resolveShared`); the entry reads from that base. */
+  shared_entry_id?: string | null;
+  /** On a linked entry's ops: what this story changes from the base from here on (merged along the path). */
+  overrides?: Overrides | null;
+  /** On a linked entry's resolved ops: the fields this story has changed from the base. */
+  overridden?: string[];
+};
+
+/**
+ * What one story changes in a linked (shared) entry. The name always comes from the base. Keywords are a set:
+ * the story adds some and hides some of the base's.
+ */
+export type Overrides = {
+  type?: EntryType;
+  content?: string;
+  always_include?: boolean;
+  aliases_add?: string[];
+  aliases_remove?: string[];
+};
+
+/** A shared entry as the codex fold needs it: its fields and its facts. It belongs to no story and has no chapter. */
+export type SharedBase = {
+  id: string;
+  name: string;
+  type: EntryType;
+  aliases: string[];
+  content: string;
+  always_include: boolean;
+  facts: { id: string; aspect: string; form: string; text: string }[];
 };
 
 /**
@@ -80,6 +109,10 @@ export type CodexEntry = {
   always_include: boolean;
   /** The last op that changed the entry, carrying the entry's folded fields. */
   op: CodexOp;
+  /** The shared entry this one is linked to; null for an entry of the story's own. */
+  shared_entry_id: string | null;
+  /** On a linked entry: the fields this story has changed from the shared base ("type", "content", "always_include", "aliases"). */
+  overridden: string[];
   /** Each keyword and the chapter whose change added it (for showing inherited keywords). */
   keywordSources: KeywordSource[];
   /** Every live fact, in the order they were first set; facts of other forms included. */
@@ -185,6 +218,8 @@ function withFacts(op: CodexOp, facts: LiveFact[], recentAnchor?: string, keywor
     content: op.content,
     always_include: op.always_include,
     op,
+    shared_entry_id: op.shared_entry_id ?? null,
+    overridden: op.overridden ?? [],
     facts,
     form: formFact ? { name: formFact.form, note: formFact.text, fact: formFact } : null,
     forms,
@@ -296,6 +331,117 @@ function foldEntries(ops: CodexOp[]): Map<string, Folded> {
     }
     const folded = applyDeltas(list, deltas, false);
     if (folded) out.set(id, folded);
+  }
+  return out;
+}
+
+// ---- Shared entries ----
+//
+// A shared entry is a base that stories link to. Linking is a "create" op (with `shared_entry_id`) at the chapter
+// the entry first appears; from there it reads from the base, live, so editing the base changes every story.
+// A story changes a field with `overrides` on its own ops, and a fact with its own fact ops on the base fact's id.
+// Both are resolved before the fold (here, once, on the server), so `foldCodex` and everything built on it see
+// ordinary ops and facts, in the browser too.
+
+const sameWord = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** `later` laid over `earlier`: scalar fields from the later one, keyword changes added up. */
+export function mergeOverrides(earlier: Overrides, later: Overrides | null | undefined): Overrides {
+  if (!later) return earlier;
+  const out: Overrides = { ...earlier };
+  if (later.type !== undefined) out.type = later.type;
+  if (later.content !== undefined) out.content = later.content;
+  if (later.always_include !== undefined) out.always_include = later.always_include;
+  const add = [...(earlier.aliases_add ?? []), ...(later.aliases_add ?? [])].filter((a) => !(later.aliases_remove ?? []).some((r) => sameWord(r, a)));
+  const remove = [...(earlier.aliases_remove ?? []), ...(later.aliases_remove ?? [])].filter((a) => !(later.aliases_add ?? []).some((r) => sameWord(r, a)));
+  if (add.length) out.aliases_add = add;
+  else delete out.aliases_add;
+  if (remove.length) out.aliases_remove = remove;
+  else delete out.aliases_remove;
+  return out;
+}
+
+/** The entry's fields in a story: the base, with the story's overrides laid over it. The name is always the base's. */
+export function sharedFields(base: SharedBase, overrides: Overrides): Pick<CodexOp, "name" | "type" | "aliases" | "content" | "always_include"> {
+  const gone = overrides.aliases_remove ?? [];
+  const aliases = base.aliases.filter((a) => !gone.some((g) => sameWord(g, a)));
+  for (const a of overrides.aliases_add ?? []) if (!aliases.some((x) => sameWord(x, a))) aliases.push(a);
+  return {
+    name: base.name,
+    type: overrides.type ?? base.type,
+    aliases,
+    content: overrides.content ?? base.content,
+    always_include: overrides.always_include ?? base.always_include,
+  };
+}
+
+/** The fields a story has changed in a linked entry, for showing "changed in this story". */
+export function overriddenFields(o: Overrides): string[] {
+  return [
+    ...(o.type !== undefined ? ["type"] : []),
+    ...(o.content !== undefined ? ["content"] : []),
+    ...(o.always_include !== undefined ? ["always_include"] : []),
+    ...(o.aliases_add?.length || o.aliases_remove?.length ? ["aliases"] : []),
+  ];
+}
+
+/** Which entries on these ops are linked to a shared entry whose base we have: entry id -> base. */
+function linkedEntries(ops: CodexOp[], bases: ReadonlyMap<string, SharedBase>): Map<string, SharedBase> {
+  const out = new Map<string, SharedBase>();
+  for (const op of ops) {
+    const base = op.shared_entry_id ? bases.get(op.shared_entry_id) : undefined;
+    if (base) out.set(op.entry_id, base);
+  }
+  return out;
+}
+
+/**
+ * Gives the ops of linked entries the fields they read now: the shared base with the story's overrides laid over it,
+ * accumulated along the path (a create starts them afresh). Ops of other entries, and of linked entries whose base
+ * is gone, are returned unchanged. The result is in the order given.
+ */
+export function resolveShared(ops: CodexOp[], bases: ReadonlyMap<string, SharedBase>): CodexOp[] {
+  const linked = linkedEntries(ops, bases);
+  if (linked.size === 0) return ops;
+  const resolved = new Map<CodexOp, CodexOp>();
+  const patches = new Map<string, Overrides>();
+  for (const op of orderOps(ops.filter((o) => linked.has(o.entry_id)))) {
+    const base = linked.get(op.entry_id)!;
+    let patch = patches.get(op.entry_id) ?? {};
+    if (op.op === "create") patch = op.overrides ?? {};
+    else if (op.op === "replace") patch = mergeOverrides(patch, op.overrides);
+    patches.set(op.entry_id, patch);
+    resolved.set(op, { ...op, ...sharedFields(base, patch), shared_entry_id: base.id, overridden: overriddenFields(patch) });
+  }
+  return ops.map((o) => resolved.get(o) ?? o);
+}
+
+/**
+ * The base's facts as fact ops for each linked entry, set at the chapter where the entry was linked: the story's own
+ * fact ops on the same fact id then change or hide them for that story alone. Put these before the story's facts.
+ */
+export function sharedFactOps(ops: CodexOp[], bases: ReadonlyMap<string, SharedBase>): FactOp[] {
+  const seen = new Set<string>();
+  const out: FactOp[] = [];
+  for (const op of orderOps(ops)) {
+    const base = op.shared_entry_id ? bases.get(op.shared_entry_id) : undefined;
+    if (!base || seen.has(op.entry_id)) continue;
+    seen.add(op.entry_id);
+    for (const f of base.facts) {
+      out.push({
+        id: `shared-${f.id}-${op.id}`,
+        anchor_chapter_id: op.anchor_chapter_id,
+        anchor_depth: op.anchor_depth,
+        entry_id: op.entry_id,
+        fact_id: f.id,
+        op: "set",
+        aspect: f.aspect,
+        form: f.form,
+        text: f.text,
+        quote: "",
+        posted_at: op.posted_at,
+      });
+    }
   }
   return out;
 }

@@ -43,6 +43,7 @@ export default function CodexEntryCards({ entries, chapterId, storyId, pictures 
                       <span>
                         <strong>{e.name}</strong> <span className="meta">{TYPE_LABELS[e.type]}</span>
                         {e.always_include && <span className="tag"> · always included</span>}
+                        {e.shared_entry_id && <span className="tag"> · shared</span>}
                         {wait ? (
                           <span className="tag"> · {wait === "create" ? "new" : "changed"} in this chapter, saved when you post</span>
                         ) : (

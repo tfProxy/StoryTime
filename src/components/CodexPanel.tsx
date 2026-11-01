@@ -23,6 +23,7 @@ import CodexCheck from "./CodexCheck";
 import CodexEntryCards from "./CodexEntryCards";
 import CodexEntryEditor, { EntryDetailsForm, type EntryChange } from "./CodexEntryEditor";
 import type { HeldFact } from "./CodexFacts";
+import SharedEntryLink from "./SharedEntryLink";
 
 type Props = {
   story?: StoryInfo;
@@ -271,10 +272,12 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
           <EntryDetailsForm initial={null} busy={busy} path={path} anchorPath={anchorPath} chapterId={chapterId} inDraft={!!draft} editingChapter={draft?.editing} onCancel={() => setCreating(false)} onSave={(f) => create(f)} />
         </div>
       ) : (
-        <div>
+        <div className="row">
           <button type="button" onClick={() => setCreating(true)}>
             + New entry
           </button>
+          {/* Saved at once at a chapter on this branch, so not in the drawer, whose chapter isn't saved yet. */}
+          {!embedded && !draft && <SharedEntryLink chapterId={chapterId} path={path} entries={entries} />}
         </div>
       )}
 
