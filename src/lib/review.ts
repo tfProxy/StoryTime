@@ -3,7 +3,7 @@ import { db, newId } from "./db";
 import { PostError } from "./stories";
 
 import { storyVerdicts } from "./continuityVerdicts";
-import { CODEX_LIMITS, createCodexOp, getCodexState } from "./codexDb";
+import { CODEX_LIMITS, createCodexOp, getCodexState, overrideSharedEntry } from "./codexDb";
 import { currentSummaryChecks } from "./summaryChecks";
 
 export const ISSUE_KINDS = ["summary-missing", "summary-stale", "summary-wrong", "continuity", "codex-missing", "ai-unreviewed"] as const;
@@ -280,7 +280,11 @@ export function decideIssue(chapterId: string, input: z.infer<typeof DecideIssue
       if (verdict && entry) {
         const added = `Intentional (${verdict.attribute}): ${input.note}`;
         const content = entry.content.trim() ? `${entry.content.trim()}\n\n${added}` : added;
-        if (content.length <= CODEX_LIMITS.content) {
+        if (content.length <= CODEX_LIMITS.content && entry.shared_entry_id) {
+          // A shared entry's notes belong to the shared entry; the note is this story's own.
+          overrideSharedEntry({ anchor_chapter_id: chapterId, entry_id: entry.entry_id, content });
+          codexEntry = entry.name;
+        } else if (content.length <= CODEX_LIMITS.content) {
           createCodexOp({
             anchor_chapter_id: chapterId,
             op: "replace",
