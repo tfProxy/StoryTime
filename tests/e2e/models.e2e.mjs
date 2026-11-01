@@ -136,7 +136,6 @@ ok((await page.getByLabel("Model for writing").first().inputValue()).includes("v
 ok((await settingsNow()).defaults.main.model === "alpha", "…without changing the default");
 
 // ---- suggestions have their own picker ----
-// The Brainstorm panel (which has one too) is folded away once there is a chapter.
 const suggestPicker = page.locator('select[aria-label="Model for suggestions"]:visible').first();
 await page.getByRole("button", { name: "Suggest choices" }).click();
 await until(() => calls.some((c) => c.system.includes("JSON array of strings")), "a suggest-choices call");

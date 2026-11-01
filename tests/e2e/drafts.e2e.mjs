@@ -50,22 +50,17 @@ const watch = (page) => {
 const ctxA = await browser.newContext();
 const page = watch(await ctxA.newPage());
 await page.goto(writeUrl);
-await page.getByRole("button", { name: "Suggest ideas" }).click();
-await page.getByText("Climb the tower").waitFor();
 await page.locator("select:has(option[value=long])").selectOption("long");
 await page.getByLabel("Chapter text").fill("She looked up.");
 await page.getByLabel("Instruction for the AI").fill("make it darker");
 await page.waitForFunction(() => /Draft saved/.test(document.body.innerText));
 await page.waitForTimeout(700); // the last change's save
 let stored = (await json("GET", draftUrl)).draft;
-ok(stored?.body === "She looked up." && stored.ideaPages?.[0]?.length === 2 && stored.length === "long" && stored.instruction === "make it darker", "the draft and its working state are saved on the server");
+ok(stored?.body === "She looked up." && stored.length === "long" && stored.instruction === "make it darker", "the draft and its working state are saved on the server");
 
 await page.reload();
-// Brainstorm folds away once there is chapter text.
-await page.locator("summary", { hasText: "Brainstorm" }).click();
-await page.getByText("Climb the tower").waitFor();
-ok(true, "brainstorm ideas are still there after a reload");
-ok((await page.locator("select:has(option[value=long])").inputValue()) === "long", "…and the chapter length");
+await page.getByLabel("Chapter text").waitFor();
+ok((await page.locator("select:has(option[value=long])").inputValue()) === "long", "the chapter length is still there after a reload");
 ok((await page.getByLabel("Instruction for the AI").inputValue()) === "make it darker", "…and the unsent instruction");
 
 // ---- another browser picks it up ----
@@ -75,9 +70,8 @@ await other.goto(`${BASE}/drafts`);
 await other.getByText(/Drafty: “Go in”/).waitFor();
 ok(true, "the drafts list in another browser shows it");
 await other.goto(writeUrl);
-await other.locator("summary", { hasText: "Brainstorm" }).click();
-await other.getByText("Climb the tower").waitFor();
-ok((await other.getByLabel("Chapter text").inputValue()) === "She looked up.", "…and opens it with its text and ideas");
+await other.getByLabel("Chapter text").waitFor();
+ok((await other.getByLabel("Chapter text").inputValue()) === "She looked up.", "…and opens it with its text");
 
 // ---- two tabs: a stale save is caught ----
 await other.getByLabel("Chapter title").fill("From B");

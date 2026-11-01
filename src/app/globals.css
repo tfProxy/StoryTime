@@ -686,7 +686,7 @@ h2 {
   margin: 0;
 }
 
-/* The drafting page: the form in one column, with Brainstorm and the prompt preview beside it when there is room. */
+/* The drafting page: the form in one column, with the prompt preview beside it when there is room. */
 .editor-grid,
 .editor-main,
 .editor-side {

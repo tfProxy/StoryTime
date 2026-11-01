@@ -10,20 +10,13 @@ import { completeChat, streamChat } from "@/lib/ai/client";
 import { ensurePathSummaries, neededSummaryIndex, summarizeChapter, type Summaries } from "@/lib/ai/summaries";
 import {
   choicesPrompt,
-  choiceLabelPrompt,
-  ideasPrompt,
-  parseIdeas,
-  SYSTEM_IDEAS,
-  type Idea,
   generatePrompt,
   LENGTH_WORDS,
   parseChapterOutput,
-  parseChoiceLabel,
   parseChoices,
   passageRefinePrompt,
   refinePrompt,
   SYSTEM_CHAPTER,
-  SYSTEM_CHOICE_LABEL,
   SYSTEM_CHOICES,
   SYSTEM_PASSAGE,
   type CodexOverrides,
@@ -139,15 +132,11 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const router = useRouter();
   const settings = useSettings();
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [localBusy, setBusy] = useState<null | "generate" | "refine" | "choices" | "ideas" | "summary" | "label" | "post">(null);
+  const [localBusy, setBusy] = useState<null | "generate" | "refine" | "choices" | "summary" | "post">(null);
   // A Generate lives in the work queue (so it goes on if the author leaves the page): the page is busy while that item is.
   const { items: queued, generate, stopGenerate, listenDraft } = useWorkQueue();
   const generating = queued.find((i): i is GenerateItem => i.type === "generate" && i.draftKey === draftKey && (i.state === "waiting" || i.state === "working"));
   const busy = localBusy ?? (generating ? "generate" : null);
-  // The idea being turned into a choice on the previous chapter ("page:index"), with the text being edited.
-  const [promoting, setPromoting] = useState<{ key: string; text: string } | null>(null);
-  const [promoteBusy, setPromoteBusy] = useState(false);
-  const [promoteError, setPromoteError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // The last action started, so its error shows in the section it came from.
   const [lastAction, setLastAction] = useState<typeof busy>(null);
@@ -158,8 +147,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const [codexOpen, setCodexOpen] = useState(false);
   // What the codex drawer opens on: an entry id, "new", or the list. `n` remounts it on each open.
   const [codexStart, setCodexStart] = useState<{ editing: string | null; n: number }>({ editing: null, n: 0 });
-  // Brainstorm is open until there is a chapter, then folds away; null until the author toggles it.
-  const [brainstormPref, setBrainstormPref] = useState<boolean | null>(null);
   // After the AI writes, keep showing the read-only text until the user chooses to edit it.
   const [reading, setReading] = useState(false);
   // The part of the chapter text selected in the editor; "Revise" then changes only that.
@@ -401,11 +388,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const length: Length = draft.length ?? "medium";
   const instruction = draft.instruction ?? "";
   const suggestions = draft.suggestions ?? [];
-  // Guidance for "Suggest more"; null until edited, so it follows the choice text by default.
-  const guidance = draft.guidance ?? null;
-  // Each "Suggest" adds a page of ideas; earlier pages stay so the author can go back to them.
-  const ideaPages: Idea[][] = draft.ideaPages ?? [];
-  const ideaPage = Math.min(draft.ideaPage ?? 0, Math.max(0, ideaPages.length - 1));
   // Models picked for this draft; null means the default from Settings (also when the picked one's connection is gone).
   const writeModel = usableRef(settings, draft.models?.write);
   const suggestModel = usableRef(settings, draft.models?.suggest);
@@ -417,8 +399,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const suggestPicker = (
     <ModelPicker label="Model for suggestions" role="cheap" use="suggest" value={suggestModel} onChange={(r) => setModel("suggest", r)} />
   );
-  // Ideas already added as choices, by the text they were added with.
-  const promoted = draft.promoted ?? {};
   // Manual additions to / removals from the codex entries sent with each prompt.
   const codexOverrides: CodexOverrides = draft.codexOverrides ?? { include: [], exclude: [] };
 
@@ -463,7 +443,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
           : context.choiceLabel,
     codexOverrides,
   };
-  const guidanceText = guidance ?? ctx.choiceLabel ?? "";
 
   /**
    * Makes sure the story so far can be condensed before a prompt is built: if older chapters
@@ -609,117 +588,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       }
     } finally {
       setBusy(null);
-    }
-  }
-
-  /** One sentence of choice text, written by the cheaper model: from the chapter, or from the previous chapter alone when there is no draft. */
-  const choiceLabelRequest = (chapter: { title: string; body: string } | null, ready: StoryContext): PromptParts => ({
-    system: SYSTEM_CHOICE_LABEL,
-    message: choiceLabelPrompt({ ...ready, choiceLabel: null }, chapter, settings.contextTokens),
-  });
-
-  async function askChoiceLabel(chapter: { title: string; body: string } | null, ready: StoryContext, signal?: AbortSignal) {
-    const request = choiceLabelRequest(chapter, ready);
-    const reply = await completeChat(settings, {
-      system: request.system,
-      messages: [{ role: "user", content: request.message }],
-      role: "cheap",
-      model: suggestModel,
-      maxTokens: 60,
-      signal,
-      source: { label: "Choice label", storyId },
-    });
-    return parseChoiceLabel(reply).slice(0, LIMITS.label);
-  }
-
-  /** The button next to the choice text: replaces it with a fresh one made from the current chapter. */
-  async function regenerateChoiceText(field: "newChoiceLabel" | "incomingLabel") {
-    if (!draft) return;
-    setError(null);
-    startBusy("label");
-    try {
-      const label = await askChoiceLabel(draft.body.trim() ? { title: draft.title, body: draft.body } : null, ctx);
-      if (!label) throw new Error("The AI didn't give any choice text. Try again.");
-      patch({ [field]: label });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  const choiceTextButton = (field: "newChoiceLabel" | "incomingLabel") => (
-    <>
-      <button
-        type="button"
-        className="secondary"
-        onClick={() => regenerateChoiceText(field)}
-        disabled={busy !== null}
-        title={draft.body.trim() ? "Write one sentence of choice text from this chapter" : "Suggest a choice based on the previous chapter"}
-      >
-        {busy === "label" ? "Thinking…" : "Regenerate"}
-      </button>
-    </>
-  );
-
-  const ideasRequest = (): PromptParts => ({
-    system: SYSTEM_IDEAS,
-    // Untouched, the guidance only echoes the choice text; once edited it is the author's own direction for the ideas.
-    message: ideasPrompt(
-      guidance === null ? ctx : { ...ctx, choiceLabel: null },
-      settings.contextTokens,
-      guidance ?? "",
-      ideaPages.flat().map((i) => i.choice),
-    ),
-  });
-
-  /** Ideas for a new branch from the chapter being continued; picking one fills in the form. */
-  async function suggestIdeas() {
-    setError(null);
-    startBusy("ideas");
-    try {
-      const request = ideasRequest();
-      const text = await completeChat(settings, {
-        system: request.system,
-        messages: [{ role: "user", content: request.message }],
-        role: "cheap",
-      model: suggestModel,
-        maxTokens: 800,
-        source: { label: "Brainstorm ideas", storyId },
-      });
-      const found = parseIdeas(text);
-      if (found.length === 0) throw new Error("The AI didn't suggest anything I could read. Try again.");
-      setDraft((d) => (d ? { ...d, ideaPages: [...(d.ideaPages ?? []), found], ideaPage: d.ideaPages?.length ?? 0 } : d));
-      setPromoting(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  /** Adds the idea, with the text the author settled on, as an unwritten choice on the chapter being continued. */
-  async function promoteIdea(key: string, parentChapterId: string) {
-    const label = promoting?.key === key ? promoting.text.trim() : "";
-    if (!label) return;
-    setPromoteBusy(true);
-    setPromoteError(null);
-    try {
-      const res = await fetch(`/api/chapters/${parentChapterId}/choices`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
-      setDraft((d) => (d ? { ...d, promoted: { ...d.promoted, [key]: label } } : d));
-      setPromoting(null);
-      // Reloads the choices that already exist, so the next ideas steer clear of this one.
-      router.refresh();
-    } catch (e) {
-      setPromoteError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setPromoteBusy(false);
     }
   }
 
@@ -1049,7 +917,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const working = busy === "generate" || busy === "refine";
   const words = countWords(draft.body);
   const hasBody = draft.body.trim() !== "";
-  const brainstormOpen = brainstormPref ?? !hasBody;
   const targetWords = LENGTH_WORDS[length];
   const picked = currentSelection(draft.body);
   const pickedWords = picked ? countWords(picked.text) : 0;
@@ -1063,134 +930,11 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     setCodexStart((s) => ({ editing, n: s.n + 1 }));
     setCodexOpen(true);
   };
-  // For a new branch, ideas fill in the choice text until the author has some; after that they follow it.
-  const ideaSetsChoice = (target.kind === "new" || target.kind === "fill") && !draft.newChoiceLabel.trim();
-  // Ideas can become choices on the chapter being continued (the one that led to this page).
-  const ideaParent = target.kind === "new" || target.kind === "fill" ? target.parentChapterId : null;
 
   return (
     <form onSubmit={(e) => e.preventDefault()}>
       <div className="editor-grid">
         <div className="editor-side">
-          <details
-            className="ai-panel fold"
-            open={brainstormOpen}
-            onToggle={(e) => {
-              if (e.currentTarget.open !== brainstormOpen) setBrainstormPref(e.currentTarget.open);
-            }}
-          >
-            <summary>
-              Brainstorm
-              {ideaPages.length > 0 && <span className="meta">{ideaPages.flat().length} ideas</span>}
-            </summary>
-            <label>
-              Guidance <small>(optional; starts as the choice text, and editing it won&apos;t change the choice)</small>
-              <AutoTextarea
-                style={{ minHeight: "3rem", fontFamily: "inherit" }}
-                value={guidanceText}
-                onChange={(e) => patch({ guidance: e.target.value })}
-              />
-            </label>
-            <div className="row">
-              <button type="button" className="secondary" onClick={suggestIdeas} disabled={busy !== null}>
-                {busy === "ideas" ? "Thinking…" : ideaPages.length ? "Suggest more" : "Suggest ideas"}
-              </button>
-              {suggestPicker}
-              {ideaPages.length > 1 && (
-                <>
-                  <button type="button" className="secondary" onClick={() => patch({ ideaPage: ideaPage - 1 })} disabled={ideaPage === 0} aria-label="Previous ideas">
-                    &lt;
-                  </button>
-                  <span className="meta">
-                    Page {ideaPage + 1} of {ideaPages.length}
-                  </span>
-                  <button type="button" className="secondary" onClick={() => patch({ ideaPage: ideaPage + 1 })} disabled={ideaPage === ideaPages.length - 1} aria-label="Next ideas">
-                    &gt;
-                  </button>
-                </>
-              )}
-            </div>
-            <p className="meta">
-              {ideaSetsChoice ? "Pick one to fill in the choice text and what should happen." : "Pick one to fill in what should happen."}
-              {ideaParent && " “Add as choice” puts it on the previous chapter for you to write later."}
-            </p>
-            {errorFor("ideas")}
-            {ideaPages[ideaPage] && (
-              <ul className="codex-picks">
-                {ideaPages[ideaPage].map((idea, i) => {
-                  const key = `${ideaPage}:${i}`;
-                  const editing = promoting?.key === key;
-                  return (
-                    <li key={key} className="codex-pick" style={{ flexDirection: "column", alignItems: "stretch", gap: "0.4rem" }}>
-                      <span>
-                        <strong>{idea.choice}</strong>
-                        {idea.direction && <span className="meta"> — {idea.direction}</span>}
-                      </span>
-                      {!editing && (
-                        <span className="row" style={{ flexWrap: "wrap" }}>
-                          <button
-                            type="button"
-                            className="secondary"
-                            onClick={() =>
-                              patch(ideaSetsChoice ? { newChoiceLabel: idea.choice.slice(0, LIMITS.label), prompt: idea.direction } : { prompt: idea.direction })
-                            }
-                          >
-                            Use this
-                          </button>
-                          {ideaParent &&
-                            (promoted[key] ? (
-                              <span className="meta" title={promoted[key]}>
-                                Added as choice
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                className="secondary"
-                                onClick={() => {
-                                  setPromoteError(null);
-                                  setPromoting({ key, text: idea.choice.slice(0, LIMITS.label) });
-                                }}
-                              >
-                                Add as choice
-                              </button>
-                            ))}
-                        </span>
-                      )}
-                      {editing && ideaParent && (
-                        <div style={{ display: "grid", gap: "0.5rem" }}>
-                          <label>
-                            Choice text <small>(added to the previous chapter as it reads here)</small>
-                            <input
-                              value={promoting.text}
-                              maxLength={LIMITS.label}
-                              autoFocus
-                              onChange={(e) => setPromoting({ key, text: e.target.value })}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                                  e.preventDefault();
-                                  void promoteIdea(key, ideaParent);
-                                }
-                              }}
-                            />
-                          </label>
-                          <div className="row">
-                            <button type="button" onClick={() => promoteIdea(key, ideaParent)} disabled={promoteBusy || !promoting.text.trim()}>
-                              {promoteBusy ? "Adding…" : "Add choice"}
-                            </button>
-                            <button type="button" className="secondary" onClick={() => setPromoting(null)} disabled={promoteBusy}>
-                              Cancel
-                            </button>
-                          </div>
-                          {promoteError && <p className="error">{promoteError}</p>}
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </details>
-
           {storyId && (
             <p className="meta">
               Style notes: {style.trim() ? snippet(style) : "none"} · <Link href={`/s/${storyId}/details`}>Edit story details</Link>
@@ -1259,15 +1003,11 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
             <section className="ai-panel">
               <label id="field-incomingLabel">
                 Choice text <small>(the button readers click on the previous chapter to reach this one)</small>
-                <span className="row">
-                  <input
-                    value={draft.incomingLabel ?? ""}
-                    maxLength={LIMITS.label}
-                    onChange={(e) => patch({ incomingLabel: e.target.value })}
-                  />
-                  {choiceTextButton("incomingLabel")}
-                </span>
-                {errorFor("label")}
+                <input
+                  value={draft.incomingLabel ?? ""}
+                  maxLength={LIMITS.label}
+                  onChange={(e) => patch({ incomingLabel: e.target.value })}
+                />
               </label>
             </section>
           )}
@@ -1276,15 +1016,11 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
             <section className="ai-panel">
               <label id="field-choice">
                 Choice text <small>(the button readers click on the previous chapter; change it to add a new choice there instead)</small>
-                <span className="row">
-                  <input
-                    value={draft.newChoiceLabel}
-                    maxLength={LIMITS.label}
-                    onChange={(e) => patch({ newChoiceLabel: e.target.value })}
-                  />
-                  {choiceTextButton("newChoiceLabel")}
-                </span>
-                {errorFor("label")}
+                <input
+                  value={draft.newChoiceLabel}
+                  maxLength={LIMITS.label}
+                  onChange={(e) => patch({ newChoiceLabel: e.target.value })}
+                />
               </label>
             </section>
           )}
