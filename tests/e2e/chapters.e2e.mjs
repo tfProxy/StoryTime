@@ -122,15 +122,14 @@ const chapterUrl = page.url().split("?")[0];
 // the draft is gone, and the story's details page now leads to reading it
 ok((await (await fetch(`${BASE}/api/drafts/first:${storyId}`)).json()).draft == null, "draft cleared after posting");
 await page.goto(`${BASE}/s/${storyId}/details`);
-ok(await page.getByRole("link", { name: "Read “The Haunted Inn”" }).isVisible() && await page.getByRole("link", { name: "Start writing" }).count() === 0, "the story's details page offers Read instead of Start writing");
+ok(await page.getByRole("link", { name: "Start writing" }).count() === 0 && await page.getByRole("navigation", { name: "Story", exact: true }).getByRole("link", { name: "Read" }).isVisible(), "the story's details page has the Read tab instead of Start writing");
 await page.goto(`${BASE}/s/${storyId}/write`);
 ok(await page.getByText("already has its first chapter").isVisible(), "the first chapter's page says it is written, with a link to read it");
 
 // ---- editing a posted chapter ----
 await page.goto(chapterUrl);
-await page.locator(".site-menu > summary").click();
-ok(await page.getByRole("link", { name: "Edit this chapter" }).isVisible(), "edit link shown");
-await page.getByRole("link", { name: "Edit this chapter" }).click();
+ok(await page.locator(".chapter-actions").getByRole("link", { name: "Edit", exact: true }).isVisible(), "edit link shown");
+await page.locator(".chapter-actions").getByRole("link", { name: "Edit", exact: true }).click();
 await page.waitForURL(/\/edit$/);
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.length > 0);
 ok((await page.getByLabel("Chapter title").inputValue()) === "The Door", "edit form pre-filled");
@@ -161,8 +160,7 @@ const ctx2 = await browser.newContext();
 const page2 = await ctx2.newPage();
 await page2.goto(chapterUrl);
 await page2.getByRole("heading", { name: "The Door" }).waitFor();
-await page2.locator(".site-menu > summary").click();
-ok(await page2.getByRole("link", { name: "Edit this chapter" }).isVisible(), "edit link shown in any browser");
+ok(await page2.locator(".chapter-actions").getByRole("link", { name: "Edit", exact: true }).isVisible(),"edit link shown in any browser");
 await page2.goto(chapterUrl + "/edit");
 await page2.getByLabel("Chapter title").waitFor({ timeout: 5000 });
 ok((await page2.getByLabel("Chapter title").inputValue()).length > 0, "any browser can open the edit page");

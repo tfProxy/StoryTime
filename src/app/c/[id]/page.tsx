@@ -10,12 +10,11 @@ import { appliedTagNames } from "@/lib/tags";
 import { contentNotes } from "@/lib/contentNotes";
 import { noteText, type ChapterNote } from "@/lib/contentNotesRoll";
 import Prose from "@/components/Prose";
-import EditLink from "@/components/EditLink";
+import ChapterActions from "@/components/ChapterActions";
 import AddChoice from "@/components/AddChoice";
 import RemoveChoice from "@/components/RemoveChoice";
 import SuggestChoices from "@/components/SuggestChoices";
 import ChapterImage from "@/components/ChapterImage";
-import { PageMenu } from "@/components/SiteMenu";
 import { chapterImageVersions } from "@/lib/chapterImages";
 import { draftKeysSaved } from "@/lib/draftStore";
 import { getCodexState } from "@/lib/codexDb";
@@ -66,21 +65,23 @@ export default async function ChapterPage({
       {ai === "unreviewed" && (
         <AiReviewNotice chapterId={chapter.id} pathUnreviewed={path.slice(0, -1).filter((p) => aiMarkOf(p) === "unreviewed").length} />
       )}
-      <nav className="crumbs" aria-label="Path so far">
-        {path.map((p, i) => (
-          <span key={p.id}>
-            {i > 0 && "› "}
-            {i === path.length - 1 ? (
-              <strong>{p.title}</strong>
-            ) : (
-              <Link href={`/c/${p.id}`}>{p.title}</Link>
-            )}
-          </span>
-        ))}
-      </nav>
+      {/* On the first chapter the trail would only repeat the title below. */}
+      {path.length > 1 && (
+        <nav className="crumbs" aria-label="Path so far">
+          {path.map((p, i) => (
+            <span key={p.id}>
+              {i > 0 && "› "}
+              {i === path.length - 1 ? (
+                <strong>{p.title}</strong>
+              ) : (
+                <Link href={`/c/${p.id}`}>{p.title}</Link>
+              )}
+            </span>
+          ))}
+        </nav>
+      )}
 
-      <h1>{chapter.title}</h1>
-      {tagNames.length > 0 && <p className="meta chapter-tags">[{tagNames.join(", ")}]</p>}
+      <h1>{chapter.title}</h1>      {tagNames.length > 0 && <p className="meta chapter-tags">[{tagNames.join(", ")}]</p>}
       {(chapter.edited_at || ai) && (
         <p className="meta chapter-meta">
           {ai && (
@@ -94,6 +95,7 @@ export default async function ChapterPage({
           )}
         </p>
       )}
+      <ChapterActions chapterId={chapter.id} storyId={story.id} trashed={trashed} summaryDone={!!(chapter.summary && chapter.path_summary)} />
       <ChapterImage chapterId={chapter.id} slot="header" version={images.header} />
       <Prose text={chapter.body} middle={<ChapterImage chapterId={chapter.id} slot="middle" version={images.middle} />} />
       <ChapterImage chapterId={chapter.id} slot="footer" version={images.footer} />
@@ -165,22 +167,6 @@ export default async function ChapterPage({
           ]
         </p>
       )}
-      <PageMenu
-        codexHref={`/c/${chapter.id}/codex`}
-        codexGroup={<Link href={`/c/${chapter.id}/summary`}>{chapter.summary && chapter.path_summary ? "Summary" : "Summary (missing)"}</Link>}
-      >
-        {!trashed && <EditLink chapterId={chapter.id} />}
-        {!trashed && <Link href={`/c/${chapter.id}/write-ahead`}>Write ahead with AI…</Link>}
-        <Link href={`/c/${chapter.id}/illustrate`}>Illustrate chapter</Link>
-        <Link href={`/s/${story.id}/pictures?from=${chapter.id}`}>Make missing pictures…</Link>
-        <Link href={`/c/${chapter.id}/path`}>Read this path</Link>
-        <details className="menu-sub">
-          <summary>Export</summary>
-          <a href={`/api/stories/${story.id}/export?format=md&to=${chapter.id}`}>Markdown</a>
-          <a href={`/api/stories/${story.id}/export?format=html&to=${chapter.id}`}>HTML</a>
-        </details>
-        <Link href={`/s/${story.id}/outline#c-${chapter.id}`}>Open in outline</Link>
-      </PageMenu>
     </>
   );
 }

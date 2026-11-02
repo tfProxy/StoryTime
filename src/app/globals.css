@@ -2938,10 +2938,91 @@ fieldset.model-uses .inline-label input[type="checkbox"] {
 }
 
 @media (max-width: 520px) {
-  .story-tabs a {
-    padding-inline: 0.5rem;
-    font-size: 1rem;
+  .story-tabs {
+    gap: 0;
   }
+  .story-tabs a {
+    padding-inline: 0.4rem;
+    font-size: 0.95rem;
+  }
+}
+
+.export-links {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+/* The chapter's actions under its title: quiet buttons, with the rest behind a "⋯". */
+.chapter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+}
+
+.chapter-actions > a,
+.more-menu > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  text-decoration: none;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.chapter-actions > a:hover,
+.more-menu > summary:hover,
+.more-menu[open] > summary {
+  color: var(--fg);
+  border-color: var(--muted);
+}
+
+.more-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.action-icon {
+  width: 1em;
+  height: 1em;
+  flex: none;
+}
+
+.more-menu {
+  position: relative;
+}
+
+.more-menu-items {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.3rem);
+  z-index: 10;
+  min-width: 14rem;
+  max-width: calc(100vw - 2rem);
+  display: grid;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+
+.more-menu-items a {
+  padding: 0.55rem 0.8rem;
+  text-decoration: none;
+}
+
+.more-menu-items a + a {
+  border-top: 1px solid var(--line);
 }
 
 /* Type filter above a list of codex entries. */

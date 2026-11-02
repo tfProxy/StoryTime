@@ -66,7 +66,7 @@ try {
   await page.goto(`${BASE}/c/${A}`);
   await page.getByText("Written by AI, not reviewed yet.").waitFor();
   ok((await page.getByRole("button", { name: "Mark this path reviewed" }).count()) === 0, "with nothing unreviewed above it, there is no Mark this path reviewed");
-  ok((await page.getByRole("link", { name: "Write ahead with AI…" }).count()) === 1 || (await page.locator(`a[href="/c/${A}/write-ahead"]`).count()) >= 1, "the menu has Write ahead with AI…");
+  ok((await page.locator(".chapter-actions").getByRole("link", { name: "Write ahead", exact: true }).count()) === 1, "the chapter actions have Write ahead");
   await page.goto(`${BASE}/c/${C}`);
   ok((await page.locator(".ai-review-notice").count()) === 0 && (await page.locator(".ai-mark").count()) === 0, "a chapter the owner wrote has no robot and no notice");
 

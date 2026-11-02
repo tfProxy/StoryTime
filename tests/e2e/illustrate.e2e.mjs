@@ -51,9 +51,7 @@ await page.goto(`${BASE}/c/${root}`);
 ok((await page.locator(".chapter-image").count()) === 0, "a chapter with no pictures shows none");
 
 // ---- from the chapter's menu to the illustrate page ----
-await page.getByRole("link", { name: "Illustrate chapter", includeHidden: true }).waitFor({ state: "attached" });
-await page.locator(".site-menu > summary").click();
-await page.getByRole("link", { name: "Illustrate chapter" }).click();
+await page.locator(".chapter-actions").getByRole("link", { name: "Illustrate", exact: true }).click();
 await page.waitForURL(`**/c/${root}/illustrate`);
 ok(await page.getByRole("heading", { name: "Header picture" }).isVisible() && await page.getByRole("heading", { name: "Footer picture" }).isVisible(), "the chapter's menu leads to the illustrate page, with a header and a footer picture");
 ok((await menuItems("Header picture")).join("|") === "Upload picture", "each starts empty, with a ☰ menu that offers Upload only");

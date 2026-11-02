@@ -128,8 +128,8 @@ await page.getByRole("button", { name: "Bring back" }).click();
 await card.getByText("Now a horse. Cannot speak.").waitFor();
 ok(true, "bring back restores it");
 await page.goto(`${BASE}/c/${A}`);
-await page.locator(".site-menu > summary").click();
-ok(await page.getByRole("link", { name: "Codex", exact: true }).isVisible(), "codex link in the chapter page menu");
+await page.getByLabel("More chapter actions", { exact: true }).click();
+ok(await page.locator(".more-menu-items").getByRole("link", { name: "Codex for this chapter" }).isVisible(), "codex link in the chapter page's ⋯ menu");
 
 await browser.close(); mock.close();
 await ai.restore();
