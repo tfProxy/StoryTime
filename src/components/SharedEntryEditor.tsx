@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ENTRY_TYPES, STARTER_ASPECTS, TYPE_LABELS, type EntryType } from "@/lib/codex";
+import { describeSharedFacts, ENTRY_TYPES, STARTER_ASPECTS, TYPE_LABELS, type EntryType } from "@/lib/codex";
 import type { SharedEntry } from "@/lib/sharedCodex";
 
 const keywordsOf = (text: string) => text.split(",").map((a) => a.trim()).filter(Boolean);
@@ -110,7 +110,7 @@ export default function SharedEntryEditor({ entry, usedIn }: { entry: SharedEntr
           </label>
           <label>
             Your notes (not sent to the AI)
-            <textarea rows={4} value={content} maxLength={8000} onChange={(e) => setContent(e.target.value)} />
+            <textarea rows={4} style={{ minHeight: "7rem" }} value={content} maxLength={8000} onChange={(e) => setContent(e.target.value)} />
           </label>
           <div className="row">
             <button type="submit" disabled={busy || !name.trim() || !dirty}>
@@ -126,6 +126,12 @@ export default function SharedEntryEditor({ entry, usedIn }: { entry: SharedEntr
       </section>
 
       <SharedFacts entry={entry} busy={busy} send={send} />
+
+      <section className="entry-section">
+        <h2>What the AI reads</h2>
+        <div className="fact-ai">{describeSharedFacts(entry.facts) || <em>Nothing yet — add facts. Notes are not sent to the AI.</em>}</div>
+        <p className="meta">This is the shared entry on its own. A story that uses it can change or add facts, so what the AI reads there may differ.</p>
+      </section>
 
       <section className="entry-section">
         <h2>Used in</h2>
@@ -200,7 +206,7 @@ function SharedFacts({ entry, busy, send }: { entry: SharedEntry; busy: boolean;
       </label>
       <label>
         Text
-        <textarea rows={2} value={text} maxLength={1000} onChange={(e) => setText(e.target.value)} />
+        <textarea rows={2} style={{ minHeight: "4rem" }} value={text} maxLength={1000} onChange={(e) => setText(e.target.value)} />
       </label>
       <div className="row">
         <button type="submit" disabled={busy || (!text.trim() && !(aspect.trim().toLowerCase() === "form" && form.trim()))}>

@@ -114,7 +114,7 @@ export default function LinkedEntryDetails({ entry, chapterId, chapterTitle }: {
         {changed("always_include") && !dirty && reset("always_include")}
         <label>
           Your notes (not sent to the AI) {changed("content") && <span className="tag">changed in this story</span>}
-          <textarea rows={4} value={content} maxLength={8000} onChange={(e) => setContent(e.target.value)} />
+          <textarea rows={4} style={{ minHeight: "7rem" }} value={content} maxLength={8000} onChange={(e) => setContent(e.target.value)} />
         </label>
         {changed("content") && !dirty && reset("content")}
         <div className="row">

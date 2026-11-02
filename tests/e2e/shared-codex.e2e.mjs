@@ -52,12 +52,18 @@ try {
   await page.getByRole("button", { name: "Save fact" }).click();
   await page.getByText("tall russet fox ears").waitFor();
   ok((await send("GET", `/api/shared/${sid}`)).entry.aliases.join() === "Mara,the fox", "the details are saved");
+  const reads = page.locator("section", { has: page.getByRole("heading", { name: "What the AI reads", exact: true }) }).locator(".fact-ai");
+  await reads.filter({ hasText: "Ears: tall russet fox ears." }).waitFor();
+  ok((await reads.innerText()).trim() === "Ears: tall russet fox ears.", "the shared page shows what the AI reads: " + (await reads.innerText()));
+  ok(!(await reads.innerText()).includes("Base notes"), "…and not the notes");
 
   // ---- add it to the story from Chapter A ----
+  // (The writing page's drawer is where an entry is added from the UI: see shared-codex-write.)
   await page.goto(`${BASE}/c/${A}/codex`);
-  await page.getByRole("button", { name: "+ Shared entry" }).click();
-  await page.getByLabel("Appears from").selectOption(A);
-  await page.getByRole("button", { name: "Add to the codex" }).click();
+  await page.locator(".entry-cards, .meta").first().waitFor();
+  ok((await page.getByRole("button", { name: "+ Shared entry" }).count()) === 0, "the story's codex page has no “+ Shared entry”");
+  await post("/api/codex/link", { anchor_chapter_id: A, shared_entry_id: sid });
+  await page.reload();
   const card = page.locator(".entry-card", { hasText: "Mara Vale" });
   await card.waitFor();
   const text = await card.innerText();

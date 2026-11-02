@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 import { ENTRY_TYPES, TYPE_HEADINGS, TYPE_LABELS, type CodexEntry } from "@/lib/codex";
-import FleshOutEntry from "./FleshOutEntry";
-
 type Props = {
   entries: CodexEntry[];
   /** The chapter the entries are shown at: cards link to the entry page at this chapter, and mark the entries changed in it. */
@@ -17,12 +15,10 @@ type Props = {
   onOpen?: (entry: CodexEntry) => void;
   /** Shown when there are no entries. */
   empty?: string;
-  /** Offer "Flesh out" (the AI proposes new facts) under each card; needs `storyId`. */
-  fleshOut?: boolean;
 };
 
 /** The compact list of a codex's entries, grouped by type: every place that lists entries uses it, and each card opens the entry's page. */
-export default function CodexEntryCards({ entries, chapterId, storyId, pictures = {}, held = {}, onOpen, empty, fleshOut = false }: Props) {
+export default function CodexEntryCards({ entries, chapterId, storyId, pictures = {}, held = {}, onOpen, empty }: Props) {
   if (entries.length === 0) return empty ? <p className="meta">{empty}</p> : null;
   return (
     <>
@@ -72,8 +68,6 @@ export default function CodexEntryCards({ entries, chapterId, storyId, pictures 
                         {inner}
                       </Link>
                     )}
-                    {/* A link can't hold a button, so the AI button sits under the card. Not in the drawer (onOpen), whose chapter isn't saved yet. */}
-                    {fleshOut && storyId && !onOpen && !wait && <FleshOutEntry storyId={storyId} chapterId={chapterId} entryId={e.entry_id} name={e.name} />}
                   </li>
                 );
               })}

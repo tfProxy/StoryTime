@@ -22,6 +22,7 @@ import AiRunProgress from "./AiRunProgress";
 import { INBOX_CHANGED } from "./CodexInbox";
 import CodexFacts, { type HeldFact } from "./CodexFacts";
 import ChapterPathPicker from "./ChapterPathPicker";
+import FleshOutEntry from "./FleshOutEntry";
 import LinkedEntryDetails from "./LinkedEntryDetails";
 
 export type EntryFields = { name: string; type: EntryType; aliases: string[]; content: string; always_include: boolean };
@@ -290,6 +291,15 @@ export default function CodexEntryEditor({
           hold={holdFact}
           editingChapter={editingChapter}
         />
+      )}
+
+      {/* Not in the writing drawer or for an entry only in the draft: the run reads the saved codex at this chapter. */}
+      {storyId && !inDraft && !draftOnly && (
+        <section className="entry-section">
+          <h2>Flesh out with AI</h2>
+          <p className="meta">Ask the AI for more detail about {entry.name}.</p>
+          <FleshOutEntry storyId={storyId} chapterId={chapterId} entryId={entry.entry_id} name={entry.name} />
+        </section>
       )}
 
       <section className="entry-section">

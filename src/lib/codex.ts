@@ -460,6 +460,19 @@ export function overridesFor(base: SharedBase, want: Partial<Pick<SharedBase, "t
   return out;
 }
 
+/** What the AI reads for a shared entry on its own (the same text as `describeEntry` gives for an entry in a story). */
+export function describeSharedFacts(facts: SharedBase["facts"]): string {
+  const live: LiveFact[] = facts.map((f) => ({
+    fact_id: f.id,
+    aspect: f.aspect,
+    form: f.form,
+    text: f.text,
+    quote: "",
+    op: { id: f.id, anchor_chapter_id: "", anchor_depth: 0, entry_id: "", fact_id: f.id, op: "set", aspect: f.aspect, form: f.form, text: f.text, quote: "", posted_at: 0 },
+  }));
+  return describeEntry(live);
+}
+
 /** Where a fact of a linked entry stands in its story: the shared base's as it is, changed or hidden by the story, or the story's own. */
 export function factSharedState(history: FactOp[]): "base" | "changed" | "own" {
   if (!history.some((f) => f.id.startsWith("shared-"))) return "own";

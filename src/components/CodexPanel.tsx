@@ -276,7 +276,8 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
           <button type="button" onClick={() => setCreating(true)}>
             + New entry
           </button>
-          {/* On the codex page it is saved at once; in the drawer it can also be held in the draft, for the chapter being written. */}
+          {/* Only in the writing page's drawer: the entry is held in the draft for the chapter being written (or added at an earlier chapter). */}
+          {embedded && (
           <SharedEntryLink
             chapterId={chapterId}
             path={anchorPath}
@@ -301,6 +302,7 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
                 : undefined
             }
           />
+          )}
         </div>
       )}
 
@@ -311,7 +313,6 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
         pictures={pictures}
         held={held}
         onOpen={embedded ? (e) => setOpenId(e.entry_id) : undefined}
-        fleshOut={!embedded && !storyWide && !draft}
         empty={creating ? undefined : "No entries yet at this point. Add characters, places or facts the story should remember."}
       />
 
