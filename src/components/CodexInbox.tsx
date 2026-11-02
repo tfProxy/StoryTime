@@ -12,6 +12,11 @@ type Props = {
   storyId: string;
   /** Only this chapter's suggestions (the Story Bible's chapter filter). */
   chapterId?: string;
+  /**
+   * The codex page of a chapter: the suggestions that apply there, those made at this chapter and at the ones before it on
+   * its branch. Nothing is shown when there are none, and `onChanged` is called after one is accepted, dismissed or reopened.
+   */
+  onPath?: { chapterIds: string[]; onChanged?: () => void };
 };
 
 type Edits = { aspect?: string; form?: string; text?: string };
@@ -41,7 +46,9 @@ async function fetchInbox(storyId: string, chapterId?: string): Promise<CodexSug
   return [...a.suggestions, ...b.suggestions];
 }
 
-export default function CodexInbox({ storyId, chapterId }: Props) {
+export default function CodexInbox({ storyId, chapterId, onPath }: Props) {
+  const pathKey = onPath?.chapterIds.join(",") ?? null;
+  const onChanged = onPath?.onChanged;
   const [items, setItems] = useState<CodexSuggestion[] | null>(null);
   const [loadError, setLoadError] = useState("");
   // Suggestions decided on this page stay where they were, collapsed to one line, until the page is left.
@@ -56,12 +63,13 @@ export default function CodexInbox({ storyId, chapterId }: Props) {
     () =>
       fetchInbox(storyId, chapterId).then(
         (list) => {
-          setItems(list);
+          const ids = pathKey === null ? null : new Set(pathKey.split(","));
+          setItems(ids ? list.filter((s) => ids.has(s.chapter_id)) : list);
           setLoadError("");
         },
         (e: unknown) => setLoadError(e instanceof Error ? e.message : String(e)),
       ),
-    [storyId, chapterId],
+    [storyId, chapterId, pathKey],
   );
 
   useEffect(() => {
@@ -105,18 +113,21 @@ export default function CodexInbox({ storyId, chapterId }: Props) {
       touch(s.id);
       setStatus(s.id, "accepted");
       setEditing(null);
+      onChanged?.();
     });
   const dismiss = (s: CodexSuggestion) =>
     run(s.id, async () => {
       await post(`/api/codex-suggestions/${s.id}/dismiss`);
       touch(s.id);
       setStatus(s.id, "dismissed");
+      onChanged?.();
     });
   const reopen = (s: CodexSuggestion) =>
     run(s.id, async () => {
       await post(`/api/codex-suggestions/${s.id}/reopen`);
       touch(s.id);
       setStatus(s.id, "open");
+      onChanged?.();
     });
 
   const shown = useMemo(() => (items ?? []).filter((s) => s.status === "open" || touched.has(s.id)), [items, touched]);
@@ -142,17 +153,28 @@ export default function CodexInbox({ storyId, chapterId }: Props) {
     }
   }
 
-  if (items === null) return <p className="meta">{loadError || "Reading the codex inbox…"}</p>;
+  if (items === null) return onPath ? null : <p className="meta">{loadError || "Reading the codex inbox…"}</p>;
+  // On a chapter's codex page there is nothing to show when nothing is waiting.
+  if (onPath && shown.length === 0 && dismissedList.length === 0 && !loadError) return null;
 
   return (
     <div className="codex-inbox">
+      {onPath && (
+        <>
+          <h2>Waiting in the codex inbox</h2>
+          <p className="meta">
+            Suggestions from this chapter and the ones before it on this branch, which apply here. Accepting one adds it to the codex from the chapter it
+            was made at. <Link href={`/s/${storyId}/review?tab=codex`}>Open the whole inbox</Link>
+          </p>
+        </>
+      )}
       {chapterId && (
         <p className="meta">
           Suggestions from this chapter only · <Link href={`/s/${storyId}/review?tab=codex`}>Show all chapters</Link>
         </p>
       )}
       {loadError && <p className="error">{loadError}</p>}
-      {shown.length === 0 && <p className="meta">No codex suggestions waiting.</p>}
+      {shown.length === 0 && !onPath && <p className="meta">No codex suggestions waiting.</p>}
 
       {chapters.map((ch) => (
         <section key={ch.id}>

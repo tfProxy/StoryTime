@@ -20,6 +20,7 @@ import {
 import type { PathChapter, StoryInfo } from "@/lib/ai/codexAi";
 import CodexCheck from "./CodexCheck";
 import CodexEntryCards from "./CodexEntryCards";
+import CodexInbox from "./CodexInbox";
 import CodexEntryEditor, { EntryDetailsForm, type EntryChange } from "./CodexEntryEditor";
 import type { HeldFact } from "./CodexFacts";
 import SharedEntryLink from "./SharedEntryLink";
@@ -266,6 +267,11 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
       {error && <p className="error">{error}</p>}
 
       {!embedded && !storyWide && storyId && <CodexCheck storyId={storyId} chapterId={chapterId} inboxHref={`/s/${storyId}/review?tab=codex`} defaultOpen={openAiHelper} />}
+
+      {/* The inbox suggestions that apply here (made at this chapter or an earlier one on the branch), to accept or dismiss in place. */}
+      {!embedded && !storyWide && storyId && (
+        <CodexInbox storyId={storyId} onPath={{ chapterIds: path.map((c) => c.id), onChanged: () => router.refresh() }} />
+      )}
 
       {creating ? (
         <div>
