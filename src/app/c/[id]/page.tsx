@@ -46,7 +46,7 @@ export default async function ChapterPage({
   const tagNames = appliedTagNames(story.id, chapter.id).get(chapter.id) ?? [];
   const notes = choices.some((c) => c.child_chapter_id) ? contentNotes(story.id) : new Map<string, ChapterNote>();
   // Unwritten choices with a draft saved (the write page keys a choice's draft "fill:<choice id>").
-  // With the "List the codex entries at the bottom of a chapter" setting: the entries live at this chapter.
+  // With the "List the codex entries under a chapter's title" setting: the entries live at this chapter.
   const showCodex = (getSettings() ?? parseSettings({})).showCodexList;
   const codexEntries = showCodex ? getCodexState(chapter.id) : [];
   const drafted = trashed ? new Set<string>() : draftKeysSaved(choices.filter((c) => !c.child_chapter_id).map((c) => choiceDraftKey(c.id)));
@@ -81,7 +81,20 @@ export default async function ChapterPage({
         </nav>
       )}
 
-      <h1>{chapter.title}</h1>      {tagNames.length > 0 && <p className="meta chapter-tags">[{tagNames.join(", ")}]</p>}
+      <h1>{chapter.title}</h1>
+      {tagNames.length > 0 && <p className="meta chapter-tags">[{tagNames.join(", ")}]</p>}
+      {showCodex && codexEntries.length > 0 && (
+        <p className="meta chapter-tags chapter-codex" aria-label="Codex entries in this chapter">
+          [
+          {codexEntries.map((e, i) => (
+            <span key={e.entry_id}>
+              {i > 0 && ", "}
+              <Link href={`/s/${story.id}/codex/${e.entry_id}?at=${chapter.id}`}>{e.name}</Link>
+            </span>
+          ))}
+          ]
+        </p>
+      )}
       {(chapter.edited_at || ai) && (
         <p className="meta chapter-meta">
           {ai && (
@@ -155,18 +168,6 @@ export default async function ChapterPage({
           </>
         )}
       </section>
-      {showCodex && codexEntries.length > 0 && (
-        <p className="meta chapter-codex" aria-label="Codex entries in this chapter">
-          [
-          {codexEntries.map((e, i) => (
-            <span key={e.entry_id}>
-              {i > 0 && ", "}
-              <Link href={`/s/${story.id}/codex/${e.entry_id}?at=${chapter.id}`}>{e.name}</Link>
-            </span>
-          ))}
-          ]
-        </p>
-      )}
     </>
   );
 }

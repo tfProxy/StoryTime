@@ -82,7 +82,7 @@ export type Settings = {
   autoCodex: boolean;
   /** Under each choice, list the reader-visible tags that come next or later on that branch. */
   contentNotes: boolean;
-  /** At the bottom of a chapter's reading page, list the codex entries there, each linking to its page. Off by default. */
+  /** Under the title on a chapter's reading page, list the codex entries there, each linking to its page. Off by default. */
   showCodexList: boolean;
   /** What the outline shows after each chapter's name. */
   outline: OutlineOptions;

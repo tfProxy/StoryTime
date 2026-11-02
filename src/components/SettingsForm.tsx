@@ -644,9 +644,9 @@ export default function SettingsForm() {
               onChange={(e) => update({ showCodexList: e.target.checked })}
             />
             <span>
-              List the codex entries at the bottom of a chapter{" "}
+              List the codex entries under a chapter&apos;s title{" "}
               <small>
-                (a short list such as [Mira, Zed, The Hollow] under the choices, each linking to that entry&apos;s page at
+                (a short list such as [Mira, Zed, The Hollow] below the title, each linking to that entry&apos;s page at
                 this chapter.)
               </small>
             </span>

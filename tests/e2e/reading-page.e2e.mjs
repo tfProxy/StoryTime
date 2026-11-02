@@ -1,7 +1,7 @@
 import { launch, useMockAi } from "./browser.mjs";
 
-// A chapter's reading page: the optional list of codex entries at the bottom (the "List the codex entries at the bottom of
-// a chapter" setting), and the combo button for "Suggest choices" / "Draft a different idea".
+// A chapter's reading page: the optional list of codex entries under the title (the "List the codex entries under a
+// chapter's title" setting), and the combo button for "Suggest choices" / "Draft a different idea".
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 
 let failed = false;
@@ -43,9 +43,12 @@ try {
   await page.goto(`${BASE}/c/${R}`);
   await page.locator(".chapter-codex").waitFor();
   ok((await page.locator(".chapter-codex").innerText()).replace(/\s+/g, " ").trim() === "[Mira, The Hollow]", "…and only those: an earlier chapter doesn't list Zed");
-  const bottom = await page.locator(".chapter-codex").boundingBox();
+  const listBox = await page.locator(".chapter-codex").boundingBox();
+  const titleBox = await page.locator("h1").boundingBox();
   const choices = await page.locator("section.choices").boundingBox();
-  ok(bottom.y >= choices.y + choices.height - 1, "…below the choices");
+  // The list's negative top margin tucks it a few pixels up against the title, so compare with the title's middle.
+  ok(listBox.y > titleBox.y + titleBox.height / 2, "…below the chapter's title");
+  ok(listBox.y + listBox.height <= choices.y, "…and above the choices, not at the bottom");
 
   // an entry opens its page for this chapter
   await page.goto(`${BASE}/c/${A}`);
