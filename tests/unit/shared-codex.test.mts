@@ -59,7 +59,7 @@ ok(es[0].description === "Ears: Round ears. Eyes: Green. Tail: A fox tail.", "a 
 es = fold([op({})], [fop({ anchor_chapter_id: "c2", anchor_depth: 2, text: "Fox ears." })], base({ facts: [{ id: "ears", aspect: "Ears", form: "", text: "Base change." }] }));
 ok(es[0].description === "Ears: Fox ears.", "the story's fact still wins after the base fact changes");
 es = fold([op({})], [], base({ facts: [{ id: "form", aspect: "form", form: "vixen", text: "" }, { id: "tail", aspect: "Tail", form: "vixen", text: "Bushy." }] }));
-ok(es[0].form?.name === "vixen" && es[0].description === "Form: vixen. Tail: Bushy.", "the base can hold a form: " + es[0].description);
+ok(es[0].form?.name === "vixen" && es[0].description === "Tail: Bushy." && es[0].baseForm === "vixen", "the base can hold a form (its normal one, so not mentioned): " + es[0].description);
 
 // Facts are set at the chapter where the entry was linked, and only for linked entries
 const injected = sharedFactOps([op({ anchor_chapter_id: "c4", anchor_depth: 4 }), op({ entry_id: "own", shared_entry_id: null })], bases(base()));

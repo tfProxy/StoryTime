@@ -131,7 +131,11 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
 
   const rows = entry.facts.filter((f) => !isFormAspect(f.aspect));
   const hasForms = entry.forms.length > 0;
-  const current = entry.form?.name ?? null;
+  // With no form set, an entry that has had one reads as in its normal form.
+  const current = entry.form?.name ?? entry.baseForm;
+  const inBase = entry.form !== null && entry.baseForm !== null && sameAspect(entry.form.name, entry.baseForm);
+  // Facts of a form, but no form was ever set: they can't apply, and the AI isn't sent them.
+  const needsForm = entry.form === null && entry.baseForm === null && hasForms;
   const isCurrent = (name: string) => current !== null && sameAspect(name, current);
   const groups: { key: string; heading: string | null; facts: LiveFact[]; dim: boolean }[] = [];
   const every = rows.filter((f) => f.form === "");
@@ -166,6 +170,19 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
               </button>
             )}
           </p>
+          {entry.baseForm && (
+            <p className="meta" style={{ margin: "0.25rem 0 0" }}>
+              {inBase
+                ? `${entry.baseForm} is the normal form, so the AI isn't told the form, only its facts, unless it has just changed back.`
+                : `Normal form: ${entry.baseForm}. The AI is told when ${entry.name} is in another form.`}
+            </p>
+          )}
+          {needsForm && (
+            <p className="notice">
+              Some facts are for a form ({entry.forms.join(", ")}), but no form is set, so the AI isn&apos;t sent them. Set the current form to
+              include them.
+            </p>
+          )}
           {formOpen && (
             <FormForm
               entry={entry}

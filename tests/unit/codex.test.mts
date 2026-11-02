@@ -1,5 +1,5 @@
 ﻿import { foldFacts, factHistory, describeEntry, type FactOp, type LiveFact } from "../../src/lib/codex.ts";
-import { foldCodex, storyEntrySummaries, retiredEntries, entryHistory, changedFields, addChange, draftOps, DRAFT_ANCHOR, type CodexChange, type CodexOp } from "../../src/lib/codex.ts";
+import { baseForms, foldCodex, storyEntrySummaries, retiredEntries, entryHistory, changedFields, addChange, draftOps, DRAFT_ANCHOR, type CodexChange, type CodexOp } from "../../src/lib/codex.ts";
 import { buildCodexBlock, mentions, generatePrompt, refinePrompt, choicesPrompt } from "../../src/lib/ai/prompts.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
@@ -129,7 +129,7 @@ ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length ==
   ok(d === "Ears: Fox ears (just changed). Eyes: Green.", "describe: recent anchor is marked: " + d);
 
   let es = foldCodex([op({})], [fop({}), fop({ fact_id: "form", aspect: "form", form: "vixen", text: "" })]);
-  ok(es[0].facts.length === 2 && es[0].form?.name === "vixen" && es[0].forms.join() === "vixen" && es[0].description === "Form: vixen. Ears: Round ears.", "foldCodex: facts folded into the entry: " + es[0].description);
+  ok(es[0].facts.length === 2 && es[0].form?.name === "vixen" && es[0].forms.join() === "vixen" && es[0].description === "Ears: Round ears.", "foldCodex: facts folded into the entry; its only form is its normal one, so the AI isn't told it: " + es[0].description);
   es = foldCodex([op({}), op({ op: "retire", anchor_depth: 1, anchor_chapter_id: "c1" })], [fop({})]);
   ok(es.length === 0, "foldCodex: a retired entry drops its facts");
   es = foldCodex([op({})]);
@@ -177,4 +177,46 @@ ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length ==
   ok(retiredEntries(removed.filter((o) => o.anchor_depth <= 1)).length === 1, "…where it is listed as retired");
   es = foldCodex([...removed, c0({ op: "replace", aliases: ["Mi"], posted_at: 4 })]);
   ok(es.length === 1 && es[0].aliases.join() === "Mi" && es[0].content === "A human thief.", "…but back in the chapter below, with a keyword added later above");
+}
+
+// ---- base form: an entry's normal form isn't mentioned to the AI ----
+{
+  let k = 0;
+  const entry = [{ id: "o1", anchor_chapter_id: "c0", anchor_depth: 0, entry_id: "mira", op: "create", name: "Mira", type: "character", aliases: [], content: "", always_include: false, posted_at: 1 } as CodexOp];
+  const f = (over: Partial<FactOp>): FactOp => ({
+    id: `bf${k++}`, anchor_chapter_id: "c0", anchor_depth: 0, entry_id: "mira", fact_id: "ears", op: "set", aspect: "Ears", form: "", text: "Round ears.", quote: "", posted_at: 10 + k, ...over,
+  });
+  const form = (anchor: string, depth: number, name: string, text = "", extra: Partial<FactOp> = {}) =>
+    f({ anchor_chapter_id: anchor, anchor_depth: depth, fact_id: "form", aspect: "form", form: name, text, ...extra });
+  // (Set after the ears, so they are listed after them.)
+  const human = f({ fact_id: "t1", aspect: "Tail", form: "human", text: "No tail.", posted_at: 5000 });
+  const vixen = f({ fact_id: "t2", aspect: "Tail", form: "vixen", text: "Bushy tail.", posted_at: 5001 });
+
+  let es = foldCodex(entry, [f({}), human, vixen, form("c0", 0, "human")]);
+  ok(es[0].baseForm === "human" && es[0].description === "Ears: Round ears. Tail: No tail.", "base form: in its normal form the line is left out but its facts apply: " + es[0].description);
+  ok(es[0].form?.name === "human", "…the entry still has its form");
+
+  es = foldCodex(entry, [f({}), human, vixen, form("c0", 0, "human"), form("c2", 2, "vixen", "half-changed")]);
+  ok(es[0].baseForm === "human" && es[0].description === "Form: vixen, half-changed. Ears: Round ears. Tail: Bushy tail.", "another form is told to the AI, with its facts: " + es[0].description);
+
+  const back = [f({}), human, vixen, form("c0", 0, "human"), form("c2", 2, "vixen"), form("c3", 3, "human", "", { id: "bf-back" })];
+  es = foldCodex(entry, back);
+  ok(es[0].description === "Ears: Round ears. Tail: No tail.", "back in its normal form, the line is left out again: " + es[0].description);
+  es = foldCodex(entry, back, { recentAnchor: "c3" });
+  ok(es[0].description === "Form: human (just changed). Ears: Round ears. Tail: No tail.", "…except in the chapter after it changed back, so the story shows the change: " + es[0].description);
+  es = foldCodex(entry, [f({}), human, form("c0", 0, "human", "settled")]);
+  ok(es[0].description === "Form: human, settled. Ears: Round ears. Tail: No tail.", "a note on the normal form (a stage) is still told: " + es[0].description);
+
+  // the form taken away: it reads as in its normal form
+  es = foldCodex(entry, [f({}), human, vixen, form("c0", 0, "human"), form("c2", 2, "vixen"), form("c3", 3, "", "", { op: "retire" })]);
+  ok(es[0].form === null && es[0].baseForm === "human" && es[0].description === "Ears: Round ears. Tail: No tail.", "with the form removed the entry reads as in its normal form: " + es[0].description);
+
+  // never had a form: facts of a form can't apply (the entry page asks for a form)
+  es = foldCodex(entry, [f({}), human]);
+  ok(es[0].baseForm === null && es[0].form === null && es[0].forms.join() === "human" && es[0].description === "Ears: Round ears.", "no form ever set: form facts are left out: " + es[0].description);
+
+  // the first form is the base, wherever it was given
+  es = foldCodex(entry, [f({}), human, vixen, form("c2", 2, "vixen"), form("c4", 4, "human", "", { id: "bf-late" })]);
+  ok(es[0].baseForm === "vixen" && es[0].description === "Form: human. Ears: Round ears. Tail: No tail.", "the first form given is the base: " + es[0].description);
+  ok(baseForms([]).size === 0, "no facts, no base forms");
 }

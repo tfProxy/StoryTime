@@ -126,6 +126,8 @@ export type CodexEntry = {
   form: { name: string; note: string; fact: LiveFact } | null;
   /** Every form named by its facts (and the current one). */
   forms: string[];
+  /** The entry's normal form: the first one it was given (null when it never had one). The AI isn't told the entry is in it. */
+  baseForm: string | null;
   /** What the AI reads: the current form and the facts that apply to it (never the notes). */
   description: string;
 };
@@ -164,11 +166,25 @@ export function applicableFacts(facts: LiveFact[], form: string | null): LiveFac
 }
 
 /**
+ * Each entry's base form, by entry id: the first form it was given (its earliest form fact that names a form). It is the
+ * entry's normal form: the AI isn't told it is in it, and an entry whose form was taken away reads as in it.
+ */
+export function baseForms(facts: FactOp[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const f of orderOps(facts)) {
+    if (f.op === "set" && isFormAspect(f.aspect) && f.form.trim() && !out.has(f.entry_id)) out.set(f.entry_id, f.form.trim());
+  }
+  return out;
+}
+
+/**
  * What the AI reads for an entry: "Form: vixen, change complete. Ears: tall fox ears. ..." The notes are left out.
  * A fact anchored at `recentAnchor` (the chapter just before the one being written, or the chapter being
  * edited) or held in the draft is marked as just changed, so the writer shows the character noticing it.
+ * While the entry is in its `baseForm` (its normal form) the "Form:" line is left out, unless it has a stage note or
+ * it just changed back; the facts of that form still apply, also when no form is set at all.
  */
-export function describeEntry(facts: LiveFact[], recentAnchor?: string): string {
+export function describeEntry(facts: LiveFact[], recentAnchor?: string, baseForm?: string | null): string {
   const recent = (f: LiveFact) => !!recentAnchor && (f.op.anchor_chapter_id === recentAnchor || f.op.anchor_chapter_id === DRAFT_ANCHOR);
   // "Ears: fox ears (just changed)." — the mark goes inside the sentence's full stop.
   const sentence = (s: string, f: LiveFact) => {
@@ -181,9 +197,10 @@ export function describeEntry(facts: LiveFact[], recentAnchor?: string): string 
   const parts: string[] = [];
   if (formFact) {
     const label = [formFact.form, formFact.text].map((s) => s.trim()).filter(Boolean).join(", ");
-    if (label) parts.push(sentence(`Form: ${label}`, formFact));
+    const normal = !!baseForm && sameAspect(formFact.form, baseForm) && !formFact.text.trim() && !recent(formFact);
+    if (label && !normal) parts.push(sentence(`Form: ${label}`, formFact));
   }
-  for (const f of applicableFacts(facts, formFact ? formFact.form : null)) {
+  for (const f of applicableFacts(facts, formFact ? formFact.form : (baseForm ?? null))) {
     if (!f.text.trim()) continue;
     parts.push(sentence(f.aspect.trim() ? `${f.aspect.trim()}: ${f.text.trim()}` : f.text, f));
   }
@@ -208,7 +225,7 @@ export function usedAspectsOf(entries: CodexEntry[]): string[] {
   return out;
 }
 
-function withFacts(op: CodexOp, facts: LiveFact[], recentAnchor?: string, keywordSources?: KeywordSource[]): CodexEntry {
+function withFacts(op: CodexOp, facts: LiveFact[], recentAnchor?: string, keywordSources?: KeywordSource[], baseForm: string | null = null): CodexEntry {
   const formFact = facts.find((f) => isFormAspect(f.aspect)) ?? null;
   const forms: string[] = [];
   for (const name of [formFact?.form ?? "", ...facts.filter((f) => !isFormAspect(f.aspect)).map((f) => f.form)]) {
@@ -228,7 +245,8 @@ function withFacts(op: CodexOp, facts: LiveFact[], recentAnchor?: string, keywor
     facts,
     form: formFact ? { name: formFact.form, note: formFact.text, fact: formFact } : null,
     forms,
-    description: describeEntry(facts, recentAnchor),
+    baseForm,
+    description: describeEntry(facts, recentAnchor, baseForm),
   };
 }
 
@@ -243,9 +261,10 @@ export type FoldOptions = {
  */
 export function foldCodex(ops: CodexOp[], facts: FactOp[] = [], options: FoldOptions = {}): CodexEntry[] {
   const liveFacts = facts.length ? foldFacts(facts) : new Map<string, LiveFact[]>();
+  const bases = facts.length ? baseForms(facts) : new Map<string, string>();
   return [...foldEntries(ops).values()]
     .filter((s) => s.alive)
-    .map((s) => withFacts(s.op, liveFacts.get(s.op.entry_id) ?? [], options.recentAnchor, s.sources))
+    .map((s) => withFacts(s.op, liveFacts.get(s.op.entry_id) ?? [], options.recentAnchor, s.sources, bases.get(s.op.entry_id) ?? null))
     .sort((a, b) => ENTRY_TYPES.indexOf(a.type) - ENTRY_TYPES.indexOf(b.type) || a.name.localeCompare(b.name));
 }
 
@@ -470,7 +489,8 @@ export function describeSharedFacts(facts: SharedBase["facts"]): string {
     quote: "",
     op: { id: f.id, anchor_chapter_id: "", anchor_depth: 0, entry_id: "", fact_id: f.id, op: "set", aspect: f.aspect, form: f.form, text: f.text, quote: "", posted_at: 0 },
   }));
-  return describeEntry(live);
+  // The shared entry's form is the one it was given, so it is its normal form.
+  return describeEntry(live, undefined, facts.find((f) => isFormAspect(f.aspect))?.form.trim() || null);
 }
 
 /** Where a fact of a linked entry stands in its story: the shared base's as it is, changed or hidden by the story, or the story's own. */
