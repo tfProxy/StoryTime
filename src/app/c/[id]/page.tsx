@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { aiMarkOf, choiceDraftKey, getChoices, getIncomingChoice, getPath, getStory, restoreBlocker } from "@/lib/stories";
 import AiMark from "@/components/AiMark";
+import StoryTabs from "@/components/StoryTabs";
 import TrashNotice from "@/components/TrashNotice";
 import AiReviewNotice from "@/components/AiReviewNotice";
 import CodexInboxBanner from "@/components/CodexInboxBanner";
@@ -53,6 +54,7 @@ export default async function ChapterPage({
 
   return (
     <>
+      <StoryTabs storyId={story.id} title={story.title} active="read" />
       {trashed && <TrashNotice chapterId={chapter.id} blocker={restoreBlocker(chapter.id)} />}
       {posted && (
         <p className="notice">
@@ -65,10 +67,9 @@ export default async function ChapterPage({
         <AiReviewNotice chapterId={chapter.id} pathUnreviewed={path.slice(0, -1).filter((p) => aiMarkOf(p) === "unreviewed").length} />
       )}
       <nav className="crumbs" aria-label="Path so far">
-        <Link href={`/s/${story.id}/outline`}>{story.title}</Link>
         {path.map((p, i) => (
           <span key={p.id}>
-            ›{" "}
+            {i > 0 && "› "}
             {i === path.length - 1 ? (
               <strong>{p.title}</strong>
             ) : (

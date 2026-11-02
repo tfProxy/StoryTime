@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import StoryTabs from "@/components/StoryTabs";
 import CodexPanel from "@/components/CodexPanel";
 import CoverEditor from "@/components/CoverEditor";
 import StoryDetailsForm from "@/components/StoryDetailsForm";
@@ -21,11 +22,10 @@ export default async function StoryDetailsPage({ params }: { params: Promise<{ i
   const root = story.root_chapter_id ? getChapter(story.root_chapter_id) : undefined;
 
   return (
+    <>
+    <StoryTabs storyId={story.id} title={story.title} active="details" />
     <div style={{ display: "grid", gap: "1.5rem" }}>
       <div>
-        <p className="crumbs">
-          <Link href="/">← Stories</Link>
-        </p>
         <h1>Story details</h1>
         <p className="meta">Settings for all of “{story.title}”, on every branch.</p>
         <div className="row" style={{ flexWrap: "wrap" }}>
@@ -84,5 +84,6 @@ export default async function StoryDetailsPage({ params }: { params: Promise<{ i
         )}
       </section>
     </div>
+    </>
   );
 }

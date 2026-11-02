@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import StoryTabs from "@/components/StoryTabs";
 import CodexWorkspace from "@/components/CodexWorkspace";
 import { codexEntryAt } from "@/lib/codexDb";
 import { codexPictureAt, getCodexDraft, getCodexPreset, sharedIdOfEntry } from "@/lib/codexPictures";
@@ -26,6 +27,7 @@ export default async function CodexPicturePage({ params, searchParams }: { param
 
   return (
     <>
+      <StoryTabs storyId={story.id} title={story.title} active="bible" />
       <p className="crumbs">
         <Link href={`/s/${story.id}/codex/${entryId}${from ? `?at=${from.id}` : ""}`}>← Back to “{entry.name}”</Link>
       </p>

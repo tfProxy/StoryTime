@@ -96,7 +96,7 @@ try {
   ok((await entryCard.locator("img.codex-thumb").count()) === 0, "an entry without a picture has no thumbnail in the list");
   await entryCard.click();
   await page.getByRole("heading", { name: "Zephyr", level: 1 }).waitFor();
-  const link = page.getByRole("link", { name: "Pictures", exact: true });
+  const link = page.locator("main > .button.secondary, main a.button", { hasText: /^Pictures$/ });
   ok((await link.getAttribute("href")) === codexUrl(first), "the entry's page has a Pictures link to its picture page, with ?at= the chapter");
   await link.click();
   await page.waitForURL(`${BASE}${codexUrl(first)}`);

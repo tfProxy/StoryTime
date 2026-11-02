@@ -2897,6 +2897,53 @@ fieldset.model-uses .inline-label input[type="checkbox"] {
   font-weight: 600;
 }
 
+/* The story tabs (Read, Outline, Bible, Pictures, Details) at the top of a story's pages: a level above
+   the Story Bible's own tabs, with the story's title over them. The row scrolls sideways if it must. */
+.story-tabs-wrap {
+  margin: 0 0 1.25rem;
+}
+
+.story-tabs-title {
+  margin: 0 0 0.15rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.story-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 2px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.story-tabs a {
+  flex: 0 0 auto;
+  text-decoration: none;
+  color: var(--muted);
+  font-size: 1.05rem;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  padding: 0.5rem 0.9rem;
+  white-space: nowrap;
+}
+
+.story-tabs a[aria-current="page"] {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+  font-weight: 700;
+}
+
+@media (max-width: 520px) {
+  .story-tabs a {
+    padding-inline: 0.5rem;
+    font-size: 1rem;
+  }
+}
+
 /* Type filter above a list of codex entries. */
 .filter-links {
   display: flex;

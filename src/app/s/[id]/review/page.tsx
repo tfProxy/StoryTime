@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import StoryTabs from "@/components/StoryTabs";
 import BulkSummaries from "@/components/BulkSummaries";
 import ChapterTreePicker from "@/components/ChapterTreePicker";
 import CodexCheck from "@/components/CodexCheck";
@@ -112,9 +113,7 @@ export default async function StoryBiblePage({
 
   return (
     <>
-      <p className="crumbs">
-        <Link href={`/s/${story.id}/outline`}>← Outline of {story.title}</Link>
-      </p>
+      <StoryTabs storyId={story.id} title={story.title} active="bible" />
       <h1>Story Bible</h1>
       <form method="get" className="row" style={{ alignItems: "start", margin: "0.5rem 0 1rem" }}>
         {tab !== "overview" && <input type="hidden" name="tab" value={tab} />}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getChoices, getPath, getStory } from "@/lib/stories";
+import StoryTabs from "@/components/StoryTabs";
 import Prose from "@/components/Prose";
 import ChapterImage from "@/components/ChapterImage";
 import { PageMenu } from "@/components/SiteMenu";
@@ -21,8 +22,8 @@ export default async function PathPage({ params }: { params: Promise<{ id: strin
 
   return (
     <>
+      <StoryTabs storyId={story.id} title={story.title} active="read" />
       <nav className="crumbs" aria-label="Back">
-        <Link href={`/s/${story.id}`}>{story.title}</Link> ›{" "}
         <Link href={`/c/${chapter.id}`}>{chapter.title}</Link> › <strong>Whole path</strong>
       </nav>
       <h1>{story.title}</h1>

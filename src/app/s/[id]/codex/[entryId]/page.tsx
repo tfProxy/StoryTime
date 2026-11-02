@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import StoryTabs from "@/components/StoryTabs";
 import { ChapterPathNav, ChapterSummary, nextChapters } from "@/components/CodexChapterNav";
 import CodexEntryEditor from "@/components/CodexEntryEditor";
 import { foldCodex, usedAspectsOf } from "@/lib/codex";
@@ -39,6 +40,7 @@ export default async function CodexEntryPage({ params, searchParams }: { params:
 
   return (
     <>
+      <StoryTabs storyId={story.id} title={story.title} active="bible" />
       <p className="crumbs">
         <Link href={`/c/${at}/codex`}>← Codex at “{here.title}”</Link>
       </p>

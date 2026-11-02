@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import StoryTabs from "@/components/StoryTabs";
 import { ChapterPathNav, ChapterSummary } from "@/components/CodexChapterNav";
 import CodexPanel from "@/components/CodexPanel";
 import { getCodexFacts, getCodexOps } from "@/lib/codexDb";
@@ -27,6 +28,7 @@ export default async function CodexPage({
 
   return (
     <>
+      <StoryTabs storyId={story.id} title={story.title} active="bible" />
       <p className="crumbs">
         <Link href={`/c/${id}`}>← Back to “{chapter.title}”</Link>
       </p>

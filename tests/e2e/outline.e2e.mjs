@@ -195,7 +195,7 @@ const tagName = `Mild ${Date.now()}`;
 const tag = await post("/api/tags", { name: tagName, applies: "when it is mild", not_applies: "when it is not" });
 await post(`/api/chapters/${ids[1]}/tags`, { tag_id: tag.id, value: null });
 await page.goto(`${BASE}/c/${ids[1]}`);
-ok((await page.locator(".chapter-tags").innerText()) === `[${tagName}]` && (await page.locator(".crumbs a").first().getAttribute("href")) === `/s/${s.story_id}/outline`, "a chapter shows its approved tags in brackets under the title, and the story name links to the outline");
+ok((await page.locator(".chapter-tags").innerText()) === `[${tagName}]` && (await page.getByRole("navigation", { name: "Story" }).getByRole("link", { name: "Outline" }).getAttribute("href")) === `/s/${s.story_id}/outline`, "a chapter shows its approved tags in brackets under the title, and the story tabs link to the outline");
 await show("Tags", true);
 await until(async () => (await outlineNow()).tags === true, "Tags to be turned on");
 await page.goto(outlineUrl);

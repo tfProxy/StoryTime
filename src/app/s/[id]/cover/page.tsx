@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
+import StoryTabs from "@/components/StoryTabs";
 import CoverWorkspace from "@/components/CoverWorkspace";
 import type { CoverChapter, CoverContext } from "@/components/CoverPromptPanel";
 import { coverMade, getCoverDraft, getCoverPreset } from "@/lib/coverPictures";
@@ -40,9 +40,7 @@ export default async function CoverPage({ params }: { params: Promise<{ id: stri
 
   return (
     <>
-      <p className="crumbs">
-        <Link href={`/s/${story.id}/details`}>← Back to the details of “{story.title}”</Link>
-      </p>
+      <StoryTabs storyId={story.id} title={story.title} active="pictures" />
       <h1>Make a cover</h1>
       <CoverWorkspace
         story={{

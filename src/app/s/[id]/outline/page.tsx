@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import StoryTabs from "@/components/StoryTabs";
 import { getStory } from "@/lib/stories";
 import { getStoryTree, type TreeNode } from "@/lib/tree";
 import { PageMenu } from "@/components/SiteMenu";
@@ -163,6 +164,7 @@ export default async function OutlinePage({
 
   return (
     <div className="outline-page">
+      <StoryTabs storyId={story.id} title={story.title} active="outline" />
       <h1>Outline</h1>
       <p className="meta">
         {totals.chapters} chapter{totals.chapters === 1 ? "" : "s"} · {totals.unwritten} choice

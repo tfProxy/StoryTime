@@ -4,6 +4,7 @@ import { chapterIdsOfRun, getRun, listRuns } from "@/lib/aiRuns";
 import { chapterImageVersions } from "@/lib/chapterImages";
 import { getStory } from "@/lib/stories";
 import { getStoryTree, type TreeNode } from "@/lib/tree";
+import StoryTabs from "@/components/StoryTabs";
 import MissingPictures, { type ScopeChapters } from "@/components/MissingPictures";
 import { PageMenu } from "@/components/SiteMenu";
 
@@ -51,9 +52,7 @@ export default async function MissingPicturesPage({
 
   return (
     <>
-      <p className="crumbs">
-        <Link href={`/s/${id}/outline`}>← Back to the outline</Link>
-      </p>
+      <StoryTabs storyId={id} title={story.title} active="pictures" />
       <h1>Make missing pictures</h1>
       <p className="meta">
         For “{story.title}”. The AI writes a picture prompt for each chapter that has none of the pictures you ask for, and ComfyUI draws it. The picture is saved as the
