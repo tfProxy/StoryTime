@@ -29,7 +29,6 @@ const page = await (await browser.newContext()).newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 
 await page.goto(BASE);
-const menu = () => page.locator(".story-card", { hasText: "Outline story" }).locator("summary");
 await page.locator(".story-card", { hasText: "Outline story" }).locator("a.story-link").click();
 await page.waitForURL(new RegExp(`/c/${s.chapter_id}$`));
 ok(await page.getByRole("heading", { name: "Level 0" }).isVisible(), "clicking a story opens its first chapter");
@@ -182,13 +181,9 @@ seen = await look();
 ok(seen.brackets === 5 && seen.brushes === 5 && seen.summaries === 0, "with only Illustrate on, each chapter has just its paintbrush in the brackets");
 await putSettings(settingsBefore ?? {});
 
-// from a chapter page
-await page.goto(`${BASE}/c/${prev}`);
-await page.locator(".site-menu > summary").click();
-await page.locator(".menu-sub > summary").click();
-const [chDl] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Markdown" }).click()]);
-const chText = fs.readFileSync(await chDl.path(), "utf8");
-ok(chText.includes("## 1. Level 0") && chText.includes("## 5. Level 4") && chText.includes("*The end.*"), "a chapter page can export the route to it");
+// the export endpoint can still give the route to one chapter (no page links to it any more)
+const chText = await (await fetch(`${BASE}/api/stories/${s.story_id}/export?format=md&to=${prev}`)).text();
+ok(chText.includes("## 1. Level 0") && chText.includes("## 5. Level 4") && chText.includes("*The end.*"), "the export can give the route to a chapter");
 
 // tags: under the chapter's title, and in the outline once Settings shows them
 const tagName = `Mild ${Date.now()}`;
@@ -246,9 +241,8 @@ await putSettings(settingsBefore ?? {});
 await fetch(`${BASE}/api/tags/${hlTag.id}`, { method: "DELETE" });
 
 // downloads
-await page.goto(BASE);
-await menu().click();
-const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: /readable \(Markdown\)/ }).click()]);
+await page.goto(`${BASE}/s/${s.story_id}/details`);
+const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: /readable \(Markdown\)/i }).click()]);
 ok(download.suggestedFilename() === "outline-story.md", "the Markdown link downloads a file named after the story: " + download.suggestedFilename());
 const text = fs.readFileSync(await download.path(), "utf8");
 ok(text.startsWith("# Outline story") && text.includes("## 1.1.1.1.1. Level 4"), "the downloaded file is the story");

@@ -28,20 +28,15 @@ export default async function StoryDetailsPage({ params }: { params: Promise<{ i
       <div>
         <h1>Story details</h1>
         <p className="meta">Settings for all of “{story.title}”, on every branch.</p>
-        <div className="row" style={{ flexWrap: "wrap" }}>
-          {root ? (
-            <Link className="button" href={`/c/${root.id}`}>
-              Read “{story.title}”
+        {/* Once there is a chapter, the Read tab leads to it; before that, this is the way in. */}
+        {!root && (
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <Link className="button" href={`/s/${story.id}/write`}>
+              Start writing
             </Link>
-          ) : (
-            <>
-              <Link className="button" href={`/s/${story.id}/write`}>
-                Start writing
-              </Link>
-              <span className="meta" style={{ margin: 0 }}>No chapters yet.</span>
-            </>
-          )}
-        </div>
+            <span className="meta" style={{ margin: 0 }}>No chapters yet.</span>
+          </div>
+        )}
       </div>
       <StoryDetailsForm heading="Title, summary and style" story={{ id: story.id, title: story.title, premise: story.premise, style: story.style }} />
       <StoryPictureSettings
@@ -55,8 +50,7 @@ export default async function StoryDetailsPage({ params }: { params: Promise<{ i
         {root ? (
           <>
             <p className="meta">
-              Characters, places and facts the AI keeps in mind.{" "}
-              <a href={`/api/chapters/${root.id}/codex?format=md`}>Download as Markdown</a>
+              Characters, places and facts the AI keeps in mind.
             </p>
             <CodexPanel
               storyWide
@@ -83,6 +77,30 @@ export default async function StoryDetailsPage({ params }: { params: Promise<{ i
           </p>
         )}
       </section>
+      {/* Nothing to download until the first chapter is written. */}
+      {root && (
+        <section className="ai-panel" aria-labelledby="export-heading">
+          <h2 id="export-heading">Export</h2>
+          <p className="meta">Download the whole story, every branch.</p>
+          <ul className="export-links">
+            <li>
+              <a href={`/api/stories/${story.id}/export?format=md`}>Readable (Markdown)</a>
+            </li>
+            <li>
+              <a href={`/api/stories/${story.id}/export?format=html`}>To play offline (HTML)</a>
+            </li>
+            <li>
+              <a href={`/api/stories/${story.id}/export?format=twee`}>Twine (Twee)</a>
+            </li>
+            <li>
+              <a href={`/api/stories/${story.id}/export?format=json`}>Everything (JSON)</a>
+            </li>
+            <li>
+              <a href={`/api/chapters/${root.id}/codex?format=md`}>Codex (Markdown)</a>
+            </li>
+          </ul>
+        </section>
+      )}
     </div>
     </>
   );

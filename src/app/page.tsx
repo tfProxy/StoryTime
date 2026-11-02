@@ -10,7 +10,6 @@ export const dynamic = "force-dynamic";
 
 export default function Home() {
   const stories = listStories();
-  const download = (id: string, format: string) => `/api/stories/${id}/export?format=${format}`;
   return (
     <div className="library">
       <h1>Stories</h1>
@@ -38,16 +37,7 @@ export default function Home() {
               )}
               <StoryMenu label={`Options for ${s.title}`}>
                 <Link href={`/s/${s.id}/details`}>Story details</Link>
-                {/* Nothing to download until the first chapter is written. */}
-                {s.root_chapter_id && (
-                  <>
-                    <Link href={`/s/${s.id}/review`}>Story Bible</Link>
-                    <a href={download(s.id, "md")}>Download readable (Markdown)</a>
-                    <a href={download(s.id, "html")}>Download to play offline (HTML)</a>
-                    <a href={download(s.id, "twee")}>Download Twine (Twee)</a>
-                    <a href={download(s.id, "json")}>Download everything (JSON)</a>
-                  </>
-                )}
+                {s.root_chapter_id && <Link href={`/s/${s.id}/review`}>Story Bible</Link>}
               </StoryMenu>
             </div>
           </li>
