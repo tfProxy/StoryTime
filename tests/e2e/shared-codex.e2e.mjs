@@ -50,7 +50,7 @@ try {
   await page.getByLabel("Aspect").fill("Ears");
   await page.getByLabel("Text").fill("tall russet fox ears");
   await page.getByRole("button", { name: "Save fact" }).click();
-  await page.getByText("tall russet fox ears").waitFor();
+  await page.getByText("tall russet fox ears").first().waitFor(); // (in the fact list and in what the AI reads)
   ok((await send("GET", `/api/shared/${sid}`)).entry.aliases.join() === "Mara,the fox", "the details are saved");
   const reads = page.locator("section", { has: page.getByRole("heading", { name: "What the AI reads", exact: true }) }).locator(".fact-ai");
   await reads.filter({ hasText: "Ears: tall russet fox ears." }).waitFor();
