@@ -654,6 +654,14 @@ select {
   border: 1px solid var(--line);
   border-radius: 6px;
   width: 100%;
+  /* A long option must not make the select, and so the page, wider than its row. */
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* A label holding a select, in a row: it shrinks with the row instead of keeping the select's full width. */
+label.row {
+  min-width: 0;
 }
 
 .ok {
@@ -675,6 +683,8 @@ h2 {
 
 .ai-panel {
   display: grid;
+  /* A column that can shrink: an auto one grows to the widest row inside (a long preset or model name). */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1886,6 +1896,8 @@ textarea.two-lines {
 .illustrate-controls,
 .illustrate-gallery {
   display: grid;
+  /* Panels shrink with the column (an auto column grows to the widest thing inside, and the column resizer can't narrow it). */
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
   min-width: 0;
 }
@@ -3019,6 +3031,7 @@ details.preset-card > summary strong {
 /* The Illustrate page's drawing preset: its picker, a summary line and its LoRAs. */
 .draw-preset {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.3rem;
   min-width: 0;
 }
