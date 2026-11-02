@@ -13,7 +13,7 @@ and, for pictures, your own ComfyUI machine.
   chapter from the story so far (revise, undo, step between drafts), write or generate a summary and
   choices, then post. "Continue with AI" jumps straight to a draft. A Generate carries on if you
   leave the page.
-- **Write ahead with AI** (a chapter's menu): let the AI write several chapters on its own: fill the
+- **Write ahead with AI** (the **Write ahead** button under a chapter's title): let the AI write several chapters on its own: fill the
   open choices, grow the tree to a depth, or reach a goal along a plan you edit. It runs on the
   server, so you can close the tab. Chapters it wrote carry an AI mark until you press **Mark
   reviewed**.
@@ -38,7 +38,7 @@ and, for pictures, your own ComfyUI machine.
   **What the AI reads** shows the text the AI gets for the entry: its form and facts.
 - **Your notes**: a free-text note on each entry that is yours and is **not sent to the AI**. **Turn
   notes into facts** asks the AI to read them and leave suggested facts in the Codex inbox.
-- **Story Bible**: in the ☰ menu of every story and chapter page, and in the writing page's codex drawer.
+- **Story Bible**: the **Bible** tab of every story page, and in the writing page's codex drawer.
 - **Codex inbox**: after you save a new or edited chapter, the AI (your cheaper model) reads it in
   the background and leaves suggested fact changes in the inbox, on the **Codex** tab of the Story
   Bible. Each suggestion is one fact, shows in red and green exactly what changes and the sentence it
@@ -58,12 +58,15 @@ and, for pictures, your own ComfyUI machine.
   redrawing parts of a picture. See [Pictures with ComfyUI](docs/pictures.md).
 - **Covers**: the story list shows each story as a book cover. Make one on the cover page, upload one
   on the story's details page, or let the story use a generated cover.
-- **Outline and export**: a tree view of every branch, and downloads as readable Markdown, a single
-  HTML file that plays the story offline (it remembers what the reader has seen, and can forget it),
-  Twine (Twee) or full JSON. The HTML and Twine files include every written chapter but leave out choices you haven't written yet; a chapter whose choices are all unwritten ends with "…to be continued." Any
-  chapter (from its page or the outline) can also export just the route from the first chapter to
-  it as one continuous Markdown read, and the codex page downloads that branch's codex as a
-  Markdown "story bible".
+- **Story tabs**: every story page has tabs along the top: **Read**, **Outline**, **Bible**,
+  **Pictures** and **Details**. Under each chapter's title are **Edit**, **Illustrate**, **Write
+  ahead** and **⋯** (History, Read this path, Open in outline, Summary, Codex, Make missing pictures).
+- **Outline and export**: a tree view of every branch, and, in the **Export** section of the Details
+  tab, downloads as readable Markdown, a single HTML file that plays the story offline (it remembers
+  what the reader has seen, and can forget it), Twine (Twee), full JSON, or the codex as Markdown. The
+  HTML and Twine files include every written chapter but leave out choices you haven't written yet; a
+  chapter whose choices are all unwritten ends with "…to be continued." A chapter's codex page
+  downloads that branch's codex as a Markdown "story bible".
 
 ## Good to know
 

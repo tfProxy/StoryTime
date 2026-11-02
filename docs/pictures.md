@@ -28,7 +28,7 @@ How to use StoryTime's picture pages, and how to set up the machine that makes t
 
 **References** (up to 4: a character, item, place or style) keep a character or place looking the same. Add them from **Add reference** (suggestions, your pictures, codex pictures, or an upload) or from a picture's ☰ › Use as reference. A story can also have a **style picture** (details page › Pictures) that is added to every job. These need IP-Adapter in ComfyUI: see "Reference pictures" below.
 
-**Make missing pictures** (outline menu, or a chapter's ☰) writes prompts for every chapter without a header or footer, then draws them all in the queue.
+**Make missing pictures** (the story's **Pictures** tab, the outline menu, or a chapter's **⋯** menu) writes prompts for every chapter without a header or footer, then draws them all in the queue.
 
 **Sharing ComfyUI** with other people or another StoryTime is fine: StoryTime only shows and records its own jobs.
 
