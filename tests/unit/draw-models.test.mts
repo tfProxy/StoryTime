@@ -9,6 +9,7 @@ import { drawPresetSummary, newDrawPreset, usesFamily } from "../../src/lib/comf
 import { parseSettings } from "../../src/lib/settingsSchema.ts";
 import type { NodeInfo } from "../../src/lib/comfy/modelParts.ts";
 import { stepsToRun, type Workflow } from "../../src/lib/comfy/workflow.ts";
+import { stepCounter } from "../../src/lib/comfy/client.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 
@@ -356,6 +357,18 @@ const refine = wf["42"], up = wf["40"];
 ok(up.class_type === "ImageScaleBy" && up.inputs.scale_by === 2 && up.inputs.upscale_method === "lanczos" && up.inputs.image[0] === "20", "…the picture is then scaled up 2x with lanczos");
 ok(wf["41"].inputs.pixels[0] === "40" && refine.inputs.latent_image[0] === "41" && refine.inputs.steps === 4 && refine.inputs.sampler_name === "res_multistep" && refine.inputs.scheduler === "beta" && refine.inputs.denoise === 0.14 && refine.inputs.seed === 9, "…encoded again and redrawn by a second sampler (4 steps, denoise 0.14, same seed)");
 ok(only(wf, "SaveImage").inputs.images[0] === "43" && wf["43"].inputs.samples[0] === "42", "…and the saved pictures are the second decode");
+{
+  // ComfyUI reports each sampler's steps on its own (1-8, then 1-4); the progress bar counts them as one run of 12.
+  const firstId = Object.keys(wf).find((id) => wf[id] === first)!;
+  const count = stepCounter(wf);
+  const seen = [1, 8].map((v) => count.step(firstId, v, 8)).concat([1, 4].map((v) => count.step("42", v, 4)));
+  ok(seen.map((s) => `${s.value}/${s.max}`).join(" ") === "1/12 8/12 9/12 12/12", `Krea 2's two samplers make one progress bar (${seen.map((s) => `${s.value}/${s.max}`).join(" ")})`);
+  const cached = stepCounter(wf);
+  cached.cached([firstId]);
+  ok(cached.step("42", 2, 4).max === 4, "…and a sampler ComfyUI took from its cache isn't counted");
+  const one = stepCounter(buildDraw(k, { ...P, tuning: drawTuning(drawModel("krea2")!, { upscale: 1 }) }));
+  ok(one.step(firstId, 3, 8).max === 8 && stepCounter().step("3", 2, 20).max === 20, "…while one sampler, or no graph, counts as ComfyUI does");
+}
 wf = buildDraw(k, { ...P, tuning: drawTuning(drawModel("krea2")!, { upscale: 1 }) });
 ok(!wf["40"] && !wf["42"] && only(wf, "SaveImage").inputs.images[0] === "20", "an Upscale of 1 skips the second pass");
 wf = buildDraw(k, { ...P, image: "start.png", denoise: 0.5 });

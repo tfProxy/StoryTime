@@ -129,7 +129,7 @@ async function finished(url: string, promptId: string): Promise<ComfyImage[] | n
 }
 
 /** A StoryTime job that ComfyUI still knows of, found by the tag StoryTime put on it (see jobTag). Oldest first. */
-export type TaggedJob = { promptId: string; tag: JobTag } & ({ state: "waiting" | "running" } | { state: "done"; images: ComfyImage[] });
+export type TaggedJob = { promptId: string; tag: JobTag; graph: unknown } &({ state: "waiting" | "running" } | { state: "done"; images: ComfyImage[] });
 type JobState = { state: "waiting" | "running" } | { state: "done"; images: ComfyImage[] };
 
 /** ComfyUI's own entries for a job are `[number, prompt_id, workflow, extra_data, outputs]`. */
@@ -149,7 +149,7 @@ export async function listTaggedJobs(url: string, chapterId: string | null = nul
   const add = (entry: JobEntry | undefined, state: JobState | null) => {
     const tag = entry && readTag(entry[3]);
     if (!entry || !tag || !state || (chapterId !== null && tag.chapterId !== chapterId)) return;
-    found.push({ promptId: entry[1], tag, no: Number(entry[0]) || 0, ...state });
+    found.push({ promptId: entry[1], tag, graph: entry[2], no:Number(entry[0]) || 0, ...state });
   };
   for (const e of queue.queue_running ?? []) add(e, { state: "running" });
   for (const e of queue.queue_pending ?? []) add(e, { state: "waiting" });
@@ -163,8 +163,53 @@ export async function listTaggedJobs(url: string, chapterId: string | null = nul
 }
 
 /**
+ * Turns ComfyUI's per-node progress into one count for the whole job. ComfyUI counts each sampler's steps
+ * on its own (Krea 2 runs 8, then 4 for its upscale pass), so the samplers' steps are read from the graph
+ * up front and added together. A node the graph didn't say would report (a custom sampler) is added when
+ * it does; one ComfyUI took from its cache (`execution_cached`) is dropped.
+ */
+export function stepCounter(graph?: unknown) {
+  const planned = new Map<string, number>();
+  for (const [id, node] of Object.entries(graph && typeof graph === "object" ? (graph as Record<string, unknown>) : {})) {
+    const { class_type, inputs } = (node ?? {}) as { class_type?: unknown; inputs?: Record<string, unknown> };
+    const n = (k: string) => (typeof inputs?.[k] === "number" ? (inputs[k] as number) : null);
+    const steps = n("steps");
+    if (steps === null) continue;
+    if (class_type === "KSampler") planned.set(id, steps);
+    else if (class_type === "KSamplerAdvanced") {
+      const start = n("start_at_step") ?? 0;
+      const end = Math.min(n("end_at_step") ?? steps, steps);
+      if (end > start) planned.set(id, end - start);
+    }
+  }
+  const seen = new Map<string, number>(); // nodes that have reported, with their step counts
+  let current: string | null = null;
+  let value = 0;
+  return {
+    cached(nodes: unknown) {
+      if (Array.isArray(nodes)) for (const id of nodes) planned.delete(String(id));
+    },
+    step(node: unknown, nodeValue: number, nodeMax: number): { value: number; max: number } {
+      const id = typeof node === "string" || typeof node === "number" ? String(node) : "";
+      seen.set(id, nodeMax);
+      current = id;
+      value = nodeValue;
+      let done = 0;
+      let max = 0;
+      for (const [k, m] of seen) {
+        max += m;
+        if (k !== current) done += m;
+      }
+      for (const [k, m] of planned) if (!seen.has(k)) max += m;
+      return { value: Math.min(done + value, max), max };
+    },
+  };
+}
+
+/**
  * Waits for a queued job and returns its pictures. Progress comes over ComfyUI's WebSocket; the
  * job's history is also checked every couple of seconds, so a lost connection only loses progress.
+ * `graph` is the workflow the job was queued with, so several samplers count as one run of steps.
  */
 export function waitForPictures(
   url: string,
@@ -172,7 +217,9 @@ export function waitForPictures(
   clientId: string,
   onProgress: (p: Progress) => void,
   signal?: AbortSignal,
+  graph?: unknown,
 ): Promise<ComfyImage[]> {
+  const steps = stepCounter(graph);
   const root = base(url);
   return new Promise((resolve, reject) => {
     let done = false;
@@ -223,7 +270,9 @@ export function waitForPictures(
         if (d.prompt_id !== promptId) return;
         started = true;
         if (msg.type === "progress" && typeof d.value === "number" && typeof d.max === "number") {
-          onProgress({ stage: "running", value: d.value, max: d.max });
+          onProgress({ stage: "running", ...steps.step(d.node, d.value, d.max) });
+        } else if (msg.type === "execution_cached") {
+          steps.cached(d.nodes);
         } else if (msg.type === "execution_error") {
           finish(new ComfyError(`ComfyUI couldn't make the pictures: ${String(d.exception_message ?? "unknown error").trim()}`));
         } else if (msg.type === "execution_interrupted") {

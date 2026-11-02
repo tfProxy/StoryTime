@@ -9,7 +9,7 @@ import { drawFilesText, presetName, usesFamily, type DrawPreset } from "./preset
 import { ipAdapterProblem, type IpAdapterCheck } from "./ipAdapter";
 import { MAX_REFERENCES, storedOf, uploadReference, type Reference } from "./references";
 import { uploadStart, type StartPicture, type Uploaded } from "./startPicture";
-import { builtinSampler, describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed, type FillKind } from "./workflow";
+import { builtinSampler, describeWorkflow, fillWorkflow, filenamePrefix, parseWorkflow, randomSeed, type FillKind, type Workflow } from "./workflow";
 import { cancelPrompt, queuePrompt, uploadImage, type Progress } from "./client";
 import { maskGrow, renderMask, type PaintedArea } from "../mask";
 import { contextBox, maskBounds, type CropPlan } from "./inpaintRegion";
@@ -109,7 +109,8 @@ function uploadMask(comfyUrl: string, area: PaintedArea): Promise<string | null>
 /** A starting picture's upload to ComfyUI, kept so the next job from it doesn't send it again. */
 export type UploadCache = { current: { key: string; upload: Promise<Uploaded> } | null };
 
-export type MadeJob = { promptId: string; clientId: string; record: JobRecord };
+/** `workflow` is the graph ComfyUI was sent (its samplers' steps make the progress bar). */
+export type MadeJob = { promptId: string; clientId: string; record: JobRecord; workflow: Workflow };
 
 /**
  * Checks the job, uploads its starting picture and queues it on ComfyUI with the prompt and settings it was
@@ -275,5 +276,5 @@ export async function queueJob(
     void cancelPrompt(comfy.url, promptId);
     throw new DOMException("Stopped", "AbortError");
   }
-  return { promptId, clientId, record };
+  return { promptId, clientId, record, workflow };
 }

@@ -234,7 +234,7 @@ async function send(key: string, posted: () => void) {
       },
     });
     posted();
-    const images = await waitForPictures(input.comfy.url, made.promptId, made.clientId, (progress) => saveProgress(key, progress), control.ctl.signal);
+    const images = await waitForPictures(input.comfy.url, made.promptId, made.clientId, (progress) => saveProgress(key, progress), control.ctl.signal, made.workflow);
     if (images.length === 0) throw new Error("ComfyUI finished but sent back no pictures. Does the workflow end in a Save Image node?");
     ended(key, recordPictures(target, made.promptId, made.record, images, !made.record.temporary && !session));
   } catch (e) {
@@ -316,7 +316,7 @@ export function watchFound(key: string, url: string, found: TaggedJob) {
   const control = { ctl: new AbortController(), promptId: found.promptId, url };
   worker.pictures.set(key, control);
   worker.picked.add(found.promptId);
-  waitForPictures(url, found.promptId, clientId, (progress) => saveProgress(key, progress), control.ctl.signal)
+  waitForPictures(url, found.promptId, clientId, (progress) => saveProgress(key, progress), control.ctl.signal, found.graph)
     .then((images) => {
       if (images.length === 0) throw new Error("ComfyUI finished but sent back no pictures. Does the workflow end in a Save Image node?");
       ended(key, recordPictures(tagTarget(found.tag), found.promptId, job, images, !job.temporary && !found.tag.session));
