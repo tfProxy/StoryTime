@@ -8,10 +8,17 @@ import { getContext } from "@/lib/aiRuns/api";
 import { storyContextOf, withPathSummaries } from "@/lib/aiRuns/writeChapter";
 import { LIMITS } from "@/lib/limits";
 import { useSettings } from "@/lib/settings";
+import SplitActionButton, { type SplitMode } from "./SplitActionButton";
+
+const MODES: SplitMode[] = [
+  { id: "suggest", label: "Suggest choices", hint: "The AI offers a few choices to add to this chapter." },
+  { id: "draft", label: "Draft a different idea", hint: "Opens the writing page, to draft a new chapter from this one with an idea of your own." },
+];
 
 /**
- * "Suggest choices" on the chapter reading page: the same request as the writing page's, for a chapter already
- * posted. Each suggestion picked is added to the chapter as an unwritten choice.
+ * "Suggest choices" and "Draft a different idea" on the chapter reading page, as one combo button. Suggest choices is
+ * the same request as the writing page's, for a chapter already posted: each suggestion picked is added to the chapter
+ * as an unwritten choice.
  */
 export default function SuggestChoices({
   storyId,
@@ -27,6 +34,7 @@ export default function SuggestChoices({
 }) {
   const router = useRouter();
   const settings = useSettings();
+  const [mode, setMode] = useState<"suggest" | "draft">("suggest");
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [busy, setBusy] = useState<"suggest" | "add" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -80,11 +88,18 @@ export default function SuggestChoices({
 
   return (
     <div style={{ display: "grid", gap: "0.5rem" }}>
-      <p className="row">
-        <button type="button" className="secondary" onClick={suggest} disabled={busy !== null}>
-          {busy === "suggest" ? "Thinking…" : "Suggest choices"}
-        </button>
-      </p>
+      <div className="row">
+        <SplitActionButton
+          secondary
+          verb="continue"
+          modes={MODES}
+          mode={mode}
+          onMode={(m) => setMode(m as "suggest" | "draft")}
+          busyLabel={busy === "suggest" ? "Thinking…" : null}
+          disabled={busy !== null}
+          onMain={() => (mode === "draft" ? router.push(`/c/${chapterId}/write`) : void suggest())}
+        />
+      </div>
       {suggestions.length > 0 && (
         <div style={{ display: "grid", justifyItems: "start", gap: "0.4rem" }}>
           {suggestions.map((s) => (

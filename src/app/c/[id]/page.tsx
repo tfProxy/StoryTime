@@ -17,6 +17,9 @@ import ChapterImage from "@/components/ChapterImage";
 import { PageMenu } from "@/components/SiteMenu";
 import { chapterImageVersions } from "@/lib/chapterImages";
 import { draftKeysSaved } from "@/lib/draftStore";
+import { getCodexState } from "@/lib/codexDb";
+import { getSettings } from "@/lib/settingsStore";
+import { parseSettings } from "@/lib/settingsSchema";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +46,9 @@ export default async function ChapterPage({
   const tagNames = appliedTagNames(story.id, chapter.id).get(chapter.id) ?? [];
   const notes = choices.some((c) => c.child_chapter_id) ? contentNotes(story.id) : new Map<string, ChapterNote>();
   // Unwritten choices with a draft saved (the write page keys a choice's draft "fill:<choice id>").
+  // With the "List the codex entries at the bottom of a chapter" setting: the entries live at this chapter.
+  const showCodex = (getSettings() ?? parseSettings({})).showCodexList;
+  const codexEntries = showCodex ? getCodexState(chapter.id) : [];
   const drafted = trashed ? new Set<string>() : draftKeysSaved(choices.filter((c) => !c.child_chapter_id).map((c) => choiceDraftKey(c.id)));
 
   return (
@@ -143,14 +149,21 @@ export default async function ChapterPage({
           <>
             <AddChoice chapterId={chapter.id} />
             <SuggestChoices storyId={story.id} chapterId={chapter.id} incoming={incoming} choices={choices.map((c) => c.label)} />
-            <p className="row">
-              <Link className="button secondary" href={`/c/${chapter.id}/write`}>
-                Draft a different idea
-              </Link>
-            </p>
           </>
         )}
       </section>
+      {showCodex && codexEntries.length > 0 && (
+        <p className="meta chapter-codex" aria-label="Codex entries in this chapter">
+          [
+          {codexEntries.map((e, i) => (
+            <span key={e.entry_id}>
+              {i > 0 && ", "}
+              <Link href={`/s/${story.id}/codex/${e.entry_id}?at=${chapter.id}`}>{e.name}</Link>
+            </span>
+          ))}
+          ]
+        </p>
+      )}
       <PageMenu
         codexHref={`/c/${chapter.id}/codex`}
         codexGroup={<Link href={`/c/${chapter.id}/summary`}>{chapter.summary && chapter.path_summary ? "Summary" : "Summary (missing)"}</Link>}

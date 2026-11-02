@@ -636,6 +636,22 @@ export default function SettingsForm() {
             </span>
           </label>
 
+          <label className="row" style={{ alignItems: "flex-start" }}>
+            <input
+              type="checkbox"
+              style={{ width: "auto" }}
+              checked={settings.showCodexList}
+              onChange={(e) => update({ showCodexList: e.target.checked })}
+            />
+            <span>
+              List the codex entries at the bottom of a chapter{" "}
+              <small>
+                (a short list such as [Mira, Zed, The Hollow] under the choices, each linking to that entry&apos;s page at
+                this chapter.)
+              </small>
+            </span>
+          </label>
+
           <div className="row">
             <button type="button" className="secondary" onClick={tryIt} disabled={trying}>
               {trying ? "Generating…" : "Try a sample reply"}

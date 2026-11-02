@@ -67,6 +67,11 @@ ok(Array.isArray(r.json.settings.favorites) && r.json.settings.temperature === n
 ok(r.json.settings.autoSuggestChoices === false, "suggesting choices after writing is off unless asked for");
 r = await call("PUT", "/api/settings", { ...conns, autoSuggestChoices: true });
 ok(r.json.settings.autoSuggestChoices === true && (await call("GET", "/api/settings")).json.settings.autoSuggestChoices === true, "…and can be turned on");
+ok(r.json.settings.showCodexList === false, "the codex list on the reading page is off unless asked for");
+r = await call("PUT", "/api/settings", { ...conns, showCodexList: true });
+ok(r.json.settings.showCodexList === true && (await call("GET", "/api/settings")).json.settings.showCodexList === true, "…and can be turned on");
+r = await call("PUT", "/api/settings", { ...conns, showCodexList: "yes" });
+ok(r.json.settings.showCodexList === false, "…and anything but true or false falls back to off");
 
 // ---- the outline's parts ----
 // Tags and trashed branches are the parts that start off.

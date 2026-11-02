@@ -82,6 +82,8 @@ export type Settings = {
   autoCodex: boolean;
   /** Under each choice, list the reader-visible tags that come next or later on that branch. */
   contentNotes: boolean;
+  /** At the bottom of a chapter's reading page, list the codex entries there, each linking to its page. Off by default. */
+  showCodexList: boolean;
   /** What the outline shows after each chapter's name. */
   outline: OutlineOptions;
   /** How picture prompts are written: tags (SDXL, SD 1.5), booru tags (Illustrious, NoobAI, Pony) or plain sentences (Flux, SD3). */
@@ -191,6 +193,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoReview: false,
   autoCodex: true,
   contentNotes: true,
+  showCodexList: false,
   outline: DEFAULT_OUTLINE,
   imagePromptStyle: "tags",
   imagePromptModel: null,
@@ -350,6 +353,7 @@ const settingsSchema = z.object({
   autoReview: z.boolean().catch(false),
   autoCodex: z.boolean().catch(true),
   contentNotes: z.boolean().catch(true),
+  showCodexList: z.boolean().catch(false),
   // A part that is missing or isn't true/false is shown, as before the options existed.
   outline: z
     .object({
