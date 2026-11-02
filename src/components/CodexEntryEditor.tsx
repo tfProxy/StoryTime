@@ -22,6 +22,7 @@ import AiRunProgress from "./AiRunProgress";
 import { INBOX_CHANGED } from "./CodexInbox";
 import CodexFacts, { type HeldFact } from "./CodexFacts";
 import ChapterPathPicker from "./ChapterPathPicker";
+import CodexInbox from "./CodexInbox";
 import FleshOutEntry from "./FleshOutEntry";
 import LinkedEntryDetails from "./LinkedEntryDetails";
 
@@ -67,8 +68,6 @@ type Props = {
   onRetired?: () => void;
   /** Called after a fact is saved; the default refreshes the page. */
   onFactsSaved?: () => void;
-  /** How many open suggestions in the inbox are about this entry. */
-  waiting?: number;
   /** The chapters already written after `chapterId`: "Remove from this chapter only" keeps the entry in them. */
   after?: { id: string; title: string }[];
 };
@@ -93,7 +92,6 @@ export default function CodexEntryEditor({
   onDiscardHeld,
   onRetired,
   onFactsSaved,
-  waiting = 0,
   after = [],
 }: Props) {
   const router = useRouter();
@@ -187,7 +185,7 @@ export default function CodexEntryEditor({
     const failed = tasks.filter((t) => t.status === "failed").length;
     const found = tasks.reduce((sum, t) => sum + (t.found ?? 0), 0);
     if (failed > 0) setNotesMessage({ ok: false, text: "The notes could not be read. Try again." });
-    else setNotesMessage({ ok: true, text: found === 0 ? "Nothing to suggest: the facts already cover the notes." : `Left ${found} suggestion${found === 1 ? "" : "s"} in the codex inbox.` });
+    else setNotesMessage({ ok: true, text: found === 0 ? "Nothing to suggest: the facts already cover the notes." : `The AI suggested ${found} fact${found === 1 ? "" : "s"}: see Suggested facts below.` });
     window.dispatchEvent(new Event(INBOX_CHANGED));
     router.refresh();
   }
@@ -302,6 +300,20 @@ export default function CodexEntryEditor({
         </section>
       )}
 
+      {/* What the AI suggested for this entry (Flesh out, the notes, the codex check): here, to accept or dismiss where it was asked for. */}
+      {storyId && !inDraft && !draftOnly && (
+        <CodexInbox
+          storyId={storyId}
+          onPath={{
+            chapterIds: path.map((c) => c.id),
+            entryId: entry.entry_id,
+            heading: "Suggested facts",
+            className: "entry-section",
+            onChanged: () => router.refresh(),
+          }}
+        />
+      )}
+
       <section className="entry-section">
         <h2>What the AI reads</h2>
         <div className="fact-ai">{entry.description || <em>Nothing yet — add facts. Notes are not sent to the AI.</em>}</div>
@@ -377,14 +389,6 @@ export default function CodexEntryEditor({
       </section>
       )}
 
-      {waiting > 0 && storyId && (
-        <section className="entry-section">
-          <h2>Suggestions waiting</h2>
-          <p style={{ margin: 0 }}>
-            {waiting} suggestion{waiting === 1 ? "" : "s"} waiting for {entry.name} · <Link href={`/s/${storyId}/review?tab=codex`}>Review</Link>
-          </p>
-        </section>
-      )}
 
       <section className="entry-section">
         <h2>History</h2>

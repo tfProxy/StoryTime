@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import type { AiRun, ExpandTask } from "@/lib/aiRuns/types";
 import AiRunProgress from "./AiRunProgress";
@@ -50,7 +49,7 @@ export default function FleshOutEntry({ storyId, chapterId, entryId, name }: { s
     setRunId(null);
     if (failed) setMessage({ ok: false, text: "The AI couldn't do that. Try again." });
     else if (skipped) setMessage({ ok: false, text: skipped.error ?? "Skipped." });
-    else setMessage({ ok: true, text: found === 0 ? "The AI had nothing new to add." : `Left ${found} suggested fact${found === 1 ? "" : "s"} in the codex inbox.` });
+    else setMessage({ ok: true, text: found === 0 ? "The AI had nothing new to add." : `The AI suggested ${found} fact${found === 1 ? "" : "s"}: see Suggested facts below.` });
     window.dispatchEvent(new Event(INBOX_CHANGED));
   }
 
@@ -95,8 +94,7 @@ export default function FleshOutEntry({ storyId, chapterId, entryId, name }: { s
       {runId && <AiRunProgress key={runId} runId={runId} onFinished={finished} />}
       {message && (
         <p className={message.ok ? "ok" : "error"} role="status">
-          {message.text}{" "}
-          {message.ok && !message.text.startsWith("The AI had nothing") && <Link href={`/s/${storyId}/review?tab=codex&chapter=${chapterId}`}>Open the codex inbox</Link>}
+          {message.text}
         </p>
       )}
     </div>

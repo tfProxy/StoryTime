@@ -16,7 +16,15 @@ type Props = {
    * The codex page of a chapter: the suggestions that apply there, those made at this chapter and at the ones before it on
    * its branch. Nothing is shown when there are none, and `onChanged` is called after one is accepted, dismissed or reopened.
    */
-  onPath?: { chapterIds: string[]; onChanged?: () => void };
+  onPath?: {
+    chapterIds: string[];
+    onChanged?: () => void;
+    /** Only the suggestions for this entry (an entry's own page). */
+    entryId?: string;
+    /** The heading over the list; a CSS class for the whole block. */
+    heading?: string;
+    className?: string;
+  };
 };
 
 type Edits = { aspect?: string; form?: string; text?: string };
@@ -49,6 +57,7 @@ async function fetchInbox(storyId: string, chapterId?: string): Promise<CodexSug
 export default function CodexInbox({ storyId, chapterId, onPath }: Props) {
   const pathKey = onPath?.chapterIds.join(",") ?? null;
   const onChanged = onPath?.onChanged;
+  const onEntry = onPath?.entryId ?? null;
   const [items, setItems] = useState<CodexSuggestion[] | null>(null);
   const [loadError, setLoadError] = useState("");
   // Suggestions decided on this page stay where they were, collapsed to one line, until the page is left.
@@ -64,12 +73,12 @@ export default function CodexInbox({ storyId, chapterId, onPath }: Props) {
       fetchInbox(storyId, chapterId).then(
         (list) => {
           const ids = pathKey === null ? null : new Set(pathKey.split(","));
-          setItems(ids ? list.filter((s) => ids.has(s.chapter_id)) : list);
+          setItems(ids ? list.filter((s) => ids.has(s.chapter_id) && (onEntry === null || s.entry_id === onEntry)) : list);
           setLoadError("");
         },
         (e: unknown) => setLoadError(e instanceof Error ? e.message : String(e)),
       ),
-    [storyId, chapterId, pathKey],
+    [storyId, chapterId, pathKey, onEntry],
   );
 
   useEffect(() => {
@@ -158,13 +167,13 @@ export default function CodexInbox({ storyId, chapterId, onPath }: Props) {
   if (onPath && shown.length === 0 && dismissedList.length === 0 && !loadError) return null;
 
   return (
-    <div className="codex-inbox">
+    <div className={["codex-inbox", onPath?.className].filter(Boolean).join(" ")}>
       {onPath && (
         <>
-          <h2>Waiting in the codex inbox</h2>
+          <h2>{onPath.heading ?? "Waiting in the codex inbox"}</h2>
           <p className="meta">
-            Suggestions from this chapter and the ones before it on this branch, which apply here. Accepting one adds it to the codex from the chapter it
-            was made at. <Link href={`/s/${storyId}/review?tab=codex`}>Open the whole inbox</Link>
+            {onEntry ? "Suggestions for this entry" : "Suggestions"} from this chapter and the ones before it on this branch, which apply here. Accepting one adds it
+            to the codex from the chapter it was made at. <Link href={`/s/${storyId}/review?tab=codex`}>Open the whole inbox</Link>
           </p>
         </>
       )}

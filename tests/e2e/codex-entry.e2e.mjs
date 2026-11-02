@@ -179,8 +179,13 @@ try {
   const rev = (await send("GET", `/api/chapters/${A}`)).chapter.revision;
   await post(`/api/chapters/${A}/codex-suggestions`, { revision: rev, suggestions: [{ kind: "set", entry_id: rowan, aspect: "Hair", form: "", after: "silver", quote: "Rowan's ears changed." }] });
   await page.goto(entryUrl(A));
-  ok(await ed.getByText("1 suggestion waiting for Rowan").isVisible(), "an open suggestion is counted on the entry page");
-  ok((await ed.getByRole("link", { name: "Review" }).getAttribute("href")) === `/s/${sid}/review?tab=codex`, "…with a link to the Story Bible's codex tab");
+  const waiting = ed.locator(".codex-inbox");
+  await waiting.getByRole("heading", { name: "Suggested facts" }).waitFor();
+  ok((await waiting.locator("article.inbox-card").count()) === 1 && (await waiting.innerText()).includes("silver"), "an open suggestion for the entry is shown on its page as a card");
+  ok((await waiting.getByRole("link", { name: "Open the whole inbox" }).getAttribute("href")) === `/s/${sid}/review?tab=codex`, "…with a link to the Story Bible's codex tab");
+  await waiting.getByRole("button", { name: "Accept" }).first().click();
+  await ed.locator(".fact-line", { hasText: "silver" }).waitFor();
+  ok(true, "accepting it there adds the fact to the entry");
 
   // ---- a missing or foreign ?at= opens the chapter where the entry was last changed ----
   await page.goto(`${BASE}/s/${sid}/codex/${rowan}`);

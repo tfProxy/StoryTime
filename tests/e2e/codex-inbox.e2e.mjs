@@ -136,7 +136,7 @@ try {
   ok((await factLine("wooden sword").count()) === 0, "the removal took effect");
   ok(await rowanFacts().locator(".facts-form").getByText("Form: hawk").isVisible(), "the form was set");
   ok(await factLine("green").isVisible() && (await factLine("blue").count()) === 0, "Keep the codex left the green eyes");
-  ok(await rowanFacts().getByText("1 suggestion waiting for Rowan").isVisible(), "the entry page counts the suggestion still waiting");
+  ok((await rowanFacts().locator(".codex-inbox article.inbox-card").count()) === 1, "the entry page shows the suggestion still waiting");
   await page.goto(`${BASE}/c/${A}/codex`);
   await page.locator(".entry-card", { hasText: "Kestrel" }).click();
   await page.getByRole("heading", { name: "Kestrel", level: 1 }).waitFor();

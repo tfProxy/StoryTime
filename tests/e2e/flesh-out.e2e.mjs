@@ -70,6 +70,28 @@ try {
   await section.getByRole("button", { name: "Cancel" }).click();
   ok(await section.getByRole("button", { name: /^Flesh out/ }).isVisible(), "Cancel closes the form");
 
+  // what the AI suggested is shown on this page, under the section, with no trip to the inbox
+  const rev = (await send("GET", `/api/chapters/${R}`)).chapter.revision;
+  await post(`/api/chapters/${R}/codex-suggestions`, {
+    revision: rev,
+    source: "expand",
+    entry_id: wren,
+    suggestions: [
+      { kind: "set", entry_id: wren, aspect: "Voice", form: "", after: "low and dry", quote: "" },
+      { kind: "set", entry_id: wren, aspect: "Family", form: "", after: "an older brother", quote: "" },
+    ],
+  });
+  await page.goto(entryUrl(wren));
+  const suggested = page.locator(".codex-inbox");
+  await suggested.getByRole("heading", { name: "Suggested facts" }).waitFor();
+  ok((await suggested.locator("article.inbox-card").count()) === 2, "the suggested facts are listed on the entry's page");
+  const askBox = await section.boundingBox();
+  const listBox = await suggested.boundingBox();
+  ok(listBox.y >= askBox.y + askBox.height - 1, "…right below Flesh out with AI");
+  await suggested.getByRole("button", { name: "Accept all for Wren" }).click();
+  await page.locator(".fact-line", { hasText: "low and dry" }).waitFor();
+  ok((await page.locator(".fact-line", { hasText: "an older brother" }).count()) === 1, "'Accept all' adds them to the entry, here");
+
   // not in the writing page's drawer
   await send("PUT", "/api/queue/paused", { paused: false });
   await page.goto(`${BASE}/c/${R}/write`);

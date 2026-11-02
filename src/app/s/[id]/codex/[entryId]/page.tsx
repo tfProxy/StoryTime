@@ -5,7 +5,6 @@ import CodexEntryEditor from "@/components/CodexEntryEditor";
 import { foldCodex, usedAspectsOf } from "@/lib/codex";
 import { entryLastAnchor, getCodexFacts, getCodexOps } from "@/lib/codexDb";
 import { codexPictureAt } from "@/lib/codexPictures";
-import { listSuggestions } from "@/lib/codexSuggestions";
 import { getPath, getStory } from "@/lib/stories";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +36,6 @@ export default async function CodexEntryPage({ params, searchParams }: { params:
   const firstDepth = Math.min(...ops.filter((o) => o.entry_id === entryId).map((o) => o.anchor_depth));
   const picture = codexPictureAt(story.id, entryId, at);
   const after = nextChapters(at).map(({ id: chapterId, title }) => ({ id: chapterId, title }));
-  const waiting =listSuggestions(story.id, { status: "open" }).filter((s) => s.entry_id === entryId).length;
 
   return (
     <>
@@ -63,7 +61,6 @@ export default async function CodexEntryPage({ params, searchParams }: { params:
         usedAspects={usedAspectsOf(all)}
         pictureId={picture?.id ?? null}
         picturesHref={`/s/${story.id}/codex/${entryId}/pictures?at=${at}`}
-        waiting={waiting}
         after={after}
       />
     </>
