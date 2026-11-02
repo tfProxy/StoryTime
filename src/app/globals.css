@@ -2027,6 +2027,8 @@ main:has(.illustrate-grid) {
 
 .generate-bar {
   display: grid;
+  /* One column that can shrink: an auto column grows to its widest row and widens the page on a small phone. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--line);
@@ -2551,6 +2553,9 @@ dialog.picture-info::backdrop {
  */
 .size-select {
   --size-columns: 1.2rem 5.6rem 2.8rem auto;
+  /* Let it shrink with its row on a narrow screen instead of making the page wider. */
+  min-width: 0;
+  max-width: 100%;
 }
 
 @supports (appearance: base-select) {
@@ -2580,6 +2585,7 @@ dialog.picture-info::backdrop {
   .size-select > button {
     flex: 1;
     min-width: 0;
+    overflow: hidden;
     padding: 0;
     border: 0;
     background: none;
