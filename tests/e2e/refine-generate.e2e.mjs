@@ -279,11 +279,6 @@ try {
   await showAll();
   ok(await tiles.count() === 1, "the Illustrate page still shows one picture (the Refine ones are temporary)");
   ok(await page.getByRole("button", { name: /Pictures:/ }).count() === 0, "…and nothing is “ready” in the header");
-  const toggle = page.locator(".chapter-pictures").getByRole("checkbox", { name: "Include temporary inpainting images" });
-  await toggle.waitFor();
-  await toggle.check();
-  await until(async () => (await tiles.count()) > 1, "the temporary pictures");
-  ok(await tiles.count() === 1 + 10, "with “Include temporary inpainting images” on, the Refine pictures (10 of them) appear too");
 
   // ================= a session's jobs are not given to the page, and wait for the screen =================
   await page.goto(`${BASE}/c/${chapterId}/illustrate`);

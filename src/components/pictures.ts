@@ -256,7 +256,7 @@ export const hiddenTemporary = (p: { temporary?: boolean; mark?: PictureMark | n
 
 /**
  * `inUse`: the picture is the chapter's header or footer now, or the one being edited, so the first view shows it as if it were pinned.
- * `includeTemporary`: the "Include temporary inpainting images" switch; without it a temporary picture shows in no view unless pinned.
+ * `includeTemporary`: show temporary pictures too; without it a temporary picture shows in no view unless pinned.
  */
 export function inView(p: Picture, view: PictureView, inUse = false, includeTemporary = false): boolean {
   if (hiddenTemporary(p, includeTemporary)) return false;
