@@ -1,5 +1,4 @@
-// Temporary (Refine) picture jobs on the Illustrate page: left out of every view unless the author turns on
-// "Include temporary inpainting images" (which only appears when there is one), shown anyway when pinned.
+// Temporary (Refine) picture jobs on the Illustrate page: left out of every view, shown only when pinned.
 // Jobs are put in the log through the API; the pictures come from a fake ComfyUI.
 import { launch } from "./browser.mjs";
 import { startFakeComfy } from "./fakeComfy.mjs";
@@ -24,8 +23,6 @@ const story = await call("POST", "/api/stories", { title: "Temporary pictures ta
 const first = story.chapter_id;
 const choice = (await call("GET", `/api/chapters/${first}`)).choices[0];
 const second = (await call("POST", "/api/chapters", { choice_id: choice.id, title: "The gallery", body: "Frames." })).chapter_id;
-// A story with only ordinary pictures.
-const plainStory = await call("POST", "/api/stories", { title: "Ordinary pictures tale", chapter: { title: "Plain", body: "Nothing special.", choices: [] } });
 
 const keptPlain = await job(first, "a pinned ordinary picture");
 await job(first, "an unpinned ordinary picture");
@@ -35,7 +32,6 @@ const trashedTemp = await job(first, "a temporary picture that was trashed", { t
 await mark(keptPlain, "pinned");
 await mark(keptTemp, "pinned");
 await mark(trashedTemp, "rejected");
-await job(plainStory.chapter_id, "only ordinary here");
 
 const before = (await call("GET", "/api/settings")).settings;
 const comfy = await startFakeComfy({ port: COMFY_PORT });
@@ -48,63 +44,38 @@ const gallery = page.locator(".chapter-pictures");
 const heads = () => gallery.locator(".picture-group .candidates").evaluateAll((uls) => uls.map((ul) => ul.getAttribute("aria-label").replace(/^Pictures from “/, "").replace(/”$/, "")));
 const viewButton = (name) => gallery.getByRole("group", { name: "Show" }).getByRole("button", { name });
 const showView = (name) => viewButton(name).click();
-const toggle = gallery.getByRole("checkbox", { name: "Include temporary inpainting images" });
 const open = async (id) => {
   await page.goto(`${BASE}/c/${id}/illustrate`);
   await gallery.getByRole("heading", { name: "Pictures" }).waitFor();
 };
 
 try {
-  // ---- hidden by default ----
+  // ---- hidden unless pinned ----
   await open(first);
-  await toggle.waitFor();
-  ok(await toggle.isChecked() === false, "the switch is off when the page opens");
+  await viewButton(/^Pinned & new/).waitFor();
+  ok(await page.getByText("Include temporary inpainting images").count() === 0, "there is no switch to show temporary pictures");
   ok((await heads()).join("|") === "a temporary picture that was pinned|a pinned ordinary picture", "Pinned & new shows the pinned ordinary picture and the pinned temporary one, not the unpinned temporary one");
   ok(await viewButton("Pinned & new (2)").count() === 1 && await viewButton("All (3)").count() === 1 && await viewButton("Trashed (0)").count() === 1, "the counts leave temporary pictures out (2 pinned, 3 in All, none trashed)");
   await showView(/^All/);
   ok((await heads()).join("|") === "a temporary picture that was pinned|an unpinned ordinary picture|a pinned ordinary picture", "All shows the pinned temporary picture but not the others");
+  const tile = gallery.getByRole("list", { name: "Pictures from “a temporary picture that was pinned”", exact: true }).locator(".picture-tile");
+  ok((await tile.locator(".picture-caption").innerText()).includes("temporary"), "a temporary picture's caption says temporary");
+  ok(await gallery.getByRole("list", { name: "Pictures from “an unpinned ordinary picture”", exact: true }).locator(".picture-caption").first().innerText().then((t) => !t.includes("temporary")), "…and an ordinary one's does not");
   await showView(/^Trashed/);
   await page.getByText("No trashed pictures.").waitFor();
   ok((await heads()).length === 0, "Trashed does not show the trashed temporary picture");
 
-  // ---- the switch reveals them ----
-  await toggle.check();
-  await viewButton("Trashed (1)").waitFor();
-  ok((await heads()).join("|") === "a temporary picture that was trashed", "with the switch on, Trashed shows the trashed temporary picture");
-  await showView(/^All/);
-  await viewButton("All (4)").waitFor();
-  const all = await heads();
-  ok(all.length === 4 && all.includes("a temporary picture nobody kept"), "All then has the unpinned temporary picture too");
-  const tile = gallery.getByRole("list", { name: "Pictures from “a temporary picture nobody kept”", exact: true }).locator(".picture-tile");
-  ok((await tile.locator(".picture-caption").innerText()).includes("temporary"), "a temporary picture's caption says temporary");
-  ok(await gallery.getByRole("list", { name: "Pictures from “an unpinned ordinary picture”", exact: true }).locator(".picture-caption").first().innerText().then((t) => !t.includes("temporary")), "…and an ordinary one's does not");
-
-  // ---- off again ----
-  await toggle.uncheck();
-  await viewButton("All (3)").waitFor();
-  ok((await heads()).length === 3 && !(await heads()).includes("a temporary picture nobody kept"), "turning the switch off hides them again");
-
   // ---- Other chapters ----
   await open(second);
-  await toggle.waitFor();
   await showView("Other chapters");
   const other = page.locator("#other-pictures");
   await other.locator(".past-job").first().waitFor();
   const names = () => other.locator(".past-tiles").evaluateAll((uls) => uls.map((ul) => ul.getAttribute("aria-label").replace(/^Pictures from “/, "").replace(/”$/, "")));
   ok((await names()).sort().join("|") === "a pinned ordinary picture|a temporary picture that was pinned|an unpinned ordinary picture", "Other chapters leaves out unpinned temporary pictures");
-  await toggle.check();
-  await page.waitForFunction(() => document.querySelectorAll("#other-pictures .past-job").length === 5);
-  ok((await names()).includes("a temporary picture nobody kept") && (await names()).includes("a temporary picture that was trashed"), "…and lists them with the switch on");
-
-  // ---- no temporary pictures: no switch ----
-  await open(plainStory.chapter_id);
-  await gallery.getByRole("group", { name: "Show" }).waitFor();
-  await page.waitForTimeout(500);
-  ok(await toggle.count() === 0, "a story with no temporary pictures has no switch");
 
   await page.setViewportSize({ width: 390, height: 900 });
   await open(first);
-  await toggle.waitFor();
+  await viewButton(/^Pinned & new/).waitFor();
   ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "at phone width the page does not scroll sideways");
 } finally {
   await putSettings(before ?? {});
