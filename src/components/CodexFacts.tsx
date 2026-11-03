@@ -8,6 +8,7 @@ import {
   factSharedState,
   FORM_ASPECT,
   formLine,
+  isDraftEntry,
   isFormAspect,
   sameAspect,
   STARTER_ASPECTS,
@@ -129,6 +130,47 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
     }
   }
 
+  /** Saves a form change. Facts moved to the old form are saved at once; in the drawer, the new form and its facts can be held in the draft. */
+  async function saveForm(c: FormChange): Promise<boolean> {
+    const formFact: Body = { op: "set", aspect: FORM_ASPECT, form: c.name, text: c.stage, quote: "", fact_id: entry.form?.fact.fact_id, anchor: c.anchor };
+    if (!c.baseForm && c.move.length === 0 && c.add.length === 0) return send(formFact);
+    const holdIt = !!hold && c.anchor === DRAFT_ANCHOR;
+    if (holdIt && !c.baseForm && c.move.length === 0) {
+      for (const b of [formFact, ...c.add.map((a): Body => ({ op: "set", aspect: a.aspect, form: c.name, text: a.text, quote: "", anchor: c.anchor }))]) await send(b);
+      return true;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/codex/form", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chapter_id: chapterId,
+          entry_id: entry.entry_id,
+          form: holdIt ? undefined : { name: c.name, stage: c.stage, anchor_chapter_id: c.anchor },
+          base_form: c.baseForm,
+          move: c.move,
+          add: holdIt ? [] : c.add,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+    if (holdIt) {
+      // The base form is saved now, so the held form fact finds it by its aspect when the chapter is saved.
+      hold!({ op: "set", aspect: FORM_ASPECT, form: c.name, text: c.stage, quote: "", fact_id: formFact.fact_id });
+      for (const a of c.add) hold!({ op: "set", aspect: a.aspect, form: c.name, text: a.text, quote: "" });
+    }
+    onSaved();
+    return true;
+  }
+
   const rows = entry.facts.filter((f) => !isFormAspect(f.aspect));
   const hasForms = entry.forms.length > 0;
   // With no form set, an entry that has had one reads as in its normal form.
@@ -191,8 +233,8 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
               held={heldLabel}
               busy={busy}
               onCancel={() => setFormOpen(false)}
-              onSave={async (b) => {
-                if (await send(b)) setFormOpen(false);
+              onSave={async (c) => {
+                if (await saveForm(c)) setFormOpen(false);
               }}
             />
           )}
@@ -458,6 +500,22 @@ function FactForm({
   );
 }
 
+/** What the form panel saves: the new form, and how the facts are sorted between it and the old one. */
+type FormChange = {
+  name: string;
+  stage: string;
+  anchor: string;
+  /** The entry's form until now, when it never had one ("" for none). */
+  baseForm: string;
+  /** Every-form facts that are only true of the old form. */
+  move: string[];
+  /** Facts of the new form. */
+  add: { aspect: string; text: string }[];
+};
+
+/** Aspects that often differ between forms: marked as worth a look when choosing which facts stay with the old form. */
+const BODY_ASPECTS = ["Species", "Build", "Height", "Skin", "Fur", "Hair", "Ears", "Eyes", "Tail", "Hands", "Clothing"];
+
 function FormForm({
   entry,
   path,
@@ -473,7 +531,7 @@ function FormForm({
   held?: Held;
   busy: boolean;
   onCancel: () => void;
-  onSave: (b: Body) => void;
+  onSave: (c: FormChange) => void;
 }) {
   // The entry's forms, or a new one: with no form yet, a new one is the only choice.
   const currentName = entry.form?.name ?? "";
@@ -483,6 +541,35 @@ function FormForm({
   const [anchor, setAnchor] = useState(chapterId);
   const name = sel === NEW_FORM ? newName.trim() : sel;
   const line = name ? formLine(name, stage) : "";
+
+  // The form the entry is in until now: its current form, else its normal one. With neither it is asked for.
+  const known = entry.form?.name.trim() || entry.baseForm || null;
+  const [oldInput, setOldInput] = useState(() => entry.forms[0] ?? "");
+  const oldName = (known ?? oldInput).trim();
+  // Saved every-form facts can move to the old form (not ones held in the draft, nor an entry only in the draft).
+  const movable = isDraftEntry(entry.entry_id) ? [] : entry.facts.filter((f) => !isFormAspect(f.aspect) && f.form === "" && f.op.anchor_chapter_id !== DRAFT_ANCHOR);
+  const showMove = movable.length > 0 && !!oldName && !!name && !sameAspect(oldName, name);
+  const inNewForm = (aspect: string) =>
+    !!aspect.trim() && entry.facts.some((f) => !isFormAspect(f.aspect) && f.form !== "" && sameAspect(f.form, name) && sameAspect(f.aspect, aspect));
+  // Ticked by hand, else ticked when the new form already has a fact of the same aspect (the two would clash).
+  const [ticked, setTicked] = useState<Record<string, boolean>>({});
+  const isTicked = (f: LiveFact) => ticked[f.fact_id] ?? inNewForm(f.aspect);
+  const moving = showMove ? movable.filter(isTicked) : [];
+  // One "as the new form" box per aspect moved away that the new form doesn't describe yet.
+  const replAspects: string[] = [];
+  for (const f of moving) if (f.aspect.trim() && !inNewForm(f.aspect) && !replAspects.some((a) => sameAspect(a, f.aspect))) replAspects.push(f.aspect.trim());
+  const [repl, setRepl] = useState<Record<string, string>>({});
+  const replOf = (aspect: string) => repl[aspect.toLowerCase()] ?? "";
+
+  const save = () =>
+    onSave({
+      name,
+      stage: stage.trim(),
+      anchor,
+      baseForm: !known && oldName && !sameAspect(oldName, name) ? oldName : "",
+      move: moving.map((f) => f.fact_id),
+      add: replAspects.map((a) => ({ aspect: a, text: replOf(a).trim() })).filter((a) => a.text),
+    });
   return (
     <div className="fact-form">
       <label>
@@ -500,6 +587,13 @@ function FormForm({
       {sel === NEW_FORM && (
         <input className="fact-form-extra" aria-label="New form name" placeholder="New form name" value={newName} maxLength={FACT_LIMITS.form} onChange={(e) => setNewName(e.target.value)} />
       )}
+      {!known && (
+        <label>
+          Form until now
+          <input aria-label="Form until now" placeholder="e.g. human" value={oldInput} maxLength={FACT_LIMITS.form} onChange={(e) => setOldInput(e.target.value)} />
+          <small>{entry.name}&apos;s form before this, which becomes the normal form; leave empty if there wasn&apos;t one</small>
+        </label>
+      )}
       <label>
         Stage (optional)
         <input aria-label="Stage (optional)" placeholder="e.g. halfway, complete" value={stage} maxLength={FACT_LIMITS.text} onChange={(e) => setStage(e.target.value)} />
@@ -508,12 +602,41 @@ function FormForm({
       <p className="meta" style={{ margin: 0 }} aria-live="polite">
         {line ? <>The AI will read: <strong>{line}</strong></> : "Pick or name a form to see what the AI will read."}
       </p>
+      {showMove && (
+        <fieldset className="form-move">
+          <legend>Which facts are only true of {oldName}?</legend>
+          <p className="meta">
+            Ticked facts stay with {oldName} and aren&apos;t sent to the AI while {entry.name} is {name}. They count as {oldName} facts from where each was
+            set, so earlier chapters don&apos;t change. Unticked facts stay true in every form.
+          </p>
+          {movable.map((f) => (
+            <label key={f.fact_id} className={isTicked(f) ? "form-move-row on" : "form-move-row"}>
+              <input type="checkbox" checked={isTicked(f)} onChange={(e) => setTicked({ ...ticked, [f.fact_id]: e.target.checked })} />
+              <span>
+                {f.aspect && <strong>{f.aspect}:</strong>} {f.text}
+              </span>
+              {inNewForm(f.aspect) ? (
+                <small className="meta">{name} has its own</small>
+              ) : (
+                BODY_ASPECTS.some((a) => sameAspect(a, f.aspect)) && <small className="meta">often differs</small>
+              )}
+            </label>
+          ))}
+        </fieldset>
+      )}
+      {replAspects.length > 0 && <p className="meta" style={{ margin: 0 }}>What are they like as {name}? Optional: leave one empty to say nothing about it yet.</p>}
+      {replAspects.map((a) => (
+        <label key={a.toLowerCase()}>
+          {a} as {name}
+          <input aria-label={`${a} as ${name}`} value={replOf(a)} maxLength={FACT_LIMITS.text} onChange={(e) => setRepl({ ...repl, [a.toLowerCase()]: e.target.value })} />
+        </label>
+      ))}
       <ChapterSelect path={path} chapterId={chapterId} held={held} value={anchor} onChange={setAnchor} />
       <div className="row">
         <button
           type="button"
           disabled={busy || !name}
-          onClick={() => onSave({ op: "set", aspect: FORM_ASPECT, form: name, text: stage.trim(), quote: "", fact_id: entry.form?.fact.fact_id, anchor })}
+          onClick={save}
         >
           {busy ? "Saving…" : "Save"}
         </button>

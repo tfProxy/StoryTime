@@ -258,6 +258,59 @@ export function createFactOp(input: z.infer<typeof NewFactOpSchema>): { id: stri
   })();
 }
 
+export const FormChangeSchema = z
+  .object({
+    /** The chapter whose codex is shown: the entry and its facts are read as they are there. */
+    chapter_id: z.string().min(1),
+    entry_id: z.string().min(1),
+    /** The new form and where it starts. Left out when the writing drawer holds it in the draft (only the moves are saved). */
+    form: z.object({ name: text(FACT_LIMITS.form).min(1), stage: text(FACT_LIMITS.text).default(""), anchor_chapter_id: z.string().min(1) }).optional(),
+    /** The entry's form until now, for an entry that has never had one: set from where the entry starts, so it is its normal form. */
+    base_form: text(FACT_LIMITS.form).default(""),
+    /** Every-form facts that are only true of the old form: moved to it, from where each was set. */
+    move: z.array(z.string().min(1)).max(200).default([]),
+    /** Facts of the new form, set where it starts. */
+    add: z.array(z.object({ aspect: text(FACT_LIMITS.aspect).min(1), text: text(FACT_LIMITS.text).min(1) })).max(200).default([]),
+  })
+  .refine((v) => v.form !== undefined || v.add.length === 0, { message: "facts of a new form need the form" });
+
+/**
+ * Changes an entry's form and sorts its facts in one go, all or nothing: names its old form (from where the entry starts,
+ * when it never had one), moves the chosen every-form facts to the old form (each at the chapter its current version was
+ * set, so they count as the old form's from the start), then sets the new form and its facts from the chosen chapter.
+ */
+export function changeForm(input: z.infer<typeof FormChangeSchema>): { moved: number } {
+  return db().transaction(() => {
+    if (getPath(input.chapter_id).length === 0) throw new PostError("That chapter does not exist", 404);
+    const ops = getCodexOps(input.chapter_id);
+    const entry = foldCodex(ops, getCodexFacts(input.chapter_id)).find((e) => e.entry_id === input.entry_id);
+    if (!entry) throw new PostError("That entry doesn't exist at this point in the story", 409);
+
+    let old = entry.form?.name.trim() || entry.baseForm || "";
+    if (!old && input.base_form) {
+      // The entry's start on this path: its last "create" (an entry removed and added again starts at the new one).
+      const start = ops.filter((o) => o.entry_id === entry.entry_id && o.op === "create").at(-1) ?? ops.find((o) => o.entry_id === entry.entry_id)!;
+      createFactOp({ anchor_chapter_id: start.anchor_chapter_id, entry_id: entry.entry_id, op: "set", aspect: FORM_ASPECT, form: input.base_form, text: "", quote: "" });
+      old = input.base_form;
+    }
+    if (input.move.length && !old) throw new PostError("Name the form those facts belong to", 400);
+    if (input.form && input.move.length && sameAspect(old, input.form.name)) throw new PostError("The facts would move to the form being set", 400);
+
+    for (const id of new Set(input.move)) {
+      const f = entry.facts.find((x) => x.fact_id === id && !isFormAspect(x.aspect) && x.form === "");
+      if (!f) throw new PostError("That fact isn't an every-form fact of this entry here", 409);
+      createFactOp({ anchor_chapter_id: f.op.anchor_chapter_id, entry_id: entry.entry_id, fact_id: id, op: "set", aspect: f.aspect, form: old, text: f.text, quote: f.quote });
+    }
+
+    if (input.form) {
+      const { name, stage, anchor_chapter_id } = input.form;
+      createFactOp({ anchor_chapter_id, entry_id: entry.entry_id, op: "set", aspect: FORM_ASPECT, form: name, text: stage, quote: "" });
+      for (const a of input.add) createFactOp({ anchor_chapter_id, entry_id: entry.entry_id, op: "set", aspect: a.aspect, form: name, text: a.text, quote: "" });
+    }
+    return { moved: new Set(input.move).size };
+  })();
+}
+
 /**
  * A linked entry reads its details from the shared base, so a plain "replace" can't change them (it would be ignored).
  * A replace that repeats what the entry reads now is fine: bringing it back, or keeping it in the chapters after one.
