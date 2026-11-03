@@ -1959,6 +1959,9 @@ main:has(.illustrate-grid) {
   /* The middle column is the handle for resizing the first (see .column-resizer); --controls-width is set while it is dragged. */
   .illustrate-grid {
     display: grid;
+    /* At least a screen tall, so the page can always scroll far enough for the controls to stick at the top; on a short
+       page they would otherwise stay where they start, their bottom below the screen and under the dock. */
+    min-height: 100vh;
     grid-template-columns: var(--controls-width, minmax(22rem, 28rem)) 1rem minmax(0, 1fr);
     column-gap: 0;
     align-items: start;
@@ -2022,8 +2025,8 @@ main:has(.illustrate-grid) {
  * so that its room to stick in is the whole page.
  */
 .illustrate-grid {
-  /* about the dock's height, kept free at the bottom of the controls so the dock doesn't hide the last of them */
-  --dock-space: 10rem;
+  /* kept free at the bottom of the controls so the dock doesn't hide the last of them; set to the dock's height (usePictureWorkspace) */
+  --dock-space: 12rem;
 }
 
 .generate-dock {
@@ -2047,6 +2050,28 @@ main:has(.illustrate-grid) {
   border-radius: 8px;
   background: var(--card);
   box-shadow: 0 -2px 8px rgb(0 0 0 / 0.12);
+}
+
+/* Size and its multiplier on one line, the resulting size under them. */
+.size-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.size-row > .size-label {
+  flex: 1;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.size-row > label {
+  margin: 0;
+}
+
+.generate-bar .size-result {
+  margin: -0.25rem 0 0;
+  font-size: 0.8rem;
 }
 
 .queue-row {
@@ -2634,6 +2659,20 @@ dialog.picture-info::backdrop {
   .size-select .size-px {
     color: var(--muted);
     text-align: right;
+  }
+
+  /* Closed, it shows the shape, name and ratio only: the size it makes is under the row, with the multiplier beside it. */
+  .size-select selectedcontent {
+    grid-template-columns: 1.2rem minmax(0, 1fr) 2.8rem;
+  }
+
+  .size-select selectedcontent .size-px {
+    display: none;
+  }
+
+  .size-select selectedcontent .size-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 

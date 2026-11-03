@@ -379,7 +379,8 @@ export default function ComfyGenerate({
   const waiting = queue.slice(1).reduce((n, q) => n + q.count, 0);
   const bar = (
     <div className="generate-bar">
-      <label className="row" style={{ gap: "0.4rem" }}>
+      <div className="size-row">
+      <label className="row size-label" style={{ gap: "0.4rem" }}>
         Size
         <select
           className="size-select"
@@ -424,10 +425,11 @@ export default function ComfyGenerate({
           }}
           onBlur={() => setScaleText(String(sizeScale))}
           disabled={start !== null}
-          style={{ width: "5rem" }}
+          style={{ width: "4.25rem" }}
         />
-        <span className="meta">{comfy.width} × {comfy.height}</span>
       </label>
+      </div>
+      <div className="meta size-result">{comfy.width} × {comfy.height}</div>
       <div className="queue-row">
         <button
           type="button"

@@ -149,6 +149,16 @@ export function usePictureWorkspace(target: PictureTarget, jobs: PictureJob[], v
     }
   }
 
+  // The controls keep room at their bottom for the dock, which grows with what it shows (a progress bar, wrapped rows).
+  useEffect(() => {
+    if (!grid || !dock) return;
+    const room = () => grid.style.setProperty("--dock-space", `${dock.offsetHeight + 12}px`);
+    room();
+    const watch = new ResizeObserver(room);
+    watch.observe(dock);
+    return () => watch.disconnect();
+  }, [grid, dock]);
+
   /** The grid's own props: its ref, and the dragged width. */
   const gridProps = { ref: setGrid, style: controlsWidth ? ({ "--controls-width": `${controlsWidth}px` } as CSSProperties) : undefined };
   /** The handle between the columns. */

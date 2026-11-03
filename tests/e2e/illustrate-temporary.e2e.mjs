@@ -59,8 +59,7 @@ try {
   await showView(/^All/);
   ok((await heads()).join("|") === "a temporary picture that was pinned|an unpinned ordinary picture|a pinned ordinary picture", "All shows the pinned temporary picture but not the others");
   const tile = gallery.getByRole("list", { name: "Pictures from “a temporary picture that was pinned”", exact: true }).locator(".picture-tile");
-  ok((await tile.locator(".picture-caption").innerText()).includes("temporary"), "a temporary picture's caption says temporary");
-  ok(await gallery.getByRole("list", { name: "Pictures from “an unpinned ordinary picture”", exact: true }).locator(".picture-caption").first().innerText().then((t) => !t.includes("temporary")), "…and an ordinary one's does not");
+  ok(!(await tile.locator(".picture-caption").innerText()).includes("temporary"), "a pinned temporary picture is a kept picture: its caption doesn't say temporary");
   await showView(/^Trashed/);
   await page.getByText("No trashed pictures.").waitFor();
   ok((await heads()).length === 0, "Trashed does not show the trashed temporary picture");

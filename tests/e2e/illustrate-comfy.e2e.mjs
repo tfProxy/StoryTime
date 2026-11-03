@@ -261,6 +261,23 @@ try {
   ok(queueBox.width > dockBox.width / 2 && perClickBox.x >= queueBox.x + queueBox.width - 1 && Math.abs(perClickBox.y - queueBox.y) < queueBox.height, "…the button takes most of the line, with the Pictures per click menu beside it");
   const sizeBox = await page.getByLabel("Size").boundingBox();
   ok(sizeBox.y + sizeBox.height <= queueBox.y + 1, "…with the Size menu just above it");
+  const scaleBox = await page.getByLabel("Scale by").boundingBox();
+  ok(scaleBox.x >= sizeBox.x + sizeBox.width - 1 && Math.abs(scaleBox.y + scaleBox.height / 2 - (sizeBox.y + sizeBox.height / 2)) < 4, "…and the size multiplier to the right of the Size menu, on its line");
+  // On a wide, short screen the controls scroll in their column. Wheeled to the end over them (on a page with few
+  // pictures, so the page itself is short), their last panel ends above the dock, not under it.
+  await page.setViewportSize({ width: 1400, height: 800 });
+  await page.waitForTimeout(300);
+  await page.mouse.move(150, 400);
+  for (let i = 0; i < 12; i++) {
+    await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(50);
+  }
+  await page.waitForTimeout(300);
+  const lastBottom = await page.locator(".illustrate-controls > *").last().evaluate((e) => e.getBoundingClientRect().bottom);
+  const dockTop = (await page.locator(".generate-bar").boundingBox()).y;
+  ok(lastBottom <= dockTop + 1, `…and scrolled to the end, the controls' last panel ends above the dock (${Math.round(lastBottom)} ≤ ${Math.round(dockTop)})`);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.setViewportSize({ width: 1000, height: 1300 });
 
   // ---- quick clicks with nothing changed are one job ----
   const mark = comfy.calls.length;
