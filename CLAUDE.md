@@ -19,6 +19,7 @@ A single-writer branching-story app: Next.js (read `AGENTS.md` above first), Rea
 
 - Read only what the task needs: `grep -n` for the function or text, then Read with `offset`/`limit`. Don't read whole large components (`ChapterEditor.tsx`, `ComfyGenerate.tsx`, `PictureSettings.tsx`) to change one part.
 - Find the tests that cover a change with `grep -l` on the label or route in `tests/`, and run just those files.
+- Delegate without being asked: use sub-agents on a cheaper model (`haiku` for searches and reading logs, `sonnet` for running tests and checking screenshots) for broad codebase searches, running test suites and summarising failures, and independent investigations that can run in parallel. Do edits to app code yourself, and handle small tasks directly; a sub-agent starts cold and costs more than it saves on a one-file change.
 
 ## Verification before saying a change is done
 
