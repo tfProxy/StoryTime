@@ -22,12 +22,14 @@ and, for pictures, your own ComfyUI machine.
   notes section on any writing page; a change is tried out on that page until you save it for the
   whole story.
 - **Codex**: per-branch entries for characters, places and facts (a character who turns into a horse
-  stays human on other branches). Every list of entries (the chapter's codex page, the story's
-  details, the Story Bible, the writing page's drawer) shows the same cards, and each card opens the
-  entry's own page, the one place to read and change it. While writing, the drawer opens the entry in
-  place; changes stay in the draft and are saved with the chapter when it is posted (or straight away,
-  if you date them to an earlier chapter). Entries can have pictures that change over the story too
-  (the **Pictures** button on the entry's page).
+  stays human on other branches). The codex lives in the **Codex** section of the Story Bible: entries
+  sit in folds by type (characters, places…), each card opens the entry's own page, the one place to
+  read and change it, and **⋯** next to the Section picker adds a **New entry** (or one **from the
+  shared codex**). Pick a chapter under the picker to see the codex as of that chapter on its branch, or
+  the whole story to see every entry on any branch; a chapter's **Codex** button opens it there. While
+  writing, the codex drawer opens the entry in place; changes stay in the draft and are saved with the
+  chapter when it is posted (or straight away, if you date them to an earlier chapter). Entries can
+  have pictures that change over the story too (the **Pictures** button on the entry's page).
 - **Keywords**: each entry lists the words in the story that bring it into the AI's prompt
   ("Ro, the traveller"); **Edit details** on the entry's page changes them, with the name and type.
 - **Codex facts**: an entry holds small facts, one per aspect ("Ears: tall fox ears"), each dated to
@@ -38,17 +40,20 @@ and, for pictures, your own ComfyUI machine.
   **What the AI reads** shows the text the AI gets for the entry: its form and facts.
 - **Your notes**: a free-text note on each entry that is yours and is **not sent to the AI**. **Turn
   notes into facts** asks the AI to read them and leave suggested facts in the Codex inbox.
-- **Story Bible**: the **Bible** tab of every story page, and in the writing page's codex drawer.
-- **Codex inbox**: after you save a new or edited chapter, the AI (your cheaper model) reads it in
-  the background and leaves suggested fact changes in the inbox, on the **Codex** tab of the Story
-  Bible. Each suggestion is one fact, shows in red and green exactly what changes and the sentence it
+- **Story Bible**: the **Bible** tab of every story page. On a phone its sections are a **Section**
+  picker; under it, **Showing** says which chapter (or the whole story) you are looking at, with
+  **Change…** to pick another and a link back to reading the chapter.
+- **Codex suggestions**: after you save a new or edited chapter, the AI (your cheaper model) reads it
+  in the background and leaves suggested fact changes on the entries they are about, in the Codex
+  section. Each suggestion is one fact, shows in red and green exactly what changes and the sentence it
   is based on, and you **Accept**, **Edit** or **Dismiss** it (a dismissed one can be undone).
-  "Accept all for" an entry takes its changes in one go; where the chapter contradicts the codex you
-  choose **Update codex** or **Keep the codex**. A chapter shows "Codex: N suggestions from this
-  chapter" when some are waiting, and the chapter's codex page counts the ones on its branch. You can
-  also run the check yourself (**Check this chapter**, **Check every chapter on this branch**) from
-  the codex page or the Story Bible. Turn the automatic check on or off in Settings under "Suggest
-  codex changes after a chapter is saved".
+  "Accept all" on an entry takes its changes in one go; where the chapter contradicts the codex you
+  choose **Update codex** or **Keep the codex**. A new character or place the AI found appears as a
+  dashed **Suggested new entry** you can **Add it** or dismiss. A chapter shows "Codex: N suggestions from
+  this chapter" when some are waiting. You can also run the check yourself (**Check this chapter with
+  AI**, or **Check every chapter with AI** for the whole story) from the **⋯** menu of the Codex
+  section. Turn the automatic check on or off in Settings under "Suggest codex changes after a
+  chapter is saved".
 - **Review** (a story's menu): a page listing what may need fixing (missing, stale or wrong
   summaries, continuity slips, names with no codex entry, AI chapters not yet read) and the
   **tags** the AI suggests for chapters, for you to approve. See [Tags](#tags) below.
@@ -66,8 +71,8 @@ and, for pictures, your own ComfyUI machine.
   tab, downloads as readable Markdown, a single HTML file that plays the story offline (it remembers
   what the reader has seen, and can forget it), Twine (Twee), full JSON, or the codex as Markdown. The
   HTML and Twine files include every written chapter but leave out choices you haven't written yet; a
-  chapter whose choices are all unwritten ends with "…to be continued." A chapter's codex page
-  downloads that branch's codex as a Markdown "story bible".
+  chapter whose choices are all unwritten ends with "…to be continued." The Codex section, with a
+  chapter chosen, downloads that branch's codex as a Markdown "story bible".
 
 ## Good to know
 
