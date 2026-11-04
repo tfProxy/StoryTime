@@ -1,4 +1,5 @@
 import { launch, useMockAi } from "./browser.mjs";
+import { unfoldEntryFolds } from "./unfold.mjs";
 
 // The codex inbox: suggestions the codex check left, shown in the Story Bible's codex tab, with the banner on the
 // chapter page, the count on the codex page, the setting, and the buttons that queue a check. Suggestions are seeded
@@ -43,6 +44,7 @@ try {
   await seed(root, await rev(root), [s("set", { aspect: "Voice", after: "low and quiet", quote: "Rowan stood there." })]);
 
   const ctx = await browser.newContext();
+  await unfoldEntryFolds(ctx);
   const page = await ctx.newPage();
   page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
   page.on("dialog", (d) => d.accept());

@@ -1,4 +1,5 @@
 import { launch } from "./browser.mjs";
+import { unfoldEntryFolds } from "./unfold.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 
@@ -17,6 +18,7 @@ const entryUrl = (at) => `${BASE}/s/${story.story_id}/codex/${entry.entry_id}?at
 
 const browser = await launch();
 const ctx = await browser.newContext();
+await unfoldEntryFolds(ctx);
 const page = await ctx.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 page.on("dialog", (d) => d.accept());

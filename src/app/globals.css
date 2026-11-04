@@ -3084,8 +3084,39 @@ fieldset.model-uses .inline-label input[type="checkbox"] {
   text-decoration: none;
 }
 
-.more-menu-items a + a {
+.more-menu-items a + a,
+.more-menu-items > * + * {
   border-top: 1px solid var(--line);
+}
+
+/* An action that isn't a link, drawn like one. */
+.more-menu-items button {
+  padding: 0.55rem 0.8rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.more-menu-items button:hover:not(:disabled) {
+  background: var(--line);
+}
+
+.more-menu-items button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.more-menu-items .danger,
+.more-menu-items button.danger {
+  color: #c0392b;
+}
+
+.more-menu-items button.danger:disabled {
+  color: var(--muted);
 }
 
 /* Type filter above a list of codex entries. */
@@ -4062,10 +4093,65 @@ button.refine-fit {
   border: 0;
 }
 
-.entry-remove-option {
+/* A folding section of the entry page: the heading is the summary. */
+.entry-fold {
+  display: block;
+  padding: 0 1rem;
+}
+
+.entry-fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.entry-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.entry-fold > summary::before {
+  content: "▸";
+  flex: none;
+  color: var(--muted);
+}
+
+.entry-fold[open] > summary::before {
+  content: "▾";
+}
+
+.entry-fold > summary h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.entry-fold > summary .meta {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.entry-fold-body {
   display: grid;
-  gap: 0.25rem;
-  justify-items: start;
+  gap: 0.5rem;
+  min-width: 0;
+  padding-bottom: 1rem;
+}
+
+/* Anchor the menu to the whole head (right-aligned), so it stays on screen even if the button wraps. */
+.entry-head {
+  position: relative;
+}
+
+.entry-head .more-menu {
+  position: static;
+}
+
+.entry-head .more-menu > summary {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  justify-content: center;
 }
 
 .chapter-summary {
@@ -4091,10 +4177,6 @@ button.refine-fit {
   margin: 0 0 0.5rem;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-.entry-history > summary {
-  cursor: pointer;
 }
 
 .entry-path {

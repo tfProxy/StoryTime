@@ -18,6 +18,7 @@ import {
 } from "@/lib/codex";
 import type { PathChapter } from "@/lib/ai/codexAi";
 import ChapterPathPicker from "./ChapterPathPicker";
+import EntryFold from "./EntryFold";
 
 type Props = {
   entry: CodexEntry;
@@ -241,8 +242,7 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
         </section>
       )}
 
-      <section className="entry-section facts">
-        <h2>Facts</h2>
+      <EntryFold title="Facts" id="entry-facts" className="facts" open note={rows.length > 0 ? `${rows.length}` : undefined}>
         {groups.length === 0 && <p className="meta">No facts yet.</p>}
         {groups.map((g) => (
           <div key={g.key} className={g.dim ? "fact-group dim" : "fact-group"}>
@@ -373,7 +373,7 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
             ))}
           </div>
         )}
-      </section>
+      </EntryFold>
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { launch, useMockAi } from "./browser.mjs";
+import { unfoldEntryFolds } from "./unfold.mjs";
 
 // "Flesh out" on a codex entry's own page: the form (stay close, focus), the run it makes, and where it is not offered.
 // The queue is paused, so no AI is called (the AI side is covered by tests/api/flesh-out.test.mjs).
@@ -26,6 +27,7 @@ try {
   const entryUrl = (id) => `${BASE}/s/${sid}/codex/${id}?at=${R}`;
 
   const context = await browser.newContext();
+  await unfoldEntryFolds(context);
   const page = await context.newPage();
   page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
   page.on("dialog", (d) => d.accept());
@@ -38,7 +40,7 @@ try {
 
   // on the entry's page: invent by default
   await page.goto(entryUrl(wren));
-  const section = page.locator("section", { has: page.getByRole("heading", { name: "Flesh out with AI", exact: true }) });
+  const section = page.locator(".entry-section", { has: page.getByRole("heading", { name: "Flesh out with AI", exact: true }) });
   await section.waitFor();
   await section.getByRole("button", { name: /^Flesh out/ }).click();
   const stay = section.getByLabel(/Stay close to the story/);
@@ -54,7 +56,7 @@ try {
 
   // stay close, on another entry
   await page.goto(entryUrl(hollow));
-  const section2 = page.locator("section", { has: page.getByRole("heading", { name: "Flesh out with AI", exact: true }) });
+  const section2 = page.locator(".entry-section", { has: page.getByRole("heading", { name: "Flesh out with AI", exact: true }) });
   await section2.getByRole("button", { name: /^Flesh out/ }).click();
   await section2.getByLabel(/Stay close to the story/).check();
   const queued2 = page.waitForResponse((r) => r.url().endsWith(`/api/stories/${sid}/flesh-out`) && r.request().method() === "POST");

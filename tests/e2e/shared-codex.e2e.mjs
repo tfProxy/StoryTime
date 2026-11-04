@@ -1,4 +1,5 @@
 import { launch, useMockAi } from "./browser.mjs";
+import { unfoldEntryFolds } from "./unfold.mjs";
 
 // The shared codex: the library page (add an entry, its details and facts), adding a shared entry to a story from a
 // chapter on its codex page, and what the story's entry page shows for it.
@@ -23,6 +24,7 @@ try {
   const A = (await post("/api/chapters", { choice_id: choice.id, title: "Chapter A", body: "Onward.", choices: [] })).chapter_id;
 
   const context = await browser.newContext();
+  await unfoldEntryFolds(context);
   const page = await context.newPage();
   page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
   page.on("dialog", (d) => d.accept());
@@ -52,7 +54,7 @@ try {
   await page.getByRole("button", { name: "Save fact" }).click();
   await page.getByText("tall russet fox ears").first().waitFor(); // (in the fact list and in what the AI reads)
   ok((await send("GET", `/api/shared/${sid}`)).entry.aliases.join() === "Mara,the fox", "the details are saved");
-  const reads = page.locator("section", { has: page.getByRole("heading", { name: "What the AI reads", exact: true }) }).locator(".fact-ai");
+  const reads = page.locator(".entry-section", { has: page.getByRole("heading", { name: "What the AI reads", exact: true }) }).locator(".fact-ai");
   await reads.filter({ hasText: "Ears: tall russet fox ears." }).waitFor();
   ok((await reads.innerText()).trim() === "Ears: tall russet fox ears.", "the shared page shows what the AI reads: " + (await reads.innerText()));
   ok(!(await reads.innerText()).includes("Base notes"), "…and not the notes");
@@ -103,7 +105,8 @@ try {
   const pip = (await post("/api/codex", { anchor_chapter_id: R, op: "create", name: "Pip Tern", type: "character", content: "Own notes." })).entry_id;
   await post("/api/codex/facts", { anchor_chapter_id: R, entry_id: pip, op: "set", aspect: "Eyes", text: "Green." });
   await page.goto(`${BASE}/s/${story.story_id}/codex/${pip}?at=${R}`);
-  await page.getByRole("button", { name: "Share this entry" }).click();
+  await page.getByLabel("More entry actions", { exact: true }).click();
+  await page.getByRole("button", { name: "Share to other stories…" }).click();
   await page.getByText("This entry is shared.").waitFor();
   const list = (await send("GET", "/api/shared")).entries;
   const pipShared = list.find((e) => e.name === "Pip Tern");

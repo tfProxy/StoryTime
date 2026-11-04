@@ -1,4 +1,5 @@
 import { launch, useMockAi } from "./browser.mjs";
+import { unfoldEntryFolds } from "./unfold.mjs";
 
 // The codex entry's own page: keywords, details, form, facts, notes (not sent to the AI), Turn notes into facts, and
 // the places that lead to it (the codex list, the Story Bible, the ☰ menu, the writing page's drawer).
@@ -30,11 +31,12 @@ try {
   const entryUrl = (at) => `${BASE}/s/${sid}/codex/${rowan}?at=${at}`;
 
   const context = await browser.newContext();
+  await unfoldEntryFolds(context);
   const page = await context.newPage();
   page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
   page.on("dialog", (d) => d.accept());
   const ed = page.locator(".entry-editor");
-  const section = (heading) => ed.locator("section", { has: page.getByRole("heading", { name: heading, exact: true }) });
+  const section = (heading) => ed.locator(".entry-section", { has: page.getByRole("heading", { name: heading, exact: true }) });
   // (By the fact's own line: a form that is open holds its text in a textarea, which also counts as the row's text.)
   const row = (t) => ed.locator(".fact-row").filter({ has: page.locator(".fact-line", { hasText: t }) });
   const box = async (loc) => (await loc.first().boundingBox());
@@ -57,7 +59,7 @@ try {
 
   // ---- keywords are always visible, under the field in the always-visible Details section ----
   const keywords = ed.locator(".entry-keywords");
-  const detailsBox = section("Details");
+  const detailsBox = section("Name, type and keywords");
   ok((await keywords.innerText()).replace(/\s+/g, " ") === "Inherited: Ro (from “Root”), the traveller (from “Root”)", "keywords that come from an earlier chapter are listed once, with where from, under the box");
   ok(!(await detailsBox.innerText()).includes("Keywords:") && (await detailsBox.getByLabel(/Keywords/).inputValue()) === "Ro, the traveller" && (await detailsBox.innerText()).includes("comma-separated; words in the story that bring this entry into the AI's prompt") && (await detailsBox.getByText("bring this entry into the AI's prompt").count()) === 1, "…with no Keywords: summary line, and one short hint");
   // labels and fields share a row on a wide screen
@@ -75,7 +77,7 @@ try {
   );
   await page.goto(entryUrl(R));
   await ed.waitFor();
-  ok((await ed.locator(".entry-keywords").count()) === 0 && (await section("Details").getByLabel(/Keywords/).inputValue()) === "Ro, the traveller", "an entry whose keywords were all added here has no Inherited line");
+  ok((await ed.locator(".entry-keywords").count()) === 0 && (await section("Name, type and keywords").getByLabel(/Keywords/).inputValue()) === "Ro, the traveller", "an entry whose keywords were all added here has no Inherited line");
   await page.goto(entryUrl(A));
   await ed.waitFor();
   // a phone shows the label above its field, and the path as a vertical list
@@ -87,7 +89,7 @@ try {
   await page.setViewportSize({ width: 1280, height: 800 });
 
   // ---- Details is always there, above the Form section, and saves keywords ----
-  const details = section("Details").locator("form.entry-details-form");
+  const details = section("Name, type and keywords").locator("form.entry-details-form");
   ok((await details.isVisible()) && (await below(section("Form"), details)) && (await ed.getByRole("button", { name: "Edit details" }).count()) === 0, "the Details form is on the page without an Edit details button, above the Form section");
   ok((await details.getByRole("button", { name: "This chapter", exact: true }).getAttribute("aria-pressed")) === "true", "…with “Takes effect from” on this chapter");
   await details.getByLabel(/Keywords/).fill("Ro, the traveller, the fox");
@@ -267,7 +269,7 @@ try {
   ok(kwText === "Inherited: lantern (from “Hub”), lamp (from “Hub”)", "inherited keywords say which chapter they came from: " + kwText);
 
   // ---- the Details form is always there; Save waits for a change ----
-  const detailsForm = section("Details").locator("form.entry-details-form");
+  const detailsForm = section("Name, type and keywords").locator("form.entry-details-form");
   const saveDetails = detailsForm.getByRole("button", { name: "Save changes" });
   ok(await detailsForm.isVisible() && (await saveDetails.isDisabled()), "Details is on the page without a button, and Save is disabled until something changes");
   await detailsForm.getByLabel(/Keywords/).fill("lantern, lamp, brass");
@@ -291,11 +293,15 @@ try {
 
   // ---- Remove from this chapter only ----
   await page.goto(lampUrl(cellar));
-  const removeBlock = section("Remove");
-  ok((await removeBlock.getByRole("button", { name: "Remove from this chapter only" }).isDisabled()) && (await removeBlock.innerText()).includes("nothing to keep it in"), "with no chapter after it, “Remove from this chapter only” is disabled and says why");
+  const menuItem = (name) => ed.locator(".more-menu-items").getByRole("button", { name });
+  const openMenu = () => ed.getByLabel("More entry actions", { exact: true }).click();
+  await openMenu();
+  const removeItem = menuItem("Remove from this chapter only…");
+  ok((await removeItem.isDisabled()) && ((await removeItem.getAttribute("title")) ?? "").includes("nothing to keep it in"), "with no chapter after it, “Remove from this chapter only…” is disabled and says why");
   await page.goto(lampUrl(H));
-  ok((await removeBlock.innerText()).includes("Lamp stays in the 2 chapters after “Hub”."), "…and otherwise says how many chapters keep the entry");
-  await removeBlock.getByRole("button", { name: "Remove from this chapter only" }).click();
+  await openMenu();
+  ok(((await removeItem.getAttribute("title")) ?? "").includes("Lamp stays in the 2 chapters after “Hub”."), "…and otherwise says how many chapters keep the entry");
+  await removeItem.click();
   await page.waitForURL(lampUrl(cellar));
   ok(await page.getByRole("heading", { name: "Lamp", level: 1 }).isVisible(), "it goes to the entry at the first chapter that keeps it");
   ok(!(await send("GET", `/api/chapters/${H}/codex`)).entries.some((e) => e.name === "Lamp"), "the entry is gone at that chapter…");
@@ -304,6 +310,32 @@ try {
   await page.goto(`${BASE}/c/${H}/codex`);
   await page.getByText("No entries yet at this point.").waitFor();
   ok((await page.locator(".entry-card", { hasText: "Lamp" }).count()) === 0, "the chapter's codex page no longer lists it");
+
+  // ---- the ⋯ menu and the folds, on a phone (a context that leaves the folds as the page has them) ----
+  const phone = await (await browser.newContext({ viewport: { width: 390, height: 800 } })).newPage();
+  phone.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
+  await phone.goto(entryUrl(R));
+  await phone.getByRole("heading", { name: "Rowan", level: 1 }).waitFor();
+  const fold = (name) => phone.locator("details.entry-fold", { has: phone.getByRole("heading", { name, exact: true }) });
+  const isOpen = (loc) => loc.evaluate((d) => d.open);
+  ok((await isOpen(fold("Facts"))) && !(await isOpen(fold("What the AI reads"))) && !(await isOpen(fold("Your notes (not sent to the AI)"))) && !(await isOpen(fold("Flesh out with AI"))) && !(await isOpen(fold("History"))) && !(await isOpen(fold("Name, type and keywords"))), "Facts is open and the other sections are folded");
+  ok(!(await phone.getByRole("heading", { name: "Remove", exact: true }).count()) && !(await phone.getByRole("heading", { name: "Use in other stories" }).count()), "there are no Remove or Use in other stories sections");
+  await phone.getByLabel("More entry actions", { exact: true }).click();
+  const items = phone.locator(".more-menu-items > *");
+  ok((await items.allInnerTexts()).map((t) => t.trim()).join("|") === "Edit name, type and keywords|Pictures|History (1 version)|Share to other stories…|Remove from this chapter only…|Retire from here on…", "the ⋯ menu lists the entry's actions: " + (await items.allInnerTexts()).join("|"));
+  const menuBox = await box(phone.locator(".more-menu-items"));
+  ok(menuBox.x >= 0 && menuBox.x + menuBox.width <= 390, "the menu stays on the phone screen");
+  ok((await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)), "the entry page does not scroll sideways at 390px");
+  ok((await phone.locator(".more-menu-items").getByRole("link", { name: "Pictures" }).getAttribute("href")) === `/s/${sid}/codex/${rowan}/pictures?at=${R}`, "Pictures in the menu links to the picture page");
+  await phone.getByRole("button", { name: "History (1 version)" }).click();
+  ok((await isOpen(fold("History"))) && !(await phone.locator("details.more-menu").evaluate((d) => d.open)) && (await phone.getByText("Restore this version").count()) === 0 && (await phone.locator(".history").isVisible()), "History in the menu opens the History fold and closes the menu");
+  await phone.getByLabel("More entry actions", { exact: true }).click();
+  await phone.getByRole("button", { name: "Edit name, type and keywords" }).click();
+  ok((await isOpen(fold("Name, type and keywords"))) && (await phone.locator("form.entry-details-form").isVisible()), "Edit name, type and keywords opens the form");
+  await fold("What the AI reads").locator("summary").click();
+  ok(await fold("What the AI reads").locator(".fact-ai").isVisible(), "tapping a section's heading opens it");
+  ok((await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)), "…and the page still does not scroll sideways");
+  await phone.context().close();
 } catch (e) {
   console.log("ERROR", e.message);
   failed = true;

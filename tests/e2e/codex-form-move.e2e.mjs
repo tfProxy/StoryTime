@@ -1,5 +1,6 @@
 // Setting a form: tick the every-form facts that are only true of the old form, say what they are like in the new one.
 import { launch } from "./browser.mjs";
+import { unfoldEntryFolds } from "./unfold.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 
@@ -19,7 +20,9 @@ for (const [aspect, text] of [["Ears", "round human ears"], ["Personality", "stu
 const entryUrl = (at) => `${BASE}/s/${story.story_id}/codex/${entry.entry_id}?at=${at}`;
 
 const browser = await launch();
-const page = await (await browser.newContext()).newPage();
+const formMoveContext = await browser.newContext();
+await unfoldEntryFolds(formMoveContext);
+const page = await formMoveContext.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 const ed = page.locator(".entry-editor");
 

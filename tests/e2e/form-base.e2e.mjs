@@ -1,4 +1,5 @@
 import { launch, useMockAi } from "./browser.mjs";
+import { unfoldEntryFolds } from "./unfold.mjs";
 
 // An entry's normal (base) form: the entry page says which it is and that the AI isn't told it, and warns when facts are
 // for a form but no form is set. What the AI reads follows (see tests/unit/codex.test.mts for the rules).
@@ -35,11 +36,12 @@ try {
   await fact(wren, R, "Tail", "a bushy tail", "vixen");
 
   const context = await browser.newContext();
+  await unfoldEntryFolds(context);
   const page = await context.newPage();
   page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
   const at = (id, chapter) => `${BASE}/s/${sid}/codex/${id}?at=${chapter}`;
   const form = () => page.locator("section", { has: page.getByRole("heading", { name: "Form", exact: true }) });
-  const reads = () => page.locator("section", { has: page.getByRole("heading", { name: "What the AI reads", exact: true }) }).locator(".fact-ai");
+  const reads = () => page.locator(".entry-section", { has: page.getByRole("heading", { name: "What the AI reads", exact: true }) }).locator(".fact-ai");
 
   // in the normal form: said on the page, and the AI isn't told the form
   await page.goto(at(rowan, R));

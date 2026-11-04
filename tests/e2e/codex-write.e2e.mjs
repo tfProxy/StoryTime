@@ -1,6 +1,7 @@
 // The codex on the writing page: a drawer to view/add entries, and a preview of which entries go into a prompt.
 import http from "node:http";
 import { launch, useMockAi } from "./browser.mjs";
+import { unfoldEntryFolds } from "./unfold.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const prompts = [];
@@ -39,6 +40,7 @@ await entry("The Rule", "Magic costs memories.", "Every spell takes a memory.", 
 
 const browser = await launch();
 const ctx = await browser.newContext();
+await unfoldEntryFolds(ctx);
 const ai = await useMockAi(BASE, { main: "m", cheap: null });
 const page = await ctx.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });

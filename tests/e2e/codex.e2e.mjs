@@ -1,5 +1,6 @@
 import http from "node:http";
 import { launch, useMockAi } from "./browser.mjs";
+import { unfoldEntryFolds } from "./unfold.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const prompts = [];
@@ -31,6 +32,7 @@ const gallop = (await (await fetch(`${BASE}/api/chapters/${A}`)).json()).choices
 
 const browser = await launch();
 const ctx = await browser.newContext();
+await unfoldEntryFolds(ctx);
 const ai = await useMockAi(BASE, { main: "m", cheap: null });
 const page = await ctx.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
@@ -78,7 +80,7 @@ await editor.getByRole("button", { name: "Save", exact: true }).click();
 await editor.getByText("She is shy.").waitFor();
 
 // history + restore
-await editor.getByText(/3 versions/).click();
+await editor.getByText("3 versions", { exact: true }).waitFor(); // (the History fold, opened by the test's context)
 ok(await editor.locator("ol.history li").first().innerText().then((t) => /Changed/.test(t) && /content/.test(t)), "history lists the change");
 await editor.getByRole("button", { name: "Restore this version" }).first().click();
 await editor.getByText("No notes.").waitFor();
@@ -120,7 +122,8 @@ ok(prompts.at(-1).includes("A human thief with a scar."), "continuation on B get
 // retire at A, from the entry's page
 await page.goto(`${BASE}/c/${A}/codex`);
 await card.click();
-await editor.getByRole("button", { name: "Retire from here on" }).click();
+await editor.getByLabel("More entry actions", { exact: true }).click();
+await editor.getByRole("button", { name: "Retire from here on…" }).click();
 await page.getByRole("heading", { name: "Retired" }).waitFor();
 ok(page.url().endsWith(`/c/${A}/codex`), "retiring goes back to the chapter's codex");
 ok((await page.getByText("Now a horse").count()) === 0, "retired entry leaves the list");

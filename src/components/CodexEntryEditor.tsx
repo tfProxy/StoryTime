@@ -25,6 +25,8 @@ import ChapterPathPicker from "./ChapterPathPicker";
 import CodexInbox from "./CodexInbox";
 import FleshOutEntry from "./FleshOutEntry";
 import LinkedEntryDetails from "./LinkedEntryDetails";
+import EntryFold from "./EntryFold";
+import MoreMenu from "./MoreMenu";
 
 export type EntryFields = { name: string; type: EntryType; aliases: string[]; content: string; always_include: boolean };
 /** A change to an entry. `anchor` is the chapter it takes effect from; without it, the editor's own default applies. */
@@ -106,6 +108,9 @@ export default function CodexEntryEditor({
   const [runId, setRunId] = useState<string | null>(null);
   const [notesMessage, setNotesMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [starting, setStarting] = useState(false);
+  // The folds the "⋯" menu opens. A linked entry's details hold its notice, so they start open.
+  const [detailsOpen, setDetailsOpen] = useState(Boolean(entry.shared_entry_id) && variant === "page");
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const titleOf = (id: string) => (id === DRAFT_ANCHOR ? "this chapter (not posted yet)" : (path.find((p) => p.id === id)?.title ?? "an earlier chapter"));
   const hist = entryHistory(ops, entry.entry_id);
@@ -138,6 +143,12 @@ export default function CodexEntryEditor({
   }
 
   const here = titleOf(chapterId);
+
+  /** Opens a fold from the menu and brings it into view (after it has rendered open). */
+  function reveal(id: string, setOpen: (open: boolean) => void) {
+    setOpen(true);
+    setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: "nearest", behavior: "smooth" }), 50);
+  }
 
   /** Takes the entry out of this chapter only; it stays, facts and all, in each chapter written after it. */
   async function removeHere(): Promise<{ error?: string; keptIn: string[] }> {
@@ -220,37 +231,110 @@ export default function CodexEntryEditor({
           </div>
         </div>
         <div className="row entry-head-actions">
-          {picturesHref && (
-            <Link className="button secondary" href={picturesHref}>
-              Pictures
-            </Link>
-          )}
           {held && onDiscardHeld && (
             <button type="button" className="secondary" disabled={busy} onClick={onDiscardHeld}>
               {held.op === "create" ? "Delete" : "Undo change"}
             </button>
           )}
+          <MoreMenu label="More entry actions">
+            {(!shared || !inDraft) && <button type="button" onClick={() => reveal("entry-details", setDetailsOpen)}>Edit name, type and keywords</button>}
+            {picturesHref && <Link href={picturesHref}>Pictures</Link>}
+            <button type="button" onClick={() => reveal("entry-history", setHistoryOpen)}>
+              History ({hist.length} version{hist.length === 1 ? "" : "s"})
+            </button>
+            {!shared && !draftOnly && !inDraft && storyId && (
+              <button
+                type="button"
+                disabled={busy}
+                title={`Make this a shared entry, as it reads at “${here}”, so other stories can add it too. This story keeps reading it just as it does now.`}
+                onClick={async () => {
+                  if (!window.confirm(`Add “${entry.name}” to the shared codex, as it reads at “${here}”?`)) return;
+                  setBusy(true);
+                  setError(null);
+                  try {
+                    const res = await fetch("/api/codex/share", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ anchor_chapter_id: chapterId, entry_id: entry.entry_id }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) setError(data.error ?? `Request failed (${res.status})`);
+                    else router.refresh();
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : String(e));
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Share to other stories…
+              </button>
+            )}
+            {/* Not in the writing drawer: the chapter being written isn't saved yet, so it would lose the entry too. */}
+            {!draftOnly && !inDraft && (
+              <button
+                type="button"
+                className="danger"
+                disabled={busy || after.length === 0}
+                title={
+                  after.length > 0
+                    ? `${entry.name} stays in the ${after.length === 1 ? "chapter" : `${after.length} chapters`} after “${here}”.`
+                    : "No chapter has been written after this one, so there is nothing to keep it in. Use Retire from here on."
+                }
+                onClick={async () => {
+                  if (!window.confirm(`Remove “${entry.name}” from “${here}” only? It stays in the chapters after it.`)) return;
+                  setBusy(true);
+                  setError(null);
+                  const problem = await removeHere();
+                  setBusy(false);
+                  if (problem.error) return setError(problem.error);
+                  if (onRetired) onRetired();
+                  else router.push(`/s/${storyId}/codex/${entry.entry_id}?at=${problem.keptIn[0] ?? after[0]?.id}`);
+                }}
+              >
+                Remove from this chapter only…
+              </button>
+            )}
+            <button
+              type="button"
+              className="danger"
+              disabled={busy}
+              title={`Gone from “${here}” and every chapter after it. Earlier chapters keep it.`}
+              onClick={async () => {
+                if (!window.confirm(`Retire “${entry.name}” from this chapter onward? Earlier chapters keep it.`)) return;
+                if (await change({ op: "retire", entry_id: entry.entry_id })) (onRetired ?? (() => router.push(`/c/${chapterId}/codex`)))();
+              }}
+            >
+              Retire from here on…
+            </button>
+          </MoreMenu>
         </div>
       </div>
       {error && <p className="error">{error}</p>}
 
-      <section className="entry-section">
-        <h2>Details</h2>
-        {shared && !inDraft ? (
+      {shared && inDraft && (
+        <section className="entry-section">
+          <p className="notice">
+            This entry is shared: its name, type, keywords and notes come from the <Link href={`/shared/${shared}`}>shared entry</Link>.
+            Open it from its page (not the writing page&apos;s drawer) to change them for this story, or edit the shared entry to change
+            them in every story. The facts below can be changed for this story alone.
+          </p>
+          <p className="meta">
+            Keywords: {entry.aliases.length > 0 ? entry.aliases.join(", ") : "none"}
+            {entry.always_include && " · always included in AI prompts"}
+          </p>
+        </section>
+      )}
+      {shared && !inDraft && (
+        <EntryFold title="Details" id="entry-details" open={detailsOpen} onToggle={setDetailsOpen}>
           <LinkedEntryDetails entry={entry} chapterId={chapterId} chapterTitle={here} />
-        ) : shared ? (
-          <>
-            <p className="notice">
-              This entry is shared: its name, type, keywords and notes come from the <Link href={`/shared/${shared}`}>shared entry</Link>.
-              Open it from its page (not the writing page&apos;s drawer) to change them for this story, or edit the shared entry to change
-              them in every story. The facts below can be changed for this story alone.
-            </p>
-            <p className="meta">
-              Keywords: {entry.aliases.length > 0 ? entry.aliases.join(", ") : "none"}
-              {entry.always_include && " · always included in AI prompts"}
-            </p>
-          </>
-        ) : (
+        </EntryFold>
+      )}
+      {!shared && entry.aliases.length > 0 && !detailsOpen && (
+        <p className="entry-keywords-line meta">Keywords: {entry.aliases.join(", ")}</p>
+      )}
+      {!shared && (
+        <EntryFold title="Name, type and keywords" id="entry-details" open={detailsOpen} onToggle={setDetailsOpen}>
         <EntryDetailsForm
           key={[entry.op.id, entry.name, entry.type, entry.aliases.join("\n"), entry.always_include].join("|")}
           initial={entry}
@@ -269,14 +353,13 @@ export default function CodexEntryEditor({
             }
           }}
         />
-        )}
-      </section>
+        </EntryFold>
+      )}
 
       {draftOnly && !holdFact ? (
-        <section className="entry-section">
-          <h2>Facts</h2>
+        <EntryFold title="Facts" id="entry-facts" open>
           <p className="meta">Post the chapter to add facts.</p>
-        </section>
+        </EntryFold>
       ) : (
         <CodexFacts
           entry={entry}
@@ -291,38 +374,13 @@ export default function CodexEntryEditor({
         />
       )}
 
-      {/* Not in the writing drawer or for an entry only in the draft: the run reads the saved codex at this chapter. */}
-      {storyId && !inDraft && !draftOnly && (
-        <section className="entry-section">
-          <h2>Flesh out with AI</h2>
-          <p className="meta">Ask the AI for more detail about {entry.name}.</p>
-          <FleshOutEntry storyId={storyId} chapterId={chapterId} entryId={entry.entry_id} name={entry.name} />
-        </section>
-      )}
-
-      {/* What the AI suggested for this entry (Flesh out, the notes, the codex check): here, to accept or dismiss where it was asked for. */}
-      {storyId && !inDraft && !draftOnly && (
-        <CodexInbox
-          storyId={storyId}
-          onPath={{
-            chapterIds: path.map((c) => c.id),
-            entryId: entry.entry_id,
-            heading: "Suggested facts",
-            className: "entry-section",
-            onChanged: () => router.refresh(),
-          }}
-        />
-      )}
-
-      <section className="entry-section">
-        <h2>What the AI reads</h2>
+      <EntryFold title="What the AI reads" id="entry-ai-reads">
         <div className="fact-ai">{entry.description || <em>Nothing yet — add facts. Notes are not sent to the AI.</em>}</div>
-      </section>
+      </EntryFold>
 
       {/* A linked entry's notes are changed with its other details above. */}
       {!(shared && !inDraft) && (
-      <section className="entry-section">
-        <h2>Your notes (not sent to the AI)</h2>
+      <EntryFold title="Your notes (not sent to the AI)" id="entry-notes">
         {shared ? (
           entry.content ? <p className="entry-notes">{entry.content}</p> : <p className="meta">No notes.</p>
         ) : notes === null ? (
@@ -386,14 +444,32 @@ export default function CodexEntryEditor({
             <Link href={inboxHref}>Open the codex inbox</Link>
           </p>
         )}
-      </section>
+      </EntryFold>
       )}
 
+      {/* Not in the writing drawer or for an entry only in the draft: the run reads the saved codex at this chapter. */}
+      {storyId && !inDraft && !draftOnly && (
+        <EntryFold title="Flesh out with AI" id="entry-flesh-out">
+          <p className="meta">Ask the AI for more detail about {entry.name}.</p>
+          <FleshOutEntry storyId={storyId} chapterId={chapterId} entryId={entry.entry_id} name={entry.name} />
+        </EntryFold>
+      )}
 
-      <section className="entry-section">
-        <h2>History</h2>
-      <details className="entry-history">
-        <summary>{hist.length} version{hist.length === 1 ? "" : "s"}</summary>
+      {/* What the AI suggested for this entry (Flesh out, the notes, the codex check): here, right below where it was asked for, to accept or dismiss. */}
+      {storyId && !inDraft && !draftOnly && (
+        <CodexInbox
+          storyId={storyId}
+          onPath={{
+            chapterIds: path.map((c) => c.id),
+            entryId: entry.entry_id,
+            heading: "Suggested facts",
+            className: "entry-section",
+            onChanged: () => router.refresh(),
+          }}
+        />
+      )}
+
+      <EntryFold title="History" id="entry-history" open={historyOpen} onToggle={setHistoryOpen} note={`${hist.length} version${hist.length === 1 ? "" : "s"}`}>
         <ol className="history">
           {[...hist].reverse().map((v, idx, arr) => {
             const prev = arr[idx + 1];
@@ -424,90 +500,7 @@ export default function CodexEntryEditor({
             );
           })}
         </ol>
-      </details>
-      </section>
-
-      <section className="entry-section entry-remove">
-        <h2>Remove</h2>
-        {/* Not in the writing drawer: the chapter being written isn't saved yet, so it would lose the entry too. */}
-        {!draftOnly && !inDraft && (
-        <div className="entry-remove-option">
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy || after.length === 0}
-            onClick={async () => {
-              if (!window.confirm(`Remove “${entry.name}” from “${here}” only? It stays in the chapters after it.`)) return;
-              setBusy(true);
-              setError(null);
-              const problem = await removeHere();
-              setBusy(false);
-              if (problem.error) return setError(problem.error);
-              if (onRetired) onRetired();
-              else router.push(`/s/${storyId}/codex/${entry.entry_id}?at=${problem.keptIn[0] ?? after[0]?.id}`);
-            }}
-          >
-            Remove from this chapter only
-          </button>
-          <p className="meta">
-            {after.length > 0
-              ? `${entry.name} stays in the ${after.length === 1 ? "chapter" : `${after.length} chapters`} after “${here}”.`
-              : "No chapter has been written after this one, so there is nothing to keep it in. Use Retire from here on."}
-          </p>
-        </div>
-        )}
-        <div className="entry-remove-option">
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy}
-            onClick={async () => {
-              if (!window.confirm(`Retire “${entry.name}” from this chapter onward? Earlier chapters keep it.`)) return;
-              if (await change({ op: "retire", entry_id: entry.entry_id })) (onRetired ?? (() => router.push(`/c/${chapterId}/codex`)))();
-            }}
-          >
-            Retire from here on
-          </button>
-          <p className="meta">Gone from “{here}” and every chapter after it. Earlier chapters keep it.</p>
-        </div>
-      </section>
-
-      {!shared && !draftOnly && !inDraft && storyId && (
-        <section className="entry-section">
-          <h2>Use in other stories</h2>
-          <p className="meta">
-            Make this a shared entry, as it reads at “{here}”, so other stories can add it too. This story keeps reading it just as it does now.
-          </p>
-          <div>
-            <button
-              type="button"
-              className="secondary"
-              disabled={busy}
-              onClick={async () => {
-                if (!window.confirm(`Add “${entry.name}” to the shared codex, as it reads at “${here}”?`)) return;
-                setBusy(true);
-                setError(null);
-                try {
-                  const res = await fetch("/api/codex/share", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ anchor_chapter_id: chapterId, entry_id: entry.entry_id }),
-                  });
-                  const data = await res.json().catch(() => ({}));
-                  if (!res.ok) setError(data.error ?? `Request failed (${res.status})`);
-                  else router.refresh();
-                } catch (e) {
-                  setError(e instanceof Error ? e.message : String(e));
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              Share this entry
-            </button>
-          </div>
-        </section>
-      )}
+      </EntryFold>
     </div>
   );
 }

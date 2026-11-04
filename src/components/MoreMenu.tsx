@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 
-// A small "⋯" dropdown for a row of actions: closes when an entry is picked or when clicking elsewhere.
+// A small "⋯" dropdown for a row of actions (links, or buttons that run an action): closes when an entry is picked or when clicking elsewhere.
 export default function MoreMenu({ label = "More", children }: { label?: string; children: ReactNode }) {
   const ref = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
@@ -18,7 +18,7 @@ export default function MoreMenu({ label = "More", children }: { label?: string;
       <summary aria-label={label} title={label}>
         ⋯
       </summary>
-      <div className="more-menu-items" onClick={(e) => (e.target as Element).closest("a") && ref.current && (ref.current.open = false)}>
+      <div className="more-menu-items" onClick={(e) => (e.target as Element).closest("a, button") && ref.current && (ref.current.open = false)}>
         {children}
       </div>
     </details>
