@@ -51,10 +51,19 @@ await page.goto(`${BASE}/s/${s.story_id}/outline`);
 await page.locator(".site-menu > summary").click();
 await page.getByRole("link", { name: "Redo the AI summaries" }).click();
 await page.waitForURL(/\/review\?tab=summaries$/);
-await page.getByText(/This story has/).waitFor();
+await page.getByText("3 of 4 chapters have a summary").waitFor();
 
-await page.getByRole("button", { name: "Redo summaries" }).click();
-await page.getByText("4 rewritten.").waitFor({ timeout: 20000 });
+// Fix the summaries: only the chapter without one is written, building on its parent's existing story-so-far.
+await page.getByRole("button", { name: "Fix the 1 summary" }).click();
+await page.getByText("1 written.").waitFor({ timeout: 20000 });
+ok(calls.length === 1 && calls[0].includes("Summary of the story before this chapter:\nOLDPATH C"), "Fix writes only the missing summary, from its parent's existing story-so-far");
+ok((await chapter(A)).chapter.summary === "OLD A" && (await chapter(D)).chapter.summary === "SUM(D)", "…and leaves the others alone");
+await page.getByText("Every summary is up to date.").waitFor();
+calls.length = 0;
+
+// Redo them all: with nothing to fix the main button is Redo them all.
+await page.getByRole("button", { name: "Redo them all" }).click();
+await page.getByText("4 written.").waitFor({ timeout: 20000 });
 ok(calls.length === 4, "one request for each chapter: " + calls.length);
 ok(calls[0].includes("first chapter") && calls[1].includes("Summary of the story before this chapter:\nSOFAR(A)") && calls[2].includes("Summary of the story before this chapter:\nSOFAR(B)") && calls[3].includes("Summary of the story before this chapter:\nSOFAR(C)"), "each chapter builds on its parent's current story-so-far");
 const got = async (id) => (await chapter(id)).chapter;

@@ -89,7 +89,8 @@ try {
   await page.goto(`${BASE}/s/${s.story_id}/review?tab=issues`);
   ok((await page.getByRole("link", { name: "Fix the summary" }).count()) === 2, "two issues are listed");
   const hrefs = await page.getByRole("link", { name: "Fix the summary" }).evaluateAll((a) => a.map((x) => x.getAttribute("href")));
-  ok(hrefs.includes(`/c/${noSummary}/summary`) && hrefs.includes(`/c/${stale}/summary`), "each has a Fix the summary link to its summary page");
+  const sumHref = (id) => `/s/${s.story_id}/review?tab=summaries&chapter=${id}`;
+  ok(hrefs.includes(sumHref(noSummary)) && hrefs.includes(sumHref(stale)), "each has a Fix the summary link to its chapter in the Summaries section");
   ok((await page.getByRole("link", { name: "Missing one" }).count()) === 1 && (await page.getByRole("link", { name: "Stale one" }).count()) === 1, "both problem chapters are named");
   ok((await page.getByRole("link", { name: "Good root" }).count()) === 0, "the good chapter is not listed");
   const redo = page.getByRole("link", { name: "Redo all the AI summaries" });
@@ -278,16 +279,19 @@ try {
   await page.goto(`${BASE}/s/${e.story_id}/review?tab=issues`);
   const wrongItem = page.locator("li", { hasText: "The summary doesn't match the chapter: Leaves out the storm." });
   ok(await wrongItem.isVisible(), "a summary that doesn't match shows under Summaries");
-  ok((await wrongItem.getByRole("link", { name: "Fix the summary" }).getAttribute("href")) === `/c/${e.chapter_id}/summary`, "…with a Fix the summary link to its summary page");
-  ok(await page.getByText("Reads each chapter and its summary, and says when they don't match. Uses your cheaper model.").isVisible(), "the Check summaries section explains what it does");
-  ok((await page.locator('input[name="summary-scope"]').count()) === 1, "without a chosen chapter only The whole story is offered");
+  ok((await wrongItem.getByRole("link", { name: "Fix the summary" }).getAttribute("href")) === `/s/${e.story_id}/review?tab=summaries&chapter=${e.chapter_id}`, "…with a Fix the summary link to its chapter in the Summaries section");
+  await page.goto(`${BASE}/s/${e.story_id}/review?tab=summaries`);
+  ok(await page.getByText("1 doesn't match").isVisible(), "the Summaries section counts the one that doesn't match");
   const summaryCallsBefore = aiCalls.filter((x) => x.user.includes("Summary to check:")).length;
-  await page.getByRole("button", { name: "Check summaries" }).click();
+  await page.getByRole("button", { name: "More ways to fix summaries" }).click();
+  await page.getByRole("menuitemradio", { name: /^Check every summary with AI/ }).click();
+  await page.locator(".summary-card").getByRole("button", { name: "Check every summary with AI" }).click();
   await page.getByText("Found 1 summary that doesn't match.").waitFor({ timeout: 30000 });
   const summaryCalls = aiCalls.slice().filter((x) => x.user.includes("Summary to check:"));
   ok(summaryCalls.length - summaryCallsBefore === 1 && summaryCalls.at(-1).user.includes('Chapter: "Night"') && summaryCalls.at(-1).model === "cheap", "only the chapter not yet checked was sent to the cheaper model");
+  await page.goto(`${BASE}/s/${e.story_id}/review?tab=issues`);
   await page.locator("li", { hasText: "The summary doesn't match the chapter: Adds a dragon." }).waitFor();
-  ok((await page.locator("li", { hasText: "The summary doesn't match the chapter: Adds a dragon." }).getByRole("link", { name: "Fix the summary" }).getAttribute("href")) === `/c/${eNight}/summary`, "the new issue appears when the run ends");
+  ok((await page.locator("li", { hasText: "The summary doesn't match the chapter: Adds a dragon." }).getByRole("link", { name: "Fix the summary" }).getAttribute("href")) === `/s/${e.story_id}/review?tab=summaries&chapter=${eNight}`, "the new issue appears when the run ends");
   await ai.restore();
 } finally {
   mock.close();

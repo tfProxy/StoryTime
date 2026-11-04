@@ -37,7 +37,7 @@ ok((await row().getByRole("link", { name: "Codex", exact: true }).getAttribute("
 // The Bible tab keeps the chapter being read.
 ok((await page.locator(".story-tabs").getByRole("link", { name: "Bible" }).getAttribute("href"))?.endsWith(`/review?chapter=${second}`), "the Bible tab opens narrowed to this chapter");
 const hrefs = await more().getByRole("link").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
-ok(hrefs.join(" ") === `/c/${second}/history /c/${second}/path /s/${s.story_id}/outline#c-${second} /c/${second}/summary /s/${s.story_id}/pictures?from=${second}`, "…with the right addresses");
+ok(hrefs.join(" ") === `/c/${second}/history /c/${second}/path /s/${s.story_id}/outline#c-${second} /s/${s.story_id}/review?tab=summaries&chapter=${second} /s/${s.story_id}/pictures?from=${second}`, "…with the right addresses");
 await page.mouse.click(5, 400);
 ok(!(await more().isVisible()), "clicking elsewhere closes it");
 await row().getByLabel("More chapter actions", { exact: true }).click();

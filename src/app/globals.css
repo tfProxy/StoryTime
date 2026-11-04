@@ -947,6 +947,17 @@ button.warning {
   padding: 0.4rem 0.6rem;
 }
 
+.split-start {
+  margin-left: 0;
+}
+
+.split-start .split-menu {
+  right: auto;
+  left: 0;
+  top: calc(100% + 0.4rem);
+  bottom: auto;
+}
+
 .split-menu button:hover,
 .split-menu button:focus-visible {
   background: var(--bg);
@@ -5052,4 +5063,81 @@ button.ai-log-row {
 .codex-dismissed > summary {
   cursor: pointer;
   color: var(--muted);
+}
+
+/* The Summaries section: one chapter's two boxes, and the whole story's card with the chapter list under it. */
+.summary-form {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: start;
+}
+
+.summary-form > .notice,
+.summary-form > label,
+.summary-form > .error {
+  justify-self: stretch;
+}
+
+.summary-form textarea {
+  width: 100%;
+  font-weight: 400;
+}
+
+.summary-card {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+  margin: 0 0 1rem;
+}
+
+.summary-card .meta {
+  margin: 0;
+}
+
+.summary-chapters {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.summary-chapters li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3rem;
+  padding: 0 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.summary-chapters li:last-child {
+  border-bottom: 0;
+}
+
+.summary-status {
+  flex: none;
+  font-size: 0.85rem;
+}
+
+.summary-status.done {
+  color: #1f6b3a;
+}
+
+.summary-status.stale,
+.summary-status.wrong {
+  color: var(--warn);
+}
+
+.summary-status.missing {
+  color: #a3342c;
+}
+
+.summary-issues {
+  justify-self: stretch;
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.9rem;
 }

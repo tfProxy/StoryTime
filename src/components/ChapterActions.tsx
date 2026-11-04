@@ -52,7 +52,7 @@ export default function ChapterActions({
         <Link href={`/c/${chapterId}/history`}>History</Link>
         <Link href={`/c/${chapterId}/path`}>Read this path</Link>
         <Link href={`/s/${storyId}/outline#c-${chapterId}`}>Open in outline</Link>
-        <Link href={`/c/${chapterId}/summary`}>{summaryDone ? "Summary" : "Summary (missing)"}</Link>
+        <Link href={`/s/${storyId}/review?tab=summaries&chapter=${chapterId}`}>{summaryDone ? "Summary" : "Summary (missing)"}</Link>
         <Link href={`/s/${storyId}/pictures?from=${chapterId}`}>Make missing pictures…</Link>
       </MoreMenu>
     </div>

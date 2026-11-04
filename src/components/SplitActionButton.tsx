@@ -17,6 +17,7 @@ export default function SplitActionButton({
   disabled = false,
   secondary = false,
   verb,
+  startAligned = false,
 }: {
   modes: SplitMode[];
   mode: string;
@@ -29,6 +30,8 @@ export default function SplitActionButton({
   secondary?: boolean;
   /** What the menu is for, for screen readers: "continue" gives "More ways to continue". */
   verb: string;
+  /** At the left of its row, with the menu opening below it (the default is the right, with the menu above). */
+  startAligned?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
@@ -64,7 +67,7 @@ export default function SplitActionButton({
 
   const style = secondary ? "secondary" : "";
   return (
-    <div className="split-button" ref={wrap}>
+    <div className={`split-button${startAligned ? " split-start" : ""}`} ref={wrap}>
       <button type="button" className={style} onClick={onMain} disabled={disabled}>
         {busyLabel ?? (modes.find((m) => m.id === mode) ?? modes[0]).label}
       </button>

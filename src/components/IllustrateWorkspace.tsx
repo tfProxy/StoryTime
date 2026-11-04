@@ -14,7 +14,7 @@ import type { RefPool } from "@/lib/comfy/referenceChoices";
 type Props = {
   chapterId: string;
   /** The chapter panel's text, shown above the prompt. */
-  chapter: Omit<ComponentProps<typeof IllustrateChapter>, "slotRef">;
+  chapter: Omit<ComponentProps<typeof IllustrateChapter>, "slotRef" | "storyId">;
   /** Every chapter's title in the story, by chapter id. */
   titles: Record<string, string>;
   story: IllustratedStory;
@@ -50,7 +50,7 @@ export default function IllustrateWorkspace({ chapterId, chapter, titles, story,
       made={made}
       controls={(w) => (
         <>
-          <IllustrateChapter {...chapter} slotRef={setCodexSlot} />
+          <IllustrateChapter {...chapter} storyId={story.id} slotRef={setCodexSlot} />
           <ImagePromptPanel
             chapterId={chapterId}
             story={story}

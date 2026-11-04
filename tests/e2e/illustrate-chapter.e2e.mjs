@@ -86,7 +86,7 @@ try {
   await panel.waitFor();
   ok(await panel.getByText("No summary yet.").isVisible(), "a chapter without a summary says so");
   const link = panel.getByRole("link", { name: "Write one" });
-  ok((await link.getAttribute("href")) === `/c/${second.chapter_id}/summary`, "…with a link to the summary page");
+  ok((await link.getAttribute("href")) === `/s/${second.story_id}/review?tab=summaries&chapter=${second.chapter_id}`, "…with a link to the chapter's summary in the Story Bible");
 
   // phone: the chapter comes first, folded, and nothing runs off the side
   await page.setViewportSize({ width: 390, height: 844 });

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import StoryTabs from "@/components/StoryTabs";
-import BulkSummaries from "@/components/BulkSummaries";
 import BibleScope from "@/components/BibleScope";
 import BibleSectionSelect from "@/components/BibleSectionSelect";
 import ChapterTreePicker from "@/components/ChapterTreePicker";
@@ -11,7 +10,8 @@ import IssueActions from "@/components/IssueActions";
 import MarkReviewedButton from "@/components/MarkReviewedButton";
 import StoryChecks from "@/components/StoryChecks";
 import StoryTagSwitches from "@/components/StoryTagSwitches";
-import SummaryCheck from "@/components/SummaryCheck";
+import SummariesOverview, { type SummaryStatus } from "@/components/SummariesOverview";
+import SummaryPanel from "@/components/SummaryPanel";
 import TagScan from "@/components/TagScan";
 import TagSuggestions from "@/components/TagSuggestions";
 import TaggedChapters from "@/components/TaggedChapters";
@@ -48,7 +48,7 @@ export default async function StoryBiblePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ chapter?: string | string[]; tab?: string | string[]; review?: string | string[] }>;
+  searchParams: Promise<{ chapter?: string | string[]; tab?: string | string[]; review?: string | string[]; failed?: string | string[] }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -86,6 +86,14 @@ export default async function StoryBiblePage({
   const clashes = byStatus(scoped.filter((i) => i.kind === "continuity"));
   const gaps = byStatus(scoped.filter((i) => i.kind === "codex-missing"));
 
+  // How each chapter's summary stands (a dismissed issue doesn't count), for the Summaries section.
+  const summaryStatus: Record<string, SummaryStatus> = {};
+  for (const c of chapters) {
+    const live = (kind: string) => all.some((i) => i.chapterId === c.id && i.kind === kind && i.status !== "dismissed");
+    summaryStatus[c.id] = !c.summary?.trim() ? "missing" : live("summary-stale") ? "stale" : live("summary-wrong") ? "wrong" : !c.path_summary?.trim() ? "missing" : "done";
+  }
+  const summariesToFix = chapters.filter((c) => (!chosen || c.id === chosen.id) && (summaryStatus[c.id] === "missing" || summaryStatus[c.id] === "stale")).length;
+
   // Tags.
   const enabledIds = storyTags(story.id);
   const library = listTags();
@@ -105,7 +113,7 @@ export default async function StoryBiblePage({
     continuity: clashes.open.length,
     codex: gaps.open.length + (chosen ? (inbox.byChapter[chosen.id] ?? 0) : inbox.total),
     tags: waitingTags.length,
-    summaries: 0,
+    summaries: summariesToFix,
   };
 
   const rootId = story.root_chapter_id ?? chapters[0].id;
@@ -261,7 +269,7 @@ export default async function StoryBiblePage({
       <li key={`${i.chapterId}-${i.kind}-${i.fingerprint}`}>
         <Link href={`/c/${i.chapterId}`}>{i.title}</Link>
         <br />
-        {i.message} {!actions.includes("undo") && <Link href={`/c/${i.chapterId}/summary`}>Fix the summary</Link>}
+        {i.message} {!actions.includes("undo") && <Link href={`${base}?tab=summaries&chapter=${i.chapterId}`}>Fix the summary</Link>}
         <IssueActions chapterId={i.chapterId} kind={i.kind} fingerprint={i.fingerprint} actions={actions} />
       </li>
     );
@@ -283,7 +291,6 @@ export default async function StoryBiblePage({
             <Link href={hrefFor("summaries")}>Redo all the AI summaries</Link>
           </p>
         )}
-        <SummaryCheck storyId={story!.id} unfinishedRunId={unfinishedRun("summaries")} chapterId={chosen?.id} chapters={treeChapters} />
       </>
     );
   }
@@ -467,14 +474,44 @@ export default async function StoryBiblePage({
   }
 
   function summariesPanel() {
+    const storyInfo = { title: story!.title, premise: story!.premise };
+    const unfinished = unfinishedRun("summaries");
+    if (!chosen) {
+      return (
+        <>
+          <p className="meta">
+            The AI reads each chapter&apos;s summary instead of its full text when it continues the story. Redo them all in one go, for example after
+            changing the summary style or the AI model.
+          </p>
+          <SummariesOverview storyId={story!.id} story={storyInfo} chapters={chapters} status={summaryStatus} unfinishedRunId={unfinished} />
+        </>
+      );
+    }
+    const failed = Array.isArray(sp.failed) ? sp.failed[0] : sp.failed;
+    const wrong = scoped.filter((i) => i.kind === "summary-wrong" && i.status !== "dismissed");
     return (
-      <>
-        <p className="meta">
-          The AI reads each chapter&apos;s summary instead of its full text when it continues the story. Redo them all in one go, for example after
-          changing the summary style or the AI model.
-        </p>
-        <BulkSummaries story={{ title: story!.title, premise: story!.premise }} chapters={chapters} />
-      </>
+      <SummaryPanel
+        key={chosen.id}
+        storyId={story!.id}
+        chapterId={chosen.id}
+        story={storyInfo}
+        path={getPath(chosen.id).map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary }))}
+        stale={summaryStatus[chosen.id] === "stale"}
+        failed={failed}
+        unfinishedRunId={unfinished}
+        issues={
+          wrong.length > 0 && (
+            <ul className="summary-issues">
+              {wrong.map((i) => (
+                <li key={`${i.kind}-${i.fingerprint}`}>
+                  {i.message}
+                  <IssueActions chapterId={i.chapterId} kind={i.kind} fingerprint={i.fingerprint} actions={i.status === "later" ? ["open", "dismissed"] : ["later", "dismissed"]} />
+                </li>
+              ))}
+            </ul>
+          )
+        }
+      />
     );
   }
 }

@@ -26,6 +26,7 @@ function writeOpen(next: Record<string, boolean>) {
 
 type Props = {
   chapterId: string;
+  storyId: string;
   title: string;
   body: string;
   summary: string | null;
@@ -36,7 +37,7 @@ type Props = {
 };
 
 /** The chapter being illustrated, to check a picture against: its summary, with the full text and the story so far folded away. */
-export default function IllustrateChapter({ chapterId, body, summary, earlier, slotRef }: Props) {
+export default function IllustrateChapter({ chapterId, storyId, body, summary, earlier, slotRef }: Props) {
   const box = useRef<HTMLElement>(null);
   // The folds are plain <details>; the saved state is applied after the first render so the server and browser agree on what to draw.
   useEffect(() => {
@@ -64,7 +65,7 @@ export default function IllustrateChapter({ chapterId, body, summary, earlier, s
         </details>
       ) : (
         <p className="meta" style={{ margin: 0 }}>
-          No summary yet. <Link href={`/c/${chapterId}/summary`}>Write one</Link>, or read the whole chapter below.
+          No summary yet. <Link href={`/s/${storyId}/review?tab=summaries&chapter=${chapterId}`}>Write one</Link>, or read the whole chapter below.
         </p>
       )}
       <details className="illustrate-fold" data-fold="text" onToggle={remember}>

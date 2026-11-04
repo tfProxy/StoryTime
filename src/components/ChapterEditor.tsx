@@ -904,7 +904,9 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       await saveChainRef.current;
       await deleteDraft(draftKey).catch(() => {});
       const id = target.kind === "edit" ? target.chapterId : data.chapter_id;
-      if (summaryError) router.push(`/c/${id}/summary?failed=${encodeURIComponent(summaryError)}`);
+      const sid = storyId ?? (target.kind === "first" ? target.storyId : null);
+      if (summaryError && sid) router.push(`/s/${sid}/review?tab=summaries&chapter=${id}&failed=${encodeURIComponent(summaryError)}`);
+      else if (summaryError) router.push(`/c/${id}/summary?failed=${encodeURIComponent(summaryError)}`);
       else router.push(target.kind === "edit" ? `/c/${id}` : `/c/${id}?posted=1`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
