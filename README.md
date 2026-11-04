@@ -90,8 +90,10 @@ and, for pictures, your own ComfyUI machine.
 - **The codex follows the branch.** A codex change is dated to a chapter and applies to that chapter
   and everything after it on that branch only.
 - **Summaries keep prompts short.** Each chapter has a summary (yours, or the AI's when you post).
-  Prompts send the latest chapters in full and older ones as summaries. A story's outline has
-  **Redo summaries** to write them all again.
+  Prompts send the latest chapters in full and older ones as summaries. They live in the Story
+  Bible's **Summaries** section: for the whole story it shows how many chapters have one and fixes
+  the missing and out-of-date ones (or redoes them all, or has the AI check them); pick a chapter
+  to edit its summary, write it again with AI, or check it.
 
 ## Settings
 
