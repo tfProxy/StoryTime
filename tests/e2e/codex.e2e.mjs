@@ -128,8 +128,7 @@ await page.getByRole("button", { name: "Bring back" }).click();
 await card.getByText("Now a horse. Cannot speak.").waitFor();
 ok(true, "bring back restores it");
 await page.goto(`${BASE}/c/${A}`);
-await page.getByLabel("More chapter actions", { exact: true }).click();
-ok(await page.locator(".more-menu-items").getByRole("link", { name: "Codex for this chapter" }).isVisible(), "codex link in the chapter page's ⋯ menu");
+ok((await page.locator(".chapter-actions").getByRole("link", { name: "Codex", exact: true }).getAttribute("href")) === `/c/${A}/codex`, "Codex button beside Edit and Illustrate on the chapter page");
 
 await browser.close(); mock.close();
 await ai.restore();

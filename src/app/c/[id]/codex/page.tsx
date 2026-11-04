@@ -28,7 +28,7 @@ export default async function CodexPage({
 
   return (
     <>
-      <StoryTabs storyId={story.id} title={story.title} active="bible" />
+      <StoryTabs storyId={story.id} title={story.title} active="bible" chapterId={id} />
       <p className="crumbs">
         <Link href={`/c/${id}`}>← Back to “{chapter.title}”</Link>
       </p>

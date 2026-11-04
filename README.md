@@ -59,8 +59,9 @@ and, for pictures, your own ComfyUI machine.
 - **Covers**: the story list shows each story as a book cover. Make one on the cover page, upload one
   on the story's details page, or let the story use a generated cover.
 - **Story tabs**: every story page has tabs along the top: **Read**, **Outline**, **Bible**,
-  **Pictures** and **Details**. Under each chapter's title are **Edit**, **Illustrate**, **Write
-  ahead** and **⋯** (History, Read this path, Open in outline, Summary, Codex, Make missing pictures).
+  **Pictures** and **Details**. On a chapter, the **Bible** tab opens the Bible at that chapter. Under
+  each chapter's title are **Edit**, **Illustrate**, **Codex**, **Write ahead** and **⋯** (History, Read
+  this path, Open in outline, Summary, Make missing pictures).
 - **Outline and export**: a tree view of every branch, and, in the **Export** section of the Details
   tab, downloads as readable Markdown, a single HTML file that plays the story offline (it remembers
   what the reader has seen, and can forget it), Twine (Twee), full JSON, or the codex as Markdown. The

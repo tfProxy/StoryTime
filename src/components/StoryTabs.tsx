@@ -4,11 +4,22 @@ export type StoryTab = "read" | "outline" | "bible" | "pictures" | "details";
 
 // The tab bar at the top of a story's own pages (reading, outline, Story Bible, pictures, details). The page
 // says which tab it belongs to. Full-screen editors don't show it. Read opens the first chapter.
-export default function StoryTabs({ storyId, title, active }: { storyId: string; title: string; active: StoryTab }) {
+export default function StoryTabs({
+  storyId,
+  title,
+  active,
+  chapterId,
+}: {
+  storyId: string;
+  title: string;
+  active: StoryTab;
+  /** The chapter being read: the Bible tab then opens narrowed to it, as the old ☰ link did. */
+  chapterId?: string;
+}) {
   const tabs: { key: StoryTab; label: string; href: string }[] = [
     { key: "read", label: "Read", href: `/s/${storyId}` },
     { key: "outline", label: "Outline", href: `/s/${storyId}/outline` },
-    { key: "bible", label: "Bible", href: `/s/${storyId}/review` },
+    { key: "bible", label: "Bible", href: `/s/${storyId}/review${chapterId ? `?chapter=${chapterId}` : ""}` },
     { key: "pictures", label: "Pictures", href: `/s/${storyId}/pictures` },
     { key: "details", label: "Details", href: `/s/${storyId}/details` },
   ];

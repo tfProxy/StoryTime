@@ -53,7 +53,7 @@ export default async function ChapterPage({
 
   return (
     <>
-      <StoryTabs storyId={story.id} title={story.title} active="read" />
+      <StoryTabs storyId={story.id} title={story.title} active="read" chapterId={chapter.id} />
       {trashed && <TrashNotice chapterId={chapter.id} blocker={restoreBlocker(chapter.id)} />}
       {posted && (
         <p className="notice">

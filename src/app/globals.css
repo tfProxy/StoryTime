@@ -3068,6 +3068,17 @@ fieldset.model-uses .inline-label input[type="checkbox"] {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
 }
 
+/* On a phone the row of buttons wraps, so "⋯" can land at the left edge. Anchor the menu to the whole row instead
+   of its button, so it stays on screen. */
+@media (max-width: 520px) {
+  .chapter-actions {
+    position: relative;
+  }
+  .chapter-actions .more-menu {
+    position: static;
+  }
+}
+
 .more-menu-items a {
   padding: 0.55rem 0.8rem;
   text-decoration: none;

@@ -34,6 +34,12 @@ export default function ChapterActions({
         </svg>
         Illustrate
       </Link>
+      <Link href={`/c/${chapterId}/codex`}>
+        <svg {...icon}>
+          <path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z M5 17a3 3 0 0 1 3-3h11" />
+        </svg>
+        Codex
+      </Link>
       {!trashed && (
         <Link href={`/c/${chapterId}/write-ahead`}>
           <svg {...icon}>
@@ -47,7 +53,6 @@ export default function ChapterActions({
         <Link href={`/c/${chapterId}/path`}>Read this path</Link>
         <Link href={`/s/${storyId}/outline#c-${chapterId}`}>Open in outline</Link>
         <Link href={`/c/${chapterId}/summary`}>{summaryDone ? "Summary" : "Summary (missing)"}</Link>
-        <Link href={`/c/${chapterId}/codex`}>Codex for this chapter</Link>
         <Link href={`/s/${storyId}/pictures?from=${chapterId}`}>Make missing pictures…</Link>
       </MoreMenu>
     </div>

@@ -20,7 +20,7 @@ const more = () => page.locator(".more-menu-items");
 // ---- the row ----
 await page.goto(`${BASE}/c/${second}`);
 await page.getByRole("heading", { name: "Act two" }).waitFor();
-ok((await row().locator(":scope > a").allInnerTexts()).map((t) => t.trim()).join(",") === "Edit,Illustrate,Write ahead", "the row has Edit, Illustrate and Write ahead");
+ok((await row().locator(":scope > a").allInnerTexts()).map((t) => t.trim()).join(",") === "Edit,Illustrate,Codex,Write ahead", "the row has Edit, Illustrate, Codex and Write ahead");
 ok((await row().getByRole("link", { name: "Edit", exact: true }).getAttribute("href")) === `/c/${second}/edit`, "Edit goes to the edit page");
 ok((await row().getByRole("link", { name: "Write ahead", exact: true }).getAttribute("href")) === `/c/${second}/write-ahead`, "Write ahead goes to the write-ahead page");
 const above = await page.evaluate(() => {
@@ -32,9 +32,12 @@ ok(above, "the row sits between the title and the text");
 // ---- the ⋯ menu ----
 ok(!(await more().isVisible()), "the ⋯ menu starts closed");
 await row().getByLabel("More chapter actions", { exact: true }).click();
-ok((await more().getByRole("link").allInnerTexts()).join("|") === "History|Read this path|Open in outline|Summary (missing)|Codex for this chapter|Make missing pictures…", "the ⋯ menu lists History, Read this path, Open in outline, Summary, Codex and Make missing pictures");
+ok((await more().getByRole("link").allInnerTexts()).join("|") === "History|Read this path|Open in outline|Summary (missing)|Make missing pictures…", "the ⋯ menu lists History, Read this path, Open in outline, Summary and Make missing pictures");
+ok((await row().getByRole("link", { name: "Codex", exact: true }).getAttribute("href")) === `/c/${second}/codex`, "Codex is a button in the row, not in the ⋯ menu");
+// The Bible tab keeps the chapter being read.
+ok((await page.locator(".story-tabs").getByRole("link", { name: "Bible" }).getAttribute("href"))?.endsWith(`/review?chapter=${second}`), "the Bible tab opens narrowed to this chapter");
 const hrefs = await more().getByRole("link").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
-ok(hrefs.join(" ") === `/c/${second}/history /c/${second}/path /s/${s.story_id}/outline#c-${second} /c/${second}/summary /c/${second}/codex /s/${s.story_id}/pictures?from=${second}`, "…with the right addresses");
+ok(hrefs.join(" ") === `/c/${second}/history /c/${second}/path /s/${s.story_id}/outline#c-${second} /c/${second}/summary /s/${s.story_id}/pictures?from=${second}`, "…with the right addresses");
 await page.mouse.click(5, 400);
 ok(!(await more().isVisible()), "clicking elsewhere closes it");
 await row().getByLabel("More chapter actions", { exact: true }).click();
@@ -63,7 +66,7 @@ const t = await post("/api/chapters", { choice_id: (await getJson(`/api/chapters
 await fetch(`${BASE}/api/chapters/${t.chapter_id}/trash`, { method: "POST" });
 await page.goto(`${BASE}/c/${t.chapter_id}`);
 await page.getByRole("heading", { name: "Act three" }).waitFor();
-ok((await row().locator(":scope > a").allInnerTexts()).map((x) => x.trim()).join(",") === "Illustrate", "a trashed chapter keeps only Illustrate in the row");
+ok((await row().locator(":scope > a").allInnerTexts()).map((x) => x.trim()).join(",") === "Illustrate,Codex", "a trashed chapter keeps only Illustrate and Codex in the row");
 
 // ---- phone width ----
 await page.setViewportSize({ width: 390, height: 800 });

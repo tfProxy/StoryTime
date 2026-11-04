@@ -22,7 +22,7 @@ export default async function PathPage({ params }: { params: Promise<{ id: strin
 
   return (
     <>
-      <StoryTabs storyId={story.id} title={story.title} active="read" />
+      <StoryTabs storyId={story.id} title={story.title} active="read" chapterId={chapter.id} />
       <nav className="crumbs" aria-label="Back">
         <Link href={`/c/${chapter.id}`}>{chapter.title}</Link> › <strong>Whole path</strong>
       </nav>
