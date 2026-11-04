@@ -194,7 +194,7 @@ ok((await page.locator(".chapter-tags").innerText()) === `[${tagName}]` && (awai
 await show("Tags", true);
 await until(async () => (await outlineNow()).tags === true, "Tags to be turned on");
 await page.goto(outlineUrl);
-ok((await page.locator(".outline-actions", { hasText: `[${tagName}]` }).count()) === 1, "with Tags on the outline shows each chapter's tags in their own brackets");
+ok((await page.locator(".outline-tags", { hasText: tagName }).count()) === 1 && !(await page.locator(".outline-tags").first().innerText()).includes("["), "with Tags on the outline shows each chapter's tags in a group of their own, without brackets");
 await show("Tags", false);
 await until(async () => (await outlineNow()).tags === false, "Tags to be turned off");
 seen = await look();

@@ -2,11 +2,11 @@
 
 What is left to do, as a simple list. Finished work isn't listed; the code and tests describe it.
 
-Last checked against the code: 2026-10-28.
+Last checked against the code: 2026-11-04.
 
-## To try on the real machines
+## Checks to do by hand
 
-Everything below is built and passes its tests against fakes, but has not been tried for real.
+Built and passing its tests against fakes, but not yet tried for real. Tick them off as you go.
 
 **On the NAS**
 - [ ] Before updating, check the server can reach ComfyUI and Ollama: `docker exec -it storytime node -e "fetch('http://<comfy-ip>:8188/system_stats').then(r=>r.text()).then(console.log)"`, and the same for `http://<ollama-ip>:11434/api/ps`. Both must print JSON; if not, change the addresses in Settings (Settings › Test from server says the same).
@@ -14,6 +14,16 @@ Everything below is built and passes its tests against fakes, but has not been t
 - [ ] Start a write-ahead run, close every tab, reopen later: it should have carried on.
 - [ ] Compose Pull and Compose Up during a long picture job: the job should be found again and recorded once.
 - [ ] Live updates arrive (the header counts change without a reload). A proxy in front of StoryTime that buffers `text/event-stream` would stop them.
+- [ ] After the shared-codex update (migrations 45 and 46): the shared codex works (a shared picture saved from one story shows in another; "Use for" on the pictures page).
+
+**On a real phone (touch)**
+- [ ] Story tabs (Read, Outline, Bible, Pictures, Details) and the chapter's button row (Edit, Illustrate, Codex, Write ahead, ⋯): every item reachable, the ⋯ menu opens on screen and closes when you tap elsewhere.
+- [ ] Story Bible: the Section box, "Change…" to pick a chapter or the whole story, and the ⋯ menu on Codex.
+- [ ] Codex: fold and unfold Characters / Places / Things; Accept, Edit and Dismiss a suggestion on an entry's card; "New entry from here"; "New entry from the shared codex…".
+- [ ] A codex entry's page: the ⋯ menu (Edit, Pictures, History, Share, Remove from this chapter only, Retire), the folding sections, and a fact's Edit / Remove / History.
+- [ ] Summaries: "Fix the N summaries", then a chapter's Save ▾ menu.
+- [ ] The writing page: the model pickers at the top, and the Finish section opening once the chapter has text.
+- [ ] The Refine screen.
 
 **On a real ComfyUI**
 - [ ] Earlier pictures: make some, pin one, reload (only it shows), use one from All, restart ComfyUI, check they still load from `/view`.
@@ -21,17 +31,32 @@ Everything below is built and passes its tests against fakes, but has not been t
 - [ ] Reference pictures (IP-Adapter): install `ComfyUI_IPAdapter_plus` and the model files (`docs/pictures.md`). For an Illustrious or NoobAI checkpoint and a furry merge, try a character as a reference for a new scene, a header as the reference for its footer, a style reference, a codex picture, and the story style picture. Note the strengths that work and what each reference adds to the time, then change the defaults. Confirm NoobAI's own adapter beats the SDXL one on Illustrious and furry merges.
 - [ ] Refine inpainting: paint a small area (a hand or a face) on a real picture and Go at strength 0.6; compare with before the change (seam, detail, time). Also try a mask near the picture's edge, a picture whose size isn't a multiple of 16, and each **Under the paint** choice. The redraw now runs only the steps its strength needs, so compare two or three pictures for look.
 
-**With your own models and devices**
-- [ ] Story review against the real models: Find tags, Help me write it, Check continuity, Check summaries. Prompt quality with a small local model is unknown.
-- [ ] Run `npm run test:e2e` with Edge on the Windows machine (`AGENTS.md`); if any file fails only there, note which and why in `AGENTS.md`.
-- [ ] A real phone with touch: Story Bible tabs and checkboxes, the Refine screen.
-- [ ] Codex on a real phone: the entry page (Details, Change form, a fact's Edit / Remove / History, Remove from this chapter only) and the inbox cards (Accept, Edit, Dismiss, Accept all).
-- [ ] The codex check with the real cheaper model: post (or "Check this chapter" on) 2–3 chapters where a body or form changes, and note what the cards miss or get wrong. This feeds "Tune the codex check prompt" below.
-- [ ] Turn notes into facts on the existing entries with notes only (they give the AI nothing until they have facts).
+**With your own AI models**
+- [ ] Story review: Find tags, Help me write it, Check continuity, and the summary check. Prompt quality with a small local model is unknown.
+- [ ] The codex check with the cheaper model: post (or "Check this chapter with AI" on) 2–3 chapters where a body or form changes, and note what the suggestions miss or get wrong. This feeds "Tune the codex check prompt" below.
+- [ ] "Flesh out with AI" on a character with few facts: are the invented facts specific and consistent with the story, does "Stay close to the story" keep to the chapters, and does the focus box steer it?
+- [ ] Turn notes into facts on the existing entries that have notes only (they give the AI nothing until they have facts).
+
+**On the Windows machine**
+- [ ] Run `npm run test:e2e` with Edge (`AGENTS.md`); if any file fails only there, note which and why in `AGENTS.md`.
 
 ## To build
 
 Roughly in order of usefulness. Nothing here is agreed to start without asking where it goes in the UI.
+
+**Tidying the app**
+- [ ] Fewer Settings tabs: fold "Qwen edit" and "Flux edit" into Drawing, and Outline and Queue into one general tab.
+- [ ] Maybe: bring back "download this path" (Markdown or HTML of the route to a chapter) in the chapter's ⋯ menu. It was dropped when the downloads moved to Details › Export; "Read this path" still shows the route on one page.
+
+**Story Bible: left out of the codex and summaries rebuild**
+
+Each was dropped on purpose to keep the new sections simple; bring one back only if it's missed.
+- [ ] Undo a dismissed "Not in the codex yet" name, and the "Later" choice for those names.
+- [ ] The timeline of the next chapters that the old chapter codex page showed (the chapter picker replaces it).
+- [ ] "Show the AI exchange" for a codex suggestion (Prompt history still has every exchange).
+- [ ] A codex check for "every chapter on this branch"; the ⋯ menu offers this chapter or the whole story.
+- [ ] The summary check's "the way here / from here on" scopes; the Summaries section checks a chapter or the whole story.
+- [ ] "Fix the N summaries" doesn't redo the chapters after a fixed one, so their "story so far" can lag until they are redone.
 
 **Illustrate and pictures**
 - [ ] Forget lost pictures: rejecting hides a picture ComfyUI has lost, but removing the record (`DELETE /api/picture-jobs/:id`) and pruning old rows aren't built.
@@ -55,20 +80,18 @@ Roughly in order of usefulness. Nothing here is agreed to start without asking w
 
 **Codex**
 
-Background: an entry's AI text is built from its facts (one per aspect, such as "Ears: tall fox ears", dated to the chapter where it became true); the entry's notes are the owner's own and are not sent to the AI. A character can have forms (human, vixen…); only facts for every form or the current form are sent. The codex check (review run task "codex", `src/lib/ai/codexCheckAi.ts`) reads a posted chapter and leaves suggestion cards in the inbox (Story Bible › Codex). Each entry has one page, `/s/<story>/codex/<entry>?at=<chapter>`.
-- [ ] Shared codex entries are built (library at `/shared`; "+ Shared entry" on a chapter's codex page and in the writing drawer; per-story changes to fields and facts, with reset; "Share this entry"; shared pictures; export/import). Still to try by hand: the whole flow on a phone and with a real ComfyUI (a shared picture saved from one story shows in another; "Use for" on the pictures page), and the NAS after the update (migrations 45 and 46).
-  - [ ] Known gaps: "Share this entry" turns each of the entry's earlier ops into a full set of changes against the shared entry, so a keyword added retroactively at an earlier chapter, which the old fold carried down to later chapters, is not carried down for a shared entry. A kept `codex:` picture reference to a shared picture is fetched through the story that made it, so it breaks if that story stops linking the entry. Shared pictures have no history list (only the current one shows).
-- [ ] Tune the codex check prompt (`SYSTEM_CODEX_CHECK` in `codexCheckAi.ts`). It has only been tried against the fake AI. Needs the owner's examples: the story exported as JSON, the cheaper model's name, and which cards were missing or wrong for 2–3 transformation chapters. A prompt history (below) would make this much easier.
+Background: an entry's AI text is built from its facts (one per aspect, such as "Ears: tall fox ears", dated to the chapter where it became true); the entry's notes are the owner's own and are not sent to the AI. A character can have forms (human, vixen…); only facts for every form or the current form are sent. The codex lives in the Story Bible's Codex section (`/s/<story>/review?tab=codex`, narrowed to a chapter with `&chapter=`); `/c/<chapter>/codex` redirects there. The codex check (review run task "codex", `src/lib/ai/codexCheckAi.ts`) reads a posted chapter and leaves suggestions, shown on the cards of the entries they are about. Each entry has one page, `/s/<story>/codex/<entry>?at=<chapter>`.
+- [ ] Shared codex, known gaps: "Share this entry" turns each of the entry's earlier ops into a full set of changes against the shared entry, so a keyword added retroactively at an earlier chapter, which the old fold carried down to later chapters, is not carried down for a shared entry. A kept `codex:` picture reference to a shared picture is fetched through the story that made it, so it breaks if that story stops linking the entry. Shared pictures have no history list (only the current one shows).
+- [ ] Tune the codex check prompt (`SYSTEM_CODEX_CHECK` in `codexCheckAi.ts`). It has only been tried against the fake AI. Needs the owner's examples: the story exported as JSON, the cheaper model's name, and which suggestions were missing or wrong for 2–3 transformation chapters. Prompt history helps here.
 - [ ] Close-up details: an "always / close-up" switch on each fact, and a "close-up scene" toggle on the drafting page. Close-up facts (detailed anatomy, the fine points of a transformation) go to the AI only for scenes marked close-up, so everyday prompts stay short. Needs a column on `codex_facts`, the switch in `CodexFacts.tsx`, the toggle in the draft, and `describeEntry` taking whether the scene is close-up.
-- [ ] AI help for one entry on its page: "Update from the story" (the AI re-reads the chapters since the entry last changed and leaves fact cards in the inbox, like the codex check but for one entry) and "Draft with AI" for a new entry. The old buttons wrote the notes and were removed when notes stopped going to the AI; `draftEntry` / `entryRequest` in `src/lib/ai/codexAi.ts` are unused since.
-- [ ] Try "Flesh out" (the "Flesh out with AI" section on a codex entry's page, `src/lib/ai/fleshOutAi.ts`) with the real cheaper model on a character with few facts: are the invented facts specific and consistent with the story, does "Stay close to the story" keep to the chapters, and does the focus box steer it? It has only been tried against the fake AI. Not offered in the writing page's drawer. A "flesh out" for a whole story, and an "invented" mark on facts, were left out on purpose.
-- [ ] Undo after Accept in the codex inbox. Today a mistaken accept is fixed by changing or removing the fact on the entry page. Needs the accept to record the ops it made so they can be removed.
+- [ ] AI help for one entry on its page: "Update from the story" (the AI re-reads the chapters since the entry last changed and leaves suggestions on the entry, like the codex check but for one entry) and "Draft with AI" for a new entry. `draftEntry` / `entryRequest` in `src/lib/ai/codexAi.ts` are unused since the old notes-writing buttons went.
+- [ ] Undo after Accept on a codex suggestion. Today a mistaken accept is fixed by changing or removing the fact on the entry page. Needs the accept to record the ops it made so they can be removed.
 - [ ] "Remove from this chapter only" is not offered in the writing page's codex drawer, because the chapter being written isn't saved yet and would lose the entry too. It could be held in the draft like other changes (a retire at the chapter plus a revive at each child, made on save).
 - [ ] Staleness badge: "mentioned in 6 chapters since last updated" on an entry's card, and a sort that puts the most out-of-date first. Count chapters on the branch after the entry's last change whose text mentions its name or a keyword.
 - [ ] Compare the codex between two chapters: pick two chapters and see, per entry, what changed between them. On one branch (earlier vs later) it reads as a transformation summary (Sex: male → female, Ears: human → fox ears, Form: human → vixen, new keywords, entries that appeared or left); across two branches it shows how a character differs by the path taken. "Compare with: [chapter]" on the entry page, and a whole-codex view in the Story Bible. The data is there (the codex can be folded at any chapter); it is a page to build.
 - [ ] Quality hints: plain-code warnings (no AI) in a Hints block on the entry page, and a ⚠ count on its card. Notes but no facts (the AI gets nothing; offer Turn notes into facts); neither the name nor a keyword appears in any chapter on this branch (never reaches the AI unless always included); a fact over about 25 words, or an AI text big enough to be dropped from a full prompt; duplicate aspects ("Ears" and "Ear shape", or different capitals); facts that mention chapters ("since chapter 3"); facts for a form the character never takes, or form-only facts with no current form; too many always-included entries. Each with a one-line reason and, where possible, a button that fixes it.
-- [ ] "Ask the codex": a question box ("Where is Oda now?", "Has Mara met the queen?") answered by the AI from the chapters on this branch, quoting them, with an "Update the entry" button that turns the answer into fact cards.
-- [ ] Admin tool: deleting a chapter (`scripts/adminCore.mjs`) doesn't remove its `chapter_facts`, `chapter_fact_checks`, `summary_checks`, continuity verdicts or codex pictures, so the delete may fail on foreign keys. Older than the codex work; codex facts and suggestions are already handled.
+- [ ] "Ask the codex": a question box ("Where is Oda now?", "Has Mara met the queen?") answered by the AI from the chapters on this branch, quoting them, with an "Update the entry" button that turns the answer into suggestions.
+- [ ] Admin tool: deleting a chapter (`scripts/adminCore.mjs`) doesn't remove its `chapter_facts`, `chapter_fact_checks`, `summary_checks`, continuity verdicts or codex pictures, so the delete may fail on foreign keys. Codex facts and suggestions are already handled.
 
 **Story review and tags**
 - [ ] A short label field on tags (a tag has only a name).

@@ -1058,8 +1058,24 @@ main:has(.outline-page) {
   white-space: nowrap;
 }
 
+/* A chapter's extras after its title: small, quiet, spaced items rather than a bracketed list. */
 .outline-actions {
-  margin-left: 0.4rem;
+  margin-left: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85em;
+}
+
+.outline-actions > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* A chapter's tags: plain muted text, no brackets. */
+.outline-tags {
+  font-style: italic;
 }
 
 /* "summary" (a button) and "read to here" (a link) look the same. */
@@ -1071,12 +1087,13 @@ button.outline-action {
   color: var(--muted);
   font: inherit;
   cursor: pointer;
-  text-decoration: underline;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
 }
 
 .outline-action:hover,
 .outline-action:focus-visible {
-  text-decoration: none;
+  text-decoration: underline;
 }
 
 /* The count of things to check on the Review page. */
