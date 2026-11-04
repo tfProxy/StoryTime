@@ -48,9 +48,10 @@ try {
   await drawer.getByRole("button", { name: "← All entries" }).click();
   await page.getByRole("button", { name: "Close", exact: true }).click();
 
-  await page.getByLabel(/^Summary/).fill("Wren arrives.");
   await page.getByLabel("Chapter title").fill("Wren");
   await page.getByLabel("Chapter text").fill("Wren arrived with a silver braid.");
+  // The Finish section opens once the chapter has text.
+  await page.getByLabel(/^Summary/).fill("Wren arrives.");
   await page.getByRole("button", { name: "Post chapter" }).click();
   await page.waitForURL(/\/c\/[^/]+(\/summary)?\?/);
   const posted = /\/c\/([^/?]+)/.exec(page.url())[1];

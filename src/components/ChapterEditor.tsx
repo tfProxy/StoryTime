@@ -1025,6 +1025,19 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
             </section>
           )}
 
+          <section className="ai-panel models-panel" aria-label="AI models">
+            <div className="row">
+              <label className="model-choice">
+                <span>Writing model</span>
+                {writePicker}
+              </label>
+              <label className="model-choice">
+                <span>Model for summaries and choices</span>
+                {suggestPicker}
+              </label>
+            </div>
+          </section>
+
           <section className="ai-panel">
             <h2>Direction</h2>
             <label>
@@ -1046,7 +1059,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               <button type="button" onClick={() => runAi("generate")} disabled={busy !== null}>
                 {busy === "generate" ? (generating?.state === "waiting" ? "Waiting…" : "Writing…") : draft.body ? "Generate a new draft" : "Generate chapter"}
               </button>
-              {writePicker}
               {(working || generating) && (
                 <button type="button" className="secondary" onClick={stopWork}>
                   Stop
@@ -1158,7 +1170,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               <button type="button" onClick={() => runAi("refine")} disabled={busy !== null || !hasBody || !instruction.trim()}>
                 {busy === "refine" ? "Revising…" : picked ? "Revise selection" : "Revise"}
               </button>
-              {writePicker}
               <button type="button" className="secondary" onClick={undo} disabled={busy !== null || draft.undo.length === 0}>
                 Undo
               </button>
@@ -1179,8 +1190,12 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
             )}
           </section>
 
-          <section className="ai-panel">
-            <h2>Finish</h2>
+          {/* Folded until the chapter has text: the summary and choices come after writing it. */}
+          <details className="ai-panel" open={hasBody}>
+            <summary>
+              <h2 className="inline-heading">Finish</h2>
+              {!hasBody && <small> (summary and choices; write the chapter first)</small>}
+            </summary>
             <label id="field-summary">
               Summary{" "}
               <small>(what happens in this chapter; later chapters use it to stay consistent)</small>
@@ -1287,7 +1302,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                 >
                   {busy === "choices" ? "Thinking…" : "Suggest choices"}
                 </button>
-                {suggestPicker}
               </div>
               {suggestions.length > 0 && (
                 <div style={{ display: "grid", justifyItems: "start", gap: "0.4rem" }}>
@@ -1336,7 +1350,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                 : "You can edit it later, and every earlier version is kept."}{" "}
               Until then, your draft is saved as you go; open it from Drafts in any browser.
             </p>
-          </section>
+          </details>
         </div>
       </div>
 

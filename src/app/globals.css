@@ -876,6 +876,19 @@ details.ai-panel > summary {
   cursor: pointer;
 }
 
+/* A panel heading that sits inside a <summary>. */
+.ai-panel .inline-heading {
+  display: inline;
+  font-size: 1.1rem;
+}
+
+/* The writing page's model pickers, one row at the top: a label over each select. */
+.models-panel .model-choice {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
 button.danger {
   background: transparent;
   color: #c0392b;
