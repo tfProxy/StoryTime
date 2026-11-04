@@ -125,6 +125,16 @@ function revealCaret(el: HTMLTextAreaElement) {
     top = Math.max(top, r.top);
     bottom = Math.min(bottom, r.bottom);
   }
+  // Bars that stay on screen over the page (marked data-sticky-bar) also hide the cursor: keep it
+  // clear of those in the bottom half (Queue, Post) and the top half.
+  const mid = (top + bottom) / 2;
+  for (const bar of document.querySelectorAll<HTMLElement>("[data-sticky-bar]")) {
+    if (bar.contains(el)) continue;
+    const r = bar.getBoundingClientRect();
+    if (r.height === 0 || r.bottom <= top || r.top >= bottom) continue;
+    if (r.top > mid) bottom = Math.min(bottom, r.top);
+    else if (r.bottom < mid) top = Math.max(top, r.bottom);
+  }
   const margin = 24;
   let delta = 0;
   if (caret.bottom > bottom - margin) delta = caret.bottom - (bottom - margin);

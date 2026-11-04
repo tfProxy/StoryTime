@@ -1356,7 +1356,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
         </div>
       </div>
 
-      <div className="action-bar">
+      <div className="action-bar" data-sticky-bar>
         <div className="action-bar-info" aria-live="polite">
           {statusFor("post")}
           {errorFor("post")}

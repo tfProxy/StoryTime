@@ -168,7 +168,7 @@ export default function ChapterPictures({ target, titles, comfyUrl, pictures, on
 
   return (
     <section className="ai-panel chapter-pictures" aria-labelledby="chapter-pictures-title">
-      <div className="chapter-pictures-bar">
+      <div className="chapter-pictures-bar" data-sticky-bar>
         <div className="chapter-pictures-top">
           {/* Hidden, but still names the panel for screen readers. */}
           <h2 id="chapter-pictures-title" className="visually-hidden">Pictures</h2>

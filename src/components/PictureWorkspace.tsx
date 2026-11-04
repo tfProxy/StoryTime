@@ -122,7 +122,7 @@ export default function PictureWorkspace({ target, jobs, titles, versions, made,
         )}
       </div>
       {/* Size, Queue and the queue's status are put here (see ComfyGenerate), so they stay at the bottom of the screen. */}
-      <div className="generate-dock" ref={setDock} />
+      <div className="generate-dock" data-sticky-bar ref={setDock} />
     </div>
   );
 }

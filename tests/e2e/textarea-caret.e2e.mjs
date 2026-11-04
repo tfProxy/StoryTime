@@ -65,6 +65,9 @@ await page.keyboard.type("y");
 await page.waitForTimeout(300);
 c = await caretOnScreen();
 ok(c.top > 0 && c.top < c.height, `typing brings the cursor back on screen (at ${Math.round(c.top)} of ${c.height})`);
+// …and not behind the bar stuck to the bottom of the screen (Post).
+const barTop = await page.locator(".action-bar").evaluate((el) => el.getBoundingClientRect().top);
+ok(barTop < c.height && c.top + 26 <= barTop, `the cursor is above the bottom bar (cursor ${Math.round(c.top)}, bar ${Math.round(barTop)})`);
 
 await browser.close();
 await fetch(`${BASE}/api/drafts/${encodeURIComponent(`fill:${on.id}`)}`, { method: "DELETE" });

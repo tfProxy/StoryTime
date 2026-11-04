@@ -461,7 +461,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
             inUseKey={inUse ? resultKey(inUse) : null}
           />
         </div>
-        <div className="refine-bar" role="group" aria-label="Undo and results">
+        <div className="refine-bar" data-sticky-bar role="group" aria-label="Undo and results">
           <button type="button" className="refine-icon secondary" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={reviewing || accepting || !canUndo(history)} onClick={doUndo}>
             <UndoIcon />
           </button>
