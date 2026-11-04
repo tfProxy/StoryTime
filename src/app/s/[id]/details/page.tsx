@@ -1,20 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import StoryTabs from "@/components/StoryTabs";
-import CodexPanel from "@/components/CodexPanel";
 import CoverEditor from "@/components/CoverEditor";
 import StoryDetailsForm from "@/components/StoryDetailsForm";
 import StoryPictureSettings from "@/components/StoryPictureSettings";
 import StoryTagSwitches from "@/components/StoryTagSwitches";
-import { getCodexFacts, getCodexOps } from "@/lib/codexDb";
 import { coverRefPool } from "@/lib/referencePool";
 import { getChapter, getStory } from "@/lib/stories";
 import { listTags, storyTags } from "@/lib/tags";
 
 export const dynamic = "force-dynamic";
 
-// Settings for the whole story: its title, summary and style notes, its cover, and the codex entries every
-// branch shares. Before the story has a chapter, it leads on to writing the first one; after, to reading it.
+// Settings for the whole story: its title, summary and style notes, its cover and its tags. (The codex is in the Story Bible.) Before the story has a chapter, it leads on to writing the first one; after, to reading it.
 export default async function StoryDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const story = getStory(id);
@@ -45,38 +42,6 @@ export default async function StoryDetailsPage({ params }: { params: Promise<{ i
       />
       <CoverEditor story={{ id: story.id, title: story.title, cover_version: story.cover_version }} />
       <StoryTagSwitches storyId={story.id} tags={listTags().map((t) => ({ id: t.id, name: t.name, applies: t.applies }))} enabled={storyTags(story.id)} />
-      <section className="ai-panel">
-        <h2>Codex</h2>
-        {root ? (
-          <>
-            <p className="meta">
-              Characters, places and facts the AI keeps in mind.
-            </p>
-            <CodexPanel
-              storyWide
-              story={{ title: story.title, premise: story.premise }}
-              storyId={story.id}
-              chapterId={root.id}
-              path={[
-                {
-                  id: root.id,
-                  title: root.title,
-                  depth: root.depth,
-                  body: root.body,
-                  summary: root.summary,
-                  path_summary: root.path_summary,
-                },
-              ]}
-              ops={getCodexOps(root.id)}
-              facts={getCodexFacts(root.id)}
-            />
-          </>
-        ) : (
-          <p className="meta" style={{ margin: 0 }}>
-            Characters, places and facts the AI keeps in mind. Entries can be added here once the first chapter is posted.
-          </p>
-        )}
-      </section>
       {/* Nothing to download until the first chapter is written. */}
       {root && (
         <section className="ai-panel" aria-labelledby="export-heading">

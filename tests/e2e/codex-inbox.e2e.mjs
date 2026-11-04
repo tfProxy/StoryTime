@@ -61,26 +61,24 @@ try {
   await banner.waitFor();
   const href = await page.locator("p.notice", { hasText: "Codex:" }).getByRole("link", { name: "Review" }).getAttribute("href");
   ok(href === `/s/${storyId}/review?tab=codex&chapter=${A}`, "the banner links to the Story Bible codex tab for this chapter: " + href);
-  await page.goto(`${BASE}/c/${A}/codex`);
-  const line = page.getByText(/Codex inbox: 8 suggestions waiting on this branch/);
-  ok(await line.isVisible(), "the codex page counts the branch's suggestions (8)");
-  ok((await line.locator("a", { hasText: "Review" }).getAttribute("href")) === `/s/${storyId}/review?tab=codex`, "…and links to the inbox");
   await page.goto(`${BASE}/c/${root}/codex`);
-  ok(await page.getByText(/Codex inbox: 1 suggestion waiting on this branch/).isVisible(), "the root's branch has 1");
+  await page.waitForURL(`${inbox}&chapter=${root}`);
+  await card("Rowan stood there.").waitFor();
+  ok((await page.locator("article.inbox-card").count()) === 1, "the root's codex holds the root's one suggestion, inside Rowan's card");
 
-  // ---- the banner leads to the filtered inbox ----
+  // ---- the banner leads to the codex at that chapter ----
   await page.goto(`${BASE}/c/${A}`);
   await banner.waitFor();
   await page.locator("p.notice", { hasText: "Codex:" }).getByRole("link", { name: "Review" }).click();
   await page.waitForURL(new RegExp(`tab=codex&chapter=${A}`));
   await card("Rowan's hair turned silver.").waitFor();
-  ok((await page.locator("article.inbox-card").count()) === 7, "filtered to the chapter: its 7 cards");
-  ok((await card("Rowan stood there.").count()) === 0, "…and not the root's");
-  await page.getByRole("link", { name: "Show all chapters" }).click();
-  await card("Rowan stood there.").waitFor();
-  ok((await page.locator("article.inbox-card").count()) === 8, "Show all chapters lists all 8");
-  ok((await page.locator("h3.inbox-chapter").allInnerTexts()).join("|") === "Root|Chapter A", "grouped by chapter, in story order");
-
+  ok((await page.locator("article.inbox-card").count()) === 7 && (await page.locator("li.codex-suggested").count()) === 1, "at the chapter: its suggestions about Rowan and the root's, and Kestrel as a suggested new entry");
+  ok((await card("Rowan stood there.").count()) === 1, "…the root's applies on this branch too");
+  await page.goto(inbox);
+  await page.locator("a.entry-card", { hasText: "Rowan" }).getByText("7 suggestions").waitFor();
+  ok((await page.locator("article.inbox-card").count()) === 0, "the whole story counts the suggestions on each entry's card instead of listing them");
+  await page.goto(`${inbox}&chapter=${A}`);
+  await card("Rowan's hair turned silver.").waitFor();
   // ---- the cards ----
   const hair = card("Rowan's hair turned silver.");
   ok((await hair.locator("del").innerText()).includes("dark brown") && (await hair.locator("ins").innerText()).includes("silver"), "a change shows the old words in del and the new in ins");
@@ -91,13 +89,13 @@ try {
   const conflict = card("Her eyes were blue.");
   ok(await conflict.getByRole("button", { name: "Update codex" }).isVisible() && await conflict.getByRole("button", { name: "Keep the codex" }).isVisible(), "a conflict card offers Update codex / Keep the codex");
   ok((await conflict.getByRole("button", { name: "Edit" }).count()) === 0, "…and no Edit");
-  const kestrel = card("Kestrel the hawk joined her.");
-  ok(await kestrel.getByText("also called the hawk").isVisible() && await kestrel.getByText("A hunting hawk.").isVisible() && await kestrel.getByText("brown").isVisible(), "a new entry card shows aliases, notes and facts");
+  const kestrel = page.locator("li.codex-suggested", { hasText: "Kestrel" });
+  ok(await kestrel.getByText("Suggested new entry:").isVisible() && await kestrel.getByText("A hunting hawk.").isVisible(), "a new entry is a dashed card with its notes");
 
   // ---- accept a change ----
   await hair.getByRole("button", { name: "Accept" }).click();
   await page.getByText(/Saved to Rowan at “Chapter A”/).waitFor();
-  ok((await page.locator("article.inbox-card").count()) === 7, "an accepted card collapses to one line");
+  ok((await page.locator("article.inbox-card").count()) === 6, "an accepted card collapses to one line");
 
   // ---- edit, then save ----
   const boots = card("She laced her red boots.");
@@ -120,15 +118,15 @@ try {
   await page.locator(".inbox-done", { hasText: "Dismissed" }).waitFor();
 
   // ---- a new entry ----
-  await kestrel.getByRole("button", { name: "Accept" }).click();
+  await kestrel.getByRole("button", { name: "Add it" }).click();
   await page.getByText(/Saved to Kestrel at “Chapter A”/).waitFor();
 
   // ---- accept all for an entry (leaves out conflicts and new entries) ----
-  const all = page.getByRole("button", { name: "Accept all for Rowan" });
+  const all = page.getByRole("button", { name: /^Accept all \d+$/ });
   ok(await all.isVisible(), "an entry with several open changes offers Accept all");
   await all.click();
-  await page.waitForFunction(() => document.querySelectorAll("article.inbox-card").length === 1);
-  ok(await page.locator("article.inbox-card", { hasText: "Rowan stood there." }).isVisible(), "…only the other chapter's card is still open");
+  await page.waitForFunction(() => document.querySelectorAll("article.inbox-card").length === 0);
+  ok(true, "…which takes every open change on the entry (the root's too, saved at the root)");
 
   // ---- what reached the codex ----
   await rowanPage(A);
@@ -138,19 +136,18 @@ try {
   ok((await factLine("wooden sword").count()) === 0, "the removal took effect");
   ok(await rowanFacts().locator(".facts-form").getByText("Form: hawk").isVisible(), "the form was set");
   ok(await factLine("green").isVisible() && (await factLine("blue").count()) === 0, "Keep the codex left the green eyes");
-  ok((await rowanFacts().locator(".codex-inbox article.inbox-card").count()) === 1, "the entry page shows the suggestion still waiting");
   await page.goto(`${BASE}/c/${A}/codex`);
   await page.locator(".entry-card", { hasText: "Kestrel" }).click();
   await page.getByRole("heading", { name: "Kestrel", level: 1 }).waitFor();
   ok(await page.locator(".entry-notes", { hasText: "A hunting hawk." }).isVisible(), "the new entry was created, with its notes");
-  await page.goto(`${BASE}/c/${A}/codex`);
-  ok(await page.getByText(/Codex inbox: 1 suggestion waiting/).isVisible(), "the codex page now counts 1");
+  await page.goto(`${inbox}&chapter=${A}`);
+  ok((await page.locator("nav[aria-label='Story Bible']").getByRole("link", { name: /^Codex/ }).innerText()).trim() === "Codex", "the Codex tab no longer counts anything for the chapter");
   await rowanPage(root);
   ok((await rowanFacts().locator(".fact-line", { hasText: "silver hair" }).count()) === 0, "changes took effect from chapter A, not from the root");
 
   // ---- dismissed list, with Reopen ----
-  await page.goto(inbox);
-  await page.getByRole("button", { name: "Dismissed (1)" }).click();
+  await page.goto(`${inbox}&chapter=${A}`);
+  await page.locator("details.codex-dismissed > summary").click();
   await page.getByText(/Her eyes were blue|“blue”/).first().waitFor();
   await page.getByRole("button", { name: "Reopen" }).click();
   await card("Her eyes were blue.").waitFor();
@@ -164,9 +161,10 @@ try {
   // ---- an inbox with nothing in it ----
   const empty = await post("/api/stories", { title: "Quiet Tale", premise: "p", chapter: { title: "Only", body: "Nothing happens.", choices: [] } });
   await page.goto(`${BASE}/s/${empty.story_id}/review?tab=codex`);
-  await page.getByText("No codex suggestions waiting.").waitFor();
-  ok(true, "an empty inbox says so");
-  ok(await page.getByRole("button", { name: "Check every chapter", exact: true }).isVisible(), "…and offers the check below");
+  await page.getByText("No entries yet.").waitFor();
+  ok(true, "an empty codex says so");
+  await page.locator('summary[aria-label="Codex actions"]').click();
+  ok(await page.getByRole("button", { name: /^Check every chapter with AI/ }).isVisible(), "…and the ⋯ menu offers the check");
   await page.goto(`${BASE}/c/${empty.chapter_id}`);
   await page.waitForTimeout(500);
   ok((await page.locator("p.notice", { hasText: "Codex:" }).count()) === 0, "no banner when nothing was found");
@@ -175,19 +173,20 @@ try {
   await send("PUT", "/api/queue/paused", { paused: true });
   await page.goto(`${BASE}/c/${A}/codex?review=1`);
   const started = page.waitForResponse((r) => r.url().endsWith("/api/ai-runs") && r.request().method() === "POST");
-  await page.getByRole("button", { name: "Check this chapter" }).click();
+  await page.getByRole("button", { name: "Check this chapter with AI" }).click();
   const run = await send("GET", `/api/ai-runs/${(await (await started).json()).id}`);
   ok(run.mode === "review" && run.options.checks?.join() === "codex" && run.options.recheck === true && run.options.tagScope === "chapter", "Check this chapter makes a review run with checks [codex] and recheck");
   ok(run.tasks.length === 1 && run.tasks[0].kind === "codex" && run.tasks[0].chapterId === A, "…with a codex task for this chapter");
   await page.getByText(/Check the codex for/).first().waitFor();
   ok(true, "the run's progress lists the codex task");
-  ok(await page.getByRole("button", { name: "Check every chapter on this branch" }).isDisabled(), "a second check waits for the first");
-  await page.reload();
+  await page.locator('summary[aria-label="Codex actions"]').click();
+  ok(await page.getByRole("button", { name: /^Check this chapter with AI/ }).isDisabled(), "a second check waits for the first");
+  await page.goto(inbox);
   const startedAll = page.waitForResponse((r) => r.url().endsWith("/api/ai-runs") && r.request().method() === "POST");
-  await page.getByRole("button", { name: "Check every chapter on this branch" }).click();
+  await page.locator('summary[aria-label="Codex actions"]').click();
+  await page.getByRole("button", { name: /^Check every chapter with AI/ }).click();
   const run2 = await send("GET", `/api/ai-runs/${(await (await startedAll).json()).id}`);
-  ok(run2.options.tagScope === "path" && run2.tasks.filter((t) => t.kind === "codex").length === 2, "Check every chapter on this branch makes a codex task for each chapter on the path");
-  ok(await page.getByRole("link", { name: "Open the codex inbox" }).isVisible(), "the codex page links to the inbox");
+  ok(run2.options.tagScope === "story" && run2.tasks.filter((t) => t.kind === "codex").length === 2, "Check every chapter with AI makes a codex task for each chapter of the story");
 
   // ---- the setting ----
   await send("PUT", "/api/queue/paused", { paused: false });

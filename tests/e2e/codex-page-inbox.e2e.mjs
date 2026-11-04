@@ -1,7 +1,8 @@
 import { launch, useMockAi } from "./browser.mjs";
 
-// The codex inbox on a chapter's codex page: the suggestions that apply there (made at the chapter or one before it on the
-// branch) are shown as cards, to accept or dismiss in place. Seeded through the suggestions route, so no AI is involved.
+// The suggestions on a chapter's codex (the Story Bible's Codex section narrowed to the chapter): the ones that apply there
+// (made at the chapter or one before it on the branch) sit inside the card of the entry they are about, to accept or dismiss
+// in place. Seeded through the suggestions route, so no AI is involved.
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 
 let failed = false;
@@ -38,50 +39,56 @@ try {
   const page = await context.newPage();
   page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
   page.on("dialog", (d) => d.accept());
-  const section = page.locator(".codex-inbox");
-  const cards = () => section.locator("article.inbox-card");
+  const at = (id) => `${BASE}/s/${sid}/review?tab=codex&chapter=${id}`;
+  const cards = () => page.locator(".codex-bible article.inbox-card");
+  const newEntries = () => page.locator(".codex-bible li.codex-suggested");
+  const rowanCard = () => page.locator("li.entry-with-extra", { hasText: "Rowan" });
+  const settle = async (n) => {
+    await page.locator("details.codex-group").first().waitFor();
+    await page.waitForFunction((count) => document.querySelectorAll(".codex-bible article.inbox-card, .codex-bible li.codex-suggested").length === count, n);
+  };
 
   // ---- where the suggestions apply ----
-  await page.goto(`${BASE}/c/${A}/codex`);
-  await section.getByRole("heading", { name: "Waiting in the codex inbox" }).waitFor();
-  ok((await cards().count()) === 3, "at Chapter A: its two suggestions and the root's one: " + (await cards().count()));
-  ok((await section.getByText("New entry").count()) >= 1 && (await section.getByText("Kestrel").count()) >= 1, "a proposed new entry is among them");
-  await page.goto(`${BASE}/c/${A2}/codex`);
-  await section.getByRole("heading", { name: "Waiting in the codex inbox" }).waitFor();
-  ok((await cards().count()) === 3, "a chapter after it shows them too (they apply there): " + (await cards().count()));
-  await page.goto(`${BASE}/c/${R}/codex`);
-  await section.getByRole("heading", { name: "Waiting in the codex inbox" }).waitFor();
-  ok((await cards().count()) === 1, "at the root: only the root's suggestion: " + (await cards().count()));
-  await page.goto(`${BASE}/c/${B}/codex`);
-  await page.getByRole("heading", { name: "Codex", level: 1 }).waitFor();
-  await page.waitForTimeout(500);
-  ok((await page.locator(".codex-inbox").count()) === 1 && (await cards().count()) === 1, "on the other branch: the root's only: " + (await cards().count()));
+  await page.goto(at(A));
+  await settle(3);
+  ok((await cards().count()) === 2 && (await rowanCard().locator("article.inbox-card").count()) === 2, "at Chapter A: Rowan's card holds its own suggestion and the root's");
+  ok((await newEntries().count()) === 1 && (await newEntries().getByText("Kestrel", { exact: true }).count()) === 1, "a proposed new entry is a dashed card among them");
+  await page.goto(at(A2));
+  await settle(3);
+  ok((await cards().count()) === 2, "a chapter after it shows them too (they apply there)");
+  await page.goto(at(R));
+  await settle(1);
+  ok((await cards().count()) === 1 && (await newEntries().count()) === 0, "at the root: only the root's suggestion");
+  await page.goto(at(B));
+  await settle(1);
+  ok((await cards().count()) === 1, "on the other branch: the root's only");
 
-  // ---- accept in place: the entry list changes, the card stays (collapsed) until the page is left ----
-  await page.goto(`${BASE}/c/${A}/codex`);
-  await section.getByRole("heading", { name: "Waiting in the codex inbox" }).waitFor();
-  const hair = section.locator("article.inbox-card", { hasText: "silver hair" });
+  // ---- accept in place: the card shows the new fact, the suggestion stays (collapsed) until the page is left ----
+  await page.goto(at(A));
+  await settle(3);
+  const hair = cards().filter({ hasText: "silver hair" });
   await hair.getByRole("button", { name: "Accept" }).first().click();
   await page.locator(".entry-card", { hasText: "Rowan" }).getByText(/silver hair/).waitFor();
-  ok(true, "accepting a suggestion here updates the codex list at once");
+  ok(true, "accepting a suggestion here updates the entry's card at once");
   const atRoot = (await send("GET", `/api/chapters/${R}/codex`)).entries.find((e) => e.name === "Rowan");
   ok(atRoot.description.includes("dark brown hair") && !atRoot.description.includes("silver"), "…from the chapter it was made at, not above it");
 
   // dismiss one
-  const mood = section.locator("article.inbox-card", { hasText: "calm" });
+  const mood = cards().filter({ hasText: "calm" });
   await mood.getByRole("button", { name: "Dismiss" }).click();
-  await section.getByRole("button", { name: "Undo" }).first().waitFor();
+  await page.getByRole("button", { name: "Undo" }).first().waitFor();
   ok(true, "a suggestion can be dismissed here too (it stays as a line with Undo until the page is left)");
 
   // after leaving the page, accepted and dismissed ones are gone from the list
-  await page.goto(`${BASE}/c/${A}/codex`);
-  await section.getByRole("heading", { name: "Waiting in the codex inbox" }).waitFor();
-  ok((await cards().count()) === 1, "back on the page, only what is still open is listed: " + (await cards().count()));
+  await page.goto(at(A));
+  await settle(1);
+  ok((await cards().count()) === 0 && (await newEntries().count()) === 1, "back on the page, only what is still open is listed");
+  ok((await page.getByText("Dismissed suggestions (1)").count()) === 1, "…and the dismissed one can be found and reopened");
 
   // phone width
   await page.setViewportSize({ width: 390, height: 800 });
   await page.reload();
-  await section.getByRole("heading", { name: "Waiting in the codex inbox" }).waitFor();
+  await settle(1);
   ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), "fits a phone screen");
   await context.close();
 } catch (e) {

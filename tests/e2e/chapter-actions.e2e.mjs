@@ -33,7 +33,7 @@ ok(above, "the row sits between the title and the text");
 ok(!(await more().isVisible()), "the ⋯ menu starts closed");
 await row().getByLabel("More chapter actions", { exact: true }).click();
 ok((await more().getByRole("link").allInnerTexts()).join("|") === "History|Read this path|Open in outline|Summary (missing)|Make missing pictures…", "the ⋯ menu lists History, Read this path, Open in outline, Summary and Make missing pictures");
-ok((await row().getByRole("link", { name: "Codex", exact: true }).getAttribute("href")) === `/c/${second}/codex`, "Codex is a button in the row, not in the ⋯ menu");
+ok((await row().getByRole("link", { name: "Codex", exact: true }).getAttribute("href")) === `/s/${s.story_id}/review?tab=codex&chapter=${second}`, "Codex is a button in the row, not in the ⋯ menu");
 // The Bible tab keeps the chapter being read.
 ok((await page.locator(".story-tabs").getByRole("link", { name: "Bible" }).getAttribute("href"))?.endsWith(`/review?chapter=${second}`), "the Bible tab opens narrowed to this chapter");
 const hrefs = await more().getByRole("link").evaluateAll((as) => as.map((a) => a.getAttribute("href")));

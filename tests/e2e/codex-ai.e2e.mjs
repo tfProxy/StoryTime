@@ -28,9 +28,10 @@ page.on("dialog", (d) => d.accept());
 await page.goto(`${BASE}/c/${s1.a}?posted=1`);
 ok(await page.getByRole("link", { name: "Review codex for this chapter" }).isVisible(), "post-publish banner offers a codex review");
 await page.getByRole("link", { name: "Review codex for this chapter" }).click();
-await page.waitForURL(/codex\?review=1/);
-ok(await page.locator("details.ai-panel").evaluate((d) => d.open), "review link opens the codex check panel");
-ok(await page.getByRole("button", { name: "Check this chapter" }).isVisible(), "the panel has the check buttons");
+await page.waitForURL(/review\?tab=codex&chapter=.*&review=1/);
+ok(await page.getByRole("button", { name: "Check this chapter with AI" }).isVisible(), "the review link lands on the Story Bible's codex, which offers the check");
+await page.locator('summary[aria-label="Codex actions"]').click();
+ok(await page.getByRole("button", { name: /^Check this chapter with AI/ }).count() >= 1, "…and the ⋯ menu has it too");
 ok((await page.getByRole("button", { name: "Scan for codex changes" }).count()) === 0, "the old whole-entry scan is gone");
 ok(await page.locator(".entry-card", { hasText: "Gideon" }).isVisible(), "the codex page lists the entry as a card");
 

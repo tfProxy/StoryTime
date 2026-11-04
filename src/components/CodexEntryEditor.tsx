@@ -302,7 +302,7 @@ export default function CodexEntryEditor({
               title={`Gone from “${here}” and every chapter after it. Earlier chapters keep it.`}
               onClick={async () => {
                 if (!window.confirm(`Retire “${entry.name}” from this chapter onward? Earlier chapters keep it.`)) return;
-                if (await change({ op: "retire", entry_id: entry.entry_id })) (onRetired ?? (() => router.push(`/c/${chapterId}/codex`)))();
+                if (await change({ op: "retire", entry_id: entry.entry_id })) (onRetired ?? (() => router.push(storyId ? `/s/${storyId}/review?tab=codex&chapter=${chapterId}` : `/c/${chapterId}`)))();
               }}
             >
               Retire from here on…
@@ -521,7 +521,10 @@ export function EntryDetailsForm({
   saved,
   onSave,
   onCancel,
+  startName = "",
 }: {
+  /** The name a new entry starts with. */
+  startName?: string;
   initial: CodexEntry | null;
   busy: boolean;
   path: PathChapter[];
@@ -539,7 +542,7 @@ export function EntryDetailsForm({
   /** With it, the form is a pop-up form with Cancel; without it (for an existing entry) it is always on the page and Save waits for a change. */
   onCancel?: () => void;
 }) {
-  const [name, setName] = useState(initial?.name ?? "");
+  const [name, setName] = useState(initial?.name ?? startName);
   const [type, setType] = useState<EntryType>(initial?.type ?? "character");
   const [aliases, setAliases] = useState((initial?.aliases ?? []).join(", "));
   const [always, setAlways] = useState(initial?.always_include ?? false);

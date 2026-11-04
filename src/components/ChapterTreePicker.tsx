@@ -29,6 +29,8 @@ type Props = {
   name?: string;
   /** With `name`: submit the input's form as soon as a chapter is picked. */
   submitOnPick?: boolean;
+  /** Open from a plain text link with this label (for example "Change…") instead of the button that shows the chosen chapter. */
+  linkLabel?: string;
 };
 
 const SEP = " › ";
@@ -52,7 +54,7 @@ function highlight(text: string, query: string): ReactNode {
  * the story as a tree (the chosen chapter's branch open, the others folded) and a search box. The panel sits under the
  * button; on a phone it is a bottom sheet.
  */
-export default function ChapterTreePicker({ chapters, value, onChange, allowWhole = false, id, labelledBy, name, submitOnPick = false }: Props) {
+export default function ChapterTreePicker({ chapters, value, onChange, allowWhole = false, id, labelledBy, name, submitOnPick = false, linkLabel }: Props) {
   const [local, setLocal] = useState<string | null>(value || null);
   const current = (onChange ? value : local) || null;
   const [open, setOpen] = useState(false);
@@ -246,24 +248,30 @@ export default function ChapterTreePicker({ chapters, value, onChange, allowWhol
   );
 
   return (
-    <div className="chapter-tree-picker">
+    <div className={linkLabel ? "chapter-tree-picker compact" : "chapter-tree-picker"}>
       {name && <input ref={hiddenRef} type="hidden" name={name} defaultValue={current ?? ""} />}
-      <button
-        ref={buttonRef}
-        id={id}
-        type="button"
-        className="chapter-tree-button"
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        aria-labelledby={labelledBy && id ? `${labelledBy} ${id}-title` : undefined}
-        onClick={toggle}
-      >
-        <span id={id ? `${id}-title` : undefined} className="chapter-tree-button-title">
-          {chosen ? chosen.title : "The whole story"}
-        </span>
-        {chosen && <span className="chapter-tree-button-path">{pathText(chosen.id)}</span>}
-        <span className="chapter-tree-button-change">Change…</span>
-      </button>
+      {linkLabel ? (
+        <button ref={buttonRef} id={id} type="button" className="linkish" aria-expanded={open} aria-haspopup="dialog" onClick={toggle}>
+          {linkLabel}
+        </button>
+      ) : (
+        <button
+          ref={buttonRef}
+          id={id}
+          type="button"
+          className="chapter-tree-button"
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          aria-labelledby={labelledBy && id ? `${labelledBy} ${id}-title` : undefined}
+          onClick={toggle}
+        >
+          <span id={id ? `${id}-title` : undefined} className="chapter-tree-button-title">
+            {chosen ? chosen.title : "The whole story"}
+          </span>
+          {chosen && <span className="chapter-tree-button-path">{pathText(chosen.id)}</span>}
+          <span className="chapter-tree-button-change">Change…</span>
+        </button>
+      )}
       {sheet && panel ? createPortal(panel, document.body) : panel}
     </div>
   );

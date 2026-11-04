@@ -1,4 +1,5 @@
 import { launch, useMockAi } from "./browser.mjs";
+import { unfoldEntryFolds } from "./unfold.mjs";
 
 // The chapter pickers. Section A: "Takes effect from" (ChapterPathPicker), which offers only the chapters on the
 // current branch: quick choices, "Earlier…" with the path, the tint and the line that says what the pick means.
@@ -16,6 +17,7 @@ const post = (url, body) => send("POST", url, body);
 const ai = await useMockAi(BASE); // nothing here calls the AI
 const browser = await launch();
 const context = await browser.newContext();
+await unfoldEntryFolds(context);
 const page = await context.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 page.on("dialog", (d) => d.accept());
@@ -123,7 +125,7 @@ async function sectionA() {
   ok((await pathButtons.count()) === 0 && (await pressed(pill("The start"))) && !(await pressed(pill("Earlier…"))), "a quick choice closes the path");
 
   // the same picker on the fact form and the form change
-  const factsSection = page.locator(".entry-editor section", { has: page.getByRole("heading", { name: "Facts", exact: true }) });
+  const factsSection = page.locator(".entry-editor details.entry-fold", { has: page.getByRole("heading", { name: "Facts", exact: true }) });
   await factsSection.getByRole("button", { name: "+ Add a fact" }).click();
   const factForm = factsSection.locator(".fact-form");
   await factForm.getByLabel("Aspect").fill("Eyes");
@@ -202,8 +204,9 @@ async function sectionB() {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(review(`?tab=issues&chapter=${id.moon}`));
     await button.waitFor();
-    ok((await button.locator(".chapter-tree-button-title").innerText()) === T.moon && (await button.locator(".chapter-tree-button-path").innerText()) === `${T.root} › ${T.marsh} › ${T.ferry}`, "the button shows the chosen chapter and, under it, the chapters before it");
-    ok((await button.locator(".chapter-tree-button-change").innerText()) === "Change…" && (await button.getAttribute("aria-expanded")) === "false" && (await dialog.count()) === 0, "…with Change…, closed (aria-expanded false)");
+    const scopeLine = async () => (await page.locator(".bible-scope-line").innerText()).replace(/\s+/g, " ").trim();
+    ok((await scopeLine()) === `Showing ${T.root} › ${T.marsh} › ${T.ferry} › ${T.moon} Change…`, "the scope line shows the chosen chapter after the chapters before it, with Change…: " + (await scopeLine()));
+    ok((await button.innerText()) === "Change…" && (await button.getAttribute("aria-expanded")) === "false" && (await dialog.count()) === 0, "…closed (aria-expanded false)");
     await button.click();
     await dialog.waitFor();
     ok((await button.getAttribute("aria-expanded")) === "true", "the button opens the panel (aria-expanded true)");
@@ -254,8 +257,7 @@ async function sectionB() {
     await dialog.getByRole("searchbox", { name: "Search chapter titles" }).fill("mill");
     await dialog.locator(".chapter-tree-results button").click();
     await page.waitForURL(new RegExp(`tab=issues&chapter=${id.mill}`));
-    ok((await dialog.count()) === 0 && (await button.locator(".chapter-tree-button-title").innerText()) === T.mill, "picking closes the panel, goes to that chapter and keeps the tab");
-    ok((await button.locator(".chapter-tree-button-path").innerText()) === `${T.root} › ${T.forest}`, "…and the button shows its path");
+    ok((await dialog.count()) === 0 && (await scopeLine()).startsWith(`Showing ${T.root} › ${T.forest} › ${T.mill}`), "picking closes the panel, goes to that chapter and keeps the tab");
     // picking from the tree
     await button.click();
     await row(T.marsh).click();
@@ -265,12 +267,12 @@ async function sectionB() {
     await button.click();
     await row(T.root).click();
     await page.waitForURL(new RegExp(`chapter=${id.root}`));
-    ok((await button.locator(".chapter-tree-button-path").innerText()) === "The first chapter", "the first chapter says “The first chapter”");
+    ok((await scopeLine()).startsWith(`Showing ${T.root} `), "the first chapter is shown by its title alone");
     // the whole story
     await button.click();
     await dialog.getByRole("button", { name: "The whole story" }).click();
-    await page.waitForURL(/chapter=$/);
-    ok((await button.locator(".chapter-tree-button-title").innerText()) === "The whole story" && (await page.getByText(/^Showing .* only/).count()) === 0, "“The whole story” is offered at the top and shows everything");
+    await page.waitForURL(review("?tab=issues"));
+    ok((await scopeLine()) === "Showing the whole story Pick a chapter…", "“The whole story” is offered at the top and shows everything");
 
     // ---- Story Bible, phone ----
     const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   addChange,
@@ -18,9 +18,7 @@ import {
   type FactOp,
 } from "@/lib/codex";
 import type { PathChapter, StoryInfo } from "@/lib/ai/codexAi";
-import CodexCheck from "./CodexCheck";
 import CodexEntryCards from "./CodexEntryCards";
-import CodexInbox from "./CodexInbox";
 import CodexEntryEditor, { EntryDetailsForm, type EntryChange } from "./CodexEntryEditor";
 import type { HeldFact } from "./CodexFacts";
 import SharedEntryLink from "./SharedEntryLink";
@@ -29,12 +27,8 @@ type Props = {
   story?: StoryInfo;
   /** The story's id: entries link to their pages with it, and show their pictures. */
   storyId?: string;
-  /** Open the codex check section initially (used right after posting a chapter). */
-  openAiHelper?: boolean;
-  /** Shown inside the writing page's drawer: entries open in the drawer, with no chapter timeline or AI scan. */
+  /** Shown inside the writing page's drawer: entries open in the drawer. */
   embedded?: boolean;
-  /** Shown on the story's details page: the codex at the first chapter, which every branch shares. */
-  storyWide?: boolean;
   /** Open with this entry showing ("new" for the new-entry form); only in the drawer. */
   startEditing?: string | null;
   /** The chapter whose codex is being viewed; changes made here are anchored at it. */
@@ -56,9 +50,6 @@ type Props = {
     onFactsChange: (next: FactChange[]) => void;
     editing?: boolean;
   };
-  /** The codex page's chapter path (with the chapters after this one), and the chapter's collapsed summary below it. */
-  nav?: ReactNode;
-  summary?: ReactNode;
 };
 
 const localId = () => `draft-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
@@ -67,7 +58,7 @@ const localId = () => `draft-${Date.now().toString(36)}${Math.random().toString(
  * The codex as a compact list of entries (see `CodexEntryCards`), with "+ New entry". Each card opens the entry's
  * page; in the writing page's drawer it opens the entry in the drawer instead, so the draft is kept.
  */
-export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide, startEditing, chapterId, path, ops, facts, draft, nav, summary }: Props) {
+export default function CodexPanel({ storyId, embedded, startEditing, chapterId, path, ops, facts, draft }: Props) {
   const router = useRouter();
   // Each entry's picture as of this chapter (by entry id), for the thumbnails.
   const [pictures, setPictures] = useState<Record<string, { id: string }>>({});
@@ -230,10 +221,6 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
 
   return (
     <div style={{ display: "grid", gap: "1.25rem" }}>
-      {!embedded && !storyWide && (
-        nav
-      )}
-      {!embedded && !storyWide && summary}
       {draft ? (
         <p className="notice">
           {draft.editing ? (
@@ -251,11 +238,6 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
           To record something that happened earlier, pick that chapter under &ldquo;Takes effect from&rdquo;; that is
           saved immediately and reaches every branch below it.
         </p>
-      ) : storyWide ? (
-        <p className="notice">
-          Entries here apply to the whole story, on every branch, from the first chapter on. A later chapter can still
-          change or retire one for its own branch; do that from that chapter&apos;s codex.
-        </p>
       ) : (
         <p className="notice">
           This is the codex as of <strong>{titleOf(chapterId)}</strong>. Anything you add or change here takes effect from
@@ -265,13 +247,6 @@ export default function CodexPanel({ storyId, openAiHelper, embedded, storyWide,
       )}
 
       {error && <p className="error">{error}</p>}
-
-      {!embedded && !storyWide && storyId && <CodexCheck storyId={storyId} chapterId={chapterId} inboxHref={`/s/${storyId}/review?tab=codex`} defaultOpen={openAiHelper} />}
-
-      {/* The inbox suggestions that apply here (made at this chapter or an earlier one on the branch), to accept or dismiss in place. */}
-      {!embedded && !storyWide && storyId && (
-        <CodexInbox storyId={storyId} onPath={{ chapterIds: path.map((c) => c.id), onChanged: () => router.refresh() }} />
-      )}
 
       {creating ? (
         <div>

@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { ENTRY_TYPES, TYPE_HEADINGS, TYPE_LABELS, type CodexEntry } from "@/lib/codex";
+import type { ReactNode } from "react";
+import { ENTRY_TYPES, TYPE_HEADINGS, TYPE_LABELS, type CodexEntry, type EntryType } from "@/lib/codex";
+import CodexGroup from "./CodexGroup";
+
 type Props = {
   entries: CodexEntry[];
   /** The chapter the entries are shown at: cards link to the entry page at this chapter, and mark the entries changed in it. */
@@ -15,19 +18,27 @@ type Props = {
   onOpen?: (entry: CodexEntry) => void;
   /** Shown when there are no entries. */
   empty?: string;
+  /** The Story Bible's version: each type is a fold ("Characters (2) · 2 suggestions") instead of a heading. */
+  fold?: boolean;
+  /** Under an entry's card: what else belongs to the entry (its suggestions). */
+  extra?: (entry: CodexEntry) => ReactNode;
+  /** List items for a type's fold, after its cards (things that are not entries yet); a type with no entries is still shown when this returns something. */
+  groupExtra?: (type: EntryType) => ReactNode;
+  /** The suggestions a type's fold holds, for its summary. */
+  groupSuggestions?: (type: EntryType) => number;
 };
 
 /** The compact list of a codex's entries, grouped by type: every place that lists entries uses it, and each card opens the entry's page. */
-export default function CodexEntryCards({ entries, chapterId, storyId, pictures = {}, held = {}, onOpen, empty }: Props) {
-  if (entries.length === 0) return empty ? <p className="meta">{empty}</p> : null;
+export default function CodexEntryCards({ entries, chapterId, storyId, pictures = {}, held = {}, onOpen, empty, fold, extra, groupExtra, groupSuggestions }: Props) {
+  if (entries.length === 0 && !groupExtra) return empty ? <p className="meta">{empty}</p> : null;
   return (
     <>
       {ENTRY_TYPES.map((type) => {
         const group = entries.filter((e) => e.type === type);
-        if (group.length === 0) return null;
-        return (
-          <section key={type}>
-            <h2>{TYPE_HEADINGS[type]}</h2>
+        const more = groupExtra?.(type);
+        if (group.length === 0 && !more) return null;
+        const list = (
+            <>
             <ul className="entry-cards">
               {group.map((e) => {
                 const picture = pictures[e.entry_id];
@@ -57,8 +68,9 @@ export default function CodexEntryCards({ entries, chapterId, storyId, pictures 
                     </span>
                   </>
                 );
+                const below = extra?.(e);
                 return (
-                  <li key={e.entry_id}>
+                  <li key={e.entry_id} className={below ? "entry-with-extra" : undefined}>
                     {onOpen ? (
                       <button type="button" className="entry-card" onClick={() => onOpen(e)}>
                         {inner}
@@ -68,10 +80,22 @@ export default function CodexEntryCards({ entries, chapterId, storyId, pictures 
                         {inner}
                       </Link>
                     )}
+                    {below}
                   </li>
                 );
               })}
+              {more}
             </ul>
+          </>
+        );
+        return fold ? (
+          <CodexGroup key={type} title={TYPE_HEADINGS[type]} count={group.length} suggestions={groupSuggestions?.(type) ?? 0}>
+            {list}
+          </CodexGroup>
+        ) : (
+          <section key={type}>
+            <h2>{TYPE_HEADINGS[type]}</h2>
+            {list}
           </section>
         );
       })}

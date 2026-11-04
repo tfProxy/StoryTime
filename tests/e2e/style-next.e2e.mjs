@@ -87,7 +87,10 @@ await page.getByText("Story details saved.").waitFor();
 const edited = await json("GET", `/api/stories/${story.id}`);
 ok(edited.style === "STYLE-EDITED: third person." && edited.title === "Styled tale, renamed" && edited.premise === "A SUMMARY of the tale.", "saving stores the title, summary and style notes");
 
-await page.getByRole("button", { name: "+ New entry" }).click();
+// (The codex is in the Story Bible: its whole-story scope adds entries from the first chapter on.)
+await page.goto(`${BASE}/s/${story.id}/review?tab=codex`);
+await page.locator('summary[aria-label="Codex actions"]').click();
+await page.getByRole("button", { name: "New entry", exact: true }).click();
 await page.getByLabel("Name", { exact: true }).fill("Lantern");
 ok(!(await page.getByLabel(/Takes effect from/).count()), "a story-wide entry has no chapter to pick");
 await page.getByRole("button", { name: "Add entry" }).click();

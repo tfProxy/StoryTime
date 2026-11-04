@@ -212,10 +212,10 @@ try {
   ok((await offer.getAttribute("href")) === `/s/${tfStory.story_id}/review?tab=codex&chapter=${tfChapter}`, "…linking to the Codex tab for that chapter");
   await offer.click();
   await page.waitForURL(/tab=codex/);
-  await page.getByRole("heading", { name: "Check with the AI" }).waitFor();
+  await page.locator('summary[aria-label="Codex actions"]').waitFor();
   ok((await tabLink("Codex").getAttribute("aria-current")) === "page", "…which opens on the Codex tab");
-  ok((await page.locator("details.ai-panel[open]").count()) > 0,"…with the AI codex check for that chapter");
-  ok((await page.getByText("Check the codex of").count()) === 0, "…and not the chapter picker");
+  await page.locator('summary[aria-label="Codex actions"]').click();
+  ok(await page.getByRole("button", { name: /^Check this chapter with AI/ }).isVisible(), "…with the AI codex check for that chapter in the ⋯ menu");
   const posted = await post("/api/codex", { anchor_chapter_id: tfChapter, op: "create", name: "Mira", type: "character", content: "A horse." });
   ok(!!posted.entry_id, "a codex change is posted at that chapter");
   await page.goto(reviewUrl(tfStory.story_id, "?tab=tags"));

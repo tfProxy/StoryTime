@@ -76,7 +76,8 @@ try {
   await showChapter("Missing one");
   await page.waitForURL(new RegExp(`tab=issues&chapter=${noSummary}`));
   ok((await tabLink("Issues").getAttribute("aria-current")) === "page" && (await page.getByRole("link", { name: "Fix the summary" }).count()) === 1, "the Show picker narrows to a chapter and keeps the tab");
-  await page.getByRole("link", { name: "Show the whole story" }).click();
+  await page.locator("#bible-chapter").click();
+  await page.getByRole("dialog", { name: "Choose a chapter" }).getByRole("button", { name: "The whole story" }).click();
   await page.waitForURL(new RegExp(`tab=issues$`));
 
   // The old summaries page now opens the Summaries tab.
@@ -94,15 +95,18 @@ try {
   const redo = page.getByRole("link", { name: "Redo all the AI summaries" });
   ok((await redo.getAttribute("href")) === `/s/${s.story_id}/review?tab=summaries`, "Redo all the AI summaries links to the Summaries tab");
   await page.goto(`${BASE}/s/${s.story_id}/review?tab=codex`);
-  await page.getByText("No codex suggestions waiting.").waitFor();
-  ok(true, "the codex inbox says when nothing waits");
-  ok((await page.getByRole("button", { name: "Check this chapter" }).count()) === 0 && await page.getByRole("button", { name: "Check every chapter", exact: true }).isVisible(), "no single-chapter check until a chapter is chosen");
+  await page.getByText("No entries yet.").waitFor();
+  ok(true, "the codex says when it has no entries");
+  await page.locator('summary[aria-label="Codex actions"]').click();
+  ok((await page.getByRole("button", { name: /^Check this chapter/ }).count()) === 0 && await page.getByRole("button", { name: /^Check every chapter with AI/ }).isVisible(), "no single-chapter check until a chapter is chosen");
 
-  // Choosing a chapter with the Show picker.
+  // Choosing a chapter with the scope line's Change….
+  await page.locator(".bible-scope").click({ position: { x: 4, y: 4 } }); // (closes the ⋯ menu)
   await showChapter("Stale one");
   await page.waitForURL(new RegExp(`tab=codex&chapter=${stale}`));
-  ok(await page.getByText(/Showing .*Stale one.* only/).isVisible(), "choosing a chapter filters the page to it");
-  ok(await page.getByRole("button", { name: "Check this chapter" }).isVisible(), "the codex check buttons are shown for the chosen chapter");
+  ok(/Showing .*Stale one/.test(await page.locator(".bible-scope").innerText()), "choosing a chapter narrows the page to it");
+  await page.locator('summary[aria-label="Codex actions"]').click();
+  ok(await page.getByRole("button", { name: /^Check this chapter with AI/ }).isVisible(), "the codex check is offered for the chosen chapter");
   await page.goto(`${BASE}/s/${s.story_id}/review?tab=issues&chapter=${stale}`);
   ok((await page.getByRole("link", { name: "Fix the summary" }).count()) === 1 && (await page.getByRole("link", { name: "Redo all the AI summaries" }).count()) === 0, "only that chapter's issue is listed");
 
@@ -119,7 +123,7 @@ try {
   ok((await page.getByRole("link", { name: "Redo the AI summaries" }).getAttribute("href")) === `/s/${s.story_id}/review?tab=summaries`, "…and Redo the AI summaries opens the Summaries tab");
   await marker("Missing one").click();
   await page.waitForURL(new RegExp(`/review\\?chapter=${noSummary}$`));
-  ok(await page.getByText(/Showing .*Missing one.* only/).isVisible(), "the marker opens the Story Bible filtered to that chapter");
+  ok(/Showing .*Missing one/.test(await page.locator(".bible-scope").innerText()), "the marker opens the Story Bible filtered to that chapter");
   await page.goto(`${BASE}/s/${s.story_id}/review?tab=issues&chapter=${noSummary}`);
 
   // Later / Dismiss / Undo on the filtered page for "Missing one".
@@ -225,24 +229,22 @@ try {
   const gTwo = (await post("/api/chapters", { choice_id: gChoice.id, title: "Gap two", body: "Ilsa leaves.", summary: "g2" })).chapter_id;
   for (const id of [g.chapter_id, gTwo]) await post(`/api/chapters/${id}/facts`, { revision: 1, facts: [{ entity: "Ilsa", attribute: "mood", value: "calm", quote: "Ilsa" }] });
   await page.goto(`${BASE}/s/${g.story_id}/review?tab=codex`);
-  const gap = page.locator("li", { hasText: "has no codex entry" });
-  ok((await gap.count()) === 1 && (await gap.innerText()).includes("Ilsa") && (await gap.innerText()).includes("Gap one"), "the Codex tab lists the name that has no entry");
-  ok((await gap.getByRole("link", { name: "Check the codex here" }).getAttribute("href")) === `/s/${g.story_id}/review?tab=codex&chapter=${g.chapter_id}`, "…with a link that opens the codex check at the first chapter");
+  const gap = page.locator("li.codex-suggested", { hasText: "Not in the codex yet:" });
+  await gap.waitFor();
+  ok((await gap.count()) === 1 && (await gap.innerText()).includes("Ilsa") && (await gap.innerText()).includes("named in 2 chapters"), "the Codex tab lists the name that has no entry, as a dashed card");
+  ok((await gap.getByRole("button", { name: "Add entry" }).count()) === 1, "…with Add entry");
   await gap.getByRole("button", { name: "Dismiss", exact: true }).click();
-  await page.getByText("Dismissed (1)").waitFor();
-  ok((await page.getByRole("link", { name: "Check the codex here" }).count()) === 0, "Dismiss takes it off the open list");
+  await page.waitForFunction(() => document.querySelectorAll("li.codex-suggested").length === 0);
+  ok(true, "Dismiss takes it off the list");
 
-  // The Codex tab lists every entry, with type filter links.
+  // The Codex tab lists every entry, in folds by type.
   await post("/api/codex", { anchor_chapter_id: g.chapter_id, op: "create", name: "Ilsa Vane", type: "character", aliases: [], content: "x", always_include: false });
   await post("/api/codex", { anchor_chapter_id: g.chapter_id, op: "create", name: "Old Mill", type: "place", aliases: [], content: "x", always_include: false });
   await page.goto(`${BASE}/s/${g.story_id}/review?tab=codex`);
-  await page.getByRole("heading", { name: "Entries (2)" }).waitFor();
+  await page.locator("details.codex-group > summary", { hasText: "Places (1)" }).waitFor();
   ok((await page.getByRole("link", { name: "Ilsa Vane" }).count()) === 1 && (await page.getByRole("link", { name: "Old Mill" }).count()) === 1, "the Codex tab lists every codex entry");
-  const filter = page.locator('nav[aria-label="Filter entries by type"]');
-  await filter.getByRole("link", { name: /^Places/ }).click();
-  await page.waitForURL(/type=place/);
-  ok((await page.getByRole("heading", { name: "Entries (1)" }).isVisible()) && (await page.getByRole("link", { name: "Ilsa Vane" }).count()) === 0 && (await page.getByRole("link", { name: "Old Mill" }).count()) === 1, "a type filter link narrows the list");
-  ok((await tabLink("Codex").getAttribute("aria-current")) === "page", "…and stays on the Codex tab");
+  ok((await page.locator("details.codex-group > summary", { hasText: "Characters (1)" }).count()) === 1, "…in a fold for each type");
+  ok((await tabLink("Codex").getAttribute("aria-current")) === "page", "…on the Codex tab");
 
   // The Check continuity button: reads the facts of both chapters, then asks the judge once.
   const ai = await useMockAi(BASE);

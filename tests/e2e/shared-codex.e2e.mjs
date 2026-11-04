@@ -62,7 +62,7 @@ try {
   // ---- add it to the story from Chapter A ----
   // (The writing page's drawer is where an entry is added from the UI: see shared-codex-write.)
   await page.goto(`${BASE}/c/${A}/codex`);
-  await page.locator(".entry-cards, .meta").first().waitFor();
+  await page.locator("details.codex-group, .codex-empty").first().waitFor();
   ok((await page.getByRole("button", { name: "+ Shared entry" }).count()) === 0, "the story's codex page has no “+ Shared entry”");
   await post("/api/codex/link", { anchor_chapter_id: A, shared_entry_id: sid });
   await page.reload();

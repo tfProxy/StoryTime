@@ -42,7 +42,7 @@ export default async function CodexEntryPage({ params, searchParams }: { params:
     <>
       <StoryTabs storyId={story.id} title={story.title} active="bible" />
       <p className="crumbs">
-        <Link href={`/c/${at}/codex`}>← Codex at “{here.title}”</Link>
+        <Link href={`/s/${story.id}/review?tab=codex&chapter=${at}`}>← Codex at “{here.title}”</Link>
       </p>
       <ChapterPathNav
         className="entry-path"

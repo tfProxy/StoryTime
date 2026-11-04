@@ -2,11 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import StoryTabs from "@/components/StoryTabs";
 import BulkSummaries from "@/components/BulkSummaries";
+import BibleScope from "@/components/BibleScope";
+import BibleSectionSelect from "@/components/BibleSectionSelect";
 import ChapterTreePicker from "@/components/ChapterTreePicker";
-import CodexCheck from "@/components/CodexCheck";
-import CodexEntryCards from "@/components/CodexEntryCards";
-import CodexEntryList from "@/components/CodexEntryList";
-import CodexInbox from "@/components/CodexInbox";
+import CodexSection, { CodexBibleProvider, CodexMenu } from "@/components/CodexBible";
 import ContinuityCheck from "@/components/ContinuityCheck";
 import IssueActions from "@/components/IssueActions";
 import MarkReviewedButton from "@/components/MarkReviewedButton";
@@ -17,7 +16,7 @@ import TagScan from "@/components/TagScan";
 import TagSuggestions from "@/components/TagSuggestions";
 import TaggedChapters from "@/components/TaggedChapters";
 import { listRuns } from "@/lib/aiRuns";
-import { ENTRY_TYPES, foldCodex } from "@/lib/codex";
+import { foldCodex, retiredEntries } from "@/lib/codex";
 import { getCodexFacts, getCodexOps, storyCodexEntries } from "@/lib/codexDb";
 import { codexPicturesAt } from "@/lib/codexPictures";
 import { openSuggestionCounts } from "@/lib/codexSuggestions";
@@ -49,7 +48,7 @@ export default async function StoryBiblePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ chapter?: string | string[]; tab?: string | string[]; type?: string | string[] }>;
+  searchParams: Promise<{ chapter?: string | string[]; tab?: string | string[]; review?: string | string[] }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -61,8 +60,6 @@ export default async function StoryBiblePage({
   const chosen = chapters.find((c) => c.id === wanted);
   const tabParam = Array.isArray(sp.tab) ? sp.tab[0] : sp.tab;
   const tab: Tab = TABS.find((t) => t.id === tabParam)?.id ?? "overview";
-  const typeParam = Array.isArray(sp.type) ? sp.type[0] : sp.type;
-  const entryType = ENTRY_TYPES.find((t) => t === typeParam) ?? null;
   const codexEntries = storyCodexEntries(story.id);
   const base = `/s/${story.id}/review`;
   const hrefFor = (t: Tab, chapterId = chosen?.id) => {
@@ -111,42 +108,38 @@ export default async function StoryBiblePage({
     summaries: 0,
   };
 
-  return (
+  const rootId = story.root_chapter_id ?? chapters[0].id;
+  const trail = chosen ? getPath(chosen.id).map((c) => c.title) : [];
+  const page = (
     <>
       <StoryTabs storyId={story.id} title={story.title} active="bible" />
-      <h1>Story Bible</h1>
-      <form method="get" className="row" style={{ alignItems: "start", margin: "0.5rem 0 1rem" }}>
-        {tab !== "overview" && <input type="hidden" name="tab" value={tab} />}
-        <label id="bible-chapter-label" htmlFor="bible-chapter" className="meta" style={{ margin: 0, paddingTop: "0.55rem" }}>
-          Show
-        </label>
-        <ChapterTreePicker
-          id="bible-chapter"
-          labelledBy="bible-chapter-label"
-          name="chapter"
-          submitOnPick
-          allowWhole
-          chapters={pickerChapters}
-          value={chosen?.id ?? null}
-        />
-      </form>
-      {chosen && (
-        <p className="meta">
-          Showing “{chosen.title}” only · <Link href={hrefFor(tab, "")}>Show the whole story</Link>
-        </p>
-      )}
-      <nav className="settings-tabs" aria-label="Story Bible">
-        {TABS.map((t) => (
-          <Link key={t.id} href={hrefFor(t.id)} aria-current={tab === t.id ? "page" : undefined}>
-            {t.label}
-            {counts[t.id] > 0 && (
-              <span className="count-chip" aria-label={`, ${counts[t.id]} open`}>
-                {counts[t.id]}
-              </span>
-            )}
-          </Link>
-        ))}
-      </nav>
+      <h1 className="visually-hidden">Story Bible</h1>
+      {/* The sections: a select on a phone, the tab strip on a wider screen. The codex's ⋯ menu sits beside them. */}
+      <div className="bible-nav">
+        <div className="bible-section-pick">
+          <BibleSectionSelect sections={TABS.map((t) => ({ id: t.id, label: t.label, href: hrefFor(t.id), open: counts[t.id] }))} active={tab} />
+        </div>
+        <nav className="settings-tabs bible-tabs" aria-label="Story Bible">
+          {TABS.map((t) => (
+            <Link key={t.id} href={hrefFor(t.id)} aria-current={tab === t.id ? "page" : undefined}>
+              {t.label}
+              {counts[t.id] > 0 && (
+                <span className="count-chip" aria-label={`, ${counts[t.id]} open`}>
+                  {counts[t.id]}
+                </span>
+              )}
+            </Link>
+          ))}
+        </nav>
+        {tab === "codex" && <CodexMenu />}
+      </div>
+      <BibleScope
+        storyId={story.id}
+        tab={tab}
+        chapters={pickerChapters}
+        chosen={chosen ? { id: chosen.id, title: chosen.title } : null}
+        trail={trail}
+      />
 
       <div className="bible-panel">
         {tab === "overview" && overviewPanel()}
@@ -157,6 +150,13 @@ export default async function StoryBiblePage({
         {tab === "summaries" && summariesPanel()}
       </div>
     </>
+  );
+  return tab === "codex" ? (
+    <CodexBibleProvider storyId={story.id} chosenId={chosen?.id ?? null} anchorId={chosen?.id ?? rootId}>
+      {page}
+    </CodexBibleProvider>
+  ) : (
+    page
   );
 
   function overviewPanel() {
@@ -333,45 +333,27 @@ export default async function StoryBiblePage({
   }
 
   function codexPanel() {
-    type A = "later" | "dismissed" | "open" | "undo";
-    const path = chosen ? getPath(chosen.id) : [];
-    const gap = (i: Issue, actions: A[]) => (
-      <li key={`${i.chapterId}-${i.kind}-${i.fingerprint}`}>
-        <strong>{i.message.match(/^“(.*?)” comes up/)?.[1] ?? i.fingerprint}</strong> — first in <Link href={`/c/${i.chapterId}`}>{i.title}</Link> ·{" "}
-        <Link href={hrefFor("codex", i.chapterId)}>Check the codex here</Link>
-        <br />
-        <span className="meta">{i.message}</span>
-        <IssueActions chapterId={i.chapterId} kind={i.kind} fingerprint={i.fingerprint} actions={actions} />
-      </li>
-    );
+    // The codex as of the chosen chapter on its branch, or every entry on any branch; the suggestions are read by the list itself.
+    const path = getPath(chosen?.id ?? rootId);
+    const entries = chosen ? foldCodex(getCodexOps(chosen.id), getCodexFacts(chosen.id)) : [];
+    const reviewParam = Array.isArray(sp.review) ? sp.review[0] : sp.review;
     return (
-      <>
-        <h2 id="inbox">Codex inbox</h2>
-        <CodexInbox storyId={story!.id} chapterId={chosen?.id} />
-
-        <h2 id="codex">Not in the codex yet</h2>
-        {gaps.open.length > 0 && <p className="meta">These names come up in several chapters on a path but have no codex entry.</p>}
-        {issueLists<A>(gaps, gap, { open: ["later", "dismissed"], later: ["open", "dismissed"], dismissed: ["undo"] }, "No missing names found.", "A dismissed gap comes back if the chapter is edited.")}
-
-        <h2>Check with the AI</h2>
-        <p className="meta">The AI reads chapters and leaves suggested fact changes in the inbox above.</p>
-        <CodexCheck storyId={story!.id} chapterId={chosen && path.length > 0 ? chosen.id : null} defaultOpen />
-
-        {chosen ? (
-          <section>
-            <h2 id="entries">Entries as of “{chosen.title}”</h2>
-            <CodexEntryCards
-              entries={foldCodex(getCodexOps(chosen.id), getCodexFacts(chosen.id))}
-              chapterId={chosen.id}
-              storyId={story!.id}
-              pictures={codexPicturesAt(story!.id, chosen.id)}
-              empty="No entries at this chapter yet."
-            />
-          </section>
-        ) : (
-          <CodexEntryList storyId={story!.id} entries={codexEntries} type={entryType} baseHref={`${base}?tab=codex`} />
-        )}
-      </>
+      <CodexSection
+        path={path.map((c) => ({ id: c.id, title: c.title, depth: c.depth }))}
+        entries={entries}
+        pictures={chosen ? Object.fromEntries(Object.entries(codexPicturesAt(story!.id, chosen.id)).map(([entryId, p]) => [entryId, { id: p.id }])) : {}}
+        pathIds={chosen ? path.map((c) => c.id) : []}
+        summaries={codexEntries}
+        entriesForShared={chosen ? entries : foldCodex(getCodexOps(rootId), getCodexFacts(rootId))}
+        gaps={gaps.open.map((i) => ({
+          chapterId: i.chapterId,
+          fingerprint: i.fingerprint,
+          name: i.message.match(/^“(.*?)” comes up/)?.[1] ?? i.fingerprint,
+          count: Number(i.message.match(/comes up in (\d+) chapters/)?.[1] ?? 0),
+        }))}
+        retired={chosen ? retiredEntries(getCodexOps(chosen.id)).map((e) => ({ entry_id: e.entry_id, name: e.name, type: e.type, aliases: e.aliases, content: e.content, always_include: e.always_include })) : []}
+        offerCheck={Boolean(reviewParam)}
+      />
     );
   }
 

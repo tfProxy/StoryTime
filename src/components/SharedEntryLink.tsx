@@ -17,7 +17,12 @@ export default function SharedEntryLink({
   entries,
   onHold,
   editing = false,
+  open: openProp,
+  onOpenChange,
 }: {
+  /** With it, the form is opened and closed from outside (the Story Bible's ⋯ menu) and there is no "+ Shared entry" button. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   chapterId: string;
   /** The saved chapters it can be added from. */
   path: PathChapter[];
@@ -28,7 +33,9 @@ export default function SharedEntryLink({
   editing?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = openProp ?? ownOpen;
+  const setOpen = (v: boolean) => (openProp === undefined ? setOwnOpen(v) : onOpenChange?.(v));
   const [shared, setShared] = useState<SharedEntry[] | null>(null);
   const [sharedId, setSharedId] = useState("");
   const [anchor, setAnchor] = useState(onHold ? DRAFT_ANCHOR : chapterId);
@@ -78,6 +85,7 @@ export default function SharedEntryLink({
   }
 
   if (!open) {
+    if (openProp !== undefined) return null;
     return (
       <button type="button" className="secondary" onClick={() => setOpen(true)}>
         + Shared entry

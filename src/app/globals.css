@@ -3081,7 +3081,23 @@ fieldset.model-uses .inline-label input[type="checkbox"] {
 
 .more-menu-items a {
   padding: 0.55rem 0.8rem;
+  color: var(--fg);
   text-decoration: none;
+}
+
+.more-menu-items a:hover {
+  background: var(--line);
+}
+
+/* A menu action with a second, quieter line under it. */
+.more-menu-items button.menu-two-lines {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.more-menu-items button.menu-two-lines .meta {
+  margin: 0;
+  font-size: 0.8rem;
 }
 
 .more-menu-items a + a,
@@ -4848,4 +4864,192 @@ button.ai-log-row {
 .ai-log-link {
   font-size: 0.8rem;
   font-weight: 400;
+}
+
+/* The Story Bible's top: the sections (a select on a phone, the tab strip on a wider screen) with the codex's ⋯ menu beside them, then the scope line. */
+.bible-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+}
+
+.bible-nav .bible-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.bible-section-pick {
+  display: none;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.bible-section-select {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.bible-section-select select {
+  flex: 1;
+  min-width: 0;
+  min-height: 2.75rem;
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .bible-section-pick {
+    display: block;
+  }
+  .bible-nav .bible-tabs {
+    display: none;
+  }
+  .bible-nav .more-menu > summary {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    justify-content: center;
+    font-size: 1.1rem;
+  }
+}
+
+.bible-scope {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+}
+
+.bible-scope-line {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+}
+
+.bible-scope .chapter-tree-picker.compact {
+  flex: none;
+  display: block;
+}
+
+@media (min-width: 641px) {
+  .bible-scope .chapter-tree-picker.compact .chapter-tree-panel {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    z-index: 20;
+    width: min(34rem, 100%);
+  }
+}
+
+.bible-scope .meta {
+  margin: 0;
+}
+
+/* The Codex section: a fold for each type of entry. */
+.codex-bible {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.codex-group {
+  border-bottom: 1px solid var(--line);
+}
+
+.codex-group > summary {
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.codex-group-note {
+  font-weight: 400;
+  font-size: 0.8rem;
+  color: var(--warn);
+}
+
+.codex-group-body {
+  display: grid;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+}
+
+/* An entry's card with its suggestions under it. */
+.entry-cards > .entry-with-extra {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.entry-with-extra > .entry-card {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.entry-extra {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.5rem 0.8rem 0.7rem;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+
+.entry-extra > button {
+  justify-self: start;
+}
+
+.entry-extra .inbox-card {
+  margin: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.entry-extra .inbox-card + .inbox-card {
+  border-top: 1px solid var(--line);
+  padding-top: 0.5rem;
+}
+
+/* Something that could become an entry: a name the chapters use, or a suggested new entry. */
+.entry-cards > .codex-suggested,
+.codex-group-body > .codex-suggested {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px dashed var(--warn);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warn) 7%, var(--card));
+  min-width: 0;
+}
+
+.codex-suggested-label {
+  color: var(--warn);
+}
+
+.codex-suggested .row {
+  gap: 0.5rem;
+}
+
+.codex-empty {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+}
+
+.codex-empty p {
+  margin: 0;
+}
+
+.codex-dismissed > summary {
+  cursor: pointer;
+  color: var(--muted);
 }

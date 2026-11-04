@@ -54,9 +54,13 @@ async function fetchInbox(storyId: string, chapterId?: string): Promise<CodexSug
   return [...a.suggestions, ...b.suggestions];
 }
 
-export default function CodexInbox({ storyId, chapterId, onPath }: Props) {
+/**
+ * The suggestions of a story (or one chapter, or those that apply on a path, or one entry) and what can be done with them:
+ * accept (optionally edited), dismiss, reopen. Both the inbox list and the Story Bible's entry cards use it.
+ */
+export function useCodexInbox({ storyId, chapterId, onPath, onChanged: onAnyChange }: Pick<Props, "storyId" | "chapterId" | "onPath"> & { onChanged?: () => void }) {
   const pathKey = onPath?.chapterIds.join(",") ?? null;
-  const onChanged = onPath?.onChanged;
+  const onChanged = onPath?.onChanged ?? onAnyChange;
   const onEntry = onPath?.entryId ?? null;
   const [items, setItems] = useState<CodexSuggestion[] | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -142,6 +146,22 @@ export default function CodexInbox({ storyId, chapterId, onPath }: Props) {
   const shown = useMemo(() => (items ?? []).filter((s) => s.status === "open" || touched.has(s.id)), [items, touched]);
   const dismissedList = useMemo(() => (items ?? []).filter((s) => s.status === "dismissed" && !touched.has(s.id)), [items, touched]);
 
+  async function acceptAll(list: CodexSuggestion[]) {
+    for (const s of list) {
+      if (!(await accept(s))) break;
+    }
+  }
+
+  return { items, loadError, shown, dismissedList, errors, busy, editing, setEditing, showDismissed, setShowDismissed, accept, dismiss, reopen, acceptAll };
+}
+
+export default function CodexInbox({ storyId, chapterId, onPath }: Props) {
+  const { items, loadError, shown, dismissedList, errors, busy, editing, setEditing, showDismissed, setShowDismissed, accept, dismiss, reopen, acceptAll } = useCodexInbox({
+    storyId,
+    chapterId,
+    onPath,
+  });
+
   // Chapter, then entry; the server already ordered the suggestions by chapter depth and time.
   const chapters = useMemo(() => {
     const out: { id: string; title: string; entries: { key: string; name: string; list: CodexSuggestion[] }[] }[] = [];
@@ -156,12 +176,6 @@ export default function CodexInbox({ storyId, chapterId, onPath }: Props) {
     return out;
   }, [shown]);
 
-  async function acceptAll(list: CodexSuggestion[]) {
-    for (const s of list) {
-      if (!(await accept(s))) break;
-    }
-  }
-
   if (items === null) return onPath ? null : <p className="meta">{loadError || "Reading the codex inbox…"}</p>;
   // On a chapter's codex page there is nothing to show when nothing is waiting.
   if (onPath && shown.length === 0 && dismissedList.length === 0 && !loadError) return null;
@@ -172,7 +186,7 @@ export default function CodexInbox({ storyId, chapterId, onPath }: Props) {
         <>
           <h2>{onPath.heading ?? "Waiting in the codex inbox"}</h2>
           <p className="meta">
-            {onEntry ? "Suggestions for this entry" : "Suggestions"} from this chapter and the ones before it on this branch, which apply here. Accepting one adds it
+            {onPath.entryId ? "Suggestions for this entry" : "Suggestions"} from this chapter and the ones before it on this branch, which apply here. Accepting one adds it
             to the codex from the chapter it was made at. <Link href={`/s/${storyId}/review?tab=codex`}>Open the whole inbox</Link>
           </p>
         </>
@@ -188,7 +202,7 @@ export default function CodexInbox({ storyId, chapterId, onPath }: Props) {
       {chapters.map((ch) => (
         <section key={ch.id}>
           <h3 className="inbox-chapter">
-            <Link href={`/c/${ch.id}/codex`}>{ch.title}</Link>
+            <Link href={`/s/${storyId}/review?tab=codex&chapter=${ch.id}`}>{ch.title}</Link>
           </h3>
           <div className="meta">
             <Link href={`/ai-log?chapter=${encodeURIComponent(ch.id)}&source=${encodeURIComponent("Codex check")}`} className="ai-log-link">
@@ -253,7 +267,7 @@ export default function CodexInbox({ storyId, chapterId, onPath }: Props) {
   );
 }
 
-type CardProps = {
+export type CardProps = {
   s: CodexSuggestion;
   busy: boolean;
   error?: string;
@@ -262,9 +276,11 @@ type CardProps = {
   onAccept: (edits?: Edits) => void;
   onDismiss: () => void;
   onReopen: () => void;
+  /** Shown inside the entry's own card, which already names it. */
+  inEntry?: boolean;
 };
 
-function Card({ s, busy, error, editing, onEdit, onAccept, onDismiss, onReopen }: CardProps) {
+export function Card({ s, busy, error, editing, onEdit, onAccept, onDismiss, onReopen, inEntry }: CardProps) {
   const [aspect, setAspect] = useState(s.kind === "form" ? s.form : s.aspect);
   const [text, setText] = useState(s.after);
 
@@ -272,7 +288,7 @@ function Card({ s, busy, error, editing, onEdit, onAccept, onDismiss, onReopen }
     return (
       <p className="inbox-done">
         <span>
-          Saved to <strong>{s.entry_name || "the entry"}</strong> at <Link href={`/c/${s.chapter_id}/codex`}>“{s.chapter_title}”</Link>
+          Saved to <strong>{s.entry_name || "the entry"}</strong> at <Link href={`/s/${s.story_id}/review?tab=codex&chapter=${s.chapter_id}`}>“{s.chapter_title}”</Link>
         </span>
       </p>
     );
@@ -298,7 +314,7 @@ function Card({ s, busy, error, editing, onEdit, onAccept, onDismiss, onReopen }
     <article className="card inbox-card">
       <div className="inbox-head">
         <span className="tag">{kindLabel(s)}</span>
-        <strong>{s.entry_name || "An entry"}</strong>
+        {!inEntry && <strong>{s.entry_name || "An entry"}</strong>}
         {s.kind !== "entry" && s.kind !== "form" && <span className="meta">{s.aspect || "general"}</span>}
         {s.kind !== "form" && s.form && <span className="tag">{s.form}</span>}
       </div>

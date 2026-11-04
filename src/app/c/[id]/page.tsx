@@ -58,7 +58,7 @@ export default async function ChapterPage({
       {posted && (
         <p className="notice">
           Chapter posted. Want the codex to catch up with what happened?{" "}
-          <Link href={`/c/${chapter.id}/codex?review=1`}>Review codex for this chapter</Link>
+          <Link href={`/s/${story.id}/review?tab=codex&chapter=${chapter.id}&review=1`}>Review codex for this chapter</Link>
         </p>
       )}
       <CodexInboxBanner storyId={story.id} chapterId={chapter.id} />

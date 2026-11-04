@@ -34,7 +34,7 @@ export default function ChapterActions({
         </svg>
         Illustrate
       </Link>
-      <Link href={`/c/${chapterId}/codex`}>
+      <Link href={`/s/${storyId}/review?tab=codex&chapter=${chapterId}`}>
         <svg {...icon}>
           <path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z M5 17a3 3 0 0 1 3-3h11" />
         </svg>

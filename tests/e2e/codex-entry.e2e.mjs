@@ -184,7 +184,7 @@ try {
   const waiting = ed.locator(".codex-inbox");
   await waiting.getByRole("heading", { name: "Suggested facts" }).waitFor();
   ok((await waiting.locator("article.inbox-card").count()) === 1 && (await waiting.innerText()).includes("silver"), "an open suggestion for the entry is shown on its page as a card");
-  ok((await waiting.getByRole("link", { name: "Open the whole inbox" }).getAttribute("href")) === `/s/${sid}/review?tab=codex`, "…with a link to the Story Bible's codex tab");
+  ok((await waiting.getByRole("link", { name: "Open the whole inbox" }).getAttribute("href")) === `/s/${sid}/review?tab=codex`, "…with a link to the Story Bible's codex section");
   await waiting.getByRole("button", { name: "Accept" }).first().click();
   await ed.locator(".fact-line", { hasText: "silver" }).waitFor();
   ok(true, "accepting it there adds the fact to the entry");
@@ -281,16 +281,6 @@ try {
   ok(!kwAfter.includes("brass") && kwAfter.includes("lamp (from “Hub”)") && (await detailsForm.getByLabel(/Keywords/).inputValue()) === "lantern, lamp, brass", "a keyword added here is only in the box; the inherited line still says where the others came from: " + kwAfter);
   ok((await send("GET", `/api/chapters/${cellar}/codex`)).entries.find((e) => e.name === "Lamp").aliases.join() === "lantern,lamp,brass", "the keywords were saved at this chapter");
 
-  // ---- the codex page has the same Next links and summary ----
-  await page.goto(`${BASE}/c/${H}/codex`);
-  const timeline = page.locator("nav.timeline");
-  ok((await timeline.locator(".chapter-nav-next li").allInnerTexts()).map((t) => t.replace(/\s+/g, " ").trim()).join("|") === "The cellar|The roof …" && (await timeline.locator(".chapter-nav-current").innerText()) === "Hub", "the chapter codex page's path has the same stack of the chapters that come next");
-  await page.locator("details.chapter-summary summary").click();
-  ok(await page.getByText("The travellers meet at the hub.").isVisible(), "…with the collapsed summary below it");
-  await timeline.getByRole("link", { name: "The roof" }).click();
-  await page.waitForURL(`${BASE}/c/${roof}/codex`);
-  ok(await page.getByText("Summary of “The roof”").isVisible(), "a Next link opens the codex at that chapter");
-
   // ---- Remove from this chapter only ----
   await page.goto(lampUrl(cellar));
   const menuItem = (name) => ed.locator(".more-menu-items").getByRole("button", { name });
@@ -308,7 +298,7 @@ try {
   const keptRoof = (await send("GET", `/api/chapters/${roof}/codex`)).entries.find((e) => e.name === "Lamp");
   ok(keptRoof && keptRoof.aliases.join() === "lantern,lamp", "…and still there in the other chapter after it, with its keywords");
   await page.goto(`${BASE}/c/${H}/codex`);
-  await page.getByText("No entries yet at this point.").waitFor();
+  await page.getByText("No entries yet.").waitFor();
   ok((await page.locator(".entry-card", { hasText: "Lamp" }).count()) === 0, "the chapter's codex page no longer lists it");
 
   // ---- the ⋯ menu and the folds, on a phone (a context that leaves the folds as the page has them) ----

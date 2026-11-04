@@ -124,14 +124,14 @@ await page.goto(`${BASE}/c/${A}/codex`);
 await card.click();
 await editor.getByLabel("More entry actions", { exact: true }).click();
 await editor.getByRole("button", { name: "Retire from here on…" }).click();
-await page.getByRole("heading", { name: "Retired" }).waitFor();
-ok(page.url().endsWith(`/c/${A}/codex`), "retiring goes back to the chapter's codex");
+await page.locator("details.codex-group > summary", { hasText: "Retired" }).waitFor();
+ok(page.url().endsWith(`/review?tab=codex&chapter=${A}`), "retiring goes back to the chapter's codex");
 ok((await page.getByText("Now a horse").count()) === 0, "retired entry leaves the list");
 await page.getByRole("button", { name: "Bring back" }).click();
 await card.getByText("Now a horse. Cannot speak.").waitFor();
 ok(true, "bring back restores it");
 await page.goto(`${BASE}/c/${A}`);
-ok((await page.locator(".chapter-actions").getByRole("link", { name: "Codex", exact: true }).getAttribute("href")) === `/c/${A}/codex`, "Codex button beside Edit and Illustrate on the chapter page");
+ok((await page.locator(".chapter-actions").getByRole("link", { name: "Codex", exact: true }).getAttribute("href")) === `/s/${story.story_id}/review?tab=codex&chapter=${A}`, "Codex button beside Edit and Illustrate on the chapter page");
 
 await browser.close(); mock.close();
 await ai.restore();

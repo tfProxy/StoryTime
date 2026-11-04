@@ -43,7 +43,7 @@ export default async function PathPage({ params }: { params: Promise<{ id: strin
           Back to the last chapter
         </Link>
       </p>
-      <PageMenu codexHref={`/c/${chapter.id}/codex`} />
+      <PageMenu codexHref={`/s/${story.id}/review?tab=codex&chapter=${chapter.id}`} />
     </>
   );
 }
