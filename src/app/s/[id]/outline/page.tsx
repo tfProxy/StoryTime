@@ -69,7 +69,7 @@ function Node({
   const n = issues.get(node.id)?.n ?? 0;
   // The marker opens the Review tab that has something; the tags tab only when tag suggestions are all there is.
   const tagsOnly = issues.get(node.id)?.tags ?? false;
-  // Only the links that are on; none at all leaves NodeSummary's [...] without an empty part.
+  // Only the links that are on; with none, NodeSummary shows only its own parts.
   const links = [
     n > 0 && (
       <Link
@@ -104,7 +104,7 @@ function Node({
         tags={tagNames.get(node.id) ?? []}
         ai={node.ai}
       >
-        {links.length > 0 && links.flatMap((l, i) => (i === 0 ? [l] : [", ", l]))}
+        {links.length > 0 && links}
       </NodeSummary>
     </span>
   );
@@ -187,7 +187,7 @@ export default async function OutlinePage({
         </ul>
       </SummaryProvider>
       <PageMenu>
-        <Link href={`/s/${story.id}/pictures`}>Make missing pictures</Link>
+        <Link href={`/s/${story.id}/pictures`}>Make missing pictures…</Link>
         {storyTags.map((t) => (
           <Link key={t} href={`/s/${story.id}/outline?highlight=${encodeURIComponent(t)}`}>
             Highlight: {t}
