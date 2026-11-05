@@ -83,6 +83,48 @@ export function entryHints(entry: CodexEntry, { chapterTexts, contextTokens }: {
 /** How many things the entry's page warns about: its hints and its facts that clash between forms (the ⚠ count on its card). */
 export const hintCount = (entry: CodexEntry, opts: Parameters<typeof entryHints>[1] = {}) => entryHints(entry, opts).length + formClashes(entry).length;
 
+/** From this many chapters mentioning an entry since its last change, its card says it may be out of date. */
+export const STALE_FROM = 3;
+
+/** What the out-of-date count needs about a chapter, and about an entry's history. */
+type StaleChapter = { id: string; parent_id: string | null; body: string };
+type StaleInput = {
+  /** The entry's name and keywords, as it stands. */
+  who: Pick<CodexEntry, "name" | "type" | "aliases">;
+  /** Chapters where the entry changed (an entry op or a fact op anchored there): each starts the count again. */
+  changes: Set<string>;
+  /** Chapters the AI codex check has read at their current revision: they don't add to the count. */
+  checked: Set<string>;
+};
+
+const mentionsIn = (who: StaleInput["who"], text: string) => mentions({ name: who.name, type: who.type, aliases: who.aliases, content: "", always_include: false }, text);
+
+/**
+ * How many chapters mention the entry since it last changed, along one path (root first, ending at the chapter shown).
+ * Before the entry's first change on the path (its creation) nothing counts.
+ */
+export function staleAlong(path: Omit<StaleChapter, "parent_id">[], { who, changes, checked }: StaleInput): number {
+  let count: number | null = null;
+  for (const c of path) {
+    if (changes.has(c.id)) count = 0;
+    else if (count !== null && !checked.has(c.id) && mentionsIn(who, c.body)) count++;
+  }
+  return count ?? 0;
+}
+
+/** The same count for the whole story: the most chapters on any one branch (`chapters` with parents before children). */
+export function staleInTree(chapters: StaleChapter[], input: StaleInput): number {
+  const counts = new Map<string, number | null>();
+  let most = 0;
+  for (const c of chapters) {
+    const before = c.parent_id ? (counts.get(c.parent_id) ?? null) : null;
+    const now = input.changes.has(c.id) ? 0 : before !== null && !input.checked.has(c.id) && mentionsIn(input.who, c.body) ? before + 1 : before;
+    counts.set(c.id, now);
+    if (now !== null && now > most) most = now;
+  }
+  return most;
+}
+
 /** Always-included entries go into every prompt first: past this share of the codex's room, little is left for the rest. */
 export const ALWAYS_SHARE = 0.5;
 

@@ -22,7 +22,8 @@ import {
   type Overrides,
   type StoryEntrySummary,
 } from "./codex";
-import { alwaysIncludedLoad, hintCount } from "./codexHints";
+import { alwaysIncludedLoad, hintCount, staleAlong, staleInTree } from "./codexHints";
+import { getStoryChapters } from "./tree";
 import { createSharedEntryFrom, getSharedEntry, loadSharedBases } from "./sharedCodex";
 import { getChoices, getPath, PostError } from "./stories";
 
@@ -202,26 +203,48 @@ export function getCodexFacts(chapterId: string): FactOp[] {
  * always-included entries when they crowd the prompt. At a chapter, each entry as of that chapter; for the whole story,
  * each entry as of the chapter its card opens at (its page's default), with that chapter's path as the text it is checked against.
  */
-export function codexHintsFor(storyId: string, chapterId: string | null, contextTokens: number): { counts: Record<string, number>; always: ReturnType<typeof alwaysIncludedLoad> } {
-  const at = (id: string) => ({ entries: foldCodex(getCodexOps(id), getCodexFacts(id)), texts: getPath(id).map((c) => c.body) });
+export function codexHintsFor(
+  storyId: string,
+  chapterId: string | null,
+  contextTokens: number,
+): { counts: Record<string, number>; stale: Record<string, number>; always: ReturnType<typeof alwaysIncludedLoad> } {
+  const at = (id: string) => ({ entries: foldCodex(getCodexOps(id), getCodexFacts(id)), path: getPath(id) });
   const counts: Record<string, number> = {};
   let checked: CodexEntry[] = [];
+  let shownPath: { id: string; body: string }[] | null = null;
   if (chapterId) {
-    const { entries, texts } = at(chapterId);
-    for (const e of entries) counts[e.entry_id] = hintCount(e, { chapterTexts: texts, contextTokens });
+    const { entries, path } = at(chapterId);
+    for (const e of entries) counts[e.entry_id] = hintCount(e, { chapterTexts: path.map((c) => c.body), contextTokens });
     checked = entries;
+    shownPath = path;
   } else {
     const byChapter = new Map<string, string[]>();
     for (const s of storyCodexEntries(storyId)) if (!s.retired) byChapter.set(s.last_chapter_id, [...(byChapter.get(s.last_chapter_id) ?? []), s.entry_id]);
     for (const [id, entryIds] of byChapter) {
-      const { entries, texts } = at(id);
+      const { entries, path } = at(id);
       for (const e of entries.filter((x) => entryIds.includes(x.entry_id))) {
-        counts[e.entry_id] = hintCount(e, { chapterTexts: texts, contextTokens });
+        counts[e.entry_id] = hintCount(e, { chapterTexts: path.map((c) => c.body), contextTokens });
         checked.push(e);
       }
     }
   }
-  return { counts, always: alwaysIncludedLoad(checked, contextTokens) };
+
+  // Out of date: chapters that mention an entry since it last changed (on the path shown, or the worst branch).
+  const changes = new Map<string, Set<string>>();
+  const anchors = db()
+    .prepare(`SELECT entry_id, anchor_chapter_id FROM codex_ops WHERE story_id = ? UNION SELECT entry_id, anchor_chapter_id FROM codex_facts WHERE story_id = ?`)
+    .all(storyId, storyId) as { entry_id: string; anchor_chapter_id: string }[];
+  for (const a of anchors) changes.set(a.entry_id, (changes.get(a.entry_id) ?? new Set()).add(a.anchor_chapter_id));
+  const read = new Set(
+    (db().prepare(`SELECT k.chapter_id FROM codex_checks k JOIN chapters c ON c.id = k.chapter_id AND c.revision = k.revision WHERE c.story_id = ?`).all(storyId) as { chapter_id: string }[]).map((r) => r.chapter_id),
+  );
+  const tree = shownPath ? [] : getStoryChapters(storyId);
+  const stale: Record<string, number> = {};
+  for (const e of checked) {
+    const input = { who: e, changes: changes.get(e.entry_id) ?? new Set<string>(), checked: read };
+    stale[e.entry_id] = shownPath ? staleAlong(shownPath, input) : staleInTree(tree, input);
+  }
+  return { counts, stale, always: alwaysIncludedLoad(checked, contextTokens) };
 }
 
 /** Every entry in a story, across all branches, one row each. */

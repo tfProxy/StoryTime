@@ -4352,6 +4352,23 @@ button.refine-fit {
   font-weight: 600;
 }
 
+/* "Mentioned in 6 chapters since last updated" on a card, and the switch that sorts by it. */
+.codex-stale {
+  color: var(--warn);
+}
+
+.codex-stale-sort {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0 0 0.75rem;
+  font-weight: 400;
+}
+
+.codex-stale-sort input {
+  width: auto;
+}
+
 /* "⚠ 2 hints" on an entry's card in the Story Bible. */
 .codex-hint-count {
   color: var(--warn);

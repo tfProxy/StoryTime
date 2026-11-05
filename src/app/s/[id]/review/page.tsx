@@ -353,6 +353,7 @@ export default async function StoryBiblePage({
       {chosen && codexComparison(chosen, path, entries)}
       <CodexSection
         hintCounts={hints.counts}
+        staleCounts={hints.stale}
         alwaysLoad={hints.always}
         path={path.map((c) => ({ id: c.id, title: c.title, depth: c.depth }))}
         entries={entries}

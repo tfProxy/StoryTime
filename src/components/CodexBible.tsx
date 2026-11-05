@@ -9,7 +9,8 @@ import { ENTRY_TYPES, TYPE_HEADINGS, TYPE_LABELS, type CodexEntry, type EntryTyp
 import type { CodexSuggestion } from "@/lib/codexSuggestions";
 import AiRunProgress from "./AiRunProgress";
 import { Card, INBOX_CHANGED, useCodexInbox } from "./CodexInbox";
-import CodexEntryCards, { HintCount } from "./CodexEntryCards";
+import CodexEntryCards, { HintCount, StaleNote } from "./CodexEntryCards";
+import { STALE_FROM } from "@/lib/codexHints";
 import { EntryDetailsForm } from "./CodexEntryEditor";
 import CodexGroup from "./CodexGroup";
 import IssueActions from "./IssueActions";
@@ -165,12 +166,14 @@ type Props = {
   offerCheck: boolean;
   /** How many hints each entry's page shows, by entry id. */
   hintCounts?: Record<string, number>;
+  /** How many chapters mention each entry since its last change, by entry id. */
+  staleCounts?: Record<string, number>;
   /** The always-included entries, when together they crowd the prompt (`alwaysIncludedLoad`). */
   alwaysLoad?: { names: string[]; tokens: number; room: number } | null;
 };
 
 /** The Codex section of the Story Bible: entries in folds by type, with their suggestions inside their cards. */
-export default function CodexSection({ path, entries, pictures, pathIds, summaries, entriesForShared, gaps, retired, offerCheck, hintCounts = {}, alwaysLoad = null }: Props) {
+export default function CodexSection({ path, entries, pictures, pathIds, summaries, entriesForShared, gaps, retired, offerCheck, hintCounts = {}, staleCounts = {}, alwaysLoad = null }: Props) {
   const c = useCodexBible();
   const router = useRouter();
   const chapterScope = c.chosenId !== null;
@@ -184,6 +187,10 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [offered, setOffered] = useState(offerCheck);
+  // "Most out of date first": within each type, the entries mentioned in the most chapters since their last change come first.
+  const [staleFirst, setStaleFirst] = useState(false);
+  const byStale = <T extends { entry_id: string }>(list: T[]) => (staleFirst ? [...list].sort((a, b) => (staleCounts[b.entry_id] ?? 0) - (staleCounts[a.entry_id] ?? 0)) : list);
+  const anyStale = Object.values(staleCounts).some((n) => n >= STALE_FROM);
 
   useEffect(() => {
     if (c.creating || c.sharing) formRef.current?.scrollIntoView({ block: "nearest" });
@@ -349,6 +356,12 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
         <SharedEntryLink chapterId={c.anchorId} path={sharedPath} entries={entriesForShared} open={c.sharing} onOpenChange={c.setSharing} />
       </div>
 
+      {anyStale && (
+        <label className="codex-stale-sort">
+          <input type="checkbox" checked={staleFirst} onChange={(e) => setStaleFirst(e.target.checked)} />
+          Most out of date first
+        </label>
+      )}
       {nothing && (
         <div className="codex-empty">
           <p>No entries yet.</p>
@@ -364,7 +377,8 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
         <CodexEntryCards
           fold
           hints={hintCounts}
-          entries={entries}
+          entries={byStale(entries)}
+          stale={staleCounts}
           chapterId={c.chosenId!}
           storyId={c.storyId}
           pictures={pictures}
@@ -377,7 +391,7 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
         />
       ) : (
         ENTRY_TYPES.map((type) => {
-          const group = summaries.filter((e) => e.type === type);
+          const group = byStale(summaries.filter((e) => e.type === type));
           const fresh = created(type);
           if (group.length === 0 && fresh.length === 0) return null;
           return (
@@ -403,6 +417,7 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
                             from {e.first_chapter_title}
                             {e.retired ? " · retired" : ""}
                           </span>
+                          <StaleNote n={staleCounts[e.entry_id]} />
                         </span>
                       </Link>
                     </li>

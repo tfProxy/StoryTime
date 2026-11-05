@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ENTRY_TYPES, TYPE_HEADINGS, TYPE_LABELS, type CodexEntry, type EntryType } from "@/lib/codex";
+import { STALE_FROM } from "@/lib/codexHints";
 import CodexGroup from "./CodexGroup";
 
 type Props = {
@@ -28,7 +29,19 @@ type Props = {
   groupSuggestions?: (type: EntryType) => number;
   /** How many hints each entry's page shows, by entry id (the Story Bible). */
   hints?: Record<string, number>;
+  /** How many chapters mention each entry since its last change, by entry id (the Story Bible). */
+  stale?: Record<string, number>;
 };
+
+/** "Mentioned in 6 chapters since last updated" on a card, from `STALE_FROM` chapters (`staleAlong` / `staleInTree`). */
+export function StaleNote({ n }: { n: number | undefined }) {
+  if (!n || n < STALE_FROM) return null;
+  return (
+    <span className="meta entry-card-line codex-stale" title="Chapters that name it since its last change (chapters the codex check has read don't count)">
+      Mentioned in {n} chapters since last updated
+    </span>
+  );
+}
 
 /** "⚠ 2 hints" on a card whose entry's page warns about something. */
 export function HintCount({ n }: { n: number | undefined }) {
@@ -42,7 +55,7 @@ export function HintCount({ n }: { n: number | undefined }) {
 }
 
 /** The compact list of a codex's entries, grouped by type: every place that lists entries uses it, and each card opens the entry's page. */
-export default function CodexEntryCards({ entries, chapterId, storyId, pictures = {}, held = {}, onOpen, empty, fold, extra, groupExtra, groupSuggestions, hints = {} }: Props) {
+export default function CodexEntryCards({ entries, chapterId, storyId, pictures = {}, held = {}, onOpen, empty, fold, extra, groupExtra, groupSuggestions, hints = {}, stale = {} }: Props) {
   if (entries.length === 0 && !groupExtra) return empty ? <p className="meta">{empty}</p> : null;
   return (
     <>
@@ -78,6 +91,7 @@ export default function CodexEntryCards({ entries, chapterId, storyId, pictures 
                         Keywords: {e.aliases.length > 0 ? e.aliases.join(", ") : "none"}
                         {e.form && ` · Form: ${e.form.name}`}
                       </span>
+                      <StaleNote n={stale[e.entry_id]} />
                       <span className="entry-card-desc">{e.description || <em>No facts yet</em>}</span>
                     </span>
                   </>

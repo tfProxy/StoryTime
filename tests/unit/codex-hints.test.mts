@@ -1,5 +1,5 @@
 import { foldCodex, type CodexOp, type FactOp } from "../../src/lib/codex.ts";
-import { ALWAYS_SHARE, alwaysIncludedLoad, entryHints, hintCount, LONG_FACT_WORDS } from "../../src/lib/codexHints.ts";
+import { ALWAYS_SHARE, alwaysIncludedLoad, entryHints, hintCount, LONG_FACT_WORDS, staleAlong, staleInTree } from "../../src/lib/codexHints.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 let n = 0;
@@ -54,3 +54,30 @@ const always = (name: string, size: number) => foldCodex([create({ entry_id: nam
 ok(alwaysIncludedLoad([always("a", 300), always("b", 300)], 8000) === null, "a few short always-included entries fit");
 const load = alwaysIncludedLoad([always("small", 1000), always("large", 3000), entry([ears])], 8000);
 ok(load !== null && load.names.join() === "large,small" && load.tokens > load.room * ALWAYS_SHARE, "past half the codex's room they are listed, biggest first: " + JSON.stringify(load));
+
+// out of date: chapters that mention the entry since its last change
+{
+  const who = { name: "Mira", type: "character" as const, aliases: ["the thief"] };
+  // c0 (created) -> c1 -> c2 -> c3 (changed) -> c4 -> c5 ; and c1 -> b2 -> b3 -> b4 on another branch
+  const ch = (id: string, parent_id: string | null, body: string) => ({ id, parent_id, body });
+  const tree = [
+    ch("c0", null, "Mira waited."),
+    ch("c1", "c0", "Mira ran."),
+    ch("c2", "c1", "Nobody came."),
+    ch("b2", "c1", "The thief hid."),
+    ch("c3", "c2", "Mira changed."),
+    ch("b3", "b2", "Mira hid again."),
+    ch("c4", "c3", "Mira slept."),
+    ch("b4", "b3", "Mira, again."),
+    ch("c5", "c4", "Mira woke."),
+  ];
+  const changes = new Set(["c0", "c3"]);
+  const path = (ids: string[]) => ids.map((id) => tree.find((c) => c.id === id)!);
+  ok(staleAlong(path(["c0", "c1", "c2", "c3", "c4", "c5"]), { who, changes, checked: new Set() }) === 2, "along a path: mentions after the last change (c4, c5), not before it");
+  ok(staleAlong(path(["c0", "c1", "c2"]), { who, changes, checked: new Set() }) === 1, "…up to the chapter shown");
+  ok(staleAlong(path(["c0", "c1", "b2", "b3", "b4"]), { who, changes, checked: new Set() }) === 4, "…a keyword counts as a mention, and the other branch has no change");
+  ok(staleAlong(path(["c0", "c1", "b2", "b3", "b4"]), { who, changes, checked: new Set(["b3"]) }) === 3, "…a chapter the codex check has read doesn't count");
+  ok(staleAlong(path(["c0", "c1"]), { who, changes: new Set(["c1"]), checked: new Set() }) === 0, "…nothing counts before the entry starts");
+  ok(staleInTree(tree, { who, changes, checked: new Set() }) === 4, "the whole story: the worst branch");
+  ok(staleInTree(tree, { who, changes: new Set([...changes, "b3"]), checked: new Set() }) === 2, "…a change on that branch starts it again");
+}
