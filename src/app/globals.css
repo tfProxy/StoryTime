@@ -4269,6 +4269,12 @@ button.refine-fit {
   white-space: nowrap;
 }
 
+/* "⚠ 2 hints" on an entry's card in the Story Bible. */
+.codex-hint-count {
+  color: var(--warn);
+  font-size: 0.85rem;
+}
+
 /* Plain-code hints about an entry (src/lib/codexHints.ts), under any clashes. */
 .codex-hints {
   margin: 0 0 0.75rem;
@@ -4279,6 +4285,11 @@ button.refine-fit {
   gap: 0.4rem;
   margin: 0;
   padding-left: 1.1rem;
+}
+
+.codex-hint-fix {
+  gap: 0.5rem;
+  margin-top: 0.3rem;
 }
 
 /* Setting a form: the every-form facts to tick when they are only true of the old form. */

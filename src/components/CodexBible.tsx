@@ -9,7 +9,7 @@ import { ENTRY_TYPES, TYPE_HEADINGS, TYPE_LABELS, type CodexEntry, type EntryTyp
 import type { CodexSuggestion } from "@/lib/codexSuggestions";
 import AiRunProgress from "./AiRunProgress";
 import { Card, INBOX_CHANGED, useCodexInbox } from "./CodexInbox";
-import CodexEntryCards from "./CodexEntryCards";
+import CodexEntryCards, { HintCount } from "./CodexEntryCards";
 import { EntryDetailsForm } from "./CodexEntryEditor";
 import CodexGroup from "./CodexGroup";
 import IssueActions from "./IssueActions";
@@ -163,10 +163,14 @@ type Props = {
   retired: { entry_id: string; name: string; type: EntryType; aliases: string[]; content: string; always_include: boolean }[];
   /** Arrived from "Review codex for this chapter": offer to run the check. */
   offerCheck: boolean;
+  /** How many hints each entry's page shows, by entry id. */
+  hintCounts?: Record<string, number>;
+  /** The always-included entries, when together they crowd the prompt (`alwaysIncludedLoad`). */
+  alwaysLoad?: { names: string[]; tokens: number; room: number } | null;
 };
 
 /** The Codex section of the Story Bible: entries in folds by type, with their suggestions inside their cards. */
-export default function CodexSection({ path, entries, pictures, pathIds, summaries, entriesForShared, gaps, retired, offerCheck }: Props) {
+export default function CodexSection({ path, entries, pictures, pathIds, summaries, entriesForShared, gaps, retired, offerCheck, hintCounts = {}, alwaysLoad = null }: Props) {
   const c = useCodexBible();
   const router = useRouter();
   const chapterScope = c.chosenId !== null;
@@ -317,6 +321,13 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
         </p>
       )}
 
+      {alwaysLoad && (
+        <p className="notice codex-always-load">
+          The always-included entries ({alwaysLoad.names.join(", ")}) take about {alwaysLoad.tokens} of the {alwaysLoad.room} tokens the codex gets in
+          each prompt at your context size, leaving little room for the entries a scene mentions. Turn Always include off for the ones the AI only needs
+          when they come up (they still go in when named), or shorten their facts.
+        </p>
+      )}
       {formError && !c.creating && <p className="error">{formError}</p>}
       <div ref={formRef}>
         {c.creating && (
@@ -352,6 +363,7 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
       {chapterScope ? (
         <CodexEntryCards
           fold
+          hints={hintCounts}
           entries={entries}
           chapterId={c.chosenId!}
           storyId={c.storyId}
@@ -379,6 +391,7 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
                         <span className="entry-card-text">
                           <span>
                             <strong>{e.name}</strong> <span className="meta">{TYPE_LABELS[e.type]}</span>
+                            <HintCount n={hintCounts[e.entry_id]} />
                             {n > 0 && (
                               <span className="codex-group-note">
                                 {" "}

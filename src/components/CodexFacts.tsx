@@ -40,6 +40,8 @@ type Props = {
   hold?: (f: HeldFact) => void;
   /** The draft edits an existing chapter, so held changes are saved when it is saved. */
   editingChapter?: boolean;
+  /** Turns the entry's notes into facts (the notes section's button), offered by the notes-but-no-facts hint; left out where it isn't offered. */
+  notesToFacts?: { start: () => void; busy: boolean };
 };
 
 type Body = { op: "set" | "retire"; aspect: string; form: string; text: string; quote: string; fact_id?: string; anchor: string };
@@ -54,7 +56,7 @@ const NEW_FORM = "\u0000new";
  * An entry's form and facts. Every form opens directly beneath the button (or row) that opened it, and the
  * add form at the end of the list.
  */
-export default function CodexFacts({ entry, factOps, path, chapterId, usedAspects, onSaved, anchorPath = path, hold, editingChapter = false }: Props) {
+export default function CodexFacts({ entry, factOps, path, chapterId, usedAspects, onSaved, anchorPath = path, hold, editingChapter = false, notesToFacts }: Props) {
   const [formOpen, setFormOpen] = useState(false);
   // A fact's id while it is being changed, "new" while one is being added.
   const [editing, setEditing] = useState<string | null>(null);
@@ -282,9 +284,54 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
         {hints.length > 0 && (
           <div className="notice codex-hints" role="note" aria-label="Hints">
             <ul>
-              {hints.map((h) => (
-                <li key={h.key}>{h.text}</li>
-              ))}
+              {hints.map((h) => {
+                const dups = h.duplicates?.map((id) => entry.facts.find((f) => f.fact_id === id)).filter((f): f is LiveFact => !!f) ?? [];
+                const toEdit = h.edit ? entry.facts.find((f) => f.fact_id === h.edit) : undefined;
+                return (
+                  <li key={h.key}>
+                    {h.text}
+                    {(toEdit || (h.notes && notesToFacts) || dups.length === 2) && (
+                      <span className="row codex-hint-fix">
+                        {toEdit && (
+                          <button
+                            type="button"
+                            className="secondary"
+                            disabled={busy || editing === toEdit.fact_id}
+                            aria-label={`Edit ${toEdit.aspect || "the fact"}`}
+                            onClick={() => {
+                              setEditing(toEdit.fact_id);
+                              requestAnimationFrame(() => document.getElementById(`fact-${toEdit.fact_id}`)?.scrollIntoView({ block: "nearest" }));
+                            }}
+                          >
+                            Edit it
+                          </button>
+                        )}
+                        {h.notes && notesToFacts && (
+                          <button type="button" disabled={busy || notesToFacts.busy} onClick={notesToFacts.start}>
+                            Turn notes into facts
+                          </button>
+                        )}
+                        {dups.length === 2 &&
+                          dups.map((keep, i) => {
+                            const drop = dups[1 - i];
+                            return (
+                              <button
+                                key={keep.fact_id}
+                                type="button"
+                                className="secondary"
+                                disabled={busy}
+                                aria-label={`Keep “${keep.aspect}: ${keep.text}”, remove “${drop.aspect}: ${drop.text}”`}
+                                onClick={() => void send({ op: "retire", aspect: drop.aspect, form: drop.form, text: "", quote: "", fact_id: drop.fact_id, anchor: drop.op.anchor_chapter_id })}
+                              >
+                                Keep “{keep.aspect}”
+                              </button>
+                            );
+                          })}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
@@ -294,7 +341,7 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
             {g.facts.map((f) => {
               const versions = [...factHistory(factOps, f.fact_id)].reverse();
               return (
-                <div key={f.fact_id} className="fact-row">
+                <div key={f.fact_id} id={`fact-${f.fact_id}`} className="fact-row">
                   <div className="fact-summary">
                     <div className="fact-line">
                       {f.aspect && <strong>{f.aspect}</strong>} <span>{f.text}</span>

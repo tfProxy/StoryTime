@@ -22,6 +22,7 @@ import {
   type Overrides,
   type StoryEntrySummary,
 } from "./codex";
+import { alwaysIncludedLoad, hintCount } from "./codexHints";
 import { createSharedEntryFrom, getSharedEntry, loadSharedBases } from "./sharedCodex";
 import { getChoices, getPath, PostError } from "./stories";
 
@@ -194,6 +195,33 @@ export function getCodexFacts(chapterId: string): FactOp[] {
   if (links.length === 0) return own;
   const bases = loadSharedBases(links.map((r) => r.shared_entry_id!));
   return [...sharedFactOps(links.map(toOp), bases), ...own];
+}
+
+/**
+ * What the Story Bible's codex warns about: how many hints each entry's page shows (the ⚠ count on its card), and the
+ * always-included entries when they crowd the prompt. At a chapter, each entry as of that chapter; for the whole story,
+ * each entry as of the chapter its card opens at (its page's default), with that chapter's path as the text it is checked against.
+ */
+export function codexHintsFor(storyId: string, chapterId: string | null, contextTokens: number): { counts: Record<string, number>; always: ReturnType<typeof alwaysIncludedLoad> } {
+  const at = (id: string) => ({ entries: foldCodex(getCodexOps(id), getCodexFacts(id)), texts: getPath(id).map((c) => c.body) });
+  const counts: Record<string, number> = {};
+  let checked: CodexEntry[] = [];
+  if (chapterId) {
+    const { entries, texts } = at(chapterId);
+    for (const e of entries) counts[e.entry_id] = hintCount(e, { chapterTexts: texts, contextTokens });
+    checked = entries;
+  } else {
+    const byChapter = new Map<string, string[]>();
+    for (const s of storyCodexEntries(storyId)) if (!s.retired) byChapter.set(s.last_chapter_id, [...(byChapter.get(s.last_chapter_id) ?? []), s.entry_id]);
+    for (const [id, entryIds] of byChapter) {
+      const { entries, texts } = at(id);
+      for (const e of entries.filter((x) => entryIds.includes(x.entry_id))) {
+        counts[e.entry_id] = hintCount(e, { chapterTexts: texts, contextTokens });
+        checked.push(e);
+      }
+    }
+  }
+  return { counts, always: alwaysIncludedLoad(checked, contextTokens) };
 }
 
 /** Every entry in a story, across all branches, one row each. */

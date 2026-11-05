@@ -17,7 +17,9 @@ import TagSuggestions from "@/components/TagSuggestions";
 import TaggedChapters from "@/components/TaggedChapters";
 import { listRuns } from "@/lib/aiRuns";
 import { foldCodex, retiredEntries } from "@/lib/codex";
-import { getCodexFacts, getCodexOps, storyCodexEntries } from "@/lib/codexDb";
+import { codexHintsFor, getCodexFacts, getCodexOps, storyCodexEntries } from "@/lib/codexDb";
+import { DEFAULT_SETTINGS } from "@/lib/settingsSchema";
+import { getSettings } from "@/lib/settingsStore";
 import { codexPicturesAt } from "@/lib/codexPictures";
 import { openSuggestionCounts } from "@/lib/codexSuggestions";
 import { CHANGE_EVENT_TAGS } from "@/lib/continuity";
@@ -344,8 +346,11 @@ export default async function StoryBiblePage({
     const path = getPath(chosen?.id ?? rootId);
     const entries = chosen ? foldCodex(getCodexOps(chosen.id), getCodexFacts(chosen.id)) : [];
     const reviewParam = Array.isArray(sp.review) ? sp.review[0] : sp.review;
+    const hints = codexHintsFor(story!.id, chosen?.id ?? null, getSettings()?.contextTokens ?? DEFAULT_SETTINGS.contextTokens);
     return (
       <CodexSection
+        hintCounts={hints.counts}
+        alwaysLoad={hints.always}
         path={path.map((c) => ({ id: c.id, title: c.title, depth: c.depth }))}
         entries={entries}
         pictures={chosen ? Object.fromEntries(Object.entries(codexPicturesAt(story!.id, chosen.id)).map(([entryId, p]) => [entryId, { id: p.id }])) : {}}

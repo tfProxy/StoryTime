@@ -1,5 +1,5 @@
 import { foldCodex, type CodexOp, type FactOp } from "../../src/lib/codex.ts";
-import { entryHints, LONG_FACT_WORDS } from "../../src/lib/codexHints.ts";
+import { ALWAYS_SHARE, alwaysIncludedLoad, entryHints, hintCount, LONG_FACT_WORDS } from "../../src/lib/codexHints.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 let n = 0;
@@ -37,3 +37,20 @@ ok(keys(entry([fact("Hair", "Red."), fact("Hair colour", "Red.")])).length === 0
 const big = entry(Array.from({ length: 12 }, (_, i) => fact(`Aspect${i}`, "x".repeat(150))));
 ok(keys(big, { contextTokens: 8000 }).join() === "big", "an AI text over a quarter of the codex's share of the prompt is big");
 ok(keys(big, { contextTokens: 100000 }).length === 0, "…not at a large context size");
+
+// the fixes each hint offers
+const dupEntry = entry([ears, fact("Ear", "Pointed.")]);
+const dup = entryHints(dupEntry)[0];
+ok(dup.duplicates?.length === 2 && dup.duplicates.every((id) => dupEntry.facts.some((f) => f.fact_id === id)), "a duplicate hint names both facts, so one can be kept");
+ok(entryHints(entry([long]))[0].edit === entry([long]).facts[0].fact_id, "a long fact's hint opens that fact for editing");
+ok(entryHints(entry([], { content: "Notes." }))[0].notes === true, "the notes-only hint offers Turn notes into facts");
+
+// the count on a card: hints plus clashes between forms
+const clashing = entry([ears, fact("Ears", "Fox ears.", "vixen"), fact("Form", "", "vixen")]);
+ok(hintCount(clashing) === 1 && hintCount(entry([ears])) === 0, "a card's count includes facts that clash between forms");
+
+// always-included entries crowding the prompt
+const always = (name: string, size: number) => foldCodex([create({ entry_id: name, name, always_include: true })], [{ ...fact("Look", "x".repeat(size)), entry_id: name }])[0];
+ok(alwaysIncludedLoad([always("a", 300), always("b", 300)], 8000) === null, "a few short always-included entries fit");
+const load = alwaysIncludedLoad([always("small", 1000), always("large", 3000), entry([ears])], 8000);
+ok(load !== null && load.names.join() === "large,small" && load.tokens > load.room * ALWAYS_SHARE, "past half the codex's room they are listed, biggest first: " + JSON.stringify(load));

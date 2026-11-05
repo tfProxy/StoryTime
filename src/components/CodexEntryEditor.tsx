@@ -371,6 +371,7 @@ export default function CodexEntryEditor({
           onSaved={refreshed}
           hold={holdFact}
           editingChapter={editingChapter}
+          notesToFacts={entry.content && storyId && !inDraft && !draftOnly ? { start: turnNotesIntoFacts, busy: starting || runId !== null } : undefined}
         />
       )}
 

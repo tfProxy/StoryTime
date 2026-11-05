@@ -26,10 +26,23 @@ type Props = {
   groupExtra?: (type: EntryType) => ReactNode;
   /** The suggestions a type's fold holds, for its summary. */
   groupSuggestions?: (type: EntryType) => number;
+  /** How many hints each entry's page shows, by entry id (the Story Bible). */
+  hints?: Record<string, number>;
 };
 
+/** "⚠ 2 hints" on a card whose entry's page warns about something. */
+export function HintCount({ n }: { n: number | undefined }) {
+  if (!n) return null;
+  return (
+    <span className="codex-hint-count" title="The entry's page says what to fix">
+      {" "}
+      · ⚠ {n} hint{n === 1 ? "" : "s"}
+    </span>
+  );
+}
+
 /** The compact list of a codex's entries, grouped by type: every place that lists entries uses it, and each card opens the entry's page. */
-export default function CodexEntryCards({ entries, chapterId, storyId, pictures = {}, held = {}, onOpen, empty, fold, extra, groupExtra, groupSuggestions }: Props) {
+export default function CodexEntryCards({ entries, chapterId, storyId, pictures = {}, held = {}, onOpen, empty, fold, extra, groupExtra, groupSuggestions, hints = {} }: Props) {
   if (entries.length === 0 && !groupExtra) return empty ? <p className="meta">{empty}</p> : null;
   return (
     <>
@@ -54,6 +67,7 @@ export default function CodexEntryCards({ entries, chapterId, storyId, pictures 
                         <strong>{e.name}</strong> <span className="meta">{TYPE_LABELS[e.type]}</span>
                         {e.always_include && <span className="tag"> · always included</span>}
                         {e.shared_entry_id && <span className="tag"> · shared</span>}
+                        <HintCount n={hints[e.entry_id]} />
                         {wait ? (
                           <span className="tag"> · {wait === "create" ? "new" : "changed"} in this chapter, saved when you post</span>
                         ) : (
