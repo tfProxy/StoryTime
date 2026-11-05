@@ -16,7 +16,8 @@ import TagScan from "@/components/TagScan";
 import TagSuggestions from "@/components/TagSuggestions";
 import TaggedChapters from "@/components/TaggedChapters";
 import { listRuns } from "@/lib/aiRuns";
-import { foldCodex, retiredEntries } from "@/lib/codex";
+import { ChangeList, CompareForm, comparisonTitle, StopComparing, type Relation } from "@/components/CodexComparison";
+import { compareEntry, foldCodex, retiredEntries, type CodexEntry, type EntryChange } from "@/lib/codex";
 import { codexHintsFor, getCodexFacts, getCodexOps, storyCodexEntries } from "@/lib/codexDb";
 import { DEFAULT_SETTINGS } from "@/lib/settingsSchema";
 import { getSettings } from "@/lib/settingsStore";
@@ -50,7 +51,7 @@ export default async function StoryBiblePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ chapter?: string | string[]; tab?: string | string[]; review?: string | string[]; failed?: string | string[] }>;
+  searchParams: Promise<{ chapter?: string | string[]; tab?: string | string[]; review?: string | string[]; failed?: string | string[]; compare?: string | string[] }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -348,6 +349,8 @@ export default async function StoryBiblePage({
     const reviewParam = Array.isArray(sp.review) ? sp.review[0] : sp.review;
     const hints = codexHintsFor(story!.id, chosen?.id ?? null, getSettings()?.contextTokens ?? DEFAULT_SETTINGS.contextTokens);
     return (
+      <>
+      {chosen && codexComparison(chosen, path, entries)}
       <CodexSection
         hintCounts={hints.counts}
         alwaysLoad={hints.always}
@@ -366,6 +369,58 @@ export default async function StoryBiblePage({
         retired={chosen ? retiredEntries(getCodexOps(chosen.id)).map((e) => ({ entry_id: e.entry_id, name: e.name, type: e.type, aliases: e.aliases, content: e.content, always_include: e.always_include })) : []}
         offerCheck={Boolean(reviewParam)}
       />
+      </>
+    );
+  }
+
+  /**
+   * The Codex section at a chapter: "Compare with" a chapter, and with `compare=<id>` each entry that differs between the
+   * two (earlier to later; across branches, from that chapter to this one), including entries that appear or leave.
+   */
+  function codexComparison(at: { id: string; title: string }, path: { id: string }[], entries: CodexEntry[]) {
+    const compareId = Array.isArray(sp.compare) ? sp.compare[0] : sp.compare;
+    const keep = { tab: "codex", chapter: at.id };
+    const otherPath = compareId && compareId !== at.id ? getPath(compareId) : [];
+    if (otherPath.length === 0 || otherPath[0].story_id !== story!.id) {
+      return <CompareForm id="codex-compare" chapters={pickerChapters} keep={keep} value={null} />;
+    }
+    const other = otherPath[otherPath.length - 1];
+    const relation: Relation = path.some((c) => c.id === other.id) ? "earlier" : otherPath.some((c) => c.id === at.id) ? "later" : "branch";
+    const there = foldCodex(getCodexOps(other.id), getCodexFacts(other.id));
+    const [from, to] = relation === "later" ? [entries, there] : [there, entries];
+    const ids = [...new Set([...from, ...to].map((e) => e.entry_id))];
+    const rows = ids.flatMap((entryId): { entryId: string; name: string; note: "new" | "gone" | null; changes: EntryChange[] }[] => {
+      const a = from.find((e) => e.entry_id === entryId);
+      const b = to.find((e) => e.entry_id === entryId);
+      const name = (b ?? a)!.name;
+      if (!a) return [{ entryId, name, note: "new", changes: [] }];
+      if (!b) return [{ entryId, name, note: "gone", changes: [] }];
+      const changes = compareEntry(a, b);
+      return changes.length ? [{ entryId, name, note: null, changes }] : [];
+    });
+    return (
+      <section className="codex-compare" aria-label="Comparison">
+        <div className="row entry-compare-head">
+          <h2>{comparisonTitle(relation, other.title)}</h2>
+          <StopComparing href={hrefFor("codex", at.id)} />
+        </div>
+        {rows.length === 0 ? (
+          <p className="meta">No changes: the codex is the same at both.</p>
+        ) : (
+          <ul className="codex-compare-list">
+            {rows.map((r) => (
+              <li key={r.entryId}>
+                <Link href={`/s/${story!.id}/codex/${r.entryId}?at=${r.note === "gone" ? other.id : at.id}${r.note ? "" : `&compare=${other.id}`}`}>
+                  <strong>{r.name}</strong>
+                </Link>
+                {r.note && <span className="meta"> · {r.note === "new" ? `added by “${relation === "later" ? other.title : at.title}”` : `not in the codex at “${relation === "later" ? other.title : at.title}”`}</span>}
+                {r.changes.length > 0 && <ChangeList changes={r.changes} />}
+              </li>
+            ))}
+          </ul>
+        )}
+        <CompareForm id="codex-compare" chapters={pickerChapters} keep={keep} value={other.id} />
+      </section>
     );
   }
 

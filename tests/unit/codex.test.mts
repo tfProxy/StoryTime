@@ -1,4 +1,4 @@
-﻿import { foldFacts, factHistory, describeEntry, formClashes, type FactOp, type LiveFact } from "../../src/lib/codex.ts";
+﻿import { foldFacts, factHistory, describeEntry, formClashes, compareEntry, type FactOp, type LiveFact } from "../../src/lib/codex.ts";
 import { baseForms, foldCodex, storyEntrySummaries, retiredEntries, entryHistory, changedFields, addChange, draftOps, DRAFT_ANCHOR, type CodexChange, type CodexOp } from "../../src/lib/codex.ts";
 import { buildCodexBlock, mentions, generatePrompt, refinePrompt, choicesPrompt } from "../../src/lib/ai/prompts.ts";
 
@@ -241,4 +241,37 @@ ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length ==
   c = formClashes({ facts: [...facts, lf("hears", "Ears", "human", "Round ears.")], forms: ["vixen", "human"] });
   ok(c[0].fitsIn.length === 0, "when every form has its own, it fits none");
   ok(formClashes({ facts: facts.filter((f) => f.fact_id !== "vears"), forms: ["vixen", "human"] }).length === 0, "no clash without a form's own fact");
+}
+
+// comparing an entry between two chapters
+{
+  let k = 0;
+  const fo = (fact_id: string, aspect: string, text: string, form = ""): FactOp => ({
+    id: `cf${k++}`, anchor_chapter_id: "c0", anchor_depth: 0, entry_id: "mira", fact_id, op: "set", aspect, form, text, quote: "", posted_at: k,
+  });
+  const at = (facts: FactOp[], over: Partial<CodexOp> = {}) => foldCodex([op({ aliases: ["the thief"], ...over })], facts)[0];
+  const before = at([fo("ears", "Ears", "Round ears."), fo("hair", "Hair", "Long red hair."), fo("pers", "Personality", "Stubborn."), fo("form", "Form", "", "human")]);
+  const after = at(
+    [fo("ears", "Ears", "Tall fox ears."), fo("pers", "Personality", "Stubborn."), fo("tail", "Tail", "A bushy tail.", "vixen"), fo("form", "Form", "", "vixen"), fo("form", "Form", "halfway", "vixen")],
+    { aliases: ["the thief", "Vix"], always_include: true, content: "Changed at the well." },
+  );
+  const changes = compareEntry(before, after);
+  const find = (label: string) => changes.find((c) => c.label === label);
+  ok(find("Form")?.before === "human" && find("Form")?.after === "vixen, halfway", "the form and its stage: " + JSON.stringify(find("Form")));
+  ok(find("Ears")?.before === "Round ears." && find("Ears")?.after === "Tall fox ears.", "a changed fact shows before and after");
+  ok(find("Hair")?.before === "Long red hair." && find("Hair")?.after === undefined, "a removed fact has only before");
+  ok(find("Tail (vixen)")?.after === "A bushy tail." && find("Tail (vixen)")?.before === undefined, "an added fact has only after, with its form");
+  ok(!find("Personality"), "an unchanged fact isn't listed");
+  ok(find("Keywords")?.after === "Vix" && find("Keywords")?.before === undefined, "a keyword added");
+  ok(find("Always include")?.after === "on" && find("Notes (not sent to the AI)")?.after === "Changed at the well.", "Always include and the notes");
+  ok(compareEntry(before, before).length === 0, "the same entry has no changes");
+
+  // two branches set the same aspect as separate facts: read as one change, not a removal and an addition
+  const branchA = at([fo("ears-a", "Ears", "Round ears.")]);
+  const branchB = at([fo("ears-b", "ears", "Wolf ears.")]);
+  const across = compareEntry(branchA, branchB);
+  ok(across.length === 1 && across[0].before === "Round ears." && across[0].after === "Wolf ears.", "the same aspect on two branches is one change: " + JSON.stringify(across));
+  // a fact moved to a form keeps its id: the label says so
+  const moved = compareEntry(at([fo("ears", "Ears", "Round ears.")]), at([fo("ears", "Ears", "Round ears.", "human")]));
+  ok(moved.length === 1 && moved[0].label === "Ears → Ears (human)", "a fact moved to a form: " + JSON.stringify(moved));
 }

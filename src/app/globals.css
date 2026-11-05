@@ -4269,6 +4269,89 @@ button.refine-fit {
   white-space: nowrap;
 }
 
+/* Comparing the codex between two chapters (CodexComparison): on an entry's page and in the Story Bible's Codex section. */
+.compare-form {
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+}
+
+.entry-compare,
+.codex-compare {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+/* "Choose a chapter…" sits right after its label, not spread across the line. */
+.compare-form .chapter-tree-picker.compact {
+  flex: 0 1 auto;
+}
+
+.entry-compare .compare-form,
+.codex-compare .compare-form {
+  margin: 0.25rem 0 0;
+}
+
+.entry-compare-head {
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.entry-compare-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.change-list,
+.codex-compare-list {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.codex-compare-list {
+  gap: 0.75rem;
+}
+
+.codex-compare-list .change-list {
+  margin: 0.2rem 0 0 0.75rem;
+}
+
+.change-list del {
+  color: var(--diff-del-fg);
+  background: var(--diff-del-bg);
+  text-decoration: line-through;
+  border-radius: 3px;
+  padding: 0 0.15rem;
+}
+
+.change-list ins {
+  color: var(--diff-add-fg);
+  background: var(--diff-add-bg);
+  text-decoration: none;
+  border-radius: 3px;
+  padding: 0 0.15rem;
+}
+
+.change-list .added .change-sign {
+  color: var(--diff-add-fg);
+  font-weight: 600;
+}
+
+.change-list .removed .change-sign {
+  color: var(--diff-del-fg);
+  font-weight: 600;
+}
+
 /* "⚠ 2 hints" on an entry's card in the Story Bible. */
 .codex-hint-count {
   color: var(--warn);

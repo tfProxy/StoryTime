@@ -557,6 +557,57 @@ export function entryHistory(ops: CodexOp[], entryId: string): CodexOp[] {
   return orderOps(ops).filter((o) => o.entry_id === entryId);
 }
 
+/** One difference in an entry between two chapters: what it was (`before`) and what it is (`after`); either is missing when added or removed. */
+export type EntryChange = { label: string; before?: string; after?: string };
+
+const formLabel = (e: CodexEntry) => {
+  const name = e.form?.name.trim() || e.baseForm || "";
+  return [name, e.form?.note.trim() ?? ""].filter(Boolean).join(", ");
+};
+const factLabel = (f: LiveFact) => `${f.aspect.trim() || "Fact"}${f.form.trim() ? ` (${f.form.trim()})` : ""}`;
+const factKey = (f: LiveFact) => (f.aspect.trim() ? `${f.aspect.trim().toLowerCase()}\u0000${f.form.trim().toLowerCase()}` : null);
+
+/**
+ * What changed in an entry from one chapter (`from`) to another (`to`): its name, type, form, keywords, Always include,
+ * notes, and each fact added, removed or changed. Facts are matched by id (a fact keeps its id across versions, and on
+ * branches that share it), then by aspect and form, so the same aspect set separately on two branches reads as a change.
+ */
+export function compareEntry(from: CodexEntry, to: CodexEntry): EntryChange[] {
+  const out: EntryChange[] = [];
+  const pair = (label: string, before: string, after: string) => {
+    if (before !== after) out.push({ label, ...(before ? { before } : {}), ...(after ? { after } : {}) });
+  };
+  pair("Name", from.name, to.name);
+  pair("Type", from.type, to.type);
+  pair("Form", formLabel(from), formLabel(to));
+  const gone = from.aliases.filter((a) => !to.aliases.some((b) => sameAspect(a, b)));
+  const added = to.aliases.filter((a) => !from.aliases.some((b) => sameAspect(a, b)));
+  if (gone.length || added.length) out.push({ label: "Keywords", ...(gone.length ? { before: gone.join(", ") } : {}), ...(added.length ? { after: added.join(", ") } : {}) });
+  if (from.always_include !== to.always_include) out.push({ label: "Always include", before: from.always_include ? "on" : "off", after: to.always_include ? "on" : "off" });
+  if (from.content.trim() !== to.content.trim()) out.push({ label: "Notes (not sent to the AI)", before: from.content.trim() || undefined, after: to.content.trim() || undefined });
+
+  const facts = (e: CodexEntry) => e.facts.filter((f) => !isFormAspect(f.aspect));
+  const before = facts(from);
+  const after = facts(to);
+  const removed = before.filter((f) => !after.some((g) => g.fact_id === f.fact_id));
+  const fresh = after.filter((g) => !before.some((f) => f.fact_id === g.fact_id));
+  for (const f of before) {
+    const g = after.find((x) => x.fact_id === f.fact_id);
+    if (g && (g.text !== f.text || !sameAspect(g.aspect, f.aspect) || !sameAspect(g.form, f.form))) {
+      out.push(factLabel(f) === factLabel(g) ? { label: factLabel(g), before: f.text, after: g.text } : { label: `${factLabel(f)} → ${factLabel(g)}`, before: f.text, after: g.text });
+    }
+  }
+  for (const f of removed) {
+    const i = fresh.findIndex((g) => factKey(g) !== null && factKey(g) === factKey(f));
+    if (i >= 0) {
+      const [g] = fresh.splice(i, 1);
+      if (g.text !== f.text) out.push({ label: factLabel(g), before: f.text, after: g.text });
+    } else out.push({ label: factLabel(f), before: f.text });
+  }
+  for (const g of fresh) out.push({ label: factLabel(g), after: g.text });
+  return out;
+}
+
 export type StoryEntrySummary = {
   entry_id: string;
   name: string;
