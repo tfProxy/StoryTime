@@ -19,6 +19,8 @@ import {
   type LiveFact,
 } from "@/lib/codex";
 import type { PathChapter } from "@/lib/ai/codexAi";
+import { entryHints } from "@/lib/codexHints";
+import { useSettings } from "@/lib/settings";
 import ChapterPathPicker from "./ChapterPathPicker";
 import EntryFold from "./EntryFold";
 
@@ -59,6 +61,7 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
   const [history, setHistory] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const settings = useSettings();
 
   const titleOf = (id: string) => (id === DRAFT_ANCHOR ? "this chapter" : (path.find((p) => p.id === id)?.title ?? "an earlier chapter"));
   const since = (id: string) => (id === DRAFT_ANCHOR ? "from this chapter" : path[0]?.id === id ? "from the start" : `since “${titleOf(id)}”`);
@@ -194,6 +197,8 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
 
   const showForm = hasForms || entry.type === "character" || entry.form !== null;
   const clashes = formClashes(entry);
+  // In the writing drawer the chapter being written isn't on the path, so whether the entry is mentioned isn't checked there.
+  const hints = entryHints(entry, { chapterTexts: hold ? undefined : path.map((c) => c.body), contextTokens: settings.contextTokens });
   /**
    * Fixes a clash: the every-form fact becomes the given form's (null: is removed), from the chapter where it was set,
    * so it reads that way from the start. A fact held in the draft is changed in the draft.
@@ -270,6 +275,15 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
             <ul>
               {clashes.map((c) => (
                 <ClashRow key={c.every.fact_id} clash={c} busy={busy} onMove={(form) => void moveClash(c, form)} onRemove={() => void moveClash(c, null)} />
+              ))}
+            </ul>
+          </div>
+        )}
+        {hints.length > 0 && (
+          <div className="notice codex-hints" role="note" aria-label="Hints">
+            <ul>
+              {hints.map((h) => (
+                <li key={h.key}>{h.text}</li>
               ))}
             </ul>
           </div>

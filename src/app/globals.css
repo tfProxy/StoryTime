@@ -4269,6 +4269,18 @@ button.refine-fit {
   white-space: nowrap;
 }
 
+/* Plain-code hints about an entry (src/lib/codexHints.ts), under any clashes. */
+.codex-hints {
+  margin: 0 0 0.75rem;
+}
+
+.codex-hints > ul {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
 /* Setting a form: the every-form facts to tick when they are only true of the old form. */
 .form-move {
   display: grid;
