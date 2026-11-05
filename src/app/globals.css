@@ -4228,6 +4228,47 @@ button.refine-fit {
   overflow-wrap: anywhere;
 }
 
+/* Facts that clash between forms, above the Facts list: each pair, and its fix on the line below. */
+.form-clashes {
+  margin: 0 0 0.75rem;
+}
+
+.form-clashes > p {
+  margin: 0 0 0.4rem;
+}
+
+.form-clashes > ul {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.form-clashes li {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.form-clash-fix {
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.form-clash-fix {
+  flex-wrap: nowrap;
+}
+
+.form-clash-fix .meta {
+  margin: 0;
+  min-width: 0;
+}
+
+.form-clash-fix button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 /* Setting a form: the every-form facts to tick when they are only true of the old form. */
 .form-move {
   display: grid;

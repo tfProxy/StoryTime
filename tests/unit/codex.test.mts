@@ -1,4 +1,4 @@
-﻿import { foldFacts, factHistory, describeEntry, type FactOp, type LiveFact } from "../../src/lib/codex.ts";
+﻿import { foldFacts, factHistory, describeEntry, formClashes, type FactOp, type LiveFact } from "../../src/lib/codex.ts";
 import { baseForms, foldCodex, storyEntrySummaries, retiredEntries, entryHistory, changedFields, addChange, draftOps, DRAFT_ANCHOR, type CodexChange, type CodexOp } from "../../src/lib/codex.ts";
 import { buildCodexBlock, mentions, generatePrompt, refinePrompt, choicesPrompt } from "../../src/lib/ai/prompts.ts";
 
@@ -219,4 +219,26 @@ ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length ==
   es = foldCodex(entry, [f({}), human, vixen, form("c2", 2, "vixen"), form("c4", 4, "human", "", { id: "bf-late" })]);
   ok(es[0].baseForm === "vixen" && es[0].description === "Form: human. Ears: Round ears. Tail: No tail.", "the first form given is the base: " + es[0].description);
   ok(baseForms([]).size === 0, "no facts, no base forms");
+}
+
+// form clashes: an every-form fact whose aspect a form also describes
+{
+  const lf = (fact_id: string, aspect: string, form: string, text: string): LiveFact =>
+    ({ fact_id, aspect, form, text, quote: "", op: { id: fact_id, anchor_chapter_id: "c0", anchor_depth: 0, entry_id: "mira", fact_id, op: "set", aspect, form, text, quote: "", posted_at: 1 } });
+  const facts = [
+    lf("ears", "Ears", "", "Round ears."),
+    lf("vears", "ears", "vixen", "Fox ears."),
+    lf("pers", "Personality", "", "Stubborn."),
+    lf("tail", "Tail", "human", "No tail."),
+    lf("form", "Form", "vixen", ""),
+    lf("loose", "", "", "Hums when nervous."),
+  ];
+  let c = formClashes({ facts, forms: ["vixen", "human"] });
+  ok(c.length === 1 && c[0].every.fact_id === "ears" && c[0].clashes.map((x) => x.form).join() === "vixen", "an every-form fact clashes with a form's fact of the same aspect (any capitals)");
+  ok(c[0].fitsIn.join() === "human", "…and still fits the forms without their own");
+  c = formClashes({ facts: [...facts, lf("wears", "Ears", "wolf", "Wolf ears.")], forms: ["vixen", "human", "wolf"] });
+  ok(c.length === 1 && c[0].clashes.length === 2 && c[0].fitsIn.join() === "human", "one every-form fact can clash with several forms");
+  c = formClashes({ facts: [...facts, lf("hears", "Ears", "human", "Round ears.")], forms: ["vixen", "human"] });
+  ok(c[0].fitsIn.length === 0, "when every form has its own, it fits none");
+  ok(formClashes({ facts: facts.filter((f) => f.fact_id !== "vears"), forms: ["vixen", "human"] }).length === 0, "no clash without a form's own fact");
 }

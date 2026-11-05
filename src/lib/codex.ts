@@ -165,6 +165,29 @@ export function applicableFacts(facts: LiveFact[], form: string | null): LiveFac
   return facts.filter((f) => !isFormAspect(f.aspect) && (f.form === "" || (form !== null && sameAspect(f.form, form))));
 }
 
+/** An every-form fact whose aspect a form also describes: while the entry is in that form the AI reads both. */
+export type FormClash = {
+  every: LiveFact;
+  /** The forms with their own fact of the same aspect. */
+  clashes: { form: string; fact: LiveFact }[];
+  /** The entry's other forms, where the every-form fact still fits (none: every form has its own). */
+  fitsIn: string[];
+};
+
+/** Every-form facts that clash with a form's own fact of the same aspect ("Ears: round" and, for vixen, "Ears: fox ears"). */
+export function formClashes(entry: Pick<CodexEntry, "facts" | "forms">): FormClash[] {
+  const out: FormClash[] = [];
+  for (const every of entry.facts) {
+    if (every.form !== "" || !every.aspect.trim() || isFormAspect(every.aspect)) continue;
+    const clashes = entry.facts
+      .filter((f) => f.form !== "" && !isFormAspect(f.aspect) && sameAspect(f.aspect, every.aspect))
+      .map((fact) => ({ form: fact.form, fact }));
+    if (!clashes.length) continue;
+    out.push({ every, clashes, fitsIn: entry.forms.filter((name) => !clashes.some((c) => sameAspect(c.form, name))) });
+  }
+  return out;
+}
+
 /**
  * Each entry's base form, by entry id: the first form it was given (its earliest form fact that names a form). It is the
  * entry's normal form: the AI isn't told it is in it, and an entry whose form was taken away reads as in it.

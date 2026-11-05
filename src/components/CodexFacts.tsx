@@ -7,6 +7,7 @@ import {
   factHistory,
   factSharedState,
   FORM_ASPECT,
+  formClashes,
   formLine,
   isDraftEntry,
   isFormAspect,
@@ -14,6 +15,7 @@ import {
   STARTER_ASPECTS,
   type CodexEntry,
   type FactOp,
+  type FormClash,
   type LiveFact,
 } from "@/lib/codex";
 import type { PathChapter } from "@/lib/ai/codexAi";
@@ -191,6 +193,21 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
   }
 
   const showForm = hasForms || entry.type === "character" || entry.form !== null;
+  const clashes = formClashes(entry);
+  /**
+   * Fixes a clash: the every-form fact becomes the given form's (null: is removed), from the chapter where it was set,
+   * so it reads that way from the start. A fact held in the draft is changed in the draft.
+   */
+  const moveClash = (c: FormClash, form: string | null) =>
+    send({
+      op: form === null ? "retire" : "set",
+      aspect: c.every.aspect,
+      form: form ?? "",
+      text: form === null ? "" : c.every.text,
+      quote: form === null ? "" : c.every.quote,
+      fact_id: c.every.fact_id,
+      anchor: c.every.op.anchor_chapter_id,
+    });
   const toggleHistory = (id: string) => setHistory(history.includes(id) ? history.filter((h) => h !== id) : [...history, id]);
 
   return (
@@ -244,6 +261,19 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
 
       <EntryFold title="Facts" id="entry-facts" className="facts" open note={rows.length > 0 ? `${rows.length}` : undefined}>
         {groups.length === 0 && <p className="meta">No facts yet.</p>}
+        {clashes.length > 0 && (
+          <div className="notice form-clashes">
+            <p>
+              {clashes.length === 1 ? "This fact is" : "These facts are"} for every form, but a form has its own: while {entry.name} is in that form, the AI
+              reads both.
+            </p>
+            <ul>
+              {clashes.map((c) => (
+                <ClashRow key={c.every.fact_id} clash={c} busy={busy} onMove={(form) => void moveClash(c, form)} onRemove={() => void moveClash(c, null)} />
+              ))}
+            </ul>
+          </div>
+        )}
         {groups.map((g) => (
           <div key={g.key} className={g.dim ? "fact-group dim" : "fact-group"}>
             {g.heading && <h3 className="fact-heading">{g.heading}</h3>}
@@ -392,6 +422,51 @@ function ChapterSelect({
   onChange: (v: string) => void;
 }) {
   return <ChapterPathPicker path={path} currentId={chapterId} value={value} onChange={onChange} draft={!!held} editing={held === "save"} />;
+}
+
+/** One clash: the two facts, and a button that makes the every-form one belong to the form it fits (or removes it). */
+function ClashRow({ clash, busy, onMove, onRemove }: { clash: FormClash; busy: boolean; onMove: (form: string) => void; onRemove: () => void }) {
+  const { every, clashes, fitsIn } = clash;
+  const [target, setTarget] = useState(fitsIn[0] ?? "");
+  const label = `${every.aspect}: ${every.text}`;
+  return (
+    <li>
+      <span>
+        <strong>{every.aspect}:</strong> {every.text} <span className="meta">(every form)</span>
+        {clashes.map((c) => (
+          <span key={c.fact.fact_id}>
+            {" "}
+            · {c.fact.text} <span className="meta">({c.form})</span>
+          </span>
+        ))}
+      </span>
+      <span className="row form-clash-fix">
+        {fitsIn.length === 0 ? (
+          <>
+            <span className="meta">Every form has its own {every.aspect}, so this one isn&apos;t needed.</span>
+            <button type="button" className="secondary" disabled={busy} aria-label={`Remove “${label}”`} onClick={onRemove}>
+              Remove it
+            </button>
+          </>
+        ) : (
+          <>
+            {fitsIn.length > 1 && (
+              <select aria-label={`Form for “${label}”`} value={target} onChange={(e) => setTarget(e.target.value)} style={{ width: "auto" }}>
+                {fitsIn.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button type="button" className="secondary" disabled={busy || !target} aria-label={`Make “${label}” a ${target} fact`} onClick={() => onMove(target)}>
+              {fitsIn.length > 1 ? "Move" : `Move to ${target}`}
+            </button>
+          </>
+        )}
+      </span>
+    </li>
+  );
 }
 
 function FactForm({
