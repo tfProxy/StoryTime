@@ -46,7 +46,7 @@ export function editBlocked(models: EditModels, presets: EditPreset[]): string |
   if (models.state === "checking") return "Checking which edit models ComfyUI has…";
   if (models.state === "error") return `Couldn't check ComfyUI's edit models: ${models.message}`;
   if (usableEditPresets(models, presets).length === 0) {
-    return "No edit model is installed in ComfyUI. Check setup in Settings (Qwen edit or Flux edit tab) says what is missing.";
+    return "No edit model is installed in ComfyUI. Check setup in Settings › Drawing, under Editing pictures, says what is missing.";
   }
   return null;
 }

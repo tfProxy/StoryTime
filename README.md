@@ -111,10 +111,11 @@ Each tab has its own address (`/settings#tags`), so a link or a reload comes bac
   the ComfyUI address.
 - **Writing:** star the models you want, pick the defaults, and options such as temperature and the
   context budget. While writing, each draft can switch to any starred model.
-- **Drawing, Qwen edit, Flux edit:** the ComfyUI setup check and the picture presets
-  ([Pictures with ComfyUI](docs/pictures.md)).
-- **Queue:** whether writing and pictures take turns on the machine, and how long each turn lasts.
-- **Outline:** the markers and tag highlights shown on the outline.
+- **Drawing:** in two parts. **Making pictures** has the drawing presets (new pictures, and redraws on
+  the Refine screen); **Editing pictures** has the edit models (Qwen edit, Flux edit) used by the
+  Instruct panel. Each has its own ComfyUI setup check ([Pictures with ComfyUI](docs/pictures.md)).
+- **General:** the Queue (whether writing and pictures take turns on the machine, and how long each
+  turn lasts) and the Outline (the markers and tag highlights shown on the outline).
 - **Tags:** your tag library ([below](#tags)), and whether new and edited chapters are checked
   automatically.
 - **Backup:** export the settings to a file, or import them.

@@ -97,7 +97,7 @@ try {
   ok(await page.getByRole("tab", { name: "Connections" }).getAttribute("aria-selected") === "true", "the link opens Settings on its Connections tab");
   ok(await page.getByRole("tab", { name: "Drawing" }).getAttribute("aria-selected") === "false" && !(await page.locator("#preset-test").isVisible()), "…with the other tabs hidden");
   await openSettings();
-  ok((await page.getByRole("tab").allInnerTexts()).join() === "Connections,Writing,Drawing,Qwen edit,Flux edit,Queue,Outline,Tags,Backup", "Settings has Connections, Writing, Drawing, Qwen edit, Flux edit, Queue, Outline, Tags and Backup tabs");
+  ok((await page.getByRole("tab").allInnerTexts()).join() === "Connections,Writing,Drawing,General,Tags,Backup", "Settings has Connections, Writing, Drawing, General, Tags and Backup tabs");
   ok(await page.getByRole("tab", { name: "Connections" }).getAttribute("aria-selected") === "true", "…and opens on Connections");
   await page.getByRole("tab", { name: "Drawing" }).click();
   ok(page.url().endsWith("/settings#drawing") && (await page.getByRole("tabpanel").getAttribute("id")) === "panel-drawing", "a tab shows its panel alone, and puts its name in the address");
@@ -107,7 +107,12 @@ try {
   ok((await page.getByRole("tabpanel").innerText()).includes("Add the ComfyUI address on the"), "…the Drawing tab, with no ComfyUI address, says to add it first");
   await page.goto(`${BASE}/settings#pictures`);
   ok(await page.getByRole("tab", { name: "Drawing" }).getAttribute("aria-selected") === "true", "the old #pictures address opens the Drawing tab");
-  await page.getByRole("tabpanel").getByRole("button", { name: "Connections tab" }).click();
+  ok(await page.locator("#making-pictures").getByRole("heading", { name: "Making pictures" }).isVisible() && await page.locator("#editing-pictures").getByRole("heading", { name: "Editing pictures" }).isVisible(), "the Drawing tab has two parts: Making pictures and Editing pictures");
+  ok(await page.locator("#editing-pictures").getByRole("heading", { name: "Qwen edit", exact: true }).isVisible() && await page.locator("#editing-pictures").getByRole("heading", { name: "Flux edit", exact: true }).isVisible(), "…the second with a section for each edit model");
+  await page.getByRole("link", { name: /^Editing pictures/ }).click();
+  await page.waitForURL("**/settings#editing-pictures");
+  ok(await page.getByRole("tab", { name: "Drawing" }).getAttribute("aria-selected") === "true" && await until(async () => Math.abs((await page.locator("#editing-pictures").boundingBox()).y) < 40, "Editing pictures to be scrolled to"), "the card at the top jumps to its part, on the same tab");
+  await page.locator("#setup-drawing").getByRole("button", { name: "Connections tab" }).click();
   ok(await page.getByRole("tab", { name: "Connections" }).getAttribute("aria-selected") === "true", "…and its link goes to the Connections tab");
   await page.getByRole("tab", { name: "Connections" }).focus();
   await page.keyboard.press("ArrowRight");
@@ -203,7 +208,7 @@ try {
   await redraw.getByLabel("Preset name").fill("Ink");
   ok(await until(async () => (await testPreset()).name === "Ink", "the name to be saved"), "a preset can be renamed");
   await redraw.getByRole("button", { name: "Duplicate" }).click();
-  const presetCards = page.locator("#panel-drawing details.preset-card");
+  const presetCards = page.locator("#making-pictures details.preset-card");
   await until(async () => (await presetCards.count()) === 2, "a second preset card");
   const copy = presetCards.nth(1);
   ok((await copy.locator(":scope > summary").innerText()).startsWith("Ink copy") && await copy.evaluate((d) => d.open), "Duplicate adds a copy below it, open, named “… copy”");

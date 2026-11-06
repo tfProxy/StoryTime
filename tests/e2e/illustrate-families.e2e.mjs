@@ -38,7 +38,7 @@ const queue = page.getByRole("button", { name: "Queue", exact: true });
 try {
   // ---- Settings: choose the model type ----
   await page.goto(`${BASE}/settings#preset-test`);
-  const panel = page.locator("#panel-drawing");
+  const panel = page.locator("#making-pictures");
   const card = page.locator("#preset-test");
   const report = panel.locator(".comfy-check");
   const type = card.getByLabel("Model type", { exact: true });

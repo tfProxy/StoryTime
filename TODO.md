@@ -46,7 +46,6 @@ Built and passing its tests against fakes, but not yet tried for real. Tick them
 Roughly in order of usefulness. Nothing here is agreed to start without asking where it goes in the UI.
 
 **Tidying the app**
-- [ ] Fewer Settings tabs: fold "Qwen edit" and "Flux edit" into Drawing, and Outline and Queue into one general tab.
 - [ ] Maybe: bring back "download this path" (Markdown or HTML of the route to a chapter) in the chapter's ⋯ menu. It was dropped when the downloads moved to Details › Export; "Read this path" still shows the route on one page.
 
 **Story Bible: left out of the codex and summaries rebuild**

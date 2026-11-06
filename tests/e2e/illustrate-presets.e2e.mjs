@@ -150,14 +150,14 @@ try {
   await editMenu.selectOption("qwen-image-edit");
   ok(await until(async () => (await strength.inputValue()) === "1", "the Default preset's strength"), "another preset starts at its own strength");
 
-  // ---- Settings: a tab of presets for each edit model ----
+  // ---- Settings: presets for each edit model, under Editing pictures on the Drawing tab ----
   await page.goto(`${BASE}/settings#preset-night`);
   const night = page.locator("#preset-night");
   await night.waitFor();
-  ok(await page.getByRole("tab", { name: "Qwen edit" }).getAttribute("aria-selected") === "true" && await night.evaluate((d) => d.open), "a preset's address opens its tab, with its card open");
-  const qwenCards = page.locator("#panel-edit-qwen-image-edit details.preset-card");
-  ok((await qwenCards.count()) === 3 && (await night.locator(":scope > summary").innerText()).includes("fast · 1 LoRA · strength 0.60"), "the Qwen edit tab has a card per Qwen preset, each summing it up");
-  ok(await page.locator("#panel-edit-flux-kontext details.preset-card").count() === 1, "…and the Flux edit tab its own");
+  ok(await page.getByRole("tab", { name: "Drawing" }).getAttribute("aria-selected") === "true" && await night.evaluate((d) => d.open), "a preset's address opens the Drawing tab, with its card open");
+  const qwenCards = page.locator("#edit-qwen-image-edit details.preset-card");
+  ok((await qwenCards.count()) === 3 && (await night.locator(":scope > summary").innerText()).includes("fast · 1 LoRA · strength 0.60"), "the Qwen edit section has a card per Qwen preset, each summing it up");
+  ok(await page.locator("#edit-flux-kontext details.preset-card").count() === 1, "…and the Flux edit section its own");
   await page.getByRole("button", { name: "New Qwen-Image-Edit preset" }).click();
   await until(async () => (await qwenCards.count()) === 4, "a fourth Qwen preset");
   const fresh = qwenCards.nth(3);
@@ -166,7 +166,7 @@ try {
   page.once("dialog", (d) => d.accept());
   await fresh.getByRole("button", { name: "Delete" }).click();
   ok(await until(async () => !(await settingsNow()).editPresets.some((p) => p.name === "Portrait"), "the preset to be deleted"), "…and deleted again");
-  ok(await page.locator("#panel-edit-flux-kontext details.preset-card").getByRole("button", { name: "Delete", includeHidden: true }).isDisabled(), "a model's last preset can't be deleted");
+  ok(await page.locator("#edit-flux-kontext details.preset-card").getByRole("button", { name: "Delete", includeHidden: true }).isDisabled(), "a model's last preset can't be deleted");
 
   // ---- an edit preset's own model files ----
   const gone = page.locator("#preset-gone");

@@ -46,19 +46,28 @@ type Status = { kind: "ok" | "error"; text: string };
 
 /**
  * The Settings tabs. Each is at /settings#<id>; a link to something inside one (#models, a preset's
- * #preset-<id>) opens it too. `holds` also keeps links from before presets working.
+ * #preset-<id>, a section such as #queue) opens it too. `holds` also keeps links from before presets, and to the
+ * tabs that were folded in (the edit models' tabs into Drawing, Queue and Outline into General), working.
  */
 const TABS = [
   { id: "connections", label: "Connections", holds: ["comfyui"] },
   { id: "writing", label: "Writing", holds: ["models"] },
-  { id: "drawing", label: "Drawing", holds: ["picture-batching", "setup-drawing", "drawing-presets", "pictures", "picture-setup", "redraw"] },
-  { id: "edit-qwen-image-edit", label: "Qwen edit", holds: ["setup-qwen-image-edit", "qwen-image-edit-presets", "edit-loras"] },
-  { id: "edit-flux-kontext", label: "Flux edit", holds: ["setup-flux-kontext", "flux-kontext-presets"] },
-  { id: "queue", label: "Queue", holds: [] },
-  { id: "outline", label: "Outline", holds: [] },
+  {
+    id: "drawing",
+    label: "Drawing",
+    holds: [
+      "making-pictures", "picture-batching", "setup-drawing", "drawing-presets", "pictures", "picture-setup", "redraw",
+      "editing-pictures", "edit-qwen-image-edit", "setup-qwen-image-edit", "qwen-image-edit-presets", "edit-loras",
+      "edit-flux-kontext", "setup-flux-kontext", "flux-kontext-presets",
+    ],
+  },
+  { id: "general", label: "General", holds: ["queue", "outline"] },
   { id: "tags", label: "Tags", holds: [] },
   { id: "backup", label: "Backup", holds: [] },
 ] as const;
+
+/** The edit models' names on the Drawing tab, under Editing pictures. */
+const EDIT_LABELS: Record<(typeof EDIT_MODEL_IDS)[number], string> = { "qwen-image-edit": "Qwen edit", "flux-kontext": "Flux edit" };
 type TabId = (typeof TABS)[number]["id"];
 
 function tabFor(hash: string, comfy: Settings["comfy"]): TabId {
@@ -66,9 +75,7 @@ function tabFor(hash: string, comfy: Settings["comfy"]): TabId {
   if (tab) return tab.id;
   if (hash.startsWith("preset-")) {
     const id = hash.slice("preset-".length);
-    const edit = comfy.editPresets.find((p) => p.id === id);
-    if (edit) return `edit-${edit.model}`;
-    if (comfy.drawPresets.some((p) => p.id === id)) return "drawing";
+    if (comfy.editPresets.some((p) => p.id === id) || comfy.drawPresets.some((p) => p.id === id)) return "drawing";
   }
   return "connections";
 }
@@ -667,17 +674,44 @@ export default function SettingsForm() {
         </section>
       </div>
 
+      {/* Two parts: making pictures (the drawing presets) and editing them by instruction (each edit model). */}
       <div {...panel("drawing")}>
-        <DrawingSettings comfy={settings.comfy} setup={pictureSetup} onChange={updateComfy} onConnections={() => openTab("connections")} />
+        <nav className="picture-group-links" aria-label="On this tab">
+          <a href="#making-pictures" className="picture-group-link making">
+            <strong>Making pictures</strong>
+            <span>Drawing presets: new pictures, and redraws on the Refine screen</span>
+          </a>
+          <a href="#editing-pictures" className="picture-group-link editing">
+            <strong>Editing pictures</strong>
+            <span>Edit models: Qwen edit and Flux edit, for the Instruct panel</span>
+          </a>
+        </nav>
+        <section id="making-pictures" className="picture-group making" aria-labelledby="making-pictures-title">
+          <div className="picture-group-head">
+            <h2 id="making-pictures-title">Making pictures</h2>
+            <p className="meta">How new pictures are drawn from a prompt, and how the Refine screen redraws them.</p>
+          </div>
+          <DrawingSettings comfy={settings.comfy} setup={pictureSetup} onChange={updateComfy} onConnections={() => openTab("connections")} />
+        </section>
+        <section id="editing-pictures" className="picture-group editing" aria-labelledby="editing-pictures-title">
+          <div className="picture-group-head">
+            <h2 id="editing-pictures-title">Editing pictures</h2>
+            <p className="meta">
+              Models that change an existing picture from an instruction (&ldquo;take off the hat&rdquo;), used by the Instruct panel on the Illustrate
+              page. Each has its own setup check and presets.
+            </p>
+          </div>
+          {EDIT_MODEL_IDS.map((m) => (
+            <section key={m} id={`edit-${m}`} className="picture-group-model" aria-labelledby={`edit-${m}-title`}>
+              <h3 id={`edit-${m}-title`}>{EDIT_LABELS[m]}</h3>
+              <EditSettings modelId={m} comfy={settings.comfy} setup={pictureSetup} onChange={updateComfy} onConnections={() => openTab("connections")} />
+            </section>
+          ))}
+        </section>
       </div>
-      {EDIT_MODEL_IDS.map((m) => (
-        <div key={m} {...panel(`edit-${m}`)}>
-          <EditSettings modelId={m} comfy={settings.comfy} setup={pictureSetup} onChange={updateComfy} onConnections={() => openTab("connections")} />
-        </div>
-      ))}
 
-      <div {...panel("queue")}>
-        <section className="settings-section">
+      <div {...panel("general")}>
+        <section id="queue" className="settings-section">
           <h2>Queue</h2>
           <h3>Writing and pictures</h3>
           <p className="meta">
@@ -741,10 +775,8 @@ export default function SettingsForm() {
             </span>
           </label>
         </section>
-      </div>
 
-      <div {...panel("outline")}>
-        <section className="settings-section">
+        <section id="outline" className="settings-section">
           <h2>Outline</h2>
           <p className="meta">
             What the outline of a story shows after each chapter&apos;s name, in the square brackets (tags get brackets of

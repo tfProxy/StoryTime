@@ -6,7 +6,7 @@ How to use StoryTime's picture pages, and how to set up the machine that makes t
 
 **Where pictures are made.** Each chapter has an Illustrate page (header, middle and footer pictures). The middle picture is shown inside the text, at the paragraph break nearest the middle of the chapter; choose **Chapter Middle** for a prompt about a moment from around the middle. The story has a cover page (Make a cover, on the story's details page), and each codex entry has a picture page (from the Codex panel). They all work the same way: write or let the AI write a prompt, press **Queue**, and pick from the results.
 
-**The queue runs on the StoryTime server.** Jobs carry on when you close the tab, change page or lock the phone. The header shows how many are being made and how many are ready; **Open queue** lists them, with Pause, Move up/down and Do next. Writing (Generate, write-ahead runs) shares the same queue, and by default writing and pictures take turns on the machine (Settings › Queue). Because the server talks to ComfyUI and the AI, the addresses in Settings must work from the NAS, not just from your browser (**Test from server** checks this). Your browser still needs to reach ComfyUI to show the pictures.
+**The queue runs on the StoryTime server.** Jobs carry on when you close the tab, change page or lock the phone. The header shows how many are being made and how many are ready; **Open queue** lists them, with Pause, Move up/down and Do next. Writing (Generate, write-ahead runs) shares the same queue, and by default writing and pictures take turns on the machine (Settings › General › Queue). Because the server talks to ComfyUI and the AI, the addresses in Settings must work from the NAS, not just from your browser (**Test from server** checks this). Your browser still needs to reach ComfyUI to show the pictures.
 
 **Quick clicks become one job.** Clicking Queue several times within a second, with nothing changed, makes one job of up to 8 pictures (turn this off in Settings › Drawing). **Pictures per click** beside Queue does the same in one click. **Keep seed** repeats a seed you like.
 
@@ -36,18 +36,21 @@ How to use StoryTime's picture pages, and how to set up the machine that makes t
 
 Pictures are made with named presets, set in **Settings**, one tab for each kind:
 
-- **Drawing**: how new pictures are drawn, and redrawn from a picture. Each drawing preset has its
+The **Drawing** tab of Settings has two parts, each with its own presets:
+
+- **Making pictures**: how new pictures are drawn, and redrawn from a picture. Each drawing preset has its
   own **Model type** (a checkpoint, or one of the
   [newer models](#newer-models-z-image-flux-chroma-qwen-image)), checkpoint or model files, LoRAs
   (see [Your own LoRAs](#your-own-loras)), Redraw strength, sampler settings and, optionally, a
   workflow of your own.
-- **Qwen edit** and **Flux edit**: how pictures are edited by instruction with each edit model. Each
-  edit preset has its own LoRAs, Fast box, default strength and the model's settings.
+- **Editing pictures**: how pictures are edited by instruction, with a section for each edit model
+  (**Qwen edit** and **Flux edit**). Each edit preset has its own LoRAs, Fast box, default strength
+  and the model's settings.
 
 Each preset is a card: its name and a summary line, opened to change it. **Duplicate** copies one to
 try a variation, **New … preset** adds an empty one, and **Delete** asks first (the last preset of
-a kind can't be deleted). Each tab also has **Check setup**, which asks ComfyUI what it has (see
-[step 5](#5-restart-comfyui-and-check)).
+a kind can't be deleted). Making pictures and each edit model also have **Check setup**, which asks
+ComfyUI what it has (see [step 5](#5-restart-comfyui-and-check)).
 
 Which drawing preset a picture uses:
 
@@ -93,7 +96,7 @@ the preset's card still overrides everything.)
 | | `models/text_encoders` | `qwen3vl_4b_bf16.safetensors` | [Comfy-Org/Qwen3-VL](https://huggingface.co/Comfy-Org/Qwen3-VL/tree/main/text_encoders) |
 | | `models/vae` | `wan_2.1_vae.safetensors` | [Comfy-Org/Wan_2.2_ComfyUI_Repackaged](https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/tree/main/split_files/vae) |
 
-Qwen-Image's text encoder and VAE are the ones the Qwen edit tab uses, so if you set that up
+Qwen-Image's text encoder and VAE are the ones Qwen edit uses, so if you set that up
 (step 3 of [Edit models in ComfyUI](#edit-models-in-comfyui)) you already have them. The model is a
 different file: **Qwen-Image**, not Qwen-Image-Edit. A preset finds only its own model by name, so the
 two sit side by side in `models/diffusion_models`.
@@ -303,7 +306,7 @@ edit is several times faster. It gives up a little fine detail; the 8-step versi
   in `loras`, it uses one whose name has the same release number as the model (such as 2509), and
   otherwise the 4-step one above.
 - Once the LoRA is installed, the Instruct section shows a **Fast (Lightning, 4 steps)** box under the preset
-  menu when a Qwen-Image-Edit preset is chosen, and each Qwen preset in **Settings › Qwen edit** has
+  menu when a Qwen-Image-Edit preset is chosen, and each Qwen preset in **Settings › Drawing › Qwen edit** has
   the same box. It starts ticked; untick it for the full steps when you want the most detail. The
   choice is kept with the preset. Pictures made fast say "fast" in their caption, and Info lists the
   LoRA beside the model file.
@@ -329,11 +332,12 @@ command line can resume a broken download, for example `curl -L -C - -O <link>` 
 
 ### 5. Restart ComfyUI and check
 
-Restart ComfyUI so it lists the new files. Then, in StoryTime, open the **Qwen edit** (or **Flux
-edit**) tab of **Settings** and press **Check setup**. (The ComfyUI address is on the
-**Connections** tab.) Each tab shows what the check found for it:
+Restart ComfyUI so it lists the new files. Then, in StoryTime, open the **Drawing** tab of
+**Settings** and press **Check setup** under **Qwen edit** (or **Flux edit**), in **Editing
+pictures**. (The ComfyUI address is on the **Connections** tab.) One check fills in what it found
+for each part:
 
-- **Drawing**: the checkpoints, and for each drawing preset whether ComfyUI has its checkpoint (or,
+- **Making pictures**: the checkpoints, and for each drawing preset whether ComfyUI has its checkpoint (or,
   for a [newer model](#newer-models-z-image-flux-chroma-qwen-image), each file it needs), its LoRAs
   and the nodes its workflow uses;
 - **Qwen edit** and **Flux edit**: whether ComfyUI has each file and the nodes the model needs. A
@@ -380,7 +384,7 @@ caption says how many LoRAs made it, and **Info** lists each one with its streng
 
 An edit preset can use other model files than the ones found by their names, such as an uncensored
 fine-tune. LoRAs alone often can't make an edit model follow instructions it was trained to ignore;
-a fine-tuned model can. Open the preset's card in Settings (Qwen edit or Flux edit tab) and its
+a fine-tuned model can. Open the preset's card in Settings › Drawing (under Qwen edit or Flux edit) and its
 **Model files**:
 
 - **Model:** a model in `ComfyUI/models/diffusion_models` (a `.gguf` one too, see
