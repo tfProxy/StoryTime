@@ -42,6 +42,13 @@ ok(/Other names already in the codex \(not new\): Zed, Tomas/.test(req.message),
 ok(req.message.includes('Chapter to read: "One"') && req.message.includes("tail"), "request has the chapter");
 ok(req.system!.includes("Reply with JSON only") && req.system!.includes("physical transformation") && req.system!.includes("Ears"), "system prompt: JSON only, transformation, starter aspects");
 ok(selectEntries(entries, body).map((e) => e.name).join() === "Mira,The Hollow,Old Sage", "selectEntries: mentioned first, then always-included");
+
+// "Update from the story": one entry in focus
+const mira = entries.find((e) => e.entry_id === "mira")!;
+const focused = codexCheckRequest(8000, { chapter: { title: "One", body }, entries, otherNames: [], focus: mira });
+ok(focused.message.includes("The codex now, for Mira:") && focused.message.includes("- Ears [every form]: Tall russet fox ears."), "focused: shows the entry and its facts");
+ok(!/^The Hollow \[/m.test(focused.message) && !/^Old Sage \[/m.test(focused.message), "…and no other entry, mentioned or always included");
+ok(focused.message.includes("Propose only the changes this chapter makes to Mira") && focused.message.includes("propose no new entries"), "…asks for that entry's changes alone");
 const longNotes = foldCodex([op("x", "Mira", { content: "n".repeat(900) })]);
 ok(!codexCheckRequest(8000, { chapter: { title: "t", body }, entries: longNotes, otherNames: [] }).message.includes("n".repeat(400)), "notes are cut to 300 characters");
 const fitted = codexCheckRequest(4000, { chapter: { title: "Long", body: "word ".repeat(30000) }, entries, otherNames: [] });

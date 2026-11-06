@@ -87,8 +87,8 @@ export const postFacts = (f: Fetch, chapterId: string, revision: number, facts: 
 export const getChapterCodex = (f: Fetch, chapterId: string) => call<{ entries: CodexEntry[] }>(f, "GET", `/api/chapters/${chapterId}/codex`);
 
 /** Saves what the AI read from a chapter revision into the codex inbox (replacing the chapter's open suggestions); 409 when the chapter was edited meanwhile. */
-export const postCodexSuggestions = (f: Fetch, chapterId: string, revision: number, suggestions: SuggestionInput[]) =>
-  call<{ saved: number }>(f, "POST", `/api/chapters/${chapterId}/codex-suggestions`, { revision, suggestions });
+export const postCodexSuggestions = (f: Fetch, chapterId: string, revision: number, suggestions: SuggestionInput[], entryId?: string) =>
+  call<{ saved: number }>(f, "POST", `/api/chapters/${chapterId}/codex-suggestions`, { revision, suggestions, ...(entryId && { entry_id: entryId }) });
 
 /** The same for facts the AI read from one entry's notes: replaces only that entry's open "notes" suggestions at the chapter. */
 export const postNotesSuggestions = (f: Fetch, chapterId: string, revision: number, entryId: string, suggestions: SuggestionInput[]) =>

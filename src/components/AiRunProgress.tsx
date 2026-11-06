@@ -247,7 +247,9 @@ export default function AiRunProgress({
                 <>
                   {t.kind === "codex" ? (
                     <>
-                      Check the codex for <Link href={`/c/${t.chapterId}`}>“{t.label ?? "a chapter"}”</Link>{" "}
+                      {t.entryName ? "Read " : "Check the codex for "}
+                      <Link href={`/c/${t.chapterId}`}>“{t.label ?? "a chapter"}”</Link>
+                      {t.entryName ? ` for ${t.entryName}` : ""}{" "}
                       <span className="meta">· {STATUS_WORDS[t.status]}{t.status === "done" && t.found ? `, ${t.found} suggestion${t.found === 1 ? "" : "s"}` : ""}</span>
                     </>
                   ) : (

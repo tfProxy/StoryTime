@@ -137,6 +137,10 @@ export type CodexTask = {
   revision: number;
   /** The chapter's title, for the task list. */
   label?: string;
+  /** "Update from the story": the chapter is read for this entry's changes alone, and isn't marked as read for the codex. */
+  entryId?: string;
+  /** With `entryId`: the entry's name, for the task list. */
+  entryName?: string;
   status: TaskStatus;
   /** How many suggestions were left in the inbox (set when the chapter was read). */
   found?: number;
@@ -213,7 +217,7 @@ export type RunOptions = {
   /** A review run the server started by itself after a save or an AI run. */
   automatic?: boolean;
   // review: what to read each chapter for (tags unless said otherwise)
-  checks?: ("tags" | "facts" | "continuity" | "summaries" | "codex" | "notes" | "expand")[];
+  checks?: ("tags" | "facts" | "continuity" | "summaries" | "codex" | "notes" | "expand" | "update")[];
   /** With "notes": only these entries (all those with notes when absent). With "expand": the entry to flesh out. */
   entryIds?: string[];
   /** With "expand": add new details ("invent", the default) or only elaborate on what the chapters show ("close"), and what to focus on. */

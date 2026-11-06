@@ -232,7 +232,7 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<StepResult> {
 
   const { task } = picked;
   const phase = picked.kind === "plan" ? "planning" : picked.kind === "write" || picked.kind === "prompt" || picked.kind === "tags" || picked.kind === "facts" || picked.kind === "continuity" || picked.kind === "summary" || picked.kind === "codex" || picked.kind === "notes" || picked.kind === "expand" ? "writing" : "finishing";
-  const label = task.kind === "write" ? task.label : task.kind === "plan" ? "Plan the choices" : task.kind === "picture" ? `Prompt for “${task.label ?? "a chapter"}” (${task.slot})` : task.kind === "tags" ? `Find tags in “${task.label ?? "a chapter"}”` : task.kind === "facts" ? `Find facts in “${task.label ?? "a chapter"}”` : task.kind === "continuity" ? "Check continuity" : task.kind === "summary" ? `Check the summary of “${task.label ?? "a chapter"}”` : task.kind === "codex" ? `Check the codex for “${task.label ?? "a chapter"}”` : task.kind === "notes" ? `Turn the notes of “${task.label ?? "an entry"}” into facts` : task.kind === "expand" ? `Flesh out “${task.label ?? "an entry"}”` : "";
+  const label = task.kind === "write" ? task.label : task.kind === "plan" ? "Plan the choices" : task.kind === "picture" ? `Prompt for “${task.label ?? "a chapter"}” (${task.slot})` : task.kind === "tags" ? `Find tags in “${task.label ?? "a chapter"}”` : task.kind === "facts" ? `Find facts in “${task.label ?? "a chapter"}”` : task.kind === "continuity" ? "Check continuity" : task.kind === "summary" ? `Check the summary of “${task.label ?? "a chapter"}”` : task.kind === "codex" ? (task.entryName ? `Read “${task.label ?? "a chapter"}” for ${task.entryName}` : `Check the codex for “${task.label ?? "a chapter"}”`) : task.kind === "notes" ? `Turn the notes of “${task.label ?? "an entry"}” into facts` : task.kind === "expand" ? `Flesh out “${task.label ?? "an entry"}”` : "";
   let tasks = list;
   let failure: unknown = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -550,21 +550,25 @@ async function doCodex(task: CodexTask, run: AiRun, list: RunTask[], env: StepEn
   const skip = (why: string) => replace(list, { ...task, status: "skipped", error: why });
   if (context.trashed) return skip(TRASHED);
   if (chapter.revision !== task.revision) return skip("Skipped: the chapter was edited after the run was made.");
-  env.onEvent?.({ type: "status", text: `Reading “${chapter.title}” for codex changes…` });
   const { entries } = await getChapterCodex(f, task.chapterId);
+  // "Update from the story": only this entry, as it stands at the chapter.
+  const focus = task.entryId ? entries.find((e) => e.entry_id === task.entryId) : undefined;
+  if (task.entryId && !focus) return skip("Skipped: the entry isn't in the codex at this chapter.");
+  env.onEvent?.({ type: "status", text: focus ? `Reading “${chapter.title}” for changes to ${focus.name}…` : `Reading “${chapter.title}” for codex changes…` });
   // The request shows the entries the chapter mentions (and the always-included); the rest are only names, so they aren't proposed as new.
-  const shown = new Set(selectEntries(entries, chapter.body));
+  const shown = new Set(focus ? [focus] : selectEntries(entries, chapter.body));
   const suggestions = await runCodexCheck(env.settings, {
     chapter: { title: chapter.title, body: chapter.body },
     entries,
     otherNames: entries.filter((e) => !shown.has(e)).map((e) => e.name),
+    focus,
     signal: env.signal,
     role: "cheap",
     source: sourceOf(run, task.chapterId),
   });
   let saved = 0;
   try {
-    saved = (await postCodexSuggestions(f, task.chapterId, task.revision, suggestions)).saved;
+    saved = (await postCodexSuggestions(f, task.chapterId, task.revision, suggestions, task.entryId)).saved;
   } catch (e) {
     if (e instanceof ApiError && e.status === 409) return skip("Skipped: the chapter was edited while it was read.");
     throw e;

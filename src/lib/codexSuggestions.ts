@@ -45,7 +45,10 @@ export const SaveSuggestionsSchema = z
     revision: z.number().int().min(1),
     suggestions: z.array(SuggestionInputSchema).max(50),
     source: z.enum(SUGGESTION_SOURCES).default("chapter"),
-    /** For source "notes": the entry whose notes were read (so its earlier open suggestions are replaced even when none are new). */
+    /**
+     * For source "notes" or "expand": the entry whose notes were read (so its earlier open suggestions are replaced even
+     * when none are new). For source "chapter": the chapter was read for this entry alone ("Update from the story").
+     */
     entry_id: z.string().min(1).optional(),
   })
   .refine((v) => v.source === "chapter" || v.entry_id !== undefined, { message: "a notes reading or a flesh out needs entry_id" });
@@ -94,6 +97,9 @@ function parseEntry(json: string): (z.infer<typeof SuggestedEntrySchema>) | null
  * With source "notes" (the AI turned the notes of entry `notesEntryId` into facts, anchored at this chapter) only the
  * open "notes" suggestions for that entry at this chapter are replaced, the chapter is not marked as read, and only
  * earlier "notes" dismissals count.
+ * With source "chapter" and an entry ("Update from the story" for one entry): the chapter was read for that entry alone,
+ * so only that entry's open chapter suggestions here are replaced, only its suggestions are kept, and the chapter is not
+ * marked as read (the other entries weren't looked at).
  */
 export function saveSuggestions(chapterId: string, revision: number, list: SuggestionInput[], source: SuggestionSource = "chapter", notesEntryId?: string): { saved: number } {
   return db().transaction(() => {
@@ -104,6 +110,8 @@ export function saveSuggestions(chapterId: string, revision: number, list: Sugge
     if (source === "notes" || source === "expand") {
       if (!notesEntryId) throw new PostError("A notes reading or a flesh out needs the entry", 400);
       db().prepare(`DELETE FROM codex_suggestions WHERE chapter_id = ? AND status = 'open' AND source = ? AND entry_id = ?`).run(chapterId, source, notesEntryId);
+    } else if (notesEntryId) {
+      db().prepare(`DELETE FROM codex_suggestions WHERE chapter_id = ? AND status = 'open' AND source = 'chapter' AND entry_id = ?`).run(chapterId, notesEntryId);
     } else {
       db().prepare(`DELETE FROM codex_suggestions WHERE chapter_id = ? AND status = 'open' AND source = 'chapter'`).run(chapterId);
     }
@@ -120,7 +128,7 @@ export function saveSuggestions(chapterId: string, revision: number, list: Sugge
     const now = Date.now();
     let saved = 0;
     for (const s of list) {
-      if (source !== "chapter" && (s.kind === "entry" || s.entry_id !== notesEntryId)) continue; // they only ever suggest facts for their own entry
+      if ((source !== "chapter" || notesEntryId) && (s.kind === "entry" || s.entry_id !== notesEntryId)) continue; // one entry's reading only ever suggests facts for that entry
       let before = "";
       let who: string;
       if (s.kind === "entry") {
@@ -146,7 +154,7 @@ export function saveSuggestions(chapterId: string, revision: number, list: Sugge
       insert.run(newId(), chapter.story_id, chapterId, revision, s.kind, s.kind === "entry" ? null : s.entry_id, s.aspect, s.form, before, s.kind === "retire" ? "" : s.after, s.quote, s.kind === "entry" ? JSON.stringify(s.entry) : "{}", source, now);
       saved += 1;
     }
-    if (source === "chapter") {
+    if (source === "chapter" && !notesEntryId) {
       db()
         .prepare(
           `INSERT INTO codex_checks (chapter_id, revision, checked_at) VALUES (?, ?, ?)

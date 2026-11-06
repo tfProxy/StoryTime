@@ -5,7 +5,8 @@
 import { z } from "zod";
 import { db, newId } from "./db";
 import { codexCheckedChapterIds } from "./codexSuggestions";
-import { getCodexState } from "./codexDb";
+import { entryChangeChapters, getCodexState } from "./codexDb";
+import { chaptersSinceChange } from "./codexHints";
 import { factCheckedChapterIds } from "./facts";
 import { currentSummaryChecks } from "./summaryChecks";
 import { LIMITS } from "./limits";
@@ -131,6 +132,9 @@ export const CodexTaskSchema = z.object({
   chapterId: z.string().min(1).max(100),
   revision: z.number().int().min(1),
   label: text(LIMITS.title).optional(),
+  /** "Update from the story": read for this entry's changes alone (the chapter isn't marked as read for the codex). */
+  entryId: z.string().min(1).max(100).optional(),
+  entryName: text(LIMITS.title).optional(),
   status: taskStatus,
   /** How many suggestions were left in the codex inbox. */
   found: z.number().int().min(0).optional(),
@@ -202,8 +206,10 @@ export const RunOptionsSchema = z.object({
   // "codex": reads each chapter for changes to the codex and leaves suggestions in the codex inbox.
   // "notes": turns the notes of the codex entries (as of the start chapter) into suggested facts; see `entryIds`.
   // "expand": the AI proposes new facts for the entry in `entryIds`, as the codex stands at the start chapter.
-  checks: z.array(z.enum(["tags", "facts", "continuity", "summaries", "codex", "notes", "expand"])).max(7).optional(),
-  // With "notes": only these entries (all those with notes when absent). With "expand": the entry to flesh out.
+  // "update": the AI reads the chapters that name the entry in `entryIds` since its last change (on the way to the start
+  // chapter) for that entry's changes alone, and leaves suggestions on it.
+  checks: z.array(z.enum(["tags", "facts", "continuity", "summaries", "codex", "notes", "expand", "update"])).max(8).optional(),
+  // With "notes": only these entries (all those with notes when absent). With "expand" or "update": the entry.
   entryIds: z.array(z.string().min(1).max(100)).max(200).optional(),
   expandMode: z.enum(["invent", "close"]).optional(),
   expandHint: text(200).optional(),
@@ -440,6 +446,22 @@ export function reviewTasks(storyId: string, startChapterId: string | null, scop
         label: e.name.slice(0, LIMITS.title),
         status: "todo",
       });
+    }
+  }
+  if (checks.includes("update")) {
+    // "Update from the story" for the entry in `entryIds`: each chapter on the way to the start chapter that names it
+    // since its last change there, read for its changes alone (`entryId` on the task).
+    if (startChapterId === null) throw new PostError("Updating an entry needs the chapter it is viewed at", 400);
+    const byId = new Map(chapters.map((c) => [c.id, c]));
+    if (!byId.has(startChapterId)) throw new PostError("That chapter is not in this story's tree", 404);
+    const path: typeof chapters = [];
+    for (let c = byId.get(startChapterId); c; c = c.parent_id ? byId.get(c.parent_id) : undefined) path.unshift(c);
+    const entry = getCodexState(startChapterId).find((e) => entryIds?.includes(e.entry_id));
+    if (!entry) throw new PostError("That entry isn't in the codex at this chapter", 404);
+    const since = chaptersSinceChange(path, { who: entry, changes: entryChangeChapters(storyId).get(entry.entry_id) ?? new Set() });
+    if (since.length === 0) throw new PostError(`No chapter names ${entry.name} since it last changed, so there is nothing to read.`, 409);
+    for (const c of since) {
+      tasks.push({ kind: "codex", id: `t${tasks.length + 1}`, chapterId: c.id, revision: c.revision, label: c.title.slice(0, LIMITS.title), entryId: entry.entry_id, entryName: entry.name.slice(0, LIMITS.title), status: "todo" });
     }
   }
   if (checks.includes("continuity")) {

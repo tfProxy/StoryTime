@@ -230,11 +230,7 @@ export function codexHintsFor(
   }
 
   // Out of date: chapters that mention an entry since it last changed (on the path shown, or the worst branch).
-  const changes = new Map<string, Set<string>>();
-  const anchors = db()
-    .prepare(`SELECT entry_id, anchor_chapter_id FROM codex_ops WHERE story_id = ? UNION SELECT entry_id, anchor_chapter_id FROM codex_facts WHERE story_id = ?`)
-    .all(storyId, storyId) as { entry_id: string; anchor_chapter_id: string }[];
-  for (const a of anchors) changes.set(a.entry_id, (changes.get(a.entry_id) ?? new Set()).add(a.anchor_chapter_id));
+  const changes = entryChangeChapters(storyId);
   const read = new Set(
     (db().prepare(`SELECT k.chapter_id FROM codex_checks k JOIN chapters c ON c.id = k.chapter_id AND c.revision = k.revision WHERE c.story_id = ?`).all(storyId) as { chapter_id: string }[]).map((r) => r.chapter_id),
   );
@@ -245,6 +241,16 @@ export function codexHintsFor(
     stale[e.entry_id] = shownPath ? staleAlong(shownPath, input) : staleInTree(tree, input);
   }
   return { counts, stale, always: alwaysIncludedLoad(checked, contextTokens) };
+}
+
+/** For each entry of a story, the chapters where it changed: an entry op or a fact op anchored there, on any branch. */
+export function entryChangeChapters(storyId: string): Map<string, Set<string>> {
+  const changes = new Map<string, Set<string>>();
+  const anchors = db()
+    .prepare(`SELECT entry_id, anchor_chapter_id FROM codex_ops WHERE story_id = ? UNION SELECT entry_id, anchor_chapter_id FROM codex_facts WHERE story_id = ?`)
+    .all(storyId, storyId) as { entry_id: string; anchor_chapter_id: string }[];
+  for (const a of anchors) changes.set(a.entry_id, (changes.get(a.entry_id) ?? new Set()).add(a.anchor_chapter_id));
+  return changes;
 }
 
 /** Every entry in a story, across all branches, one row each. */

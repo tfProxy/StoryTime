@@ -24,6 +24,7 @@ import CodexFacts, { type HeldFact } from "./CodexFacts";
 import ChapterPathPicker from "./ChapterPathPicker";
 import CodexInbox from "./CodexInbox";
 import FleshOutEntry from "./FleshOutEntry";
+import UpdateFromStory from "./UpdateFromStory";
 import LinkedEntryDetails from "./LinkedEntryDetails";
 import EntryFold from "./EntryFold";
 import MoreMenu from "./MoreMenu";
@@ -448,7 +449,18 @@ export default function CodexEntryEditor({
       </EntryFold>
       )}
 
-      {/* Not in the writing drawer or for an entry only in the draft: the run reads the saved codex at this chapter. */}
+      {/* Not in the writing drawer or for an entry only in the draft: the runs read the saved codex at this chapter. */}
+      {storyId && !inDraft && !draftOnly && (
+        <EntryFold title="Update from the story" id="entry-update">
+          <UpdateFromStory
+            storyId={storyId}
+            chapterId={chapterId}
+            entry={entry}
+            path={path}
+            changes={new Set([...ops, ...facts].filter((o) => o.entry_id === entry.entry_id).map((o) => o.anchor_chapter_id))}
+          />
+        </EntryFold>
+      )}
       {storyId && !inDraft && !draftOnly && (
         <EntryFold title="Flesh out with AI" id="entry-flesh-out">
           <p className="meta">Ask the AI for more detail about {entry.name}.</p>

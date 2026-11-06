@@ -100,16 +100,20 @@ type StaleInput = {
 const mentionsIn = (who: StaleInput["who"], text: string) => mentions({ name: who.name, type: who.type, aliases: who.aliases, content: "", always_include: false }, text);
 
 /**
- * How many chapters mention the entry since it last changed, along one path (root first, ending at the chapter shown).
- * Before the entry's first change on the path (its creation) nothing counts.
+ * The chapters on a path (root first) that mention the entry since its last change there, in story order: what
+ * "Update from the story" reads. None when the entry doesn't start on the path.
  */
-export function staleAlong(path: Omit<StaleChapter, "parent_id">[], { who, changes, checked }: StaleInput): number {
-  let count: number | null = null;
-  for (const c of path) {
-    if (changes.has(c.id)) count = 0;
-    else if (count !== null && !checked.has(c.id) && mentionsIn(who, c.body)) count++;
-  }
-  return count ?? 0;
+export function chaptersSinceChange<C extends Omit<StaleChapter, "parent_id">>(path: C[], { who, changes }: Omit<StaleInput, "checked">): C[] {
+  const last = path.findLastIndex((c) => changes.has(c.id));
+  return last < 0 ? [] : path.slice(last + 1).filter((c) => mentionsIn(who, c.body));
+}
+
+/**
+ * How many chapters mention the entry since it last changed, along one path (root first, ending at the chapter shown),
+ * leaving out those the codex check has read. Before the entry's first change on the path (its creation) nothing counts.
+ */
+export function staleAlong(path: Omit<StaleChapter, "parent_id">[], input: StaleInput): number {
+  return chaptersSinceChange(path, input).filter((c) => !input.checked.has(c.id)).length;
 }
 
 /** The same count for the whole story: the most chapters on any one branch (`chapters` with parents before children). */

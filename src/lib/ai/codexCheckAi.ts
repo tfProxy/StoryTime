@@ -92,11 +92,16 @@ export type CodexCheckRequestOptions = {
   entries: CodexEntry[];
   /** Names of other entries, so they aren't proposed as new. The names of entries left out of the request are added. */
   otherNames: string[];
+  /**
+   * "Update from the story" for one entry: only this entry is shown, the AI is asked for its changes alone (no new
+   * entries), and anything else in the reply is dropped.
+   */
+  focus?: CodexEntry;
 };
 
 /** The request for one chapter's codex changes. A chapter too long for the context is cut to fit. */
 export function codexCheckRequest(contextTokens: number, opts: CodexCheckRequestOptions): PromptParts {
-  const shown = selectEntries(opts.entries, opts.chapter.body);
+  const shown = opts.focus ? [opts.focus] : selectEntries(opts.entries, opts.chapter.body);
   const others: string[] = [];
   for (const n of [...opts.otherNames, ...opts.entries.filter((e) => !shown.includes(e)).map((e) => e.name)]) {
     const name = asString(n, 60);
@@ -111,11 +116,14 @@ export function codexCheckRequest(contextTokens: number, opts: CodexCheckRequest
   const maxChars = room * 2;
   const body = opts.chapter.body.length > maxChars ? `${opts.chapter.body.slice(0, maxChars)}…` : opts.chapter.body;
 
+  const focus = opts.focus?.name;
   const message = [
-    `The codex now, for the entries this chapter mentions:\n${known}`,
+    focus ? `The codex now, for ${focus}:\n${known}` : `The codex now, for the entries this chapter mentions:\n${known}`,
     otherList ? `Other names already in the codex (not new): ${otherList}` : "",
     `Chapter to read: "${opts.chapter.title}"\n${body}`,
-    "Propose the codex changes this chapter needs, as JSON.",
+    focus
+      ? `Propose only the changes this chapter makes to ${focus}, as JSON. Leave out every other entry, and propose no new entries.`
+      : "Propose the codex changes this chapter needs, as JSON.",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -226,7 +234,8 @@ export async function runCodexCheck(settings: Settings, opts: RunCodexCheckOptio
     messages: [{ role: "user", content: request.message }],
     role: opts.role ?? "cheap",
     signal: opts.signal,
-    source: { label: "Codex check", ...opts.source },
+    source: { label: opts.focus ? `Update “${opts.focus.name}” from the story` : "Codex check", ...opts.source },
   });
-  return parseCodexCheck(reply, { body: opts.chapter.body, entries: opts.entries, otherNames: opts.otherNames });
+  const found = parseCodexCheck(reply, { body: opts.chapter.body, entries: opts.entries, otherNames: opts.otherNames });
+  return opts.focus ? found.filter((s) => s.kind !== "entry" && s.entry_id === opts.focus!.entry_id) : found;
 }
