@@ -25,9 +25,9 @@ const saved = async () => (await call("/api/settings")).settings.queue;
 
 try {
   await page.goto(`${BASE}/settings#queue`);
-  const panel = page.locator("#panel-queue");
+  const panel = page.locator("#queue");
   await panel.waitFor();
-  ok(await page.locator("#tab-queue").isVisible(), "Settings has a Queue tab");
+  ok(await page.locator("#tab-general").getAttribute("aria-selected") === "true", "/settings#queue opens the General tab, which has the Queue settings");
   ok((await panel.innerText()).includes("Take turns when the AI model and ComfyUI run on the same machine, so they don't run out of memory."), "the line under Writing and pictures is shown");
 
   const turns = panel.getByLabel("Take turns (same machine)");
@@ -52,8 +52,8 @@ try {
   ok((await panel.getByLabel(/Switch after/).count()) === 0, "the switching numbers are hidden when running at the same time");
 
   await page.reload();
-  await page.locator("#panel-queue").waitFor();
-  ok(await page.locator("#panel-queue").getByLabel("At the same time (different machines)").isChecked(), "the choice is still there after a reload");
+  await page.locator("#queue").waitFor();
+  ok(await page.locator("#queue").getByLabel("At the same time (different machines)").isChecked(), "the choice is still there after a reload");
 
   await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR ?? "/tmp"}/settings-queue-400.png`, fullPage: true });
   ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "at 400px the Queue tab does not scroll sideways");

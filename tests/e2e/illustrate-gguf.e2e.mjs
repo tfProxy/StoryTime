@@ -38,7 +38,7 @@ const presetNow = async () => (await call("GET", "/api/settings")).settings.comf
 try {
   // ---- Settings without the GGUF nodes ----
   await page.goto(`${BASE}/settings#edit-qwen-image-edit`);
-  const panel = page.locator("#panel-edit-qwen-image-edit");
+  const panel = page.locator("#edit-qwen-image-edit");
   const card = page.locator("#preset-qwen-image-edit");
   const report = panel.locator(".comfy-check");
   await panel.getByRole("button", { name: "Check setup" }).click();

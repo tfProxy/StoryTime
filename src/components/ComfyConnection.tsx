@@ -46,7 +46,7 @@ export default function ComfyConnection({ comfy, onChange }: { comfy: Comfy; onC
         (so they go on with the page closed), and your browser talks to ComfyUI directly too (the setup check, and showing
         its pictures), so start ComfyUI with <code>--enable-cors-header {origin || "<this site's address>"}</code>
         {origin.startsWith("https:") && ", and serve it over https, since this page is on https"}. Its presets
-        (checkpoints, LoRAs, workflows) are on the Drawing, Qwen edit and Flux edit tabs.
+        (checkpoints, LoRAs, workflows) are on the Drawing tab.
       </p>
       <label>
         ComfyUI address

@@ -18,12 +18,12 @@ export type ScheduleState = {
   inFlight: string[];
   /** Pause queue: nothing new is sent (what is running finishes). */
   paused?: boolean;
-  /** The drawing preset of the last job sent, and whether to group by it (Settings › Queue). */
+  /** The drawing preset of the last job sent, and whether to group by it (Settings › General › Queue). */
   lastPreset?: string | null;
   group?: boolean;
   /** Writing work: ids of the items waiting for a step, in the order they go (a single Generate first, D16), and whether a step is running. */
   writing?: { waiting: string[]; active: boolean };
-  /** Settings › Queue: "turns" = the AI and ComfyUI share one machine (D18); "together" = both go at once. */
+  /** Settings › General › Queue: "turns" = the AI and ComfyUI share one machine (D18); "together" = both go at once. */
   sharing?: "turns" | "together";
   switchMinutes?: number;
   /** 0 = no item limit. */

@@ -3250,6 +3250,102 @@ fieldset.model-uses .inline-label input[type="checkbox"] {
   display: none;
 }
 
+/* Settings › Drawing: two parts, Making pictures and Editing pictures, each in a box, with a card for each at the top. */
+.picture-group-links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.picture-group-link {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.picture-group-link strong {
+  font-size: 1rem;
+}
+
+.picture-group-link.making strong {
+  color: var(--accent);
+}
+
+.picture-group-link.editing strong {
+  color: var(--warn);
+}
+
+.picture-group-link span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.picture-group {
+  display: grid;
+  gap: 1.25rem;
+  padding: 1rem 1.25rem 1.25rem;
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--accent);
+  border-radius: 8px;
+  background: var(--card);
+  scroll-margin-top: 1rem;
+}
+
+.picture-group.editing {
+  border-top-color: var(--warn);
+}
+
+.picture-group-head {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.picture-group-head h2 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.picture-group-head .meta {
+  margin: 0;
+}
+
+.picture-group h3,
+.picture-group h4 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+/* Each edit model under Editing pictures: its name, then its setup check and presets. */
+.picture-group-model {
+  display: grid;
+  gap: 0.75rem;
+  scroll-margin-top: 1rem;
+}
+
+.picture-group-model + .picture-group-model {
+  border-top: 1px solid var(--line);
+  padding-top: 1.25rem;
+}
+
+.picture-group .picture-group-model > h3 {
+  font-size: 1.2rem;
+}
+
+@media (max-width: 520px) {
+  .picture-group-links {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .picture-group {
+    padding: 0.85rem 0.75rem 1rem;
+  }
+}
+
 /* Settings › Pictures: a card per kind of picture (new pictures, and each edit model). */
 .picture-card {
   display: grid;

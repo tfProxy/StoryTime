@@ -319,7 +319,8 @@ function SetupSection({ id, comfy, setup, model, onConnections }: { id: string; 
   const { models } = setup;
   return (
     <section id={id} className="settings-section">
-      <h2>ComfyUI setup</h2>
+      {/* Under Making pictures (h2) for drawing; under an edit model's own heading (h3) for that model. */}
+      {model ? <h4>ComfyUI setup</h4> : <h3>ComfyUI setup</h3>}
       {!comfy.url ? (
         <p className="meta" style={{ margin: 0 }}>
           Add the ComfyUI address on the{" "}
@@ -765,7 +766,7 @@ export function DrawingSettings({
   return (
     <div className="settings-section">
       <section id="picture-batching" className="settings-section">
-        <h2>Queue</h2>
+        <h3>Queue</h3>
         <label className="inline-label">
           <input type="checkbox" checked={comfy.batchClicks} onChange={(e) => onChange({ batchClicks: e.target.checked })} /> Batch quick clicks of Queue into one job
         </label>
@@ -775,7 +776,7 @@ export function DrawingSettings({
       </section>
       <SetupSection id="setup-drawing" comfy={comfy} setup={setup} onConnections={onConnections} />
       <section id="drawing-presets" className="settings-section">
-        <h2>Drawing presets</h2>
+        <h3>Drawing presets</h3>
         <p className="meta" style={{ margin: 0 }}>
           How new pictures are drawn, and redrawn on the Refine screen: the checkpoint, its LoRAs and the sampler. Each story chooses its
           preset on its details page (stories that choose none use the top one), and a chapter can choose another on the Illustrate page.
@@ -1023,7 +1024,7 @@ function EditPresetFields({ preset, model, setup, onChange }: { preset: EditPres
   );
 }
 
-/** Settings › an edit model's tab (Qwen edit, Flux edit): the setup check, then a card for each of its presets. */
+/** Settings › Drawing › Editing pictures, one edit model (Qwen edit, Flux edit): the setup check, then a card for each of its presets. */
 export function EditSettings({
   modelId,
   comfy,
@@ -1050,7 +1051,7 @@ export function EditSettings({
     <div className="settings-section">
       <SetupSection id={`setup-${modelId}`} comfy={comfy} setup={setup} model={model} onConnections={onConnections} />
       <section id={`${modelId}-presets`} className="settings-section">
-        <h2>{model.name} presets</h2>
+        <h4>{model.name} presets</h4>
         <p className="meta" style={{ margin: 0 }}>
           {model.blurb} Each preset has its own LoRAs and settings; choose one in the Instruct panel on the Illustrate page.
         </p>
