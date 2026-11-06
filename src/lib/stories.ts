@@ -27,6 +27,8 @@ export type Story = {
   created_at: number;
   /** When the cover image was last set (it changes with every upload); null when there is no cover. */
   cover_version: number | null;
+  /** "Show the original path": choices marked `original` (an imported story's) are marked when reading. */
+  show_original: boolean;
 };
 
 export type Chapter = {
@@ -67,6 +69,8 @@ export type Choice = {
   child_chapter_id: string | null;
   /** The child chapter's AI mark (null when unwritten or written by the author). */
   child_ai: AiMark;
+  /** The choice the original story took (a story imported from text). */
+  original: boolean;
 };
 
 export type Revision = {
@@ -152,6 +156,7 @@ export const EditStorySchema = z.object({
     .object({ source: z.string().trim().min(1).max(300), label: z.string().trim().max(40), role: z.literal("style"), weight: z.number().min(0).max(1) })
     .nullable()
     .optional(),
+  show_original: z.boolean().optional(),
 });
 
 /** A story row as read from the database: its style picture is JSON text. */
@@ -163,7 +168,9 @@ function withStyleRef<T extends { style_ref: unknown }>(row: T): Omit<T, "style_
   } catch {
     ref = null;
   }
-  return { ...row, style_ref: ref };
+  // SQLite keeps the switch as 0 or 1.
+  const extra = "show_original" in row ? { show_original: (row as { show_original: unknown }).show_original !== 0 } : {};
+  return { ...row, style_ref: ref, ...extra };
 }
 
 /** A chapter's own drawing preset (an id from Settings), or null to use its story's. */
@@ -208,7 +215,7 @@ const now = () => Date.now();
 export function listStories(): (Story & { chapter_count: number })[] {
   const rows = db()
     .prepare(
-      `SELECT s.id, s.title, s.premise, s.style, s.art_style, s.image_prompt_style, s.checkpoint, s.draw_preset, s.style_ref, s.root_chapter_id, s.created_at, s.cover_updated_at AS cover_version,
+      `SELECT s.id, s.title, s.premise, s.style, s.art_style, s.image_prompt_style, s.checkpoint, s.draw_preset, s.style_ref, s.root_chapter_id, s.created_at, s.cover_updated_at AS cover_version, s.show_original,
               (SELECT COUNT(*) FROM chapters c WHERE c.story_id = s.id AND c.trashed_at IS NULL) AS chapter_count
          FROM stories s ORDER BY s.created_at DESC`,
     )
@@ -219,7 +226,7 @@ export function listStories(): (Story & { chapter_count: number })[] {
 export function getStory(id: string): Story | undefined {
   const row = db()
     .prepare(
-      `SELECT id, title, premise, style, art_style, image_prompt_style, checkpoint, draw_preset, style_ref, root_chapter_id, created_at, cover_updated_at AS cover_version
+      `SELECT id, title, premise, style, art_style, image_prompt_style, checkpoint, draw_preset, style_ref, root_chapter_id, created_at, cover_updated_at AS cover_version, show_original
          FROM stories WHERE id = ?`,
     )
     .get(id) as (Omit<Story, "style_ref"> & { style_ref: string | null }) | undefined;
@@ -259,13 +266,20 @@ export function storyTitles(ids: string[]): Record<string, string> {
 export function getChoices(chapterId: string): Choice[] {
   const rows = db()
     .prepare(
-      `SELECT ch.id, ch.parent_chapter_id, ch.label, ch.posted_at, c.id AS child_chapter_id, c.ai_run_id, c.ai_reviewed_at, c.ai_owned_at
+      `SELECT ch.id, ch.parent_chapter_id, ch.label, ch.posted_at, ch.original, c.id AS child_chapter_id, c.ai_run_id, c.ai_reviewed_at, c.ai_owned_at
          FROM choices ch LEFT JOIN chapters c ON c.parent_choice_id = ch.id AND c.trashed_at IS NULL
         WHERE ch.parent_chapter_id = ?
         ORDER BY ch.posted_at, ch.rowid`,
     )
-    .all(chapterId) as (Omit<Choice, "child_ai"> & { ai_run_id: string | null; ai_reviewed_at: number | null; ai_owned_at: number | null })[];
-  return rows.map(({ ai_run_id, ai_reviewed_at, ai_owned_at, ...choice }) => ({ ...choice, child_ai: aiMarkOf({ ai_run_id, ai_reviewed_at, ai_owned_at }) }));
+    .all(chapterId) as (Omit<Choice, "child_ai" | "original"> & { original: number; ai_run_id: string | null; ai_reviewed_at: number | null; ai_owned_at: number | null })[];
+  return rows.map(({ ai_run_id, ai_reviewed_at, ai_owned_at, original, ...choice }) => ({ ...choice, original: original === 1, child_ai: aiMarkOf({ ai_run_id, ai_reviewed_at, ai_owned_at }) }));
+}
+
+/** Whether the story has an original path (it was imported from text): any choice marked `original`. */
+export function storyHasOriginal(storyId: string): boolean {
+  return !!db()
+    .prepare(`SELECT 1 FROM choices ch JOIN chapters c ON c.id = ch.parent_chapter_id WHERE c.story_id = ? AND ch.original = 1 LIMIT 1`)
+    .get(storyId);
 }
 
 /** Marks an AI-written chapter reviewed (those already reviewed, and chapters the author wrote, keep as they are). Returns how many were marked. */
@@ -708,7 +722,7 @@ export function editStory(storyId: string, input: z.infer<typeof EditStorySchema
     const story = getStory(storyId);
     if (!story) throw new PostError("That story does not exist", 404);
     db()
-      .prepare(`UPDATE stories SET title = ?, premise = ?, style = ?, art_style = ?, image_prompt_style = ?, checkpoint = ?, draw_preset = ?, style_ref = ? WHERE id = ?`)
+      .prepare(`UPDATE stories SET title = ?, premise = ?, style = ?, art_style = ?, image_prompt_style = ?, checkpoint = ?, draw_preset = ?, style_ref = ?, show_original = ? WHERE id = ?`)
       .run(
         input.title ?? story.title, input.premise ?? story.premise, input.style ?? story.style,
         input.art_style ?? story.art_style,
@@ -716,6 +730,7 @@ export function editStory(storyId: string, input: z.infer<typeof EditStorySchema
         input.checkpoint ?? story.checkpoint,
         input.draw_preset === undefined ? story.draw_preset : input.draw_preset,
         (input.style_ref === undefined ? story.style_ref : input.style_ref) === null ? null : JSON.stringify(input.style_ref === undefined ? story.style_ref : input.style_ref),
+        (input.show_original ?? story.show_original) ? 1 : 0,
         storyId,
       );
     return { ok: true as const };

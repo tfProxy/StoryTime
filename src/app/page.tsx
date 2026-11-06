@@ -1,7 +1,5 @@
 import Link from "next/link";
 import { listStories } from "@/lib/stories";
-import ImportStoryMenuItem from "@/components/ImportStoryMenuItem";
-import { PageMenu } from "@/components/SiteMenu";
 import StoryCover from "@/components/StoryCover";
 import StorySummary from "@/components/StorySummary";
 import StoryMenu from "@/components/StoryMenu";
@@ -46,9 +44,6 @@ export default function Home() {
       <Link className="button new-story" href="/new">
         <span aria-hidden="true">+</span> New story
       </Link>
-      <PageMenu>
-        <ImportStoryMenuItem />
-      </PageMenu>
     </div>
   );
 }

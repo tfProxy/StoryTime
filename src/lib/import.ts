@@ -33,6 +33,7 @@ const Choice = z.object({
   parent_chapter_id: id,
   label: str(LIMITS.label).min(1),
   posted_at: time,
+  original: z.boolean().optional(),
 });
 
 // A story's own changes to a linked entry (see Overrides in ./codex).
@@ -218,7 +219,7 @@ export function importStory(input: ImportInput): { story_id: string; chapter_id:
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const insertChoice = db().prepare(
-      `INSERT INTO choices (id, parent_chapter_id, label, posted_at) VALUES (?, ?, ?, ?)`,
+      `INSERT INTO choices (id, parent_chapter_id, label, posted_at, original) VALUES (?, ?, ?, ?, ?)`,
     );
 
     // Parents before children (a chapter points at a choice, a choice at its chapter), so walk
@@ -233,7 +234,7 @@ export function importStory(input: ImportInput): { story_id: string; chapter_id:
         c.revision, c.edited_at ?? null, c.edit_note ?? null,
       );
       for (const ch of choicesByParent.get(c.id) ?? []) {
-        insertChoice.run(choiceIds.get(ch.id), chapterIds.get(c.id), ch.label, ch.posted_at);
+        insertChoice.run(choiceIds.get(ch.id), chapterIds.get(c.id), ch.label, ch.posted_at, ch.original ? 1 : 0);
         const child = childOf.get(ch.id);
         if (child) visit(chaptersById.get(child)!, depth + 1);
       }

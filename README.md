@@ -73,6 +73,14 @@ and, for pictures, your own ComfyUI machine.
   HTML and Twine files include every written chapter but leave out choices you haven't written yet; a
   chapter whose choices are all unwritten ends with "…to be continued." The Codex section, with a
   chapter chosen, downloads that branch's codex as a Markdown "story bible".
+- **Import a finished story**: on the New story page, the **Import a story** tab takes a text or
+  Markdown file (or pasted text). The AI splits it into short chapters at decision points, writes the
+  choice taken at each one, and suggests other choices (and other endings after the last chapter).
+  Your text is kept word for word. You review the chapters before the story is made: move a break,
+  merge or split chapters, edit the titles and choices. The original story's choices are marked
+  **Original**; the **Show the original path** switch on the reading page and the outline hides the
+  marks. The same tab imports a StoryTime JSON export. Imported chapters get their summaries the first
+  time the AI needs them, or from **Fix the summaries** in the Bible.
 
 ## Good to know
 

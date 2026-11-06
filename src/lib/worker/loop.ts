@@ -6,6 +6,7 @@ import { parseSettings } from "../settingsSchema";
 import { schedule, waitingOrder } from "../workQueue/schedule";
 import { publish, QUEUE_CHANNEL, subscribe, workerState } from "./bus";
 import { genItemKey, runGenerate } from "./generate";
+import { isImportItem, patchImportDraft, runImport } from "./importText";
 import { listItems, updateItem, type WorkRow } from "./items";
 import { getPaused } from "./paused";
 import { readyPictures, recoverGathering, recoverPictures, scanComfy, sendPicture } from "./pictures";
@@ -18,6 +19,16 @@ export const SCAN_MS = 60_000;
 export function recoverGenerates() {
   for (const item of listItems()) {
     if (item.type === "generate" && item.state === "working") {
+      if (isImportItem(item)) {
+        const error = "StoryTime restarted while splitting the story. Split it again.";
+        try {
+          patchImportDraft(item.data.draftKey, () => ({ status: "failed", progress: undefined, error }));
+        } catch {
+          // the draft is busy; the item still says what happened
+        }
+        updateItem(item.key, { state: "failed", data: { error } });
+        continue;
+      }
       updateItem(item.key, { state: "failed", data: { error: "StoryTime restarted while writing; the text so far is in the draft." } });
     }
   }
@@ -76,8 +87,8 @@ function pumpOnce() {
       continue;
     }
     // The runners handle their own failures; the catch only keeps one that escapes from stopping the server.
-    const draftKey = waitingGenerates.find((i) => i.key === action.id)?.data.draftKey;
-    if (draftKey !== undefined) void runGenerate(draftKey).catch(() => {}).finally(pump);
+    const gen = waitingGenerates.find((i) => i.key === action.id);
+    if (gen !== undefined) void (isImportItem(gen) ? runImport : runGenerate)(gen.data.draftKey).catch(() => {}).finally(pump);
     const runId = waitingRuns.find((i) => i.key === action.id)?.data.runId;
     if (runId !== undefined) void runStep(runId).catch(() => {}).finally(pump);
   }

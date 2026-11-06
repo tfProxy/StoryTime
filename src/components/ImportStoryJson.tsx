@@ -3,8 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
-// Header-menu entry: pick a StoryTime JSON export and create a copy of that story.
-export default function ImportStoryMenuItem() {
+// On the New story page's Import tab: pick a StoryTime JSON export and create a copy of that story.
+export default function ImportStoryJson() {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -36,7 +36,7 @@ export default function ImportStoryMenuItem() {
 
   return (
     <>
-      <button type="button" className="menu-item" disabled={busy} onClick={() => input.current?.click()}>
+      <button type="button" className="secondary" disabled={busy} onClick={() => input.current?.click()}>
         {busy ? "Importing…" : "Import a story (JSON)"}
       </button>
       <input

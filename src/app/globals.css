@@ -5322,3 +5322,373 @@ button.ai-log-row {
   padding-left: 1.1rem;
   font-size: 0.9rem;
 }
+
+/* ---- Importing a story from text (New story › Import a story) ---- */
+
+.new-story-tabs {
+  margin-bottom: 1rem;
+}
+
+.import-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.import-form .card,
+.import-options {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.import-text-head {
+  flex-wrap: wrap;
+}
+
+.import-text-head .meta {
+  margin: 0 auto 0 0;
+}
+
+label.import-file {
+  display: inline-block;
+  font-size: 0.9rem;
+  font-weight: 400;
+  padding: 0.35rem 0.8rem;
+}
+
+.import-text textarea {
+  min-height: 14rem;
+}
+
+.import-text .meta,
+.import-options .meta {
+  margin: 0;
+}
+
+.import-length {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.import-length legend {
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: 0.25rem;
+}
+
+.import-length label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 400;
+}
+
+.import-length input {
+  width: 6rem;
+}
+
+.import-alternatives select {
+  width: auto;
+}
+
+.import-json {
+  margin-top: 2.5rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+}
+
+.import-json h2 {
+  font-size: 1rem;
+  margin: 0 0 0.25rem;
+}
+
+.import-progress p {
+  margin: 0 0 0.5rem;
+}
+
+.import-found ol {
+  margin: 0.5rem 0 0;
+  padding-left: 1.5rem;
+  font-size: 0.9rem;
+}
+
+.import-stopped p {
+  margin: 0;
+}
+
+/* The review needs room for the chapter list beside the chapters. */
+main:has(.import-review) {
+  max-width: 64rem;
+}
+
+.import-details input,
+.import-details textarea,
+.import-chapter-head input {
+  font-weight: 400;
+}
+
+.import-details textarea {
+  font-family: inherit;
+}
+
+.import-review {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
+
+/* The chapter list stays in view beside the chapters; on a phone it sits above them and scrolls on its own. */
+.import-toc {
+  flex: 0 0 15rem;
+  min-width: 0;
+  position: sticky;
+  top: 0.75rem;
+  max-height: calc(100vh - 1.5rem);
+  overflow-y: auto;
+  margin: 0;
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.import-toc ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.import-toc a {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.3rem 0.25rem;
+  border-radius: 4px;
+  text-decoration: none;
+  color: var(--fg);
+}
+
+.import-toc a:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.import-toc-n {
+  color: var(--muted);
+  min-width: 1.4rem;
+}
+
+.import-toc-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-toc-words {
+  color: var(--muted);
+}
+
+.import-toc-flag .import-toc-words {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.import-chapters {
+  flex: 999 1 30rem;
+  min-width: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.import-chapters > .card,
+.import-chapter-wrap > .card {
+  margin: 0;
+}
+
+.import-details {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.import-details textarea {
+  min-height: 3rem;
+}
+
+.import-chapter {
+  display: grid;
+  gap: 0.6rem;
+  scroll-margin-top: 0.75rem;
+}
+
+.import-flagged {
+  border-color: var(--warn);
+}
+
+.import-chapter-head {
+  flex-wrap: wrap;
+}
+
+.import-chapter-head input {
+  flex: 1 1 12rem;
+  width: auto;
+  font-weight: 600;
+}
+
+.import-n {
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.import-words {
+  margin: 0;
+}
+
+.import-warn {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.import-excerpt p,
+.import-paragraph p {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+.import-excerpt {
+  display: grid;
+  gap: 0.25rem;
+  color: var(--muted);
+}
+
+.import-paragraphs {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.import-paragraph .link-button {
+  font-size: 0.85rem;
+}
+
+.import-chapter > .link-button {
+  justify-self: start;
+  font-size: 0.85rem;
+}
+
+.import-choices {
+  border-top: 1px solid var(--line);
+  padding-top: 0.6rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.import-choices p {
+  margin: 0;
+}
+
+.import-choices > .link-button {
+  justify-self: start;
+  font-size: 0.85rem;
+}
+
+label.import-choice {
+  display: flex;
+  font-weight: 400;
+}
+
+.import-choice input:not([type="checkbox"]) {
+  font-size: 0.9rem;
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+.import-alt input[type="checkbox"] {
+  width: auto;
+  flex: none;
+}
+
+.import-suggested {
+  margin: 0;
+  min-width: 4.5rem;
+  font-size: 0.8rem;
+}
+
+.import-dropped {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.import-break {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.import-break button {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.import-actions {
+  flex-wrap: wrap;
+}
+
+/* An imported story's original path: the choice the original took. */
+.original-mark {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 15%, var(--card));
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  font-family: system-ui, sans-serif;
+}
+
+.import-choices .original-mark {
+  margin-left: 0;
+  flex: none;
+}
+
+.choices-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+}
+
+.original-toggle {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.outline-switches {
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+}
+
+@media (max-width: 760px) {
+  .import-toc {
+    flex-basis: 100%;
+    position: static;
+    max-height: 14rem;
+  }
+}

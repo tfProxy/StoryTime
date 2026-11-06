@@ -86,6 +86,23 @@ export function queueAutoReviewForRun(runId: string): Promise<void> {
   return next;
 }
 
+async function reviewChapters(storyId: string, chapterIds: string[]) {
+  const checks = autoChecks();
+  if (checks.length === 0 || chapterIds.length === 0) return;
+  const ids = chapterIds.slice(0, LIMITS.runTasks);
+  if (reviewTasks(storyId, null, "chapters", checks, ids).length === 0) return;
+  getWorker();
+  const { id } = createRun({ story_id: storyId, start_chapter_id: null, mode: "review", options: { tagScope: "chapters", chapterIds: ids, checks, automatic: true } });
+  await queueRun(id);
+}
+
+/** Queues one automatic review of these chapters (a story imported from text), if the settings ask for one. Never throws. */
+export function queueAutoReviewForChapters(storyId: string, chapterIds: string[]): Promise<void> {
+  const next = chain.then(() => reviewChapters(storyId, chapterIds)).catch((e) => console.error("auto review of imported chapters failed", e));
+  chain = next;
+  return next;
+}
+
 /** Queues the automatic review of a saved chapter, if the setting is on. Does not wait for the work and never throws. */
 export function queueAutoReview(chapterId: string): Promise<void> {
   const next = chain.then(() => review(chapterId)).catch((e) => console.error("auto review failed", e));

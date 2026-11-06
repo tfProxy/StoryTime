@@ -30,7 +30,8 @@ type RevisionRow = {
   edit_note: string | null;
   created_at: number;
 };
-type ChoiceRow = { id: string; parent_chapter_id: string; label: string; posted_at: number };
+/** `original` (only when true): the choice the original story took, in a story imported from text. */
+type ChoiceRow = { id: string; parent_chapter_id: string; label: string; posted_at: number; original?: true };
 /** `prompt` and `negative` are how the picture was made; null for an uploaded one. */
 export type ImageRow = { chapter_id: string; slot: ImageSlot; type: string; data: string; prompt: string | null; negative: string | null };
 
@@ -70,13 +71,15 @@ export function loadStory(storyId: string): StoryExport | null {
          FROM chapters WHERE story_id = ? AND trashed_at IS NULL ORDER BY depth, posted_at, rowid`,
     )
     .all(storyId) as ChapterRow[];
-  const allChoices = db()
+  const allChoices = (
+    db()
     .prepare(
-      `SELECT ch.id, ch.parent_chapter_id, ch.label, ch.posted_at
+      `SELECT ch.id, ch.parent_chapter_id, ch.label, ch.posted_at, ch.original
          FROM choices ch JOIN chapters c ON c.id = ch.parent_chapter_id
         WHERE c.story_id = ? ORDER BY ch.posted_at, ch.rowid`,
     )
-    .all(storyId) as ChoiceRow[];
+    .all(storyId) as (Omit<ChoiceRow, "original"> & { original: number })[]
+  ).map(({ original, ...ch }): ChoiceRow => (original === 1 ? { ...ch, original: true } : ch));
 
   // Walk down from the root so only chapters reachable from it are included.
   const byChoice = new Map<string, ChapterRow>();

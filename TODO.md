@@ -32,6 +32,7 @@ Built and passing its tests against fakes, but not yet tried for real. Tick them
 - [ ] Refine inpainting: paint a small area (a hand or a face) on a real picture and Go at strength 0.6; compare with before the change (seam, detail, time). Also try a mask near the picture's edge, a picture whose size isn't a multiple of 16, and each **Under the paint** choice. The redraw now runs only the steps its strength needs, so compare two or three pictures for look.
 
 **With your own AI models**
+- [ ] Import a story from text (New story › Import a story) with a local model: a real short story of 3,000–8,000 words. Do the breaks land at decision points, are the choice labels and the suggested choices good, and does a small context size (several parts) still give sensible breaks where the parts meet?
 - [ ] Story review: Find tags, Help me write it, Check continuity, and the summary check. Prompt quality with a small local model is unknown.
 - [ ] The codex check with the cheaper model: post (or "Check this chapter with AI" on) 2–3 chapters where a body or form changes, and note what the suggestions miss or get wrong. This feeds "Tune the codex check prompt" below.
 - [ ] "Flesh out with AI" on a character with few facts: are the invented facts specific and consistent with the story, does "Stay close to the story" keep to the chapters, and does the focus box steer it?

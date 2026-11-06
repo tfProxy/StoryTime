@@ -22,9 +22,10 @@ page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true
 const dialogs = [];
 page.on("dialog", (d) => { dialogs.push(d.message()); d.dismiss(); });
 
-await page.goto(BASE);
-await page.locator(".site-menu > summary").click();
-ok(await page.getByRole("button", { name: "Import a story (JSON)" }).isVisible(), "the main page menu offers an import");
+await page.goto(`${BASE}/new`);
+await page.getByRole("link", { name: "Import a story" }).click();
+await page.waitForURL((u) => u.search === "?tab=import");
+ok(await page.getByRole("button", { name: "Import a story (JSON)" }).isVisible(), "the New story page's Import tab offers the JSON import");
 
 await page.getByLabel("Story JSON file").setInputFiles(bad);
 await page.waitForTimeout(500);
@@ -36,11 +37,8 @@ ok(!page.url().endsWith(s.chapter_id) && await page.getByRole("heading", { name:
 await page.goto(BASE);
 ok((await page.locator(".story-card", { hasText: "Import me" }).count()) === 2, "the copy is listed next to the original");
 
-// Other pages don't get the import entry.
-await page.locator(".site-menu > summary").click();
-await page.goto(`${BASE}/settings`);
-await page.locator(".site-menu > summary").click();
-ok((await page.getByRole("button", { name: "Import a story (JSON)", includeHidden: true }).count()) === 0, "import is only on the main page");
+// The story list's menu no longer has it.
+ok((await page.getByRole("button", { name: "Import a story (JSON)", includeHidden: true }).count()) === 0, "the story list has no import entry");
 
 await browser.close();
 process.exit(failed ? 1 : 0);

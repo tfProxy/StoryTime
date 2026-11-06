@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import StoryTabs from "@/components/StoryTabs";
-import { getStory } from "@/lib/stories";
+import { getStory, storyHasOriginal } from "@/lib/stories";
+import OriginalPathToggle from "@/components/OriginalPathToggle";
 import { getStoryTree, type TreeNode } from "@/lib/tree";
 import { PageMenu } from "@/components/SiteMenu";
 import { NodeSummary, SummaryProvider, ToggleAllSummaries } from "@/components/OutlineSummaries";
@@ -51,6 +52,7 @@ function Node({
   tagNames,
   storyId,
   show,
+  original = false,
 }: {
   node: TreeNode;
   via: string | null;
@@ -61,11 +63,17 @@ function Node({
   /** Approved tag names by chapter; empty when tags are turned off in Settings. */
   tagNames: Map<string, string[]>;
   storyId: string;
-  show: OutlineOptions;
+  /** The outline settings, plus `original`: mark the original path (an imported story, with its switch on). */
+  show: OutlineOptions & { original?: boolean };
+  /** Reached by the original story's choice (an imported story, with "Show the original path" on). */
+  original?: boolean;
 }) {
   // Only written chapters are listed; unwritten choices are left to the story page. A choice with trashed
   // chapters (shown only when the setting is on) lists them after its live one.
-  const written = node.choices.flatMap((c) => [...(c.child ? [{ node: c.child, label: c.label }] : []), ...c.trashed.map((t) => ({ node: t, label: c.label }))]);
+  const written = node.choices.flatMap((c) => [
+    ...(c.child ? [{ node: c.child, label: c.label, original: show.original && c.original }] : []),
+    ...c.trashed.map((t) => ({ node: t, label: c.label, original: false })),
+  ]);
   const n = issues.get(node.id)?.n ?? 0;
   // The marker opens the Review tab that has something; the tags tab only when tag suggestions are all there is.
   const tagsOnly = issues.get(node.id)?.tags ?? false;
@@ -92,6 +100,7 @@ function Node({
   const summary = (
     <span className="outline-row" data-highlight={mark}>
       <Link href={`/c/${node.id}`}>{node.title}</Link>
+      {original && <span className="original-mark">Original</span>}
       {node.trashed && <span className="meta outline-trashed-label">(trashed)</span>}
       {" "}
       <NodeSummary
@@ -117,7 +126,7 @@ function Node({
         <summary>{summary}</summary>
         <ul className="outline">
           {written.map((c) => (
-            <Node key={c.node.id} node={c.node} via={c.label} marks={marks} images={images} issues={issues} tagNames={tagNames} storyId={storyId} show={show} />
+            <Node key={c.node.id} node={c.node} via={c.label} original={c.original} marks={marks} images={images} issues={issues} tagNames={tagNames} storyId={storyId} show={show} />
           ))}
         </ul>
       </details>
@@ -142,6 +151,7 @@ export default async function OutlinePage({
 
   const totals: Totals = { chapters: 0, unwritten: 0, ends: 0, deepest: 0 };
   count(tree, totals);
+  const hasOriginal = storyHasOriginal(id);
   const images = chapterImageVersions(idsOf(tree));
   const tagNames = show.tags ? appliedTagNames(id) : new Map<string, string[]>();
   // Highlighting by tag: found from the approved tags whether or not the chips are shown.
@@ -177,13 +187,14 @@ export default async function OutlinePage({
         </p>
       )}
       <SummaryProvider>
-        {show.summary && (
-          <p>
-            <ToggleAllSummaries />
+        {(show.summary || hasOriginal) && (
+          <p className="row outline-switches">
+            {show.summary && <ToggleAllSummaries />}
+            {hasOriginal && <OriginalPathToggle storyId={story.id} show={story.show_original} />}
           </p>
         )}
         <ul className="outline outline-root">
-          <Node node={tree} via={null} marks={highlighted ? marks : null} images={images} issues={issues} tagNames={tagNames} storyId={story.id} show={show} />
+          <Node node={tree} via={null} original={hasOriginal && story.show_original} marks={highlighted ? marks : null} images={images} issues={issues} tagNames={tagNames} storyId={story.id} show={{ ...show, original: hasOriginal && story.show_original }} />
         </ul>
       </SummaryProvider>
       <PageMenu>

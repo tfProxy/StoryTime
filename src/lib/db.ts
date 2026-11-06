@@ -885,6 +885,12 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE codex_pictures ADD COLUMN shared_entry_id TEXT REFERENCES shared_entries(id);
   CREATE INDEX codex_pictures_shared ON codex_pictures(shared_entry_id) WHERE shared_entry_id IS NOT NULL;
   `,
+  // 47: a story imported from a text file keeps its original path: choices.original marks each choice the original story
+  // took. stories.show_original is the story's "Show the original path" switch on the reading page and the outline.
+  `
+  ALTER TABLE choices ADD COLUMN original INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE stories ADD COLUMN show_original INTEGER NOT NULL DEFAULT 1;
+  `,
 ];
 
 function open(): Database.Database {

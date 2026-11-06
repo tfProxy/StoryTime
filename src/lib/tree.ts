@@ -15,7 +15,7 @@ export type TreeNode = {
    * Choices on this chapter; `child` is null while the choice has no live chapter. `trashed` lists the chapters
    * of that choice in the trash, and is always empty unless the tree was built with `trashed: true`.
    */
-  choices: { id: string; label: string; child: TreeNode | null; trashed: TreeNode[] }[];
+  choices: { id: string; label: string; original: boolean; child: TreeNode | null; trashed: TreeNode[] }[];
 };
 
 export type TreeOptions = { trashed?: boolean };
@@ -99,12 +99,12 @@ function buildTree(storyId: string, rootId: string, maxDepth: number, baseDepth:
     .all(storyId) as ChapterRow[];
   const choices = db()
     .prepare(
-      `SELECT ch.id, ch.parent_chapter_id, ch.label
+      `SELECT ch.id, ch.parent_chapter_id, ch.label, ch.original
          FROM choices ch JOIN chapters c ON c.id = ch.parent_chapter_id
         WHERE c.story_id = ?
         ORDER BY ch.posted_at, ch.rowid`,
     )
-    .all(storyId) as { id: string; parent_chapter_id: string; label: string }[];
+    .all(storyId) as { id: string; parent_chapter_id: string; label: string; original: number }[];
 
   const childOfChoice = new Map<string, ChapterRow>();
   const trashedOfChoice = new Map<string, ChapterRow[]>();
@@ -131,7 +131,7 @@ function buildTree(storyId: string, rootId: string, maxDepth: number, baseDepth:
     // Chapters one level past the limit are only stubs: they say a choice is written, with no choices of their own.
     choices: c.depth - baseDepth > maxDepth ? [] : (choicesOf.get(c.id) ?? []).map((ch) => {
       const child = childOfChoice.get(ch.id);
-      return { id: ch.id, label: ch.label, child: child ? build(child) : null, trashed: (trashedOfChoice.get(ch.id) ?? []).map(build) };
+      return { id: ch.id, label: ch.label, original: ch.original === 1, child: child ? build(child) : null, trashed: (trashedOfChoice.get(ch.id) ?? []).map(build) };
     }),
   });
 

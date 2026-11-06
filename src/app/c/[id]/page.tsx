@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { aiMarkOf, choiceDraftKey, getChoices, getIncomingChoice, getPath, getStory, restoreBlocker } from "@/lib/stories";
+import { aiMarkOf, choiceDraftKey, getChoices, getIncomingChoice, getPath, getStory, restoreBlocker, storyHasOriginal } from "@/lib/stories";
+import OriginalPathToggle from "@/components/OriginalPathToggle";
 import AiMark from "@/components/AiMark";
 import StoryTabs from "@/components/StoryTabs";
 import TrashNotice from "@/components/TrashNotice";
@@ -50,6 +51,9 @@ export default async function ChapterPage({
   const showCodex = (getSettings() ?? parseSettings({})).showCodexList;
   const codexEntries = showCodex ? getCodexState(chapter.id) : [];
   const drafted = trashed ? new Set<string>() : draftKeysSaved(choices.filter((c) => !c.child_chapter_id).map((c) => choiceDraftKey(c.id)));
+  // An imported story's original path: its choices are marked, unless the story's switch hides them.
+  const hasOriginal = storyHasOriginal(story.id);
+  const markOriginal = hasOriginal && story.show_original;
 
   return (
     <>
@@ -114,7 +118,10 @@ export default async function ChapterPage({
       <ChapterImage chapterId={chapter.id} slot="footer" version={images.footer} />
 
       <section className="choices">
-        <h2>{choices.length > 0 ? "What happens next?" : "The story ends here, for now."}</h2>
+        <div className="choices-head">
+          <h2>{choices.length > 0 ? "What happens next?" : "The story ends here, for now."}</h2>
+          {hasOriginal && <OriginalPathToggle storyId={story.id} show={story.show_original} />}
+        </div>
         {choices.map((c) =>
           trashed ? (
             // Nothing is written below a chapter in the trash; restore the branch first.
@@ -127,6 +134,7 @@ export default async function ChapterPage({
                 <path d="M4 5.5C6.5 4.5 9.5 4.5 12 6c2.5-1.5 5.5-1.5 8-.5v13c-2.5-1-5.5-1-8 .5-2.5-1.5-5.5-1.5-8-.5z M12 6v13" />
               </svg>
               {c.label}
+              {markOriginal && c.original && <span className="original-mark">Original</span>}
               {c.child_ai && (
                 <span className="choice-ai">
                   <AiMark mark={c.child_ai} />
@@ -147,6 +155,7 @@ export default async function ChapterPage({
                   <path d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19z M14.5 6.5l3 3" />
                 </svg>
                 {c.label}
+                {markOriginal && c.original && <span className="original-mark">Original</span>}
                 {drafted.has(choiceDraftKey(c.id)) && (
                   <span className="choice-draft">
                     {/* A page with lines of text: the choice has a draft saved. */}
