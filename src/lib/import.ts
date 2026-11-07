@@ -88,6 +88,8 @@ const CodexFact = z.object({
   text: str(FACT_LIMITS.text).default(""),
   quote: str(FACT_LIMITS.quote).default(""),
   posted_at: time,
+  // Set on a fact the AI applied that the owner hasn't approved. Suggestions aren't exported, so it is only a mark here.
+  ai_suggestion_id: id.nullish(),
 });
 
 const Revision = z.object({
@@ -285,13 +287,13 @@ export function importStory(input: ImportInput): { story_id: string; chapter_id:
     }
 
     const insertFact = db().prepare(
-      `INSERT INTO codex_facts (id, story_id, anchor_chapter_id, entry_id, fact_id, op, aspect, form, text, quote, posted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO codex_facts (id, story_id, anchor_chapter_id, entry_id, fact_id, op, aspect, form, text, quote, posted_at, ai_suggestion_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const f of input.codex_facts) {
       insertFact.run(
         newId(), storyId, chapterIds.get(f.anchor_chapter_id), f.entry_id, f.fact_id, f.op, f.aspect, f.form, f.text,
-        f.quote, f.posted_at,
+        f.quote, f.posted_at, f.ai_suggestion_id ?? null,
       );
     }
 

@@ -35,6 +35,7 @@ Built and passing its tests against fakes, but not yet tried for real. Tick them
 - [ ] Import a story from text (New story › Import a story) with a local model: a real short story of 3,000–8,000 words. Do the breaks land at decision points, are the choice labels and the suggested choices good, and does a small context size (several parts) still give sensible breaks where the parts meet?
 - [ ] Story review: Find tags, Help me write it, Check continuity, and the summary check. Prompt quality with a small local model is unknown.
 - [ ] The codex check with the cheaper model: post (or "Check this chapter with AI" on) 2–3 chapters where a body or form changes, and note what the suggestions miss or get wrong. This feeds "Tune the codex check prompt" below.
+- [ ] "Apply the AI's codex changes automatically" (Settings › Tags): write and save 2–3 chapters with it on, then check the AI-marked facts on each character's page (right fact, right chapter, quote), Approve and Edit a few, edit a chapter and confirm only its unapproved AI facts are replaced.
 - [ ] "Flesh out with AI" on a character with few facts: are the invented facts specific and consistent with the story, does "Stay close to the story" keep to the chapters, and does the focus box steer it?
 - [ ] Turn notes into facts on the existing entries that have notes only (they give the AI nothing until they have facts).
 

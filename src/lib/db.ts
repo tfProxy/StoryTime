@@ -891,6 +891,13 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE choices ADD COLUMN original INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE stories ADD COLUMN show_original INTEGER NOT NULL DEFAULT 1;
   `,
+  // 48: facts the AI wrote on its own ("Apply the AI's codex changes automatically"). ai_suggestion_id is the codex
+  // suggestion the fact was applied from; NULL for the owner's facts, and set back to NULL when the owner approves one.
+  // When the chapter is read again, its unapproved AI facts are removed first, so an edit doesn't pile up old readings.
+  `
+  ALTER TABLE codex_facts ADD COLUMN ai_suggestion_id TEXT;
+  CREATE INDEX codex_facts_ai ON codex_facts(anchor_chapter_id) WHERE ai_suggestion_id IS NOT NULL;
+  `,
 ];
 
 function open(): Database.Database {

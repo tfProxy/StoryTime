@@ -177,7 +177,7 @@ export function getCodexFacts(chapterId: string): FactOp[] {
   const own = db()
     .prepare(
       `SELECT f.id, f.anchor_chapter_id, c.depth AS anchor_depth, f.entry_id, f.fact_id, f.op, f.aspect, f.form,
-              f.text, f.quote, f.posted_at
+              f.text, f.quote, f.posted_at, f.ai_suggestion_id
          FROM codex_facts f JOIN chapters c ON c.id = f.anchor_chapter_id
         WHERE f.anchor_chapter_id IN (${marks})
         ORDER BY c.depth, f.posted_at, f.rowid`,
@@ -275,8 +275,11 @@ export function getCodexState(chapterId: string, options?: FoldOptions): CodexEn
 
 export const NewFactOpSchema = checkFact(z.object({ anchor_chapter_id: z.string().min(1), ...factFields }));
 
-/** Appends a fact change anchored at a chapter. Setting an aspect that is already live on the entry updates that fact. */
-export function createFactOp(input: z.infer<typeof NewFactOpSchema>): { id: string; fact_id: string } {
+/**
+ * Appends a fact change anchored at a chapter. Setting an aspect that is already live on the entry updates that fact.
+ * `aiSuggestionId` marks a change the AI applied on its own (never taken from a request).
+ */
+export function createFactOp(input: z.infer<typeof NewFactOpSchema>, aiSuggestionId: string | null = null): { id: string; fact_id: string } {
   return db().transaction(() => {
     const path = getPath(input.anchor_chapter_id);
     if (path.length === 0) throw new PostError("That chapter does not exist", 404);
@@ -307,12 +310,21 @@ export function createFactOp(input: z.infer<typeof NewFactOpSchema>): { id: stri
     const id = newId();
     db()
       .prepare(
-        `INSERT INTO codex_facts (id, story_id, anchor_chapter_id, entry_id, fact_id, op, aspect, form, text, quote, posted_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO codex_facts (id, story_id, anchor_chapter_id, entry_id, fact_id, op, aspect, form, text, quote, posted_at, ai_suggestion_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, anchor.story_id, anchor.id, input.entry_id, factId, input.op, aspect, input.form, input.text, input.quote, Date.now());
+      .run(id, anchor.story_id, anchor.id, input.entry_id, factId, input.op, aspect, input.form, input.text, input.quote, Date.now(), aiSuggestionId);
     return { id, fact_id: factId };
   })();
+}
+
+export const ApproveFactsSchema = z.object({ ids: z.array(z.string().min(1)).min(1).max(500) });
+
+/** The owner approves facts the AI wrote (by fact-change id): they become the owner's, and a new reading leaves them alone. */
+export function approveAiFacts(input: z.infer<typeof ApproveFactsSchema>): { approved: number } {
+  const marks = input.ids.map(() => "?").join(",");
+  const r = db().prepare(`UPDATE codex_facts SET ai_suggestion_id = NULL WHERE id IN (${marks}) AND ai_suggestion_id IS NOT NULL`).run(...input.ids);
+  return { approved: r.changes };
 }
 
 export const FormChangeSchema = z

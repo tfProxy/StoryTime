@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ENTRY_TYPES, TYPE_HEADINGS, TYPE_LABELS, type CodexEntry, type EntryType } from "@/lib/codex";
+import { ENTRY_TYPES, isAiFact, TYPE_HEADINGS, TYPE_LABELS, type CodexEntry, type EntryType } from "@/lib/codex";
 import { STALE_FROM } from "@/lib/codexHints";
 import CodexGroup from "./CodexGroup";
 
@@ -43,6 +43,15 @@ export function StaleNote({ n }: { n: number | undefined }) {
   );
 }
 
+/** The mark on a fact the AI wrote on its own and the owner hasn't approved yet. */
+export function AiBadge() {
+  return (
+    <span className="ai-badge" title="Written by the AI from the story: approve it or edit it">
+      AI
+    </span>
+  );
+}
+
 /** "⚠ 2 hints" on a card whose entry's page warns about something. */
 export function HintCount({ n }: { n: number | undefined }) {
   if (!n) return null;
@@ -69,6 +78,7 @@ export default function CodexEntryCards({ entries, chapterId, storyId, pictures 
               {group.map((e) => {
                 const picture = pictures[e.entry_id];
                 const wait = held[e.entry_id];
+                const ai = e.facts.filter(isAiFact).length;
                 const inner = (
                   <>
                     {picture && storyId && (
@@ -81,6 +91,12 @@ export default function CodexEntryCards({ entries, chapterId, storyId, pictures 
                         {e.always_include && <span className="tag"> · always included</span>}
                         {e.shared_entry_id && <span className="tag"> · shared</span>}
                         <HintCount n={hints[e.entry_id]} />
+                        {ai > 0 && (
+                          <span className="tag codex-ai-count">
+                            {" "}
+                            · {ai} AI {ai === 1 ? "fact" : "facts"} to check
+                          </span>
+                        )}
                         {wait ? (
                           <span className="tag"> · {wait === "create" ? "new" : "changed"} in this chapter, saved when you post</span>
                         ) : (

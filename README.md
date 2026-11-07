@@ -54,6 +54,13 @@ and, for pictures, your own ComfyUI machine.
   AI**, or **Check every chapter with AI** for the whole story) from the **⋯** menu of the Codex
   section. Turn the automatic check on or off in Settings under "Suggest codex changes after a
   chapter is saved".
+  With **Apply the AI's codex changes automatically** (under it, off by default), the AI's fact and form
+  changes for characters, places and things already in the codex are saved straight away instead of
+  waiting. Each one is marked **AI** on the entry's page, with the sentence it came from, until you
+  **Approve** it (or **Approve all**) or **Edit** it. The entry's card says "N AI facts to check", and
+  the chapter says "Codex: the AI updated N facts". If you edit the chapter, the AI's unapproved facts
+  from it are replaced by its new reading, but approved and edited ones are kept. New entries, removals
+  and contradictions still wait as suggestions.
 - **Review** (a story's menu): a page listing what may need fixing (missing, stale or wrong
   summaries, continuity slips, names with no codex entry, AI chapters not yet read) and the
   **tags** the AI suggests for chapters, for you to approve. See [Tags](#tags) below.

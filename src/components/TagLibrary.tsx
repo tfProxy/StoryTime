@@ -102,6 +102,23 @@ export default function TagLibrary() {
           </span>
         </span>
       </label>
+      <label className="row" style={{ alignItems: "flex-start", marginLeft: "1.5rem" }}>
+        <input
+          type="checkbox"
+          style={{ width: "auto" }}
+          disabled={!settings.autoCodex}
+          checked={settings.autoApplyCodex}
+          onChange={(e) => void saveSettings({ ...settings, autoApplyCodex: e.target.checked })}
+        />
+        <span>
+          Apply the AI&apos;s codex changes automatically
+          <br />
+          <span className="meta" style={{ fontWeight: "normal" }}>
+            Fact and form changes for entries already in the codex are saved at once and marked AI until you approve or
+            edit them. New entries, removals and contradictions still wait in the inbox.
+          </span>
+        </span>
+      </label>
       <label className="row" style={{ alignItems: "flex-start" }}>
         <input
           type="checkbox"

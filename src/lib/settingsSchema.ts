@@ -80,6 +80,12 @@ export type Settings = {
   autoReview: boolean;
   /** After a chapter is saved, the AI reads it for codex changes and leaves suggestions in the codex inbox. On by default. */
   autoCodex: boolean;
+  /**
+   * With autoCodex: the AI's fact and form changes for entries already in the codex are applied at once (marked as the
+   * AI's until the owner approves them) instead of waiting in the inbox. New entries, removals and contradictions still
+   * wait. Off by default.
+   */
+  autoApplyCodex: boolean;
   /** Under each choice, list the reader-visible tags that come next or later on that branch. */
   contentNotes: boolean;
   /** Under the title on a chapter's reading page, list the codex entries there, each linking to its page. Off by default. */
@@ -192,6 +198,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoSuggestChoices: false,
   autoReview: false,
   autoCodex: true,
+  autoApplyCodex: false,
   contentNotes: true,
   showCodexList: false,
   outline: DEFAULT_OUTLINE,
@@ -352,6 +359,7 @@ const settingsSchema = z.object({
   autoSuggestChoices: z.boolean().catch(false),
   autoReview: z.boolean().catch(false),
   autoCodex: z.boolean().catch(true),
+  autoApplyCodex: z.boolean().catch(false),
   contentNotes: z.boolean().catch(true),
   showCodexList: z.boolean().catch(false),
   // A part that is missing or isn't true/false is shown, as before the options existed.

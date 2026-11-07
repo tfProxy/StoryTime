@@ -73,7 +73,12 @@ export type FactOp = {
   /** The sentence from the chapter that shows it; "" when there is none. */
   quote: string;
   posted_at: number;
+  /** Set when the AI applied this change on its own and the owner hasn't approved it yet: the suggestion it came from. */
+  ai_suggestion_id?: string | null;
 };
+
+/** A fact (or form) the AI wrote on its own that the owner hasn't approved yet. */
+export const isAiFact = (f: { op: FactOp }) => !!f.op.ai_suggestion_id;
 
 /** The aspect of the fact that says which form an entry is in now. One per entry. */
 export const FORM_ASPECT = "form";

@@ -9,6 +9,7 @@ import {
   FORM_ASPECT,
   formClashes,
   formLine,
+  isAiFact,
   isDraftEntry,
   isFormAspect,
   sameAspect,
@@ -21,6 +22,7 @@ import {
 import type { PathChapter } from "@/lib/ai/codexAi";
 import { entryHints } from "@/lib/codexHints";
 import { useSettings } from "@/lib/settings";
+import { AiBadge } from "./CodexEntryCards";
 import ChapterPathPicker from "./ChapterPathPicker";
 import EntryFold from "./EntryFold";
 
@@ -94,6 +96,22 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ anchor_chapter_id: chapterId, entry_id: entry.entry_id, fact_id: factId }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) setError(data.error ?? `Request failed (${res.status})`);
+      else onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Approves facts the AI wrote on its own (by fact-change id): they lose the AI mark and become the owner's. */
+  async function approve(ids: string[]) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/codex/approve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) setError(data.error ?? `Request failed (${res.status})`);
       else onSaved();
@@ -180,6 +198,8 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
   }
 
   const rows = entry.facts.filter((f) => !isFormAspect(f.aspect));
+  // Facts (and the form) the AI wrote on its own, waiting for the owner to approve or edit them.
+  const aiFacts = entry.facts.filter(isAiFact);
   const hasForms = entry.forms.length > 0;
   // With no form set, an entry that has had one reads as in its normal form.
   const current = entry.form?.name ?? entry.baseForm;
@@ -225,11 +245,17 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
           <p className="facts-form">
             {entry.form ? (
               <>
+                {isAiFact(entry.form.fact) && <AiBadge />}
                 <strong>Form: {entry.form.name}</strong>
                 {entry.form.note && <> — {entry.form.note}</>}
               </>
             ) : (
               <span className="meta">No form set.</span>
+            )}{" "}
+            {entry.form && isAiFact(entry.form.fact) && (
+              <button type="button" disabled={busy} aria-label="Approve the form" onClick={() => void approve([entry.form!.fact.op.id])}>
+                Approve
+              </button>
             )}{" "}
             {!formOpen && (
               <button type="button" className="secondary" disabled={busy} onClick={() => setFormOpen(true)}>
@@ -268,6 +294,17 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
 
       <EntryFold title="Facts" id="entry-facts" className="facts" open note={rows.length > 0 ? `${rows.length}` : undefined}>
         {groups.length === 0 && <p className="meta">No facts yet.</p>}
+        {aiFacts.length > 0 && (
+          <p className="notice ai-facts-note">
+            <AiBadge /> The AI wrote {aiFacts.length === 1 ? "1 fact" : `${aiFacts.length} facts`} from the story. Approve or edit{" "}
+            {aiFacts.length === 1 ? "it" : "them"}; the AI replaces unapproved ones when it reads the chapter again.{" "}
+            {aiFacts.length > 1 && (
+              <button type="button" disabled={busy} onClick={() => void approve(aiFacts.map((f) => f.op.id))}>
+                Approve all
+              </button>
+            )}
+          </p>
+        )}
         {clashes.length > 0 && (
           <div className="notice form-clashes">
             <p>
@@ -344,8 +381,10 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
                 <div key={f.fact_id} id={`fact-${f.fact_id}`} className="fact-row">
                   <div className="fact-summary">
                     <div className="fact-line">
+                      {isAiFact(f) && <AiBadge />}
                       {f.aspect && <strong>{f.aspect}</strong>} <span>{f.text}</span>
                     </div>
+                    {isAiFact(f) && f.quote && <div className="fact-quote">“{f.quote}”</div>}
                     <div className="meta" style={{ margin: 0 }}>
                       {since(f.op.anchor_chapter_id)}
                       {f.op.anchor_chapter_id === DRAFT_ANCHOR ? (
@@ -359,6 +398,11 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
                     </div>
                   </div>
                   <div className="row" style={{ margin: "0.4rem 0 0" }}>
+                    {isAiFact(f) && (
+                      <button type="button" disabled={busy} aria-label={`Approve ${f.aspect || "the fact"}`} onClick={() => void approve([f.op.id])}>
+                        Approve
+                      </button>
+                    )}
                     <button type="button" className="secondary" disabled={busy} onClick={() => setEditing(f.fact_id)}>
                       Edit
                     </button>
@@ -389,7 +433,8 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
                       entry={entry}
                       editing={f}
                       path={anchorPath}
-                      chapterId={startAnchor}
+                      // An AI fact is corrected where the AI put it, so the owner's version replaces it there.
+                      chapterId={isAiFact(f) && anchorPath.some((p) => p.id === f.op.anchor_chapter_id) ? f.op.anchor_chapter_id : startAnchor}
                       held={heldLabel}
                       usedAspects={usedAspects}
                       busy={busy}
@@ -405,7 +450,7 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
                         <li key={v.id}>
                           <div className="meta" style={{ margin: 0 }}>
                             <strong>{v.op === "retire" ? "Removed" : i === versions.length - 1 ? "Added" : "Changed"}</strong> in “
-                            {titleOf(v.anchor_chapter_id)}”{i === 0 && v.op !== "retire" ? " · current" : ""}
+                            {titleOf(v.anchor_chapter_id)}”{v.ai_suggestion_id ? " · by the AI" : ""}{i === 0 && v.op !== "retire" ? " · current" : ""}
                           </div>
                           {v.op !== "retire" && (
                             <div className={i === 0 ? "version" : "version old"}>
@@ -557,7 +602,8 @@ function FactForm({
   const [formSel, setFormSel] = useState(editing?.form ?? "");
   const [newForm, setNewForm] = useState("");
   const [text, setText] = useState(editing?.text ?? "");
-  const [quote, setQuote] = useState("");
+  // An AI fact keeps the AI's quote, so the corrected version still shows where it came from.
+  const [quote, setQuote] = useState(editing && isAiFact(editing) ? editing.quote : "");
   const [anchor, setAnchor] = useState(chapterId);
 
   const showForm = entry.forms.length > 0 || entry.type === "character";

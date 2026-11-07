@@ -2,11 +2,15 @@
 // each one fact-sized and with a quote from the chapter as evidence. The owner accepts (which writes the codex change
 // at that chapter), edits or dismisses each. A suggestion belongs to the chapter revision it was made for: once the
 // chapter is edited its open suggestions are stale and are not listed.
+// With "Apply the AI's codex changes automatically" (autoApplyCodex) a full reading of a chapter also applies its fact
+// and form changes at once, marked by codex_facts.ai_suggestion_id until the owner approves them (approveAiFacts).
 import { z } from "zod";
 import { db, newId } from "./db";
 import { ENTRY_TYPES, FACT_LIMITS, FORM_ASPECT, isFormAspect, sameAspect, type CodexEntry } from "./codex";
 import { codexEntryLabels, createCodexOp, createFactOp, getCodexState } from "./codexDb";
 import { PostError } from "./stories";
+import { parseSettings } from "./settingsSchema";
+import { getSettings } from "./settingsStore";
 import { SUGGESTION_KINDS, type SuggestionInput, type SuggestionKind } from "./ai/codexCheckAi";
 
 export type SuggestionStatus = "open" | "accepted" | "dismissed";
@@ -115,6 +119,10 @@ export function saveSuggestions(chapterId: string, revision: number, list: Sugge
     } else {
       db().prepare(`DELETE FROM codex_suggestions WHERE chapter_id = ? AND status = 'open' AND source = 'chapter'`).run(chapterId);
     }
+    // A full reading of the chapter, with "Apply the AI's codex changes automatically": what the AI applied from an
+    // earlier reading here and the owner hasn't approved is taken back first, so this reading replaces it.
+    const autoApply = source === "chapter" && !notesEntryId && autoApplyOn();
+    const earlierAiFacts = autoApply ? removeAiReading(chapterId) : new Map<string, string>();
 
     const entries = getCodexState(chapterId);
     const dismissed = (db().prepare(`SELECT kind, entry_id, aspect, form, after, entry FROM codex_suggestions WHERE chapter_id = ? AND status = 'dismissed' AND source = ?`).all(chapterId, source) as Pick<Row, "kind" | "entry_id" | "aspect" | "form" | "after" | "entry">[]).map((d) => ({
@@ -127,6 +135,7 @@ export function saveSuggestions(chapterId: string, revision: number, list: Sugge
     );
     const now = Date.now();
     let saved = 0;
+    const toApply: { id: string; s: SuggestionInput }[] = [];
     for (const s of list) {
       if ((source !== "chapter" || notesEntryId) && (s.kind === "entry" || s.entry_id !== notesEntryId)) continue; // one entry's reading only ever suggests facts for that entry
       let before = "";
@@ -151,8 +160,24 @@ export function saveSuggestions(chapterId: string, revision: number, list: Sugge
         }
       }
       if (dismissed.some((d) => d.kind === s.kind && d.who === who && sameAspect(d.aspect, s.aspect) && sameAspect(d.form, s.form) && lc(d.after) === lc(s.after))) continue;
-      insert.run(newId(), chapter.story_id, chapterId, revision, s.kind, s.kind === "entry" ? null : s.entry_id, s.aspect, s.form, before, s.kind === "retire" ? "" : s.after, s.quote, s.kind === "entry" ? JSON.stringify(s.entry) : "{}", source, now);
+      const id = newId();
+      insert.run(id, chapter.story_id, chapterId, revision, s.kind, s.kind === "entry" ? null : s.entry_id, s.aspect, s.form, before, s.kind === "retire" ? "" : s.after, s.quote, s.kind === "entry" ? JSON.stringify(s.entry) : "{}", source, now);
       saved += 1;
+      if (autoApply && autoApplies(s, entries, chapterId)) toApply.push({ id, s });
+    }
+    // Fact and form changes for entries already in the codex are applied now, marked as the AI's. One that can't be
+    // applied (the entry or fact changed meanwhile) stays open in the inbox.
+    let applied = 0;
+    for (const { id, s } of toApply) {
+      try {
+        const key = factKey(s.entry_id!, s.kind === "form" ? FORM_ASPECT : s.aspect, s.kind === "form" ? "" : s.form);
+        const factId = earlierAiFacts.get(key);
+        writeSuggestion({ chapter_id: chapterId, kind: s.kind, entry_id: s.entry_id!, aspect: s.aspect, form: s.form, after: s.after, quote: s.quote, entry: "{}" }, {}, id, factId);
+        db().prepare(`UPDATE codex_suggestions SET status = 'accepted', decided_at = ? WHERE id = ?`).run(now, id);
+        applied += 1;
+      } catch (e) {
+        if (!(e instanceof PostError)) throw e;
+      }
     }
     if (source === "chapter" && !notesEntryId) {
       db()
@@ -162,8 +187,50 @@ export function saveSuggestions(chapterId: string, revision: number, list: Sugge
         )
         .run(chapterId, revision, now);
     }
-    return { saved };
+    return { saved, applied };
   })();
+}
+
+function autoApplyOn(): boolean {
+  const s = getSettings() ?? parseSettings({});
+  return s.autoCodex && s.autoApplyCodex;
+}
+
+const factKey = (entryId: string, aspect: string, form: string) => `${entryId}\n${lc(isFormAspect(aspect) ? FORM_ASPECT : aspect)}\n${isFormAspect(aspect) ? "" : lc(form)}`;
+
+/**
+ * Takes back the facts the AI applied at this chapter that the owner hasn't approved, and their suggestions. Returns
+ * the fact id of each one that a later chapter still changes, by entry, aspect and form, so the new reading carries on
+ * the same fact instead of making a second one beside the later change.
+ */
+function removeAiReading(chapterId: string): Map<string, string> {
+  const rows = db()
+    .prepare(`SELECT entry_id, fact_id, aspect, form FROM codex_facts WHERE anchor_chapter_id = ? AND ai_suggestion_id IS NOT NULL`)
+    .all(chapterId) as { entry_id: string; fact_id: string; aspect: string; form: string }[];
+  if (rows.length === 0) return new Map();
+  db()
+    .prepare(
+      `DELETE FROM codex_suggestions WHERE status = 'accepted'
+         AND id IN (SELECT ai_suggestion_id FROM codex_facts WHERE anchor_chapter_id = ? AND ai_suggestion_id IS NOT NULL)`,
+    )
+    .run(chapterId);
+  db().prepare(`DELETE FROM codex_facts WHERE anchor_chapter_id = ? AND ai_suggestion_id IS NOT NULL`).run(chapterId);
+  const stillUsed = db().prepare(`SELECT 1 FROM codex_facts WHERE fact_id = ? LIMIT 1`);
+  const kept = new Map<string, string>();
+  for (const r of rows) if (stillUsed.get(r.fact_id)) kept.set(factKey(r.entry_id, r.aspect, r.form), r.fact_id);
+  return kept;
+}
+
+/**
+ * Whether the AI may apply a suggestion on its own: a fact or form change for an entry already in the codex, unless the
+ * owner has changed that fact (or the form) at this chapter themselves. New entries, removals and contradictions wait.
+ */
+function autoApplies(s: SuggestionInput, entries: CodexEntry[], chapterId: string): boolean {
+  if (s.kind !== "set" && s.kind !== "form") return false;
+  const entry = entries.find((e) => e.entry_id === s.entry_id);
+  if (!entry) return false;
+  const fact = s.kind === "form" ? entry.form?.fact : liveFact(entry, s.aspect, s.form);
+  return !(fact && fact.op.anchor_chapter_id === chapterId && !fact.op.ai_suggestion_id);
 }
 
 export type CodexSuggestion = {
@@ -256,6 +323,21 @@ export function openSuggestionCounts(storyId: string): { total: number; byChapte
   return { total: rows.reduce((sum, r) => sum + r.n, 0), byChapter: Object.fromEntries(rows.map((r) => [r.chapter_id, r.n])) };
 }
 
+/** Facts the AI applied on its own that the owner hasn't approved or replaced at the same chapter, by chapter. */
+export function aiFactCounts(storyId: string): Record<string, number> {
+  const rows = db()
+    .prepare(
+      `SELECT f.anchor_chapter_id AS chapter_id, COUNT(DISTINCT f.fact_id) AS n FROM codex_facts f
+         JOIN chapters c ON c.id = f.anchor_chapter_id AND c.trashed_at IS NULL
+        WHERE f.story_id = ? AND f.ai_suggestion_id IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM codex_facts o WHERE o.fact_id = f.fact_id AND o.anchor_chapter_id = f.anchor_chapter_id
+                            AND o.ai_suggestion_id IS NULL AND o.posted_at >= f.posted_at)
+        GROUP BY f.anchor_chapter_id`,
+    )
+    .all(storyId) as { chapter_id: string; n: number }[];
+  return Object.fromEntries(rows.map((r) => [r.chapter_id, r.n]));
+}
+
 /** The chapters of a story read for codex changes at their current revision, by id. */
 export function codexCheckedChapterIds(storyId: string): Set<string> {
   const rows = db()
@@ -285,29 +367,42 @@ export function acceptSuggestion(id: string, edits: z.infer<typeof AcceptEditsSc
     const row = openRow(id);
     if (row.status !== "open") throw new PostError("That suggestion has already been decided", 409);
     if (row.revision !== row.chapter_revision) throw new PostError("The chapter was edited after this was suggested", 409);
-    const anchor = row.chapter_id;
-    let entryId: string;
-    if (row.kind === "entry") {
-      const proposed = parseEntry(row.entry);
-      if (!proposed) throw new PostError("That suggestion has no entry", 409);
-      entryId = createCodexOp({ anchor_chapter_id: anchor, op: "create", name: proposed.name, type: proposed.type, aliases: proposed.aliases, content: proposed.notes, always_include: false }).entry_id;
-      for (const f of proposed.facts) createFactOp({ anchor_chapter_id: anchor, entry_id: entryId, op: "set", aspect: f.aspect, form: f.form, text: f.text, quote: row.quote });
-    } else {
-      entryId = row.entry_id!;
-      if (row.kind === "retire") {
-        const entry = getCodexState(anchor).find((e) => e.entry_id === entryId);
-        const fact = entry ? liveFact(entry, row.aspect, row.form) : undefined;
-        if (!fact) throw new PostError("That fact is already gone", 409);
-        createFactOp({ anchor_chapter_id: anchor, entry_id: entryId, fact_id: fact.fact_id, op: "retire", aspect: fact.aspect, form: fact.form, text: "", quote: row.quote });
-      } else if (row.kind === "form") {
-        createFactOp({ anchor_chapter_id: anchor, entry_id: entryId, op: "set", aspect: FORM_ASPECT, form: edits.form ?? row.form, text: edits.text ?? row.after, quote: row.quote });
-      } else {
-        createFactOp({ anchor_chapter_id: anchor, entry_id: entryId, op: "set", aspect: edits.aspect ?? row.aspect, form: edits.form ?? row.form, text: edits.text ?? row.after, quote: row.quote });
-      }
-    }
+    const entryId = writeSuggestion(row, edits);
     db().prepare(`UPDATE codex_suggestions SET status = 'accepted', decided_at = ? WHERE id = ?`).run(Date.now(), id);
     return { entry_id: entryId };
   })();
+}
+
+/**
+ * Writes a suggestion's change into the codex at its chapter; returns the entry changed or created. `aiSuggestionId`
+ * marks the facts as applied by the AI on its own; `factId` carries on a fact an earlier AI reading here started.
+ */
+function writeSuggestion(
+  row: Pick<Row, "chapter_id" | "kind" | "entry_id" | "aspect" | "form" | "after" | "quote" | "entry">,
+  edits: z.infer<typeof AcceptEditsSchema>,
+  aiSuggestionId: string | null = null,
+  factId?: string,
+): string {
+  const anchor = row.chapter_id;
+  if (row.kind === "entry") {
+    const proposed = parseEntry(row.entry);
+    if (!proposed) throw new PostError("That suggestion has no entry", 409);
+    const entryId = createCodexOp({ anchor_chapter_id: anchor, op: "create", name: proposed.name, type: proposed.type, aliases: proposed.aliases, content: proposed.notes, always_include: false }).entry_id;
+    for (const f of proposed.facts) createFactOp({ anchor_chapter_id: anchor, entry_id: entryId, op: "set", aspect: f.aspect, form: f.form, text: f.text, quote: row.quote }, aiSuggestionId);
+    return entryId;
+  }
+  const entryId = row.entry_id!;
+  if (row.kind === "retire") {
+    const entry = getCodexState(anchor).find((e) => e.entry_id === entryId);
+    const fact = entry ? liveFact(entry, row.aspect, row.form) : undefined;
+    if (!fact) throw new PostError("That fact is already gone", 409);
+    createFactOp({ anchor_chapter_id: anchor, entry_id: entryId, fact_id: fact.fact_id, op: "retire", aspect: fact.aspect, form: fact.form, text: "", quote: row.quote }, aiSuggestionId);
+  } else if (row.kind === "form") {
+    createFactOp({ anchor_chapter_id: anchor, entry_id: entryId, fact_id: factId, op: "set", aspect: FORM_ASPECT, form: edits.form ?? row.form, text: edits.text ?? row.after, quote: row.quote }, aiSuggestionId);
+  } else {
+    createFactOp({ anchor_chapter_id: anchor, entry_id: entryId, fact_id: factId, op: "set", aspect: edits.aspect ?? row.aspect, form: edits.form ?? row.form, text: edits.text ?? row.after, quote: row.quote }, aiSuggestionId);
+  }
+  return entryId;
 }
 
 function decide(id: string, from: SuggestionStatus, to: SuggestionStatus, why: string) {

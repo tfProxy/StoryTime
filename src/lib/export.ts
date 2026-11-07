@@ -138,7 +138,7 @@ export function loadStory(storyId: string): StoryExport | null {
   const codexFacts = (
     db()
       .prepare(
-        `SELECT anchor_chapter_id, entry_id, fact_id, op, aspect, form, text, quote, posted_at
+        `SELECT anchor_chapter_id, entry_id, fact_id, op, aspect, form, text, quote, posted_at, ai_suggestion_id
            FROM codex_facts WHERE story_id = ? ORDER BY posted_at, rowid`,
       )
       .all(storyId) as Record<string, unknown>[]
