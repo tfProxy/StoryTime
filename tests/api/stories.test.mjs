@@ -78,3 +78,9 @@ const moved = await call("GET", `/api/drafts/first:${r.json.story_id}`);
 ok(moved.status === 200 && moved.json.draft.body === "Half written." && moved.json.draft.href === `/s/${r.json.story_id}/write`, "creating a story from the old draft keeps its chapter as the new story's first-chapter draft");
 ok((await call("GET", "/api/drafts/story")).status === 404, "…and the old draft is gone");
 await call("DELETE", `/api/drafts/first:${r.json.story_id}`);
+
+// ---- the story list puts the most recently updated story first ----
+await new Promise((res) => setTimeout(res, 5));
+r = await call("POST", "/api/chapters", { title: "Right", body: "You went right", choice_id: right.id });
+ok(r.status === 201, "a new chapter in the oldest story…");
+ok((await call("GET", "/api/stories")).json[0]?.id === story, "…moves that story to the top of the list");

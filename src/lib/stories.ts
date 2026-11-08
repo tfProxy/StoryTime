@@ -217,7 +217,12 @@ export function listStories(): (Story & { chapter_count: number })[] {
     .prepare(
       `SELECT s.id, s.title, s.premise, s.style, s.art_style, s.image_prompt_style, s.checkpoint, s.draw_preset, s.style_ref, s.root_chapter_id, s.created_at, s.cover_updated_at AS cover_version, s.show_original,
               (SELECT COUNT(*) FROM chapters c WHERE c.story_id = s.id AND c.trashed_at IS NULL) AS chapter_count
-         FROM stories s ORDER BY s.created_at DESC`,
+         FROM stories s
+        -- Most recently active first: the newest of the story's creation and its chapters' posts and edits.
+        ORDER BY MAX(s.created_at, COALESCE(
+                   (SELECT MAX(MAX(c.posted_at, COALESCE(c.edited_at, 0))) FROM chapters c
+                     WHERE c.story_id = s.id AND c.trashed_at IS NULL), 0)) DESC,
+                 s.created_at DESC`,
     )
     .all() as (Omit<Story, "style_ref"> & { style_ref: string | null; chapter_count: number })[];
   return rows.map(withStyleRef) as (Story & { chapter_count: number })[];
