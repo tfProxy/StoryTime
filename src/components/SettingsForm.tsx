@@ -51,7 +51,7 @@ type Status = { kind: "ok" | "error"; text: string };
  */
 const TABS = [
   { id: "connections", label: "Connections", holds: ["comfyui"] },
-  { id: "writing", label: "Writing", holds: ["models"] },
+  { id: "writing", label: "Writing", holds: ["models", "codex"] },
   {
     id: "drawing",
     label: "Drawing",
@@ -671,6 +671,36 @@ export default function SettingsForm() {
           </div>
           {status && <p className={status.kind}>{status.text}</p>}
           {reply && <blockquote className="sample">{reply}</blockquote>}
+        </section>
+
+        <section id="codex" className="settings-section">
+          <h2>Codex</h2>
+          <label className="row" style={{ alignItems: "flex-start" }}>
+            <input type="checkbox" style={{ width: "auto" }} checked={settings.autoCodex} onChange={(e) => update({ autoCodex: e.target.checked })} />
+            <span>
+              Suggest codex changes after a chapter is saved{" "}
+              <small>
+                (the AI, with the cheaper model, reads each new or edited chapter and leaves suggested fact changes in
+                the Story Bible&apos;s codex inbox.)
+              </small>
+            </span>
+          </label>
+          <label className="row" style={{ alignItems: "flex-start", marginLeft: "1.5rem" }}>
+            <input
+              type="checkbox"
+              style={{ width: "auto" }}
+              disabled={!settings.autoCodex}
+              checked={settings.autoApplyCodex}
+              onChange={(e) => update({ autoApplyCodex: e.target.checked })}
+            />
+            <span>
+              Apply the AI&apos;s codex changes automatically{" "}
+              <small>
+                (fact and form changes for entries already in the codex are saved at once and marked AI until you
+                approve or edit them. New entries, removals and contradictions still wait in the inbox.)
+              </small>
+            </span>
+          </label>
         </section>
       </div>
 

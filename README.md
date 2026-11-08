@@ -52,8 +52,8 @@ and, for pictures, your own ComfyUI machine.
   dashed **Suggested new entry** you can **Add it** or dismiss. A chapter shows "Codex: N suggestions from
   this chapter" when some are waiting. You can also run the check yourself (**Check this chapter with
   AI**, or **Check every chapter with AI** for the whole story) from the **⋯** menu of the Codex
-  section. Turn the automatic check on or off in Settings under "Suggest codex changes after a
-  chapter is saved".
+  section. Turn the automatic check on or off in Settings › Writing › Codex, under "Suggest codex
+  changes after a chapter is saved".
   With **Apply the AI's codex changes automatically** (under it, off by default), the AI's fact and form
   changes for characters, places and things already in the codex are saved straight away instead of
   waiting. Each one is marked **AI** on the entry's page, with the sentence it came from, until you
