@@ -90,39 +90,6 @@ export default function TagLibrary() {
         <input
           type="checkbox"
           style={{ width: "auto" }}
-          checked={settings.autoCodex}
-          onChange={(e) => void saveSettings({ ...settings, autoCodex: e.target.checked })}
-        />
-        <span>
-          Suggest codex changes after a chapter is saved
-          <br />
-          <span className="meta" style={{ fontWeight: "normal" }}>
-            The AI (cheaper model) reads each new or edited chapter and leaves suggested fact changes in the Story
-            Bible&apos;s codex inbox.
-          </span>
-        </span>
-      </label>
-      <label className="row" style={{ alignItems: "flex-start", marginLeft: "1.5rem" }}>
-        <input
-          type="checkbox"
-          style={{ width: "auto" }}
-          disabled={!settings.autoCodex}
-          checked={settings.autoApplyCodex}
-          onChange={(e) => void saveSettings({ ...settings, autoApplyCodex: e.target.checked })}
-        />
-        <span>
-          Apply the AI&apos;s codex changes automatically
-          <br />
-          <span className="meta" style={{ fontWeight: "normal" }}>
-            Fact and form changes for entries already in the codex are saved at once and marked AI until you approve or
-            edit them. New entries, removals and contradictions still wait in the inbox.
-          </span>
-        </span>
-      </label>
-      <label className="row" style={{ alignItems: "flex-start" }}>
-        <input
-          type="checkbox"
-          style={{ width: "auto" }}
           checked={settings.contentNotes}
           onChange={(e) => void saveSettings({ ...settings, contentNotes: e.target.checked })}
         />

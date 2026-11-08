@@ -76,7 +76,7 @@ try {
   ok(entry.facts.every((f) => !f.op.ai_suggestion_id), "…on the server too");
 
   // ---- the setting ----
-  await page.goto(`${BASE}/settings#tags`);
+  await page.goto(`${BASE}/settings#codex`);
   const box = page.getByRole("checkbox", { name: /Apply the AI's codex changes automatically/ });
   await box.waitFor();
   ok(await box.isDisabled(), "the setting waits for the codex check to be on");
