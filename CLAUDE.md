@@ -49,6 +49,10 @@ Match the checks to the size of the change. GitHub Actions runs everything (type
 - The dev machine is Windows (VS Code, PowerShell and Git Bash). Docker is not installed on it; the CI `docker` job builds the image and checks `/api/health`, so after changing `Dockerfile` push and check that job. `docker-compose.yml` itself is only tested on the NAS; say so.
 - The app is deployed to a NAS that pulls `ghcr.io/tfproxy/storytime:latest`, which CI builds and publishes from main. Deploying is: push to main, wait for CI to pass, then Compose Pull and Compose Up on the NAS. The image is built from `Dockerfile` in CI: better-sqlite3 may need to compile from source, so the build stage needs `python3 make g++`; do not switch to a slim base image without keeping them.
 
+## Talking to the owner
+
+- Give times in Toronto time (America/Toronto), never UTC. Relative times ("in about 10 minutes") are fine too.
+
 ## Ambiguous instructions
 
 - If the user says "continue", "yes" or "go ahead" and more than one pending item could apply, ask which one.
