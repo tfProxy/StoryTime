@@ -25,7 +25,7 @@ try {
   const sid = story.story_id;
   const root = story.chapter_id;
   const choice = (await send("GET", `/api/chapters/${root}`)).choices[0];
-  const next = (await post("/api/chapters", { choice_id: choice.id, title: "Rain", body: "Her gray eyes caught the rain. Oda smiled.", choices: [] })).chapter_id;
+  const next = (await post("/api/chapters", { choice_id: choice.id, title: "Rain", body: "Her gray eyes caught the rain. Oda smiled at Mira.", choices: [] })).chapter_id;
   const mira = (await post("/api/codex", { anchor_chapter_id: root, op: "create", name: "Mira", type: "character" })).entry_id;
   const eyes = (await post("/api/codex/facts", { anchor_chapter_id: root, entry_id: mira, op: "set", aspect: "Eyes", text: "Gray." })).fact_id;
 
@@ -67,7 +67,7 @@ try {
   await rain.getByLabel("New text").fill("Her sky-blue eyes caught the rain.");
   await rain.getByRole("button", { name: "Accept" }).click();
   await rain.getByText("Changed").waitFor();
-  ok((await send("GET", `/api/chapters/${next}`)).chapter.body === "Her sky-blue eyes caught the rain. Oda smiled.", "Accept saves the reworded passage in the chapter");
+  ok((await send("GET", `/api/chapters/${next}`)).chapter.body === "Her sky-blue eyes caught the rain. Oda smiled at Mira.","Accept saves the reworded passage in the chapter");
   const rootCard = card.locator(".retcon-change", { has: page.getByRole("link", { name: "Root" }) });
   await rootCard.getByRole("button", { name: "Skip" }).click();
   await rootCard.getByText("Left as it was").waitFor();
@@ -77,13 +77,13 @@ try {
   page.once("dialog", (d) => void d.accept());
   await card.getByRole("button", { name: "Undo this retcon" }).click();
   await card.getByText("Undone. 1 chapter put back.").waitFor();
-  ok((await send("GET", `/api/chapters/${next}`)).chapter.body === "Her gray eyes caught the rain. Oda smiled.", "Undo puts the chapter back");
+  ok((await send("GET", `/api/chapters/${next}`)).chapter.body === "Her gray eyes caught the rain. Oda smiled at Mira.", "Undo puts the chapter back");
   const fact = (await send("GET", `/api/chapters/${next}/codex`)).entries.find((e) => e.entry_id === mira).facts.find((f) => f.fact_id === eyes);
   ok(fact.text === "Gray.", "…and the codex fact");
 
   // ---- the chapter menu's Retcon from here… ----
   await page.goto(`${BASE}/c/${next}`);
-  await page.getByRole("button", { name: "More chapter actions" }).click();
+  await page.getByLabel("More chapter actions", { exact: true }).first().click();
   await page.getByRole("link", { name: "Retcon from here…" }).click();
   const words = page.getByRole("region", { name: "Start a retcon" });
   await words.waitFor();

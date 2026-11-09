@@ -4261,15 +4261,28 @@ button.refine-fit {
   box-sizing: border-box;
 }
 
-.retcon-check {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
+.retcon-field textarea {
+  min-height: 5rem;
+}
+
+label.retcon-check,
+.retcon-from label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-weight: 400;
+  font-size: inherit;
+}
+
+label.retcon-check input,
+.retcon-from input {
+  width: auto;
+  flex: none;
 }
 
 .retcon-from {
   display: grid;
-  gap: 0.3rem;
+  gap: 0.4rem;
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 0.5rem 0.75rem;

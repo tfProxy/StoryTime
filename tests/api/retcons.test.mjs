@@ -94,7 +94,7 @@ try {
   const run = (await call("GET", `/api/ai-runs/${r.json.run_id}`)).json;
   ok(run.tasks.length === 3 && run.tasks.every((t) => t.kind === "retcon" && t.status === "done" && t.found === 1), "each chapter had one passage to change: " + JSON.stringify(run.tasks.map((t) => [t.label, t.status, t.found])));
   let [retcon] = await list();
-  ok(retcon.id === retconId && retcon.title === "Mira: Eyes" && retcon.instruction.includes('"Blue."') && retcon.instruction.includes('"Gray."'), "listed, with the change in words");
+  ok(retcon.id === retconId && retcon.title === "Mira: Eyes" && retcon.instruction.includes("Now: Blue.") && retcon.instruction.includes("Before: Gray."), "listed, with the change in words");
   ok(retcon.changes.map((x) => x.chapter_id).join() === [root, a, b].join() && retcon.changes.every((x) => x.status === "open"), "proposals for Root, A and B, in story order");
   const byChapter = (id) => retcon.changes.find((x) => x.chapter_id === id);
   ok(byChapter(a).edits[0].old === "“Your eyes are gray,” Oda told Mira.", "a passage copied with straight quotes is kept in the chapter's spelling");

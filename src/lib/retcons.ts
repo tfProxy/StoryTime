@@ -165,9 +165,9 @@ export function createRetcon(storyId: string, raw: NewRetcon): { id: string; pre
     if (input.kind === "codex") {
       const { entry, fact } = factAt(input.chapter_id, input.entry_id, input.fact_id);
       if (fact.text.trim() === input.text.trim()) throw new PostError("The new text is the same as the fact's text now", 400);
-      const what = `${entry.name}'s ${fact.aspect.trim() ? fact.aspect.trim().toLowerCase() : "detail"}${fact.form.trim() ? ` (in ${fact.form.trim()} form)` : ""}`;
+      const what = `${entry.name}, ${fact.aspect.trim() || "a detail"}${fact.form.trim() ? ` (in ${fact.form.trim()} form)` : ""}`;
       title = `${entry.name}: ${fact.aspect.trim() || "a fact"}`;
-      instruction = `${what} is now: "${input.text}". Before the change it was: "${fact.text}". Treat the new version as always having been true.`;
+      instruction = `${what}\nNow: ${input.text}\nBefore: ${fact.text}\nTreat the new version as always having been true.`;
       // Where it was set, or set at this very chapter: change that version. Otherwise a new version from this chapter on.
       const inPlace = ownRow(fact.op.id) && (input.from === "set" || fact.op.anchor_chapter_id === input.chapter_id);
       if (inPlace) {
