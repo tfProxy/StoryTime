@@ -111,7 +111,11 @@ try {
   ok(await page.locator("#editing-pictures").getByRole("heading", { name: "Qwen edit", exact: true }).isVisible() && await page.locator("#editing-pictures").getByRole("heading", { name: "Flux edit", exact: true }).isVisible(), "…the second with a section for each edit model");
   await page.getByRole("link", { name: /^Editing pictures/ }).click();
   await page.waitForURL("**/settings#editing-pictures");
-  ok(await page.getByRole("tab", { name: "Drawing" }).getAttribute("aria-selected") === "true" && await until(async () => Math.abs((await page.locator("#editing-pictures").boundingBox()).y) < 40, "Editing pictures to be scrolled to"), "the card at the top jumps to its part, on the same tab");
+  ok(await page.getByRole("tab", { name: "Drawing" }).getAttribute("aria-selected") === "true" && await until(async () => {
+    // Scrolled to just below the header, which stays at the top of the window.
+    const header = await page.locator(".site-header").boundingBox();
+    return Math.abs((await page.locator("#editing-pictures").boundingBox()).y - (header.y + header.height)) < 40;
+  }, "Editing pictures to be scrolled to"), "the card at the top jumps to its part, on the same tab");
   await page.locator("#setup-drawing").getByRole("button", { name: "Connections tab" }).click();
   ok(await page.getByRole("tab", { name: "Connections" }).getAttribute("aria-selected") === "true", "…and its link goes to the Connections tab");
   await page.getByRole("tab", { name: "Connections" }).focus();
