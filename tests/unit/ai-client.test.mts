@@ -21,9 +21,25 @@ const server = http.createServer((req, res) => {
     const chunks = req.url!.startsWith("/anth")
       ? [
           'event: message_start\ndata: {"type":"message_start"}\n\n',
+          'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"Hmm."}}\n\n',
           'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hel"}}\n\n',
           'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"lo"}}\n\n',
           'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+        ]
+      : req.url!.startsWith("/think")
+      ? [
+          'data: {"choices":[{"delta":{"reasoning_content":"First, "}}]}\n\n',
+          'data: {"choices":[{"delta":{"reasoning":"then."}}]}\n\n',
+          'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
+          "data: [DONE]\n\n",
+        ]
+      : req.url!.startsWith("/tag")
+      ? [
+          'data: {"choices":[{"delta":{"content":"\\n<thi"}}]}\n\n',
+          'data: {"choices":[{"delta":{"content":"nk>Plan it.</th"}}]}\n\n',
+          'data: {"choices":[{"delta":{"content":"ink>\\n\\nHel"}}]}\n\n',
+          'data: {"choices":[{"delta":{"content":"lo <think> stays"}}]}\n\n',
+          "data: [DONE]\n\n",
         ]
       : [
           'data: {"choices":[{"delta":{"role":"assistant","content":""}}]}\n\n',
@@ -61,6 +77,29 @@ assert(out === "Hello", "anthropic stream: " + out);
 const a = seen.at(-1)!;
 assert(a.url === "/anth/v1/messages" && a.headers!["x-api-key"] === "k" && a.headers!["anthropic-dangerous-direct-browser-access"] === "true", "anthropic url+headers");
 assert(a.body.system === "sys" && a.body.max_tokens === 4096 && a.body.model === "sm" && a.body.temperature === 0.7, "anthropic body (summary model, temp, max_tokens)");
+
+// The model's thinking goes to onThinking, never into the reply; the call says what it waits on first.
+{
+  let thought = "";
+  const said: string[] = [];
+  const onThinking = (t: string) => { thought += t; };
+  const onStatus = (t: string) => said.push(t);
+  out = await completeChat(mk("custom", base + "/think") as any, { messages: [{ role: "user", content: "hi" }], onThinking, onStatus });
+  assert(out === "Hello" && thought === "First, then.", `reasoning fields go to onThinking (${JSON.stringify(thought)})`);
+  assert(said.join("|") === "Waiting for the model…", "the call says it waits for the model");
+  thought = "";
+  out = await completeChat(mk("custom", base + "/tag") as any, { messages: [{ role: "user", content: "hi" }], onThinking });
+  assert(out === "Hello <think> stays" && thought === "Plan it.", `a <think> block opening the reply goes to onThinking, split across pieces (${JSON.stringify(out)}, ${JSON.stringify(thought)})`);
+  thought = "";
+  out = await completeChat(mk("anthropic", base + "/anth/v1") as any, { messages: [{ role: "user", content: "hi" }], onThinking });
+  assert(out === "Hello" && thought === "Hmm.", "anthropic thinking goes to onThinking");
+  const { thinkSplitter } = await import("../../src/lib/ai/client.ts");
+  let t2 = "";
+  const s = thinkSplitter((t) => { t2 += t; });
+  assert(s.push("<th") === "" && s.end() === "<th", "a reply that only looks like <think> is given back at the end");
+  const s2 = thinkSplitter((t) => { t2 += t; });
+  assert(s2.push("<think>never closed") === "" && s2.end() === "" && t2 === "never closed", "a <think> block that never closes is all thinking");
+}
 
 assert(JSON.stringify(await listModels(conn("custom", base + "/o"))) === '["a-model","b-model"]', "listModels sorted");
 try { await completeChat(mk("custom", base + "/bad") as any, { messages: [{ role: "user", content: "x" }] }); assert(false, "should throw"); }

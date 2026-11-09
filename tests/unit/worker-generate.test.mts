@@ -15,7 +15,7 @@ const { DEFAULT_SETTINGS } = await import("../../src/lib/settingsSchema.ts");
 const { SYSTEM_CHOICE_LABEL, SYSTEM_CHOICES } = await import("../../src/lib/ai/prompts.ts");
 const { subscribe } = await import("../../src/lib/worker/bus.ts");
 const { getItem } = await import("../../src/lib/worker/items.ts");
-const { generateProgress, genChannel, genItemKey, generateRequest, runGenerate, startGenerate, stopGenerate } = await import("../../src/lib/worker/generate.ts");
+const { generateCatchUp, generateProgress, genChannel, genItemKey, generateRequest, runGenerate, startGenerate, stopGenerate } = await import("../../src/lib/worker/generate.ts");
 const { getDraft, putDraft } = await import("../../src/lib/draftStore.ts");
 
 const chapter = "# The Door\n\nShe opened it and went in.";
@@ -98,6 +98,12 @@ try {
   ok(draft?.undo.length === 1 && draft.undo[0].body === "Old text", "…the text it replaced kept once, as the undo");
   ok(draft?.newChoiceLabel === "Open the door" && draft.suggestions.join() === "Go left,Go right", "…with the choice text and the suggested choices");
   ok(generateProgress("fill:b") === null, "nothing is going once it ends");
+  const steps = seen.events.filter((e) => e.type === "step").map((e) => e.text);
+  ok(
+    steps.join("|") === "Getting the story ready…|Waiting for the model…|Writing the chapter…|Writing the choice text…|Suggesting choices…",
+    `each step is told as it starts (${steps.join("|")})`,
+  );
+  ok(done?.type === "generate" && done.data.note === undefined, "…and the item's note is cleared when it ends");
   const asked = ai.requests.filter((r: { body: unknown }) => !JSON.stringify(r.body).includes("You help write branching stories"));
   ok(asked.length >= 1 && ai.requests.length === asked.length + 2, "the chapter was asked for, then the choice text and the choices, once each");
   startGenerate(generateRequest.parse(request("fill:b")));
@@ -106,10 +112,17 @@ try {
 
   // A draft the page saved meanwhile is built on, not overwritten.
   putDraft("fill:c", { ...request("fill:c").draft, prompt: "typed while waiting" }, { base: null });
+  // …and a model that thinks first: its thinking is told, and kept out of the draft.
+  ai.setThinking("Maybe a door.");
   startGenerate(generateRequest.parse(request("fill:c")));
+  const thinkingSeen = watch("fill:c");
   await runGenerate("fill:c");
+  thinkingSeen.stop();
+  ai.setThinking(null);
   const kept = getDraft("fill:c") as { prompt: string; body: string } | null;
   ok(kept?.prompt === "typed while waiting" && kept.body === "She opened it and went in.", "a draft saved on the server is the one the text goes into");
+  ok(thinkingSeen.events.some((e) => e.type === "thinking" && e.text === "Maybe a door."), "the model's thinking is told to the pages watching");
+  ok(thinkingSeen.events.some((e) => e.type === "step" && e.text === "The model is thinking…"), "…with its own step");
 
   // Stop keeps the text so far.
   ai.setDelay(150);
@@ -118,6 +131,8 @@ try {
   const going = runGenerate("fill:d");
   while (!stopping.events.some((e) => e.type === "text")) await new Promise((r) => setTimeout(r, 10));
   ok(generateProgress("fill:d")?.type === "text" && (generateProgress("fill:d") as { text: string }).text.length > 0, "a page that joins a Generate that is going is sent its text so far");
+  const catchUp = generateCatchUp("fill:d");
+  ok(catchUp.map((e) => e.type).join() === "step,text" && catchUp[0].type === "step" && catchUp[0].text === "Writing the chapter…", "…and first, the step it is on");
   ok(stopGenerate("fill:d"), "a Generate that is going can be stopped");
   await going;
   stopping.stop();

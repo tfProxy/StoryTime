@@ -38,6 +38,7 @@ Built and passing its tests against fakes, but not yet tried for real. Tick them
 - [ ] "Apply the AI's codex changes automatically" (Settings › Writing › Codex): write and save 2–3 chapters with it on, then check the AI-marked facts on each character's page (right fact, right chapter, quote), Approve and Edit a few, edit a chapter and confirm only its unapproved AI facts are replaced.
 - [ ] "Flesh out with AI" on a character with few facts: are the invented facts specific and consistent with the story, does "Stay close to the story" keep to the chapters, and does the focus box steer it?
 - [ ] Turn notes into facts on the existing entries that have notes only (they give the AI nothing until they have facts).
+- [ ] Generate on the writing page with a thinking model (e.g. Qwen3 or DeepSeek-R1 on Ollama, and through OpenRouter): the step line under Generate should go "Waiting for the model…" → "The model is thinking…" → "Writing the chapter…", the thinking should fill the fold, and none of it should end up in the chapter text.
 
 **On the Windows machine**
 - [ ] Run `npm run test:e2e` with Edge (`AGENTS.md`); if any file fails only there, note which and why in `AGENTS.md`.
@@ -45,6 +46,11 @@ Built and passing its tests against fakes, but not yet tried for real. Tick them
 ## To build
 
 Roughly in order of usefulness. Nothing here is agreed to start without asking where it goes in the UI.
+
+**Showing what the AI is doing**
+- [ ] Maybe: a sticky header that shows the current task in one line next to the queue button (the queue list already shows each Generate's step), with a thin progress bar.
+- [ ] Maybe: the same step line and thinking fold for AI runs (Write ahead) and the summary and codex buttons, which still say "Writing…" / "Checking…".
+- [ ] Maybe: words per minute and a time left estimate while a chapter is written.
 
 **Tidying the app**
 - [ ] Maybe: bring back "download this path" (Markdown or HTML of the route to a chapter) in the chapter's ⋯ menu. It was dropped when the downloads moved to Details › Export; "Read this path" still shows the route on one page.

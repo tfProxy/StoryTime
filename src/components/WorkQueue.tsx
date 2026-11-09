@@ -122,7 +122,7 @@ export type GenerateItem = {
   href: string;
   label: string;
   state: "waiting" | "working" | "done" | "failed";
-  /** Why it waits ("Waiting for pictures to finish (2 left)"). */
+  /** Why it waits ("Waiting for pictures to finish (2 left)"), or, while it works, what it is doing. */
   note?: string;
   error?: string;
   /** Kept with an error that lost the text, so it can be copied. */
@@ -134,6 +134,10 @@ export type GenerateItem = {
 export type DraftListener = {
   /** The text so far (all of it, each time), and the draft's text when the Generate started. */
   onText: (text: string, base: { title: string; body: string }) => void;
+  /** What it is doing now ("Waiting for the model…"), and since when. */
+  onStep?: (text: string, since: number) => void;
+  /** The model's reasoning so far (all of it, each time). */
+  onThinking?: (text: string) => void;
   onDone: (after: { choiceLabel?: string; suggestions?: string[] }) => void;
   onError: (message: string) => void;
 };
@@ -691,8 +695,10 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
     const source = new EventSource(`/api/queue/generate/events?key=${encodeURIComponent(draftKey)}`);
     source.onmessage = (m) => {
       try {
-        const e = JSON.parse(m.data) as { type: string; text?: string; base?: { title: string; body: string }; after?: { choiceLabel?: string; suggestions?: string[] }; message?: string };
+        const e = JSON.parse(m.data) as { type: string; text?: string; since?: number; base?: { title: string; body: string }; after?: { choiceLabel?: string; suggestions?: string[] }; message?: string };
         if (e.type === "text" && e.text !== undefined && e.base) listener.onText(e.text, e.base);
+        else if (e.type === "step" && e.text !== undefined) listener.onStep?.(e.text, e.since ?? Date.now());
+        else if (e.type === "thinking" && e.text !== undefined) listener.onThinking?.(e.text);
         else if (e.type === "done") listener.onDone(e.after ?? {});
         else if (e.type === "error") listener.onError(e.message ?? "The Generate failed.");
       } catch {

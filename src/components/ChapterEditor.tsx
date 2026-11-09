@@ -30,6 +30,7 @@ import { deleteDraft, DraftConflict, emptyDraft, getDraft, saveDraft, type Draft
 import { applyAfterGenerate, applyGenerated, isBegun, pushUndo, startVersion } from "@/lib/generatedDraft";
 import { useWorkQueue, type GenerateItem } from "./WorkQueue";
 import Prose from "./Prose";
+import { GenerateStep, ThinkingFold } from "./GenerateProgress";
 import AutoTextarea from "./AutoTextarea";
 import CodexPanel from "./CodexPanel";
 import { PageMenu } from "./SiteMenu";
@@ -143,6 +144,10 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   // Story summaries generated during this session, by chapter id (also saved to the server).
   const [madeSummaries, setMadeSummaries] = useState<Record<string, Summaries>>({});
   const [status, setStatus] = useState<string | null>(null);
+  // The Generate's current step and the model's thinking, as the server tells them. The thinking stays shown after
+  // the Generate ends, until the next one.
+  const [genStep, setGenStep] = useState<{ text: string; since: number } | null>(null);
+  const [thinking, setThinking] = useState("");
   const [autoDone, setAutoDone] = useState(false);
   const [codexOpen, setCodexOpen] = useState(false);
   // What the codex drawer opens on: an entry id, "new", or the list. `n` remounts it on each open.
@@ -367,13 +372,17 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       onText: (text, base) => {
         setDraft((d) => (d ? applyGenerated(d, parseChapterOutput(text), { continued: isBegun(d, base) }) : d));
       },
+      onStep: (text, since) => setGenStep({ text, since }),
+      onThinking: setThinking,
       // A quick Generate can start and end between two updates of the queue list, so the page never sees it going;
       // its end event is the sure sign, so the draft is read again here too.
       onDone: (after) => {
+        setGenStep(null);
         setDraft((d) => (d ? applyAfterGenerate(d, after) : d));
         rereadGenerated();
       },
       onError: (message) => {
+        setGenStep(null);
         setError(message);
         rereadGenerated();
       },
@@ -512,6 +521,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     if (!draft) return;
     setError(null);
     setLastAction("generate");
+    setGenStep(null);
+    setThinking("");
     setReading(true);
     setSelection(null);
     // What is typed on the page is saved first, so the server builds on it (the page stops saving while it generates).
@@ -1072,6 +1083,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                 {generating.note ?? "Waiting its turn…"}
               </p>
             )}
+            {generating?.state === "working" && genStep && <GenerateStep key={genStep.text} text={genStep.text} since={genStep.since} />}
+            {thinking && <ThinkingFold text={thinking} live={generating?.state === "working"} />}
             {hasBody && busy === null && (
               <p className="meta">This adds a new draft; the current text is kept, and you can switch between drafts under Chapter.</p>
             )}

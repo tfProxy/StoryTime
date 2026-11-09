@@ -1,6 +1,6 @@
 import { getWorker } from "@/lib/worker";
 import { subscribe } from "@/lib/worker/bus";
-import { genChannel, generateProgress } from "@/lib/worker/generate";
+import { genChannel, generateCatchUp } from "@/lib/worker/generate";
 import { sseResponse } from "@/lib/worker/sse";
 
 export const dynamic = "force-dynamic";
@@ -13,8 +13,7 @@ export async function GET(request: Request) {
   if (!key) return Response.json({ error: "key is required" }, { status: 400 });
   return sseResponse(request, (send) => {
     const stop = subscribe(genChannel(key), send);
-    const now = generateProgress(key);
-    if (now) send(now);
+    for (const event of generateCatchUp(key)) send(event);
     return stop;
   });
 }

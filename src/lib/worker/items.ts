@@ -79,7 +79,7 @@ export const generateData = z.object({
   label: z.string(),
   /** The `GenerateRequest`, kept so the work can start when its turn comes. */
   request: json,
-  /** Why it waits ("Waiting for pictures to finish (2 left)"). */
+  /** Why it waits ("Waiting for pictures to finish (2 left)"), or, while it works, what it is doing ("Suggesting choices…"). */
   note: z.string().optional(),
   error: z.string().optional(),
   /** Kept with an error that lost the text, so it can be copied. */

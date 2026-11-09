@@ -319,7 +319,7 @@ export function GenerateRow({ item, onStop, onDismiss }: { item: GenerateItem; o
       </div>
       <div className="picture-queue-line">
         <span className="meta">
-          {item.state === "waiting" ? (item.note ?? "Waiting its turn") : item.state === "working" ? "Writing…" : item.state === "done" ? "Ready" : "Failed"}
+          {item.state === "waiting" ? (item.note ?? "Waiting its turn") : item.state === "working" ? (item.note ?? "Writing…") : item.state === "done" ? "Ready" : "Failed"}
         </span>
         {going && (
           <button type="button" className="picture-queue-text-button" onClick={onStop}>

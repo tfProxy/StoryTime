@@ -260,6 +260,32 @@ a {
   margin-top: 0.7rem;
 }
 
+/* A Generate's step and the model's thinking, under the Generate button (GenerateProgress.tsx). */
+.generate-step-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.thinking-fold {
+  margin-top: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.4rem 0.7rem;
+}
+
+.thinking-fold > summary {
+  cursor: pointer;
+}
+
+.thinking-text {
+  margin-top: 0.4rem;
+  max-height: 14rem;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
 .write-ahead-unfinished {
   border: 1px solid var(--accent);
   border-radius: 6px;

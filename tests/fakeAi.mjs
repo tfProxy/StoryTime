@@ -12,7 +12,8 @@ import http from "node:http";
  * A prefix before `/v1/chat/completions`, `/api/ps` or `/api/generate` is accepted (`/ol/api/ps`).
  */
 export async function startFakeAi({ port = 0, reply = "A reply from the fake AI.", delay = 20, loaded = [] } = {}) {
-  const state = { reply, delay };
+  // `thinking`: reasoning sent as `reasoning_content` before a streamed reply (setThinking; null for none).
+  const state = { reply, delay, thinking: null };
   const requests = [];
   const server = http.createServer((req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -61,6 +62,7 @@ export async function startFakeAi({ port = 0, reply = "A reply from the fake AI.
       let i = 0;
       let closed = false;
       res.on("close", () => { closed = true; });
+      if (state.thinking) res.write(`data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: state.thinking } }] })}\n\n`);
       const next = () => {
         if (closed) return;
         if (i < pieces.length) {
@@ -85,6 +87,7 @@ export async function startFakeAi({ port = 0, reply = "A reply from the fake AI.
     requests,
     setReply: (r) => { state.reply = r; },
     setDelay: (ms) => { state.delay = ms; },
+    setThinking: (t) => { state.thinking = t; },
     close: () => new Promise((resolve) => { server.closeAllConnections?.(); server.close(() => resolve()); }),
   };
 }

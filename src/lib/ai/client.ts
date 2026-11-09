@@ -18,6 +18,10 @@ export type ChatRequest = {
   signal?: AbortSignal;
   /** Where the call comes from, for the prompt history. A call without one is recorded as "Other". */
   source?: AiSource;
+  /** Told what the call is waiting on before the reply starts ("Freeing ComfyUI's memory…", "Waiting for the model…"). */
+  onStatus?: (text: string) => void;
+  /** Given each piece of the model's reasoning, for models that think before they answer. It is not part of the reply. */
+  onThinking?: (piece: string) => void;
 };
 
 /** The short, stable label of a call (they are the history's filter list), and what it was made for. */
@@ -213,7 +217,11 @@ export async function* streamChat(settings: Settings, req: ChatRequest): AsyncGe
 
 async function* streamReply(settings: Settings, req: ChatRequest, r: Resolved): AsyncGenerator<string> {
   // A model sharing the graphics card with ComfyUI gets the memory first, when the connection asks for it.
-  if (r.freeComfy && settings.comfy.url.trim()) await freeComfyMemory(settings.comfy.url);
+  if (r.freeComfy && settings.comfy.url.trim()) {
+    req.onStatus?.("Freeing ComfyUI’s memory…");
+    await freeComfyMemory(settings.comfy.url);
+  }
+  req.onStatus?.("Waiting for the model…");
 
   if (r.protocol === "anthropic") {
     const body: Record<string, unknown> = {
@@ -231,13 +239,14 @@ async function* streamReply(settings: Settings, req: ChatRequest, r: Resolved): 
       CORS_HINT,
     );
     for await (const data of sseData(res)) {
-      let evt: { type?: string; delta?: { type?: string; text?: string }; error?: { message?: string } };
+      let evt: { type?: string; delta?: { type?: string; text?: string; thinking?: string }; error?: { message?: string } };
       try {
         evt = JSON.parse(data);
       } catch {
         continue;
       }
       if (evt.type === "error") throw new AiError(evt.error?.message ?? "The model returned an error");
+      if (evt.type === "content_block_delta" && evt.delta?.type === "thinking_delta" && evt.delta.thinking) req.onThinking?.(evt.delta.thinking);
       if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta" && evt.delta.text) {
         yield evt.delta.text;
       }
@@ -259,18 +268,88 @@ async function* streamReply(settings: Settings, req: ChatRequest, r: Resolved): 
     { method: "POST", headers: headers(r), body: JSON.stringify(body), signal: req.signal },
     CORS_HINT,
   );
+  // Reasoning comes as its own field (`reasoning_content` from llama.cpp, vLLM, LM Studio and DeepSeek; `reasoning`
+  // from OpenRouter and Ollama), or, from a server that does not separate it, as a <think> block opening the reply.
+  const split = thinkSplitter((t) => req.onThinking?.(t));
   for await (const data of sseData(res)) {
-    if (data === "[DONE]") return;
-    let evt: { choices?: { delta?: { content?: string | null } }[]; error?: { message?: string } };
+    if (data === "[DONE]") break;
+    let evt: { choices?: { delta?: { content?: string | null; reasoning_content?: string | null; reasoning?: string | null } }[]; error?: { message?: string } };
     try {
       evt = JSON.parse(data);
     } catch {
       continue;
     }
     if (evt.error) throw new AiError(evt.error.message ?? "The model returned an error");
-    const piece = evt.choices?.[0]?.delta?.content;
-    if (piece) yield piece;
+    const delta = evt.choices?.[0]?.delta;
+    const reasoning = delta?.reasoning_content ?? delta?.reasoning;
+    if (typeof reasoning === "string" && reasoning) req.onThinking?.(reasoning);
+    const piece = delta?.content;
+    if (piece) {
+      const out = split.push(piece);
+      if (out) yield out;
+    }
   }
+  const rest = split.end();
+  if (rest) yield rest;
+}
+
+const OPEN_THINK = "<think>";
+const CLOSE_THINK = "</think>";
+
+/**
+ * Takes a <think>…</think> block off the start of a streamed reply and hands it to `onThinking`. `push` answers the
+ * reply text that can be given out now; `end` answers what was held back. A reply that does not open with <think> is
+ * passed through unchanged (only its first few characters are held until that is clear).
+ */
+export function thinkSplitter(onThinking: (text: string) => void) {
+  let mode: "start" | "think" | "reply" = "start";
+  let held = "";
+  return {
+    push(piece: string): string {
+      if (mode === "reply") return piece;
+      held += piece;
+      if (mode === "start") {
+        const lead = held.trimStart();
+        if (lead.length < OPEN_THINK.length && OPEN_THINK.startsWith(lead)) return "";
+        if (!lead.startsWith(OPEN_THINK)) {
+          mode = "reply";
+          const out = held;
+          held = "";
+          return out;
+        }
+        mode = "think";
+        held = lead.slice(OPEN_THINK.length);
+      }
+      const end = held.indexOf(CLOSE_THINK);
+      if (end < 0) {
+        // Keep back an ending that could be the start of </think>.
+        let keep = 0;
+        for (let n = Math.min(CLOSE_THINK.length - 1, held.length); n > 0; n--) {
+          if (CLOSE_THINK.startsWith(held.slice(-n))) {
+            keep = n;
+            break;
+          }
+        }
+        if (held.length > keep) onThinking(held.slice(0, held.length - keep));
+        held = held.slice(held.length - keep);
+        return "";
+      }
+      if (end > 0) onThinking(held.slice(0, end));
+      mode = "reply";
+      const out = held.slice(end + CLOSE_THINK.length).replace(/^\s+/, "");
+      held = "";
+      return out;
+    },
+    end(): string {
+      const out = held;
+      held = "";
+      if (mode === "think") {
+        if (out) onThinking(out);
+        return "";
+      }
+      return out;
+    },
+  };
 }
 
 /** Convenience: collect a whole reply, optionally reporting progress. */

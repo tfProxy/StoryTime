@@ -52,6 +52,10 @@ export type GenerateAfter = { choiceLabel?: string; suggestions?: string[] };
 /** What a page watching a Generate is sent on `gen:<draft key>`. */
 export type GenerateEvent =
   | { type: "text"; text: string; base: { title: string; body: string } }
+  /** What it is doing now ("Summarizing the story so far (1 of 3)…", "The model is thinking…"), and since when. */
+  | { type: "step"; text: string; since: number }
+  /** The model's reasoning so far (all of it, each time), for models that think before they write. */
+  | { type: "thinking"; text: string }
   | { type: "done"; after: GenerateAfter }
   | { type: "stopped" }
   | { type: "error"; message: string };
@@ -105,6 +109,18 @@ export function generateProgress(draftKey: string): GenerateEvent | null {
   return { type: "text", text: running.text, base: request.base };
 }
 
+/** Everything a page that starts watching a Generate going now is sent first: its step, its thinking, its text. */
+export function generateCatchUp(draftKey: string): GenerateEvent[] {
+  const running = workerState().generates.get(draftKey);
+  const text = generateProgress(draftKey);
+  if (!running || !text) return [];
+  return [
+    ...(running.step ? [{ type: "step" as const, ...running.step }] : []),
+    ...(running.thinking ? [{ type: "thinking" as const, text: running.thinking }] : []),
+    text,
+  ];
+}
+
 /** Puts the text into the draft, once more if the draft changed meanwhile. */
 function saveGenerated(req: GenerateRequest, text: string, after?: GenerateAfter) {
   for (let attempt = 0; ; attempt++) {
@@ -132,18 +148,42 @@ export async function runGenerate(draftKey: string): Promise<void> {
   }
   const req = item.data.request as GenerateRequest;
   const settings = getSettings() ?? parseSettings({});
-  const run: { text: string; ctl: AbortController; discard?: boolean } = { text: "", ctl: new AbortController() };
+  const run: { text: string; ctl: AbortController; discard?: boolean; step?: { text: string; since: number }; thinking: string } = { text: "", ctl: new AbortController(), thinking: "" };
   workerState().generates.set(draftKey, run);
   updateItem(itemKey, { state: "working", data: { note: undefined, error: undefined, text: undefined } });
   const tell = (event: GenerateEvent) => publish(genChannel(draftKey), event);
+  // Each step goes to the pages watching and into the item's note, which the queue list in the header shows.
+  const step = (text: string) => {
+    if (run.step?.text === text) return;
+    run.step = { text, since: Date.now() };
+    tell({ type: "step", ...run.step });
+    updateItem(itemKey, { data: { note: text } });
+  };
   let lastSave = 0;
   let lastTold = 0;
+  let lastThought = 0;
+  const onThinking = (piece: string) => {
+    if (!run.thinking) step("The model is thinking…");
+    run.thinking += piece;
+    if (Date.now() - lastThought >= TEXT_MS) {
+      lastThought = Date.now();
+      tell({ type: "thinking", text: run.thinking });
+    }
+  };
   try {
     // A Generate knows no story or chapter id (the request has the story as text), so its calls carry its queue item.
     const ids = { itemKey };
-    const ready = await withPathSummaries(settings, req.ctx, run.ctl.signal, undefined, selfFetch, ids);
+    step("Getting the story ready…");
+    const ready = await withPathSummaries(settings, req.ctx, run.ctl.signal, step, selfFetch, ids);
     const message = generatePrompt(ready, req.direction, req.length, settings.contextTokens);
-    for await (const piece of streamChat(settings, { system: SYSTEM_CHAPTER, messages: [{ role: "user", content: message }], role: "main", model: req.model, signal: run.ctl.signal, source: { label: "Generate", ...ids } })) {
+    for await (const piece of streamChat(settings, {
+      system: SYSTEM_CHAPTER, messages: [{ role: "user", content: message }], role: "main", model: req.model, signal: run.ctl.signal, source: { label: "Generate", ...ids },
+      onStatus: step, onThinking,
+    })) {
+      if (!run.text) {
+        if (run.thinking) tell({ type: "thinking", text: run.thinking });
+        step("Writing the chapter…");
+      }
       run.text += piece;
       // The text so far goes out at most four times a second (the end sends it whole, below).
       if (Date.now() - lastTold >= TEXT_MS) {
@@ -160,6 +200,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
     if (chapter.body.trim()) {
       const shown = { title: chapter.title ?? "", body: chapter.body };
       if (req.after.choiceText) {
+        step("Writing the choice text…");
         try {
           const reply = await completeChat(settings, {
             system: SYSTEM_CHOICE_LABEL,
@@ -173,6 +214,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
         }
       }
       if (req.after.suggestChoices) {
+        step("Suggesting choices…");
         try {
           const reply = await completeChat(settings, {
             system: SYSTEM_CHOICES,
@@ -189,7 +231,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
     saveGenerated(req, run.text, after);
     tell({ type: "text", text: run.text, base: req.base });
     tell({ type: "done", after });
-    updateItem(itemKey, { state: "done" });
+    updateItem(itemKey, { state: "done", data: { note: undefined } });
   } catch (e) {
     if (isAbort(e)) {
       // Stopped: what was written stays in the draft (unless the draft was deleted).
@@ -213,7 +255,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
       }
       if (e instanceof DraftChanged) message = e.message;
       tell({ type: "error", message });
-      updateItem(itemKey, { state: "failed", data: { error: message, ...(e instanceof DraftChanged && { text: run.text }) } });
+      updateItem(itemKey, { state: "failed", data: { note: undefined, error: message, ...(e instanceof DraftChanged && { text: run.text }) } });
     }
   } finally {
     workerState().generates.delete(draftKey);
