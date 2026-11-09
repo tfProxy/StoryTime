@@ -54,6 +54,7 @@ export default function ChapterActions({
         <Link href={`/s/${storyId}/outline#c-${chapterId}`}>Open in outline</Link>
         <Link href={`/s/${storyId}/review?tab=summaries&chapter=${chapterId}`}>{summaryDone ? "Summary" : "Summary (missing)"}</Link>
         <Link href={`/s/${storyId}/pictures?from=${chapterId}`}>Make missing pictures…</Link>
+        <Link href={`/s/${storyId}/review?tab=retcons&chapter=${chapterId}&new=1`}>Retcon from here…</Link>
       </MoreMenu>
     </div>
   );

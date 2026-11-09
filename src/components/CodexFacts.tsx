@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import {
   DRAFT_ANCHOR,
@@ -44,6 +45,8 @@ type Props = {
   editingChapter?: boolean;
   /** Turns the entry's notes into facts (the notes section's button), offered by the notes-but-no-facts hint; left out where it isn't offered. */
   notesToFacts?: { start: () => void; busy: boolean };
+  /** Where a fact's "Retcon…" goes (the Story Bible's Retcons section); left out where it isn't offered. */
+  retconHref?: (factId: string) => string;
 };
 
 type Body = { op: "set" | "retire"; aspect: string; form: string; text: string; quote: string; fact_id?: string; anchor: string };
@@ -58,7 +61,7 @@ const NEW_FORM = "\u0000new";
  * An entry's form and facts. Every form opens directly beneath the button (or row) that opened it, and the
  * add form at the end of the list.
  */
-export default function CodexFacts({ entry, factOps, path, chapterId, usedAspects, onSaved, anchorPath = path, hold, editingChapter = false, notesToFacts }: Props) {
+export default function CodexFacts({ entry, factOps, path, chapterId, usedAspects, onSaved, anchorPath = path, hold, editingChapter = false, notesToFacts, retconHref }: Props) {
   const [formOpen, setFormOpen] = useState(false);
   // A fact's id while it is being changed, "new" while one is being added.
   const [editing, setEditing] = useState<string | null>(null);
@@ -426,6 +429,11 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
                     <button type="button" className="linkish" aria-expanded={history.includes(f.fact_id)} onClick={() => toggleHistory(f.fact_id)}>
                       History
                     </button>
+                    {retconHref && !isAiFact(f) && (
+                      <Link className="linkish" href={retconHref(f.fact_id)} aria-label={`Retcon ${f.aspect || "the fact"}`}>
+                        Retcon…
+                      </Link>
+                    )}
                   </div>
                   {editing === f.fact_id && (
                     <FactForm

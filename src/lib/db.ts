@@ -907,6 +907,42 @@ export const MIGRATIONS: string[] = [
     updated_at INTEGER NOT NULL
   );
   `,
+  // 50: retcons (see ./retcons). A retcon changes a detail from a chapter on, as if it had always been so, and the AI
+  // reads the chapters below it for passages to change. `codex` is JSON: the fact change made when the retcon started,
+  // so Undo can take it back. `chapter_ids`: the chapters to read (JSON). retcon_changes holds the AI's proposed
+  // replacements for one chapter (`edits`, JSON [{old, new}]), and once applied, the text it replaced, for Undo.
+  `
+  CREATE TABLE retcons (
+    id          TEXT PRIMARY KEY,
+    story_id    TEXT NOT NULL REFERENCES stories(id),
+    chapter_id  TEXT NOT NULL REFERENCES chapters(id),
+    kind        TEXT NOT NULL CHECK (kind IN ('codex', 'note')),
+    entry_id    TEXT,
+    title       TEXT NOT NULL,
+    instruction TEXT NOT NULL,
+    codex       TEXT,
+    chapter_ids TEXT NOT NULL,
+    run_id      TEXT,
+    created_at  INTEGER NOT NULL,
+    undone_at   INTEGER
+  );
+  CREATE INDEX retcons_story ON retcons(story_id, created_at);
+  CREATE TABLE retcon_changes (
+    id               TEXT PRIMARY KEY,
+    retcon_id        TEXT NOT NULL REFERENCES retcons(id),
+    chapter_id       TEXT NOT NULL REFERENCES chapters(id),
+    revision         INTEGER NOT NULL,
+    edits            TEXT NOT NULL,
+    note             TEXT NOT NULL DEFAULT '',
+    status           TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'applied', 'skipped', 'undone')),
+    before_body      TEXT,
+    before_summary   TEXT,
+    applied_revision INTEGER,
+    created_at       INTEGER NOT NULL,
+    decided_at       INTEGER,
+    UNIQUE (retcon_id, chapter_id)
+  );
+  `,
 ];
 
 function open(): Database.Database {
