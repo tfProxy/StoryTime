@@ -3,7 +3,7 @@
 // NOT stored: it is fetched again from `original`. Pure code plus thin storage helpers (every storage access is
 // in a try/catch, so the page works without storage).
 import type { ComfyImage } from "../comfy/client";
-import { readPaintStrokes } from "../paint";
+import { MAX_PAINT_STROKES, readPaintStrokes, type PaintStroke } from "../paint";
 import type { MaskState, MaskStroke } from "../mask";
 import { startHistory, type History, type RefineState } from "../refineHistory";
 import type { PictureTarget, SavedSlot } from "../pictureTarget";
@@ -199,17 +199,23 @@ export function readOriginal(v: unknown): StoredOriginal | null {
   return null;
 }
 
+function readMaskStroke(s: unknown): MaskStroke | null {
+  if (!isObject(s) || (s.tool !== "brush" && s.tool !== "eraser" && s.tool !== "fill") || !isNum(s.size) || !Array.isArray(s.points)) return null;
+  const points: MaskStroke["points"] = [];
+  for (const p of s.points) {
+    if (!Array.isArray(p) || !isNum(p[0]) || !isNum(p[1])) return null;
+    points.push([p[0], p[1], isNum(p[2]) ? Math.min(1, Math.max(0, p[2])) : 0]);
+  }
+  return { tool: s.tool, size: Math.max(1, s.size), points };
+}
+
 function readMaskState(v: unknown): MaskState | null {
   if (!isObject(v) || !Array.isArray(v.strokes) || !isNum(v.softness) || typeof v.inverted !== "boolean") return null;
   const strokes: MaskStroke[] = [];
   for (const s of v.strokes) {
-    if (!isObject(s) || (s.tool !== "brush" && s.tool !== "eraser" && s.tool !== "fill") || !isNum(s.size) || !Array.isArray(s.points)) return null;
-    const points: MaskStroke["points"] = [];
-    for (const p of s.points) {
-      if (!Array.isArray(p) || !isNum(p[0]) || !isNum(p[1])) return null;
-      points.push([p[0], p[1], isNum(p[2]) ? Math.min(1, Math.max(0, p[2])) : 0]);
-    }
-    strokes.push({ tool: s.tool, size: Math.max(1, s.size), points });
+    const m = readMaskStroke(s);
+    if (!m) return null;
+    strokes.push(m);
   }
   return { strokes, softness: Math.max(0, v.softness), inverted: v.inverted };
 }
@@ -221,11 +227,75 @@ export function readRefineState(v: unknown): RefineState | null {
   return { base: v.base, paint: readPaintStrokes(v.paint), mask, paintVisible: v.paintVisible !== false, maskVisible: v.maskVisible !== false };
 }
 
+// ---- the stored history ----
+//
+// Each undo step holds every stroke there was then, so storing the steps whole grows with the square of the strokes
+// (and saving took longer after every stroke). Stored, the present is whole, and the past and future steps name
+// their strokes by number: below the present's count, the present's own stroke; from there on, one in `extra`.
+// Loaded back, a stroke is one object in every step that has it, as it was while editing.
+
+type PackedState = Omit<RefineState, "paint" | "mask"> & { paint: number[]; mask: Omit<MaskState, "strokes"> & { strokes: number[] } };
+type PackedHistory = { past: PackedState[]; present: RefineState; future: PackedState[]; extra: { paint: PaintStroke[]; mask: MaskStroke[] } };
+
+/** Picture pixels to a hundredth, pressure to a thousandth, time to the millisecond: far below what can be seen, and a third of the JSON. */
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const r3 = (n: number) => Math.round(n * 1000) / 1000;
+const trimPaint = (s: PaintStroke): PaintStroke => ({ ...s, points: s.points.map((p) => [r2(p[0]), r2(p[1]), r3(p[2]), Math.round(p[3])]) });
+const trimMask = (s: MaskStroke): MaskStroke => ({ ...s, points: s.points.map((p) => [r2(p[0]), r2(p[1]), r3(p[2])]) });
+
+function packHistory(h: History<RefineState>): PackedHistory {
+  const p = h.present;
+  const paintIds = new Map<PaintStroke, number>(p.paint.map((s, i) => [s, i]));
+  const maskIds = new Map<MaskStroke, number>(p.mask.strokes.map((s, i) => [s, i]));
+  const extra = { paint: [] as PaintStroke[], mask: [] as MaskStroke[] };
+  const idOf = <T>(ids: Map<T, number>, list: T[], base: number, s: T): number => {
+    let i = ids.get(s);
+    if (i === undefined) {
+      i = base + list.length;
+      ids.set(s, i);
+      list.push(s);
+    }
+    return i;
+  };
+  const pack = (s: RefineState): PackedState => ({
+    ...s,
+    paint: s.paint.map((x) => idOf(paintIds, extra.paint, p.paint.length, x)),
+    mask: { ...s.mask, strokes: s.mask.strokes.map((x) => idOf(maskIds, extra.mask, p.mask.strokes.length, x)) },
+  });
+  const past = h.past.map(pack);
+  const future = h.future.map(pack);
+  return {
+    past,
+    present: { ...p, paint: p.paint.map(trimPaint), mask: { ...p.mask, strokes: p.mask.strokes.map(trimMask) } },
+    future,
+    extra: { paint: extra.paint.map(trimPaint), mask: extra.mask.map(trimMask) },
+  };
+}
+
 export function readHistory(v: unknown): History<RefineState> | null {
   if (!isObject(v) || !Array.isArray(v.past) || !Array.isArray(v.future)) return null;
   const present = readRefineState(v.present);
   if (!present) return null;
-  const list = (a: unknown[]) => a.map(readRefineState).filter((s): s is RefineState => s !== null);
+  if (!isObject(v.extra)) {
+    // Saved before the steps named their strokes: each step is whole.
+    const list = (a: unknown[]) => a.map(readRefineState).filter((s): s is RefineState => s !== null);
+    return { past: list(v.past), present, future: list(v.future) };
+  }
+  // A broken stroke is null here, so the numbers after it still name the right ones; the steps that had it lose it.
+  const extraPaint = Array.isArray(v.extra.paint) ? v.extra.paint.map((s) => readPaintStrokes([s])[0] ?? null) : [];
+  const extraMask = Array.isArray(v.extra.mask) ? v.extra.mask.map(readMaskStroke) : [];
+  // The present's strokes one by one, so a number still names the stored place when one before it is broken.
+  const storedPaint = isObject(v.present) && Array.isArray(v.present.paint) ? v.present.paint : [];
+  const paintAt = storedPaint.map((s) => readPaintStrokes([s])[0] ?? null);
+  present.paint = paintAt.filter((x): x is PaintStroke => x !== null).slice(0, MAX_PAINT_STROKES);
+  const strokeOf = <T>(own: (T | null)[], extra: (T | null)[], i: unknown): T | null => (Number.isInteger(i) && (i as number) >= 0 ? ((i as number) < own.length ? own[i as number] : (extra[(i as number) - own.length] ?? null)) : null);
+  const unpack = (s: unknown): RefineState | null => {
+    if (!isObject(s) || !isStr(s.base) || !Array.isArray(s.paint) || !isObject(s.mask) || !Array.isArray(s.mask.strokes) || !isNum(s.mask.softness) || typeof s.mask.inverted !== "boolean") return null;
+    const paint = s.paint.map((i) => strokeOf(paintAt, extraPaint, i)).filter((x): x is PaintStroke => x !== null);
+    const strokes = s.mask.strokes.map((i) => strokeOf(present.mask.strokes, extraMask, i)).filter((x): x is MaskStroke => x !== null);
+    return { base: s.base, paint, mask: { strokes, softness: Math.max(0, s.mask.softness), inverted: s.mask.inverted }, paintVisible: s.paintVisible !== false, maskVisible: s.maskVisible !== false };
+  };
+  const list = (a: unknown[]) => a.map(unpack).filter((s): s is RefineState => s !== null);
   return { past: list(v.past), present, future: list(v.future) };
 }
 
@@ -312,7 +382,7 @@ export function imageOfResultBase(id: string): ComfyImage | null {
 export function serializeSession(session: RefineSession, maxBytes = MAX_SESSION_BYTES): string | null {
   let s = session;
   for (;;) {
-    const json = JSON.stringify(s);
+    const json = JSON.stringify({ ...s, history: packHistory(s.history) });
     if (json.length <= maxBytes) return json;
     const h = s.history;
     if (h.past.length > 0) s = { ...s, history: { ...h, past: h.past.slice(Math.max(1, Math.ceil(h.past.length / 4))) } };

@@ -16,7 +16,7 @@ import {
   type Size,
   type View,
 } from "@/lib/mask";
-import { drawPaintStroke, flattenToBlob, MAX_PAINT_POINTS, pickColor, renderPaintLayer, type PaintStroke } from "@/lib/paint";
+import { addPaintStrokes, compositeLayer, drawNewStamps, flattenToBlob, MAX_PAINT_POINTS, nextStamps, pickColor, renderPaintLayer, type LiveCarry, type PaintStroke } from "@/lib/paint";
 import type { RefineState } from "@/lib/refineHistory";
 import type { StartPicture } from "@/lib/comfy/startPicture";
 import { defaultMaskSize, type RefineTool, type ToolSettings } from "@/lib/refine/tools";
@@ -73,8 +73,13 @@ type Live = {
   paint?: PaintStroke;
   mask?: MaskStroke;
   pick?: boolean;
-  /** Redraw the whole stroke over a copy of the layer each frame (needed below full opacity, where stamps must not pile up). */
+  /**
+   * Below full opacity, where stamps must not pile up: the stroke grows on a scratch layer at full alpha, and each
+   * frame puts a copy of the layer as it was back and composites the scratch over it once.
+   */
   exact: boolean;
+  /** Where the paint stroke's stamps have got to, so each frame draws only the new ones. */
+  carry: LiveCarry;
   timer?: ReturnType<typeof setInterval>;
 };
 
@@ -94,6 +99,11 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
   const maskCanvas = useRef<HTMLCanvasElement>(null);
   const cursorEl = useRef<HTMLDivElement>(null);
   const snapCanvas = useRef<HTMLCanvasElement | null>(null);
+  const strokeCanvas = useRef<HTMLCanvasElement | null>(null);
+  /** The strokes the paint layer shows now, so a stroke added to them is drawn on its own instead of redrawing them all. */
+  const rendered = useRef<PaintStroke[] | null>(null);
+  /** A stroke that just ended: the layer already shows it exactly as drawn live, so it isn't drawn again. */
+  const shownLive = useRef<PaintStroke | null>(null);
   const previewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const [loaded, setLoaded] = useState<{ bitmap: ImageBitmap; w: number; h: number } | null>(null);
@@ -205,12 +215,24 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
     if (ctx && loaded) ctx.drawImage(loaded.bitmap, 0, 0);
   }, [loaded]);
 
-  // The paint layer, redrawn from the state whenever the strokes change (a stroke that just ended is drawn whole, exactly).
+  // The paint layer, kept in step with the state. Strokes added to what it shows are drawn on their own (the one
+  // that just ended is already there); anything else (undo, a new picture) redraws every stroke.
   useEffect(() => {
     const ctx = paintCanvas.current?.getContext("2d");
     if (!ctx || !loaded) return;
-    if (live.current) stopLive();
-    renderPaintLayer(ctx, loaded.w, loaded.h, state.paint);
+    const wasLive = !!live.current;
+    if (wasLive) stopLive();
+    const prev = rendered.current;
+    const next = state.paint;
+    if (!wasLive && prev && next.length >= prev.length && prev.every((s, i) => next[i] === s)) {
+      let added = next.slice(prev.length);
+      if (added[0] && added[0] === shownLive.current) added = added.slice(1);
+      addPaintStrokes(ctx, loaded.w, loaded.h, added);
+    } else {
+      renderPaintLayer(ctx, loaded.w, loaded.h, next);
+    }
+    rendered.current = next;
+    shownLive.current = null;
   }, [loaded, state.paint]);
 
   // The mask tint.
@@ -368,6 +390,8 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
     const ctx = paintCanvas.current?.getContext("2d");
     if (!ctx) return;
     renderPaintLayer(ctx, latest.current.w, latest.current.h, latest.current.state.paint);
+    rendered.current = latest.current.state.paint;
+    shownLive.current = null;
     paintCanvas.current!.style.visibility = latest.current.state.paintVisible ? "visible" : "hidden";
   }
 
@@ -387,7 +411,13 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
     if (l.paint) {
       const ctx = paintCanvas.current?.getContext("2d");
       if (!ctx) return;
-      if (l.exact && snapCanvas.current) {
+      const { stamps, carry } = nextStamps(l.paint, l.drawn, l.carry);
+      l.carry = carry;
+      l.drawn = l.paint.points.length;
+      if (stamps.length === 0) return;
+      const sctx = strokeCanvas.current?.getContext("2d");
+      if (l.exact && snapCanvas.current && strokeCanvas.current && sctx) {
+        drawNewStamps(sctx, l.paint, stamps, false);
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.globalAlpha = 1;
@@ -395,11 +425,10 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
         ctx.clearRect(0, 0, pw, ph);
         ctx.drawImage(snapCanvas.current, 0, 0);
         ctx.restore();
-        drawPaintStroke(ctx, l.paint, 0);
+        compositeLayer(ctx, strokeCanvas.current, l.paint);
       } else {
-        drawPaintStroke(ctx, l.paint, l.drawn);
+        drawNewStamps(ctx, l.paint, stamps, true);
       }
-      l.drawn = l.paint.points.length;
     } else if (l.mask) {
       const ctx = maskCanvas.current?.getContext("2d");
       if (!ctx) return;
@@ -446,7 +475,7 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
     if (latest.current.previewing || latest.current.frozen) return;
     const { tool: t, settings: s, w: pw, h: ph } = latest.current;
     const pt = pointFrom(e);
-    const base: Live = { id: e.pointerId, tap: true, drawn: 0, t0: performance.now(), pos: pt, exact: false };
+    const base: Live = { id: e.pointerId, tap: true, drawn: 0, t0: performance.now(), pos: pt, exact: false, carry: null };
     if (t === "eyedropper") {
       live.current = { ...base, pick: true };
       pick(e);
@@ -469,9 +498,17 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
       live.current = { ...base, paint: stroke, exact };
       if (exact && paintCanvas.current) {
         // A copy of the layer as it is, to draw the growing stroke over exactly (the preview then matches the finished stroke).
+        // Both are kept between strokes; setting a canvas's size empties it.
         const snap = (snapCanvas.current ??= document.createElement("canvas"));
-        snap.width = pw;
-        snap.height = ph;
+        const scratch = (strokeCanvas.current ??= document.createElement("canvas"));
+        for (const c of [snap, scratch]) {
+          if (c.width !== pw || c.height !== ph) {
+            c.width = pw;
+            c.height = ph;
+          } else {
+            c.getContext("2d")?.clearRect(0, 0, pw, ph);
+          }
+        }
         snap.getContext("2d")?.drawImage(paintCanvas.current, 0, 0);
       }
       if (stroke.tool === "airbrush") {
@@ -586,6 +623,11 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
     }
     const l = live.current;
     if (!l || l.id !== e.pointerId) return;
+    // The points since the last frame are drawn now, so the layer shows the whole stroke when it is kept.
+    if (!cancelled && l.paint && raf.current) {
+      cancelAnimationFrame(raf.current);
+      frameDraw();
+    }
     stopLive();
     if (l.pick) return;
     if (cancelled) {
@@ -616,6 +658,7 @@ export default function RefineCanvas({ picture, preview = null, frozen = false, 
       }
       latest.current.onMaskStroke(l.mask);
     } else if (l.paint) {
+      shownLive.current = l.paint;
       latest.current.onPaintStroke(l.paint);
     }
   }

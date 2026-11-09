@@ -178,22 +178,77 @@ function drawStamps(ctx: Ctx, stroke: PaintStroke, stamps: Stamp[], flow: number
   }
 }
 
-/** Draws one stroke into `scratch` at full alpha, then composites it onto `ctx` ONCE at the stroke's opacity. */
-function compositeStroke(ctx: Ctx, scratchCanvas: CanvasLike, stroke: PaintStroke) {
-  const sctx = ctxOf(scratchCanvas);
-  if (!sctx || stroke.points.length === 0) return;
+/** Draws stamps of `stroke` onto `scratch` at full alpha (to be composited once with `compositeLayer`). */
+function scratchStamps(sctx: Ctx, stroke: PaintStroke, stamps: Stamp[]) {
   sctx.save();
   sctx.setTransform(1, 0, 0, 1, 0, 0);
   sctx.globalCompositeOperation = "source-over";
-  sctx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height);
-  drawStamps(sctx, stroke, strokeStamps(stroke), stroke.tool === "airbrush" ? AIRBRUSH_FLOW : 1, stroke.tool === "eraser" ? "#000000" : stroke.color);
+  sctx.globalAlpha = 1;
+  drawStamps(sctx, stroke, stamps, stroke.tool === "airbrush" ? AIRBRUSH_FLOW : 1, stroke.tool === "eraser" ? "#000000" : stroke.color);
   sctx.restore();
+}
+
+/** Composites a scratch layer holding one stroke onto `ctx` at the stroke's opacity (the eraser takes paint away). */
+export function compositeLayer(ctx: Ctx, scratchCanvas: CanvasImageSource, stroke: PaintStroke) {
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalCompositeOperation = stroke.tool === "eraser" ? "destination-out" : "source-over";
   ctx.globalAlpha = Math.min(1, Math.max(0, stroke.opacity));
   ctx.drawImage(scratchCanvas, 0, 0);
   ctx.restore();
+}
+
+/** Draws one stroke into `scratch` at full alpha, then composites it onto `ctx` ONCE at the stroke's opacity. */
+function compositeStroke(ctx: Ctx, scratchCanvas: CanvasLike, stroke: PaintStroke) {
+  const sctx = ctxOf(scratchCanvas);
+  if (!sctx || stroke.points.length === 0) return;
+  sctx.save();
+  sctx.setTransform(1, 0, 0, 1, 0, 0);
+  sctx.clearRect(0, 0, scratchCanvas.width, scratchCanvas.height);
+  sctx.restore();
+  scratchStamps(sctx, stroke, strokeStamps(stroke));
+  compositeLayer(ctx, scratchCanvas, stroke);
+}
+
+// ---- drawing a stroke while it grows ----
+
+/** Where a growing stroke's stamps have got to (pass back what the last call returned; null to start). */
+export type LiveCarry = StampCarry | AirbrushCarry | null;
+
+/**
+ * The stamps on the points from index `from` on, carrying on from `carry`: calling this as the stroke grows gives
+ * exactly the stamps of the whole stroke, at the cost of the new points only.
+ */
+export function nextStamps(stroke: PaintStroke, from: number, carry: LiveCarry): { stamps: Stamp[]; carry: LiveCarry } {
+  const pts = stroke.points.slice(from);
+  return stroke.tool === "airbrush"
+    ? airbrushStamps(pts, stroke.size, carry as AirbrushCarry | null, AIRBRUSH_RATE, from)
+    : stampPositions(pts, stroke.size, 0.12, carry as StampCarry | null, from);
+}
+
+/**
+ * Draws new stamps of a growing stroke. `direct`: straight onto the paint layer at the stroke's opacity (exact at
+ * full opacity, where stamps can't pile up past it). Otherwise onto a scratch layer at full alpha, which the caller
+ * composites over a copy of the layer with `compositeLayer` (exact at any opacity).
+ */
+export function drawNewStamps(ctx: Ctx, stroke: PaintStroke, stamps: Stamp[], direct: boolean): void {
+  if (stamps.length === 0) return;
+  if (!direct) {
+    scratchStamps(ctx, stroke, stamps);
+    return;
+  }
+  ctx.save();
+  ctx.globalCompositeOperation = stroke.tool === "eraser" ? "destination-out" : "source-over";
+  ctx.globalAlpha = Math.min(1, Math.max(0, stroke.opacity));
+  drawStamps(ctx, stroke, stamps, stroke.tool === "airbrush" ? AIRBRUSH_FLOW : 1, stroke.tool === "eraser" ? "#000000" : stroke.color);
+  ctx.restore();
+}
+
+/** Composites `strokes` onto what `ctx` already shows, in order (the strokes added since it was drawn). */
+export function addPaintStrokes(ctx: Ctx, width: number, height: number, strokes: PaintStroke[], makeCanvas: MakeCanvas = defaultMakeCanvas): void {
+  if (strokes.length === 0) return;
+  const scratch = makeCanvas(width, height);
+  for (const s of strokes) compositeStroke(ctx, scratch, s);
 }
 
 /**

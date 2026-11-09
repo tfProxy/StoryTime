@@ -82,16 +82,40 @@ let big = newSession({ target, original });
 let h = big.history;
 for (let i = 0; i < 40; i++) h = commit(h, addPaintStroke(h.present, stroke(i, 400)));
 big = { ...big, history: h };
-const full = JSON.stringify(big).length;
-const json = serializeSession(big, Math.floor(full / 2));
+// Stored, a stroke is written once however many undo steps have it (whole, the 40 steps would hold 820 strokes).
+const whole = JSON.stringify(big).length;
+const full = serializeSession(big, Infinity)!.length;
+ok(full < whole / 10, `the history stores each stroke once (${full} bytes, ${whole} with every step whole)`);
+const packed = JSON.parse(serializeSession(big, Infinity)!);
+ok(packed.history.present.paint.length === 40 && packed.history.past.at(-1).paint.length === 39 && packed.history.past.at(-1).paint.every((n: unknown) => typeof n === "number"), "…the present is whole and the steps before it name their strokes");
+const reread = readSession(packed);
+ok(reread !== null && reread.history.past.length === 40 && reread.history.past.every((st, i) => st.paint.length === i && st.paint.every((x, j) => x === reread.history.present.paint[j])), "…and read back, every step has its strokes, shared with the present");
+ok(reread !== null && JSON.stringify(undo(reread.history).present.paint) === JSON.stringify(big.history.past.at(-1)!.paint), "…as they were");
+const fut = serializeSession({ ...big, history: undo(undo(big.history)) }, Infinity)!;
+const back2 = readSession(JSON.parse(fut));
+ok(back2 !== null && back2.history.present.paint.length === 38 && redo(redo(back2.history)).present.paint.length === 40 && JSON.stringify(redo(redo(back2.history)).present.paint) === JSON.stringify(big.history.present.paint), "…and so does the redo list, with strokes the present no longer has");
+const brokenExtra = JSON.parse(fut);
+brokenExtra.history.extra.paint[0] = { tool: "nope" };
+const back3 = readSession(brokenExtra);
+ok(back3 !== null && redo(back3.history).present.paint.length === 38 && redo(redo(back3.history)).present.paint.length === 39 && back3.history.present.paint.length === 38, "…a broken stroke is left out of the steps that had it, and the others keep theirs");
+const trimmed = readSession(JSON.parse(serializeSession({ ...big, history: commit(big.history, addPaintStroke(big.history.present, { ...stroke(1), points: [[1.23456, 2.34567, 0.123456, 10.6]] })) }, Infinity)!));
+ok(JSON.stringify(trimmed?.history.present.paint.at(-1)?.points) === "[[1.23,2.35,0.123,11]]", "stored points are rounded (a hundredth of a pixel, a thousandth of pressure, a millisecond)");
+// Each step paints over the last (only its own stroke), so the older steps hold strokes the newer ones don't.
+let churn = newSession({ target, original });
+let ch = churn.history;
+for (let i = 0; i < 40; i++) ch = commit(ch, { ...ch.present, paint: [stroke(i, 400)] });
+churn = { ...churn, history: ch };
+const churnFull = serializeSession(churn, Infinity)!.length;
+const json = serializeSession(churn, Math.floor(churnFull / 2));
 const cut = json ? JSON.parse(json) : null;
-ok(json !== null && json.length <= full / 2, "an oversized session is cut to the cap");
-ok(cut && cut.history.past.length < big.history.past.length && cut.history.present.paint.length === 40, "…by dropping the oldest history, never the present");
-ok(cut && cut.history.past.at(-1).paint.length === 39, "…and the newest history is kept");
+ok(json !== null && json.length <= churnFull / 2, "an oversized session is cut to the cap");
+ok(cut && cut.history.past.length < churn.history.past.length && cut.history.present.paint.length === 1 && cut.history.present.paint[0].points[0][0] === 39, "…by dropping the oldest history, never the present");
+const cutBack = cut ? readSession(cut) : null;
+ok(cutBack !== null && cutBack.history.past.at(-1)!.paint[0].points[0][0] === 38, "…and the newest history is kept");
 ok(serializeSession(big, 100) === null, "a present that alone is too big can't be saved");
-ok(serializeSession(s, MAX_SESSION_BYTES) === JSON.stringify(s), "a small session is saved whole");
-const tight = fakeStorage(Math.floor(full / 2));
-ok(saveSession(big, tight) && (loadSession(big.id, tight)?.history.present.paint.length ?? 0) === 40, "a full storage gets a shorter history");
+ok(JSON.stringify(readSession(JSON.parse(serializeSession(s, MAX_SESSION_BYTES)!))?.history) === JSON.stringify(s.history), "a small session is saved whole");
+const tight = fakeStorage(Math.floor(churnFull / 2));
+ok(saveSession(churn, tight) && (loadSession(churn.id, tight)?.history.past.length ?? 99) < 40 && loadSession(churn.id, tight)?.history.present.paint.length === 1, "a full storage gets a shorter history");
 
 // pruning
 const old = fakeStorage();

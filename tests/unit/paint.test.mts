@@ -1,4 +1,4 @@
-import { airbrushStamps, averageColor, drawPaintStroke, isHexColor, normalizeHex, paintBytesEstimate, readPaintStrokes, renderPaintLayer, stampGradientStops, stampPositions, type PaintStroke } from "../../src/lib/paint.ts";
+import { airbrushStamps, averageColor, drawPaintStroke, isHexColor, nextStamps, normalizeHex, paintBytesEstimate, readPaintStrokes, renderPaintLayer, stampGradientStops, stampPositions, strokeStamps, type LiveCarry, type PaintStroke } from "../../src/lib/paint.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const near = (a: number, b: number) => Math.abs(a - b) < 1e-6;
@@ -123,4 +123,24 @@ const count = (log: Log, re: RegExp) => log.filter((l) => re.test(l)).length;
   const { log, make, target } = setup();
   renderPaintLayer(target, 100, 100, [], make);
   ok(count(log, /draw/) === 0, "no strokes draws nothing");
+}
+
+// A stroke drawn as it grows (what the Refine canvas does each frame) gets exactly the stamps of the whole stroke.
+for (const tool of ["brush", "airbrush", "eraser"] as const) {
+  const pts: PaintStroke["points"] = Array.from({ length: 60 }, (_, i) => [i * 3.7, Math.sin(i / 5) * 40 + 50, (i % 7) / 7, i * 11]);
+  const stroke: PaintStroke = { tool, color: "#123456", size: 14, softness: 0.3, opacity: 0.5, points: [] };
+  const live: ReturnType<typeof strokeStamps> = [];
+  let carry: LiveCarry = null;
+  let drawn = 0;
+  for (let i = 0; i < pts.length; i += 1 + (i % 4)) {
+    stroke.points.push(...pts.slice(stroke.points.length, i + 1));
+    const r = nextStamps(stroke, drawn, carry);
+    live.push(...r.stamps);
+    carry = r.carry;
+    drawn = stroke.points.length;
+  }
+  stroke.points.push(...pts.slice(stroke.points.length));
+  live.push(...nextStamps(stroke, drawn, carry).stamps);
+  const all = strokeStamps(stroke);
+  ok(live.length === all.length && live.every((s, i) => near(s.x, all[i].x) && near(s.y, all[i].y) && near(s.r, all[i].r) && s.i === all[i].i), `${tool}: drawing a stroke in pieces gives the stamps of the whole stroke (${all.length})`);
 }
