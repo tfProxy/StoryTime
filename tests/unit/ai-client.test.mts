@@ -1,6 +1,6 @@
 import http from "node:http";
 import { streamChat, listModels, completeChat, AiError } from "../../src/lib/ai/client.ts";
-import { freeOllamaForPictures, freeOllamaMemory, ollamaRoot } from "../../src/lib/ai/ollama.ts";
+import { freeOllamaForPictures, freeOllamaMemory, loadedOllamaModels, modelAfterWriting, ollamaRoot } from "../../src/lib/ai/ollama.ts";
 import { DEFAULT_SETTINGS, favoritesFor, parseSettings, exportSettingsJson, importSettingsJson } from "../../src/lib/settingsSchema.ts";
 
 const seen: { url?: string; headers?: http.IncomingHttpHeaders; body?: any }[] = [];
@@ -187,6 +187,30 @@ await freeOllamaForPictures([
 ] as any);
 assert(seen.slice(from).every((x) => x.url!.startsWith("/ol/")) && seen.length > from, "only Ollama connections with the box ticked are unloaded");
 assert(parseSettings({ connections: [{ id: "a", kind: "ollama" }] }).connections[0].freeForPictures === false && parseSettings({ connections: [{ id: "a", kind: "ollama", freeForPictures: true }] }).connections[0].freeForPictures === true, "freeForPictures is off in older settings and kept when on");
+
+// After writing, a summary or suggestions use the writing model while Ollama still has it loaded (big:14b and tiny:1b are).
+{
+  const s = parseSettings({
+    connections: [
+      { id: "ol", kind: "ollama", baseUrl: base + "/ol/v1" },
+      { id: "ol2", kind: "ollama", baseUrl: base + "/ol/" },
+      { id: "far", kind: "ollama", baseUrl: "http://localhost:1/v1" },
+      { id: "cloud", kind: "openai", baseUrl: base + "/o/v1", apiKey: "k" },
+    ],
+    defaults: { main: { connectionId: "ol", model: "big:14b" }, cheap: { connectionId: "ol", model: "mid:7b" } },
+  });
+  const ref = (connectionId: string, model: string) => ({ connectionId, model });
+  const big = ref("ol", "big:14b");
+  const pick = (w: any, sm: any) => modelAfterWriting(s, w, sm).then((r) => JSON.stringify(r));
+  assert((await pick(big, ref("ol", "mid:7b"))) === JSON.stringify({ role: "main", model: big }), "a loaded writing model replaces an unloaded small-job model on the same Ollama");
+  assert((await pick(null, null)) === JSON.stringify({ role: "main", model: big }), "…the defaults too");
+  assert((await pick(big, ref("ol2", "mid:7b"))) === JSON.stringify({ role: "main", model: big }), "…and another connection to the same server");
+  assert((await pick(big, ref("ol", "tiny:1b"))) === JSON.stringify({ role: "cheap", model: ref("ol", "tiny:1b") }), "a small-job model that is loaded too is kept");
+  assert((await pick(ref("ol", "huge:70b"), ref("ol", "mid:7b"))) === JSON.stringify({ role: "cheap", model: ref("ol", "mid:7b") }), "a writing model no longer loaded is not used");
+  assert((await pick(big, ref("cloud", "gpt"))) === JSON.stringify({ role: "cheap", model: ref("cloud", "gpt") }), "a small-job model elsewhere is kept");
+  assert((await pick(ref("far", "big:14b"), ref("far", "mid:7b"))) === JSON.stringify({ role: "cheap", model: ref("far", "mid:7b") }), "an Ollama that can't be reached keeps the small-job model");
+  assert(JSON.stringify(await loadedOllamaModels(base + "/ol/v1").then((x) => [...x!].sort())) === '["big:14b","tiny:1b"]', "loadedOllamaModels lists what /api/ps has");
+}
 
 // settings parse / export / import
 assert(parseSettings(null).contextTokens === 8000, "parse null -> defaults");

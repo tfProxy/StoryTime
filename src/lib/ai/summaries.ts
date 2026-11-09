@@ -7,6 +7,10 @@ import { extractJson } from "./codexAi";
 import { summaryCoverageIndex, type ContextChapter, type PromptParts } from "./prompts";
 import { LIMITS } from "../limits";
 import type { Settings } from "../settings";
+import type { ModelRef } from "../settingsSchema";
+
+/** Which model makes a summary: the cheaper default unless told otherwise (see `modelAfterWriting`). */
+export type SummaryModel = { role: "main" | "cheap"; model: ModelRef | null };
 
 export type Summaries = { summary: string; path_summary: string };
 
@@ -62,6 +66,7 @@ export async function summarizeChapter(
   opts: SummaryInput & {
     signal?: AbortSignal;
     source?: AiSourceIds;
+    use?: SummaryModel;
     /** Called as the reply streams in, with whatever of the two summaries has been written so far. */
     onText?: (partial: Summaries) => void;
   },
@@ -77,7 +82,7 @@ export async function summarizeChapter(
       {
         system: request.system,
         messages: [{ role: "user", content: request.message }],
-        role: "cheap",
+        ...(opts.use ?? { role: "cheap" }),
         maxTokens: 1500,
         signal: opts.signal,
         source: { label: "Summary", ...opts.source },
@@ -140,6 +145,7 @@ export type SummaryOptions = {
   fetch?: typeof fetch;
   /** Who is asking; each call is also marked with the chapter it summarizes. */
   source?: AiSourceIds;
+  use?: SummaryModel;
   onProgress?: (done: number, total: number) => void;
   /** Streamed text for the chapter at `index` in the path, as in summarizeChapter. */
   onText?: (partial: Summaries, index: number) => void;
@@ -173,6 +179,7 @@ export async function ensurePathSummaries(
       previous,
       chapter: c,
       signal: opts.signal,
+      use: opts.use,
       source: { ...opts.source, chapterId: c.id ?? opts.source?.chapterId },
       onText: opts.onText && ((p) => opts.onText!(p, i)),
     });

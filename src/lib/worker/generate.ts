@@ -4,6 +4,7 @@
 // draft every few seconds and at the end.
 import { z } from "zod";
 import { completeChat, streamChat } from "../ai/client";
+import { modelAfterWriting } from "../ai/ollama";
 import {
   choiceLabelPrompt, choicesPrompt, generatePrompt, parseChapterOutput, parseChoiceLabel, parseChoices, SYSTEM_CHAPTER, SYSTEM_CHOICE_LABEL, SYSTEM_CHOICES,
   type StoryContext,
@@ -199,13 +200,15 @@ export async function runGenerate(draftKey: string): Promise<void> {
     const after: GenerateAfter = {};
     if (chapter.body.trim()) {
       const shown = { title: chapter.title ?? "", body: chapter.body };
+      // The writing model, if Ollama still has it loaded, rather than swapping to the suggestions model and back.
+      const small = req.after.choiceText || req.after.suggestChoices ? await modelAfterWriting(settings, req.model, req.suggestModel, run.ctl.signal) : null;
       if (req.after.choiceText) {
         step("Writing the choice text…");
         try {
           const reply = await completeChat(settings, {
             system: SYSTEM_CHOICE_LABEL,
             messages: [{ role: "user", content: choiceLabelPrompt({ ...ready, choiceLabel: null }, shown, settings.contextTokens) }],
-            role: "cheap", model: req.suggestModel, maxTokens: 60, signal: run.ctl.signal, source: { label: "Generate: choice text", ...ids },
+            ...small, maxTokens: 60, signal: run.ctl.signal, source: { label: "Generate: choice text", ...ids },
           });
           const label = parseChoiceLabel(reply).slice(0, LIMITS.label);
           if (label) after.choiceLabel = label;
@@ -219,7 +222,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
           const reply = await completeChat(settings, {
             system: SYSTEM_CHOICES,
             messages: [{ role: "user", content: choicesPrompt(ready, shown, [], settings.contextTokens) }],
-            role: "cheap", model: req.suggestModel, maxTokens: 400, signal: run.ctl.signal, source: { label: "Generate: choices", ...ids },
+            ...small, maxTokens: 400, signal: run.ctl.signal, source: { label: "Generate: choices", ...ids },
           });
           const found = parseChoices(reply);
           if (found.length) after.suggestions = found;

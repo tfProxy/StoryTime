@@ -7,6 +7,7 @@ import Link from "next/link";
 import { LIMITS } from "@/lib/limits";
 import { usableRef, useSettings, type ModelRef } from "@/lib/settings";
 import { completeChat, streamChat } from "@/lib/ai/client";
+import { modelAfterWriting } from "@/lib/ai/ollama";
 import { ensurePathSummaries, neededSummaryIndex, summarizeChapter, type Summaries } from "@/lib/ai/summaries";
 import {
   choicesPrompt,
@@ -665,8 +666,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       const text = await completeChat(settings, {
         system: request.system,
         messages: [{ role: "user", content: request.message }],
-        role: "cheap",
-      model: suggestModel,
+        // The writing model, if Ollama still has it loaded, rather than swapping to the suggestions model and back.
+        ...(await modelAfterWriting(settings, writeModel, suggestModel)),
         maxTokens: 400,
         source: { label: "Suggest choices", storyId },
       });
@@ -733,11 +734,13 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const maxNew = Math.max(0, LIMITS.choices - (target.kind === "edit" ? keptExisting : 0));
 
   /**
-   * Summary of this chapter and of the story through it, using the cheaper model. `own` is the
+   * Summary of this chapter and of the story through it, using the cheaper model (or the writing model while Ollama has it loaded). `own` is the
    * author's summary: kept as-is, with only the story-so-far generated around it.
    */
   async function makeSummaries(signal: AbortSignal, own?: string): Promise<Summaries> {
     if (!draft) throw new Error("Nothing to summarize");
+    // The writing model, if Ollama still has it loaded, rather than swapping to the cheaper one and back.
+    const use = await modelAfterWriting(settings, writeModel, null, signal);
     let path = ctx.path;
     const parent = path.length - 1;
     // The new chapter's rolling summary builds on its parent's, which may need to exist first.
@@ -745,6 +748,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       const made = await ensurePathSummaries(settings, path, parent, {
         story: storyInfo,
         signal,
+        use,
         onProgress: (done, total) => setStatus(`Summarizing the story so far (${Math.min(done + 1, total)} of ${total})…`),
       });
       const all = { ...madeSummaries, ...made };
@@ -758,6 +762,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       chapter: { title: draft.title, body: draft.body },
       summary: own,
       signal,
+      use,
     });
   }
 
