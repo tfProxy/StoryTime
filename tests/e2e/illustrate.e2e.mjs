@@ -106,6 +106,19 @@ const prose = await page.locator(".prose").boundingBox(), fb = await footer.boun
 ok(h1.y + h1.height <= hb.y + 1 && hb.y + hb.height <= prose.y + 1, "the header picture sits after the title, before the text");
 ok(prose.y + prose.height <= fb.y + 1 && fb.y + fb.height <= choices.y + 1, "the footer picture sits between the text and the choices");
 
+// Clicking a picture opens it full screen; Esc closes it, and so does a click.
+await header.click();
+const full = page.locator("dialog.chapter-image-full[open]");
+await full.waitFor();
+ok((await full.locator("img").getAttribute("src")) === (await header.getAttribute("src")), "clicking the header picture opens it full screen");
+await page.keyboard.press("Escape");
+await full.waitFor({ state: "detached" });
+await footer.click();
+await full.waitFor();
+await full.click();
+await full.waitFor({ state: "detached" });
+ok(true, "the full-screen picture closes with Esc and with a click");
+
 // ---- the path page shows the pictures of the chapters on the way ----
 await page.goto(`${BASE}/c/${child}/path`);
 const rootSection = page.locator(`#c-${root}`), childSection = page.locator(`#c-${child}`);
