@@ -19,6 +19,7 @@ import { StoryPicturesLine, type IllustratedStory, type LoadedPrompt } from "./I
 import type { PendingJob, Picture } from "./pictures";
 import type { EditModels } from "./useEditModels";
 import { EMPTY_CODEX, useCodexDraft } from "./usePictureDraft";
+import { AiCallProgress } from "./GenerateProgress";
 
 /** The codex entry the page is for, as it reads at the chapter the page was opened from. */
 export type CodexSubject = { id: string; name: string; type: EntryType; aliases: string[]; content: string };
@@ -144,6 +145,7 @@ export default function CodexPromptPanel({
             </button>
           )}
         </div>
+        {busy && <AiCallProgress labels={["Codex picture prompt"]} />}
 
         <PromptFields
           prompt={boxes.prompt}

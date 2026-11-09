@@ -126,8 +126,8 @@ function makeServer(opts: { options: RunOptions; open: string[]; written?: strin
 
 type Call = { kind: "chapter" | "plan" | "summary"; role?: string; model?: string; message: string };
 
-/** A fake AI. `failChapter` makes every chapter request fail. */
-function makeAi(opts: { failChapter?: boolean } = {}) {
+/** A fake AI. `failChapter` makes every chapter request fail; `think` thinks before each chapter. */
+function makeAi(opts: { failChapter?: boolean; think?: boolean } = {}) {
   const calls: Call[] = [];
   let k = 0;
   async function* stream(_settings: unknown, req: any): AsyncGenerator<string> {
@@ -136,6 +136,7 @@ function makeAi(opts: { failChapter?: boolean } = {}) {
     calls.push({ kind, role: req.role, model: req.model?.model, message });
     if (kind === "chapter") {
       if (opts.failChapter) throw new Error("the model is down");
+      if (opts.think) req.onThinking?.(`Pondering chapter ${k + 1}.`);
       yield `# Chapter ${++k}\n\n`;
       yield `Text of chapter ${k}.`;
     } else if (kind === "plan") {
@@ -165,6 +166,16 @@ async function drive(server: ReturnType<typeof makeServer>, ai: ReturnType<typeo
     if (!r.more) break;
   }
   return { run, events, steps: steps + 1 };
+}
+
+// ---- a model that thinks first: its thinking is told, for the run page ----
+{
+  const s = makeServer({ options: { models: "each", endChoices: 0 }, open: ["Go left"] });
+  const { run, events } = await drive(s, makeAi({ think: true }));
+  const thought = events.filter((e) => e.type === "thinking");
+  const writeTask = run.tasks.find((t) => t.kind === "write");
+  ok(thought.length > 0 && thought.every((e) => e.type === "thinking" && e.taskId === writeTask?.id) && thought.some((e) => e.type === "thinking" && e.text === "Pondering chapter 1."), "a run tells the model's thinking, with the task it is for");
+  ok(run.status === "done", "…and still finishes");
 }
 
 // ---- one chapter at a time ("each") ----

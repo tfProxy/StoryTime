@@ -124,6 +124,8 @@ export type GenerateItem = {
   state: "waiting" | "working" | "done" | "failed";
   /** Why it waits ("Waiting for pictures to finish (2 left)"), or, while it works, what it is doing. */
   note?: string;
+  /** While it works: when the step in `note` began. */
+  noteAt?: number;
   error?: string;
   /** Kept with an error that lost the text, so it can be copied. */
   text?: string;

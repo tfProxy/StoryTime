@@ -9,6 +9,7 @@ import { ensurePathSummaries, summarizeChapter, type Summaries } from "@/lib/ai/
 import type { ContextChapter } from "@/lib/ai/prompts";
 import SplitActionButton, { type SplitMode } from "./SplitActionButton";
 import { useSummaryCheck } from "./SummaryCheck";
+import { AiCallProgress } from "./GenerateProgress";
 
 type Props = {
   storyId: string;
@@ -210,6 +211,7 @@ export default function SummaryPanel({ storyId, chapterId, story, path, stale, i
         )}
       </div>
       {status && <p className="meta" style={{ margin: 0 }}>{status}</p>}
+      {(busy === "generate" || checker.busy) && <AiCallProgress labels={["Summary", "Summary check"]} />}
       {error && <p className="error" style={{ margin: 0 }}>{error}</p>}
       {checker.view}
       {issues}

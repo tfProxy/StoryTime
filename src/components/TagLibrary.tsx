@@ -5,6 +5,7 @@ import { draftRule, suggestTagsForChapter, type TagRule } from "@/lib/ai/tagAi";
 import { saveSettings, useSettings } from "@/lib/settings";
 import type { Tag, TagExample } from "@/lib/tags";
 import AutoTextarea from "./AutoTextarea";
+import { AiCallProgress } from "./GenerateProgress";
 
 type StoryOption = { id: string; title: string; premise: string; root_chapter_id: string | null };
 
@@ -204,6 +205,7 @@ function NewTagStart({ onStart }: { onStart: (d: Draft) => void }) {
           Write it myself
         </button>
       </div>
+      {busy && <AiCallProgress labels={["Tag rule"]} />}
       {error && <p className="error">{error}</p>}
     </div>
   );

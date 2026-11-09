@@ -84,7 +84,14 @@ assert(a.body.system === "sys" && a.body.max_tokens === 4096 && a.body.model ===
   const said: string[] = [];
   const onThinking = (t: string) => { thought += t; };
   const onStatus = (t: string) => said.push(t);
-  out = await completeChat(mk("custom", base + "/think") as any, { messages: [{ role: "user", content: "hi" }], onThinking, onStatus });
+  // The tab's activity feed sees the call's steps, and the call is gone from it once it ends.
+  const { activeCalls, subscribeActivity } = await import("../../src/lib/ai/activity.ts");
+  const stepsSeen: string[] = [];
+  const unsubscribe = subscribeActivity(() => { const c = activeCalls().at(-1); if (c && stepsSeen.at(-1) !== c.step) stepsSeen.push(`${c.label}: ${c.step}`); });
+  out = await completeChat(mk("custom", base + "/think") as any, { messages: [{ role: "user", content: "hi" }], onThinking, onStatus, source: { label: "Summary" } });
+  unsubscribe();
+  const feed = [...new Set(stepsSeen)].join(" | ");
+  assert(feed === "Summary: Starting… | Summary: Waiting for the model… | Summary: The model is thinking… | Summary: The model is answering…" && activeCalls().length === 0, `the activity feed follows the call's steps (${feed})`);
   assert(out === "Hello" && thought === "First, then.", `reasoning fields go to onThinking (${JSON.stringify(thought)})`);
   assert(said.join("|") === "Waiting for the model…", "the call says it waits for the model");
   thought = "";

@@ -21,6 +21,7 @@ import { StoryPicturesLine,type IllustratedStory, type LoadedPrompt } from "./Im
 import type { PendingJob, Picture } from "./pictures";
 import type { EditModels } from "./useEditModels";
 import { EMPTY_COVER, useCoverDraft } from "./usePictureDraft";
+import { AiCallProgress } from "./GenerateProgress";
 
 const SOURCE_NAMES: Record<CoverSource, string> = {
   premise: "The summary and codex",
@@ -235,6 +236,7 @@ export default function CoverPromptPanel({
             </button>
           )}
         </div>
+        {busy && <AiCallProgress labels={["Cover prompt"]} />}
         <p className="meta" style={{ margin: 0 }}>{used.length ? `Codex entries used: ${used.join(", ")}` : "No codex entries are used."}</p>
 
         <PromptFields

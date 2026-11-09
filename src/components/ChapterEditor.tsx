@@ -30,7 +30,7 @@ import { deleteDraft, DraftConflict, emptyDraft, getDraft, saveDraft, type Draft
 import { applyAfterGenerate, applyGenerated, isBegun, pushUndo, startVersion } from "@/lib/generatedDraft";
 import { useWorkQueue, type GenerateItem } from "./WorkQueue";
 import Prose from "./Prose";
-import { GenerateStep, ThinkingFold } from "./GenerateProgress";
+import { AiCallProgress, GenerateStep, ThinkingFold } from "./GenerateProgress";
 import AutoTextarea from "./AutoTextarea";
 import CodexPanel from "./CodexPanel";
 import { PageMenu } from "./SiteMenu";
@@ -148,6 +148,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   // the Generate ends, until the next one.
   const [genStep, setGenStep] = useState<{ text: string; since: number } | null>(null);
   const [thinking, setThinking] = useState("");
+  // Words the Generate has written (its own text, not the draft's, which may have text from before).
+  const [genWords, setGenWords] = useState(0);
   const [autoDone, setAutoDone] = useState(false);
   const [codexOpen, setCodexOpen] = useState(false);
   // What the codex drawer opens on: an entry id, "new", or the list. `n` remounts it on each open.
@@ -371,6 +373,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     return listenDraft(draftKey, {
       onText: (text, base) => {
         setDraft((d) => (d ? applyGenerated(d, parseChapterOutput(text), { continued: isBegun(d, base) }) : d));
+        setGenWords(countWords(parseChapterOutput(text).body));
       },
       onStep: (text, since) => setGenStep({ text, since }),
       onThinking: setThinking,
@@ -523,6 +526,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     setLastAction("generate");
     setGenStep(null);
     setThinking("");
+    setGenWords(0);
     setReading(true);
     setSelection(null);
     // What is typed on the page is saved first, so the server builds on it (the page stops saving while it generates).
@@ -1083,7 +1087,14 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                 {generating.note ?? "Waiting its turn…"}
               </p>
             )}
-            {generating?.state === "working" && genStep && <GenerateStep key={genStep.text} text={genStep.text} since={genStep.since} />}
+            {generating?.state === "working" && genStep && (
+              <GenerateStep
+                key={genStep.text}
+                text={genStep.text}
+                since={genStep.since}
+                words={genStep.text === "Writing the chapter…" ? { done: genWords, target: targetWords } : undefined}
+              />
+            )}
             {thinking && <ThinkingFold text={thinking} live={generating?.state === "working"} />}
             {hasBody && busy === null && (
               <p className="meta">This adds a new draft; the current text is kept, and you can switch between drafts under Chapter.</p>
@@ -1189,6 +1200,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                 Undo
               </button>
             </div>
+            {busy === "refine" && <AiCallProgress labels={["Rewrite passage", "Summary"]} />}
             {picked ? (
               <p className="meta">
                 Only the selected passage ({pickedWords.toLocaleString()} word{pickedWords === 1 ? "" : "s"}) will change.
@@ -1318,6 +1330,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                   {busy === "choices" ? "Thinking…" : "Suggest choices"}
                 </button>
               </div>
+              {busy === "choices" && <AiCallProgress labels={["Suggest choices"]} />}
               {suggestions.length > 0 && (
                 <div style={{ display: "grid", justifyItems: "start", gap: "0.4rem" }}>
                   {suggestions.map((s) => (

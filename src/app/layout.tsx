@@ -3,6 +3,7 @@ import Link from "next/link";
 import AiLogRecorder from "@/components/AiLogRecorder";
 import WorkQueueProvider from "@/components/WorkQueue";
 import WorkQueueStatus from "@/components/WorkQueueStatus";
+import HeaderActivity from "@/components/HeaderActivity";
 import SiteMenu from "@/components/SiteMenu";
 import "./globals.css";
 
@@ -20,13 +21,17 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {/* Holds the picture jobs for the whole app, so they go on while pages change. */}
         <WorkQueueProvider>
           <header className="site-header">
-            <Link href="/" className="brand">
-              StoryTime
-            </Link>
-            <div className="header-tools">
-              <WorkQueueStatus />
-              <SiteMenu />
+            <div className="site-header-row">
+              <Link href="/" className="brand">
+                StoryTime
+              </Link>
+              <div className="header-tools">
+                <WorkQueueStatus />
+                <SiteMenu />
+              </div>
             </div>
+            {/* What the AI is doing now, under the header's row; the header stays at the top of the window. */}
+            <HeaderActivity />
           </header>
           <main>{children}</main>
         </WorkQueueProvider>

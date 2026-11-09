@@ -157,7 +157,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
     if (run.step?.text === text) return;
     run.step = { text, since: Date.now() };
     tell({ type: "step", ...run.step });
-    updateItem(itemKey, { data: { note: text } });
+    updateItem(itemKey, { data: { note: text, noteAt: run.step.since } });
   };
   let lastSave = 0;
   let lastTold = 0;
@@ -231,7 +231,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
     saveGenerated(req, run.text, after);
     tell({ type: "text", text: run.text, base: req.base });
     tell({ type: "done", after });
-    updateItem(itemKey, { state: "done", data: { note: undefined } });
+    updateItem(itemKey, { state: "done", data: { note: undefined, noteAt: undefined } });
   } catch (e) {
     if (isAbort(e)) {
       // Stopped: what was written stays in the draft (unless the draft was deleted).
@@ -255,7 +255,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
       }
       if (e instanceof DraftChanged) message = e.message;
       tell({ type: "error", message });
-      updateItem(itemKey, { state: "failed", data: { note: undefined, error: message, ...(e instanceof DraftChanged && { text: run.text }) } });
+      updateItem(itemKey, { state: "failed", data: { note: undefined, noteAt: undefined, error: message, ...(e instanceof DraftChanged && { text: run.text }) } });
     }
   } finally {
     workerState().generates.delete(draftKey);

@@ -46,12 +46,84 @@ a {
   color: var(--accent);
 }
 
+/* The header stays at the top of the window; --header-h is its height (set by HeaderActivity), so sticky panels below
+   it stop under it and a link to a field scrolls it into view below the header. */
+html {
+  scroll-padding-top: calc(var(--header-h, 0px) + 0.5rem);
+}
+
 .site-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+
+.site-header-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--line);
+}
+
+/* What the AI is doing now (HeaderActivity.tsx): one line, cut short with … on a narrow screen, over a moving bar. */
+.header-activity-line {
+  display: flex;
+  margin: 0;
+  padding: 0 1rem 0.35rem;
+  font-size: 0.85rem;
+  white-space: pre;
+}
+
+.header-activity-what {
+  flex: 0 1 auto;
+  min-width: 3em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.header-activity-detail,
+.header-activity-more,
+.header-activity-time {
+  flex: none;
+  color: var(--muted);
+}
+
+/* The name gives way first; a very long step ("Summarizing the story so far (2 of 4)…") is cut short too. */
+.header-activity-detail {
+  max-width: calc(100% - 6em);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.header-activity-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.header-activity-bar {
+  height: 2px;
+  margin-bottom: -1px;
+  background: linear-gradient(90deg, transparent 0%, var(--accent) 50%, transparent 100%) no-repeat;
+  background-size: 40% 100%;
+  animation: header-activity-slide 1.6s ease-in-out infinite;
+}
+
+@keyframes header-activity-slide {
+  from {
+    background-position: -70% 0;
+  }
+  to {
+    background-position: 170% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .header-activity-bar {
+    animation: none;
+    background: var(--accent);
+    opacity: 0.4;
+  }
 }
 
 /* The picture queue's list opens from here, so it lines up with the header's right edge on a phone. */
@@ -758,8 +830,8 @@ h2 {
     grid-column: 2;
     grid-row: 1;
     position: sticky;
-    top: 1rem;
-    max-height: calc(100vh - 6rem);
+    top: calc(var(--header-h, 0px) + 1rem);
+    max-height: calc(100vh - 6rem - var(--header-h, 0px));
     overflow-y: auto;
   }
 }
@@ -2066,8 +2138,8 @@ main:has(.illustrate-grid) {
     grid-column: 1;
     grid-row: 1;
     position: sticky;
-    top: 1rem;
-    max-height: calc(100vh - 2rem);
+    top: calc(var(--header-h, 0px) + 1rem);
+    max-height: calc(100vh - 2rem - var(--header-h, 0px));
     overflow-y: auto;
     /* room for the panels' borders inside the scrolling column, and under the dock at its bottom */
     padding: 1px 1px var(--dock-space);
@@ -3899,7 +3971,7 @@ button.refine-fit {
     grid-column: 1;
     grid-row: 2;
     position: sticky;
-    top: 0.75rem;
+    top: calc(var(--header-h, 0px) + 0.75rem);
     display: flex;
     flex-direction: column;
     /* The column starts below the site header and the title row, so it is made to fit the first screen. */
@@ -3925,7 +3997,7 @@ button.refine-fit {
     grid-row: 2;
     order: 0;
     position: sticky;
-    top: 0.75rem;
+    top: calc(var(--header-h, 0px) + 0.75rem);
   }
 
   .refine-stage {
@@ -5595,8 +5667,8 @@ main:has(.import-review) {
   flex: 0 0 15rem;
   min-width: 0;
   position: sticky;
-  top: 0.75rem;
-  max-height: calc(100vh - 1.5rem);
+  top: calc(var(--header-h, 0px) + 0.75rem);
+  max-height: calc(100vh - 1.5rem - var(--header-h, 0px));
   overflow-y: auto;
   margin: 0;
   display: grid;

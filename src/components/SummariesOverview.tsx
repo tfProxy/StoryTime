@@ -8,6 +8,7 @@ import { summarizeChapter } from "@/lib/ai/summaries";
 import type { StoryChapter } from "@/lib/tree";
 import SplitActionButton, { type SplitMode } from "./SplitActionButton";
 import { useSummaryCheck } from "./SummaryCheck";
+import { AiCallProgress } from "./GenerateProgress";
 
 export type SummaryStatus = "done" | "stale" | "missing" | "wrong";
 
@@ -140,6 +141,7 @@ export default function SummariesOverview({ storyId, story, chapters, status, un
             </button>
           )}
         </div>
+        {(running || checker.busy) && <AiCallProgress labels={["Summary", "Summary check"]} />}
         {progress && (
           <p className="meta" aria-live="polite" style={{ margin: 0 }}>
             {progress.done} of {progress.total} done. Now: {progress.current}

@@ -9,6 +9,7 @@ import { storyContextOf, withPathSummaries } from "@/lib/aiRuns/writeChapter";
 import { LIMITS } from "@/lib/limits";
 import { useSettings } from "@/lib/settings";
 import SplitActionButton, { type SplitMode } from "./SplitActionButton";
+import { AiCallProgress } from "./GenerateProgress";
 
 const MODES: SplitMode[] = [
   { id: "suggest", label: "Suggest choices", hint: "The AI offers a few choices to add to this chapter." },
@@ -100,6 +101,7 @@ export default function SuggestChoices({
           onMain={() => (mode === "draft" ? router.push(`/c/${chapterId}/write`) : void suggest())}
         />
       </div>
+      {busy === "suggest" && <AiCallProgress labels={["Suggest choices"]} />}
       {suggestions.length > 0 && (
         <div style={{ display: "grid", justifyItems: "start", gap: "0.4rem" }}>
           {suggestions.map((s) => (

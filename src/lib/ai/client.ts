@@ -4,6 +4,7 @@
 import { providerInfo, type ProviderKind } from "./providers";
 import { defaultRef, favoriteFor, findConnection, type Connection, type ModelRef, type Settings } from "../settingsSchema";
 import { freeComfyMemory } from "../comfy/client";
+import { startActivity } from "./activity";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -196,10 +197,18 @@ export async function* streamChat(settings: Settings, req: ChatRequest): AsyncGe
     // Still "stopped" if the consumer stops reading early (the generator is returned from inside the loop below).
     status: "stopped",
   };
+  // What the call is doing, for this tab's activity line (src/lib/ai/activity.ts); the caller's own hooks still run.
+  const activity = startActivity(req.source?.label ?? "AI");
+  const tracked: ChatRequest = {
+    ...req,
+    onStatus: (text) => { activity.status(text); req.onStatus?.(text); },
+    onThinking: (piece) => { activity.thinking(piece); req.onThinking?.(piece); },
+  };
   try {
     const r = resolve(settings, req);
     Object.assign(record, { connection: r.connection, model: r.model, temperature: r.temperature, thinkingOff: r.disableThinking });
-    for await (const piece of streamReply(settings, req, r)) {
+    for await (const piece of streamReply(settings, tracked, r)) {
+      activity.text();
       record.reply += piece;
       yield piece;
     }
@@ -210,6 +219,7 @@ export async function* streamChat(settings: Settings, req: ChatRequest): AsyncGe
     if (!aborted) record.error = e instanceof Error ? e.message : String(e);
     throw e;
   } finally {
+    activity.end();
     record.ms = Date.now() - record.at;
     report(record);
   }

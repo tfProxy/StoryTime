@@ -8,6 +8,7 @@ const SHOTS = process.env.SHOTS_DIR;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // How the next chapter reply comes: "field" sends the reasoning as its own field, "tag" inside a <think> block.
 let style = "field";
+let slowChoices = false;
 const mock = http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "*");
@@ -31,8 +32,16 @@ const mock = http.createServer((req, res) => {
       send({ content: "# The Cellar\n\nShe went down " });
       await wait(400);
       send({ content: "the steps." });
+    } else if (system.includes("button text and nothing else")) {
+      send({ content: "Go down" });
     } else {
-      send({ content: system.includes("button text and nothing else") ? "Go down" : '["Left", "Right"]' });
+      // Suggested choices: slow and thinking first when a test asks (the Suggest choices button, made from the page).
+      if (slowChoices) {
+        await wait(800);
+        send({ reasoning_content: "CHOICE-THOUGHT: two ways on." });
+        await wait(1500);
+      }
+      send({ content: '["Left", "Right"]' });
     }
     res.end("data: [DONE]\n\n");
   });
@@ -59,26 +68,48 @@ let storyId = null;
 try {
   storyId = await startStory(page, BASE, { title: "Progress tale" });
   await page.getByRole("button", { name: "Generate chapter" }).click();
-  ok(await until(() => page.getByText("Waiting for the model…").isVisible()), "before the first word, the page says it is waiting for the model");
-  ok(await until(() => page.getByText("The model is thinking…").isVisible()), "…then that the model is thinking");
+  // The Generate's step line, under its button (the other buttons' step lines are inside .ai-call-progress).
+  const step = page.locator(".ai-panel > .generate-step");
+  ok(await until(() => step.getByText("Waiting for the model…").isVisible()), "before the first word, the page says it is waiting for the model");
+  const activity = page.locator(".site-header .header-activity-line");
+  ok(await until(async () => /Writing “.*” · (Waiting for the model…|The model is thinking…)/.test((await activity.textContent()) ?? "")), "the header's line says what the Generate is doing");
+  // The header stays at the top of the window while the page scrolls.
+  await page.mouse.wheel(0, 1500);
+  ok(await until(async () => (await page.evaluate(() => window.scrollY)) > 100 && Math.abs((await page.locator(".site-header").boundingBox()).y) < 1), "the header stays in view when the page scrolls");
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/header-activity-desktop.png` });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  ok(await until(() => step.getByText("The model is thinking…").isVisible()), "…then that the model is thinking");
   const fold = page.locator(".thinking-fold");
   ok(await until(() => fold.isVisible()), "the thinking gets a fold");
   await fold.locator("summary").click();
   ok(await until(async () => (await fold.locator(".thinking-text").textContent())?.includes("THOUGHT-MARK")), "the fold shows the thinking as it comes");
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/generate-thinking-desktop.png` });
-  ok(await until(() => page.getByText("Writing the chapter…").isVisible(), 50), "…then that it is writing the chapter");
+  ok(await until(() => step.getByText("Writing the chapter…").isVisible(), 50), "…then that it is writing the chapter");
   await page.getByRole("button", { name: "Edit text" }).waitFor({ timeout: 15000 });
   ok(await until(async () => (await page.getByRole("button", { name: "Generate a new draft" }).isEnabled())), "the Generate ends");
   const text = await page.locator("#field-body").textContent();
   ok(text.includes("She went down the steps.") && !text.includes("THOUGHT-MARK"), "the chapter has the text and not the thinking");
   ok(await fold.locator("summary").textContent().then((s) => s.startsWith("What the model thought")), "after it ends, the fold is kept, as what the model thought");
-  ok((await page.getByText("Writing the chapter…").count()) === 0, "the step line goes when it ends");
+  ok((await step.count()) === 0, "the step line goes when it ends");
+  ok(await until(() => page.locator(".header-activity").isHidden()), "the header's line goes when nothing is going");
+
+  // A button that calls the AI from the page (Suggest choices) shows its step and thinking too, and so does the header.
+  slowChoices = true;
+  await page.getByRole("button", { name: "Suggest choices" }).click();
+  const callProgress = page.locator(".ai-call-progress");
+  ok(await until(() => callProgress.getByText("The model is thinking…").isVisible()), "Suggest choices says the model is thinking");
+  ok(await until(async () => ((await activity.textContent()) ?? "").startsWith("Suggest choices · The model is thinking…")), "…and so does the header");
+  await callProgress.locator(".thinking-fold summary").click();
+  ok(await until(async () => ((await callProgress.locator(".thinking-text").textContent()) ?? "").includes("CHOICE-THOUGHT")), "…with its thinking in a fold");
+  ok(await until(() => page.getByRole("button", { name: "+ Left" }).isVisible()), "the suggestions come");
+  ok(await until(() => callProgress.isHidden()), "…and the step line goes");
+  slowChoices = false;
 
   // A server that leaves the thinking in the reply, as a <think> block.
   style = "tag";
   await page.setViewportSize({ width: 400, height: 900 });
   await page.getByRole("button", { name: "Generate a new draft" }).click();
-  ok(await until(() => page.getByText("The model is thinking…").isVisible()), "a <think> block also shows as thinking");
+  ok(await until(() => step.getByText("The model is thinking…").isVisible()), "a <think> block also shows as thinking");
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/generate-thinking-400.png` });
   ok(await until(async () => (await page.getByRole("button", { name: "Generate a new draft" }).isEnabled()), 150), "the second Generate ends");
   const second = await page.locator("#field-body").textContent();

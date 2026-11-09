@@ -22,6 +22,7 @@ import { drawPresetFor, presetName } from "@/lib/comfy/presets";
 import { chapterTarget } from "@/lib/pictureTarget";
 import { referenceChoices, restoreReference, type RefPool } from "@/lib/comfy/referenceChoices";
 import { useReferences, type RefRequest } from "./useReferences";
+import { AiCallProgress } from "./GenerateProgress";
 
 const MOMENT_NAMES: Record<ImageMoment, string> = { start: "Chapter Start", middle: "Chapter Middle", end: "Chapter End" };
 
@@ -257,6 +258,7 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
           </button>
         </span>
       </div>
+      {busy && <AiCallProgress labels={["Picture prompt"]} />}
 
       <PromptFields
         prompt={result.prompt}

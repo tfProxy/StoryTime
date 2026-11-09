@@ -9,6 +9,8 @@ import { getRun } from "@/lib/aiRuns/api";
 import type { RunEvent } from "@/lib/aiRuns/runner";
 import type { AiRun, CodexTask, ContinuityTask, FactsTask, PictureTask, SummaryTask, TagsTask, WriteTask } from "@/lib/aiRuns/types";
 import { useWorkQueue, type RunItem } from "./WorkQueue";
+import { GenerateStep, ThinkingFold } from "./GenerateProgress";
+import { LENGTH_WORDS } from "@/lib/ai/prompts";
 
 const plainFetch = (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init);
 const POLL_MS = 3000;
@@ -47,6 +49,9 @@ export default function AiRunProgress({
   const [problem, setProblem] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const [live, setLive] = useState("");
+  // The model's thinking in the current call, and whether it is still thinking (no text since).
+  const [thinking, setThinking] = useState("");
+  const [thinkingNow, setThinkingNow] = useState(false);
   const [marked, setMarked] = useState<number | null>(null);
   const [edits, setEdits] = useState<Record<string, Edit>>({});
   const [busy, setBusy] = useState(false);
@@ -73,10 +78,11 @@ export default function AiRunProgress({
       listenRun(runId, {
         onRun: (r) => setRun(r),
         onEvent: (e: RunEvent) => {
-          if (e.type === "task") { setLive(""); setStatus(e.phase === "writing" ? "Writing…" : e.phase === "planning" ? "Planning what happens next…" : "Summarizing and planning choices…"); }
-          else if (e.type === "text") setLive(e.text);
+          if (e.type === "task") { setLive(""); setThinking(""); setThinkingNow(false); setStatus(e.phase === "writing" ? "Writing…" : e.phase === "planning" ? "Planning what happens next…" : "Summarizing and planning choices…"); }
+          else if (e.type === "text") { setLive(e.text); setThinkingNow(false); }
+          else if (e.type === "thinking") { setThinking(e.text); setThinkingNow(true); }
           else if (e.type === "status") setStatus(e.text);
-          else if (e.type === "taskDone") setStatus("");
+          else if (e.type === "taskDone") { setStatus(""); setThinkingNow(false); }
           else if (e.type === "error") setStatus(e.message);
         },
       }),
@@ -149,9 +155,11 @@ export default function AiRunProgress({
   const stateLine = finished
     ? run.status === "stopped" ? "Stopped." : "Finished."
     : item?.state === "waiting" ? `Waiting its turn${others > 0 ? ` (${others} ahead)` : ""}.`
-    : item?.state === "working" ? (status || "Working…")
+    : item?.state === "working" ? (thinkingNow ? "The model is thinking…" : status || "Working…")
     : inReview ? "Plan ready to check."
     : run.status === "paused" || item?.state === "paused" || item?.state === "failed" ? "Paused." : "Not started.";
+  const writingTask = item?.state === "working" && !isTags && !isPictures && status === "Writing…" && !thinkingNow;
+  const liveWords = live.trim() ? live.trim().split(/\s+/).length : 0;
 
   return (
     <section className="ai-run" aria-label="Run progress">
@@ -160,7 +168,17 @@ export default function AiRunProgress({
           ? total === 0 ? "No chapters to read" : onlySummaries ? `Checked ${done} of ${total} ${total === 1 ? "summary" : "summaries"}` : hasFacts || tagTasks.some((t) => t.kind === "summary") ? `Did ${done} of ${total} ${total === 1 ? "check" : "checks"}` : `Read ${done} of ${total} ${total === 1 ? "chapter" : "chapters"}`
           : <>{done} of {total} {isPictures ? "pictures made" : "written"}{item?.state === "working" && item.current ? <>. Now: {isPictures ? item.current : <>“{item.current}”</>}</> : null}</>}
       </h2>
-      <p aria-live="polite">{stateLine}</p>
+      {item?.state === "working" ? (
+        // Timed from when the line changes (the step remounts with it).
+        <GenerateStep
+          key={stateLine}
+          text={stateLine}
+          words={writingTask ? { done: liveWords, target: LENGTH_WORDS[run.options.length ?? "medium"] } : undefined}
+        />
+      ) : (
+        <p aria-live="polite">{stateLine}</p>
+      )}
+      {thinking && item?.state === "working" && <ThinkingFold text={thinking} live={thinkingNow} />}
       {(run.error || item?.error) && !finished && <p className="error">{item?.error ?? run.error}</p>}
       {problem && <p className="error">{problem}</p>}
 

@@ -42,7 +42,7 @@ import { summaryCheck } from "../ai/summaryCheckAi";
 import { CHANGE_EVENT_TAGS, continuityFingerprint, findConflicts, type Conflict } from "../continuity";
 import { suggestTagsForChapter } from "../ai/tagAi";
 import type { AiSourceIds } from "../ai/client";
-import { planNext, storyContextOf, summarize, withPathSummaries, writeOneChapter, writeText, type PlannedChoice, type Stream } from "./writeChapter";
+import { defaultStream, planNext, storyContextOf, summarize, withPathSummaries, writeOneChapter, writeText, type PlannedChoice, type Stream } from "./writeChapter";
 
 /** How often a run renews its lease while a step works (the server lets it lapse after two minutes). */
 export const RENEW_MS = 30_000;
@@ -51,6 +51,8 @@ export type RunEvent =
   | { type: "task"; taskId: string; label: string; phase: "planning" | "writing" | "finishing" }
   | { type: "text"; taskId: string; text: string }
   | { type: "status"; text: string }
+  /** The model's reasoning so far in the current call (all of it, each time), for models that think first. */
+  | { type: "thinking"; taskId: string; text: string }
   | { type: "taskDone"; taskId: string }
   | { type: "state"; status: RunStatus; error?: string }
   | { type: "error"; taskId: string; message: string };
@@ -72,6 +74,35 @@ export type StepEnv = {
   onEvent?: (event: RunEvent) => void;
   deps?: RunnerDeps;
 };
+
+/**
+ * The step's env with an AI call (`deps.stream`: writing, planning, summaries) that tells the model's thinking as
+ * `thinking` events, at most four times a second and once more when the reply starts. Each call starts afresh.
+ */
+function withThinking(env: StepEnv, taskId: string): StepEnv {
+  const onEvent = env.onEvent;
+  if (!onEvent) return env;
+  const base = env.deps?.stream ?? defaultStream;
+  const stream: Stream = async function* (settings, req) {
+    let thinking = "";
+    let last = 0;
+    const onThinking = (piece: string) => {
+      req.onThinking?.(piece);
+      thinking += piece;
+      if (Date.now() - last >= 250) {
+        last = Date.now();
+        onEvent({ type: "thinking", taskId, text: thinking });
+      }
+    };
+    let first = true;
+    for await (const piece of base(settings, { ...req, onThinking })) {
+      if (first && thinking) onEvent({ type: "thinking", taskId, text: thinking });
+      first = false;
+      yield piece;
+    }
+  };
+  return { ...env, deps: { ...env.deps, stream } };
+}
 
 const fetcher = (deps?: RunnerDeps): Fetch => deps?.fetch ?? ((input, init) => fetch(input, init));
 const norm = (s: string) => s.toLowerCase().replace(/[\s"'“”‘’.!?]+/g, " ").trim();
@@ -238,7 +269,7 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<StepResult> {
   for (let attempt = 0; attempt < 2; attempt++) {
     onEvent?.({ type: "task", taskId: task.id, label, phase });
     try {
-      tasks = await doStep(picked, run, list, env, f);
+      tasks = await doStep(picked, run, list, withThinking(env, task.id), f);
       failure = null;
       break;
     } catch (e) {
