@@ -91,8 +91,11 @@ export const MAX_RESULTS = 60;
 /** Names a result (the same picture always has the same key). */
 export const resultKey = (r: RefineResult) => `${r.image.type}/${r.image.subfolder}/${r.image.filename}`;
 
-/** The results as the tray shows them, newest first; Previous and Next go along this order. */
-export const trayOrder = (results: RefineResult[]): RefineResult[] => [...results].reverse();
+/**
+ * The results as the tray shows them, oldest first (the places kept for pictures being made follow them, so a finished
+ * picture takes the place its job had); Previous and Next go along this order.
+ */
+export const trayOrder = (results: RefineResult[]): RefineResult[] => [...results];
 
 /** The result before/after `key` in the tray (null at the ends or when `key` isn't there). */
 export function neighbour(results: RefineResult[], key: string, step: -1 | 1): RefineResult | null {

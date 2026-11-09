@@ -46,16 +46,16 @@ ok(old !== null && old.bases[ORIGINAL_BASE].original.kind === "comfy" && old.bas
 const damaged = readSession(JSON.parse(JSON.stringify({ ...s, bases: { [id1]: { original: { kind: "bogus" } }, [ORIGINAL_BASE]: { original: { kind: "bogus" } }, ok: { original: { kind: "codex", pictureId: "p1" }, prompt: 5 } } })));
 ok(damaged !== null && !(id1 in damaged.bases) && damaged.bases[ORIGINAL_BASE].original.kind === "comfy" && damaged.bases.ok?.original.kind === "codex" && damaged.bases.ok.prompt === undefined, "damaged bases are dropped, the original base cannot be replaced");
 
-// the tray: newest first; previous / next along it; Discard picks the next, else the previous, else none
+// the tray: oldest first (pictures being made follow it); previous / next along it; Discard picks the next, else the previous, else none
 const list = addResults([], [res(0), res(1), res(2)]);
 const k = (n: number) => resultKey(res(n));
-ok(trayOrder(list).map((r) => r.seed).join() === "2,1,0", "the tray is newest first");
-ok(neighbour(list, k(1), -1)?.seed === 2 && neighbour(list, k(1), 1)?.seed === 0 && neighbour(list, k(2), -1) === null && neighbour(list, k(0), 1) === null && neighbour(list, "nope", 1) === null, "previous and next go along the tray and stop at its ends");
+ok(trayOrder(list).map((r) => r.seed).join() === "0,1,2", "the tray is oldest first");
+ok(neighbour(list, k(1), -1)?.seed === 0 && neighbour(list, k(1), 1)?.seed === 2 && neighbour(list, k(0), -1) === null && neighbour(list, k(2), 1) === null && neighbour(list, "nope", 1) === null, "previous and next go along the tray and stop at its ends");
 let d = discardResult(list, k(1));
-ok(d.results.map((r) => r.seed).join() === "0,2" && d.next === k(0), "discarding a middle result selects the next one in the tray");
-d = discardResult(list, k(0));
-ok(d.next === k(1) && d.results.length === 2, "discarding the last in the tray selects the previous one");
+ok(d.results.map((r) => r.seed).join() === "0,2" && d.next === k(2), "discarding a middle result selects the next one in the tray");
 d = discardResult(list, k(2));
+ok(d.next === k(1) && d.results.length === 2, "discarding the last in the tray selects the previous one");
+d = discardResult(list, k(0));
 ok(d.next === k(1), "discarding the first in the tray selects the next one");
 d = discardResult([res(5)], k(5));
 ok(d.results.length === 0 && d.next === null, "discarding the only result selects nothing");

@@ -132,7 +132,7 @@ type Props = {
   onTools: (change: (t: ToolSettings) => ToolSettings) => void;
   status: { ok: boolean; text: string } | null;
   onStatus: (s: { ok: boolean; text: string } | null) => void;
-  /** A result is on show: Go is off. */
+  /** The picture is being kept (Keep picture): Go is off. Go stays on while a result is on show; it uses the working picture. */
   locked?: boolean;
 };
 
@@ -206,7 +206,7 @@ export default function RefinePromptPanel({ session, onSession, present, canvas,
 
   // Why Go can't be used, or null.
   let blocked: string | null = null;
-  if (locked) blocked = "A result is on show: Apply it or Trash it, or select it again to go back to editing.";
+  if (locked) blocked = "The picture is being kept.";
   else if (!dims || !picture) blocked = "The picture isn't loaded yet.";
   else if (!ctx) blocked = "Loading the drawing preset…";
   else if (!comfy.url) blocked = "Add your ComfyUI machine in Settings first.";

@@ -3742,7 +3742,7 @@ button.refine-icon[aria-pressed="true"] {
   font-weight: 600;
 }
 
-/* The Results panel: small tiles, newest first, after the places kept for pictures being made. */
+/* The Results panel: small tiles, oldest first, then the places kept for pictures being made. */
 .refine-results {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
@@ -3775,6 +3775,17 @@ button.refine-icon[aria-pressed="true"] {
   align-content: center;
   background: linear-gradient(100deg, var(--line) 30%, color-mix(in srgb, var(--line) 55%, var(--card)) 50%, var(--line) 70%);
   background-size: 300% 100%;
+}
+
+.refine-result-progress {
+  width: 80%;
+  height: 0.5rem;
+}
+
+.refine-result-stage {
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
 }
 
 .refine-result-pending button {

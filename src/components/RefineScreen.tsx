@@ -241,7 +241,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
   const sessionTarget = session?.target;
   const picture = useMemo(() => (original && sessionTarget ? pictureOfOriginal(original, sessionTarget, comfy.url) : null), [original, sessionTarget, comfy.url]);
   const pending = useMemo(
-    () => queue.jobs.filter((j) => j.session === sessionId && j.state === "making").map((j) => ({ key: j.key, count: j.count, stop: () => stop(j.key) })),
+    () => queue.jobs.filter((j) => j.session === sessionId && j.state === "making").map((j) => ({ key: j.key, count: j.count, progress: j.progress, stop: () => stop(j.key) })),
     [queue.jobs, sessionId, stop],
   );
 
@@ -450,7 +450,7 @@ export default function RefineScreen({ sessionId }: { sessionId: string }) {
             onTools={setTools}
             status={status}
             onStatus={setStatus}
-            locked={reviewing || accepting}
+            locked={accepting}
           />
           <RefineResults
             results={session.results}

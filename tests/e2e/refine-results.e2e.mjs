@@ -118,7 +118,19 @@ try {
   ok((await attr("data-previewing")) === "true" && (await attr("data-preview-key")).includes("StoryTime_") && (await previewIs(3)), "the main window shows that result (data-previewing, its picture)");
   ok((await page.locator("canvas[data-layer=paint]").evaluate((c) => getComputedStyle(c).visibility)) === "hidden" && (await page.locator("canvas[data-layer=mask]").evaluate((c) => getComputedStyle(c).visibility)) === "hidden", "the paint and mask layers are hidden while it is on show");
   ok(await btn("Mask brush").isDisabled() && await btn("Paint brush").isDisabled() && await slider("Paint size").isDisabled() && await btn("Show mask").isDisabled() && await btn("Invert mask").isDisabled(), "the Mask and Paint tools are off");
-  ok(await btn("Undo").isDisabled() && await btn("Redo").isDisabled() && await btn("Go").isDisabled() && (await btn("Go").getAttribute("title")).includes("Apply it or Trash it"), "Undo, Redo and Go are off (Go says why)");
+  ok(await btn("Undo").isDisabled() && await btn("Redo").isDisabled(), "Undo and Redo are off");
+  ok(await btn("Go").isEnabled(), "Go stays on while a result is on show (it asks for more from the working picture)");
+  // Go while looking at a result: the places kept for the new pictures come after the results, and show how far the job has got.
+  comfy.setMode({ steps: 20, stepDelay: 150 });
+  await btn("Go").click();
+  const pendingTiles = page.locator('.refine-results [data-pending="true"]');
+  await until(async () => (await page.locator('.refine-results [data-stage="running"] progress').count()) > 0, "the job's progress on its places", 100);
+  ok((await pendingTiles.count()) === 4 && (await page.locator(".refine-results > li").nth(4).getAttribute("data-pending")) === "true" && (await page.locator(".refine-results > li").nth(3).getAttribute("data-result-index")) === "3", "the places for the new pictures come after the results");
+  ok(/^\d+%$/.test((await pendingTiles.first().locator(".refine-result-stage").innerText()).trim()) && /Step \d+ of 20/.test(await pendingTiles.first().getAttribute("title")), `…and show how far the job has got (${await pendingTiles.first().locator(".refine-result-stage").innerText()})`);
+  ok((await selectedIndex()) === 3 && (await attr("data-previewing")) === "true", "…while the result stays on show");  await pendingTiles.first().getByRole("button", { name: "Stop making these pictures" }).click();
+  await until(async () => (await pendingTiles.count()) === 0, "the job to stop", 100);
+  comfy.setMode({ steps: 4, stepDelay: 120 });
+  ok((await tray.count()) === 4, "(stopped: no more results)");
   ok(await btn("Keep picture").isDisabled() && (await btn("Keep picture").getAttribute("title")) === "Apply or deselect the result first", "Accept is off while a result is on show (and says why)");
   await drag(0.2, 0.7, 0.8, 0.7);
   ok((await strokes()) === 1 && (await maskStrokes()) === 1, "dragging on the picture draws nothing");
@@ -140,26 +152,27 @@ try {
   ok((await pixel("paint", 0.5, 0.5))[3] > 0 && (await pixel("paint", 0.5, 0.5)).slice(0, 3).join() === "0,255,0" && (await baseIs(5)), "…with the paint and the original picture as they were");
 
   // ================= Previous / Next, the arrow keys =================
-  // The tray is newest first: result 4 (index 3) is first, so Previous is off there.
-  await tileAt(3).click();
+  // The tray is oldest first: result 1 (index 0) is first, so Previous is off there.
+  ok((await tray.first().getAttribute("data-result-index")) === "0" && (await tray.last().getAttribute("data-result-index")) === "3", "the tray is oldest first");
+  await tileAt(0).click();
   ok(await nav("Previous result").isDisabled() && await nav("Next result").isEnabled(), "at the first tile of the tray Previous is off and Next on");
   await nav("Next result").click();
-  ok((await selectedIndex()) === 2, "Next goes to the next tile along the tray");
-  await until(async () => (await previewIs(2)), "result 2 on show");
+  ok((await selectedIndex()) === 1, "Next goes to the next tile along the tray");
+  await until(async () => (await previewIs(1)), "result 2 on show");
   await page.keyboard.press("ArrowRight");
-  ok((await selectedIndex()) === 1, "the → key does the same");
+  ok((await selectedIndex()) === 2, "the → key does the same");
   await page.keyboard.press("ArrowLeft");
-  ok((await selectedIndex()) === 2, "the ← key goes back");
+  ok((await selectedIndex()) === 1, "the ← key goes back");
   await nav("Previous result").click();
-  ok((await selectedIndex()) === 3, "Previous goes back along the tray");
+  ok((await selectedIndex()) === 0, "Previous goes back along the tray");
   await box("Prompt").focus();
   await page.keyboard.press("ArrowRight");
-  ok((await selectedIndex()) === 3, "arrow keys in a text box move the cursor, not the selection");
-  await tileAt(0).click();
+  ok((await selectedIndex()) === 0, "arrow keys in a text box move the cursor, not the selection");
+  await tileAt(3).click();
   ok(await nav("Next result").isDisabled() && await nav("Previous result").isEnabled(), "at the last tile of the tray Next is off");
   await page.keyboard.press("ArrowRight");
-  ok((await selectedIndex()) === 0, "→ at the end stays where it is");
-  await tileAt(0).click();
+  ok((await selectedIndex()) === 3, "→ at the end stays where it is");
+  await tileAt(3).click();
 
   // ================= zoom and pan stay =================
   const sbox = await stage.boundingBox();
@@ -172,9 +185,9 @@ try {
   const zoomedReview = await frame();
   ok(Math.abs(zoomedReview.width - zoomed.width) < 2 && zoomedReview.width > sbox.width * 1.2, "looking at a result keeps the zoom");
   await nav("Next result").click();
-  await until(async () => (await previewIs(1)), "result 1 on show");
+  await until(async () => (await previewIs(3)), "result 4 on show");
   ok(Math.abs((await frame()).width - zoomedReview.width) < 2, "…and so does going from one result to the next");
-  await tileAt(1).click();
+  await tileAt(3).click();
   await until(async () => (await attr("data-previewing")) === "false", "back to editing");
   ok(Math.abs((await frame()).width - zoomed.width) < 2, "…and so does going back to editing");
 
@@ -242,24 +255,24 @@ try {
   ok(uploads() === uploadsAfterSame, "no picture was uploaded for any of this");
 
   // ================= Discard =================
-  // The tray, newest first, is now: index 3, 2, 1 (in use), 0.
-  await trayTile(3).click(); // index 0, the last
+  // The tray, oldest first, is now: index 0, 1 (in use), 2, 3.
+  await trayTile(0).click(); // index 0, the first
   await nav("Trash").click();
   ok((await tray.count()) === 3 && (await selectedIndex()) !== null && (await attr("data-previewing")) === "true", "Discard removes the result and keeps reviewing");
   const sel1 = await page.locator('[data-result-index][data-selected="true"]');
-  ok((await sel1.getAttribute("data-in-use")) === "true", "…at the end of the tray the previous one (here the one in use) is selected");
+  ok((await sel1.getAttribute("data-in-use")) === "true", "…and the next one in the tray (here the one in use) is selected");
   await until(async () => (await previewIs(1)), "result 2 on show");
   await sel1.locator("button").click();
   ok((await tray.count()) === 3 && (await selectedIndex()) === null, "(let go of it)");
-  await trayTile(0).click(); // the newest
+  await trayTile(2).click(); // the newest, the last
   await until(async () => (await previewIs(3)), "result 4 on show");
   await nav("Trash").click();
   ok((await tray.count()) === 2, "the newest is discarded");
-  await until(async () => (await previewIs(2)), "the next result on show");
-  ok((await selectedIndex()) === 1 && (await previewIs(2)), "…and the next in the tray is selected and shown");
+  await until(async () => (await previewIs(2)), "the previous result on show");
+  ok((await selectedIndex()) === 1 && (await previewIs(2)), "…and at the end of the tray the previous one is selected and shown");
   await nav("Trash").click();
   await until(async () => (await previewIs(1)), "the last result on show");
-  ok((await tray.count()) === 1 && (await selectedIndex()) === 0 && (await previewIs(1)), "discarding the first of two selects the one left");
+  ok((await tray.count()) === 1 && (await selectedIndex()) === 0 && (await previewIs(1)), "discarding the last of two selects the one left");
   ok(await baseIs(1), "(the working picture was never touched)");
   await settle();
   ok((await stored()).results.length === 1, "the session keeps only the results left");

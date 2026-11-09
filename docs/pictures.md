@@ -23,7 +23,7 @@ How to use StoryTime's picture pages, and how to set up the machine that makes t
 - **Strength** sets how much changes (low keeps the picture, high redraws freely). Lower strengths are also faster.
 - **Under the paint** (shown while a mask is painted): *Keep what's there* redraws starting from what is under the mask; *Blur it* or *Grey* hide it first, which works better for removing something.
 - A small masked area is redrawn at full detail and pasted back, so hands and faces come out sharp.
-- **Go** makes results. Click one to compare it with the picture, then **Apply** it (Undo works) or **Trash** it. **Keep picture** saves what you see and goes back; **Cancel** throws the session away.
+- **Go** makes results; they are listed oldest first, and the pictures still being made come last, each showing how far along it is. Click a result to compare it with the picture, then **Apply** it (Undo works) or **Trash** it. Go still works while you look at a result: it redraws the working picture, not the result. **Keep picture** saves what you see and goes back; **Cancel** throws the session away.
 - Refine's results are temporary and stay out of the Pictures panel unless kept.
 
 **References** (up to 4: a character, item, place or style) keep a character or place looking the same. Add them from **Add reference** (suggestions, your pictures, codex pictures, or an upload) or from a picture's ☰ › Use as reference. A story can also have a **style picture** (details page › Pictures) that is added to every job. These need IP-Adapter in ComfyUI: see "Reference pictures" below.

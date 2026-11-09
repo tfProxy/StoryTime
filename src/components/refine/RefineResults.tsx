@@ -1,13 +1,23 @@
 "use client";
 
 import { imageUrl } from "@/lib/comfy/client";
-import { resultKey, type RefineResult } from "@/lib/refine/session";
+import { resultKey, trayOrder, type RefineResult } from "@/lib/refine/session";
+import { progressText, type JobProgress } from "../pictures";
 
-/** A job being made for this session: a place kept for each picture, with Stop on the first. */
-export type PendingResult = { key: string; count: number; stop: () => void };
+/** A job being made for this session: a place kept for each picture, with how far it has got, and Stop on the first. */
+export type PendingResult = { key: string; count: number; progress: JobProgress; stop: () => void };
+
+/** A few words for a small tile (the whole sentence, `progressText`, is its tooltip and what is read out). */
+function shortProgress(p: JobProgress): string {
+  if (p.stage === "running") return p.max > 0 ? `${Math.round((p.value / p.max) * 100)}%` : "Drawing";
+  if (p.stage === "queued") return p.ahead ? `${p.ahead} ahead` : "Starting";
+  if (p.stage === "uploading") return "Sending";
+  if (p.stage === "loading") return "Loading";
+  return "Waiting";
+}
 
 /**
- * The Results panel: the pictures this session's jobs made (newest first) as small tiles, followed by the places kept
+ * The Results panel: the pictures this session's jobs made (oldest first) as small tiles, followed by the places kept
  * for the jobs being made. Clicking a tile selects it (the screen then shows it); clicking the selected one again lets go
  * of it. `data-result-index` is the picture's place in the session's list (oldest = 0); the tile whose picture is the
  * working picture has a badge, “In use”.
@@ -39,10 +49,7 @@ export default function RefineResults({
         </p>
       ) : (
         <ul className="refine-results">
-          {results
-            .map((r, index) => ({ r, index }))
-            .reverse()
-            .map(({ r, index }) => {
+          {trayOrder(results).map((r, index) => {
               const key = resultKey(r);
               const selected = key === selectedKey;
               const inUse = key === inUseKey;
@@ -76,8 +83,23 @@ export default function RefineResults({
             })}
           {pending.flatMap((job) =>
             Array.from({ length: job.count }, (_, i) => (
-              <li key={`${job.key}-${i}`} className="refine-result refine-result-pending" data-pending="true" role={i === 0 ? "status" : undefined} aria-label={i === 0 ? "Making pictures" : undefined}>
-                <span className="picture-queue-spinner" aria-hidden="true" />
+              <li
+                key={`${job.key}-${i}`}
+                className="refine-result refine-result-pending"
+                data-pending="true"
+                data-stage={job.progress.stage}
+                role={i === 0 ? "status" : undefined}
+                aria-label={i === 0 ? `Making pictures: ${progressText(job.progress)}` : undefined}
+                title={progressText(job.progress)}
+              >
+                {job.progress.stage === "running" ? (
+                  <progress className="refine-result-progress" value={job.progress.value} max={job.progress.max} aria-hidden="true" />
+                ) : (
+                  <span className="picture-queue-spinner" aria-hidden="true" />
+                )}
+                <span className="refine-result-stage" aria-hidden="true">
+                  {shortProgress(job.progress)}
+                </span>
                 {i === 0 && (
                   <button type="button" className="secondary" onClick={job.stop} aria-label="Stop making these pictures" title="Stop this job">
                     Stop
