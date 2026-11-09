@@ -191,7 +191,8 @@ try {
   // ---- the setting ----
   await send("PUT", "/api/queue/paused", { paused: false });
   await page.goto(`${BASE}/settings#codex`);
-  ok(await page.getByRole("tab", { name: "Writing", selected: true }).isVisible(), "#codex opens the Writing tab");
+  // The page picks the tab from the hash after it loads, so wait for it.
+  ok(await page.getByRole("tab", { name: "Writing", selected: true }).waitFor({ timeout: 5000 }).then(() => true, () => false), "#codex opens the Writing tab");
   const box = page.getByRole("checkbox", { name: /Suggest codex changes after a chapter is saved/ });
   await box.waitFor();
   ok(!(await box.isChecked()), "the codex setting shows the saved value (off under the mock AI)");
