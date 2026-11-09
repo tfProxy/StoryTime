@@ -303,10 +303,21 @@ function ModelCard({
         Nickname <small>(optional)</small>
         <input aria-label={`Nickname for ${fav.model}`} value={fav.label} onChange={(e) => onChange({ label: e.target.value })} />
       </label>
-      <label className="inline-label">
-        <input type="checkbox" checked={fav.disableThinking} onChange={(e) => onChange({ disableThinking: e.target.checked })} />
-        Disable thinking
-      </label>
+      <fieldset className="model-thinking">
+        <legend>Disable thinking</legend>
+        <label className="inline-label">
+          <input type="checkbox" checked={fav.disableThinking.write} onChange={(e) => onChange({ disableThinking: { ...fav.disableThinking, write: e.target.checked } })} />
+          <span>
+            When writing chapters <small>(Generate, AI runs, rewriting a passage)</small>
+          </span>
+        </label>
+        <label className="inline-label">
+          <input type="checkbox" checked={fav.disableThinking.other} onChange={(e) => onChange({ disableThinking: { ...fav.disableThinking, other: e.target.checked } })} />
+          <span>
+            For everything else <small>(suggestions, summaries, tags, codex)</small>
+          </span>
+        </label>
+      </fieldset>
       <fieldset className="model-uses">
         <legend>Offer this model for</legend>
         {MODEL_USES.map((u) => (

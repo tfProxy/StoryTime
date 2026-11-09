@@ -8,6 +8,8 @@ const mock = http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "*");
   if (req.method === "OPTIONS") { res.statusCode = 204; return res.end(); }
+  // Which models Ollama has loaded (asked before a summary or suggestions): none.
+  if (req.url?.endsWith("/api/ps")) { res.setHeader("content-type", "application/json"); return res.end('{"models":[]}'); }
   let data = ""; req.on("data", (c) => (data += c));
   req.on("end", () => {
     const body = JSON.parse(data || "{}");

@@ -2,6 +2,7 @@
 // by model, D20): `writeText` (the main model), `planNext` (the cheap model: the new chapter's choices, each planned
 // together, D22) and `summarize` (the cheap model). The steps repeat what the writing page does, without its UI.
 import { streamChat, type AiSourceIds, type ChatRequest } from "../ai/client";
+import { modelAfterWriting } from "../ai/ollama";
 import {
   generatePrompt,
   matchSteps,
@@ -82,7 +83,7 @@ export async function writeText(
   const text = await complete(
     p.stream ?? defaultStream,
     settings,
-    { system: SYSTEM_CHAPTER, messages: [{ role: "user", content: prompt }], ...modelRequest(p.options, "main"), signal: p.signal, source: { label: "AI run: write", ...p.source } },
+    { system: SYSTEM_CHAPTER, messages: [{ role: "user", content: prompt }], ...modelRequest(p.options, "main"), job: "write", signal: p.signal, source: { label: "AI run: write", ...p.source } },
     p.onText && ((soFar) => p.onText!(soFar)),
   );
   const { title, body } = parseChapterOutput(text);
@@ -181,7 +182,10 @@ export async function summarize(
   return null;
 }
 
-/** Everything for one chapter in one go ("one chapter at a time"): the text, its planned choices and its summaries. */
+/**
+ * Everything for one chapter in one go ("one chapter at a time"): the text, its planned choices and its summaries.
+ * (Grouping by model already keeps the swaps down, so only this mode checks what Ollama has loaded.)
+ */
 export async function writeOneChapter(
   settings: Settings,
   p: {
@@ -202,10 +206,15 @@ export async function writeOneChapter(
 ): Promise<{ title: string; body: string; choices: PlannedChoice[]; summary?: string; path_summary?: string }> {
   const ctx = await withPathSummaries(settings, storyContextOf(p.context, p.label), p.signal, p.onStatus, p.fetch, p.source);
   const chapter = await writeText(settings, { ctx, label: p.label, direction: p.direction, options: p.options, signal: p.signal, onText: p.onText, stream: p.stream, source: p.source });
+  // The writing model plans and summarizes too while Ollama still has it loaded, rather than swapping models and back.
+  const options =
+    p.options.models !== "writing" && (await modelAfterWriting(settings, p.options.model, p.options.suggestModel, p.signal)).role === "main"
+      ? { ...p.options, models: "writing" as const }
+      : p.options;
   p.onStatus?.("Planning the choices…");
-  const choices = await planNext(settings, { ctx: { ...ctx, siblingChoices: undefined }, chapter, given: p.given, suggest: p.suggest, options: p.options, signal: p.signal, stream: p.stream, source: p.source });
+  const choices = await planNext(settings, { ctx: { ...ctx, siblingChoices: undefined }, chapter, given: p.given, suggest: p.suggest, options, signal: p.signal, stream: p.stream, source: p.source });
   p.onStatus?.("Summarizing…");
   const parent = p.context.path.at(-1);
-  const s = await summarize(settings, { story: { title: ctx.storyTitle, premise: ctx.premise }, previous: parent?.path_summary ?? null, chapter, options: p.options, signal: p.signal, stream: p.stream, source: p.source });
+  const s = await summarize(settings, { story: { title: ctx.storyTitle, premise: ctx.premise }, previous: parent?.path_summary ?? null, chapter, options, signal: p.signal, stream: p.stream, source: p.source });
   return { ...chapter, choices, ...(s && { summary: s.summary, path_summary: s.path_summary }) };
 }

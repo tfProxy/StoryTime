@@ -10,7 +10,7 @@ const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "storytime-generate-"));
 process.env.STORYTIME_DB = path.join(dir, "generate.db");
 const { db } = await import("../../src/lib/db.ts");
-const { putSettings } = await import("../../src/lib/settingsStore.ts");
+const { getSettings, putSettings } = await import("../../src/lib/settingsStore.ts");
 const { DEFAULT_SETTINGS } = await import("../../src/lib/settingsSchema.ts");
 const { SYSTEM_CHOICE_LABEL, SYSTEM_CHOICES } = await import("../../src/lib/ai/prompts.ts");
 const { subscribe } = await import("../../src/lib/worker/bus.ts");
@@ -19,17 +19,14 @@ const { generateCatchUp, generateProgress, genChannel, genItemKey, generateReque
 const { getDraft, putDraft } = await import("../../src/lib/draftStore.ts");
 
 const chapter = "# The Door\n\nShe opened it and went in.";
-const ai = await startFakeAi({
-  port: 3558,
-  delay: 5,
-  reply: (body: { stream?: boolean }) => {
-    const sent = JSON.stringify(body);
-    // As it appears inside the JSON body (its newlines and quotes escaped).
-    if (sent.includes(JSON.stringify(SYSTEM_CHOICES).slice(1, -1))) return '["Go left", "Go right"]';
-    if (sent.includes(SYSTEM_CHOICE_LABEL)) return "Open the door.";
-    return chapter;
-  },
-});
+const reply = (body: { stream?: boolean }) => {
+  const sent = JSON.stringify(body);
+  // As it appears inside the JSON body (its newlines and quotes escaped).
+  if (sent.includes(JSON.stringify(SYSTEM_CHOICES).slice(1, -1))) return '["Go left", "Go right"]';
+  if (sent.includes(SYSTEM_CHOICE_LABEL)) return "Open the door.";
+  return chapter;
+};
+const ai = await startFakeAi({ port: 3558, delay: 5, reply });
 
 const request = (key: string, extra: Record<string, unknown> = {}) => ({
   key,
@@ -109,6 +106,25 @@ try {
   startGenerate(generateRequest.parse(request("fill:b")));
   ok(getItem("gen:fill:b")?.state === "waiting", "asking again after it finished starts a new one");
   stopGenerate("fill:b");
+
+  // On Ollama, with the writing model still loaded, the choice text and suggestions are asked of it too.
+  {
+    const ol = await startFakeAi({ delay: 1, loaded: ["big:14b"], reply });
+    const before = getSettings();
+    putSettings({
+      ...DEFAULT_SETTINGS,
+      connections: [{ id: "o1", name: "Ollama", kind: "ollama", baseUrl: `${ol.url}/v1`, apiKey: "", freeComfy: false, freeForPictures: false }],
+      defaults: { main: { connectionId: "o1", model: "big:14b" }, cheap: { connectionId: "o1", model: "small:1b" } },
+    });
+    startGenerate(generateRequest.parse(request("fill:ol")));
+    await runGenerate("fill:ol");
+    const models = ol.requests.filter((r: { url: string }) => r.url.endsWith("/chat/completions")).map((r: { body: { model: string } }) => r.body.model);
+    ok(models.length === 3 && models.every((m: string) => m === "big:14b"), `the loaded writing model wrote the chapter, the choice text and the choices (${models.join()})`);
+    ok(ol.requests.some((r: { url: string }) => r.url.endsWith("/api/ps")), "…after asking Ollama what it has loaded");
+    stopGenerate("fill:ol");
+    putSettings(before!);
+    await ol.close();
+  }
 
   // A draft the page saved meanwhile is built on, not overwritten.
   putDraft("fill:c", { ...request("fill:c").draft, prompt: "typed while waiting" }, { base: null });

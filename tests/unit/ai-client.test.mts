@@ -1,6 +1,6 @@
 import http from "node:http";
 import { streamChat, listModels, completeChat, AiError } from "../../src/lib/ai/client.ts";
-import { freeOllamaForPictures, freeOllamaMemory, ollamaRoot } from "../../src/lib/ai/ollama.ts";
+import { freeOllamaForPictures, freeOllamaMemory, loadedOllamaModels, modelAfterWriting, ollamaRoot } from "../../src/lib/ai/ollama.ts";
 import { DEFAULT_SETTINGS, favoritesFor, parseSettings, exportSettingsJson, importSettingsJson } from "../../src/lib/settingsSchema.ts";
 
 const seen: { url?: string; headers?: http.IncomingHttpHeaders; body?: any }[] = [];
@@ -134,7 +134,7 @@ assert(seen.at(-1)!.body.model === "m", "no cheaper default falls back to the ma
 try { await completeChat(two as any, { messages: [], model: { connectionId: "gone", model: "x" } }); assert(false, "gone"); }
 catch (e) { assert(/has been removed/.test((e as Error).message), "a model on a removed connection is reported"); }
 // Disable thinking is set per starred model. OpenRouter gets its own reasoning object.
-const fav = (connectionId: string, model: string, disableThinking: boolean) => ({ connectionId, model, label: "", disableThinking, hiddenFrom: [] });
+const fav = (connectionId: string, model: string, off: boolean) => ({ connectionId, model, label: "", disableThinking: { write: off, other: off }, hiddenFrom: [] });
 const thinking = { ...two, favorites: [fav("c2", "vendor/big", true), fav("c1", "m", true), fav("c1", "sm", false)] };
 await completeChat(thinking as any, { messages: [{ role: "user", content: "x" }], model: { connectionId: "c2", model: "vendor/big" } });
 assert(seen.at(-1)!.body.reasoning?.effort === "none" && !("reasoning_effort" in seen.at(-1)!.body), "openrouter: reasoning effort none");
@@ -144,6 +144,12 @@ await completeChat(thinking as any, { messages: [{ role: "user", content: "x" }]
 assert(seen.at(-1)!.body.model === "sm" && !("reasoning_effort" in seen.at(-1)!.body) && !("reasoning" in seen.at(-1)!.body), "a model with thinking left on is asked nothing about it, though another model has it off");
 await completeChat({ ...two, favorites: [] } as any, { messages: [{ role: "user", content: "x" }] });
 assert(!("reasoning_effort" in seen.at(-1)!.body), "a model that isn't starred is left to think");
+// …and apart for writing chapters and for every other job: here it thinks when writing and not otherwise.
+const split = { ...two, favorites: [{ ...fav("c1", "m", false), disableThinking: { write: false, other: true } }] };
+await completeChat(split as any, { messages: [{ role: "user", content: "x" }], job: "write" });
+assert(!("reasoning_effort" in seen.at(-1)!.body), "a call that writes a chapter uses the writing switch (thinking on)");
+await completeChat(split as any, { messages: [{ role: "user", content: "x" }] });
+assert(seen.at(-1)!.body.reasoning_effort === "none", "any other call, even with the writing model, uses the other switch (thinking off)");
 const ctl = new AbortController(); ctl.abort();
 try { await completeChat(mk("custom", base + "/o") as any, { messages: [{ role: "user", content: "x" }], signal: ctl.signal }); assert(false, "abort"); }
 catch (e) { assert((e as any).name === "AbortError", "abort propagates"); }
@@ -188,6 +194,30 @@ await freeOllamaForPictures([
 assert(seen.slice(from).every((x) => x.url!.startsWith("/ol/")) && seen.length > from, "only Ollama connections with the box ticked are unloaded");
 assert(parseSettings({ connections: [{ id: "a", kind: "ollama" }] }).connections[0].freeForPictures === false && parseSettings({ connections: [{ id: "a", kind: "ollama", freeForPictures: true }] }).connections[0].freeForPictures === true, "freeForPictures is off in older settings and kept when on");
 
+// After writing, a summary or suggestions use the writing model while Ollama still has it loaded (big:14b and tiny:1b are).
+{
+  const s = parseSettings({
+    connections: [
+      { id: "ol", kind: "ollama", baseUrl: base + "/ol/v1" },
+      { id: "ol2", kind: "ollama", baseUrl: base + "/ol/" },
+      { id: "far", kind: "ollama", baseUrl: "http://localhost:1/v1" },
+      { id: "cloud", kind: "openai", baseUrl: base + "/o/v1", apiKey: "k" },
+    ],
+    defaults: { main: { connectionId: "ol", model: "big:14b" }, cheap: { connectionId: "ol", model: "mid:7b" } },
+  });
+  const ref = (connectionId: string, model: string) => ({ connectionId, model });
+  const big = ref("ol", "big:14b");
+  const pick = (w: any, sm: any) => modelAfterWriting(s, w, sm).then((r) => JSON.stringify(r));
+  assert((await pick(big, ref("ol", "mid:7b"))) === JSON.stringify({ role: "main", model: big }), "a loaded writing model replaces an unloaded small-job model on the same Ollama");
+  assert((await pick(null, null)) === JSON.stringify({ role: "main", model: big }), "…the defaults too");
+  assert((await pick(big, ref("ol2", "mid:7b"))) === JSON.stringify({ role: "main", model: big }), "…and another connection to the same server");
+  assert((await pick(big, ref("ol", "tiny:1b"))) === JSON.stringify({ role: "cheap", model: ref("ol", "tiny:1b") }), "a small-job model that is loaded too is kept");
+  assert((await pick(ref("ol", "huge:70b"), ref("ol", "mid:7b"))) === JSON.stringify({ role: "cheap", model: ref("ol", "mid:7b") }), "a writing model no longer loaded is not used");
+  assert((await pick(big, ref("cloud", "gpt"))) === JSON.stringify({ role: "cheap", model: ref("cloud", "gpt") }), "a small-job model elsewhere is kept");
+  assert((await pick(ref("far", "big:14b"), ref("far", "mid:7b"))) === JSON.stringify({ role: "cheap", model: ref("far", "mid:7b") }), "an Ollama that can't be reached keeps the small-job model");
+  assert(JSON.stringify(await loadedOllamaModels(base + "/ol/v1").then((x) => [...x!].sort())) === '["big:14b","tiny:1b"]', "loadedOllamaModels lists what /api/ps has");
+}
+
 // settings parse / export / import
 assert(parseSettings(null).contextTokens === 8000, "parse null -> defaults");
 const messy = parseSettings({
@@ -209,9 +239,12 @@ assert(messy.defaults.main === null && messy.defaults.cheap?.model === "x", "tol
 // Per-model thinking and jobs. The old global "Disable thinking" carries over to every starred model.
 const conns = [{ id: "a", kind: "ollama" }];
 const old = parseSettings({ connections: conns, disableThinking: true, favorites: [{ connectionId: "a", model: "x" }, { connectionId: "a", model: "y", disableThinking: false }] });
-assert(old.favorites[0].disableThinking === true && old.favorites[1].disableThinking === false && !("disableThinking" in old), "the old global switch is moved onto starred models that have no setting of their own");
+const th = (f: { disableThinking: { write: boolean; other: boolean } }) => JSON.stringify(f.disableThinking);
+assert(th(old.favorites[0]) === '{"write":true,"other":true}' && th(old.favorites[1]) === '{"write":false,"other":false}' && !("disableThinking" in old), "the old global switch is moved onto starred models that have no setting of their own");
+const oneSwitch = parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "x", disableThinking: true }, { connectionId: "a", model: "y", disableThinking: { write: false, other: true } }] });
+assert(th(oneSwitch.favorites[0]) === '{"write":true,"other":true}' && th(oneSwitch.favorites[1]) === '{"write":false,"other":true}', "a model's single switch from before sets both; the split one is kept");
 const fresh = parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "x" }] });
-assert(fresh.favorites[0].disableThinking === false && fresh.favorites[0].hiddenFrom.length === 0, "a starred model starts thinking as usual and offered for every job");
+assert(th(fresh.favorites[0]) === '{"write":false,"other":false}' && fresh.favorites[0].hiddenFrom.length === 0, "a starred model starts thinking as usual and offered for every job");
 const hidden = parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "x", hiddenFrom: ["summary", "summary", "nope", 3, "write"] }] });
 assert(JSON.stringify(hidden.favorites[0].hiddenFrom) === '["write","summary"]', "jobs opted out of are kept once each, unknown ones dropped: " + JSON.stringify(hidden.favorites[0].hiddenFrom));
 const picks = parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "big", hiddenFrom: ["summary", "suggest"] }, { connectionId: "a", model: "small" }] });
