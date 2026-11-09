@@ -1,10 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ChapterEditEntry from "@/components/ChapterEditEntry";
+import type { EditWriting } from "@/components/ChapterEditor";
+import { getChapterWriting, versionsForEdit } from "@/lib/chapterWriting";
 import { getCodexFacts, getCodexOps, getContextCodex } from "@/lib/codexDb";
 import { aiMarkOf, countDescendants, getChoices, getIncomingChoice, getPath, getStory } from "@/lib/stories";
 
 export const dynamic = "force-dynamic";
+
+/** The prompt and versions kept when the chapter was posted, with the chapter as it is now showing. */
+function editWriting(id: string, title: string, body: string): EditWriting | null {
+  const kept = getChapterWriting(id);
+  return kept ? { ...kept, ...versionsForEdit(kept.versions, title, body) } : null;
+}
 
 export default async function EditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -50,6 +58,7 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
         existingChoices={getChoices(id).map((c) => ({ id: c.id, label: c.label, hasChild: c.child_chapter_id !== null }))}
         incomingLabel={incoming?.label ?? null}
         aiMarked={aiMarkOf(chapter) !== null}
+        writing={editWriting(id, chapter.title, chapter.body)}
         // The AI sees the story up to, but not including, the chapter being edited.
         context={{
           storyTitle: story.title,

@@ -133,6 +133,11 @@ await page.locator(".chapter-actions").getByRole("link", { name: "Edit", exact: 
 await page.waitForURL(/\/edit$/);
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.length > 0);
 ok((await page.getByLabel("Chapter title").inputValue()) === "The Door", "edit form pre-filled");
+ok((await page.getByLabel(/What should happen/).inputValue()) === "a stranger arrives", "the edit starts with the prompt the chapter was written from");
+ok(await page.getByText("1/2", { exact: true }).isVisible(), "and with its generated drafts, showing the one that was posted");
+await page.getByRole("button", { name: "Next draft" }).click();
+ok((await page.getByLabel("Chapter title").inputValue()) === "The Door Revised", "the other draft is the revision");
+await page.getByRole("button", { name: "Previous draft" }).click();
 ok(await page.getByRole("heading", { name: "Story details" }).isVisible(), "story details editable on first chapter");
 await page.getByLabel("Chapter text").fill("It creaked, then slammed.\n\nShe entered anyway.");
 await page.getByLabel(/What did you change/).fill("added the slam");

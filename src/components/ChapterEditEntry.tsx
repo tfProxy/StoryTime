@@ -3,7 +3,7 @@
 import type { StoryContext } from "@/lib/ai/prompts";
 import type { PathChapter } from "@/lib/ai/codexAi";
 import type { CodexOp, FactOp } from "@/lib/codex";
-import ChapterEditor from "./ChapterEditor";
+import ChapterEditor, { type EditWriting } from "./ChapterEditor";
 import StoryDetailsForm from "./StoryDetailsForm";
 
 type Props = {
@@ -17,6 +17,7 @@ type Props = {
   existingChoices: { id: string; label: string; hasChild: boolean }[];
   incomingLabel: string | null;
   aiMarked: boolean;
+  writing: EditWriting | null;
   context: StoryContext;
   storyId: string;
   draftLabel: string;
@@ -48,6 +49,7 @@ export default function ChapterEditEntry({ story, ...p }: Props) {
           existingChoices: p.existingChoices,
           incomingLabel: p.incomingLabel,
           aiMarked: p.aiMarked,
+          writing: p.writing,
         }}
         context={p.context}
         storyId={p.storyId}

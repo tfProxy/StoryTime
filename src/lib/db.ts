@@ -898,6 +898,15 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE codex_facts ADD COLUMN ai_suggestion_id TEXT;
   CREATE INDEX codex_facts_ai ON codex_facts(anchor_chapter_id) WHERE ai_suggestion_id IS NOT NULL;
   `,
+  // 49: how a chapter was written: the direction prompt, the generated versions and the length and models picked, kept
+  // from the draft when the chapter is posted, so editing the chapter later starts with them. `data` is JSON.
+  `
+  CREATE TABLE chapter_writing (
+    chapter_id TEXT PRIMARY KEY REFERENCES chapters(id),
+    data       TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 function open(): Database.Database {

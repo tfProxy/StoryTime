@@ -25,6 +25,7 @@ import {
   type StoryContext,
 } from "@/lib/ai/prompts";
 import type { PathChapter } from "@/lib/ai/codexAi";
+import type { ChapterWriting } from "@/lib/chapterWriting";
 import { foldWithDraft, isDraftEntry, isDraftFact, type CodexOp, type FactOp } from "@/lib/codex";
 import { deleteDraft, DraftConflict, emptyDraft, getDraft, saveDraft, type Draft } from "@/lib/drafts";
 import { applyAfterGenerate, applyGenerated, isBegun, pushUndo, startVersion } from "@/lib/generatedDraft";
@@ -59,7 +60,12 @@ export type Target =
       incomingLabel: string | null;
       /** The chapter currently has an AI mark, so it can be declared the author's own. */
       aiMarked?: boolean;
+      /** How the chapter was written (kept when it was posted), so the edit starts with its prompt and versions. */
+      writing?: EditWriting | null;
     };
+
+/** What an edit starts with from the chapter's kept writing; `versions` already include the chapter as posted. */
+export type EditWriting = ChapterWriting & { versionIndex: number };
 
 type Props = {
   target: Target;
@@ -94,6 +100,23 @@ function AutoStart({ run }: { run: () => void }) {
 }
 
 // Ideas and suggestions cost an AI call, and a half-typed instruction is work too.
+/** Saves how the chapter was written (see chapterWriting.ts). Nothing is saved when nothing was generated or asked for. */
+async function keepWriting(chapterId: string, d: Draft): Promise<void> {
+  // The version being viewed is only refreshed in `versions` on leaving it; one still empty from its Generate takes the text.
+  const at = d.versionIndex ?? (d.versions?.length ?? 0) - 1;
+  const versions = (d.versions ?? [])
+    .map((v, i) => (i === at && !v.body.trim() ? { title: d.title, body: d.body } : v))
+    .filter((v) => v.body.trim());
+  if (!versions.length && !d.prompt.trim()) return;
+  const writing: ChapterWriting = { prompt: d.prompt, versions, length: d.length, models: d.models, codexOverrides: d.codexOverrides };
+  const res = await fetch(`/api/chapters/${chapterId}/writing`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(writing),
+  });
+  if (!res.ok) throw new Error(`Request failed (${res.status})`);
+}
+
 const hasWorkingState = (d: Draft) =>
   !!(d.ideaPages?.length || d.suggestions?.length || d.instruction?.trim() || d.guidance?.trim());
 
@@ -104,7 +127,8 @@ function isBlank(d: Draft, target: Target): boolean {
     return (
       d.title === target.initialTitle &&
       d.body === target.initialBody &&
-      !d.prompt &&
+      d.prompt === (target.writing?.prompt ?? "") &&
+      (d.versions?.length ?? 0) === (target.writing?.versions.length ?? 0) &&
       !d.editNote &&
       (d.summary ?? "") === (target.initialSummary ?? "") &&
       !d.choices.some((c) => c.trim()) &&
@@ -244,6 +268,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
         baseRevision: target.baseRevision,
         incomingLabel: target.incomingLabel ?? undefined,
         choiceEdits: {},
+        ...(target.writing ?? {}),
       };
     };
     getDraft(draftKey)
@@ -917,8 +942,10 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
       loadedRef.current = false; // stop autosave from re-creating the draft
       await saveChainRef.current;
-      await deleteDraft(draftKey).catch(() => {});
       const id = target.kind === "edit" ? target.chapterId : data.chapter_id;
+      // Keep the prompt and generated versions with the chapter, so editing it later starts with them. Never blocks posting.
+      await keepWriting(id, draft).catch(() => {});
+      await deleteDraft(draftKey).catch(() => {});
       const sid = storyId ?? (target.kind === "first" ? target.storyId : null);
       if (summaryError && sid) router.push(`/s/${sid}/review?tab=summaries&chapter=${id}&failed=${encodeURIComponent(summaryError)}`);
       else if (summaryError) router.push(`/c/${id}/summary?failed=${encodeURIComponent(summaryError)}`);
