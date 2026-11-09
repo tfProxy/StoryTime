@@ -610,6 +610,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
         messages: [{ role: "user", content: request.message }],
         role: "main",
         model: writeModel,
+        job: "write",
         signal: ctl.signal,
         source: { label: "Rewrite passage", storyId },
       })) {

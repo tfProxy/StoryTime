@@ -83,7 +83,7 @@ export async function writeText(
   const text = await complete(
     p.stream ?? defaultStream,
     settings,
-    { system: SYSTEM_CHAPTER, messages: [{ role: "user", content: prompt }], ...modelRequest(p.options, "main"), signal: p.signal, source: { label: "AI run: write", ...p.source } },
+    { system: SYSTEM_CHAPTER, messages: [{ role: "user", content: prompt }], ...modelRequest(p.options, "main"), job: "write", signal: p.signal, source: { label: "AI run: write", ...p.source } },
     p.onText && ((soFar) => p.onText!(soFar)),
   );
   const { title, body } = parseChapterOutput(text);

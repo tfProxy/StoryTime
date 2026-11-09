@@ -51,12 +51,19 @@ export const MODEL_USES = [
 export type ModelUse = (typeof MODEL_USES)[number]["id"];
 const MODEL_USE_IDS = MODEL_USES.map((u) => u.id) as [ModelUse, ...ModelUse[]];
 
+/** What an AI call is for, which picks a starred model's thinking setting. */
+export type AiJob = "write" | "other";
+export type ThinkingOff = Record<AiJob, boolean>;
+
 /** A model starred in Settings; these are what the pickers on the writing page offer. */
 export type Favorite = ModelRef & {
   /** Optional nickname shown instead of the model id. */
   label: string;
-  /** Ask this model not to use extended thinking / reasoning. Off for models that only work with it. */
-  disableThinking: boolean;
+  /**
+   * Ask this model not to use extended thinking / reasoning: when writing chapter text (`write`: Generate, AI runs,
+   * Rewrite passage), and for every other job (`other`: suggestions, summaries, tags…). Off for models that only work with it.
+   */
+  disableThinking: ThinkingOff;
   /** Jobs this model is not offered for. Empty (the default) means it is offered everywhere, including jobs added later. */
   hiddenFrom: ModelUse[];
 };
@@ -223,7 +230,11 @@ const refSchema = z.object({ connectionId: z.string().min(1), model: z.string().
 const favoriteSchema = refSchema.extend({
   label: z.string().catch(""),
   // Missing in settings from before it was per model; parseSettings fills it in from the old global switch.
-  disableThinking: z.boolean().optional().catch(undefined),
+  // One switch for every job before it was split into writing and other jobs; that one switch now sets both.
+  disableThinking: z
+    .union([z.boolean().transform((b) => ({ write: b, other: b })), z.object({ write: z.boolean().catch(false), other: z.boolean().catch(false) })])
+    .optional()
+    .catch(undefined),
   hiddenFrom: z
     .array(z.unknown())
     .catch([])
@@ -451,7 +462,7 @@ export function parseSettings(raw: unknown): Settings {
       connectionId: f.connectionId,
       model: f.model,
       label: f.label,
-      disableThinking: f.disableThinking ?? legacyThinking,
+      disableThinking: f.disableThinking ?? { write: legacyThinking, other: legacyThinking },
       hiddenFrom: f.hiddenFrom,
     }));
   const live = (r: ModelRef | null) => (r && seen.has(r.connectionId) ? { connectionId: r.connectionId, model: r.model } : null);
@@ -504,7 +515,7 @@ export function favoritesFor(s: Settings, use: ModelUse): Favorite[] {
 }
 
 /** A newly starred model: offered for every job, with thinking left as the model does it. */
-export const newFavorite = (r: ModelRef): Favorite => ({ connectionId: r.connectionId, model: r.model, label: "", disableThinking: false, hiddenFrom: [] });
+export const newFavorite = (r: ModelRef): Favorite => ({ connectionId: r.connectionId, model: r.model, label: "", disableThinking: { write: false, other: false }, hiddenFrom: [] });
 
 /** The default model for a kind of job. */
 export function defaultRef(s: Settings, role: "main" | "cheap"): ModelRef | null {

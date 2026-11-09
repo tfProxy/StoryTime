@@ -2,7 +2,7 @@
 // from the StoryTime server (the work queue's Generates and AI runs, in src/lib/worker). The keys are in the settings
 // the server keeps, so the server has them; it needs plain `fetch`, which both have.
 import { providerInfo, type ProviderKind } from "./providers";
-import { defaultRef, favoriteFor, findConnection, type Connection, type ModelRef, type Settings } from "../settingsSchema";
+import { defaultRef, favoriteFor, findConnection, type AiJob, type Connection, type ModelRef, type Settings } from "../settingsSchema";
 import { freeComfyMemory } from "../comfy/client";
 import { startActivity } from "./activity";
 
@@ -15,6 +15,8 @@ export type ChatRequest = {
   role?: "main" | "cheap";
   /** A specific model to use instead of the default (picked on the writing page). */
   model?: ModelRef | null;
+  /** "write" for calls that write chapter text; picks the starred model's thinking setting. Anything else is "other". */
+  job?: AiJob;
   maxTokens?: number;
   signal?: AbortSignal;
   /** Where the call comes from, for the prompt history. A call without one is recorded as "Other". */
@@ -89,7 +91,7 @@ function checkConnection(c: Connection) {
   return info;
 }
 
-function resolve(settings: Settings, req: Pick<ChatRequest, "role" | "model">): Resolved {
+function resolve(settings: Settings, req: Pick<ChatRequest, "role" | "model" | "job">): Resolved {
   const ref = req.model ?? defaultRef(settings, req.role ?? "main");
   if (!ref || !ref.model.trim()) throw new AiError("No model is chosen. Open Settings and pick a default model.");
   const conn = findConnection(settings, ref.connectionId);
@@ -103,7 +105,7 @@ function resolve(settings: Settings, req: Pick<ChatRequest, "role" | "model">): 
     model: ref.model.trim(),
     temperature: settings.temperature,
     // Set per starred model; a model that isn't starred is left to think as it does by default.
-    disableThinking: favoriteFor(settings, ref)?.disableThinking ?? false,
+    disableThinking: favoriteFor(settings, ref)?.disableThinking[req.job ?? "other"] ?? false,
     freeComfy: conn.freeComfy,
     connection: conn.name || info.label,
   };

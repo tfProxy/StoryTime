@@ -2997,7 +2997,8 @@ fieldset.model-card > legend {
   max-width: 100%;
 }
 
-fieldset.model-uses {
+fieldset.model-uses,
+fieldset.model-thinking {
   display: grid;
   gap: 0.35rem;
   margin: 0;
@@ -3007,17 +3008,20 @@ fieldset.model-uses {
   min-width: 0;
 }
 
-fieldset.model-uses > legend {
+fieldset.model-uses > legend,
+fieldset.model-thinking > legend {
   font-weight: 600;
   font-size: 0.9rem;
   padding: 0 0.25rem;
 }
 
-fieldset.model-uses .inline-label {
+fieldset.model-uses .inline-label,
+fieldset.model-thinking .inline-label {
   align-items: flex-start;
 }
 
-fieldset.model-uses .inline-label input[type="checkbox"] {
+fieldset.model-uses .inline-label input[type="checkbox"],
+fieldset.model-thinking .inline-label input[type="checkbox"] {
   margin-top: 0.2rem;
 }
 

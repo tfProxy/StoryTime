@@ -178,7 +178,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
     const ready = await withPathSummaries(settings, req.ctx, run.ctl.signal, step, selfFetch, ids);
     const message = generatePrompt(ready, req.direction, req.length, settings.contextTokens);
     for await (const piece of streamChat(settings, {
-      system: SYSTEM_CHAPTER, messages: [{ role: "user", content: message }], role: "main", model: req.model, signal: run.ctl.signal, source: { label: "Generate", ...ids },
+      system: SYSTEM_CHAPTER, messages: [{ role: "user", content: message }], role: "main", model: req.model, job: "write", signal: run.ctl.signal, source: { label: "Generate", ...ids },
       onStatus: step, onThinking,
     })) {
       if (!run.text) {

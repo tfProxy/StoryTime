@@ -134,7 +134,7 @@ assert(seen.at(-1)!.body.model === "m", "no cheaper default falls back to the ma
 try { await completeChat(two as any, { messages: [], model: { connectionId: "gone", model: "x" } }); assert(false, "gone"); }
 catch (e) { assert(/has been removed/.test((e as Error).message), "a model on a removed connection is reported"); }
 // Disable thinking is set per starred model. OpenRouter gets its own reasoning object.
-const fav = (connectionId: string, model: string, disableThinking: boolean) => ({ connectionId, model, label: "", disableThinking, hiddenFrom: [] });
+const fav = (connectionId: string, model: string, off: boolean) => ({ connectionId, model, label: "", disableThinking: { write: off, other: off }, hiddenFrom: [] });
 const thinking = { ...two, favorites: [fav("c2", "vendor/big", true), fav("c1", "m", true), fav("c1", "sm", false)] };
 await completeChat(thinking as any, { messages: [{ role: "user", content: "x" }], model: { connectionId: "c2", model: "vendor/big" } });
 assert(seen.at(-1)!.body.reasoning?.effort === "none" && !("reasoning_effort" in seen.at(-1)!.body), "openrouter: reasoning effort none");
@@ -144,6 +144,12 @@ await completeChat(thinking as any, { messages: [{ role: "user", content: "x" }]
 assert(seen.at(-1)!.body.model === "sm" && !("reasoning_effort" in seen.at(-1)!.body) && !("reasoning" in seen.at(-1)!.body), "a model with thinking left on is asked nothing about it, though another model has it off");
 await completeChat({ ...two, favorites: [] } as any, { messages: [{ role: "user", content: "x" }] });
 assert(!("reasoning_effort" in seen.at(-1)!.body), "a model that isn't starred is left to think");
+// …and apart for writing chapters and for every other job: here it thinks when writing and not otherwise.
+const split = { ...two, favorites: [{ ...fav("c1", "m", false), disableThinking: { write: false, other: true } }] };
+await completeChat(split as any, { messages: [{ role: "user", content: "x" }], job: "write" });
+assert(!("reasoning_effort" in seen.at(-1)!.body), "a call that writes a chapter uses the writing switch (thinking on)");
+await completeChat(split as any, { messages: [{ role: "user", content: "x" }] });
+assert(seen.at(-1)!.body.reasoning_effort === "none", "any other call, even with the writing model, uses the other switch (thinking off)");
 const ctl = new AbortController(); ctl.abort();
 try { await completeChat(mk("custom", base + "/o") as any, { messages: [{ role: "user", content: "x" }], signal: ctl.signal }); assert(false, "abort"); }
 catch (e) { assert((e as any).name === "AbortError", "abort propagates"); }
@@ -233,9 +239,12 @@ assert(messy.defaults.main === null && messy.defaults.cheap?.model === "x", "tol
 // Per-model thinking and jobs. The old global "Disable thinking" carries over to every starred model.
 const conns = [{ id: "a", kind: "ollama" }];
 const old = parseSettings({ connections: conns, disableThinking: true, favorites: [{ connectionId: "a", model: "x" }, { connectionId: "a", model: "y", disableThinking: false }] });
-assert(old.favorites[0].disableThinking === true && old.favorites[1].disableThinking === false && !("disableThinking" in old), "the old global switch is moved onto starred models that have no setting of their own");
+const th = (f: { disableThinking: { write: boolean; other: boolean } }) => JSON.stringify(f.disableThinking);
+assert(th(old.favorites[0]) === '{"write":true,"other":true}' && th(old.favorites[1]) === '{"write":false,"other":false}' && !("disableThinking" in old), "the old global switch is moved onto starred models that have no setting of their own");
+const oneSwitch = parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "x", disableThinking: true }, { connectionId: "a", model: "y", disableThinking: { write: false, other: true } }] });
+assert(th(oneSwitch.favorites[0]) === '{"write":true,"other":true}' && th(oneSwitch.favorites[1]) === '{"write":false,"other":true}', "a model's single switch from before sets both; the split one is kept");
 const fresh = parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "x" }] });
-assert(fresh.favorites[0].disableThinking === false && fresh.favorites[0].hiddenFrom.length === 0, "a starred model starts thinking as usual and offered for every job");
+assert(th(fresh.favorites[0]) === '{"write":false,"other":false}' && fresh.favorites[0].hiddenFrom.length === 0, "a starred model starts thinking as usual and offered for every job");
 const hidden = parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "x", hiddenFrom: ["summary", "summary", "nope", 3, "write"] }] });
 assert(JSON.stringify(hidden.favorites[0].hiddenFrom) === '["write","summary"]', "jobs opted out of are kept once each, unknown ones dropped: " + JSON.stringify(hidden.favorites[0].hiddenFrom));
 const picks = parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "big", hiddenFrom: ["summary", "suggest"] }, { connectionId: "a", model: "small" }] });
