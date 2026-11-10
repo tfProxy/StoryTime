@@ -495,7 +495,11 @@ try {
   await page.getByLabel("Size").selectOption("1024x1024");
   ok(await until(async () => (await settingsNow()).comfy.width === 1024, "the size to be saved"), "(the size is changed to square)");
   const sizeRows = await page.getByLabel("Size").locator("option").evaluateAll((os) => os.map((o) => [...o.querySelectorAll("span")].map((x) => x.textContent)));
-  ok(JSON.stringify(sizeRows) === JSON.stringify([["▯", "Portrait", "4:7", "768 × 1344"], ["□", "Square", "1:1", "1024 × 1024"], ["▭", "Landscape", "7:4", "1344 × 768"], ["▭", "Wide", "12:5", "1536 × 640"]]), `each size is a row of columns: shape, name, aspect ratio, pixels (${JSON.stringify(sizeRows)})`);
+  const R = (g, n, w, h) => [g, n, "", `${w} × ${h}`];
+  ok(JSON.stringify(sizeRows) === JSON.stringify([R("□", "1:1", 1024, 1024), R("▭", "16:9", 1344, 768), R("▯", "9:16", 768, 1344), R("▭", "4:3", 1152, 864), R("▯", "3:4", 864, 1152), R("▭", "3:2", 1248, 832), R("▯", "2:3", 832, 1248), R("▭", "2:1", 1440, 720), R("▯", "1:2", 720, 1440)]), `each size is a row of columns: shape, aspect ratio, pixels, the most used first (${JSON.stringify(sizeRows)})`);
+  ok(await page.getByLabel("Size").locator("hr").count() === 1 && await page.getByLabel("Size").locator("option").nth(5).evaluate((o) => o.previousElementSibling?.tagName === "HR"), "a separator comes between the five most used ratios and the rest");
+  const scaleOpts = await page.getByLabel("Scale by").locator("option").allTextContents();
+  ok(scaleOpts.join(",") === "0.5k,0.75k,1k,1.25k,1.5k,1.75k,2.0k" && (await page.getByLabel("Scale by").inputValue()) === "1", `the multiplier is a menu from 0.5k to 2k, at 1k by default (${scaleOpts})`);
   ok(await page.locator(".generate-bar .size-icon").count() === 0, "there is no icon outside the Size menu");
   await page.getByLabel("Size").selectOption("1024x1024");
   await until(async () => (await settingsNow()).comfy.width === 1024, "the size to be saved again");
