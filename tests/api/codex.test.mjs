@@ -132,7 +132,7 @@ await fact(a, { entry_id: kit, op: "set", aspect: "Tail", form: "human", text: "
 r = await fact(a, { entry_id: kit, op: "set", aspect: "Form", form: "vixen", text: "change complete" });
 k = await kitAt(a2);
 ok(r.status === 201 && k.form?.name === "vixen" && k.description.startsWith("Form: vixen, change complete."), "the form fact sets the form: " + k.description);
-ok(k.description.includes("Pointed ears.") && k.description.includes("Short ears.") && !k.description.includes("No tail."), "only the current form's facts apply (plus every-form ones)");
+ok(k.description.includes("Pointed ears.") && !k.description.includes("Short ears.") && !k.description.includes("No tail."), "only the current form's facts apply, its own Ears replacing the every-form one");
 r = await fact(a, { entry_id: kit, op: "retire", fact_id: earsId });
 ok(r.status === 201 && (await kitAt(a2)).facts.every((f) => f.fact_id !== earsId), "retire a fact");
 ok((await kitAt(root)).facts.some((f) => f.fact_id === earsId), "…only below where it was retired");
