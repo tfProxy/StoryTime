@@ -34,10 +34,11 @@ try {
       { kind: "set", entry_id: rowan, aspect: "Ears", after: "tall fox ears", quote: "Rowan's ears changed" },
       { kind: "set", entry_id: rowan, aspect: "Eyes", after: "amber eyes", quote: "Her eyes glowed amber" },
       { kind: "form", entry_id: rowan, form: "vixen", after: "", quote: "Rowan's ears changed" },
+      { kind: "set", entry_id: rowan, aspect: "Hair", after: "russet hair", quote: "Rowan's ears changed" },
     ],
   });
   await send("PUT", "/api/settings", { ...settings, autoCodex: false, autoApplyCodex: true });
-  ok(saved.applied === 3, "the reading is applied: " + JSON.stringify(saved));
+  ok(saved.applied === 4, "the reading is applied: " + JSON.stringify(saved));
 
   const context = await browser.newContext();
   await unfoldEntryFolds(context);
@@ -46,13 +47,13 @@ try {
 
   // ---- the reading page and the Story Bible say so ----
   await page.goto(`${BASE}/c/${A}`);
-  const banner = page.getByText(/Codex: the AI updated 3 facts from this chapter/);
+  const banner = page.getByText(/Codex: the AI updated 4 facts from this chapter/);
   await banner.waitFor();
   ok(await banner.isVisible(), "the reading page says the AI updated the codex");
   await page.goto(`${BASE}/s/${sid}/review?tab=codex&chapter=${A}`);
   const card = page.locator(".entry-card", { hasText: "Rowan" });
   await card.waitFor();
-  ok((await card.innerText()).includes("3 AI facts to check"), "the card counts the AI facts");
+  ok((await card.innerText()).includes("4 AI facts to check"), "the card counts the AI facts");
 
   // ---- the entry's page marks them, and Approve takes the mark off ----
   await page.goto(`${BASE}/s/${sid}/codex/${rowan}?at=${A}`);
@@ -62,14 +63,43 @@ try {
   ok((await row("tall fox ears").locator(".ai-badge").count()) === 1 && (await row("amber eyes").locator(".ai-badge").count()) === 1, "each AI fact is marked AI");
   ok((await row("tall fox ears").innerText()).includes("“Rowan's ears changed”"), "…with the quote it came from");
   ok((await ed.locator(".facts-form .ai-badge").count()) === 1, "the AI's form change is marked too");
-  ok(await ed.getByText(/The AI wrote 3 facts from the story/).isVisible(), "the Facts section says how many wait");
+  const note = ed.locator(".ai-facts-note");
+  ok((await note.innerText()).includes("The AI wrote 4 facts from the story"), "the Facts section says how many wait");
+  ok((await note.getByRole("link", { name: "“Chapter A”" }).getAttribute("href")) === `/s/${sid}/codex/${rowan}?at=${A}#entry-review`, "…and where to approve or undo them: the review fold at the chapter");
+  ok((await ed.locator(".facts").getByRole("button", { name: /^Approve/ }).count()) === 0 && (await ed.locator(".facts-form").getByRole("button", { name: /^Approve/ }).count()) === 0, "the facts list has no Approve buttons of its own");
+
+  // ---- the review fold holds them: Approve or Undo ----
+  const fold = ed.locator("details#entry-review");
+  const applied = fold.locator(".codex-review-applied");
+  ok((await fold.locator("summary").first().innerText()).includes("Review changes from “Chapter A”") && (await fold.locator("summary").first().innerText()).includes("4 waiting"), "the review fold counts the AI facts as waiting");
+  ok(await applied.getByRole("heading", { name: "Already applied by the AI" }).isVisible() && (await applied.locator("article.inbox-card").count()) === 4, "…under 'Already applied by the AI', one card each");
+  const cardOf = (t) => applied.locator("article.inbox-card", { hasText: t });
+  ok((await cardOf("tall fox ears").getByRole("button", { name: "Approve", exact: true }).isVisible()) && (await cardOf("tall fox ears").getByRole("button", { name: "Undo", exact: true }).isVisible()), "each has Approve and Undo");
+  ok((await cardOf("tall fox ears").locator("blockquote.inbox-evidence").innerText()).includes("Rowan's ears changed"), "…and the quote it came from");
   await page.screenshot({ path: `${process.env.SHOTS ?? "."}/codex-ai-facts.png`, fullPage: true }).catch(() => {});
 
-  await row("tall fox ears").getByRole("button", { name: "Approve Ears" }).click();
+  // Approve one: the mark goes off its row, the card leaves the fold.
+  await cardOf("tall fox ears").getByRole("button", { name: "Approve", exact: true }).click();
   await row("tall fox ears").locator(".ai-badge").waitFor({ state: "detached" });
-  ok((await row("tall fox ears").getByRole("button", { name: "Approve Ears" }).count()) === 0, "Approve takes the mark and the button off");
-  await ed.getByText(/The AI wrote 2 facts/).waitFor();
-  await ed.getByRole("button", { name: "Approve all" }).click();
+  ok((await applied.locator("article.inbox-card").count()) === 3 && (await ed.locator(".ai-facts-note").innerText()).includes("The AI wrote 3 facts"), "Approve takes the mark off the fact and the card out of the fold");
+  ok(await row("tall fox ears").isVisible(), "…the fact stays");
+
+  // Undo one: the fact goes and its suggestion is dismissed.
+  const dismissedBefore = (await send("GET", `/api/stories/${sid}/codex-suggestions?status=dismissed`)).suggestions.length;
+  await cardOf("amber eyes").getByRole("button", { name: "Undo", exact: true }).click();
+  await row("amber eyes").waitFor({ state: "detached" });
+  ok((await applied.locator("article.inbox-card").count()) === 2, "Undo takes the card out of the fold");
+  ok((await row("amber eyes").count()) === 0, "…and the fact off the entry");
+  const afterUndo = (await send("GET", `/api/chapters/${A}/codex`)).entries.find((e) => e.name === "Rowan");
+  ok(!afterUndo.facts.some((f) => f.aspect === "Eyes") && afterUndo.facts.some((f) => f.aspect === "Ears" && f.text === "tall fox ears"), "…on the server too, and the others stay");
+  const dismissed = (await send("GET", `/api/stories/${sid}/codex-suggestions?status=dismissed`)).suggestions;
+  ok(dismissed.length === dismissedBefore + 1 && dismissed.some((x) => x.aspect === "Eyes" && x.after === "amber eyes"), "the suggestion behind it is dismissed");
+  await page.reload(); // (the fold reads its list again when the page is opened)
+  await fold.getByRole("button", { name: /^Show dismissed \(1\)$/ }).click();
+  ok(await fold.locator("ul.inbox-dismissed li", { hasText: "Eyes" }).getByRole("button", { name: "Reopen" }).isVisible(), "…and can be reopened from the fold's dismissed list");
+
+  // Approve all.
+  await applied.getByRole("button", { name: "Approve all 2" }).click();
   await ed.locator(".ai-badge").first().waitFor({ state: "detached" });
   ok((await ed.locator(".ai-badge").count()) === 0 && (await ed.getByText(/The AI wrote/).count()) === 0, "Approve all approves the rest");
   const entry = (await send("GET", `/api/chapters/${A}/codex`)).entries.find((e) => e.name === "Rowan");

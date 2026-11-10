@@ -104,6 +104,26 @@ try {
   // ---- export and import keep the mark ----
   const exported = (await call("GET", `/api/stories/${story}/export?format=json`)).json;
   ok(exported?.codex_facts?.some((f) => f.ai_suggestion_id), "the export carries the AI mark");
+
+  // ---- undoing an AI fact: the fact goes, the suggestion behind it is dismissed ----
+  await setApply(true);
+  r = await read([{ kind: "set", entry_id: mira, aspect: "Voice", after: "A low rasp.", quote: q }]);
+  const voice = await factOf(c1, "Voice");
+  ok(r.json.applied === 1 && !!voice.op.ai_suggestion_id, "the AI adds Voice");
+  ok((await call("POST", "/api/codex/undo-ai", { ids: [] })).status === 400, "undo needs ids");
+  const ownEars = await factOf(c1, "Ears");
+  ok(!ownEars.op.ai_suggestion_id, "(Ears was approved earlier, so it is the owner's)");
+  r = await call("POST", "/api/codex/undo-ai", { ids: [ownEars.op.id] });
+  ok(r.status === 200 && r.json.undone === 0 && !!(await factOf(c1, "Ears")), "undo leaves a fact the owner has approved alone");
+  r = await call("POST", "/api/codex/undo-ai", { ids: [voice.op.id] });
+  ok(r.status === 200 && r.json.undone === 1, "an AI fact is undone");
+  ok((await factOf(c1, "Voice")) === undefined, "…and the fact is gone from the codex");
+  const dismissed = (await call("GET", `/api/stories/${story}/codex-suggestions?status=dismissed`)).json.suggestions;
+  ok(dismissed.some((x) => x.aspect === "Voice" && x.after === "A low rasp."), "…and its suggestion is dismissed");
+  r = await call("POST", "/api/codex/undo-ai", { ids: [voice.op.id] });
+  ok(r.status === 200 && r.json.undone === 0, "undoing it again does nothing");
+  r = await read([{ kind: "set", entry_id: mira, aspect: "Voice", after: "A low rasp.", quote: q }]);
+  ok(r.json.applied === 0 && (await factOf(c1, "Voice")) === undefined, "a new reading doesn't apply what was undone");
 } finally {
   if (settingsBefore === null) {
     const db = new Database(process.env.TEST_DB);

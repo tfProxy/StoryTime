@@ -1,7 +1,7 @@
 import { launch, useMockAi } from "./browser.mjs";
 
 // The Story Bible's Codex section: the Section select on a phone, the scope line, the ⋯ menu, entries in folds by type
-// with their suggestions inside their cards, and the old chapter codex page redirecting here. Suggestions are seeded
+// with a To review box for their suggestions, and the old chapter codex page redirecting here. Suggestions are seeded
 // through the worker's route, so no AI is involved.
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 
@@ -115,19 +115,30 @@ try {
 
   // A suggestion inside its entry's card
   const rowanCard = page.locator("li.entry-with-extra", { hasText: "Rowan" });
-  ok((await rowanCard.locator("article.inbox-card", { hasText: "Rowan was uneasy at the ford." }).count()) === 1, "the suggestion shows inside Rowan's card, with its quote");
+  const reviewBox = page.locator("section.codex-review-box[aria-label='To review']");
+  ok((await rowanCard.locator("article.inbox-card").count()) === 0 && (await page.locator("article.inbox-card").count()) === 0, "the chapter's codex has no suggestion cards: the review happens on the entry's page");
+  ok((await rowanCard.locator(".entry-review-count").innerText()).trim() === "1 to review", "Rowan's card says one suggestion waits");
   ok((await page.locator("h2", { hasText: /Codex inbox/ }).count()) === 0, "…and there is no separate inbox box");
-  const newCard = page.locator("li.codex-suggested", { hasText: "The Ford" });
-  ok((await newCard.innerText()).includes("Suggested new entry:") && (await newCard.getByRole("button", { name: "Add it" }).count()) === 1 && (await newCard.getByRole("button", { name: "Dismiss" }).count()) === 1, "a suggested new entry is a dashed card in its group, with Add it / Dismiss");
-  ok(await sideways(page), "no sideways scroll with the cards at 390px");
-  await rowanCard.getByRole("button", { name: "Accept" }).click();
-  await rowanCard.getByText(/Saved to/).waitFor();
+  const rowanRow = reviewBox.locator("a.codex-review-row", { hasText: "Rowan" });
+  ok((await rowanRow.count()) === 1 && (await rowanRow.getAttribute("href")) === `/s/${storyId}/codex/${rowan}?at=${A}#entry-review` && (await rowanRow.innerText()).includes("1 from the text"), "the To review box has a row for Rowan that leads to her page at this chapter");
+  const newRow = reviewBox.locator("li.codex-review-new", { hasText: "The Ford" });
+  ok((await newRow.innerText()).includes("New place:") && (await newRow.getByRole("button", { name: "Add it" }).count()) === 1 && (await newRow.getByRole("button", { name: "Dismiss" }).count()) === 1, "a suggested new entry is a row in the box, with Add it / Dismiss");
+  ok(await sideways(page), "no sideways scroll with the review box at 390px");
+  await rowanRow.click();
+  await page.waitForURL(new RegExp(`/codex/${rowan}\\?at=${A}`));
+  const reviewCard = page.locator("details#entry-review article.inbox-card", { hasText: "Rowan was uneasy at the ford." });
+  await reviewCard.waitFor();
+  ok(true, "the row opens Rowan's page with the suggestion in its review fold");
+  ok(await sideways(page), "…which fits a 390px screen");
+  await reviewCard.getByRole("button", { name: "Accept" }).click();
+  await page.locator("details#entry-review").getByText(/Saved:\s*Rowan, Mood/).waitFor({ state: "attached" });
   ok(true, "Accept saves it");
-  await page.reload();
-  ok((await rowanCard.locator("article.inbox-card").count()) === 0, "…and the card has no suggestion left after a reload");
+  await page.goto(bible(A));
+  await reviewBox.locator("li.codex-review-new").first().waitFor();
+  ok((await reviewBox.locator("a.codex-review-row").count()) === 0 && (await rowanCard.locator(".entry-review-count").count()) === 0, "…and the chapter's box and Rowan's card have nothing to review for her after that");
   const factsAtA = (await send("GET", `/api/chapters/${A}/codex`)).entries.find((e) => e.name === "Rowan");
   ok(JSON.stringify(factsAtA.facts).includes("uneasy"), "…and Rowan has the fact at Chapter A");
-  await page.locator("li.codex-suggested", { hasText: "The Ford" }).getByRole("button", { name: "Add it" }).click();
+  await page.locator("li.codex-review-new", { hasText: "The Ford" }).getByRole("button", { name: "Add it" }).click();
   await page.waitForFunction(async ([u]) => (await (await fetch(u)).json()).entries.some((e) => e.name === "The Ford"), [`/api/chapters/${A}/codex`]);
   ok(true, "Add it creates the suggested entry");
 

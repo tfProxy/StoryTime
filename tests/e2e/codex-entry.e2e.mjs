@@ -53,7 +53,8 @@ try {
   await card.click();
   await page.getByRole("heading", { name: "Rowan", level: 1 }).waitFor();
   ok(page.url() === entryUrl(A), "the card opens the entry page at this chapter: " + page.url());
-  ok(await page.getByRole("link", { name: "← Codex at “Chapter A”" }).isVisible(), "the crumb leads back to the codex at the chapter");
+  const atBar = page.locator(".codex-at-bar");
+  ok((await atBar.getByRole("link", { name: "← Codex" }).getAttribute("href")) === `/s/${sid}/review?tab=codex&chapter=${A}` && (await atBar.innerText()).includes("Rowan at “Chapter A”"), "the bar at the top leads back to the codex at the chapter and says which chapter the page is at");
   const path = await page.locator(".entry-path").innerText();
   ok(/Viewing at:\s*Root\s*›\s*Chapter A/.test(path) && (await page.locator(".entry-path a", { hasText: "Root" }).getAttribute("href")) === `/s/${sid}/codex/${rowan}?at=${R}`, "a Viewing at line links each chapter to the entry at that chapter: " + path);
 
@@ -181,10 +182,14 @@ try {
   const rev = (await send("GET", `/api/chapters/${A}`)).chapter.revision;
   await post(`/api/chapters/${A}/codex-suggestions`, { revision: rev, suggestions: [{ kind: "set", entry_id: rowan, aspect: "Hair", form: "", after: "silver", quote: "Rowan's ears changed." }] });
   await page.goto(entryUrl(A));
-  const waiting = ed.locator(".codex-inbox");
-  await waiting.getByRole("heading", { name: "Suggested facts" }).waitFor();
+  const waiting = ed.locator("details#entry-review");
+  await waiting.locator("summary", { hasText: "Review changes from “Chapter A”" }).waitFor();
+  ok((await waiting.locator("summary").first().innerText()).includes("1 waiting"), "the review fold says one is waiting");
   ok((await waiting.locator("article.inbox-card").count()) === 1 && (await waiting.innerText()).includes("silver"), "an open suggestion for the entry is shown on its page as a card");
-  ok((await waiting.getByRole("link", { name: "Open the whole inbox" }).getAttribute("href")) === `/s/${sid}/review?tab=codex`, "…with a link to the Story Bible's codex section");
+  ok((await waiting.locator(".source-badge").innerText()) === "From the text", "…labelled with where it comes from");
+  const foldBox = await waiting.boundingBox();
+  const factsBox = await ed.locator("details#entry-facts").boundingBox();
+  ok(foldBox.y + foldBox.height <= factsBox.y + 1, "…above the Facts");
   await waiting.getByRole("button", { name: "Accept" }).first().click();
   await ed.locator(".fact-line", { hasText: "silver" }).waitFor();
   ok(true, "accepting it there adds the fact to the entry");

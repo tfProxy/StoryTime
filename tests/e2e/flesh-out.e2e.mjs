@@ -84,15 +84,19 @@ try {
     ],
   });
   await page.goto(entryUrl(wren));
-  const suggested = page.locator(".codex-inbox");
-  await suggested.getByRole("heading", { name: "Suggested facts" }).waitFor();
-  ok((await suggested.locator("article.inbox-card").count()) === 2, "the suggested facts are listed on the entry's page");
-  const askBox = await section.boundingBox();
+  const suggested = page.locator("details#entry-review");
+  await suggested.locator("summary", { hasText: "Review changes from “Root”" }).waitFor();
+  ok((await suggested.locator("article.inbox-card").count()) === 2, "the suggested facts are listed on the entry's page, in the review fold");
+  ok((await suggested.locator(".source-badge").allInnerTexts()).join("|") === "AI idea · not in the text|AI idea · not in the text", "…each marked as the AI's own idea, since no quote backs it");
+  ok((await suggested.getByRole("button", { name: /^Accept the \d+ from the text/ }).count()) === 0, "…so there is no 'Accept the N from the text' for them");
+  const factsBox = await page.locator("details#entry-facts").boundingBox();
   const listBox = await suggested.boundingBox();
-  ok(listBox.y >= askBox.y + askBox.height - 1, "…right below Flesh out with AI");
-  await suggested.getByRole("button", { name: "Accept all for Wren" }).click();
+  ok(listBox.y + listBox.height <= factsBox.y + 1, "…above the Facts");
+  await suggested.locator("article.inbox-card", { hasText: "low and dry" }).getByRole("button", { name: "Accept" }).click();
   await page.locator(".fact-line", { hasText: "low and dry" }).waitFor();
-  ok((await page.locator(".fact-line", { hasText: "an older brother" }).count()) === 1, "'Accept all' adds them to the entry, here");
+  await suggested.locator("article.inbox-card", { hasText: "an older brother" }).getByRole("button", { name: "Accept" }).click();
+  await page.locator(".fact-line", { hasText: "an older brother" }).waitFor();
+  ok((await page.locator(".fact-line", { hasText: "an older brother" }).count()) === 1, "accepting each adds it to the entry, here");
 
   // not in the writing page's drawer
   await send("PUT", "/api/queue/paused", { paused: false });
