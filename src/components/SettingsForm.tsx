@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { matchModelId, PROVIDERS, providerInfo, type ProviderKind } from "@/lib/ai/providers";
 import { AiError, listModels, streamChat } from "@/lib/ai/client";
 import { checkFromServer, type ServerCheck } from "@/lib/serverCheck";
+import type { ModelList } from "@/lib/modelLists";
 import NumberInput from "./NumberInput";
 import ComfyConnection from "./ComfyConnection";
 import { DrawingSettings, EditSettings, usePictureSetup } from "./PictureSettings";
@@ -52,6 +53,13 @@ const SAMPLE_REQUEST = {
 
 // Long lists (OpenRouter has hundreds of models) only show this many until filtered.
 const SHOW_MODELS = 60;
+
+/** "today at 3:40 p.m.", or the date for an older list. */
+function fetchedWhen(at: number): string {
+  const d = new Date(at);
+  const today = new Date().toDateString() === d.toDateString();
+  return today ? `today at ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : `on ${d.toLocaleDateString()}`;
+}
 
 type Status = { kind: "ok" | "error"; text: string };
 
@@ -120,6 +128,10 @@ function ConnectionCard({
   const info = providerInfo(conn.kind);
   const [showKey, setShowKey] = useState(false);
   const [models, setModels] = useState<string[] | null>(null);
+  /** When the list was fetched from the provider (it is remembered on the server, see modelLists.ts). */
+  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
+  /** The list is folded away until opened, except right after it is fetched. */
+  const [listOpen, setListOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const [typed, setTyped] = useState("");
   const [testing, setTesting] = useState(false);
@@ -127,10 +139,35 @@ function ConnectionCard({
   const [testingServer, setTestingServer] = useState(false);
   const [serverStatus, setServerStatus] = useState<ServerCheck | null>(null);
 
+  // The model list fetched last time, from any browser.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/model-lists/${encodeURIComponent(conn.id)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { list: ModelList | null } | null) => {
+        if (cancelled || !data?.list) return;
+        // A list fetched meanwhile on this page wins.
+        setModels((m) => m ?? data.list!.ids);
+        setFetchedAt((t) => t ?? data.list!.fetchedAt);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [conn.id]);
+
+  function showList(list: ModelList) {
+    setModels(list.ids);
+    setFetchedAt(list.fetchedAt);
+    setListOpen(true);
+  }
+
   async function testFromServer() {
     setTestingServer(true);
     setServerStatus(null);
-    setServerStatus(await checkFromServer({ kind: "ai", provider: conn.kind, baseUrl: conn.baseUrl, apiKey: conn.apiKey }));
+    const result = await checkFromServer({ kind: "ai", provider: conn.kind, baseUrl: conn.baseUrl, apiKey: conn.apiKey, connectionId: conn.id });
+    if (result.list) showList(result.list);
+    setServerStatus(result);
     setTestingServer(false);
   }
 
@@ -139,13 +176,21 @@ function ConnectionCard({
     setStatus(null);
     try {
       const ids = await listModels(conn);
-      setModels(ids);
+      showList({ ids, fetchedAt: Date.now() });
+      // Remembered for next time; a failure only means it is fetched again then.
+      if (ids.length) {
+        void fetch(`/api/model-lists/${encodeURIComponent(conn.id)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids }),
+        }).catch(() => {});
+      }
       setStatus({
         kind: "ok",
-        text: `Connected. ${ids.length} model${ids.length === 1 ? "" : "s"} available${ids.length ? "; star the ones you want to use" : ""}.`,
+        text: `Connected. ${ids.length} model${ids.length === 1 ? "" : "s"} available${ids.length ? "; press Use on the ones you want" : ""}.`,
       });
     } catch (e) {
-      setModels(null);
+      // The list from before stays; it may still be right.
       setStatus({ kind: "error", text: e instanceof Error ? e.message : String(e) });
     } finally {
       setTesting(false);
@@ -158,9 +203,9 @@ function ConnectionCard({
   const shown = matching.slice(0, SHOW_MODELS);
 
   /**
-   * Stars a model typed by name. A name copied from a provider's website ("TheDrummer/Artemis v1.1") is often not the
+   * Uses a model typed by name. A name copied from a provider's website ("TheDrummer/Artemis v1.1") is often not the
    * id its API wants ("TheDrummer/Artemis-v1.1"), so it is matched against the listed models (fetched now if they
-   * haven't been) and the id is starred instead. A name with no match is starred as typed.
+   * haven't been) and the id is used instead. A name with no match is used as typed.
    */
   async function addTyped() {
     const name = typed.trim();
@@ -170,7 +215,7 @@ function ConnectionCard({
     if (!ids) ids = await listModels(conn).catch(() => null);
     const model = (ids && matchModelId(name, ids)) ?? name;
     if (!isFav(model)) onToggleFavorite({ connectionId: conn.id, model });
-    setStatus(model !== name ? { kind: "ok", text: `Starred ${model}, the id this server uses for “${name}”.` } : null);
+    setStatus(model !== name ? { kind: "ok", text: `Using ${model}, the id this server uses for “${name}”.` } : null);
   }
 
   return (
@@ -228,7 +273,7 @@ function ConnectionCard({
       )}
       <div className="row" style={{ flexWrap: "wrap" }}>
         <button type="button" onClick={test} disabled={testing}>
-          {testing ? "Testing…" : models ? "Refresh models" : "Test connection"}
+          {testing ? "Testing…" : "Test connection"}
         </button>
         <button type="button" className="secondary" onClick={testFromServer} disabled={testingServer || !conn.baseUrl.trim()}>
           {testingServer ? "Testing…" : "Test from server"}
@@ -241,38 +286,49 @@ function ConnectionCard({
       {serverStatus && <p className={serverStatus.ok ? "ok" : "error"}>{serverStatus.text}</p>}
 
       {models && models.length > 0 && (
-        <div className="model-list">
-          {models.length > 8 && (
+        <details className="model-list" open={listOpen} onToggle={(e) => setListOpen(e.currentTarget.open)}>
+          <summary>
+            {models.length} model{models.length === 1 ? "" : "s"}
+            {fetchedAt ? <span className="meta">fetched {fetchedWhen(fetchedAt)}</span> : null}
+          </summary>
+          <div className="row model-list-tools">
             <input
               type="search"
-              placeholder={`Filter ${models.length} models`}
-              aria-label="Filter models"
+              placeholder={`Search ${models.length} models`}
+              aria-label="Search models"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
             />
+            <button type="button" className="secondary" onClick={test} disabled={testing}>
+              {testing ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
+          {matching.length === 0 ? (
+            <p className="meta">No model matches “{filter.trim()}”.</p>
+          ) : (
+            <ul className="codex-picks">
+              {shown.map((m) => (
+                <li key={m} className="codex-pick">
+                  <span style={{ overflowWrap: "anywhere" }}>{m}</span>
+                  <button
+                    type="button"
+                    className={isFav(m) ? "" : "secondary"}
+                    aria-pressed={isFav(m)}
+                    aria-label={`${isFav(m) ? "Stop using" : "Use"} ${m}`}
+                    onClick={() => onToggleFavorite({ connectionId: conn.id, model: m })}
+                  >
+                    {isFav(m) ? "✓ In use" : "Use"}
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
-          <ul className="codex-picks">
-            {shown.map((m) => (
-              <li key={m} className="codex-pick">
-                <span style={{ overflowWrap: "anywhere" }}>{m}</span>
-                <button
-                  type="button"
-                  className={isFav(m) ? "" : "secondary"}
-                  aria-pressed={isFav(m)}
-                  aria-label={`${isFav(m) ? "Unstar" : "Star"} ${m}`}
-                  onClick={() => onToggleFavorite({ connectionId: conn.id, model: m })}
-                >
-                  {isFav(m) ? "★ Starred" : "☆ Star"}
-                </button>
-              </li>
-            ))}
-          </ul>
           {matching.length > shown.length && (
             <p className="meta">
-              Showing {shown.length} of {matching.length}. Type in the filter to find others.
+              Showing {shown.length} of {matching.length}. Search to find others.
             </p>
           )}
-        </div>
+        </details>
       )}
 
       <label>
@@ -289,7 +345,7 @@ function ConnectionCard({
             }}
           />
           <button type="button" className="secondary" onClick={addTyped} disabled={!typed.trim()}>
-            Star
+            Use
           </button>
         </span>
       </label>
@@ -297,19 +353,16 @@ function ConnectionCard({
   );
 }
 
-/** One starred model's settings: nickname, thinking, and the jobs it is offered for. */
+/** One used model's settings: nickname, thinking, and the jobs it is offered for. Shown under its connection's heading. */
 function ModelCard({
   fav,
-  settings,
   onChange,
   onRemove,
 }: {
   fav: Favorite;
-  settings: Settings;
   onChange: (patch: Partial<Favorite>) => void;
   onRemove: () => void;
 }) {
-  const conn = findConnection(settings, fav.connectionId);
   const offered = (u: ModelUse) => !fav.hiddenFrom.includes(u);
   const setOffered = (u: ModelUse, on: boolean) =>
     onChange({ hiddenFrom: on ? fav.hiddenFrom.filter((x) => x !== u) : [...fav.hiddenFrom, u] });
@@ -317,7 +370,6 @@ function ModelCard({
     <fieldset className="card model-card" aria-label={fav.label.trim() || fav.model}>
       <legend>
         <span style={{ overflowWrap: "anywhere" }}>{fav.model}</span>
-        <span className="meta"> · {conn?.name || (conn ? providerInfo(conn.kind).label : "")}</span>
       </legend>
       <label>
         Nickname <small>(optional)</small>
@@ -349,8 +401,8 @@ function ModelCard({
         ))}
       </fieldset>
       <div className="row">
-        <button type="button" className="secondary" onClick={onRemove} aria-label={`Unstar ${fav.model}`}>
-          Remove
+        <button type="button" className="secondary" onClick={onRemove} aria-label={`Stop using ${fav.model}`}>
+          Stop using
         </button>
       </div>
     </fieldset>
@@ -427,9 +479,10 @@ export default function SettingsForm() {
 
   function deleteConnection(c: Connection) {
     const favs = settings.favorites.filter((f) => f.connectionId === c.id).length;
-    const what = favs ? ` and its ${favs} starred model${favs === 1 ? "" : "s"}` : "";
+    const what = favs ? ` and the ${favs} model${favs === 1 ? "" : "s"} you use from it` : "";
     if (!window.confirm(`Remove “${c.name || providerInfo(c.kind).label}”${what}?`)) return;
     save(removeConnection(settings, c.id));
+    void fetch(`/api/model-lists/${encodeURIComponent(c.id)}`, { method: "DELETE" }).catch(() => {});
   }
 
   function toggleFavorite(ref: ModelRef) {
@@ -578,14 +631,14 @@ export default function SettingsForm() {
 
       <div {...panel("writing")}>
         <section id="models" className="settings-section">
-          <h2>Starred models</h2>
+          <h2>Models in use</h2>
           {settings.favorites.length === 0 ? (
             <p className="meta">
               None yet. Test a connection on the{" "}
               <button type="button" className="link-button" onClick={() => openTab("connections")}>
                 Connections tab
               </button>{" "}
-              and star the models you want; they become the choices on the writing page.
+              and press Use on the models you want; they become the choices on the writing page.
             </p>
           ) : (
             <>
@@ -596,17 +649,31 @@ export default function SettingsForm() {
                 thinking: disabled to Anthropic, reasoning: {"{"}effort: none{"}"} to OpenRouter and reasoning_effort: none
                 to others); leave it off for models that only work with thinking or reject it.
               </p>
-              <div className="model-cards">
-                {settings.favorites.map((f) => (
-                  <ModelCard
-                    key={refKey(f)}
-                    fav={f}
-                    settings={settings}
-                    onChange={(patch) => updateFavorite(f, patch)}
-                    onRemove={() => toggleFavorite(f)}
-                  />
-                ))}
-              </div>
+              {/* Grouped by connection, in the Connections tab's order; a model whose connection is gone comes last. */}
+              {[...settings.connections.map((c) => c.id), null].map((connId) => {
+                const conn = connId ? findConnection(settings, connId) : null;
+                const favs = settings.favorites.filter((f) => (connId ? f.connectionId === connId : !findConnection(settings, f.connectionId)));
+                if (!favs.length) return null;
+                const name = conn ? conn.name || providerInfo(conn.kind).label : "Removed connection";
+                return (
+                  <section key={connId ?? "gone"} className="model-group" aria-label={`Models from ${name}`}>
+                    <h3>
+                      {name}
+                      {conn && <span className="meta">{providerInfo(conn.kind).label}</span>}
+                    </h3>
+                    <div className="model-cards">
+                      {favs.map((f) => (
+                        <ModelCard
+                          key={refKey(f)}
+                          fav={f}
+                          onChange={(patch) => updateFavorite(f, patch)}
+                          onRemove={() => toggleFavorite(f)}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                );
+              })}
             </>
           )}
 
@@ -616,7 +683,7 @@ export default function SettingsForm() {
               settings={settings}
               value={settings.defaults.main}
               use="write"
-              blankLabel="Choose a starred model…"
+              blankLabel="Choose a model in use…"
               onChange={(r) => update({ defaults: { ...settings.defaults, main: r } })}
             />
           </label>

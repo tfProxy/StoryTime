@@ -72,7 +72,7 @@ export default function ModelPicker({
       </select>
       {groups.length === 0 && (
         <Link href="/settings#models" className="meta">
-          {settings.favorites.length === 0 ? "Star models" : "No starred model is offered for this"}
+          {settings.favorites.length === 0 ? "Pick models to use" : "No model in use is offered for this"}
         </Link>
       )}
     </span>

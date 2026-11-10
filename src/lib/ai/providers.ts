@@ -27,7 +27,7 @@ export const PROVIDERS: ProviderInfo[] = [
     protocol: "openai",
     defaultBaseUrl: "https://openrouter.ai/api/v1",
     needsKey: true,
-    hint: "Use “Test connection” to list OpenRouter's models, then star the ones you want to use.",
+    hint: "Use “Test connection” to list OpenRouter's models, then press Use on the ones you want.",
   },
   {
     id: "featherless",
@@ -35,7 +35,7 @@ export const PROVIDERS: ProviderInfo[] = [
     protocol: "openai",
     defaultBaseUrl: "https://api.featherless.ai/v1",
     needsKey: true,
-    hint: "Use “Test connection” to list Featherless's models (there are thousands; search for the one you want), then star the ones you want to use.",
+    hint: "Use “Test connection” to list Featherless's models (there are thousands; search for the one you want), then press Use on the ones you want.",
   },
   {
     id: "nanogpt",
@@ -43,7 +43,7 @@ export const PROVIDERS: ProviderInfo[] = [
     protocol: "openai",
     defaultBaseUrl: "https://nano-gpt.com/api/v1",
     needsKey: true,
-    hint: "Use “Test connection” to list NanoGPT's models (there are hundreds; search for the one you want), then star the ones you want to use.",
+    hint: "Use “Test connection” to list NanoGPT's models (there are hundreds; search for the one you want), then press Use on the ones you want.",
   },
   {
     id: "openai",
@@ -51,7 +51,7 @@ export const PROVIDERS: ProviderInfo[] = [
     protocol: "openai",
     defaultBaseUrl: "https://api.openai.com/v1",
     needsKey: true,
-    hint: "Use “Test connection” to list the models your key can use, then star the ones you want.",
+    hint: "Use “Test connection” to list the models your key can use, then press Use on the ones you want.",
   },
   {
     id: "anthropic",

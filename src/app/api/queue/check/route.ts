@@ -2,6 +2,7 @@ import { z } from "zod";
 import { listModels } from "@/lib/ai/client";
 import { comfyVersion, listCheckpoints } from "@/lib/comfy/client";
 import { PROVIDER_KINDS } from "@/lib/ai/providers";
+import { setModelList } from "@/lib/modelLists";
 import type { Connection } from "@/lib/settingsSchema";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +10,14 @@ export const runtime = "nodejs";
 
 const Body = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("comfy"), url: z.string().trim().min(1).max(500) }),
-  z.object({ kind: z.literal("ai"), provider: z.enum(PROVIDER_KINDS), baseUrl: z.string().trim().min(1).max(500), apiKey: z.string().max(500).default("") }),
+  z.object({
+    kind: z.literal("ai"),
+    provider: z.enum(PROVIDER_KINDS),
+    baseUrl: z.string().trim().min(1).max(500),
+    apiKey: z.string().max(500).default(""),
+    /** The connection's id: the models found are remembered for it (modelLists.ts) and sent back. */
+    connectionId: z.string().min(1).max(200).optional(),
+  }),
 ]);
 
 const isWeb = (url: string) => /^https?:\/\//i.test(url);
@@ -31,7 +39,8 @@ export async function POST(request: Request) {
     }
     const connection = { kind: body.provider, baseUrl: body.baseUrl, apiKey: body.apiKey } as Connection;
     const models = await listModels(connection);
-    return Response.json({ ok: true, text: `The server reached it. ${models.length} model${models.length === 1 ? "" : "s"} available.` });
+    const list = body.connectionId && models.length ? setModelList(body.connectionId, models) : undefined;
+    return Response.json({ ok: true, text: `The server reached it. ${models.length} model${models.length === 1 ? "" : "s"} available.`, ...(list ? { list } : {}) });
   } catch (e) {
     // (The clients' messages go on about the browser's CORS settings, which don't apply to the server: only the first sentence is kept.)
     const why = (e instanceof Error ? e.message : String(e)).split(/(?<=\.)\s/)[0];
