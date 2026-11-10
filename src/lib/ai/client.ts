@@ -127,16 +127,39 @@ function headers(r: Pick<Resolved, "protocol" | "apiKey">): Record<string, strin
   return h;
 }
 
+// Waits before each retry of a busy provider (about a minute and a half in all). A Retry-After header from the
+// provider is used instead, up to a minute.
+const BUSY_WAITS_MS = [5_000, 10_000, 20_000, 30_000, 30_000];
+// Busy or rate-limited: Featherless says "<model> is temporarily at capacity" when a model's servers are full,
+// Anthropic answers 529 when overloaded.
+const BUSY_STATUSES = new Set([429, 502, 503, 529]);
+
+function wait(ms: number, signal?: AbortSignal | null): Promise<void> {
+  return new Promise((done, fail) => {
+    if (signal?.aborted) return fail(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    const t = setTimeout(() => {
+      signal?.removeEventListener("abort", stop);
+      done();
+    }, ms);
+    const stop = () => {
+      clearTimeout(t);
+      fail(signal?.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    signal?.addEventListener("abort", stop, { once: true });
+  });
+}
+
 async function send(url: string, init: RequestInit, hint: string): Promise<Response> {
-  let res: Response;
-  try {
-    res = await fetch(url, init);
-  } catch (e) {
-    if (e instanceof DOMException && e.name === "AbortError") throw e;
-    // fetch only throws a bare TypeError for network failures and blocked CORS requests.
-    throw new AiError(`Couldn't reach ${url}. ${hint}`);
-  }
-  if (!res.ok) {
+  for (let attempt = 0; ; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(url, init);
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") throw e;
+      // fetch only throws a bare TypeError for network failures and blocked CORS requests.
+      throw new AiError(`Couldn't reach ${url}. ${hint}`);
+    }
+    if (res.ok) return res;
     let detail = "";
     try {
       const text = await res.text();
@@ -149,9 +172,15 @@ async function send(url: string, init: RequestInit, hint: string): Promise<Respo
     } catch {
       // ignore
     }
+    const busy = BUSY_STATUSES.has(res.status) || /at capacity|overloaded/i.test(String(detail));
+    if (busy && attempt < BUSY_WAITS_MS.length) {
+      const after = Number(res.headers.get("retry-after"));
+      const ms = Number.isFinite(after) && after >= 0 && res.headers.has("retry-after") ? Math.min(after * 1000, 60_000) : BUSY_WAITS_MS[attempt];
+      await wait(ms, init.signal);
+      continue;
+    }
     throw new AiError(`${res.status} ${res.statusText}${detail ? `: ${String(detail).slice(0, 300)}` : ""}`);
   }
-  return res;
 }
 
 /** Yields the `data:` payloads of a server-sent-events response. */

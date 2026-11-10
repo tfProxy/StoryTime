@@ -4,6 +4,7 @@ import { freeOllamaForPictures, freeOllamaMemory, loadedOllamaModels, modelAfter
 import { DEFAULT_SETTINGS, favoritesFor, parseSettings, exportSettingsJson, importSettingsJson } from "../../src/lib/settingsSchema.ts";
 
 const seen: { url?: string; headers?: http.IncomingHttpHeaders; body?: any }[] = [];
+let busyHits = 0;
 const server = http.createServer((req, res) => {
   let data = "";
   req.on("data", (c) => (data += c));
@@ -16,6 +17,12 @@ const server = http.createServer((req, res) => {
     if (req.url === "/comfy/free") { res.setHeader("content-type", "application/json"); return res.end("{}"); }
     if (req.url === "/ol/api/ps") { res.setHeader("content-type", "application/json"); return res.end(JSON.stringify({ models: [{ name: "big:14b", model: "big:14b" }, { name: "tiny:1b" }] })); }
     if (req.url === "/ol/api/generate") { res.setHeader("content-type", "application/json"); return res.end("{}"); }
+    // Busy: "at capacity" (Featherless's wording) twice, then answers; /full never stops being busy.
+    if ((req.url === "/busy/chat/completions" && ++busyHits <= 2) || req.url === "/full/chat/completions") {
+      res.statusCode = 503;
+      res.setHeader("retry-after", "0");
+      return res.end(JSON.stringify({ error: { message: "some/model is temporarily at capacity. Please try again shortly." } }));
+    }
     if (req.url === "/bad/chat/completions") { res.statusCode = 401; return res.end(JSON.stringify({ error: { message: "bad key" } })); }
     res.setHeader("content-type", "text/event-stream");
     const chunks = req.url!.startsWith("/anth")
@@ -112,6 +119,11 @@ assert(JSON.stringify(await listModels(conn("custom", base + "/o"))) === '["a-mo
 assert(seen.at(-1)!.headers?.["user-agent"] === "StoryTime", "server requests name StoryTime as the User-Agent (Featherless refuses Node's default)");
 try { await completeChat(mk("custom", base + "/bad") as any, { messages: [{ role: "user", content: "x" }] }); assert(false, "should throw"); }
 catch (e) { assert(e instanceof AiError && String(e.message).includes("401") && String(e.message).includes("bad key"), "HTTP error surfaced: " + (e as Error).message); }
+assert(seen.filter((s) => s.url === "/bad/chat/completions").length === 1, "a 401 is not retried");
+const busyText = await completeChat(mk("custom", base + "/busy") as any, { messages: [{ role: "user", content: "x" }] });
+assert(busyText.length > 0 && busyHits === 3, "a model at capacity is retried until it answers");
+try { await completeChat(mk("custom", base + "/full") as any, { messages: [{ role: "user", content: "x" }] }); assert(false, "should throw"); }
+catch (e) { assert(e instanceof AiError && /at capacity/.test(e.message) && seen.filter((s) => s.url === "/full/chat/completions").length === 6, "gives up after 5 retries with the provider's message: " + (e as Error).message); }
 try { await completeChat(mk("custom", "http://localhost:1") as any, { messages: [{ role: "user", content: "x" }] }); }
 catch (e) { assert(e instanceof AiError && /CORS/.test((e as Error).message), "network error hint"); }
 try { await completeChat({ ...DEFAULT_SETTINGS } as any, { messages: [] }); assert(false, "no model"); }
