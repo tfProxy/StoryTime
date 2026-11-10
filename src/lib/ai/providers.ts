@@ -1,6 +1,6 @@
 // Connection presets. Only two wire protocols exist: "openai" (also spoken by Ollama,
 // LM Studio, OpenRouter, ...) and "anthropic".
-export type ProviderKind = "openai" | "ollama" | "openrouter" | "anthropic" | "custom";
+export type ProviderKind = "openai" | "ollama" | "openrouter" | "featherless" | "anthropic" | "custom";
 export type Protocol = "openai" | "anthropic";
 
 export type ProviderInfo = {
@@ -28,6 +28,14 @@ export const PROVIDERS: ProviderInfo[] = [
     defaultBaseUrl: "https://openrouter.ai/api/v1",
     needsKey: true,
     hint: "Use “Test connection” to list OpenRouter's models, then star the ones you want to use.",
+  },
+  {
+    id: "featherless",
+    label: "Featherless",
+    protocol: "openai",
+    defaultBaseUrl: "https://api.featherless.ai/v1",
+    needsKey: true,
+    hint: "Use “Test connection” to list Featherless's models (there are thousands; search for the one you want), then star the ones you want to use.",
   },
   {
     id: "openai",

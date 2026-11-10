@@ -2,7 +2,7 @@
 
 Branching, choose-your-own-adventure stories, with optional AI help. It is a single-user app: there
 are no accounts, logins or author names, and anyone who can reach the site can read and edit
-everything. You bring your own AI (OpenAI, Anthropic, OpenRouter, or a local model through Ollama)
+everything. You bring your own AI (OpenAI, Anthropic, OpenRouter, Featherless, or a local model through Ollama)
 and, for pictures, your own ComfyUI machine.
 
 ## What it does

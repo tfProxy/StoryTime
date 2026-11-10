@@ -233,6 +233,7 @@ const messy = parseSettings({
   activeProvider: "old-format",
 });
 assert(messy.temperature === null && messy.connections.length === 2 && messy.connections[0].kind === "custom" && messy.connections[0].apiKey === "" && messy.connections[1].kind === "openrouter", "tolerant parse: connections");
+assert(parseSettings({ connections: [{ id: "f", kind: "featherless" }] }).connections[0].kind === "featherless", "parse: featherless connection kind is kept");
 assert(messy.favorites.length === 1 && messy.favorites[0].label === "", "tolerant parse: favorites deduped, dangling ones dropped");
 assert(messy.defaults.main === null && messy.defaults.cheap?.model === "x", "tolerant parse: defaults pointing at missing connections are cleared");
 
