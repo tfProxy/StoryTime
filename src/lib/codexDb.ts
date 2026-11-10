@@ -114,6 +114,8 @@ type Row = {
   posted_at: number;
   shared_entry_id: string | null;
   overrides: string | null;
+  moved_from_chapter_id?: string | null;
+  moved_from_title?: string | null;
 };
 
 function toOp(r: Row): CodexOp {
@@ -146,8 +148,8 @@ export function getCodexOps(chapterId: string): CodexOp[] {
   const rows = db()
     .prepare(
       `SELECT o.id, o.anchor_chapter_id, c.depth AS anchor_depth, o.entry_id, o.op, o.name, o.type, o.aliases,
-              o.content, o.always_include, o.posted_at, o.shared_entry_id, o.overrides
-         FROM codex_ops o JOIN chapters c ON c.id = o.anchor_chapter_id
+              o.content, o.always_include, o.posted_at, o.shared_entry_id, o.overrides, o.moved_from_chapter_id, m.title AS moved_from_title
+         FROM codex_ops o JOIN chapters c ON c.id = o.anchor_chapter_id LEFT JOIN chapters m ON m.id = o.moved_from_chapter_id
         WHERE o.anchor_chapter_id IN (${path.map(() => "?").join(",")})
         ORDER BY c.depth, o.posted_at, o.rowid`,
     )

@@ -943,6 +943,12 @@ export const MIGRATIONS: string[] = [
     UNIQUE (retcon_id, chapter_id)
   );
   `,
+  // 51: moving where a codex entry first appears (moveEntryStart in src/lib/codexStart.ts) re-anchors its "create" op and
+  // sets moved_from_chapter_id to the chapter it started at before, for the entry's History. No foreign key: the old
+  // chapter may be deleted later without touching the op.
+  `
+  ALTER TABLE codex_ops ADD COLUMN moved_from_chapter_id TEXT;
+  `,
 ];
 
 function open(): Database.Database {

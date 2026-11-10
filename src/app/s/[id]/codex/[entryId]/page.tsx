@@ -8,6 +8,8 @@ import { compareEntry, foldCodex, usedAspectsOf } from "@/lib/codex";
 import { getStoryChapters } from "@/lib/tree";
 import { entryLastAnchor, getCodexFacts, getCodexOps } from "@/lib/codexDb";
 import { codexPictureAt } from "@/lib/codexPictures";
+import { entryStartOptions } from "@/lib/codexStart";
+import EntryStartPicker from "@/components/EntryStartPicker";
 import { getPath, getStory } from "@/lib/stories";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +57,14 @@ export default async function CodexEntryPage({ params, searchParams }: { params:
         })()
       : null;
   const pageHref = `/s/${story.id}/codex/${entryId}?at=${at}`;
+  // "First appears in …": where the entry starts on this path and the chapters it could start at instead.
+  const start = (() => {
+    try {
+      return entryStartOptions(entryId, at);
+    } catch {
+      return null;
+    }
+  })();
 
   return (
     <>
@@ -104,6 +114,7 @@ export default async function CodexEntryPage({ params, searchParams }: { params:
         pictureId={picture?.id ?? null}
         picturesHref={`/s/${story.id}/codex/${entryId}/pictures?at=${at}`}
         after={after}
+        belowName={start && <EntryStartPicker start={start} storyId={story.id} viewedChapterId={at} viewedDepth={here.depth} />}
       />
     </>
   );
