@@ -8,6 +8,7 @@ import {
   DRAFT_ANCHOR,
   ENTRY_TYPES,
   entryHistory,
+  isAiFact,
   isDraftEntry,
   TYPE_LABELS,
   type CodexChange,
@@ -357,6 +358,18 @@ export default function CodexEntryEditor({
         </EntryFold>
       )}
 
+      {/* What the AI suggested for this entry at this chapter (the codex check, the notes, Flesh out), above the facts it would change. */}
+      {storyId && !inDraft && !draftOnly && (
+        <CodexInbox
+          storyId={storyId}
+          entryId={entry.entry_id}
+          entryName={entry.name}
+          path={path}
+          applied={entry.facts.filter((f) => isAiFact(f) && f.op.anchor_chapter_id === chapterId)}
+          onChanged={() => router.refresh()}
+        />
+      )}
+
       {draftOnly && !holdFact ? (
         <EntryFold title="Facts" id="entry-facts" open>
           <p className="meta">Post the chapter to add facts.</p>
@@ -373,6 +386,7 @@ export default function CodexEntryEditor({
           hold={holdFact}
           editingChapter={editingChapter}
           notesToFacts={entry.content && storyId && !inDraft && !draftOnly ? { start: turnNotesIntoFacts, busy: starting || runId !== null } : undefined}
+          aiReviewHref={storyId && !inDraft && !draftOnly ? (at) => `/s/${storyId}/codex/${entry.entry_id}?at=${at}#entry-review` : undefined}
           retconHref={storyId && !inDraft && !draftOnly ? (factId) => `/s/${storyId}/review?tab=retcons&chapter=${chapterId}&entry=${encodeURIComponent(entry.entry_id)}&fact=${encodeURIComponent(factId)}` : undefined}
         />
       )}
@@ -467,20 +481,6 @@ export default function CodexEntryEditor({
           <p className="meta">Ask the AI for more detail about {entry.name}.</p>
           <FleshOutEntry storyId={storyId} chapterId={chapterId} entryId={entry.entry_id} name={entry.name} />
         </EntryFold>
-      )}
-
-      {/* What the AI suggested for this entry (Flesh out, the notes, the codex check): here, right below where it was asked for, to accept or dismiss. */}
-      {storyId && !inDraft && !draftOnly && (
-        <CodexInbox
-          storyId={storyId}
-          onPath={{
-            chapterIds: path.map((c) => c.id),
-            entryId: entry.entry_id,
-            heading: "Suggested facts",
-            className: "entry-section",
-            onChanged: () => router.refresh(),
-          }}
-        />
       )}
 
       <EntryFold title="History" id="entry-history" open={historyOpen} onToggle={setHistoryOpen} note={`${hist.length} version${hist.length === 1 ? "" : "s"}`}>

@@ -44,23 +44,27 @@ and, for pictures, your own ComfyUI machine.
   picker; under it, **Showing** says which chapter (or the whole story) you are looking at, with
   **Change…** to pick another and a link back to reading the chapter.
 - **Codex suggestions**: after you save a new or edited chapter, the AI (your cheaper model) reads it
-  in the background and leaves suggested fact changes on the entries they are about, in the Codex
-  section. Each suggestion is one fact, shows in red and green exactly what changes and the sentence it
-  is based on, and you **Accept**, **Edit** or **Dismiss** it (a dismissed one can be undone).
-  "Accept all" on an entry takes its changes in one go; where the chapter contradicts the codex you
-  choose **Update codex** or **Keep the codex**. A new character or place the AI found appears as a
-  dashed **Suggested new entry** you can **Add it** or dismiss. A chapter shows "Codex: N suggestions from
-  this chapter" when some are waiting. You can also run the check yourself (**Check this chapter with
-  AI**, or **Check every chapter with AI** for the whole story) from the **⋯** menu of the Codex
-  section. Turn the automatic check on or off in Settings › Writing › Codex, under "Suggest codex
-  changes after a chapter is saved".
+  in the background and suggests fact changes. The chapter's Codex section opens with **To review
+  from this chapter**: one row per character, place or thing with changes waiting. Tap a row to open
+  that entry at the chapter, where **Review changes from “chapter”** lists them (it folds away like
+  the other sections; earlier chapters that still have some are linked below it). Each suggestion is
+  one fact, shows in red and green exactly what changes, and says where it came from: **From the text**
+  (with the sentence, and **Show in “chapter”** to read it there), **From your notes**, or **AI idea ·
+  not in the text** (something Flesh out made up). You **Accept**, **Edit** or **Dismiss** it (a
+  dismissed one can be undone). "Accept the N from the text" takes the ones backed by the story in one
+  go and leaves AI ideas for you to decide; where the chapter contradicts the codex you choose **Update
+  codex** or **Keep the codex**. A new character or place the AI found appears in the To review box,
+  with **Add it** or **Dismiss**. You can also run the check yourself (**Check this chapter with AI**,
+  or **Check every chapter with AI** for the whole story) from the **⋯** menu of the Codex section.
+  Turn the automatic check on or off in Settings › Writing › Codex, under "Suggest codex changes
+  after a chapter is saved".
   With **Apply the AI's codex changes automatically** (under it, off by default), the AI's fact and form
   changes for characters, places and things already in the codex are saved straight away instead of
-  waiting. Each one is marked **AI** on the entry's page, with the sentence it came from, until you
-  **Approve** it (or **Approve all**) or **Edit** it. The entry's card says "N AI facts to check", and
-  the chapter says "Codex: the AI updated N facts". If you edit the chapter, the AI's unapproved facts
-  from it are replaced by its new reading, but approved and edited ones are kept. New entries, removals
-  and contradictions still wait as suggestions.
+  waiting. They are listed under **Already applied by the AI** in the entry's Review changes at that
+  chapter, with the sentence each came from, until you **Approve** it (or **Approve all**) or **Undo**
+  it (the fact goes back to what it was, and the AI won't apply it again). If you edit the chapter, the
+  AI's unapproved facts from it are replaced by its new reading, but approved and edited ones are kept.
+  New entries, removals and contradictions still wait as suggestions.
 - **Review** (a story's menu): a page listing what may need fixing (missing, stale or wrong
   summaries, continuity slips, names with no codex entry, AI chapters not yet read) and the
   **tags** the AI suggests for chapters, for you to approve. See [Tags](#tags) below.

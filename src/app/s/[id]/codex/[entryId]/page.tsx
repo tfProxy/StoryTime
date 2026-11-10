@@ -59,9 +59,13 @@ export default async function CodexEntryPage({ params, searchParams }: { params:
   return (
     <>
       <StoryTabs storyId={story.id} title={story.title} active="bible" />
-      <p className="crumbs">
-        <Link href={`/s/${story.id}/review?tab=codex&chapter=${at}`}>← Codex at “{here.title}”</Link>
-      </p>
+      {/* Stays at the top while the page scrolls, so it is always clear which chapter the entry is shown and reviewed at. */}
+      <div className="codex-at-bar">
+        <Link href={`/s/${story.id}/review?tab=codex&chapter=${at}`}>← Codex</Link>
+        <span className="codex-at-title">
+          {entry.name} <span className="meta">at</span> “{here.title}”
+        </span>
+      </div>
       <ChapterPathNav
         className="entry-path"
         prefix="Viewing at:"

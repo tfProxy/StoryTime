@@ -47,6 +47,11 @@ type Props = {
   notesToFacts?: { start: () => void; busy: boolean };
   /** Where a fact's "Retcon…" goes (the Story Bible's Retcons section); left out where it isn't offered. */
   retconHref?: (factId: string) => string;
+  /**
+   * Where the facts the AI applied at a chapter are approved or undone (the entry page's "Review changes" at that
+   * chapter). Given, the facts list only marks them and links there; left out (the writing drawer), it offers Approve.
+   */
+  aiReviewHref?: (chapterId: string) => string;
 };
 
 type Body = { op: "set" | "retire"; aspect: string; form: string; text: string; quote: string; fact_id?: string; anchor: string };
@@ -61,7 +66,7 @@ const NEW_FORM = "\u0000new";
  * An entry's form and facts. Every form opens directly beneath the button (or row) that opened it, and the
  * add form at the end of the list.
  */
-export default function CodexFacts({ entry, factOps, path, chapterId, usedAspects, onSaved, anchorPath = path, hold, editingChapter = false, notesToFacts, retconHref }: Props) {
+export default function CodexFacts({ entry, factOps, path, chapterId, usedAspects, onSaved, anchorPath = path, hold, editingChapter = false, notesToFacts, retconHref, aiReviewHref }: Props) {
   const [formOpen, setFormOpen] = useState(false);
   // A fact's id while it is being changed, "new" while one is being added.
   const [editing, setEditing] = useState<string | null>(null);
@@ -255,7 +260,7 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
             ) : (
               <span className="meta">No form set.</span>
             )}{" "}
-            {entry.form && isAiFact(entry.form.fact) && (
+            {entry.form && isAiFact(entry.form.fact) && !aiReviewHref && (
               <button type="button" disabled={busy} aria-label="Approve the form" onClick={() => void approve([entry.form!.fact.op.id])}>
                 Approve
               </button>
@@ -297,7 +302,20 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
 
       <EntryFold title="Facts" id="entry-facts" className="facts" open note={rows.length > 0 ? `${rows.length}` : undefined}>
         {groups.length === 0 && <p className="meta">No facts yet.</p>}
-        {aiFacts.length > 0 && (
+        {aiFacts.length > 0 && aiReviewHref && (
+          <p className="notice ai-facts-note">
+            <AiBadge /> The AI wrote {aiFacts.length === 1 ? "1 fact" : `${aiFacts.length} facts`} from the story that you haven&apos;t approved yet. Approve or
+            undo {aiFacts.length === 1 ? "it" : "them"} under Review changes at{" "}
+            {[...new Map(aiFacts.map((f) => [f.op.anchor_chapter_id, path.find((c) => c.id === f.op.anchor_chapter_id)?.title ?? "its chapter"])).entries()].map(([id, title], i) => (
+              <span key={id}>
+                {i > 0 && ", "}
+                <Link href={aiReviewHref(id)}>“{title}”</Link>
+              </span>
+            ))}
+            .
+          </p>
+        )}
+        {aiFacts.length > 0 && !aiReviewHref && (
           <p className="notice ai-facts-note">
             <AiBadge /> The AI wrote {aiFacts.length === 1 ? "1 fact" : `${aiFacts.length} facts`} from the story. Approve or edit{" "}
             {aiFacts.length === 1 ? "it" : "them"}; the AI replaces unapproved ones when it reads the chapter again.{" "}
@@ -401,7 +419,7 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
                     </div>
                   </div>
                   <div className="row" style={{ margin: "0.4rem 0 0" }}>
-                    {isAiFact(f) && (
+                    {isAiFact(f) && !aiReviewHref && (
                       <button type="button" disabled={busy} aria-label={`Approve ${f.aspect || "the fact"}`} onClick={() => void approve([f.op.id])}>
                         Approve
                       </button>

@@ -327,6 +327,26 @@ export function approveAiFacts(input: z.infer<typeof ApproveFactsSchema>): { app
   return { approved: r.changes };
 }
 
+/**
+ * The owner takes back facts the AI wrote on its own (by fact-change id): each change is deleted, so the fact reads as it
+ * did before, and its suggestion is marked dismissed, so the next reading of the chapter doesn't apply it again.
+ */
+export function undoAiFacts(input: z.infer<typeof ApproveFactsSchema>): { undone: number } {
+  return db().transaction(() => {
+    const marks = input.ids.map(() => "?").join(",");
+    const rows = db().prepare(`SELECT id, ai_suggestion_id FROM codex_facts WHERE id IN (${marks}) AND ai_suggestion_id IS NOT NULL`).all(...input.ids) as {
+      id: string;
+      ai_suggestion_id: string;
+    }[];
+    const now = Date.now();
+    for (const r of rows) {
+      db().prepare(`DELETE FROM codex_facts WHERE id = ?`).run(r.id);
+      db().prepare(`UPDATE codex_suggestions SET status = 'dismissed', decided_at = ? WHERE id = ?`).run(now, r.ai_suggestion_id);
+    }
+    return { undone: rows.length };
+  })();
+}
+
 export const FormChangeSchema = z
   .object({
     /** The chapter whose codex is shown: the entry and its facts are read as they are there. */

@@ -3,27 +3,27 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { CodexSuggestion } from "@/lib/codexSuggestions";
+import { isFormAspect, type LiveFact } from "@/lib/codex";
 import { wordDiff } from "@/lib/wordDiff";
+import EntryFold from "./EntryFold";
+import MoreMenu from "./MoreMenu";
 
 /** Fired on window when a codex check has left new suggestions, so an open inbox reads the list again. */
 export const INBOX_CHANGED = "storytime:codex-inbox-changed";
 
 type Props = {
   storyId: string;
-  /** Only this chapter's suggestions (the Story Bible's chapter filter). */
+  /** Only this chapter's suggestions. */
   chapterId?: string;
   /**
-   * The codex page of a chapter: the suggestions that apply there, those made at this chapter and at the ones before it on
-   * its branch. Nothing is shown when there are none, and `onChanged` is called after one is accepted, dismissed or reopened.
+   * The suggestions that apply at a chapter: those made at it and at the ones before it on its branch. `onChanged` is
+   * called after one is accepted, dismissed or reopened.
    */
   onPath?: {
     chapterIds: string[];
     onChanged?: () => void;
     /** Only the suggestions for this entry (an entry's own page). */
     entryId?: string;
-    /** The heading over the list; a CSS class for the whole block. */
-    heading?: string;
-    className?: string;
   };
 };
 
@@ -36,6 +36,32 @@ const kindLabel = (s: CodexSuggestion) => (s.kind === "set" && !s.before ? "New 
 
 /** The words of the proposed text as the diff compares them (a form is "name, note"). */
 const afterText = (s: CodexSuggestion) => (s.kind === "form" ? [s.form, s.after].filter(Boolean).join(", ") : s.after);
+
+export type SourceTone = "text" | "story" | "notes" | "invented" | "conflict";
+
+/**
+ * Where a suggestion's claim comes from, as the card labels it. Every quote was checked against its source when the
+ * suggestion was saved: a chapter reading's against the chapter, a notes reading's against the notes, a Flesh out's
+ * (when it stayed close to the story) against the chapters so far. A Flesh out without a quote is the AI's own idea.
+ */
+export function suggestionSource(s: Pick<CodexSuggestion, "kind" | "source" | "quote">): { tone: SourceTone; label: string } {
+  if (s.kind === "conflict") return { tone: "conflict", label: "Contradicts the codex" };
+  if (s.source === "notes") return { tone: "notes", label: "From your notes" };
+  if (s.source === "expand") return s.quote ? { tone: "story", label: "From the story" } : { tone: "invented", label: "AI idea · not in the text" };
+  return { tone: "text", label: "From the text" };
+}
+
+/** What "Accept all" takes: open fact changes backed by the text or the notes, never the AI's own ideas or a conflict. */
+export const acceptableInBulk = (s: CodexSuggestion) =>
+  s.status === "open" && s.kind !== "conflict" && s.kind !== "entry" && suggestionSource(s).tone !== "invented";
+
+/** The chapter's reading page, scrolled to the quote where the browser supports text fragments. */
+export const quoteHref = (chapterId: string, quote: string) => `/c/${chapterId}#:~:text=${encodeURIComponent(quote.slice(0, 120))}`;
+
+export function SourceBadge({ s }: { s: Pick<CodexSuggestion, "kind" | "source" | "quote"> }) {
+  const { tone, label } = suggestionSource(s);
+  return <span className={`source-badge source-${tone}`}>{label}</span>;
+}
 
 async function post(url: string, body?: unknown): Promise<{ entry_id?: string }> {
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) });
@@ -155,115 +181,213 @@ export function useCodexInbox({ storyId, chapterId, onPath, onChanged: onAnyChan
   return { items, loadError, shown, dismissedList, errors, busy, editing, setEditing, showDismissed, setShowDismissed, accept, dismiss, reopen, acceptAll };
 }
 
-export default function CodexInbox({ storyId, chapterId, onPath }: Props) {
-  const { items, loadError, shown, dismissedList, errors, busy, editing, setEditing, showDismissed, setShowDismissed, accept, dismiss, reopen, acceptAll } = useCodexInbox({
-    storyId,
-    chapterId,
-    onPath,
-  });
+/** The dismissed suggestions of a list, behind a "Show dismissed" button, each with Reopen. */
+export function DismissedList({
+  list,
+  busy,
+  errors,
+  open,
+  onToggle,
+  onReopen,
+  showEntry = true,
+}: {
+  list: CodexSuggestion[];
+  busy: Set<string>;
+  errors: Record<string, string>;
+  open: boolean;
+  onToggle: () => void;
+  onReopen: (s: CodexSuggestion) => void;
+  showEntry?: boolean;
+}) {
+  if (list.length === 0) return null;
+  return (
+    <>
+      <button type="button" className="secondary" aria-expanded={open} onClick={onToggle}>
+        {open ? "Hide dismissed" : `Show dismissed (${list.length})`}
+      </button>
+      {open && (
+        <ul className="inbox-dismissed">
+          {list.map((s) => (
+            <li key={s.id} className="inbox-done">
+              <span>
+                {showEntry && <strong>{s.entry_name || "An entry"} </strong>}
+                {s.aspect && <>{s.aspect}: </>}
+                {s.kind === "retire" ? "remove" : `“${afterText(s)}”`}
+              </span>
+              <button type="button" className="secondary" disabled={busy.has(s.id)} onClick={() => onReopen(s)}>
+                Reopen
+              </button>
+              {errors[s.id] && <span className="error">{errors[s.id]}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
 
-  // Chapter, then entry; the server already ordered the suggestions by chapter depth and time.
-  const chapters = useMemo(() => {
-    const out: { id: string; title: string; entries: { key: string; name: string; list: CodexSuggestion[] }[] }[] = [];
-    for (const s of shown) {
-      let ch = out.find((c) => c.id === s.chapter_id);
-      if (!ch) out.push((ch = { id: s.chapter_id, title: s.chapter_title, entries: [] }));
-      const key = s.kind === "entry" ? `new:${s.entry_name.toLowerCase()}` : (s.entry_id ?? s.entry_name);
-      let en = ch.entries.find((e) => e.key === key);
-      if (!en) ch.entries.push((en = { key, name: s.entry_name, list: [] }));
-      en.list.push(s);
+/**
+ * An entry's page at a chapter: "Review changes", a fold with the suggestions for the entry made at that chapter, and a
+ * link to each earlier chapter on the branch that still has some (the review happens at the chapter it belongs to).
+ */
+export default function CodexInbox({
+  storyId,
+  entryId,
+  entryName,
+  path,
+  applied = [],
+  onChanged,
+}: {
+  storyId: string;
+  entryId: string;
+  entryName: string;
+  /** Root to the chapter the page is at (the last one). */
+  path: { id: string; title: string }[];
+  /** Facts the AI applied on its own at this chapter ("Apply the AI's codex changes automatically"), not yet approved. */
+  applied?: LiveFact[];
+  onChanged?: () => void;
+}) {
+  const here = path[path.length - 1];
+  const live = useCodexInbox({ storyId, onPath: { chapterIds: path.map((c) => c.id), entryId, onChanged } });
+  const { items, loadError, shown, dismissedList, errors, busy, editing, setEditing, showDismissed, setShowDismissed, accept, dismiss, reopen, acceptAll } = live;
+  const [appliedBusy, setAppliedBusy] = useState(false);
+  const [appliedError, setAppliedError] = useState("");
+
+  /** Approve (keep as the owner's) or undo (take back) facts the AI applied, by fact-change id. */
+  async function decide(action: "approve" | "undo-ai", ids: string[]) {
+    setAppliedBusy(true);
+    setAppliedError("");
+    try {
+      await post(`/api/codex/${action}`, { ids });
+      onChanged?.();
+    } catch (e) {
+      setAppliedError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAppliedBusy(false);
     }
-    return out;
-  }, [shown]);
+  }
 
-  if (items === null) return onPath ? null : <p className="meta">{loadError || "Reading the codex inbox…"}</p>;
-  // On a chapter's codex page there is nothing to show when nothing is waiting.
-  if (onPath && shown.length === 0 && dismissedList.length === 0 && !loadError) return null;
+  const atHere = shown.filter((s) => s.chapter_id === here?.id);
+  const dismissedHere = dismissedList.filter((s) => s.chapter_id === here?.id);
+  // Earlier chapters with suggestions still open, newest first: each is reviewed on this page at that chapter.
+  const earlier = useMemo(() => {
+    const out: { id: string; title: string; n: number }[] = [];
+    for (const s of shown) {
+      if (s.chapter_id === here?.id || s.status !== "open") continue;
+      const c = out.find((x) => x.id === s.chapter_id);
+      if (c) c.n++;
+      else out.push({ id: s.chapter_id, title: s.chapter_title, n: 1 });
+    }
+    return out.reverse();
+  }, [shown, here?.id]);
+
+  if (items === null || !here) return null;
+  const open = atHere.filter((s) => s.status === "open").length + applied.length;
+  if (atHere.length === 0 && dismissedHere.length === 0 && earlier.length === 0 && applied.length === 0 && !loadError) return null;
+  const bulk = atHere.filter(acceptableInBulk);
 
   return (
-    <div className={["codex-inbox", onPath?.className].filter(Boolean).join(" ")}>
-      {onPath && (
-        <>
-          <h2>{onPath.heading ?? "Waiting in the codex inbox"}</h2>
-          <p className="meta">
-            {onPath.entryId ? "Suggestions for this entry" : "Suggestions"} from this chapter and the ones before it on this branch, which apply here. Accepting one adds it
-            to the codex from the chapter it was made at. <Link href={`/s/${storyId}/review?tab=codex`}>Open the whole inbox</Link>
-          </p>
-        </>
-      )}
-      {chapterId && (
-        <p className="meta">
-          Suggestions from this chapter only · <Link href={`/s/${storyId}/review?tab=codex`}>Show all chapters</Link>
-        </p>
-      )}
+    <EntryFold
+      title={`Review changes from “${here.title}”`}
+      note={open > 0 ? `${open} waiting` : "none waiting"}
+      open={open > 0 || earlier.length > 0}
+      id="entry-review"
+      className="codex-review"
+    >
       {loadError && <p className="error">{loadError}</p>}
-      {shown.length === 0 && !onPath && <p className="meta">No codex suggestions waiting.</p>}
+      {atHere.length === 0 && applied.length === 0 && <p className="meta">Nothing to review for {entryName} from this chapter.</p>}
 
-      {chapters.map((ch) => (
-        <section key={ch.id}>
-          <h3 className="inbox-chapter">
-            <Link href={`/s/${storyId}/review?tab=codex&chapter=${ch.id}`}>{ch.title}</Link>
-          </h3>
-          <div className="meta">
-            <Link href={`/ai-log?chapter=${encodeURIComponent(ch.id)}&source=${encodeURIComponent("Codex check")}`} className="ai-log-link">
-              Show the AI exchange
-            </Link>
-          </div>
-          {ch.entries.map((en) => {
-            const eligible = en.list.filter((s) => s.status === "open" && s.kind !== "conflict" && s.kind !== "entry");
-            return (
-              <div key={en.key}>
-                <div className="inbox-entry">
-                  <h4>{en.name || "An entry"}</h4>
-                  {eligible.length > 1 && (
-                    <button type="button" className="secondary" disabled={eligible.some((s) => busy.has(s.id))} onClick={() => void acceptAll(eligible)}>
-                      Accept all for {en.name || "this entry"}
-                    </button>
-                  )}
-                </div>
-                {en.list.map((s) => (
-                  <Card
-                    key={s.id}
-                    s={s}
-                    busy={busy.has(s.id)}
-                    error={errors[s.id]}
-                    editing={editing === s.id}
-                    onEdit={(on) => setEditing(on ? s.id : null)}
-                    onAccept={(edits) => void accept(s, edits)}
-                    onDismiss={() => void dismiss(s)}
-                    onReopen={() => void reopen(s)}
-                  />
-                ))}
+      {applied.length > 0 && (
+        <div className="codex-review-applied">
+          <h3>Already applied by the AI</h3>
+          <p className="meta">
+            These are in the codex now. Approve to keep them as yours, or undo to put the fact back as it was. Until you approve them, the AI replaces them when
+            it reads the chapter again.
+          </p>
+          {applied.map((f) => (
+            <article key={f.op.id} className="card inbox-card inbox-text">
+              <div className="inbox-head">
+                <strong className="inbox-aspect">{isFormAspect(f.aspect) ? "Form" : f.aspect || "General"}</strong>
+                {!isFormAspect(f.aspect) && f.form && <span className="meta">{f.form} form</span>}
+                <SourceBadge s={{ kind: "set", source: "chapter", quote: f.quote }} />
               </div>
-            );
-          })}
-        </section>
+              <p className="inbox-diff">{isFormAspect(f.aspect) ? [f.form, f.text].filter(Boolean).join(", ") : f.text}</p>
+              {f.quote && (
+                <blockquote className="inbox-evidence">
+                  “{f.quote}”
+                  <span className="inbox-evidence-where">
+                    <a href={quoteHref(here.id, f.quote)} target="_blank" rel="noreferrer">
+                      Show in “{here.title}”
+                    </a>
+                  </span>
+                </blockquote>
+              )}
+              <div className="inbox-actions">
+                <button type="button" disabled={appliedBusy} onClick={() => void decide("approve", [f.op.id])}>
+                  Approve
+                </button>
+                <button type="button" className="secondary" disabled={appliedBusy} onClick={() => void decide("undo-ai", [f.op.id])}>
+                  Undo
+                </button>
+              </div>
+            </article>
+          ))}
+          {appliedError && <p className="error">{appliedError}</p>}
+          {applied.length > 1 && (
+            <div className="codex-review-footer">
+              <button type="button" className="secondary" disabled={appliedBusy} onClick={() => void decide("approve", applied.map((f) => f.op.id))}>
+                Approve all {applied.length}
+              </button>
+            </div>
+          )}
+          {atHere.length > 0 && <h3>Waiting for you</h3>}
+        </div>
+      )}
+      {atHere.map((s) => (
+        <Card
+          key={s.id}
+          s={s}
+          inEntry
+          busy={busy.has(s.id)}
+          error={errors[s.id]}
+          editing={editing === s.id}
+          onEdit={(on) => setEditing(on ? s.id : null)}
+          onAccept={(edits) => void accept(s, edits)}
+          onDismiss={() => void dismiss(s)}
+          onReopen={() => void reopen(s)}
+        />
       ))}
 
-      {dismissedList.length > 0 && (
-        <div style={{ marginTop: "1rem" }}>
-          <button type="button" className="linkish" aria-expanded={showDismissed} onClick={() => setShowDismissed((v) => !v)}>
-            Dismissed ({dismissedList.length})
-          </button>
-          {showDismissed && (
-            <ul className="plain" style={{ listStyle: "none", padding: 0, margin: "0.5rem 0 0", display: "grid", gap: "0.5rem" }}>
-              {dismissedList.map((s) => (
-                <li key={s.id} className="inbox-done">
-                  <span>
-                    <strong>{s.entry_name || "An entry"}</strong>
-                    {s.aspect && <> · {s.aspect}</>} — {s.kind === "retire" ? "remove" : `“${afterText(s)}”`} <span className="meta">from “{s.chapter_title}”</span>
-                  </span>
-                  <button type="button" className="linkish" disabled={busy.has(s.id)} onClick={() => void reopen(s)}>
-                    Reopen
-                  </button>
-                  {errors[s.id] && <span className="error">{errors[s.id]}</span>}
-                </li>
-              ))}
-            </ul>
+      {(bulk.length > 1 || dismissedHere.length > 0 || atHere.length > 0) && (
+        <div className="codex-review-footer">
+          {bulk.length > 1 && (
+            <button type="button" className="secondary" disabled={bulk.some((s) => busy.has(s.id))} onClick={() => void acceptAll(bulk)}>
+              Accept the {bulk.length} from the text
+            </button>
+          )}
+          <DismissedList list={dismissedHere} busy={busy} errors={errors} open={showDismissed} onToggle={() => setShowDismissed((v) => !v)} onReopen={(s) => void reopen(s)} showEntry={false} />
+          {atHere.length > 0 && (
+            <MoreMenu label="More review actions">
+              <Link href={`/ai-log?chapter=${encodeURIComponent(here.id)}`}>Show the AI exchange</Link>
+            </MoreMenu>
           )}
         </div>
       )}
-    </div>
+
+      {earlier.length > 0 && (
+        <p className="meta codex-review-earlier">
+          Also waiting for {entryName} from earlier chapters:{" "}
+          {earlier.map((c, i) => (
+            <span key={c.id}>
+              {i > 0 && " · "}
+              <Link href={`/s/${storyId}/codex/${entryId}?at=${c.id}#entry-review`}>
+                “{c.title}” ({c.n})
+              </Link>
+            </span>
+          ))}
+        </p>
+      )}
+    </EntryFold>
   );
 }
 
@@ -284,11 +408,12 @@ export function Card({ s, busy, error, editing, onEdit, onAccept, onDismiss, onR
   const [aspect, setAspect] = useState(s.kind === "form" ? s.form : s.aspect);
   const [text, setText] = useState(s.after);
 
+  const what = [s.entry_name || "the entry", s.kind === "form" ? "form" : s.aspect].filter(Boolean).join(", ");
   if (s.status === "accepted") {
     return (
       <p className="inbox-done">
         <span>
-          Saved to <strong>{s.entry_name || "the entry"}</strong> at <Link href={`/s/${s.story_id}/review?tab=codex&chapter=${s.chapter_id}`}>“{s.chapter_title}”</Link>
+          Saved: <strong>{what}</strong> <span className="meta">at “{s.chapter_title}”</span>
         </span>
       </p>
     );
@@ -297,9 +422,9 @@ export function Card({ s, busy, error, editing, onEdit, onAccept, onDismiss, onR
     return (
       <div className="inbox-done">
         <span>
-          Dismissed <span className="meta">({s.entry_name || "an entry"}{s.aspect ? `, ${s.aspect}` : ""})</span>
+          Dismissed <span className="meta">({what})</span>
         </span>
-        <button type="button" className="linkish" disabled={busy} onClick={onReopen}>
+        <button type="button" className="secondary" disabled={busy} onClick={onReopen}>
           Undo
         </button>
         {error && <span className="error">{error}</span>}
@@ -310,13 +435,16 @@ export function Card({ s, busy, error, editing, onEdit, onAccept, onDismiss, onR
   const segments = s.kind === "entry" ? [] : wordDiff(s.before, s.kind === "retire" ? "" : afterText(s));
   const moved = s.kind !== "entry" && s.current !== s.before;
   const conflict = s.kind === "conflict";
+  const tone = suggestionSource(s).tone;
   return (
-    <article className="card inbox-card">
+    <article className={`card inbox-card inbox-${tone}`}>
       <div className="inbox-head">
-        <span className="tag">{kindLabel(s)}</span>
         {!inEntry && <strong>{s.entry_name || "An entry"}</strong>}
-        {s.kind !== "entry" && s.kind !== "form" && <span className="meta">{s.aspect || "general"}</span>}
-        {s.kind !== "form" && s.form && <span className="tag">{s.form}</span>}
+        {s.kind !== "entry" && s.kind !== "form" && <strong className="inbox-aspect">{s.aspect || "General"}</strong>}
+        <span className="meta">
+          {[kindLabel(s).toLowerCase(), s.kind === "form" ? "" : s.form ? `${s.form} form` : ""].filter(Boolean).join(" · ")}
+        </span>
+        <SourceBadge s={s} />
       </div>
 
       {s.kind === "entry" && s.entry ? (
@@ -358,7 +486,22 @@ export function Card({ s, busy, error, editing, onEdit, onAccept, onDismiss, onR
         </p>
       )}
 
-      {s.quote && <p className="inbox-quote">“{s.quote}”</p>}
+      {s.quote ? (
+        <blockquote className="inbox-evidence">
+          “{s.quote}”
+          {s.source === "chapter" && (
+            <span className="inbox-evidence-where">
+              <a href={quoteHref(s.chapter_id, s.quote)} target="_blank" rel="noreferrer">
+                Show in “{s.chapter_title}”
+              </a>
+            </span>
+          )}
+          {s.source === "notes" && <span className="inbox-evidence-where">From the entry&apos;s notes</span>}
+          {s.source === "expand" && <span className="inbox-evidence-where">From the chapters so far</span>}
+        </blockquote>
+      ) : (
+        tone === "invented" && <p className="inbox-invented">The AI made this up when you used Flesh out; nothing in the story says it. “Accept all” leaves it out.</p>
+      )}
       {moved && (
         <p className="meta" style={{ margin: 0 }}>
           The codex has changed since: now {s.current ? `“${s.current}”` : "empty"}

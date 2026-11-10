@@ -8,7 +8,7 @@ import type { PathChapter } from "@/lib/ai/codexAi";
 import { ENTRY_TYPES, TYPE_HEADINGS, TYPE_LABELS, type CodexEntry, type EntryType, type StoryEntrySummary } from "@/lib/codex";
 import type { CodexSuggestion } from "@/lib/codexSuggestions";
 import AiRunProgress from "./AiRunProgress";
-import { Card, INBOX_CHANGED, useCodexInbox } from "./CodexInbox";
+import { Card, DismissedList, INBOX_CHANGED, SourceBadge, suggestionSource, useCodexInbox } from "./CodexInbox";
 import CodexEntryCards, { HintCount, StaleNote } from "./CodexEntryCards";
 import { STALE_FROM } from "@/lib/codexHints";
 import { EntryDetailsForm } from "./CodexEntryEditor";
@@ -258,43 +258,128 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
     />
   );
 
-  /** What a suggestion for a new entry looks like among the cards. */
-  const newEntryCard = (s: CodexSuggestion) =>
-    s.status !== "open" ? (
-      <li key={s.id}>{cardFor(s, false)}</li>
-    ) : (
-      <li key={s.id} className="codex-suggested">
-        <span>
-          <strong className="codex-suggested-label">Suggested new entry:</strong> <strong>{s.entry_name}</strong>
-        </span>
-        {s.entry?.notes && <span className="meta">{s.entry.notes}</span>}
-        {s.quote && <span className="inbox-quote">“{s.quote}”</span>}
-        {live.errors[s.id] && <span className="error">{live.errors[s.id]}</span>}
-        <span className="row">
-          <button type="button" disabled={live.busy.has(s.id)} onClick={() => void live.accept(s)}>
-            Add it
-          </button>
-          <button type="button" className="secondary" disabled={live.busy.has(s.id)} onClick={() => void live.dismiss(s)}>
-            Dismiss
-          </button>
-        </span>
-      </li>
-    );
 
-  /** Under an entry's card: the suggestions about it. */
-  const suggestionsOf = (entryId: string) => {
-    const list = forEntry(entryId);
-    if (list.length === 0) return null;
-    const eligible = list.filter((s) => s.status === "open" && s.kind !== "conflict");
+  /** Under an entry's card: how many of its suggestions wait at this chapter (they are reviewed on its page). */
+  const reviewCountOf = (entryId: string) => {
+    const n = forEntry(entryId).filter((s) => openFor(s) && s.chapter_id === c.chosenId).length;
+    return n > 0 ? <p className="entry-review-count">{n} to review</p> : null;
+  };
+
+  /**
+   * "To review": what the AI left at this chapter (or, for the whole story, at every chapter), one row per entry that
+   * links to the entry's page at that chapter, where the suggestions are. A new entry has no page yet, so its row has
+   * Add and Dismiss. In a chapter, the earlier chapters on the branch that still have some are linked below.
+   */
+  const reviewByChapter = (() => {
+    const out: { id: string; title: string; rows: { key: string; entryId: string | null; name: string; list: CodexSuggestion[] }[] }[] = [];
+    for (const s of suggestions) {
+      if (!openFor(s) && s.kind !== "entry") continue;
+      if (s.kind !== "entry" && !(s.entry_id && known.has(s.entry_id))) continue; // listed under "Other suggestions"
+      let ch = out.find((x) => x.id === s.chapter_id);
+      if (!ch) out.push((ch = { id: s.chapter_id, title: s.chapter_title, rows: [] }));
+      const key = s.kind === "entry" ? `new:${s.id}` : s.entry_id!;
+      let row = ch.rows.find((r) => r.key === key);
+      if (!row) ch.rows.push((row = { key, entryId: s.kind === "entry" ? null : s.entry_id, name: s.entry_name, list: [] }));
+      row.list.push(s);
+    }
+    return out;
+  })();
+
+  const toneSummary = (list: CodexSuggestion[]) => {
+    const counts = new Map<string, number>();
+    for (const s of list) {
+      const { tone } = suggestionSource(s);
+      const word = tone === "invented" ? "AI idea" : tone === "conflict" ? "contradicts the codex" : tone === "notes" ? "from your notes" : "from the text";
+      counts.set(word, (counts.get(word) ?? 0) + 1);
+    }
+    return [...counts].map(([w, n]) => (w === "AI idea" ? `${n} AI idea${n === 1 ? "" : "s"}` : `${n} ${w}`)).join(" · ");
+  };
+
+  const reviewRows = (ch: (typeof reviewByChapter)[number]) => (
+    <ul className="codex-review-rows">
+      {ch.rows.map((r) => {
+        if (r.entryId === null) {
+          const s = r.list[0];
+          if (s.status !== "open") return <li key={r.key}>{cardFor(s, false)}</li>;
+          return (
+            <li key={r.key} className="codex-review-new">
+              <span className="codex-review-new-text">
+                <span>
+                  <strong className="codex-suggested-label">New {s.entry?.type ?? "entry"}:</strong> <strong>{s.entry_name}</strong> <SourceBadge s={s} />
+                </span>
+                {s.entry?.notes && <span className="meta">{s.entry.notes}</span>}
+                {s.quote && <span className="inbox-quote">“{s.quote}”</span>}
+                {live.errors[s.id] && <span className="error">{live.errors[s.id]}</span>}
+              </span>
+              <button type="button" disabled={live.busy.has(s.id)} onClick={() => void live.accept(s)}>
+                Add it
+              </button>
+              <button type="button" className="secondary" disabled={live.busy.has(s.id)} onClick={() => void live.dismiss(s)}>
+                Dismiss
+              </button>
+            </li>
+          );
+        }
+        const open = r.list.filter(openFor);
+        return (
+          <li key={r.key}>
+            <Link className="codex-review-row" href={`/s/${c.storyId}/codex/${r.entryId}?at=${ch.id}#entry-review`}>
+              <strong className="codex-review-name">{r.name || "An entry"}</strong>
+              <span className="meta">{toneSummary(open)}</span>
+              <span className="codex-review-count">{open.length}</span>
+              <span aria-hidden="true">›</span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+
+  const reviewBox = () => {
+    if (chapterScope) {
+      const here = reviewByChapter.find((ch) => ch.id === c.chosenId);
+      const earlier = reviewByChapter.filter((ch) => ch.id !== c.chosenId && ch.rows.some((r) => r.list.some(openFor)));
+      if (!here && earlier.length === 0) return null;
+      const n = here ? here.rows.reduce((t, r) => t + r.list.filter(openFor).length, 0) : 0;
+      return (
+        <section className="codex-review-box" aria-label="To review">
+          <div className="codex-review-box-head">
+            <h2>To review from this chapter</h2>
+            <span className="meta">{n === 0 ? "nothing waiting" : `${n} waiting`}</span>
+          </div>
+          {here && reviewRows(here)}
+          {earlier.length > 0 && (
+            <p className="meta">
+              Earlier chapters still have some:{" "}
+              {earlier.map((ch, i) => (
+                <span key={ch.id}>
+                  {i > 0 && " · "}
+                  <Link href={`/s/${c.storyId}/review?tab=codex&chapter=${ch.id}`}>
+                    “{ch.title}” ({ch.rows.reduce((t, r) => t + r.list.filter(openFor).length, 0)})
+                  </Link>
+                </span>
+              ))}
+            </p>
+          )}
+        </section>
+      );
+    }
+    if (reviewByChapter.length === 0) return null;
     return (
-      <div className="entry-extra">
-        {eligible.length > 1 && (
-          <button type="button" className="secondary" disabled={eligible.some((s) => live.busy.has(s.id))} onClick={() => void live.acceptAll(eligible)}>
-            Accept all {eligible.length}
-          </button>
-        )}
-        {list.map((s) => cardFor(s, true))}
-      </div>
+      <section className="codex-review-box" aria-label="To review">
+        <div className="codex-review-box-head">
+          <h2>To review</h2>
+          <span className="meta">{openCount(suggestions)} waiting</span>
+        </div>
+        {reviewByChapter.map((ch) => (
+          <div key={ch.id}>
+            <h3 className="inbox-chapter">
+              <Link href={`/s/${c.storyId}/review?tab=codex&chapter=${ch.id}`}>“{ch.title}”</Link>
+            </h3>
+            {reviewRows(ch)}
+          </div>
+        ))}
+      </section>
     );
   };
 
@@ -327,6 +412,8 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
           </button>
         </p>
       )}
+
+      {reviewBox()}
 
       {alwaysLoad && (
         <p className="notice codex-always-load">
@@ -382,11 +469,7 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
           chapterId={c.chosenId!}
           storyId={c.storyId}
           pictures={pictures}
-          extra={(e) => suggestionsOf(e.entry_id)}
-          groupExtra={(type) => {
-            const list = created(type);
-            return list.length > 0 ? <>{list.map(newEntryCard)}</> : null;
-          }}
+          extra={(e) => reviewCountOf(e.entry_id)}
           groupSuggestions={groupCount}
         />
       ) : (
@@ -423,7 +506,6 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
                     </li>
                   );
                 })}
-                {fresh.map(newEntryCard)}
               </ul>
             </CodexGroup>
           );
@@ -479,22 +561,16 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
       </p>
 
       {live.dismissedList.length > 0 && (
-        <details className="codex-dismissed">
-          <summary>Dismissed suggestions ({live.dismissedList.length})</summary>
-          <ul className="plain" style={{ listStyle: "none", padding: 0, margin: "0.5rem 0 0", display: "grid", gap: "0.5rem" }}>
-            {live.dismissedList.map((s) => (
-              <li key={s.id} className="inbox-done">
-                <span>
-                  <strong>{s.entry_name || "An entry"}</strong>
-                  {s.aspect && <> · {s.aspect}</>} — {s.kind === "retire" ? "remove" : `“${s.after}”`} <span className="meta">from “{s.chapter_title}”</span>
-                </span>
-                <button type="button" className="linkish" disabled={live.busy.has(s.id)} onClick={() => void live.reopen(s)}>
-                  Reopen
-                </button>
-              </li>
-            ))}
-          </ul>
-        </details>
+        <div className="codex-review-footer codex-dismissed">
+          <DismissedList
+            list={live.dismissedList}
+            busy={live.busy}
+            errors={live.errors}
+            open={live.showDismissed}
+            onToggle={() => live.setShowDismissed((v) => !v)}
+            onReopen={(s) => void live.reopen(s)}
+          />
+        </div>
       )}
     </div>
   );
