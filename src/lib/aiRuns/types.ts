@@ -185,7 +185,21 @@ export type ExpandTask = {
   error?: string;
 };
 
-export type RunTask = WriteTask | PlanTask | PictureTask | TagsTask | FactsTask | ContinuityTask | SummaryTask | CodexTask | NotesTask | ExpandTask;
+/** Retcon: the AI reads one chapter (at `revision`) for passages that no longer fit the retcon's change and proposes replacements. Made by the server. */
+export type RetconTask = {
+  kind: "retcon";
+  id: string;
+  retconId: string;
+  chapterId: string;
+  revision: number;
+  label?: string;
+  status: TaskStatus;
+  /** How many passages the AI proposed to change. */
+  found?: number;
+  error?: string;
+};
+
+export type RunTask = WriteTask | PlanTask | PictureTask | TagsTask | FactsTask | ContinuityTask | SummaryTask | CodexTask | NotesTask | ExpandTask | RetconTask;
 
 export type RunOptions = {
   // writing modes
@@ -217,7 +231,9 @@ export type RunOptions = {
   /** A review run the server started by itself after a save or an AI run. */
   automatic?: boolean;
   // review: what to read each chapter for (tags unless said otherwise)
-  checks?: ("tags" | "facts" | "continuity" | "summaries" | "codex" | "notes" | "expand" | "update")[];
+  checks?: ("tags" | "facts" | "continuity" | "summaries" | "codex" | "notes" | "expand" | "update" | "retcon")[];
+  /** With "retcon": the retcon whose chapters are read. */
+  retconId?: string;
   /** With "notes": only these entries (all those with notes when absent). With "expand": the entry to flesh out. */
   entryIds?: string[];
   /** With "expand": add new details ("invent", the default) or only elaborate on what the chapters show ("close"), and what to focus on. */

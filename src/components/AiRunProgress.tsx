@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getRun } from "@/lib/aiRuns/api";
 import type { RunEvent } from "@/lib/aiRuns/runner";
-import type { AiRun, CodexTask, ContinuityTask, FactsTask, PictureTask, SummaryTask, TagsTask, WriteTask } from "@/lib/aiRuns/types";
+import type { AiRun, CodexTask, ContinuityTask, FactsTask, PictureTask, RetconTask, SummaryTask, TagsTask, WriteTask } from "@/lib/aiRuns/types";
 import { useWorkQueue, type RunItem } from "./WorkQueue";
 import { GenerateStep, ThinkingFold } from "./GenerateProgress";
 import { LENGTH_WORDS } from "@/lib/ai/prompts";
@@ -101,7 +101,7 @@ export default function AiRunProgress({
   const isPictures = run.mode === "pictures";
   const isTags = run.mode === "review";
   // A review run's tasks: the chapters read for tags and for facts.
-  const tagTasks = run.tasks.filter((t): t is TagsTask | FactsTask | ContinuityTask | SummaryTask | CodexTask => t.kind === "tags" || t.kind === "facts" || t.kind === "continuity" || t.kind === "summary" || t.kind === "codex");
+  const tagTasks = run.tasks.filter((t): t is TagsTask | FactsTask | ContinuityTask | SummaryTask | CodexTask | RetconTask => t.kind === "tags" || t.kind === "facts" || t.kind === "continuity" || t.kind === "summary" || t.kind === "codex" || t.kind === "retcon");
   const hasFacts = tagTasks.some((t) => t.kind === "facts" || t.kind === "continuity" || t.kind === "codex");
   const onlySummaries = tagTasks.length > 0 && tagTasks.every((t) => t.kind === "summary");
   const pics = run.tasks.filter((t): t is PictureTask => t.kind === "picture");
@@ -263,7 +263,12 @@ export default function AiRunProgress({
                 </>
               ) : (
                 <>
-                  {t.kind === "codex" ? (
+                  {t.kind === "retcon" ? (
+                    <>
+                      <Link href={`/c/${t.chapterId}`}>{t.label ?? "A chapter"}</Link>{" "}
+                      <span className="meta">· {STATUS_WORDS[t.status]}{t.status === "done" ? (t.found ? `, ${t.found} passage${t.found === 1 ? "" : "s"} to change` : ", nothing to change") : ""}</span>
+                    </>
+                  ) : t.kind === "codex" ? (
                     <>
                       {t.entryName ? "Read " : "Check the codex for "}
                       <Link href={`/c/${t.chapterId}`}>“{t.label ?? "a chapter"}”</Link>

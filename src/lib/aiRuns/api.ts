@@ -84,7 +84,14 @@ export const postFacts = (f: Fetch, chapterId: string, revision: number, facts: 
   call<{ saved: number }>(f, "POST", `/api/chapters/${chapterId}/facts`, { revision, facts });
 
 /** The codex as it stands at a chapter: the live entries with their facts. */
-export const getChapterCodex = (f: Fetch, chapterId: string) => call<{ entries: CodexEntry[] }>(f, "GET", `/api/chapters/${chapterId}/codex`);
+/** A retcon as its run reads it. */
+export const getRetconBrief = (f: Fetch, retconId: string) => call<{ id: string; title: string; instruction: string; undone: boolean }>(f, "GET", `/api/retcons/${retconId}`);
+
+/** Saves what the AI proposes for one chapter of a retcon. 409 when the chapter was edited since `revision` or the retcon was undone. */
+export const postRetconProposal = (f: Fetch, retconId: string, body: { chapter_id: string; revision: number; edits: { old: string; new: string }[]; note: string }) =>
+  call<{ saved: number }>(f, "POST", `/api/retcons/${retconId}/proposals`, body);
+
+export const getChapterCodex =(f: Fetch, chapterId: string) => call<{ entries: CodexEntry[] }>(f, "GET", `/api/chapters/${chapterId}/codex`);
 
 /** Saves what the AI read from a chapter revision into the codex inbox (replacing the chapter's open suggestions); 409 when the chapter was edited meanwhile. */
 export const postCodexSuggestions = (f: Fetch, chapterId: string, revision: number, suggestions: SuggestionInput[], entryId?: string) =>

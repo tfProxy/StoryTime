@@ -373,6 +373,7 @@ export default function CodexEntryEditor({
           hold={holdFact}
           editingChapter={editingChapter}
           notesToFacts={entry.content && storyId && !inDraft && !draftOnly ? { start: turnNotesIntoFacts, busy: starting || runId !== null } : undefined}
+          retconHref={storyId && !inDraft && !draftOnly ? (factId) => `/s/${storyId}/review?tab=retcons&chapter=${chapterId}&entry=${encodeURIComponent(entry.entry_id)}&fact=${encodeURIComponent(factId)}` : undefined}
         />
       )}
 

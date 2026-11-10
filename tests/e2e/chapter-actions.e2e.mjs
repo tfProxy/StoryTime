@@ -32,12 +32,12 @@ ok(above, "the row sits between the title and the text");
 // ---- the ⋯ menu ----
 ok(!(await more().isVisible()), "the ⋯ menu starts closed");
 await row().getByLabel("More chapter actions", { exact: true }).click();
-ok((await more().getByRole("link").allInnerTexts()).join("|") === "History|Read this path|Open in outline|Summary (missing)|Make missing pictures…", "the ⋯ menu lists History, Read this path, Open in outline, Summary and Make missing pictures");
+ok((await more().getByRole("link").allInnerTexts()).join("|") === "History|Read this path|Open in outline|Summary (missing)|Make missing pictures…|Retcon from here…", "the ⋯ menu lists History, Read this path, Open in outline, Summary, Make missing pictures and Retcon from here");
 ok((await row().getByRole("link", { name: "Codex", exact: true }).getAttribute("href")) === `/s/${s.story_id}/review?tab=codex&chapter=${second}`, "Codex is a button in the row, not in the ⋯ menu");
 // The Bible tab keeps the chapter being read.
 ok((await page.locator(".story-tabs").getByRole("link", { name: "Bible" }).getAttribute("href"))?.endsWith(`/review?chapter=${second}`), "the Bible tab opens narrowed to this chapter");
 const hrefs = await more().getByRole("link").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
-ok(hrefs.join(" ") === `/c/${second}/history /c/${second}/path /s/${s.story_id}/outline#c-${second} /s/${s.story_id}/review?tab=summaries&chapter=${second} /s/${s.story_id}/pictures?from=${second}`, "…with the right addresses");
+ok(hrefs.join(" ") === `/c/${second}/history /c/${second}/path /s/${s.story_id}/outline#c-${second} /s/${s.story_id}/review?tab=summaries&chapter=${second} /s/${s.story_id}/pictures?from=${second} /s/${s.story_id}/review?tab=retcons&chapter=${second}&new=1`, "…with the right addresses");
 await page.mouse.click(5, 400);
 ok(!(await more().isVisible()), "clicking elsewhere closes it");
 await row().getByLabel("More chapter actions", { exact: true }).click();

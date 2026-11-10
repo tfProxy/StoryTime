@@ -4237,6 +4237,98 @@ button.refine-fit {
   text-decoration: line-through;
 }
 
+/* Retcons (Story Bible › Retcons) */
+.retcon-start,
+.retcon-card {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.retcon-start h2,
+.retcon-card h3 {
+  margin: 0;
+}
+
+.retcon-field {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.retcon-field textarea,
+.retcon-field input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.retcon-field textarea {
+  min-height: 5rem;
+}
+
+label.retcon-check,
+.retcon-from label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-weight: 400;
+  font-size: inherit;
+}
+
+label.retcon-check input,
+.retcon-from input {
+  width: auto;
+  flex: none;
+}
+
+.retcon-from {
+  display: grid;
+  gap: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin: 0;
+}
+
+.retcon-instruction {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.retcon-changes,
+.retcon-edits {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.retcon-change {
+  border-top: 1px solid var(--line);
+  padding-top: 0.6rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.retcon-change-applied .retcon-diff,
+.retcon-change-skipped .retcon-diff,
+.retcon-change-undone .retcon-diff,
+.retcon-edit-off .retcon-diff {
+  opacity: 0.6;
+}
+
+.retcon-edit-actions {
+  margin: 0.25rem 0 0;
+  gap: 0.75rem;
+}
+
+.retcon-note {
+  margin: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 .inbox-quote {
   margin: 0;
   font-style: italic;

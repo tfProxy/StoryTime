@@ -18,7 +18,10 @@ import TaggedChapters from "@/components/TaggedChapters";
 import { listRuns } from "@/lib/aiRuns";
 import { ChangeList, CompareForm, comparisonTitle, StopComparing, type Relation } from "@/components/CodexComparison";
 import { compareEntry, foldCodex, retiredEntries, type CodexEntry, type EntryChange } from "@/lib/codex";
-import { codexHintsFor, getCodexFacts, getCodexOps, storyCodexEntries } from "@/lib/codexDb";
+import { codexHintsFor, getCodexFacts, getCodexOps, getCodexState, storyCodexEntries } from "@/lib/codexDb";
+import { listRetcons } from "@/lib/retcons";
+import RetconList from "@/components/RetconList";
+import RetconStart from "@/components/RetconStart";
 import { DEFAULT_SETTINGS } from "@/lib/settingsSchema";
 import { getSettings } from "@/lib/settingsStore";
 import { codexPicturesAt } from "@/lib/codexPictures";
@@ -38,6 +41,7 @@ const TABS = [
   { id: "codex", label: "Codex" },
   { id: "tags", label: "Tags" },
   { id: "summaries", label: "Summaries" },
+  { id: "retcons", label: "Retcons" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -51,7 +55,7 @@ export default async function StoryBiblePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ chapter?: string | string[]; tab?: string | string[]; review?: string | string[]; failed?: string | string[]; compare?: string | string[] }>;
+  searchParams: Promise<{ chapter?: string | string[]; tab?: string | string[]; review?: string | string[]; failed?: string | string[]; compare?: string | string[]; entry?: string | string[]; fact?: string | string[]; new?: string | string[] }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -109,6 +113,15 @@ export default async function StoryBiblePage({
   const unfinishedRun = (check: string, needsTasks = true) =>
     reviewRuns.find((r) => UNFINISHED.includes(r.status) && !r.options.automatic && (!needsTasks || r.counts.total > 0) && (r.options.checks ?? ["tags"]).includes(check as "tags"))?.id ?? null;
 
+  const retcons = listRetcons(story.id);
+  const openRetconChanges = retcons
+    .filter((r) => r.undone_at === null)
+    .reduce((n, r) => n + r.changes.filter((c) => c.status === "open" && (!chosen || c.chapter_id === chosen.id)).length, 0);
+  const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+  const entryParam = one(sp.entry);
+  const factParam = one(sp.fact);
+  const newParam = one(sp.new);
+
   const inbox = openSuggestionCounts(story.id);
   const counts: Record<Tab, number> = {
     overview: 0,
@@ -117,6 +130,7 @@ export default async function StoryBiblePage({
     codex: gaps.open.length + (chosen ? (inbox.byChapter[chosen.id] ?? 0) : inbox.total),
     tags: waitingTags.length,
     summaries: summariesToFix,
+    retcons: openRetconChanges,
   };
 
   const rootId = story.root_chapter_id ?? chapters[0].id;
@@ -159,6 +173,7 @@ export default async function StoryBiblePage({
         {tab === "codex" && codexPanel()}
         {tab === "tags" && tagsPanel()}
         {tab === "summaries" && summariesPanel()}
+        {tab === "retcons" && retconsPanel()}
       </div>
     </>
   );
@@ -217,6 +232,9 @@ export default async function StoryBiblePage({
               : [waitingTags.length > 0 ? `${plural(waitingTags.length, "suggestion")} waiting for you` : "No suggestions waiting.", ...(chosen ? [] : [`${taggedChapters} of ${plural(chapters.length, "chapter")} tagged`])],
           )}
           {card("summaries", "Summaries", [`${summarised} of ${plural(chapters.length, "chapter")} have a summary`])}
+          {card("retcons", "Retcons", [
+            counts.retcons > 0 ? `${plural(counts.retcons, "chapter")} with changes to look at` : retcons.length > 0 ? "Nothing waiting." : "No retcons yet.",
+          ])}
           <div className="card bible-card bible-card-plain">
             <h2>Checks</h2>
             <StoryChecks storyId={story!.id} lastFinished={lastFinished} withTags={enabledIds.length > 0} unfinishedRunId={unfinishedRun("summaries") && unfinishedRun("continuity", false) === unfinishedRun("summaries") ? unfinishedRun("summaries") : null} />
@@ -573,6 +591,42 @@ export default async function StoryBiblePage({
           )
         }
       />
+    );
+  }
+
+  // Retcons: the start form when asked for (a codex fact's Retcon…, or the chapter's "Retcon from here"), then every retcon.
+  function retconsPanel() {
+    const cancelHref = hrefFor("retcons");
+    let form: React.ReactNode = null;
+    if (chosen && entryParam && factParam) {
+      const entry = getCodexState(chosen.id).find((e) => e.entry_id === entryParam);
+      const fact = entry?.facts.find((f) => f.fact_id === factParam);
+      form =
+        entry && fact ? (
+          <RetconStart
+            storyId={story!.id}
+            chapter={{ id: chosen.id, title: chosen.title }}
+            fact={{ entryId: entry.entry_id, entryName: entry.name, factId: fact.fact_id, aspect: fact.aspect, form: fact.form, text: fact.text }}
+            cancelHref={cancelHref}
+          />
+        ) : (
+          <p className="error">That fact isn&apos;t in the codex at this chapter.</p>
+        );
+    } else if (chosen && newParam) {
+      form = <RetconStart storyId={story!.id} chapter={{ id: chosen.id, title: chosen.title }} cancelHref={cancelHref} />;
+    }
+    return (
+      <>
+        {form ?? (
+          <p className="meta">
+            A retcon changes a detail as if it had always been so, and the AI proposes changes to the chapters below that no longer fit. Start one from a codex fact (Retcon… on the
+            entry&apos;s page) or in words:{" "}
+            {chosen ? <Link href={`${hrefFor("retcons")}&new=1`}>Retcon from “{chosen.title}”…</Link> : "pick a chapter above, then Retcon from here."}
+          </p>
+        )}
+        <h2>Retcons</h2>
+        <RetconList retcons={retcons} running={reviewRuns.filter((r) => UNFINISHED.includes(r.status)).map((r) => r.id)} />
+      </>
     );
   }
 }
