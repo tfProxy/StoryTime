@@ -4486,6 +4486,20 @@ label.retcon-check input,
   background: var(--warn);
   color: var(--bg);
 }
+.source-unsure {
+  border: 1px solid var(--warn);
+  color: var(--warn);
+}
+.inbox-card.inbox-tone-unsure {
+  border-color: var(--warn);
+}
+.inbox-unsure {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-style: normal;
+  font-size: 0.85rem;
+  color: var(--warn);
+}
 .source-conflict {
   background: var(--diff-del-bg);
   color: var(--diff-del-fg);

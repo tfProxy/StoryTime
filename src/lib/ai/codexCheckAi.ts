@@ -5,7 +5,7 @@ import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, mentions, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import { quoteInText } from "./tagAi";
-import { ENTRY_TYPES, FACT_LIMITS, STARTER_ASPECTS, isFormAspect, sameAspect, type CodexEntry, type EntryType } from "../codex";
+import { ENTRY_TYPES, FACT_LIMITS, STARTER_ASPECTS, cleanForm, isFormAspect, sameAspect, type CodexEntry, type EntryType } from "../codex";
 import type { Settings } from "../settings";
 
 export const SUGGESTION_KINDS = ["set", "form", "retire", "entry", "conflict"] as const;
@@ -198,7 +198,7 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
     const target = byName.get(lc(asString(o.entry, NAME_MAX)));
     if (!target) continue;
     let aspect = asString(o.aspect, FACT_LIMITS.aspect);
-    let form = asString(o.form, FACT_LIMITS.form);
+    let form = cleanForm(asString(o.form, FACT_LIMITS.form));
     const text = asString(o.text, FACT_LIMITS.text);
     // A "set" of the aspect "form" is a form change.
     if (kind === "set" && isFormAspect(aspect)) kind = "form";

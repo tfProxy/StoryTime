@@ -289,7 +289,8 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
     const counts = new Map<string, number>();
     for (const s of list) {
       const { tone } = suggestionSource(s);
-      const word = tone === "invented" ? "AI idea" : tone === "conflict" ? "contradicts the codex" : tone === "notes" ? "from your notes" : "from the text";
+      const word =
+        tone === "invented" ? "AI idea" : tone === "unsure" ? "quote doesn't show it" : tone === "conflict" ? "contradicts the codex" : tone === "notes" ? "from your notes" : "from the text";
       counts.set(word, (counts.get(word) ?? 0) + 1);
     }
     return [...counts].map(([w, n]) => (w === "AI idea" ? `${n} AI idea${n === 1 ? "" : "s"}` : `${n} ${w}`)).join(" · ");

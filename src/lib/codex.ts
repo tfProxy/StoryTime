@@ -101,6 +101,33 @@ export const STARTER_ASPECTS: Record<EntryType, string[]> = {
 export const isFormAspect = (aspect: string) => aspect.trim().toLowerCase() === FORM_ASPECT;
 export const sameAspect = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
+/**
+ * A fact's form as the AI wrote it, cleaned: "every form" (the label its prompts put on facts for every form) means no
+ * form, and "vixen form" is the form "vixen".
+ */
+export function cleanForm(form: string): string {
+  const f = form.trim();
+  if (/^(every|all|any|no)( forms?)?$/i.test(f) || /^none$/i.test(f)) return "";
+  return f.replace(/\s+form$/i, "").trim();
+}
+
+const STOP_WORDS = new Set(
+  "the and but for with that this from have has had was were are her his she him they them their its into onto out over than then there these those what when where which while who whom whose will would could should about after again also been before being both each even just like more most much only other same some such very your you our not now any all can did does doing done get got how off too way yet".split(" "),
+);
+const contentWords = (s: string) => (s.toLowerCase().match(/[\p{L}']+/gu) ?? []).filter((w) => w.length >= 3 && !STOP_WORDS.has(w)).map((w) => w.replace(/'s$/, "").slice(0, 5));
+
+/**
+ * Whether a quote plausibly shows a claim: they share a content word (compared by its first five letters, so "ears"
+ * meets "ear" and "silvery" meets "silver"), not counting the entry's own names. A quote can be real text from the story
+ * and still say nothing about the fact the AI pinned on it; this catches that, not a quote that implies the fact
+ * without naming it (those are flagged for the owner to read, not dropped).
+ */
+export function quoteSupports(quote: string, claim: string, names: string[] = []): boolean {
+  const skip = new Set(names.flatMap(contentWords));
+  const inQuote = new Set(contentWords(quote));
+  return contentWords(claim).some((w) => !skip.has(w) && inQuote.has(w));
+}
+
 /** A fact as it stands at a chapter. */
 export type LiveFact = {
   fact_id: string;

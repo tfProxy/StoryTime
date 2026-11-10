@@ -6,7 +6,7 @@
 // and form changes at once, marked by codex_facts.ai_suggestion_id until the owner approves them (approveAiFacts).
 import { z } from "zod";
 import { db, newId } from "./db";
-import { ENTRY_TYPES, FACT_LIMITS, FORM_ASPECT, isFormAspect, sameAspect, type CodexEntry } from "./codex";
+import { ENTRY_TYPES, FACT_LIMITS, FORM_ASPECT, cleanForm, isFormAspect, quoteSupports, sameAspect, type CodexEntry } from "./codex";
 import { codexEntryLabels, createCodexOp, createFactOp, getCodexState } from "./codexDb";
 import { PostError } from "./stories";
 import { parseSettings } from "./settingsSchema";
@@ -229,6 +229,8 @@ function autoApplies(s: SuggestionInput, entries: CodexEntry[], chapterId: strin
   if (s.kind !== "set" && s.kind !== "form") return false;
   const entry = entries.find((e) => e.entry_id === s.entry_id);
   if (!entry) return false;
+  // A quote that doesn't mention what the fact says waits for the owner to read it (the card says so).
+  if (s.kind === "set" && !quoteSupports(s.quote, [s.aspect, s.form, s.after].join(" "), [entry.name, ...entry.aliases])) return false;
   const fact = s.kind === "form" ? entry.form?.fact : liveFact(entry, s.aspect, s.form);
   return !(fact && fact.op.anchor_chapter_id === chapterId && !fact.op.ai_suggestion_id);
 }
@@ -388,7 +390,7 @@ function writeSuggestion(
     const proposed = parseEntry(row.entry);
     if (!proposed) throw new PostError("That suggestion has no entry", 409);
     const entryId = createCodexOp({ anchor_chapter_id: anchor, op: "create", name: proposed.name, type: proposed.type, aliases: proposed.aliases, content: proposed.notes, always_include: false }).entry_id;
-    for (const f of proposed.facts) createFactOp({ anchor_chapter_id: anchor, entry_id: entryId, op: "set", aspect: f.aspect, form: f.form, text: f.text, quote: row.quote }, aiSuggestionId);
+    for (const f of proposed.facts) createFactOp({ anchor_chapter_id: anchor, entry_id: entryId, op: "set", aspect: f.aspect, form: cleanForm(f.form), text: f.text, quote: row.quote }, aiSuggestionId);
     return entryId;
   }
   const entryId = row.entry_id!;
@@ -400,7 +402,8 @@ function writeSuggestion(
   } else if (row.kind === "form") {
     createFactOp({ anchor_chapter_id: anchor, entry_id: entryId, fact_id: factId, op: "set", aspect: FORM_ASPECT, form: edits.form ?? row.form, text: edits.text ?? row.after, quote: row.quote }, aiSuggestionId);
   } else {
-    createFactOp({ anchor_chapter_id: anchor, entry_id: entryId, fact_id: factId, op: "set", aspect: edits.aspect ?? row.aspect, form: edits.form ?? row.form, text: edits.text ?? row.after, quote: row.quote }, aiSuggestionId);
+    // cleanForm: suggestions saved before forms were cleaned may say "every form", which would become a form of that name.
+    createFactOp({ anchor_chapter_id: anchor, entry_id: entryId, fact_id: factId, op: "set", aspect: edits.aspect ?? row.aspect, form: cleanForm(edits.form ?? row.form), text: edits.text ?? row.after, quote: row.quote }, aiSuggestionId);
   }
   return entryId;
 }

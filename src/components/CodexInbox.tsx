@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { CodexSuggestion } from "@/lib/codexSuggestions";
-import { isFormAspect, type LiveFact } from "@/lib/codex";
+import { cleanForm, isFormAspect, quoteSupports, type LiveFact } from "@/lib/codex";
 import { wordDiff } from "@/lib/wordDiff";
 import EntryFold from "./EntryFold";
 import MoreMenu from "./MoreMenu";
@@ -37,28 +37,35 @@ const kindLabel = (s: CodexSuggestion) => (s.kind === "set" && !s.before ? "New 
 /** The words of the proposed text as the diff compares them (a form is "name, note"). */
 const afterText = (s: CodexSuggestion) => (s.kind === "form" ? [s.form, s.after].filter(Boolean).join(", ") : s.after);
 
-export type SourceTone = "text" | "story" | "notes" | "invented" | "conflict";
+export type SourceTone = "text" | "story" | "notes" | "invented" | "unsure" | "conflict";
+
+type Sourced = Pick<CodexSuggestion, "kind" | "source" | "quote"> & Partial<Pick<CodexSuggestion, "aspect" | "form" | "after" | "entry_name">>;
 
 /**
  * Where a suggestion's claim comes from, as the card labels it. Every quote was checked against its source when the
- * suggestion was saved: a chapter reading's against the chapter, a notes reading's against the notes, a Flesh out's
- * (when it stayed close to the story) against the chapters so far. A Flesh out without a quote is the AI's own idea.
+ * suggestion was saved (a chapter reading's against the chapter, a notes reading's against the notes, a Flesh out's
+ * against the chapters so far), but that only proves the words are there: a quote that shares no word with the claim
+ * is labelled "Quote doesn't show this" for the owner to read. A Flesh out without a quote is the AI's own idea.
  */
-export function suggestionSource(s: Pick<CodexSuggestion, "kind" | "source" | "quote">): { tone: SourceTone; label: string } {
+export function suggestionSource(s: Sourced): { tone: SourceTone; label: string } {
   if (s.kind === "conflict") return { tone: "conflict", label: "Contradicts the codex" };
+  if (s.source === "expand" && !s.quote) return { tone: "invented", label: "AI idea · not in the text" };
+  const claim = [s.aspect, cleanForm(s.form ?? ""), s.after].filter(Boolean).join(" ");
+  if (s.kind !== "entry" && s.kind !== "retire" && claim && s.quote && !quoteSupports(s.quote, claim, s.entry_name ? [s.entry_name] : []))
+    return { tone: "unsure", label: "Quote doesn't show this" };
   if (s.source === "notes") return { tone: "notes", label: "From your notes" };
-  if (s.source === "expand") return s.quote ? { tone: "story", label: "From the story" } : { tone: "invented", label: "AI idea · not in the text" };
+  if (s.source === "expand") return { tone: "story", label: "From the story" };
   return { tone: "text", label: "From the text" };
 }
 
 /** What "Accept all" takes: open fact changes backed by the text or the notes, never the AI's own ideas or a conflict. */
 export const acceptableInBulk = (s: CodexSuggestion) =>
-  s.status === "open" && s.kind !== "conflict" && s.kind !== "entry" && suggestionSource(s).tone !== "invented";
+  s.status === "open" && s.kind !== "conflict" && s.kind !== "entry" && !["invented", "unsure"].includes(suggestionSource(s).tone);
 
 /** The chapter's reading page, scrolled to the quote where the browser supports text fragments. */
 export const quoteHref = (chapterId: string, quote: string) => `/c/${chapterId}#:~:text=${encodeURIComponent(quote.slice(0, 120))}`;
 
-export function SourceBadge({ s }: { s: Pick<CodexSuggestion, "kind" | "source" | "quote"> }) {
+export function SourceBadge({ s }: { s: Sourced }) {
   const { tone, label } = suggestionSource(s);
   return <span className={`source-badge source-${tone}`}>{label}</span>;
 }
@@ -450,7 +457,7 @@ export function Card({ s, busy, error, editing, onEdit, onAccept, onDismiss, onR
         {!inEntry && <strong>{s.entry_name || "An entry"}</strong>}
         {s.kind !== "entry" && s.kind !== "form" && <strong className="inbox-aspect">{s.aspect || "General"}</strong>}
         <span className="meta">
-          {[kindLabel(s).toLowerCase(), s.kind === "form" ? "" : s.form ? `${s.form} form` : ""].filter(Boolean).join(" · ")}
+          {[kindLabel(s).toLowerCase(), s.kind === "form" ? "" : cleanForm(s.form) ? `${cleanForm(s.form)} form` : ""].filter(Boolean).join(" · ")}
         </span>
         <SourceBadge s={s} />
       </div>
@@ -496,6 +503,7 @@ export function Card({ s, busy, error, editing, onEdit, onAccept, onDismiss, onR
 
       {s.quote ? (
         <blockquote className="inbox-evidence">
+          {tone === "unsure" && <span className="inbox-unsure">The AI quoted this, but it doesn&apos;t mention what the fact says. Read it before accepting.</span>}
           “{s.quote}”
           {s.source === "chapter" && (
             <span className="inbox-evidence-where">
