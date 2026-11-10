@@ -4397,13 +4397,14 @@ label.retcon-check input,
 .codex-review-row:hover .codex-review-name {
   text-decoration: underline;
 }
-.codex-review-name {
+.codex-review-text {
   flex: 1 1 auto;
   min-width: 0;
-  overflow-wrap: anywhere;
+  display: grid;
+  padding: 0.35rem 0;
 }
-.codex-review-row .meta {
-  text-align: right;
+.codex-review-name {
+  overflow-wrap: anywhere;
 }
 .codex-review-count {
   background: var(--accent);
@@ -4489,7 +4490,7 @@ label.retcon-check input,
   background: var(--diff-del-bg);
   color: var(--diff-del-fg);
 }
-.inbox-card.inbox-invented {
+.inbox-card.inbox-tone-invented {
   border-color: var(--warn);
 }
 .inbox-aspect {

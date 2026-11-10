@@ -252,6 +252,9 @@ export default function CodexInbox({
   const { items, loadError, shown, dismissedList, errors, busy, editing, setEditing, showDismissed, setShowDismissed, accept, dismiss, reopen, acceptAll } = live;
   const [appliedBusy, setAppliedBusy] = useState(false);
   const [appliedError, setAppliedError] = useState("");
+  // Whether the fold is open: null until the owner toggles it or it first opens by itself, so it doesn't fold away
+  // under them when they decide the last suggestion.
+  const [foldOpen, setFoldOpen] = useState<boolean | null>(null);
 
   /** Approve (keep as the owner's) or undo (take back) facts the AI applied, by fact-change id. */
   async function decide(action: "approve" | "undo-ai", ids: string[]) {
@@ -260,6 +263,8 @@ export default function CodexInbox({
     try {
       await post(`/api/codex/${action}`, { ids });
       onChanged?.();
+      // An undo dismisses the suggestion behind the fact: read the list again so it shows under "Show dismissed".
+      if (action === "undo-ai") window.dispatchEvent(new Event(INBOX_CHANGED));
     } catch (e) {
       setAppliedError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -285,12 +290,15 @@ export default function CodexInbox({
   const open = atHere.filter((s) => s.status === "open").length + applied.length;
   if (atHere.length === 0 && dismissedHere.length === 0 && earlier.length === 0 && applied.length === 0 && !loadError) return null;
   const bulk = atHere.filter(acceptableInBulk);
+  const autoOpen = open > 0 || earlier.length > 0;
+  if (foldOpen === null && autoOpen) setFoldOpen(true);
 
   return (
     <EntryFold
       title={`Review changes from “${here.title}”`}
       note={open > 0 ? `${open} waiting` : "none waiting"}
-      open={open > 0 || earlier.length > 0}
+      open={foldOpen ?? autoOpen}
+      onToggle={setFoldOpen}
       id="entry-review"
       className="codex-review"
     >
@@ -437,7 +445,7 @@ export function Card({ s, busy, error, editing, onEdit, onAccept, onDismiss, onR
   const conflict = s.kind === "conflict";
   const tone = suggestionSource(s).tone;
   return (
-    <article className={`card inbox-card inbox-${tone}`}>
+    <article className={`card inbox-card inbox-tone-${tone}`}>
       <div className="inbox-head">
         {!inEntry && <strong>{s.entry_name || "An entry"}</strong>}
         {s.kind !== "entry" && s.kind !== "form" && <strong className="inbox-aspect">{s.aspect || "General"}</strong>}
@@ -500,7 +508,7 @@ export function Card({ s, busy, error, editing, onEdit, onAccept, onDismiss, onR
           {s.source === "expand" && <span className="inbox-evidence-where">From the chapters so far</span>}
         </blockquote>
       ) : (
-        tone === "invented" && <p className="inbox-invented">The AI made this up when you used Flesh out; nothing in the story says it. “Accept all” leaves it out.</p>
+        tone === "invented" && <p className="inbox-invented">The AI made this up when you used Flesh out; nothing in the story says it. “Accept the … from the text” leaves it out.</p>
       )}
       {moved && (
         <p className="meta" style={{ margin: 0 }}>

@@ -324,8 +324,10 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
         return (
           <li key={r.key}>
             <Link className="codex-review-row" href={`/s/${c.storyId}/codex/${r.entryId}?at=${ch.id}#entry-review`}>
-              <strong className="codex-review-name">{r.name || "An entry"}</strong>
-              <span className="meta">{toneSummary(open)}</span>
+              <span className="codex-review-text">
+                <strong className="codex-review-name">{r.name || "An entry"}</strong>
+                <span className="meta">{toneSummary(open)}</span>
+              </span>
               <span className="codex-review-count">{open.length}</span>
               <span aria-hidden="true">›</span>
             </Link>
@@ -386,7 +388,9 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
   const openCount = (list: CodexSuggestion[]) => list.filter(openFor).length;
   const groupCount = (type: EntryType) => {
     const ids = new Set((chapterScope ? entries : summaries).filter((e) => e.type === type).map((e) => e.entry_id));
-    return openCount(suggestions.filter((s) => (s.kind === "entry" ? (s.entry?.type ?? "note") === type : s.entry_id !== null && ids.has(s.entry_id))));
+    // In a chapter, only what waits at it, as in its To review box (earlier chapters' are reviewed there).
+    const here = (s: CodexSuggestion) => !chapterScope || s.chapter_id === c.chosenId;
+    return openCount(suggestions.filter((s) => here(s) && (s.kind === "entry" ? (s.entry?.type ?? "note") === type : s.entry_id !== null && ids.has(s.entry_id))));
   };
 
   const nothing = (chapterScope ? entries.length === 0 : summaries.length === 0) && gaps.length === 0 && !suggestions.some((s) => s.kind === "entry");
