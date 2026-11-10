@@ -168,12 +168,43 @@ export function factHistory(facts: FactOp[], factId: string): FactOp[] {
   return orderOps(facts).filter((f) => f.fact_id === factId);
 }
 
-/** The facts that describe the entry now: every-form facts plus those of the current form (not the form fact itself). */
-export function applicableFacts(facts: LiveFact[], form: string | null): LiveFact[] {
-  return facts.filter((f) => !isFormAspect(f.aspect) && (f.form === "" || (form !== null && sameAspect(f.form, form))));
+/**
+ * The every-form facts that `form`'s own facts replace: an every-form fact is left out while the entry is in a form
+ * with its own fact of the same aspect ("Ears: round" gives way to the vixen's "Ears: tall fox ears"). Loose facts
+ * (no aspect) are never replaced. The ids, in the order of `facts`.
+ */
+function replacedIn(facts: LiveFact[], form: string | null): string[] {
+  if (form === null || !form.trim()) return [];
+  const own = facts.filter((f) => f.form !== "" && !isFormAspect(f.aspect) && f.aspect.trim() && sameAspect(f.form, form));
+  return facts
+    .filter((f) => f.form === "" && !isFormAspect(f.aspect) && f.aspect.trim() && own.some((o) => sameAspect(o.aspect, f.aspect)))
+    .map((f) => f.fact_id);
 }
 
-/** An every-form fact whose aspect a form also describes: while the entry is in that form the AI reads both. */
+/** The form whose facts describe the entry now: its current form, else its normal (base) form, else none. */
+const effectiveForm = (entry: Pick<CodexEntry, "form" | "baseForm">) => entry.form?.name ?? entry.baseForm ?? null;
+
+/** The every-form facts (ids) the entry's current form replaces with its own fact of the same aspect; the AI isn't sent them. */
+export function overriddenFacts(entry: Pick<CodexEntry, "facts" | "form" | "baseForm">): string[] {
+  return replacedIn(entry.facts, effectiveForm(entry));
+}
+
+/**
+ * The facts that describe the entry now (not the form fact itself): those of the current form, plus the every-form
+ * facts the form has no fact of its own for (see `overriddenFacts`).
+ */
+export function applicableFacts(facts: LiveFact[], form: string | null): LiveFact[] {
+  const replaced = replacedIn(facts, form);
+  return facts.filter(
+    (f) => !isFormAspect(f.aspect) && !replaced.includes(f.fact_id) && (f.form === "" || (form !== null && sameAspect(f.form, form))),
+  );
+}
+
+/**
+ * An every-form fact whose aspect a form also describes. While the entry is in that form the form's fact replaces it
+ * (see `overriddenFacts`), so this is no longer a problem for the AI; the new entry page doesn't use it. Kept for
+ * the hint count and older callers.
+ */
 export type FormClash = {
   every: LiveFact;
   /** The forms with their own fact of the same aspect. */
@@ -236,6 +267,23 @@ export function describeEntry(facts: LiveFact[], recentAnchor?: string, baseForm
     parts.push(sentence(f.aspect.trim() ? `${f.aspect.trim()}: ${f.text.trim()}` : f.text, f));
   }
   return parts.join(" ");
+}
+
+/**
+ * Every live fact of an entry, one line each with its form, for the AI calls that change facts (codex check, flesh
+ * out, notes to facts): "- Ears [every form]: Round ears." They see every fact so they can change any of them; an
+ * every-form fact the current form replaces is marked, so the AI doesn't read the pair as a contradiction.
+ */
+export function factLinesForEditing(e: Pick<CodexEntry, "facts" | "form" | "baseForm">): string[] {
+  const replaced = overriddenFacts(e);
+  const form = effectiveForm(e)?.trim();
+  const lines: string[] = [];
+  for (const f of e.facts) {
+    if (isFormAspect(f.aspect) || !f.text.trim()) continue;
+    const where = f.form.trim() ? `${f.form.trim()} form` : replaced.includes(f.fact_id) ? `every form; not in use now, the ${form} form's own replaces it` : "every form";
+    lines.push(`- ${f.aspect.trim() || "(note)"} [${where}]: ${f.text.trim()}`);
+  }
+  return lines;
 }
 
 /** The sentence the AI reads for a form and its stage: "Form: vixen, halfway." (as `describeEntry` writes it). */

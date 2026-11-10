@@ -5,7 +5,7 @@ import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, mentions, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import { quoteInText } from "./tagAi";
-import { ENTRY_TYPES, FACT_LIMITS, STARTER_ASPECTS, isFormAspect, sameAspect, type CodexEntry, type EntryType } from "../codex";
+import { ENTRY_TYPES, FACT_LIMITS, STARTER_ASPECTS, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry, type EntryType } from "../codex";
 import type { Settings } from "../settings";
 
 export const SUGGESTION_KINDS = ["set", "form", "retire", "entry", "conflict"] as const;
@@ -77,10 +77,7 @@ export function describeForCheck(e: CodexEntry): string {
     const label = [e.form.name, e.form.note].map((s) => s.trim()).filter(Boolean).join(", ");
     if (label) lines.push(`Current form: ${label}`);
   }
-  for (const f of e.facts) {
-    if (isFormAspect(f.aspect) || !f.text.trim()) continue;
-    lines.push(`- ${f.aspect.trim() || "(note)"} [${f.form.trim() ? `${f.form.trim()} form` : "every form"}]: ${f.text.trim()}`);
-  }
+  lines.push(...factLinesForEditing(e));
   const notes = e.content.replace(/\s+/g, " ").trim();
   if (notes) lines.push(`Notes: ${notes.length > NOTES_IN_PROMPT ? `${notes.slice(0, NOTES_IN_PROMPT).trimEnd()}…` : notes}`);
   return lines.join("\n");

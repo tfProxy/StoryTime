@@ -6,7 +6,7 @@ import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import { quoteInText } from "./tagAi";
-import { FACT_LIMITS, STARTER_ASPECTS, isFormAspect, sameAspect, type CodexEntry } from "../codex";
+import { FACT_LIMITS, STARTER_ASPECTS, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry } from "../codex";
 import type { SuggestionInput } from "./codexCheckAi";
 import type { Settings } from "../settings";
 
@@ -58,10 +58,7 @@ function describe(e: CodexEntry): string {
     const label = [e.form.name, e.form.note].map((s) => s.trim()).filter(Boolean).join(", ");
     if (label) lines.push(`Current form: ${label}`);
   }
-  for (const f of e.facts) {
-    if (isFormAspect(f.aspect) || !f.text.trim()) continue;
-    lines.push(`- ${f.aspect.trim() || "(note)"} [${f.form.trim() ? `${f.form.trim()} form` : "every form"}]: ${f.text.trim()}`);
-  }
+  lines.push(...factLinesForEditing(e));
   return lines.join("\n") || "(none yet)";
 }
 

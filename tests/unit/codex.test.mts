@@ -1,4 +1,4 @@
-﻿import { foldFacts, factHistory, describeEntry, formClashes, compareEntry, type FactOp, type LiveFact } from "../../src/lib/codex.ts";
+﻿import { foldFacts, factHistory, describeEntry, formClashes, compareEntry, overriddenFacts, applicableFacts, factLinesForEditing, describeSharedFacts, type FactOp, type LiveFact } from "../../src/lib/codex.ts";
 import { baseForms, foldCodex, storyEntrySummaries, retiredEntries, entryHistory, changedFields, addChange, draftOps, DRAFT_ANCHOR, type CodexChange, type CodexOp } from "../../src/lib/codex.ts";
 import { buildCodexBlock, mentions, generatePrompt, refinePrompt, choicesPrompt } from "../../src/lib/ai/prompts.ts";
 
@@ -241,6 +241,38 @@ ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length ==
   c = formClashes({ facts: [...facts, lf("hears", "Ears", "human", "Round ears.")], forms: ["vixen", "human"] });
   ok(c[0].fitsIn.length === 0, "when every form has its own, it fits none");
   ok(formClashes({ facts: facts.filter((f) => f.fact_id !== "vears"), forms: ["vixen", "human"] }).length === 0, "no clash without a form's own fact");
+}
+
+// a form's own fact replaces the every-form fact of the same aspect, while the entry is in that form
+{
+  let k = 0;
+  const fo = (fact_id: string, aspect: string, text: string, form = ""): FactOp => ({
+    id: `of${k++}`, anchor_chapter_id: "c0", anchor_depth: 0, entry_id: "mira", fact_id, op: "set", aspect, form, text, quote: "", posted_at: k,
+  });
+  const at = (facts: FactOp[]) => foldCodex([op({})], facts)[0];
+  const shared = [
+    fo("ears", "Ears", "Round human ears."),
+    fo("vears", "EARS ", "Tall fox ears.", "Vixen"),
+    fo("pers", "Personality", "Stubborn."),
+    fo("htail", "Tail", "No tail.", "human"),
+    fo("loose", "", "Hums when nervous."),
+  ];
+  let e = at([...shared, fo("form", "Form", "", "human"), fo("form", "Form", "", "vixen")]);
+  ok(e.description === "Form: vixen. EARS: Tall fox ears. Personality: Stubborn. Hums when nervous.", "in the form, its own fact replaces the every-form one (any capitals): " + e.description);
+  ok(overriddenFacts(e).join() === "ears", "overriddenFacts names the replaced every-form fact");
+  ok(!applicableFacts(e.facts, "vixen").some((f) => f.fact_id === "ears"), "applicableFacts leaves it out");
+  ok(e.description.includes("Personality: Stubborn.") && e.description.includes("Hums when nervous."), "facts without a form version are kept");
+  const lines = factLinesForEditing(e);
+  ok(lines.includes("- Ears [every form; not in use now, the vixen form's own replaces it]: Round human ears.") && lines.includes("- EARS [Vixen form]: Tall fox ears."), "the fact lists for AI edits mark the replaced fact: " + lines.join(" | "));
+
+  e = at([...shared, fo("form", "Form", "", "human")]);
+  ok(e.description === "Ears: Round human ears. Personality: Stubborn. Tail: No tail. Hums when nervous.", "in another form the every-form fact is used: " + e.description);
+  ok(overriddenFacts(e).length === 0 && factLinesForEditing(e).includes("- Ears [every form]: Round human ears."), "…and nothing is overridden");
+
+  e = at(shared);
+  ok(e.form === null && e.baseForm === null && e.description === "Ears: Round human ears. Personality: Stubborn. Hums when nervous.", "with no form the every-form fact is used: " + e.description);
+  ok(overriddenFacts(e).length === 0, "…and nothing is overridden");
+  ok(describeSharedFacts([...shared, fo("form", "Form", "", "vixen")].map((f) => ({ id: f.fact_id, aspect: f.aspect, form: f.form, text: f.text }))) === "EARS: Tall fox ears. Personality: Stubborn. Hums when nervous.", "a shared entry follows the same rule");
 }
 
 // comparing an entry between two chapters
