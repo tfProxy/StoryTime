@@ -1,6 +1,6 @@
 // Connection presets. Only two wire protocols exist: "openai" (also spoken by Ollama,
 // LM Studio, OpenRouter, ...) and "anthropic".
-export type ProviderKind = "openai" | "ollama" | "openrouter" | "featherless" | "anthropic" | "custom";
+export type ProviderKind = "openai" | "ollama" | "openrouter" | "featherless" | "nanogpt" | "anthropic" | "custom";
 export type Protocol = "openai" | "anthropic";
 
 export type ProviderInfo = {
@@ -36,6 +36,14 @@ export const PROVIDERS: ProviderInfo[] = [
     defaultBaseUrl: "https://api.featherless.ai/v1",
     needsKey: true,
     hint: "Use “Test connection” to list Featherless's models (there are thousands; search for the one you want), then star the ones you want to use.",
+  },
+  {
+    id: "nanogpt",
+    label: "NanoGPT",
+    protocol: "openai",
+    defaultBaseUrl: "https://nano-gpt.com/api/v1",
+    needsKey: true,
+    hint: "Use “Test connection” to list NanoGPT's models (there are hundreds; search for the one you want), then star the ones you want to use.",
   },
   {
     id: "openai",
