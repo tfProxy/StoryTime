@@ -80,10 +80,8 @@ export function entryHints(entry: CodexEntry, { chapterTexts, contextTokens }: {
   return hints;
 }
 
-/**
- * How many things the entry's page warns about (the ⚠ count on its card). A form's own fact on an aspect an every-form
- * fact also has isn't one: it replaces the every-form fact while the entry is in that form.
- */
+/** How many things the entry's page warns about: its hints and its facts that clash between forms (the ⚠ count on its card). */
+// A form's own fact replaces the every-form one on its aspect (applicableFacts), so a pair is no longer a clash to fix.
 export const hintCount = (entry: CodexEntry, opts: Parameters<typeof entryHints>[1] = {}) => entryHints(entry, opts).length;
 
 /** From this many chapters mentioning an entry since its last change, its card says it may be out of date. */

@@ -56,5 +56,6 @@ let threw = false;
 try { parseNotesToFacts("nothing here", { entry: mira }); } catch { threw = true; }
 ok(threw && parseNotesToFacts('{"facts":"x"}', { entry: mira }).length === 0, "a reply with no JSON throws (the task fails and is retried); a wrong shape gives nothing");
 ok(parseNotesToFacts(reply([{ aspect: "Eyes", text: "Amber eyes.", quote: "amber eyes" }]), { entry: mira }).length === 1, "a missing kind means set");
+ok(parseNotesToFacts(reply([{ kind: "set", aspect: "Eyes", form: "every form", text: "Amber eyes.", quote: "amber eyes" }]), { entry: mira })[0]?.form === "", "a form of 'every form' becomes no form");
 const many = parseNotesToFacts(reply(Array.from({ length: 30 }, (_, i) => ({ kind: "set", aspect: `A${i}`, text: "t", quote: "young fox-girl" }))), { entry: mira });
 ok(many.length === MAX_NOTE_FACTS, "capped at the maximum");

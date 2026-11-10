@@ -6,7 +6,7 @@ import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import { quoteInText } from "./tagAi";
-import { FACT_LIMITS, STARTER_ASPECTS, isFormAspect, sameAspect, type CodexEntry } from "../codex";
+import { FACT_LIMITS, STARTER_ASPECTS, cleanForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry } from "../codex";
 import type { SuggestionInput } from "./codexCheckAi";
 import type { Settings } from "../settings";
 
@@ -31,7 +31,7 @@ const INVENT_RULES = `
 Invent: the story has not said everything, so add new details of your own that fit it and what is already known, such as appearance, manner, voice, history, habits, relationships and quirks. Keep them consistent and specific rather than generic. Leave "quote" empty.`;
 
 const CLOSE_RULES = `
-Stay close to the story: only add facts the chapters show or clearly imply, filling in what is there but not yet in the entry. Every fact needs "quote": the exact words copied from the chapters that show it (under 200 characters). Do not invent anything.`;
+Stay close to the story: only add facts the chapters show or clearly imply, filling in what is there but not yet in the entry. Every fact needs "quote": the exact words copied from the chapters that show it (under 200 characters). The quote must itself say or show the detail (for "Hair: brown", words about her hair), not just mention the character. If no passage shows a detail, leave that detail out. Do not invent anything.`;
 
 const SHAPE = `
 Reply with JSON only, in this shape ({"facts":[]} if there is nothing to add):
@@ -58,10 +58,7 @@ function describe(e: CodexEntry): string {
     const label = [e.form.name, e.form.note].map((s) => s.trim()).filter(Boolean).join(", ");
     if (label) lines.push(`Current form: ${label}`);
   }
-  for (const f of e.facts) {
-    if (isFormAspect(f.aspect) || !f.text.trim()) continue;
-    lines.push(`- ${f.aspect.trim() || "(note)"} [${f.form.trim() ? `${f.form.trim()} form` : "every form"}]: ${f.text.trim()}`);
-  }
+  lines.push(...factLinesForEditing(e));
   return lines.join("\n") || "(none yet)";
 }
 
@@ -127,7 +124,7 @@ export function parseFleshOut(reply: string, opts: FleshOutOptions): SuggestionI
     if (!item || typeof item !== "object") continue;
     const o = item as Record<string, unknown>;
     const aspect = asString(o.aspect, FACT_LIMITS.aspect);
-    const form = asString(o.form, FACT_LIMITS.form);
+    const form = cleanForm(asString(o.form, FACT_LIMITS.form));
     const text = asString(o.text, FACT_LIMITS.text);
     if (!aspect || !text || isFormAspect(aspect)) continue;
     // New details only: an aspect the entry already has (in that form) is its owner's to change.

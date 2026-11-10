@@ -21,7 +21,7 @@ try {
   const sid = story.story_id;
   const R = story.chapter_id;
   const choice = (await send("GET", `/api/chapters/${R}`)).choices[0];
-  const A = (await post("/api/chapters", { choice_id: choice.id, title: "Chapter A", body: "Rowan's ears changed.", choices: ["Onward"] })).chapter_id;
+  const A = (await post("/api/chapters", { choice_id: choice.id, title: "Chapter A", body: "Rowan's ears changed. Her hair turned silver.", choices: ["Onward"] })).chapter_id;
   const rowan = (await post("/api/codex", { anchor_chapter_id: R, op: "create", name: "Rowan", type: "character", aliases: ["Ro", "the traveller"], content: "She is shy and quick.", always_include: false })).entry_id;
   const fact = (anchor_chapter_id, aspect, text, form = "") => post("/api/codex/facts", { anchor_chapter_id, entry_id: rowan, op: "set", aspect, form, text });
   await fact(R, "Ears", "round human ears");
@@ -180,7 +180,7 @@ try {
 
   // ---- suggestions waiting for this entry ----
   const rev = (await send("GET", `/api/chapters/${A}`)).chapter.revision;
-  await post(`/api/chapters/${A}/codex-suggestions`, { revision: rev, suggestions: [{ kind: "set", entry_id: rowan, aspect: "Hair", form: "", after: "silver", quote: "Rowan's ears changed." }] });
+  await post(`/api/chapters/${A}/codex-suggestions`, { revision: rev, suggestions: [{ kind: "set", entry_id: rowan, aspect: "Hair", form: "", after: "silver", quote: "Her hair turned silver." }] });
   await page.goto(entryUrl(A));
   const waiting = ed.locator("details#entry-review");
   await waiting.locator("summary", { hasText: "Review changes from “Chapter A”" }).waitFor();

@@ -11,6 +11,7 @@ import {
   formLine,
   isAiFact,
   isFormAspect,
+  overriddenFacts,
   sameAspect,
   STARTER_ASPECTS,
   TYPE_LABELS,
@@ -477,7 +478,7 @@ function ChapterPicker({ storyId, entryId, here, nav }: { storyId: string; entry
 /** "What the AI is told at …": the entry's text for the AI, and which every-form facts the current form replaces. */
 function AiToldBox({ entry, here }: { entry: CodexEntry; here: string }) {
   const cur = entry.form?.name ?? entry.baseForm;
-  const replaced = cur ? replacedEvery(entry, cur) : [];
+  const replaced = replacedEvery(entry);
   return (
     <section className="entry-section entry-ai-told" aria-label={`What the AI is told at “${here}”`}>
       <h2>What the AI is told at “{here}”</h2>
@@ -491,10 +492,10 @@ function AiToldBox({ entry, here }: { entry: CodexEntry; here: string }) {
   );
 }
 
-/** Every-form facts that a form has its own fact for, on the same aspect: while the entry is in that form, the form's wins. */
-function replacedEvery(entry: CodexEntry, form: string): LiveFact[] {
-  const own = entry.facts.filter((f) => !isFormAspect(f.aspect) && f.form !== "" && sameAspect(f.form, form) && f.aspect.trim());
-  return entry.facts.filter((f) => !isFormAspect(f.aspect) && f.form === "" && f.aspect.trim() && own.some((o) => sameAspect(o.aspect, f.aspect)));
+/** Every-form facts the current form has its own fact for, on the same aspect: while the entry is in that form, the form's wins. */
+function replacedEvery(entry: CodexEntry): LiveFact[] {
+  const ids = overriddenFacts(entry);
+  return entry.facts.filter((f) => ids.includes(f.fact_id));
 }
 
 type Marker = { key: string; tone: "suggest" | "conflict" | "ai"; text: string; href: string };
@@ -598,7 +599,7 @@ function FactsTable({
   const every = rows.filter((f) => f.form === "");
   const own = cur ? rows.filter((f) => f.form !== "" && isCur(f.form)) : [];
   const others = entry.forms.filter((name) => !isCur(name)).map((name) => ({ name, facts: rows.filter((f) => f.form !== "" && sameAspect(f.form, name)) })).filter((g) => g.facts.length > 0);
-  const replaced = new Set(cur ? replacedEvery(entry, cur).map((f) => f.fact_id) : []);
+  const replaced = new Set(overriddenFacts(entry));
   const showForm = hasForms || entry.type === "character" || entry.form !== null;
   // Facts of a form, but no form was ever set: they can't apply, and the AI isn't sent them.
   const needsForm = entry.form === null && entry.baseForm === null && hasForms;

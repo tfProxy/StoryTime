@@ -1,7 +1,7 @@
 import { launch, useMockAi } from "./browser.mjs";
 
 // The Story Bible's Codex section: the Section select on a phone, the scope line, the ⋯ menu, entries in folds by type
-// with a To review box for their suggestions, and the old chapter codex page redirecting here. Suggestions are seeded
+// with a Changes waiting box that leads to the review page beside the chapter's text, and the old chapter codex page redirecting here. Suggestions are seeded
 // through the worker's route, so no AI is involved.
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 
@@ -115,30 +115,32 @@ try {
 
   // A suggestion inside its entry's card
   const rowanCard = page.locator("li.entry-with-extra", { hasText: "Rowan" });
-  const reviewBox = page.locator("section.codex-review-box[aria-label='To review']");
-  ok((await rowanCard.locator("article.inbox-card").count()) === 0 && (await page.locator("article.inbox-card").count()) === 0, "the chapter's codex has no suggestion cards: the review happens on the entry's page");
-  ok((await rowanCard.locator(".entry-review-count").innerText()).trim() === "1 to review", "Rowan's card says one suggestion waits");
+  const reviewBox = page.locator("section.codex-review-box[aria-label='Changes waiting']");
+  const reviewGo = reviewBox.locator("a.codex-review-go");
+  ok((await rowanCard.locator("article.inbox-card").count()) === 0 && (await page.locator("article.inbox-card").count()) === 0, "the chapter's codex has no suggestion cards: the review happens beside the chapter's text");
+  const rowanCount = rowanCard.locator("a.entry-review-count");
+  ok((await rowanCount.innerText()).trim() === "1 change to review" && (await rowanCount.getAttribute("href")) === `/c/${A}/codex-review?entry=${rowan}`, "Rowan's card says one change waits, and links to it on the review page");
   ok((await page.locator("h2", { hasText: /Codex inbox/ }).count()) === 0, "…and there is no separate inbox box");
-  const rowanRow = reviewBox.locator("a.codex-review-row", { hasText: "Rowan" });
-  ok((await rowanRow.count()) === 1 && (await rowanRow.getAttribute("href")) === `/s/${storyId}/codex/${rowan}?at=${A}#entry-review` && (await rowanRow.innerText()).includes("1 from the text"), "the To review box has a row for Rowan that leads to her page at this chapter");
-  const newRow = reviewBox.locator("li.codex-review-new", { hasText: "The Ford" });
-  ok((await newRow.innerText()).includes("New place:") && (await newRow.getByRole("button", { name: "Add it" }).count()) === 1 && (await newRow.getByRole("button", { name: "Dismiss" }).count()) === 1, "a suggested new entry is a row in the box, with Add it / Dismiss");
+  ok((await reviewGo.count()) === 1 && (await reviewGo.getAttribute("href")) === `/c/${A}/codex-review` && (await reviewGo.innerText()).replace(/\s+/g, " ").includes("2 changes waiting from this chapter"), "the Changes waiting box links to the chapter's review page with the count (Rowan's change and the new entry)");
+  ok((await reviewBox.getByRole("button").count()) === 0 && (await reviewBox.locator("a.codex-review-row, li.codex-review-new").count()) === 0, "…without rows or Add it / Dismiss of its own");
   ok(await sideways(page), "no sideways scroll with the review box at 390px");
-  await rowanRow.click();
-  await page.waitForURL(new RegExp(`/codex/${rowan}\\?at=${A}`));
-  const reviewCard = page.locator("details#entry-review article.inbox-card", { hasText: "Rowan was uneasy at the ford." });
+  await reviewGo.click();
+  await page.waitForURL(`${BASE}/c/${A}/codex-review`);
+  const reviewCard = page.locator("article.cr-card", { hasText: "uneasy" });
   await reviewCard.waitFor();
-  ok(true, "the row opens Rowan's page with the suggestion in its review fold");
+  ok(true, "the link opens the review page with the change beside the text");
   ok(await sideways(page), "…which fits a 390px screen");
   await reviewCard.getByRole("button", { name: "Accept" }).click();
-  await page.locator("details#entry-review").getByText(/Saved:\s*Rowan, Mood/).waitFor({ state: "attached" });
+  await page.locator(".cr-done").getByText(/Saved:\s*Rowan/).waitFor();
   ok(true, "Accept saves it");
   await page.goto(bible(A));
-  await reviewBox.locator("li.codex-review-new").first().waitFor();
-  ok((await reviewBox.locator("a.codex-review-row").count()) === 0 && (await rowanCard.locator(".entry-review-count").count()) === 0, "…and the chapter's box and Rowan's card have nothing to review for her after that");
+  await reviewGo.waitFor();
+  ok((await reviewGo.innerText()).replace(/\s+/g, " ").includes("1 change waiting") && (await rowanCard.locator(".entry-review-count").count()) === 0, "…and the chapter's box counts one fewer and Rowan's card has nothing to review after that");
   const factsAtA = (await send("GET", `/api/chapters/${A}/codex`)).entries.find((e) => e.name === "Rowan");
   ok(JSON.stringify(factsAtA.facts).includes("uneasy"), "…and Rowan has the fact at Chapter A");
-  await page.locator("li.codex-review-new", { hasText: "The Ford" }).getByRole("button", { name: "Add it" }).click();
+  await reviewGo.click();
+  await page.waitForURL(`${BASE}/c/${A}/codex-review`);
+  await page.locator("article.cr-card", { hasText: "The Ford" }).getByRole("button", { name: "Add it" }).click();
   await page.waitForFunction(async ([u]) => (await (await fetch(u)).json()).entries.some((e) => e.name === "The Ford"), [`/api/chapters/${A}/codex`]);
   ok(true, "Add it creates the suggested entry");
 

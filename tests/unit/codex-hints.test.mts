@@ -45,9 +45,9 @@ ok(dup.duplicates?.length === 2 && dup.duplicates.every((id) => dupEntry.facts.s
 ok(entryHints(entry([long]))[0].edit === entry([long]).facts[0].fact_id, "a long fact's hint opens that fact for editing");
 ok(entryHints(entry([], { content: "Notes." }))[0].notes === true, "the notes-only hint offers Turn notes into facts");
 
-// the count on a card: hints plus clashes between forms
-const clashing = entry([ears, fact("Ears", "Fox ears.", "vixen"), fact("Form", "", "vixen")]);
-ok(hintCount(clashing) === 1 && hintCount(entry([ears])) === 0, "a card's count includes facts that clash between forms");
+// the count on a card: hints only; a form's own fact replacing an every-form one is not a clash
+const replacing = entry([ears, fact("Ears", "Fox ears.", "vixen"), fact("Form", "", "vixen")]);
+ok(hintCount(replacing) === 0 && hintCount(entry([ears])) === 0, "a form's fact replacing an every-form one adds nothing to a card's count");
 
 // always-included entries crowding the prompt
 const always = (name: string, size: number) => foldCodex([create({ entry_id: name, name, always_include: true })], [{ ...fact("Look", "x".repeat(size)), entry_id: name }])[0];

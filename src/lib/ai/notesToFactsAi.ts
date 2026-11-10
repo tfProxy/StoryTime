@@ -5,7 +5,7 @@ import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import { quoteInText } from "./tagAi";
-import { FACT_LIMITS, STARTER_ASPECTS, isFormAspect, sameAspect, type CodexEntry } from "../codex";
+import { FACT_LIMITS, STARTER_ASPECTS, cleanForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry } from "../codex";
 import type { SuggestionInput } from "./codexCheckAi";
 import type { Settings } from "../settings";
 
@@ -41,10 +41,7 @@ function describeForNotes(e: CodexEntry): { known: string; notes: string } {
     const label = [e.form.name, e.form.note].map((s) => s.trim()).filter(Boolean).join(", ");
     if (label) lines.push(`Current form: ${label}`);
   }
-  for (const f of e.facts) {
-    if (isFormAspect(f.aspect) || !f.text.trim()) continue;
-    lines.push(`- ${f.aspect.trim() || "(note)"} [${f.form.trim() ? `${f.form.trim()} form` : "every form"}]: ${f.text.trim()}`);
-  }
+  lines.push(...factLinesForEditing(e));
   return { known: lines.join("\n"), notes: e.content.trim() };
 }
 
@@ -83,7 +80,7 @@ export function parseNotesToFacts(reply: string, opts: NotesToFactsOptions): Sug
     const quote = asString(o.quote, FACT_LIMITS.quote);
     if (!quote || !quoteInText(quote, entry.content)) continue;
     let aspect = asString(o.aspect, FACT_LIMITS.aspect);
-    let form = asString(o.form, FACT_LIMITS.form);
+    let form = cleanForm(asString(o.form, FACT_LIMITS.form));
     const text = asString(o.text, FACT_LIMITS.text);
     // A "set" of the aspect "form" is a form change.
     if (kind === "set" && isFormAspect(aspect)) kind = "form";
