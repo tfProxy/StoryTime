@@ -24,6 +24,9 @@ export type CodexOp = {
   overrides?: Overrides | null;
   /** On a linked entry's resolved ops: the fields this story has changed from the base. */
   overridden?: string[];
+  /** On a "create" whose start was moved (see `moveEntryStart`): the chapter it started at before, and that chapter's title. */
+  moved_from_chapter_id?: string | null;
+  moved_from_title?: string | null;
 };
 
 /**

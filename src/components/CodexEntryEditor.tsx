@@ -73,6 +73,8 @@ type Props = {
   onFactsSaved?: () => void;
   /** The chapters already written after `chapterId`: "Remove from this chapter only" keeps the entry in them. */
   after?: { id: string; title: string }[];
+  /** Shown under the entry's name (the entry page's "First appears in…"). */
+  belowName?: React.ReactNode;
 };
 
 /** The one place to read and change a codex entry: its details, keywords, form, facts, notes and history. */
@@ -96,6 +98,7 @@ export default function CodexEntryEditor({
   onRetired,
   onFactsSaved,
   after = [],
+  belowName,
 }: Props) {
   const router = useRouter();
   const inDraft = variant === "drawer";
@@ -230,6 +233,7 @@ export default function CodexEntryEditor({
               </span>
             )}
           </div>
+          {belowName}
         </div>
         <div className="row entry-head-actions">
           {held && onDiscardHeld && (
@@ -495,6 +499,7 @@ export default function CodexEntryEditor({
                   {prev && v.op !== "retire" && ` · ${changedFields(prev, v).join(", ") || "no changes"}`}
                   {isCurrent && " · current"}
                 </div>
+                {v.moved_from_chapter_id && <div className="meta" style={{ margin: 0 }}>Moved start from “{v.moved_from_title ?? "a deleted chapter"}” to “{titleOf(v.anchor_chapter_id)}”</div>}
                 {v.op !== "retire" && (
                   <>
                     <div className="version">

@@ -5812,3 +5812,121 @@ label.import-choice {
     max-height: 14rem;
   }
 }
+
+/* ---- "First appears in …" on a codex entry's page, and its dialog ---- */
+
+.entry-start {
+  margin: 0;
+}
+
+/* Inline in the sentence, but a full-height touch target. */
+button.entry-start-change {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0 0.25rem;
+}
+
+dialog.entry-start-dialog {
+  width: min(36rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--fg);
+}
+
+dialog.entry-start-dialog[open] {
+  display: grid;
+  gap: 0.9rem;
+}
+
+dialog.entry-start-dialog::backdrop {
+  background: rgb(0 0 0 / 0.5);
+}
+
+.entry-start-dialog h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  overflow-wrap: anywhere;
+}
+
+.entry-start-list {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.entry-start-list legend {
+  padding: 0;
+  margin-bottom: 0.35rem;
+}
+
+.entry-start-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  min-height: 2.75rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  font-weight: normal;
+}
+
+.entry-start-option:has(input:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--card));
+}
+
+.entry-start-option:has(input:disabled) {
+  cursor: default;
+}
+
+.entry-start-option input {
+  margin: 0.2rem 0 0;
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: none;
+}
+
+.entry-start-blocked > span {
+  color: var(--muted);
+}
+
+.entry-start-reason {
+  display: block;
+  font-size: 0.85rem;
+}
+
+.entry-start-summary {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.entry-start-between {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.3rem;
+  overflow-wrap: anywhere;
+}
+
+.entry-start-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.entry-start-actions button {
+  min-height: 2.75rem;
+}

@@ -898,6 +898,12 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE codex_facts ADD COLUMN ai_suggestion_id TEXT;
   CREATE INDEX codex_facts_ai ON codex_facts(anchor_chapter_id) WHERE ai_suggestion_id IS NOT NULL;
   `,
+  // 49: moving where a codex entry first appears (moveEntryStart in src/lib/codexDb.ts) re-anchors its "create" op and
+  // sets moved_from_chapter_id to the chapter it started at before, for the entry's History. No foreign key: the old
+  // chapter may be deleted later without touching the op.
+  `
+  ALTER TABLE codex_ops ADD COLUMN moved_from_chapter_id TEXT;
+  `,
 ];
 
 function open(): Database.Database {
