@@ -109,6 +109,7 @@ assert(a.body.system === "sys" && a.body.max_tokens === 4096 && a.body.model ===
 }
 
 assert(JSON.stringify(await listModels(conn("custom", base + "/o"))) === '["a-model","b-model"]', "listModels sorted");
+assert(seen.at(-1)!.headers?.["user-agent"] === "StoryTime", "server requests name StoryTime as the User-Agent (Featherless refuses Node's default)");
 try { await completeChat(mk("custom", base + "/bad") as any, { messages: [{ role: "user", content: "x" }] }); assert(false, "should throw"); }
 catch (e) { assert(e instanceof AiError && String(e.message).includes("401") && String(e.message).includes("bad key"), "HTTP error surfaced: " + (e as Error).message); }
 try { await completeChat(mk("custom", "http://localhost:1") as any, { messages: [{ role: "user", content: "x" }] }); }

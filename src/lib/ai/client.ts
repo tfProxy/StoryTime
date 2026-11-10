@@ -113,6 +113,9 @@ function resolve(settings: Settings, req: Pick<ChatRequest, "role" | "model" | "
 
 function headers(r: Pick<Resolved, "protocol" | "apiKey">): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
+  // On the server, name ourselves: Featherless answers Node's default User-Agent ("node") with "404 Gone." on
+  // its model list. Browsers set their own and a page can't change it.
+  if (typeof window === "undefined") h["User-Agent"] = "StoryTime";
   if (r.protocol === "anthropic") {
     h["x-api-key"] = r.apiKey;
     h["anthropic-version"] = "2023-06-01";
