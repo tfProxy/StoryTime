@@ -30,16 +30,30 @@ import type { RefChoice } from "@/lib/comfy/referenceChoices";
 import References from "./References";
 import { describeWorkflow, parseWorkflow, randomSeed } from "@/lib/comfy/workflow";
 
-/** Sizes that suit SDXL (about one megapixel), tallest to widest. */
-const SIZES: { name: string; width: number; height: number }[] = [
-  { name: "Portrait", width: 768, height: 1344 },
-  { name: "Square", width: 1024, height: 1024 },
-  { name: "Landscape", width: 1344, height: 768 },
-  { name: "Wide", width: 1536, height: 640 },
+type SizeOption = { name: string; width: number; height: number; /** Starts the less used sizes, after a separator. */ rest?: boolean };
+
+/**
+ * Aspect ratios at about one megapixel (SDXL's size) in multiples of 16, the ones used most first. 16:9 and 9:16
+ * are 1344 × 768 and 768 × 1344 (a hair off 16:9, since 756 isn't a multiple of 16).
+ */
+const SIZES: SizeOption[] = [
+  { name: "1:1", width: 1024, height: 1024 },
+  { name: "16:9", width: 1344, height: 768 },
+  { name: "9:16", width: 768, height: 1344 },
+  { name: "4:3", width: 1152, height: 864 },
+  { name: "3:4", width: 864, height: 1152 },
+  { name: "3:2", width: 1248, height: 832, rest: true },
+  { name: "2:3", width: 832, height: 1248 },
+  { name: "2:1", width: 1440, height: 720 },
+  { name: "1:2", width: 720, height: 1440 },
 ];
 
+/** What the size multiplier menu offers (the setting is the number; 1 is the default). */
+const SCALES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+const scaleName = (n: number) => (n === 2 ? "2.0k" : `${n}k`);
+
 /** Sizes for a cover, tall like a book's first. */
-const COVER_SIZES: { name: string; width: number; height: number }[] = [
+const COVER_SIZES: SizeOption[] = [
   { name: "Book", width: 832, height: 1216 },
   { name: "Portrait", width: 768, height: 1344 },
   { name: "Square", width: 1024, height: 1024 },
@@ -64,11 +78,11 @@ const shapeGlyph = (width: number, height: number) => (width === height ? "□" 
  * One size option as columns: shape glyph, name, aspect ratio, pixel size. The spaces between the spans
  * keep it readable as plain text in a browser that can't lay an option out (see .size-select).
  */
-function SizeColumns({ name, width, height }: { name: string; width: number; height: number }) {
+function SizeColumns({ name, width, height, ratio }: { name: string; width: number; height: number; ratio?: string }) {
   return (
     <>
       <span className="size-glyph">{shapeGlyph(width, height)}</span> <span className="size-name">{name}</span>{" "}
-      <span className="size-ratio">{ratioText(width, height)}</span> <span className="size-px">{width} × {height}</span>
+      <span className="size-ratio">{ratio ?? ratioText(width, height)}</span> <span className="size-px">{width} × {height}</span>
     </>
   );
 }
@@ -162,8 +176,6 @@ export default function ComfyGenerate({
   const sizeScale = settings.comfy.sizeScale;
   const scaled = (n: number) => (sizeScale === 1 ? n : Math.max(64, Math.round((n * sizeScale) / 16) * 16));
   const comfy = { ...baseComfy, width: scaled(baseComfy.width), height: scaled(baseComfy.height) };
-  // What is typed in the multiplier box; the setting only follows a valid number.
-  const [scaleText, setScaleText] = useState(String(sizeScale));
   const sizes = isCover ? COVER_SIZES : SIZES;
   const queueCount = comfy.queueCount;
   // What to change, when editing the starting picture by instruction.
@@ -401,32 +413,33 @@ export default function ComfyGenerate({
               <SizeColumns name="Custom" width={baseComfy.width} height={baseComfy.height} />
             </option>
           )}
-          {sizes.map((s) => (
+          {sizes.map((s) => [
+            // The less used ratios follow a separator.
+            s.rest && <hr key={`${s.name}-hr`} />,
             <option key={s.name} value={`${s.width}x${s.height}`}>
-              <SizeColumns name={s.name} width={s.width} height={s.height} />
+              <SizeColumns name={s.name} width={s.width} height={s.height} ratio={sizes === SIZES ? "" : undefined} />
+            </option>,
+          ])}
+        </select>
+      </label>
+      <label className="row" style={{ gap: "0.4rem" }} title={start ? "Pictures made from a starting picture are its size" : "Multiplies the chosen size, to a multiple of 16 (1k is the size as listed)"}>
+        ×
+        <select
+          // Not "Size …": the tests find the Size menu with getByLabel("Size"), which would match this too.
+          aria-label="Scale by"
+          value={String(sizeScale)}
+          onChange={(e) => set({ sizeScale: Number(e.target.value) })}
+          disabled={start !== null}
+          style={{ width: "auto" }}
+        >
+          {/* A multiplier saved before this was a menu (say 0.9) still shows, as itself. */}
+          {!SCALES.includes(sizeScale) && <option value={String(sizeScale)}>{scaleName(sizeScale)}</option>}
+          {SCALES.map((n) => (
+            <option key={n} value={String(n)}>
+              {scaleName(n)}
             </option>
           ))}
         </select>
-      </label>
-      <label className="row" style={{ gap: "0.4rem" }} title={start ? "Pictures made from a starting picture are its size" : "Multiplies the chosen size, to a multiple of 16 (0.5 to 2)"}>
-        ×
-        <input
-          type="number"
-          // Not "Size …": the tests find the Size menu with getByLabel("Size"), which would match this too.
-          aria-label="Scale by"
-          min={0.5}
-          max={2}
-          step={0.05}
-          value={scaleText}
-          onChange={(e) => {
-            setScaleText(e.target.value);
-            const n = Number(e.target.value);
-            if (e.target.value.trim() !== "" && n >= 0.5 && n <= 2) set({ sizeScale: Math.round(n * 100) / 100 });
-          }}
-          onBlur={() => setScaleText(String(sizeScale))}
-          disabled={start !== null}
-          style={{ width: "4.25rem" }}
-        />
       </label>
       </div>
       <div className="meta size-result">{comfy.width} × {comfy.height}</div>
@@ -641,7 +654,6 @@ export default function ComfyGenerate({
             onClick={() => {
               const { width, height } = other.size;
               if (width && height) set(isCover ? { coverWidth: width, coverHeight: height, sizeScale: 1 } : { width, height, sizeScale: 1 });
-              setScaleText("1");
             }}
           >
             Use its settings
