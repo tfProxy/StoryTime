@@ -51,7 +51,6 @@ try {
     await page.locator("section.codex-review-box").first().waitFor();
   };
   const earlierLinks = async () => (await box().locator("p.meta a").allInnerTexts()).map((t) => t.replace(/\s+/g, " ").trim());
-  const fold = () => page.locator("details#entry-review");
   const entryPage = (id) => page.goto(`${BASE}/s/${sid}/codex/${rowan}?at=${id}`);
 
   // ---- where the suggestions are shown: at the chapter they were made, the earlier ones linked ----
@@ -91,14 +90,17 @@ try {
   const atRoot = (await send("GET", `/api/chapters/${R}/codex`)).entries.find((e) => e.name === "Rowan");
   ok(atRoot.description.includes("dark brown hair") && !atRoot.description.includes("silver"), "…from the chapter it was made at, not above it");
 
-  // dismiss one (the root's, reached from the earlier-chapters link)
+  // dismiss one (the root's, reached from the entry page's link to the earlier chapter)
   await entryPage(A);
-  await fold().getByRole("link", { name: "“Root” (1)" }).click();
-  await page.waitForURL(new RegExp(`/codex/${rowan}\\?at=${R}`));
-  const mood = fold().locator("article.inbox-card", { hasText: "calm" });
+  const earlier = page.locator(".entry-waiting");
+  await earlier.waitFor();
+  ok((await earlier.innerText()).includes("Changes waiting from earlier chapters"), "the entry's page at Chapter A, with nothing left there, links the earlier chapter's");
+  await earlier.getByRole("link", { name: "“Root” (1)" }).click();
+  await page.waitForURL(new RegExp(`/c/${R}/codex-review\\?entry=${rowan}`));
+  const mood = page.locator("article.cr-card", { hasText: "calm" });
   await mood.getByRole("button", { name: "Dismiss" }).click();
-  await fold().locator("button", { hasText: "Undo" }).waitFor({ state: "attached" }); // (the fold closes with nothing left open)
-  ok(true, "a suggestion can be dismissed (it stays as a line with Undo until the page is left)");
+  await page.locator(".cr-done", { hasText: "Dismissed" }).waitFor();
+  ok(true, "…to the root's review page, where it can be dismissed");
 
   // after leaving the page, accepted and dismissed ones are gone from the list
   await page.goto(at(A));

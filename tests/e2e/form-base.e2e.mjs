@@ -40,8 +40,8 @@ try {
   const page = await context.newPage();
   page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
   const at = (id, chapter) => `${BASE}/s/${sid}/codex/${id}?at=${chapter}`;
-  const form = () => page.locator("section", { has: page.getByRole("heading", { name: "Form", exact: true }) });
-  const reads = () => page.locator(".entry-section", { has: page.getByRole("heading", { name: "What the AI reads", exact: true }) }).locator(".fact-ai");
+  const form = () => page.locator(".ef-form-row");
+  const reads = () => page.locator(".entry-ai-told .fact-ai");
 
   // in the normal form: said on the page, and the AI isn't told the form
   await page.goto(at(rowan, R));
@@ -51,7 +51,7 @@ try {
 
   // another form: told to the AI
   await page.goto(at(rowan, A));
-  await form().getByText(/Normal form: human/).waitFor();
+  await form().getByText(/normal form: human/).waitFor();
   ok((await reads().innerText()).startsWith("Form: vixen.") && (await reads().innerText()).includes("a bushy tail"), "in another form the AI is told it: " + (await reads().innerText()));
 
   // facts of a form, no form set

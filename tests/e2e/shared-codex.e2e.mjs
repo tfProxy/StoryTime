@@ -97,6 +97,7 @@ try {
   await post("/api/codex/facts", { anchor_chapter_id: A, entry_id: mine, op: "set", aspect: "Ears", text: "fox ears, torn" });
   await page.goto(mineUrl);
   await page.getByText("shared, changed in this story").waitFor();
+  await page.getByLabel("More for Ears", { exact: true }).click();
   await page.getByRole("button", { name: "Reset to the shared fact" }).click();
   await page.getByText("tall russet fox ears").first().waitFor();
   ok((await page.getByRole("button", { name: "Reset to the shared fact" }).count()) === 0, "a changed fact can be reset to the shared one");

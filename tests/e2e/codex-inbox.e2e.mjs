@@ -3,7 +3,7 @@ import { unfoldEntryFolds } from "./unfold.mjs";
 
 // The codex inbox: suggestions the codex check left. The chapter's codex (in the Story Bible) counts them in a "Changes
 // waiting" box that leads to the review page beside the chapter's text (/c/<id>/codex-review); the entry's page at that chapter
-// also lists its own in the "Review changes" fold. Also the banner on the chapter page, the count on the codex page, the setting, and the
+// links there too and marks each fact a suggestion is about (the AI's own ideas are under "AI ideas"). Also the banner on the chapter page, the count on the codex page, the setting, and the
 // buttons that queue a check. Suggestions are seeded through the worker's route, so no AI is involved.
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 
@@ -56,10 +56,6 @@ try {
   const goText = async () => (await go().innerText()).replace(/\s+/g, " ").trim();
   const reviewCard = (t) => page.locator("article.cr-card", { hasText: t });
   const rowanCount = () => page.locator("li.entry-with-extra", { hasText: "Rowan" }).locator("a.entry-review-count");
-  const rowanAtA = () => page.goto(`${BASE}/s/${storyId}/codex/${rowan}?at=${A}#entry-review`);
-  const fold = () => page.locator("details#entry-review");
-  const card = (quote) => fold().locator("article.inbox-card", { hasText: quote });
-  const cards = () => fold().locator("article.inbox-card");
   // Rowan's entry page (the one place the facts are listed), as of a chapter.
   const rowanPage = (at) => page.goto(`${BASE}/s/${storyId}/codex/${rowan}?at=${at}`);
   const rowanFacts = () => page.locator(".entry-editor");
@@ -105,57 +101,37 @@ try {
   );
   ok((await page.locator("article.inbox-card").count()) === 0, "…without cards");
 
-  // ---- the entry's page at the chapter: the review fold ----
-  await rowanAtA();
-  await fold().waitFor();
-  ok((await fold().locator("summary").first().innerText()).includes("Review changes from “Chapter A”") && (await fold().locator("summary").first().innerText()).includes("6 waiting"), "the fold is titled with the chapter and says how many wait");
-  ok(await fold().evaluate((d) => d.open), "…and is open");
-  ok((await cards().count()) === 6 && (await card("Her voice was low and quiet.").count()) === 0, "it holds this chapter's suggestions only, not the root's");
-  ok((await fold().getByText("Also waiting for Rowan from earlier chapters:").isVisible()) && (await fold().getByRole("link", { name: "“Root” (1)" }).getAttribute("href")) === `/s/${storyId}/codex/${rowan}?at=${root}#entry-review`, "…with a link to the root's at the root");
-  const atBar = page.locator(".codex-at-bar");
-  ok((await atBar.getByRole("link", { name: "← Codex" }).getAttribute("href")) === `/s/${storyId}/review?tab=codex&chapter=${A}` && (await atBar.innerText()).includes("Rowan at “Chapter A”"), "the bar at the top leads back to the codex at the chapter and says where the page is");
+  // ---- the entry's page at the chapter: one line to the review, and a marker on each fact ----
+  const openNow = async () => (await send("GET", `/api/stories/${storyId}/codex-suggestions?status=open`)).suggestions;
+  const idOf = async (pred) => (await openNow()).find(pred)?.id;
+  const reviewAt = (chapter, hash = "") => `/c/${chapter}/codex-review?entry=${rowan}${hash}`;
+  const marker = (aspect) => rowanFacts().locator(".ef-row", { has: page.locator(".ef-aspect", { hasText: new RegExp(`^${aspect}$`) }) }).locator(".ef-marker");
+  await rowanPage(A);
+  const waiting = rowanFacts().locator(".entry-waiting");
+  await waiting.waitFor();
+  ok((await waiting.getByRole("link").first().innerText()).includes("6 changes waiting from “Chapter A” · Review beside the text →") && (await waiting.getByRole("link").first().getAttribute("href")) === reviewAt(A), "the entry's page says how many of its changes wait at this chapter and links to the review beside the text");
+  ok((await waiting.getByRole("link", { name: "“Root” (1)" }).getAttribute("href")) === reviewAt(root), "…and links the root's, at the root");
+  ok((await page.locator("article.inbox-card").count()) === 0 && (await rowanFacts().getByRole("button", { name: /^Accept|^Dismiss|^Update codex/ }).count()) === 0, "there are no suggestion cards or Accept buttons on the entry's page");
+  const hairId = await idOf((x) => x.aspect === "Hair");
+  ok((await marker("Hair").innerText()).includes("“Chapter A” suggests “silver hair” · Review") && (await marker("Hair").getAttribute("href")) === reviewAt(A, `#s-${hairId}`), "a change is a blue marker under the fact, linking to its card");
+  ok((await marker("Weapon").innerText()).includes("suggests removing it"), "a removal is marked too");
+  ok((await marker("Eyes").getAttribute("class")).includes("ef-marker-conflict") && (await marker("Eyes").innerText()).includes("“Chapter A” says “blue” · contradicts · Review"), "a contradiction is a red marker");
+  ok((await rowanFacts().locator(".ef-form-row .ef-marker").innerText()).includes("suggests “hawk, feathers”"), "a form change is marked on the form row");
+  const bootsRow = rowanFacts().locator(".ef-placeholder", { hasText: "Boots" });
+  ok((await bootsRow.innerText()).includes("not in the codex yet") && (await bootsRow.locator(".ef-marker").innerText()).includes("suggests “red boots”"), "a new aspect is a dashed row, not in the codex yet, with its marker");
+  ok((await rowanFacts().getByText("Kestrel").count()) === 0, "a suggested new entry is not on Rowan's page");
+  ok(await rowanFacts().locator(".entry-bar").getByRole("link", { name: "← Codex" }).getAttribute("href") === `/s/${storyId}/review?tab=codex&chapter=${A}`, "the bar at the top leads back to the codex at the chapter");
 
-  // ---- the cards ----
-  const hair = card("Rowan's hair turned silver.");
-  ok((await hair.locator("del").innerText()).includes("dark brown") && (await hair.locator("ins").innerText()).includes("silver"), "a change shows the old words in del and the new in ins");
-  ok((await hair.locator("blockquote.inbox-evidence").isVisible()) && (await hair.locator(".source-badge").innerText()) === "From the text", "…with the quote from the chapter and a 'From the text' label");
-  const quoteLink = hair.locator("blockquote.inbox-evidence a", { hasText: "Show in “Chapter A”" });
-  ok(((await quoteLink.getAttribute("href")) ?? "").startsWith(`/c/${A}#:~:text=`), "…and a link to the quote in the chapter");
-  ok((await hair.locator("strong.inbox-aspect").innerText()) === "Hair" && (await hair.locator(".inbox-head .meta").innerText()).includes("change"), "the aspect is bold and the kind is plain text");
-  ok((await card("She laced her red boots.").locator("del").count()) === 0 && (await card("She laced her red boots.").locator("ins").innerText()).includes("red boots"), "a new aspect is all ins");
-  ok((await card("wooden sword behind").locator("ins").count()) === 0 && (await card("wooden sword behind").locator("del").innerText()).includes("a wooden sword"), "a removal is all del");
-  ok((await card("She laced her red boots.").getByText("new aspect").isVisible()) && (await card("wooden sword behind").getByText("remove").isVisible()), "kind words");
-  const conflict = card("Her eyes were blue.");
-  ok((await conflict.locator(".source-badge").innerText()) === "Contradicts the codex", "a contradiction is labelled as such");
-  ok(await conflict.getByRole("button", { name: "Update codex" }).isVisible() && await conflict.getByRole("button", { name: "Keep the codex" }).isVisible(), "a conflict card offers Update codex / Keep the codex");
-  ok((await conflict.getByRole("button", { name: "Edit" }).count()) === 0, "…and no Edit");
-  ok((await fold().getByText("Kestrel").count()) === 0, "a suggested new entry is not on Rowan's page");
-
-  // ---- accept a change ----
-  await hair.getByRole("button", { name: "Accept" }).click();
-  await fold().getByText(/Saved:\s*Rowan, Hair/).waitFor();
-  ok((await fold().locator("article.inbox-card").count()) === 5, "an accepted card collapses to one line");
-  ok((await fold().locator("p.inbox-done a").count()) === 0, "…without a link");
-
-  // ---- edit, then save ----
-  const boots = card("She laced her red boots.");
-  await boots.getByRole("button", { name: "Edit" }).click();
-  await boots.getByLabel("Fact").fill("scuffed red boots");
-  await boots.getByRole("button", { name: "Save" }).click();
-  await fold().getByText(/Saved:\s*Rowan, Boots/).waitFor();
-
-  // ---- dismiss, then undo ----
-  const mood = card("Rowan was tense.");
-  await mood.getByRole("button", { name: "Dismiss" }).click();
-  await fold().getByText("Dismissed", { exact: false }).first().waitFor();
-  ok((await card("Rowan was tense.").count()) === 0, "a dismissed card collapses");
-  await fold().locator(".inbox-done", { hasText: "Dismissed" }).getByRole("button", { name: "Undo" }).click();
-  await card("Rowan was tense.").waitFor();
-  ok(true, "Undo brings the dismissed card back");
-
-  // ---- a conflict: keep the codex ----
-  await conflict.getByRole("button", { name: "Keep the codex" }).click();
-  await fold().locator(".inbox-done", { hasText: "Dismissed" }).waitFor();
+  // Decided on the review page (here through its routes): accept, accept edited, dismiss and reopen, keep the codex.
+  await post(`/api/codex-suggestions/${hairId}/accept`);
+  await post(`/api/codex-suggestions/${await idOf((x) => x.aspect === "Boots")}/accept`, { text: "scuffed red boots" });
+  const moodId = await idOf((x) => x.aspect === "Mood");
+  await post(`/api/codex-suggestions/${moodId}/dismiss`);
+  await post(`/api/codex-suggestions/${moodId}/reopen`);
+  await post(`/api/codex-suggestions/${await idOf((x) => x.kind === "conflict")}/dismiss`);
+  await rowanPage(A);
+  await waiting.waitFor();
+  ok((await waiting.innerText()).includes("3 changes waiting") && (await marker("Hair").count()) === 0 && (await rowanFacts().locator(".ef-placeholder", { hasText: "Boots" }).count()) === 0, "decided ones lose their markers, and the count goes down");
 
   // ---- a new entry, from the review page ----
   await page.goto(`${BASE}/c/${A}/codex-review`);
@@ -171,43 +147,18 @@ try {
   const idea = await seed(A, await rev(A), [s("set", { aspect: "Fear", after: "deep water", quote: "" }), s("set", { aspect: "Scarf", after: "a green scarf", quote: "Kestrel the hawk joined her." })], { source: "expand", entry_id: rowan });
   ok(idea.saved === 2, "seeded a Flesh out idea with no quote, and a fact whose quote doesn't show it");
   await rowanPage(A);
-  await fold().waitFor();
-  const fear = card("deep water");
+  const ideas = rowanFacts().locator("section.entry-ideas");
+  const fear = ideas.locator(".idea-row", { hasText: "deep water" });
   await fear.waitFor();
-  ok((await fear.locator(".source-badge").innerText()) === "AI idea · not in the text", "an idea the text doesn't back is labelled as the AI's");
-  const scarf = card("a green scarf");
-  ok((await scarf.locator(".source-badge").innerText()) === "Quote doesn't show this" && (await scarf.locator(".inbox-unsure").isVisible()), "a quote that doesn't mention the fact is labelled 'Quote doesn't show this', with a note");
-  ok((await cards().count()) === 5, "five are open here now: the retire, the form, the mood, the idea and the unsupported quote");
-  const all = fold().getByRole("button", { name: /^Accept the \d+ from the text$/ });
-  ok((await all.innerText()) === "Accept the 3 from the text", "the button counts the changes the text backs, not the idea or a contradiction");
-  await all.click();
-  await fold().getByText(/Saved:\s*Rowan, Weapon/).waitFor();
-  await fold().getByText(/Saved:\s*Rowan, Mood/).waitFor();
-  await fold().getByText(/Saved:\s*Rowan, form/).waitFor();
-  ok((await fold().locator("article.inbox-card").count()) === 2 && (await card("deep water").getByRole("button", { name: "Accept" }).isVisible()) && (await scarf.getByRole("button", { name: "Accept" }).isVisible()), "…which takes those three and leaves the AI's idea and the unsupported quote to decide");
-  ok((await fold().getByRole("button", { name: /^Accept the/ }).count()) === 0, "…and the button goes");
-  await fear.getByRole("button", { name: "Dismiss" }).click();
-  await fold().locator(".inbox-done", { hasText: "Dismissed" }).waitFor();
-  await scarf.getByRole("button", { name: "Dismiss" }).click();
-  await scarf.waitFor({ state: "detached" });
-
-  // ---- the ⋯ menu ----
-  await page.reload();
-  await fold().waitFor();
-  ok((await fold().locator("summary[aria-label='More review actions']").count()) === 0, "with nothing open the ⋯ menu is gone");
-
-  // ---- the root's suggestion is reviewed at the root ----
-  await rowanPage(A);
-  await fold().getByRole("link", { name: "“Root” (1)" }).click();
-  await page.waitForURL(new RegExp(`/codex/${rowan}\\?at=${root}`));
-  await card("Her voice was low and quiet.").waitFor();
-  ok((await cards().count()) === 1, "the earlier chapter's link opens the page at that chapter, with its suggestion");
-  await fold().locator("summary[aria-label='More review actions']").click();
-  ok(((await fold().getByRole("link", { name: "Show the AI exchange" }).getAttribute("href")) ?? "").includes(`/ai-log?chapter=${root}`), "the ⋯ menu has the AI exchange for the chapter");
-  await card("Her voice was low and quiet.").getByRole("button", { name: "Accept" }).click();
-  // (With the last one decided the fold closes, so its "Saved" line is only there, not shown.)
-  await fold().getByText(/Saved:\s*Rowan, Voice/).waitFor({ state: "attached" });
-  ok(true, "accepted at the root: saved there");
+  ok((await ideas.innerText()).includes("Made up by the AI, not in the story") && (await ideas.locator(".idea-row").count()) === 1, "an idea the text doesn't back is under AI ideas, apart from the facts");
+  ok((await rowanFacts().locator(".ef-placeholder", { hasText: "Scarf" }).locator(".ef-marker").count()) === 1, "a Flesh out fact with a quote is marked on the facts like one from the chapter");
+  await fear.getByRole("button", { name: "Discard" }).click();
+  await fear.waitFor({ state: "detached" });
+  ok((await rowanFacts().locator("section.entry-ideas").count()) === 0, "Discard dismisses the idea, and the box goes with nothing left in it");
+  ok((await send("GET", `/api/stories/${storyId}/codex-suggestions?status=dismissed`)).suggestions.some((x) => x.after === "deep water"), "…on the server too");
+  for (const pred of [(x) => x.kind === "retire", (x) => x.aspect === "Mood", (x) => x.kind === "form", (x) => x.aspect === "Voice"]) await post(`/api/codex-suggestions/${await idOf(pred)}/accept`);
+  await post(`/api/codex-suggestions/${await idOf((x) => x.aspect === "Scarf")}/dismiss`);
+  ok(true, "the rest decided on the review page (through its routes), the root's at the root");
 
   // ---- what reached the codex ----
   await rowanPage(A);
@@ -215,7 +166,7 @@ try {
   ok(await factLine("scuffed red boots").isVisible(), "the edited fact was saved");
   ok(await factLine("tense").isVisible(), "the fact accepted with Accept the 3 was saved");
   ok((await factLine("wooden sword").count()) === 0, "the removal took effect");
-  ok(await rowanFacts().locator(".facts-form").getByText("Form: hawk").isVisible(), "the form was set");
+  ok((await rowanFacts().locator(".ef-form-row .facts-form").innerText()).includes("hawk"), "the form was set");
   ok(await factLine("green").isVisible() && (await factLine("blue").count()) === 0, "Keep the codex left the green eyes");
   ok((await factLine("deep water").count()) === 0, "the dismissed idea wasn't written");
   ok(await factLine("low and quiet").isVisible(), "the root's change took effect (saved at the root)");

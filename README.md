@@ -29,40 +29,53 @@ and, for pictures, your own ComfyUI machine.
   the whole story to see every entry on any branch; a chapter's **Codex** button opens it there. While
   writing, the codex drawer opens the entry in place; changes stay in the draft and are saved with the
   chapter when it is posted (or straight away, if you date them to an earlier chapter). Entries can
-  have pictures that change over the story too (the **Pictures** button on the entry's page).
+  have pictures that change over the story too (**Pictures** in the entry's **⋯** menu).
+- **An entry's page** shows the entry as of one chapter. The bar at the top stays in view: **← Codex**,
+  the name, **as of** with **‹ “chapter” ›** to step through the chapters (tap the chapter to pick
+  another), and **⋯** (Edit details, Pictures, Compare with a chapter…, Summary of this chapter, Share,
+  Remove from this chapter only, Retire). Under it: the type, where the entry first appears (with
+  **Change…**), its keywords and **Edit details**; then the facts as of the chapter, **What the AI is
+  told** there, any **AI ideas**, and tabs for **Your notes**, **What the AI reads**, **History**,
+  **Pictures** and **Update from the story**.
 - **Keywords**: each entry lists the words in the story that bring it into the AI's prompt
   ("Ro, the traveller"); **Edit details** on the entry's page changes them, with the name and type.
 - **Codex facts**: an entry holds small facts, one per aspect ("Ears: tall fox ears"), each dated to
-  the chapter where it became true, with the sentence that shows it. Each fact has its own **Edit**,
-  **Remove** and **History**. A character can have forms (human, vixen…): **Change form** picks one of
-  its forms (or a new one) and an optional stage ("halfway"), and shows exactly what the AI will read;
-  facts can belong to one form, and only the current form's facts go to the AI.
-  **What the AI reads** shows the text the AI gets for the entry: its form and facts.
+  the chapter where it became true. Tap a fact to change it: its text, which forms it **applies to**,
+  and whether it is **a change in the story** from this chapter on (earlier chapters keep the old text)
+  or **a correction** (it was always so). A fact's **⋯** has its **History**, **Remove from this
+  chapter on** and **Retcon the chapters…**. **+ Add a fact** adds one.
+  A character can have forms (human, vixen…). The **Form** row says which one she is in, since when,
+  and until which later chapter; **Change form…** picks the form (or a new one), the chapter it starts
+  at and how far along it is ("halfway"), and shows exactly what the AI will read. A form's own fact
+  replaces the every-form fact on the same aspect while she is in that form (the every-form one is
+  shown struck through); the other forms' facts are folded away and not sent to the AI.
 - **Your notes**: a free-text note on each entry that is yours and is **not sent to the AI**. **Turn
-  notes into facts** asks the AI to read them and leave suggested facts in the Codex inbox.
+  notes into facts** asks the AI to read them; what it finds waits under **AI ideas** › **From your
+  notes**.
 - **Story Bible**: the **Bible** tab of every story page. On a phone its sections are a **Section**
   picker; under it, **Showing** says which chapter (or the whole story) you are looking at, with
   **Change…** to pick another and a link back to reading the chapter.
 - **Codex suggestions**: after you save a new or edited chapter, the AI (your cheaper model) reads it
-  in the background and suggests fact changes. The chapter's Codex section opens with **To review
-  from this chapter**: one row per character, place or thing with changes waiting. Tap a row to open
-  that entry at the chapter, where **Review changes from “chapter”** lists them (it folds away like
-  the other sections; earlier chapters that still have some are linked below it). Each suggestion is
-  one fact, shows in red and green exactly what changes, and says where it came from: **From the text**
-  (with the sentence, and **Show in “chapter”** to read it there), **From your notes**, or **AI idea ·
-  not in the text** (something Flesh out made up). You **Accept**, **Edit** or **Dismiss** it (a
-  dismissed one can be undone). "Accept the N from the text" takes the ones backed by the story in one
-  go and leaves AI ideas for you to decide; where the chapter contradicts the codex you choose **Update
-  codex** or **Keep the codex**. A new character or place the AI found appears in the To review box,
-  with **Add it** or **Dismiss**. You can also run the check yourself (**Check this chapter with AI**,
+  in the background and suggests fact changes, each with the sentence that shows it. You review them
+  beside the chapter's text (**Review beside the text**, from the chapter's banner, its Codex section or
+  an entry's page): **Accept**, **Edit** or **Dismiss** each one, and where the chapter contradicts
+  the codex choose which to keep. On an entry's page, a line says how many of its changes wait at the
+  chapter (and at earlier ones), and each fact a suggestion is about has a marker under it: blue for a
+  suggested change, red for a contradiction, amber for a fact the AI already applied; a suggested new
+  aspect shows as a dashed row. Tap a marker to review it beside the text.
+  **+ Flesh out with AI…** (beside + Add a fact) asks the AI for more detail. What it makes up, with
+  nothing in the story behind it, waits under **AI ideas for …**, apart from the facts: **Keep…** asks
+  whether it was always so (from where the entry first appears) or starts at the chapter; **Edit** or
+  **Discard** it. A new character or place the AI found is offered in the Codex section, with **Add
+  it** or **Dismiss**. You can also run the check yourself (**Check this chapter with AI**,
   or **Check every chapter with AI** for the whole story) from the **⋯** menu of the Codex section.
   Turn the automatic check on or off in Settings › Writing › Codex, under "Suggest codex changes
   after a chapter is saved".
   With **Apply the AI's codex changes automatically** (under it, off by default), the AI's fact and form
   changes for characters, places and things already in the codex are saved straight away instead of
-  waiting. They are listed under **Already applied by the AI** in the entry's Review changes at that
-  chapter, with the sentence each came from, until you **Approve** it (or **Approve all**) or **Undo**
-  it (the fact goes back to what it was, and the AI won't apply it again). If you edit the chapter, the
+  waiting. Each is marked (amber) on the entry's page and waits on the chapter's review page, with the
+  sentence it came from, until you **Approve** it or **Undo** it (the fact goes back to what it was,
+  and the AI won't apply it again). If you edit the chapter, the
   AI's unapproved facts from it are replaced by its new reading, but approved and edited ones are kept.
   New entries, removals and contradictions still wait as suggestions.
 - **Review** (a story's menu): a page listing what may need fixing (missing, stale or wrong

@@ -37,10 +37,12 @@ try {
   const page = await context.newPage();
   page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
   await send("PUT", "/api/queue/paused", { paused: true });
-  const section = page.locator(".entry-section", { has: page.getByRole("heading", { name: "Update from the story", exact: true }) });
+  // The "Update from the story" tab at the foot of the entry page.
+  const section = page.getByRole("tabpanel");
 
   await page.goto(entryUrl(mira));
-  await section.waitFor();
+  await page.getByRole("tab", { name: "Update from the story" }).click();
+  await section.locator(".update-from-story").waitFor();
   ok((await section.innerText()).includes("2 chapters name Mira since it last changed: “Growth”, “Flight”."), "it says which chapters it will read (not Quiet, which doesn't name her)");
   const queued = page.waitForResponse((r) => r.url().endsWith(`/api/stories/${sid}/update-entry`) && r.request().method() === "POST");
   await section.getByRole("button", { name: "Update Mira from the story" }).click();
@@ -55,13 +57,15 @@ try {
   await clearQueue();
 
   await page.goto(entryUrl(zed));
-  await section.waitFor();
+  await page.getByRole("tab", { name: "Update from the story" }).click();
+  await section.locator(".update-from-story").waitFor();
   ok((await section.innerText()).includes("No chapter on the way here names Zed since it last changed"), "nothing to read: it says so");
   ok(await section.getByRole("button", { name: /from the story/ }).count() === 0, "…and offers no button");
 
   await page.setViewportSize({ width: 390, height: 900 });
   await page.goto(entryUrl(mira));
-  await section.waitFor();
+  await page.getByRole("tab", { name: "Update from the story" }).click();
+  await section.locator(".update-from-story").waitFor();
   ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "at phone width the page does not scroll sideways");
 } finally {
   await send("PUT", "/api/queue/paused", { paused: false });

@@ -146,7 +146,7 @@ try {
   ok((await thumb.getAttribute("src")) === `/api/stories/${storyId}/codex-pictures/${one}`, "the codex list shows the entry's picture as a thumbnail");
   ok((await page.locator(".entry-card", { hasText: "Cellar" }).locator("img.codex-thumb").count()) === 0, "an entry without a picture has no thumbnail");
   await page.goto(`${BASE}/s/${storyId}/codex/${zephyr}?at=${first}`);
-  ok((await page.locator(".entry-head img.codex-thumb").getAttribute("src")) === `/api/stories/${storyId}/codex-pictures/${one}`, "the entry's page shows it too, linked to the picture page");
+  ok((await page.locator(".entry-details-line img.codex-thumb").getAttribute("src")) === `/api/stories/${storyId}/codex-pictures/${one}`, "the entry's page shows it too, linked to the picture page");
 
   // ---- another picture from the second chapter on ----
   await page.goto(`${BASE}${codexUrl(second)}`);

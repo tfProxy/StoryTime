@@ -52,7 +52,8 @@ await dialog.getByRole("button", { name: "Move to Ch. 1" }).click();
 await dialog.waitFor({ state: "detached" });
 await page.locator(".entry-start", { hasText: "Ch. 1 “Root”" }).waitFor();
 ok((await startOf()) === root, "the entry now starts at Root");
-ok(await page.locator("#entry-history").getByText("Moved start from “The Gate” to “Root”").isVisible(), "History shows the move");
+await page.getByRole("tab", { name: "History" }).click();
+ok(await page.getByRole("tabpanel").getByText("Moved start from “The Gate” to “Root”").isVisible(), "History shows the move");
 
 // ---- later, past a fact: asks to move it too ----
 await page.locator(".entry-start").getByRole("button", { name: "Change…" }).click();

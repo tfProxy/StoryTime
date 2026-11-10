@@ -1,7 +1,8 @@
-// Facts that clash between forms: an every-form fact whose aspect a form also describes is listed above the Facts, with a
-// button that moves it to the form it still fits (from where it was set), or removes it when every form has its own.
+// A form's own fact on an aspect an every-form fact also has: on the entry page the every-form fact is struck through and
+// says the form's fact replaces it while the entry is in that form; What the AI is told names the replaced aspects. No
+// notice, nothing to move. Earlier chapters, in the other form, read the every-form fact.
 import { launch } from "./browser.mjs";
-import { unfoldEntryFolds } from "./unfold.mjs";
+import { factRow } from "./entryPage.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 
@@ -27,42 +28,39 @@ await fact(A, "Hair", "short red hair", "human");
 const entryUrl = (at) => `${BASE}/s/${story.story_id}/codex/${entry}?at=${at}`;
 
 const browser = await launch();
-const context = await browser.newContext();
-await unfoldEntryFolds(context);
-const page = await context.newPage();
+const page = await (await browser.newContext()).newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 const ed = page.locator(".entry-editor");
-const clashes = ed.locator(".form-clashes");
+const told = ed.locator(".entry-ai-told");
 
-await page.goto(entryUrl(A));
-await clashes.waitFor();
-ok(await clashes.getByText("while Mira is in that form, the AI reads both").isVisible(), "the clash notice says why it matters");
-const rows = clashes.locator("li");
-ok(await rows.count() === 2, "both clashing facts are listed (Ears and Hair), Personality is not");
-const ears = rows.filter({ hasText: "round human ears" });
-ok((await ears.innerText()).includes("tall fox ears") && (await ears.innerText()).includes("(vixen)"), "a clash shows the form's own fact beside the every-form one");
-const hair = rows.filter({ hasText: "long red hair" });
-ok(await hair.getByText("Every form has its own Hair, so this one isn't needed.").isVisible(), "when every form has its own, the fix is to remove it");
-await ears.getByRole("button", { name: "Make “Ears: round human ears” a human fact" }).click();
-await rows.filter({ hasText: "round human ears" }).waitFor({ state: "detached" });
-ok(await ed.getByText("human (not current: not sent to the AI)").isVisible(), "Move to human puts the fact under the human form");
-await hair.getByRole("button", { name: "Remove “Hair: long red hair”" }).click();
-await clashes.waitFor({ state: "detached" });
-ok(true, "Remove it removes the last clash, and the notice goes");
-const ai = await ed.locator(".fact-ai").innerText();
-ok(ai.includes("tall fox ears") && !ai.includes("round human ears") && !ai.includes("long red hair"), "the AI no longer reads the clashing facts: " + ai);
+try {
+  await page.goto(entryUrl(A));
+  await told.waitFor();
+  ok((await ed.locator(".form-clashes, .notice", { hasText: "the AI reads both" }).count()) === 0 && (await ed.getByRole("button", { name: /^Move to|^Make “/ }).count()) === 0, "no clash notice and nothing to move");
+  const ears = factRow(page, "round human ears");
+  const hair = factRow(page, "long red hair");
+  ok((await ears.getAttribute("class")).includes("replaced") && (await ears.innerText()).includes("replaced by the vixen Ears while Mira is vixen"), "the every-form Ears is struck through, replaced by the vixen Ears");
+  ok((await hair.getAttribute("class")).includes("replaced") && (await hair.innerText()).includes("replaced by the vixen Hair"), "…and so is the every-form Hair");
+  ok(!(await factRow(page, "stubborn").getAttribute("class")).includes("replaced"), "Personality, which the vixen form doesn't describe, is not");
+  ok(await ears.locator(".fact-line").evaluate((el) => getComputedStyle(el).textDecorationLine === "line-through"), "…drawn struck through");
+  ok((await told.innerText()).includes("Mira's vixen facts replace the every-form Ears, Hair while Mira is vixen."), "What the AI is told names the replaced aspects");
+  const ai = await told.locator(".fact-ai").innerText();
+  ok(ai.includes("tall fox ears") && ai.includes("a red coat") && ai.includes("stubborn"), "the AI reads the vixen facts and the rest: " + ai);
 
-// The move counts from where the fact was set: at the root Mira (human) still has her round ears.
-await page.goto(entryUrl(root));
-await ed.locator(".fact-ai").waitFor();
-const rootAi = await ed.locator(".fact-ai").innerText();
-ok(rootAi.includes("round human ears") && !rootAi.includes("long red hair"), "earlier chapters read the moved fact as the human form's, and the removed one is gone from the start: " + rootAi);
-ok(await clashes.count() === 0, "…with no clash there");
+  // At the root Mira is human: nothing is replaced, and the every-form facts are read.
+  await page.goto(entryUrl(root));
+  await told.waitFor();
+  ok((await ed.locator(".ef-row.replaced").count()) === 0, "earlier, in the human form, nothing is struck through");
+  const rootAi = await told.locator(".fact-ai").innerText();
+  ok(rootAi.includes("round human ears") && rootAi.includes("long red hair"), "…and the AI reads the every-form facts: " + rootAi);
 
-await page.setViewportSize({ width: 390, height: 900 });
-await page.goto(entryUrl(A));
-await ed.locator(".fact-ai").waitFor();
-ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "at phone width the page does not scroll sideways");
-
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto(entryUrl(A));
+  await told.waitFor();
+  ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), "at phone width the page does not scroll sideways");
+} catch (e) {
+  console.log("ERROR", e.message);
+  failed = true;
+}
 await browser.close();
 process.exit(failed ? 1 : 0);

@@ -2,6 +2,7 @@
 // Bible's Codex section at a chapter (every entry that changed, appeared or left), earlier to later and across branches.
 import { launch } from "./browser.mjs";
 import { unfoldEntryFolds } from "./unfold.mjs";
+import { entryAction } from "./entryPage.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 
@@ -36,8 +37,10 @@ page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true
 const compare = page.getByRole("region", { name: "Comparison" });
 const line = (label) => compare.locator(".change-list li", { hasText: `${label}:` });
 
-// ---- an entry's page: pick a chapter with "Compare with" ----
+// ---- an entry's page: "Compare with a chapter…" in its ⋯ menu, then pick a chapter ----
 await page.goto(`${BASE}/s/${story.story_id}/codex/${mira}?at=${well}`);
+ok((await page.locator("#entry-compare").count()) === 0, "the comparison is out of the way until asked for");
+await entryAction(page, "Compare with a chapter…");
 await page.locator("#entry-compare").click();
 await page.getByRole("searchbox", { name: "Search chapter titles" }).fill("Root");
 await page.locator(".chapter-tree-results button").first().click();

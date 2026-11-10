@@ -121,7 +121,10 @@ export default function CodexEntryPage(props: Props) {
   const router = useRouter();
   const shared = entry.shared_entry_id;
   const { busy, error, setError, replace, share, removeHere, retire } = useEntryActions({ entry, chapterId, storyId });
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  // A linked entry's details hold its notice (where its name and notes come from), so they are open until closed
+  // (also right after the entry is shared from the ⋯ menu).
+  const [detailsToggled, setDetailsOpen] = useState<boolean | null>(null);
+  const detailsOpen = detailsToggled ?? Boolean(entry.shared_entry_id);
   const [savedNote, setSavedNote] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -297,7 +300,7 @@ export default function CodexEntryPage(props: Props) {
         </div>
       </div>
       {detailsOpen && (
-        <section className="entry-section" id="entry-details" aria-label="Name, type and keywords">
+        <section className="entry-section" id="entry-details" aria-label={shared ? "Details" : "Name, type and keywords"}>
           <h2>{shared ? "Details" : "Name, type and keywords"}</h2>
           {shared ? (
             <LinkedEntryDetails entry={entry} chapterId={chapterId} chapterTitle={here.title} />
@@ -361,6 +364,10 @@ export default function CodexEntryPage(props: Props) {
         suggestions={open.filter(fromText)}
         onSaved={refresh}
         onError={setError}
+        onNotesToFacts={() => {
+          setTab("notes");
+          reveal("entry-tabpanel");
+        }}
       />
 
       <AiToldBox entry={entry} here={here.title} />
@@ -547,6 +554,7 @@ function FactsTable({
   suggestions,
   onSaved,
   onError,
+  onNotesToFacts,
 }: {
   entry: CodexEntry;
   factOps: FactOp[];
@@ -561,6 +569,8 @@ function FactsTable({
   suggestions: CodexSuggestion[];
   onSaved: () => void;
   onError: (message: string | null) => void;
+  /** The notes-only hint's "Turn notes into facts": shows the notes tab, where the button is. */
+  onNotesToFacts: () => void;
 }) {
   const settings = useSettings();
   // A fact's id while it is being changed, "new" while one is being added.
@@ -750,6 +760,7 @@ function FactsTable({
         hints={hints}
         busy={busy}
         editing={editing}
+        notesToFacts={{ start: onNotesToFacts, busy: false }}
         onEdit={(factId) => {
           setEditing(factId);
           requestAnimationFrame(() => document.getElementById(`fact-${factId}`)?.scrollIntoView({ block: "nearest" }));
@@ -788,6 +799,9 @@ function FactsTable({
             )}
           </div>
           <Markers list={formMarkers} />
+          {entry.form && entry.baseForm && sameAspect(entry.form.name, entry.baseForm) && (
+            <p className="meta ef-wide">{entry.baseForm} is the normal form, so the AI isn&apos;t told the form, only its facts, unless it has just changed back.</p>
+          )}
           {laterForm && (
             <p className="meta ef-wide">
               Lasts until “{laterForm.title}”, where {entry.name} is {[laterForm.form, laterForm.stage].filter(Boolean).join(", ") || "given no form"}.

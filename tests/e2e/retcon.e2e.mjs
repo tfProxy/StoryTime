@@ -37,6 +37,7 @@ try {
 
   // ---- the fact's Retcon… opens the form ----
   await page.goto(`${BASE}/s/${sid}/codex/${mira}?at=${next}`);
+  await page.getByLabel("More for Eyes", { exact: true }).click(); // (the fact row's ⋯: Retcon the chapters…)
   await page.getByRole("link", { name: "Retcon Eyes" }).click();
   const form = page.getByRole("region", { name: "Start a retcon" });
   await form.waitFor();

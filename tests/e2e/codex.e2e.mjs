@@ -52,6 +52,8 @@ await page.getByLabel(/Keywords/).fill("the thief, Mir");
 await page.getByRole("button", { name: "Add entry" }).click();
 await page.getByRole("heading", { name: "Mira", level: 1 }).waitFor();
 ok(new RegExp(`/s/${story.story_id}/codex/[^/]+\\?at=${root}$`).test(page.url()), "adding an entry opens its page, at this chapter: " + page.url());
+ok((await editor.locator(".entry-details-text").innerText()).includes("Keywords: the thief, Mir"), "the entry page's details line shows the keywords");
+await editor.locator(".entry-details-text").getByRole("button", { name: "Edit details" }).click();
 ok((await editor.getByLabel(/Keywords/).inputValue()) === "the thief, Mir" && (await editor.locator(".entry-keywords").count()) === 0, "the keywords show in the entry page's box, with no Inherited line");
 await page.getByLabel(/Always include/).check();
 await page.getByRole("button", { name: "Save changes" }).click();
@@ -80,12 +82,15 @@ await editor.getByRole("button", { name: "Save", exact: true }).click();
 await editor.getByText("She is shy.").waitFor();
 
 // history + restore
-await editor.getByText("3 versions", { exact: true }).waitFor(); // (the History fold, opened by the test's context)
-ok(await editor.locator("ol.history li").first().innerText().then((t) => /Changed/.test(t) && /content/.test(t)), "history lists the change");
-await editor.getByRole("button", { name: "Restore this version" }).first().click();
-await editor.getByText("No notes.").waitFor();
-await editor.locator("ol.history li").nth(3).waitFor();
-ok(true, "restore adds a new version (history now 4)");
+await page.getByRole("tab", { name: "History" }).click();
+const historyTab = page.getByRole("tabpanel");
+await historyTab.locator("ol.history li").nth(2).waitFor();
+ok((await historyTab.locator("ol.history li").count()) === 3 && (await historyTab.locator("ol.history li").first().innerText().then((t) => /Changed/.test(t) && /content/.test(t))), "the History tab lists the 3 versions, the change first");
+await historyTab.getByRole("button", { name: "Restore this version" }).first().click();
+await historyTab.locator("ol.history li").nth(3).waitFor();
+await page.getByRole("tab", { name: "Your notes" }).click();
+await page.getByRole("tabpanel").getByText("No notes.").waitFor();
+ok(true, "restore adds a new version (history now 4), with the old notes");
 // the horse, for the isolation checks: change the fact at A
 await fact("A human thief with a scar.").getByRole("button", { name: "Edit" }).click();
 await page.getByLabel("Fact", { exact: true }).fill("Now a horse. Cannot speak.");

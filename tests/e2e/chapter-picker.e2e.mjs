@@ -38,6 +38,11 @@ const entryUrl = (at) => `${BASE}/s/${sid}/codex/${rowan}?at=${at}`;
 const aliasesAt = async (chapter) => (await send("GET", `/api/chapters/${chapter}/codex`)).entries.find((e) => e.name === "Rowan")?.aliases.join() ?? "";
 
 const box = async (loc) => await loc.first().boundingBox();
+// The entry page's details form opens from "Edit details" on its details line.
+async function openDetailsForm() {
+  await page.locator(".entry-details-text").getByRole("button", { name: "Edit details" }).click();
+  await page.locator(".entry-editor form.entry-details-form").waitFor();
+}
 const pressed = async (loc) => (await loc.getAttribute("aria-pressed")) === "true";
 
 try {
@@ -55,7 +60,7 @@ async function sectionA() {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(entryUrl(chapters[last]));
   const details = page.locator(".entry-editor form.entry-details-form");
-  await details.waitFor();
+  await openDetailsForm();
   const group = details.getByRole("group", { name: "Takes effect from" });
   const pill = (name) => group.getByRole("button", { name, exact: true });
   const previous = group.getByRole("button", { name: /^Previous chapter/ });
@@ -117,47 +122,36 @@ async function sectionA() {
 
   // a pick that is not a quick choice keeps the path open after a reload
   await page.reload();
-  await details.waitFor();
+  await openDetailsForm();
   ok((await pathButtons.count()) === 0 && (await pressed(pill("This chapter"))), "after a reload the form starts on this chapter again, path closed");
   await pill("Earlier…").click();
   await pathButtons.nth(1).click();
   await pill("The start").click();
   ok((await pathButtons.count()) === 0 && (await pressed(pill("The start"))) && !(await pressed(pill("Earlier…"))), "a quick choice closes the path");
 
-  // the same picker on the fact form and the form change
-  const factsSection = page.locator(".entry-editor details.entry-fold", { has: page.getByRole("heading", { name: "Facts", exact: true }) });
-  await factsSection.getByRole("button", { name: "+ Add a fact" }).click();
-  const factForm = factsSection.locator(".fact-form");
-  await factForm.getByLabel("Aspect").fill("Eyes");
-  await factForm.getByLabel("Fact", { exact: true }).fill("amber");
-  await factForm.getByRole("group", { name: "Takes effect from" }).getByRole("button", { name: "Earlier…" }).click();
-  await factForm.locator(".chapter-picker-chapter").nth(3).click();
-  await factForm.getByRole("button", { name: "Save", exact: true }).click();
-  await factsSection.locator(".fact-line", { hasText: "amber" }).waitFor();
-  const eyesAt = async (chapter) => (await send("GET", `/api/chapters/${chapter}/codex`)).entries.find((e) => e.name === "Rowan")?.facts.some((f) => f.text === "amber");
-  ok((await eyesAt(chapters[3])) && !(await eyesAt(chapters[2])), "a fact saved from Earlier… lands on the chapter picked");
+  // (A fact on the entry page asks instead whether it is a change from this chapter or a correction: see codex-facts.)
 
   // the first chapter has no earlier chapters to offer
   await page.goto(entryUrl(chapters[0]));
-  await details.waitFor();
+  await openDetailsForm();
   ok((await details.locator(".chapter-picker").count()) === 0, "the first chapter has no “Takes effect from” on the Details form, as before");
 
   // a short path: only the buttons that mean something
   await page.goto(entryUrl(chapters[1]));
-  await details.waitFor();
+  await openDetailsForm();
   const shortNames = (await group.getByRole("button").allInnerTexts()).map((t) => t.trim());
   ok(shortNames.join("|") === `This chapter|Previous chapter (${TITLES[0]})`, "with two chapters: This chapter and Previous chapter only: " + shortNames.join("|"));
   await page.goto(entryUrl(chapters[2]));
-  await details.waitFor();
+  await openDetailsForm();
   const three = (await group.getByRole("button").allInnerTexts()).map((t) => t.trim());
   ok(three.join("|") === `This chapter|Previous chapter (${TITLES[1]})|The start`, "with three chapters there is no Earlier…: " + three.join("|"));
   await page.goto(entryUrl(chapters[3]));
-  await details.waitFor();
+  await openDetailsForm();
   ok((await group.getByRole("button", { name: "Earlier…" }).count()) === 1, "with four chapters Earlier… is there");
 
   // keyboard: the buttons can be reached and pressed
   await page.goto(entryUrl(chapters[last]));
-  await details.waitFor();
+  await openDetailsForm();
   await pill("The start").focus();
   await page.keyboard.press("Enter");
   ok(await pressed(pill("The start")), "a button can be pressed from the keyboard");

@@ -58,6 +58,9 @@ await ed.locator(".fact-line", { hasText: "a notch in the left one" }).waitFor({
 ok(!(await hints.innerText()).includes("same aspect written two ways"), "Keep “Ears” removes the other one, and its hint goes");
 await open(notesOnly);
 ok(await hints.getByRole("button", { name: "Turn notes into facts" }).isVisible(), "the notes-only hint offers Turn notes into facts");
+await page.getByRole("tab", { name: "History" }).click();
+await hints.getByRole("button", { name: "Turn notes into facts" }).click();
+ok((await page.getByRole("tab", { name: "Your notes" }).getAttribute("aria-selected")) === "true" && (await page.getByRole("tabpanel").getByRole("button", { name: "Turn notes into facts" }).isVisible()), "…which shows the notes tab and its button");
 
 // ---- the Story Bible: a count on each card, and always-included entries that crowd the prompt ----
 const cardOf = (name) => page.locator(".entry-card", { hasText: name });

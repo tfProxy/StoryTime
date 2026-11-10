@@ -1,8 +1,10 @@
 import { launch, useMockAi } from "./browser.mjs";
-import { unfoldEntryFolds } from "./unfold.mjs";
+import { entryAction, factRow, openTab } from "./entryPage.mjs";
 
-// The codex entry's own page: keywords, details, form, facts, notes (not sent to the AI), Turn notes into facts, and
-// the places that lead to it (the codex list, the Story Bible, the ☰ menu, the writing page's drawer).
+// The codex entry's own page: the bar (back, name, chapter picker, ‹ ›, ⋯), the details line and Edit details, the form
+// row and Change form, notes (not sent to the AI) and Turn notes into facts in the tabs, the line to the changes waiting
+// beside the text, and the places that lead to the page (the codex list, the Story Bible, the ☰ menu, the writing
+// page's drawer).
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 
 let failed = false;
@@ -16,31 +18,29 @@ const post = (url, body) => send("POST", url, body);
 const ai = await useMockAi(BASE); // no automatic codex check; nothing here calls the AI
 const browser = await launch();
 try {
-  // ---- a story with one entry: keywords, notes, two forms, facts ----
+  // ---- a story with one entry: keywords, notes, two forms, facts; Root -> A -> A2 ----
   const story = await post("/api/stories", { title: "Entry Tale", premise: "p", chapter: { title: "Root", body: "Rowan stood there.", choices: ["Go to A"] } });
   const sid = story.story_id;
   const R = story.chapter_id;
   const choice = (await send("GET", `/api/chapters/${R}`)).choices[0];
   const A = (await post("/api/chapters", { choice_id: choice.id, title: "Chapter A", body: "Rowan's ears changed. Her hair turned silver.", choices: ["Onward"] })).chapter_id;
+  const A2 = (await post("/api/chapters", { choice_id: (await send("GET", `/api/chapters/${A}`)).choices[0].id, title: "Chapter A2", body: "Rowan rested.", choices: ["Further"] })).chapter_id;
   const rowan = (await post("/api/codex", { anchor_chapter_id: R, op: "create", name: "Rowan", type: "character", aliases: ["Ro", "the traveller"], content: "She is shy and quick.", always_include: false })).entry_id;
   const fact = (anchor_chapter_id, aspect, text, form = "") => post("/api/codex/facts", { anchor_chapter_id, entry_id: rowan, op: "set", aspect, form, text });
   await fact(R, "Ears", "round human ears");
   await fact(R, "Tail", "no tail at all", "human");
   await fact(R, "Tail", "a bushy russet tail", "vixen");
   await fact(R, "form", "", "human");
+  await fact(A2, "form", "", "human"); // a later chapter sets the form again
   const entryUrl = (at) => `${BASE}/s/${sid}/codex/${rowan}?at=${at}`;
 
   const context = await browser.newContext();
-  await unfoldEntryFolds(context);
   const page = await context.newPage();
   page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
   page.on("dialog", (d) => d.accept());
   const ed = page.locator(".entry-editor");
-  const section = (heading) => ed.locator(".entry-section", { has: page.getByRole("heading", { name: heading, exact: true }) });
-  // (By the fact's own line: a form that is open holds its text in a textarea, which also counts as the row's text.)
-  const row = (t) => ed.locator(".fact-row").filter({ has: page.locator(".fact-line", { hasText: t }) });
+  const bar = page.locator(".entry-bar");
   const box = async (loc) => (await loc.first().boundingBox());
-  const below = async (a, b) => ((await box(a)).y >= (await box(b)).y + (await box(b)).height - 1);
   const entryAt = async (chapter) => (await send("GET", `/api/chapters/${chapter}/codex`)).entries.find((e) => e.name === "Rowan");
 
   // ---- the list opens the entry's page ----
@@ -53,114 +53,76 @@ try {
   await card.click();
   await page.getByRole("heading", { name: "Rowan", level: 1 }).waitFor();
   ok(page.url() === entryUrl(A), "the card opens the entry page at this chapter: " + page.url());
-  const atBar = page.locator(".codex-at-bar");
-  ok((await atBar.getByRole("link", { name: "← Codex" }).getAttribute("href")) === `/s/${sid}/review?tab=codex&chapter=${A}` && (await atBar.innerText()).includes("Rowan at “Chapter A”"), "the bar at the top leads back to the codex at the chapter and says which chapter the page is at");
-  const path = await page.locator(".entry-path").innerText();
-  ok(/Viewing at:\s*Root\s*›\s*Chapter A/.test(path) && (await page.locator(".entry-path a", { hasText: "Root" }).getAttribute("href")) === `/s/${sid}/codex/${rowan}?at=${R}`, "a Viewing at line links each chapter to the entry at that chapter: " + path);
 
-  // ---- keywords are always visible, under the field in the always-visible Details section ----
-  const keywords = ed.locator(".entry-keywords");
-  const detailsBox = section("Name, type and keywords");
-  ok((await keywords.innerText()).replace(/\s+/g, " ") === "Inherited: Ro (from “Root”), the traveller (from “Root”)", "keywords that come from an earlier chapter are listed once, with where from, under the box");
-  ok(!(await detailsBox.innerText()).includes("Keywords:") && (await detailsBox.getByLabel(/Keywords/).inputValue()) === "Ro, the traveller" && (await detailsBox.innerText()).includes("comma-separated; words in the story that bring this entry into the AI's prompt") && (await detailsBox.getByText("bring this entry into the AI's prompt").count()) === 1, "…with no Keywords: summary line, and one short hint");
-  // labels and fields share a row on a wide screen
-  // (The label's box starts where its text does; a field on the same row starts at the same height, to its right.)
+  // ---- the bar: back to the codex, the name, ‹ the chapter ›, ⋯ ----
+  ok((await bar.getByRole("link", { name: "← Codex" }).getAttribute("href")) === `/s/${sid}/review?tab=codex&chapter=${A}`, "the bar leads back to the codex at the chapter");
+  ok((await bar.getByRole("heading", { level: 1 }).innerText()) === "Rowan" && (await bar.locator(".entry-chapter-picker > summary").innerText()).trim() === "“Chapter A” ▾", "…names the entry and the chapter it is shown as of");
+  ok((await bar.getByRole("link", { name: "Previous chapter: “Root”" }).getAttribute("href")) === `/s/${sid}/codex/${rowan}?at=${R}`, "‹ goes to the entry at the chapter before");
+  ok((await bar.getByRole("link", { name: "Next chapter: “Chapter A2”" }).getAttribute("href")) === `/s/${sid}/codex/${rowan}?at=${A2}`, "› goes to the entry at the chapter after");
+  await bar.locator(".entry-chapter-picker > summary").click();
+  const list = bar.locator(".entry-chapter-list");
+  ok((await list.getByRole("link", { name: "Root" }).getAttribute("href")) === `/s/${sid}/codex/${rowan}?at=${R}` && (await list.locator("strong[aria-current]").innerText()) === "Chapter A" && (await list.getByRole("link", { name: "Chapter A2" }).count()) === 1, "the chapter button lists the chapters on the path, this one, and the ones after it");
+  await list.getByRole("link", { name: "Root" }).click();
+  await page.waitForURL(entryUrl(R));
+  ok((await bar.getByRole("link", { name: /^Previous chapter/ }).count()) === 0, "a chapter picked there opens the entry at it; the entry's first chapter has no ‹");
+  await page.goto(entryUrl(A));
+  await page.mouse.wheel(0, 2000);
+  await page.waitForTimeout(200);
+  ok((await box(bar)).y >= 0 && (await box(bar)).y < 120, "the bar stays at the top while the page scrolls");
+  await page.mouse.wheel(0, -4000);
+
+  // ---- the details line, and Edit details opening the form ----
+  const details = ed.locator(".entry-details-text");
+  const detailsText = (await details.innerText()).replace(/\s+/g, " ");
+  ok(detailsText.includes("Character") && detailsText.includes("First appears in Ch. 1 “Root”") && detailsText.includes("Keywords: Ro, the traveller"), "the details line has the type, where it first appears and the keywords: " + detailsText);
+  ok((await ed.locator("form.entry-details-form").count()) === 0, "the details form is closed at first");
+  await details.getByRole("button", { name: "Edit details" }).click();
+  const dForm = ed.locator("#entry-details form.entry-details-form");
+  ok((await ed.locator(".entry-keywords").innerText()).replace(/\s+/g, " ") === "Inherited: Ro (from “Root”), the traveller (from “Root”)", "Edit details opens the form, with the keywords from an earlier chapter listed with where from");
+  ok((await dForm.getByLabel(/Keywords/).inputValue()) === "Ro, the traveller" && (await dForm.getByRole("button", { name: "This chapter", exact: true }).getAttribute("aria-pressed")) === "true", "…the keywords in their box, taking effect from this chapter");
   await page.setViewportSize({ width: 1280, height: 800 });
-  const dForm = detailsBox.locator("form.entry-details-form");
   const labelOf = (text) => dForm.locator("label, .chapter-picker-label", { hasText: new RegExp(`^${text}`) });
   const sameRow = async (text, control) => Math.abs((await box(control)).y - (await box(labelOf(text))).y) < 6 && (await box(control)).x > (await box(labelOf(text))).x + 100;
-  ok(
-    (await sameRow("Name", dForm.getByLabel("Name"))) &&
-      (await sameRow("Type", dForm.locator("select").first())) &&
-      (await sameRow("Keywords", dForm.getByLabel(/Keywords/))) &&
-      (await sameRow("Takes effect from", dForm.getByLabel(/Takes effect from/))),
-    "Name, Type, Keywords and Takes effect from each have their field on the same row as the label, to its right",
-  );
-  await page.goto(entryUrl(R));
-  await ed.waitFor();
-  ok((await ed.locator(".entry-keywords").count()) === 0 && (await section("Name, type and keywords").getByLabel(/Keywords/).inputValue()) === "Ro, the traveller", "an entry whose keywords were all added here has no Inherited line");
-  await page.goto(entryUrl(A));
-  await ed.waitFor();
-  // a phone shows the label above its field, and the path as a vertical list
-  await page.setViewportSize({ width: 390, height: 800 });
-  ok((await box(dForm.getByLabel("Name"))).y > (await box(labelOf("Name"))).y + 5, "on a phone the field is under its label");
-  const phoneCurrent = await box(page.locator(".entry-path .chapter-nav-current"));
-  const phonePrev = await box(page.locator(".entry-path .chapter-nav-prev"));
-  ok(phoneCurrent.y >= phonePrev.y + phonePrev.height - 1, "on a phone the current chapter is below the earlier ones");
-  await page.setViewportSize({ width: 1280, height: 800 });
-
-  // ---- Details is always there, above the Form section, and saves keywords ----
-  const details = section("Name, type and keywords").locator("form.entry-details-form");
-  ok((await details.isVisible()) && (await below(section("Form"), details)) && (await ed.getByRole("button", { name: "Edit details" }).count()) === 0, "the Details form is on the page without an Edit details button, above the Form section");
-  ok((await details.getByRole("button", { name: "This chapter", exact: true }).getAttribute("aria-pressed")) === "true", "…with “Takes effect from” on this chapter");
-  await details.getByLabel(/Keywords/).fill("Ro, the traveller, the fox");
-  await details.getByRole("button", { name: "Save changes" }).click();
-  await details.getByText("Saved", { exact: true }).waitFor();
+  ok((await sameRow("Name", dForm.getByLabel("Name"))) && (await sameRow("Keywords", dForm.getByLabel(/Keywords/))), "on a wide screen the fields are on the same row as their labels");
+  await dForm.getByLabel(/Keywords/).fill("Ro, the traveller, the fox");
+  await dForm.getByRole("button", { name: "Save changes" }).click();
+  await dForm.getByText("Saved", { exact: true }).waitFor();
   ok((await entryAt(A)).aliases.join() === "Ro,the traveller,the fox" && (await entryAt(R)).aliases.join() === "Ro,the traveller", "the keywords were saved at this chapter, not earlier");
+  await page.reload();
+  ok((await ed.locator(".entry-details-text").innerText()).includes("Keywords: Ro, the traveller, the fox"), "…and the details line shows them");
 
-  // ---- Change form opens beneath its button: pick an existing form, a stage, and see what the AI reads ----
-  const formSection = section("Form");
-  const changeForm = formSection.getByRole("button", { name: "Change form" });
-  await changeForm.click();
-  const formForm = formSection.locator(".fact-form");
-  ok(await below(formForm, formSection.locator(".facts-form")), "the form opens right under the Change form button");
-  const options = (await formForm.getByLabel("Form", { exact: true }).locator("option").allInnerTexts()).map((t) => t.trim());
-  ok(options.join("|") === "human|vixen|New form…", "the form is a drop-down of the current forms, with a New form… option: " + options.join("|"));
-  await formForm.getByLabel("Form", { exact: true }).selectOption("vixen");
-  await formForm.getByLabel("Stage (optional)").fill("halfway");
-  ok(await formForm.getByText("The AI will read: Form: vixen, halfway.").isVisible(), "a live line shows exactly what the AI will read");
-  await formForm.getByRole("button", { name: "Save", exact: true }).click();
-  await formSection.locator(".facts-form").getByText("Form: vixen").waitFor();
-  ok((await formSection.locator(".facts-form").innerText()).includes("halfway"), "the form and its stage show");
-  ok((await ed.locator(".fact-ai").innerText()).includes("Form: vixen, halfway."), "What the AI reads has the form line");
-  ok(await ed.getByText("vixen (current)").isVisible() && await ed.getByText("human (not current: not sent to the AI)").isVisible(), "the facts are grouped by form, the current one marked");
-  await changeForm.click();
-  await formForm.getByLabel("Form", { exact: true }).selectOption({ label: "New form…" });
-  await formForm.getByLabel("New form name").fill("kit");
-  await formForm.getByLabel("Stage (optional)").fill("");
-  ok(await formForm.getByText("The AI will read: Form: kit.").isVisible(), "a new form shows its line too");
-  await formForm.getByRole("button", { name: "Cancel" }).click();
-  ok((await formSection.locator(".facts-form").innerText()).includes("Form: vixen"), "Cancel leaves the form as it was");
+  // ---- the form row: Change form… opens a panel; a later chapter that sets the form is named ----
+  const formRow = ed.locator(".ef-form-row");
+  ok((await formRow.innerText()).includes("Lasts until “Chapter A2”, where Rowan is human."), "the form row says which later chapter sets the form again");
+  await formRow.getByRole("button", { name: "Change form…" }).click();
+  const options = (await formRow.getByLabel("Form", { exact: true }).locator("option").allInnerTexts()).map((t) => t.trim());
+  ok(options.slice(0, -1).sort().join("|") === "human|vixen" && options.at(-1) === "+ a new form…", "the panel offers the entry's forms and a new one: " + options.join("|"));
+  const from = (await formRow.getByLabel("From").locator("option").allInnerTexts()).map((t) => t.trim());
+  ok(from.join("|") === "“Chapter A” (this chapter)|“Chapter A2”", "…from this chapter or a later one: " + from.join("|"));
+  await formRow.getByLabel("Form", { exact: true }).selectOption("vixen");
+  await formRow.getByLabel("How far along (optional)").fill("halfway");
+  ok(await formRow.getByText("The AI will read: Form: vixen, halfway.").isVisible() && (await formRow.getByText("Rowan's vixen facts replace the every-form ones on the same aspect while Rowan is in that form.").isVisible()), "a live line shows what the AI will read, and that the form's facts replace the every-form ones");
+  const formPost = page.waitForRequest((r) => r.url().endsWith("/api/codex/form"));
+  await formRow.getByRole("button", { name: "Save", exact: true }).click();
+  const body = JSON.parse((await formPost).postData());
+  ok(body.move.length === 0 && body.form.anchor_chapter_id === A && body.form.name === "vixen", "Save changes the form from the chosen chapter and moves no facts");
+  await formRow.locator(".facts-form", { hasText: "halfway" }).waitFor();
+  ok((await formRow.innerText()).includes("vixen — halfway") && (await formRow.innerText()).includes("normal form: human"), "the form, its stage and the normal form show");
+  ok((await ed.locator(".entry-ai-told .fact-ai").innerText()).includes("Form: vixen, halfway."), "What the AI is told has the form line");
+  ok(await ed.getByRole("heading", { name: "vixen only · the form now" }).isVisible() && (await ed.locator(".ef-other summary", { hasText: "human only" }).isVisible()), "the facts are grouped by form, the current one shown, the other folded");
 
-  // ---- Add a fact opens at the end of the list ----
-  const factsSection = section("Facts");
-  await factsSection.getByRole("button", { name: "+ Add a fact" }).click();
-  const addForm = factsSection.locator(".fact-form");
-  ok(await below(addForm, factsSection.locator(".fact-row").last()), "the add form opens after the last fact");
-  await addForm.getByLabel("Aspect").fill("Eyes");
-  await addForm.getByLabel("Fact", { exact: true }).fill("amber");
-  await addForm.getByRole("button", { name: "Save", exact: true }).click();
-  await row("amber").waitFor();
-  ok(await row("amber").getByText("changed here").isVisible(), "the new fact is marked changed here");
-
-  // ---- a row's Edit opens under the row and saves ----
-  await row("amber").getByRole("button", { name: "Edit" }).click();
-  ok((await row("amber").locator(".fact-form").count()) === 1, "Edit opens the form inside the row");
-  await row("amber").getByLabel("Fact", { exact: true }).fill("amber with gold flecks");
-  await row("amber").getByRole("button", { name: "Save", exact: true }).click();
-  await row("gold flecks").waitFor();
-  ok(true, "the edited fact saved");
-  await row("gold flecks").getByRole("button", { name: "History" }).click();
-  ok(await row("gold flecks").getByText("Added", { exact: true }).isVisible() && await row("gold flecks").getByText("Changed", { exact: true }).isVisible(), "History shows the fact's versions");
-  await row("gold flecks").getByRole("button", { name: "Remove" }).click();
-  await row("gold flecks").waitFor({ state: "detached" });
-  ok(true, "Remove takes the fact off");
-
-  // ---- notes: not what the AI reads; Edit and Clear ----
-  const notes = section("Your notes (not sent to the AI)");
-  ok((await notes.innerText()).includes("She is shy and quick.") && !(await ed.locator(".fact-ai").innerText()).includes("She is shy"), "the notes are shown apart from what the AI reads");
+  // ---- notes, in the Your notes tab: not what the AI reads; Edit and Clear ----
+  const notes = await openTab(page, "Your notes");
+  ok((await notes.innerText()).includes("She is shy and quick.") && !(await ed.locator(".entry-ai-told .fact-ai").innerText()).includes("She is shy"), "the notes are shown apart from what the AI reads");
   await notes.getByRole("button", { name: "Edit", exact: true }).click();
-  ok((await notes.getByLabel("Notes", { exact: true }).count()) === 1, "Edit opens the textarea right there");
   await notes.getByLabel("Notes", { exact: true }).fill("She is shy. She loves apples.");
   await notes.getByRole("button", { name: "Save", exact: true }).click();
   await notes.locator(".entry-notes", { hasText: "She loves apples." }).waitFor();
   const saved = await entryAt(A);
   ok(saved.content === "She is shy. She loves apples." && saved.name === "Rowan" && saved.aliases.join() === "Ro,the traveller,the fox", "saving the notes keeps the other fields");
-  ok(!(await ed.locator(".fact-ai").innerText()).includes("apples"), "…and the AI still doesn't read them");
   await notes.getByRole("button", { name: "Clear" }).click();
   await notes.getByText("No notes.").waitFor();
-  ok((await entryAt(A)).content === "", "Clear empties the notes");
-  ok((await notes.getByRole("button", { name: "Turn notes into facts" }).count()) === 0, "…and there is nothing to turn into facts");
+  ok((await entryAt(A)).content === "" && (await notes.getByRole("button", { name: "Turn notes into facts" }).count()) === 0, "Clear empties the notes, leaving nothing to turn into facts");
   await notes.getByRole("button", { name: "Edit", exact: true }).click();
   await notes.getByLabel("Notes", { exact: true }).fill("She was born in the north. She hates the cold.");
   await notes.getByRole("button", { name: "Save", exact: true }).click();
@@ -172,31 +134,29 @@ try {
   const made = await (await queued).json();
   const run = await send("GET", `/api/ai-runs/${made.run_id}`);
   ok(typeof made.run_id === "string" && made.tasks === 1 && run.tasks[0].kind === "notes" && run.tasks[0].entryId === rowan, "the button makes a run with a notes task for this entry");
-  const inbox = notes.getByRole("link", { name: "Open the codex inbox" });
-  await inbox.waitFor();
-  ok((await inbox.getAttribute("href")) === `/s/${sid}/review?tab=codex&chapter=${A}`, "…with a link to the inbox, at the chapter the notes were written");
   for (const item of (await send("GET", "/api/queue")).items ?? []) await fetch(`${BASE}/api/queue/items/${item.key}`, { method: "DELETE" });
   await send("PUT", "/api/queue/paused", { paused: false });
 
-  // ---- suggestions waiting for this entry ----
+  // ---- a suggestion from the text: the line to the review beside the text, and a marker on the fact ----
+  ok((await ed.locator(".entry-waiting").count()) === 0, "with nothing waiting there is no changes line");
+  await fact(R, "Hair", "dark hair");
   const rev = (await send("GET", `/api/chapters/${A}`)).chapter.revision;
   await post(`/api/chapters/${A}/codex-suggestions`, { revision: rev, suggestions: [{ kind: "set", entry_id: rowan, aspect: "Hair", form: "", after: "silver", quote: "Her hair turned silver." }] });
+  const sug = (await send("GET", `/api/stories/${sid}/codex-suggestions?status=open`)).suggestions.find((s) => s.after === "silver");
   await page.goto(entryUrl(A));
-  const waiting = ed.locator("details#entry-review");
-  await waiting.locator("summary", { hasText: "Review changes from “Chapter A”" }).waitFor();
-  ok((await waiting.locator("summary").first().innerText()).includes("1 waiting"), "the review fold says one is waiting");
-  ok((await waiting.locator("article.inbox-card").count()) === 1 && (await waiting.innerText()).includes("silver"), "an open suggestion for the entry is shown on its page as a card");
-  ok((await waiting.locator(".source-badge").innerText()) === "From the text", "…labelled with where it comes from");
-  const foldBox = await waiting.boundingBox();
-  const factsBox = await ed.locator("details#entry-facts").boundingBox();
-  ok(foldBox.y + foldBox.height <= factsBox.y + 1, "…above the Facts");
-  await waiting.getByRole("button", { name: "Accept" }).first().click();
-  await ed.locator(".fact-line", { hasText: "silver" }).waitFor();
-  ok(true, "accepting it there adds the fact to the entry");
+  const waiting = ed.locator(".entry-waiting");
+  await waiting.waitFor();
+  ok((await waiting.getByRole("link").first().innerText()).includes("1 change waiting from “Chapter A” · Review beside the text →") && (await waiting.getByRole("link").first().getAttribute("href")) === `/c/${A}/codex-review?entry=${rowan}`, "one line says a change waits and links to the review beside the chapter's text");
+  const marker = factRow(page, "dark hair").locator(".ef-marker-suggest");
+  ok((await marker.innerText()).includes("“Chapter A” suggests “silver” · Review") && (await marker.getAttribute("href")) === `/c/${A}/codex-review?entry=${rowan}#s-${sug.id}`, "the fact has a marker linking to the suggestion's card");
+  ok((await ed.locator("article.inbox-card").count()) === 0 && (await ed.getByRole("button", { name: "Accept" }).count()) === 0, "there are no suggestion cards to accept here");
+  await page.goto(entryUrl(A2));
+  await waiting.waitFor();
+  ok((await waiting.innerText()).includes("Changes waiting from earlier chapters") && (await waiting.getByRole("link", { name: "“Chapter A” (1)" }).getAttribute("href")) === `/c/${A}/codex-review?entry=${rowan}`, "a later chapter links to the earlier chapter's review");
 
   // ---- a missing or foreign ?at= opens the chapter where the entry was last changed ----
   await page.goto(`${BASE}/s/${sid}/codex/${rowan}`);
-  ok(page.url().endsWith(`/codex/${rowan}`) && (await page.locator(".entry-path strong").innerText()) === "Chapter A", "without ?at= the entry opens where it was last changed");
+  ok(page.url().endsWith(`/codex/${rowan}`) && (await bar.locator(".entry-chapter-picker > summary").innerText()).includes("“Chapter A”"), "without ?at= the entry opens where it was last changed");
   await page.goto(`${BASE}/s/${sid}/codex/${rowan}?at=nonsense`);
   ok(await page.getByRole("heading", { name: "Rowan", level: 1 }).isVisible(), "a chapter that isn't in the story is ignored");
 
@@ -207,9 +167,6 @@ try {
   ok(/^\/s\/[^/]+\/codex\/[^/]+\?at=/.test(href) && !href.includes("/pictures"), "the Story Bible's entry list links to the entry page: " + href);
   await bibleLink.click();
   await page.getByRole("heading", { name: "Rowan", level: 1 }).waitFor();
-  await page.goto(`${BASE}/s/${sid}/review?tab=codex&chapter=${A}`);
-  await page.locator(".entry-card", { hasText: "Rowan" }).waitFor();
-  ok(true, "choosing a chapter lists the entries as cards, as of that chapter");
 
   // ---- the ☰ menu leads to the Story Bible from a chapter page and a story page ----
   await page.goto(`${BASE}/c/${A}`);
@@ -217,32 +174,27 @@ try {
   await page.locator(".site-menu").getByRole("link", { name: "Story Bible", exact: true }).click();
   await page.waitForURL(new RegExp(`/s/${sid}/review\\?chapter=${A}`));
   ok(await page.getByRole("heading", { name: "Story Bible", level: 1 }).isVisible(), "the ☰ menu's Story Bible link lands on the Story Bible");
-  await page.goto(`${BASE}/s/${sid}/details`);
-  await page.locator(".site-menu > summary").click();
-  ok((await page.locator(".site-menu").getByRole("link", { name: "Story Bible", exact: true }).getAttribute("href")) === `/s/${sid}/review`, "…and so does the story pages' menu");
-  await page.goto(`${BASE}/c/${A}/write?choice=${(await send("GET", `/api/chapters/${A}`)).choices[0].id}`);
-  await page.locator(".site-menu > summary").click();
-  ok((await page.locator(".site-menu").getByRole("link", { name: "Story Bible", exact: true }).count()) === 1, "…and the writing page's menu");
+  await page.goto(`${BASE}/c/${A2}/write?choice=${(await send("GET", `/api/chapters/${A2}`)).choices[0].id}`);
 
   // ---- the writing page's drawer opens the entry inside the drawer ----
+  await page.locator(".site-menu > summary").click();
   await page.getByRole("button", { name: "Codex", exact: true }).click();
   const drawer = page.locator("aside.codex-drawer");
   await drawer.waitFor();
   await drawer.locator(".entry-card", { hasText: "Rowan" }).click();
   await drawer.getByRole("heading", { name: "Rowan" }).waitFor();
-  ok(page.url().includes("/write") && (await drawer.getByRole("button", { name: "Save changes" }).isVisible()) && (await drawer.getByLabel(/Keywords/).inputValue()).includes("the fox"), "tapping a card opens the entry in the drawer, without leaving the page");
+  ok(page.url().includes("/write") && (await drawer.getByLabel(/Keywords/).count()) === 1, "tapping a card opens the entry in the drawer, without leaving the page");
   await drawer.getByRole("button", { name: "← All entries" }).click();
   await drawer.locator(".entry-card", { hasText: "Rowan" }).waitFor();
   ok(true, "← All entries goes back to the list");
 
-  // ---- going forwards, inherited keywords, the always-visible Details form, and removing from one chapter ----
+  // ---- branches: the chapters after, the summary, inherited keywords, removing from one chapter ----
   const hub = await post("/api/stories", { title: "Hub Tale", premise: "p", chapter: { title: "Hub", body: "A crossroads.", summary: "The travellers meet at the hub.", choices: ["Go down", "Climb up"] } });
   const H = hub.chapter_id;
   const [downChoice, upChoice] = (await send("GET", `/api/chapters/${H}`)).choices;
   const cellar = (await post("/api/chapters", { choice_id: downChoice.id, title: "The cellar", body: "Damp.", choices: [] })).chapter_id;
-  const roof = (await post("/api/chapters", { choice_id: upChoice.id, title: "The roof", body: "Windy.", summary: "Wind and slate.", choices: ["Climb higher"] })).chapter_id;
-  const roofChoice = (await send("GET", `/api/chapters/${roof}`)).choices[0];
-  await post("/api/chapters", { choice_id: roofChoice.id, title: "The chimney", body: "Soot.", choices: [] }); // so the roof has a chapter after it
+  const roof = (await post("/api/chapters", { choice_id: upChoice.id, title: "The roof", body: "Windy.", choices: ["Climb higher"] })).chapter_id;
+  await post("/api/chapters", { choice_id: (await send("GET", `/api/chapters/${roof}`)).choices[0].id, title: "The chimney", body: "Soot.", choices: [] });
   const lampFields = { name: "Lamp", type: "item", aliases: ["lantern"], content: "", always_include: false };
   const lamp = (await post("/api/codex", { anchor_chapter_id: H, op: "create", ...lampFields })).entry_id;
   await post("/api/codex", { anchor_chapter_id: cellar, op: "replace", entry_id: lamp, ...lampFields, content: "Cracked in the cellar." });
@@ -251,85 +203,54 @@ try {
 
   await page.goto(lampUrl(H));
   await page.getByRole("heading", { name: "Lamp", level: 1 }).waitFor();
-  const next = page.locator(".entry-path .chapter-nav-next");
-  const nextItems = next.locator("li");
-  ok((await nextItems.count()) === 2 && (await nextItems.allInnerTexts()).map((t) => t.replace(/\s+/g, " ").trim()).join("|") === "The cellar|The roof …", "the chapters that come next are a stack, one element each, with … only after the one that has chapters after it: " + (await nextItems.allInnerTexts()).join("|"));
-  ok(!(await page.locator(".entry-path").innerText()).includes("Next"), "…and the word Next is gone");
-  const [n1, n2, cur] = [await box(nextItems.nth(0)), await box(nextItems.nth(1)), await box(page.locator(".entry-path .chapter-nav-current"))];
-  ok(n2.y >= n1.y + n1.height - 1 && Math.abs(n1.x - n2.x) < 2 && n1.x > cur.x + cur.width - 1, "…stacked one above the other, to the right of the current chapter");
-  ok((await next.locator("a").first().getAttribute("href")) === `/s/${hub.story_id}/codex/${lamp}?at=${cellar}` && (await next.locator("a").first().getAttribute("title")) === "Choice: Go down", "…each linking to the entry at that chapter, with the choice as a tooltip");
-  ok((await page.locator(".entry-path .chapter-nav-prev").count()) === 0 && (await page.locator(".entry-path .chapter-nav-sep").count()) === 1, "the first chapter has no earlier chapters, and only one separator (before the stack)");
-  const summary = page.locator("details.chapter-summary");
-  ok((await summary.locator("summary").innerText()) === "Summary of “Hub”" && !(await summary.evaluate((d) => d.open)), "a collapsed “Summary of …” sits under it");
-  await summary.locator("summary").click();
-  ok(await summary.getByText("The travellers meet at the hub.").isVisible(), "…and opens to the chapter's summary");
-  await next.getByRole("link", { name: "The cellar" }).click();
-  await page.waitForURL(lampUrl(cellar));
-  ok((await page.locator(".entry-path strong").innerText()) === "The cellar" && (await page.locator(".entry-path .chapter-nav-next").count()) === 0 && (await page.locator(".entry-path .chapter-nav-sep").count()) === 1, "a link in the stack goes to the entry at that chapter; a last chapter has no stack and no trailing separator");
-  ok((await page.locator("details.chapter-summary").innerText()).includes("No summary yet.") && (await page.locator("details.chapter-summary a").getAttribute("href")) === `/c/${cellar}`, "a chapter without a summary says so and links to the chapter");
-
-  // keywords added at the root after the cellar changed its notes still reach the cellar, marked with where they came from
-  const kw = ed.locator(".entry-keywords");
-  const kwText = (await kw.innerText()).replace(/\s+/g, " ");
+  await bar.locator(".entry-chapter-picker > summary").click();
+  const later = (await bar.locator(".entry-chapter-list ul li").allInnerTexts()).map((t) => t.replace(/\s+/g, " ").trim());
+  ok(later.join("|") === "The cellar|The roof …", "the chapter button lists the chapters that come next, with … after one that has chapters after it: " + later.join("|"));
+  await bar.locator(".entry-chapter-picker > summary").click();
+  await entryAction(page, "Summary of this chapter");
+  ok(await ed.locator("#entry-summary").getByText("The travellers meet at the hub.").isVisible(), "Summary of this chapter in the ⋯ menu shows the chapter's summary");
+  await page.goto(lampUrl(cellar));
+  await entryAction(page, "Summary of this chapter");
+  ok((await ed.locator("#entry-summary").innerText()).includes("No summary yet.") && (await ed.locator("#entry-summary a").getAttribute("href")) === `/c/${cellar}`, "a chapter without a summary says so and links to the chapter");
+  await ed.locator(".entry-details-text").getByRole("button", { name: "Edit details" }).click();
+  const kwText = (await ed.locator(".entry-keywords").innerText()).replace(/\s+/g, " ");
   ok(kwText === "Inherited: lantern (from “Hub”), lamp (from “Hub”)", "inherited keywords say which chapter they came from: " + kwText);
 
-  // ---- the Details form is always there; Save waits for a change ----
-  const detailsForm = section("Name, type and keywords").locator("form.entry-details-form");
-  const saveDetails = detailsForm.getByRole("button", { name: "Save changes" });
-  ok(await detailsForm.isVisible() && (await saveDetails.isDisabled()), "Details is on the page without a button, and Save is disabled until something changes");
-  await detailsForm.getByLabel(/Keywords/).fill("lantern, lamp, brass");
-  ok(!(await saveDetails.isDisabled()), "…and turns on when a field changes");
-  await saveDetails.click();
-  await detailsForm.getByText("Saved", { exact: true }).waitFor();
-  ok((await saveDetails.isDisabled()), "…then waits again, with a brief “Saved”");
-  const kwAfter = (await kw.innerText()).replace(/\s+/g, " ");
-  ok(!kwAfter.includes("brass") && kwAfter.includes("lamp (from “Hub”)") && (await detailsForm.getByLabel(/Keywords/).inputValue()) === "lantern, lamp, brass", "a keyword added here is only in the box; the inherited line still says where the others came from: " + kwAfter);
-  ok((await send("GET", `/api/chapters/${cellar}/codex`)).entries.find((e) => e.name === "Lamp").aliases.join() === "lantern,lamp,brass", "the keywords were saved at this chapter");
-
-  // ---- Remove from this chapter only ----
-  await page.goto(lampUrl(cellar));
-  const menuItem = (name) => ed.locator(".more-menu-items").getByRole("button", { name });
-  const openMenu = () => ed.getByLabel("More entry actions", { exact: true }).click();
-  await openMenu();
+  // Remove from this chapter only
+  const menuItem = (name) => bar.locator(".more-menu-items").getByRole("button", { name });
+  await bar.getByLabel("More entry actions", { exact: true }).click();
   const removeItem = menuItem("Remove from this chapter only…");
   ok((await removeItem.isDisabled()) && ((await removeItem.getAttribute("title")) ?? "").includes("nothing to keep it in"), "with no chapter after it, “Remove from this chapter only…” is disabled and says why");
   await page.goto(lampUrl(H));
-  await openMenu();
+  await bar.getByLabel("More entry actions", { exact: true }).click();
   ok(((await removeItem.getAttribute("title")) ?? "").includes("Lamp stays in the 2 chapters after “Hub”."), "…and otherwise says how many chapters keep the entry");
   await removeItem.click();
   await page.waitForURL(lampUrl(cellar));
-  ok(await page.getByRole("heading", { name: "Lamp", level: 1 }).isVisible(), "it goes to the entry at the first chapter that keeps it");
-  ok(!(await send("GET", `/api/chapters/${H}/codex`)).entries.some((e) => e.name === "Lamp"), "the entry is gone at that chapter…");
-  const keptRoof = (await send("GET", `/api/chapters/${roof}/codex`)).entries.find((e) => e.name === "Lamp");
-  ok(keptRoof && keptRoof.aliases.join() === "lantern,lamp", "…and still there in the other chapter after it, with its keywords");
-  await page.goto(`${BASE}/c/${H}/codex`);
-  await page.getByText("No entries yet.").waitFor();
-  ok((await page.locator(".entry-card", { hasText: "Lamp" }).count()) === 0, "the chapter's codex page no longer lists it");
+  ok(!(await send("GET", `/api/chapters/${H}/codex`)).entries.some((e) => e.name === "Lamp"), "it goes to the first chapter that keeps it, and the entry is gone at that chapter…");
+  ok((await send("GET", `/api/chapters/${roof}/codex`)).entries.find((e) => e.name === "Lamp")?.aliases.join() === "lantern,lamp", "…and still there in the other chapter after it, with its keywords");
 
-  // ---- the ⋯ menu and the folds, on a phone (a context that leaves the folds as the page has them) ----
+  // ---- the ⋯ menu, the tabs and the layout on a phone ----
   const phone = await (await browser.newContext({ viewport: { width: 390, height: 800 } })).newPage();
   phone.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
-  await phone.goto(entryUrl(R));
+  await phone.goto(entryUrl(A));
   await phone.getByRole("heading", { name: "Rowan", level: 1 }).waitFor();
-  const fold = (name) => phone.locator("details.entry-fold", { has: phone.getByRole("heading", { name, exact: true }) });
-  const isOpen = (loc) => loc.evaluate((d) => d.open);
-  ok((await isOpen(fold("Facts"))) && !(await isOpen(fold("What the AI reads"))) && !(await isOpen(fold("Your notes (not sent to the AI)"))) && !(await isOpen(fold("Flesh out with AI"))) && !(await isOpen(fold("History"))) && !(await isOpen(fold("Name, type and keywords"))), "Facts is open and the other sections are folded");
-  ok(!(await phone.getByRole("heading", { name: "Remove", exact: true }).count()) && !(await phone.getByRole("heading", { name: "Use in other stories" }).count()), "there are no Remove or Use in other stories sections");
-  await phone.getByLabel("More entry actions", { exact: true }).click();
-  const items = phone.locator(".more-menu-items > *");
-  ok((await items.allInnerTexts()).map((t) => t.trim()).join("|") === "Edit name, type and keywords|Pictures|History (1 version)|Share to other stories…|Remove from this chapter only…|Retire from here on…", "the ⋯ menu lists the entry's actions: " + (await items.allInnerTexts()).join("|"));
-  const menuBox = await box(phone.locator(".more-menu-items"));
+  const pbar = phone.locator(".entry-bar");
+  ok((await box(pbar.locator(".entry-bar-at"))).y > (await box(pbar.getByRole("heading", { level: 1 }))).y + 10, "on a phone the chapter goes under the name");
+  await pbar.getByLabel("More entry actions", { exact: true }).click();
+  const items = (await pbar.locator(".more-menu-items > *").allInnerTexts()).map((t) => t.trim());
+  ok(items.join("|") === "Edit details|Pictures|Compare with a chapter…|Summary of this chapter|Share to other stories…|Remove from this chapter only…|Retire from here on…", "the ⋯ menu lists the entry's actions: " + items.join("|"));
+  const menuBox = await box(pbar.locator(".more-menu-items"));
   ok(menuBox.x >= 0 && menuBox.x + menuBox.width <= 390, "the menu stays on the phone screen");
-  ok((await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)), "the entry page does not scroll sideways at 390px");
-  ok((await phone.locator(".more-menu-items").getByRole("link", { name: "Pictures" }).getAttribute("href")) === `/s/${sid}/codex/${rowan}/pictures?at=${R}`, "Pictures in the menu links to the picture page");
-  await phone.getByRole("button", { name: "History (1 version)" }).click();
-  ok((await isOpen(fold("History"))) && !(await phone.locator("details.more-menu").evaluate((d) => d.open)) && (await phone.getByText("Restore this version").count()) === 0 && (await phone.locator(".history").isVisible()), "History in the menu opens the History fold and closes the menu");
-  await phone.getByLabel("More entry actions", { exact: true }).click();
-  await phone.getByRole("button", { name: "Edit name, type and keywords" }).click();
-  ok((await isOpen(fold("Name, type and keywords"))) && (await phone.locator("form.entry-details-form").isVisible()), "Edit name, type and keywords opens the form");
-  await fold("What the AI reads").locator("summary").click();
-  ok(await fold("What the AI reads").locator(".fact-ai").isVisible(), "tapping a section's heading opens it");
-  ok((await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)), "…and the page still does not scroll sideways");
+  ok((await pbar.locator(".more-menu-items").getByRole("link", { name: "Pictures" }).getAttribute("href")) === `/s/${sid}/codex/${rowan}/pictures?at=${A}`, "Pictures in the menu links to the picture page");
+  await pbar.locator(".more-menu-items").getByRole("button", { name: "Compare with a chapter…" }).click();
+  ok(await phone.locator("#entry-compare-panel").getByText("Compare with").isVisible(), "Compare with a chapter… opens the comparison picker");
+  const tabs = (await phone.getByRole("tab").allInnerTexts()).map((t) => t.trim());
+  ok(tabs.join("|") === "Your notes|What the AI reads|History|Pictures|Update from the story", "the tabs: " + tabs.join("|"));
+  const pics = await openTab(phone, "Pictures");
+  ok((await pics.getByRole("link", { name: "Open the pictures page" }).getAttribute("href")) === `/s/${sid}/codex/${rowan}/pictures?at=${A}`, "the Pictures tab links to the pictures page");
+  await openTab(phone, "Update from the story");
+  ok(await phone.getByRole("tabpanel").locator(".update-from-story").isVisible(), "the Update from the story tab shows the update");
+  ok(await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "the entry page does not scroll sideways at 390px");
   await phone.context().close();
 } catch (e) {
   console.log("ERROR", e.message);
