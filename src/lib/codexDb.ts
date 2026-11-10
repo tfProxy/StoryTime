@@ -683,3 +683,20 @@ export function codexEntryLabels(entryIds: string[]): Record<string, { name: str
     .all(...entryIds) as { entry_id: string; name: string; story_title: string }[];
   return Object.fromEntries(rows.map((r) => [r.entry_id, { name: r.name, story_title: r.story_title }]));
 }
+
+/**
+ * The first chapter after `chapterId`, on any branch from it, where the entry's form is set again ("Lasts until …" on the
+ * entry page): its id and title, and the form and stage set there. Null when no later chapter changes it.
+ */
+export function nextFormChange(entryId: string, chapterId: string): { chapter_id: string; title: string; form: string; stage: string } | null {
+  const here = db().prepare(`SELECT depth FROM chapters WHERE id = ?`).get(chapterId) as { depth: number } | undefined;
+  if (!here) return null;
+  const rows = db()
+    .prepare(
+      `SELECT f.anchor_chapter_id AS chapter_id, c.title, f.form, f.text AS stage FROM codex_facts f JOIN chapters c ON c.id = f.anchor_chapter_id
+        WHERE f.entry_id = ? AND f.aspect = ? AND f.op = 'set' AND c.depth > ? AND c.trashed_at IS NULL
+        ORDER BY c.depth, f.posted_at, f.rowid`,
+    )
+    .all(entryId, FORM_ASPECT, here.depth) as { chapter_id: string; title: string; form: string; stage: string }[];
+  return rows.find((r) => getPath(r.chapter_id).some((c) => c.id === chapterId)) ?? null;
+}

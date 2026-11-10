@@ -8,7 +8,7 @@ import { z } from "zod";
 import { db, newId } from "./db";
 import { ENTRY_TYPES, FACT_LIMITS, FORM_ASPECT, isFormAspect, sameAspect, type CodexEntry } from "./codex";
 import { codexEntryLabels, createCodexOp, createFactOp, getCodexState } from "./codexDb";
-import { PostError } from "./stories";
+import { getPath, PostError } from "./stories";
 import { parseSettings } from "./settingsSchema";
 import { getSettings } from "./settingsStore";
 import { SUGGESTION_KINDS, type SuggestionInput, type SuggestionKind } from "./ai/codexCheckAi";
@@ -61,6 +61,11 @@ export const AcceptEditsSchema = z.object({
   aspect: text(FACT_LIMITS.aspect).optional(),
   form: text(FACT_LIMITS.form).optional(),
   text: text(FACT_LIMITS.text).optional(),
+  /**
+   * The chapter the change takes effect from, instead of the suggestion's own: an earlier chapter on its path (such as
+   * where the entry first appears, for "it was always so"). Any other chapter is refused (400).
+   */
+  anchor_chapter_id: z.string().min(1).optional(),
 });
 
 type Row = {
@@ -367,6 +372,9 @@ export function acceptSuggestion(id: string, edits: z.infer<typeof AcceptEditsSc
     const row = openRow(id);
     if (row.status !== "open") throw new PostError("That suggestion has already been decided", 409);
     if (row.revision !== row.chapter_revision) throw new PostError("The chapter was edited after this was suggested", 409);
+    if (edits.anchor_chapter_id !== undefined && !getPath(row.chapter_id).some((c) => c.id === edits.anchor_chapter_id)) {
+      throw new PostError("That chapter isn't on the way to the suggestion's chapter", 400);
+    }
     const entryId = writeSuggestion(row, edits);
     db().prepare(`UPDATE codex_suggestions SET status = 'accepted', decided_at = ? WHERE id = ?`).run(Date.now(), id);
     return { entry_id: entryId };
@@ -383,7 +391,7 @@ function writeSuggestion(
   aiSuggestionId: string | null = null,
   factId?: string,
 ): string {
-  const anchor = row.chapter_id;
+  const anchor = edits.anchor_chapter_id ?? row.chapter_id;
   if (row.kind === "entry") {
     const proposed = parseEntry(row.entry);
     if (!proposed) throw new PostError("That suggestion has no entry", 409);

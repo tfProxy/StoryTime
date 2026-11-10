@@ -10,8 +10,24 @@ import { INBOX_CHANGED } from "./CodexInbox";
  * for the owner to accept, edit or dismiss. By default it invents new details that fit the story; "stay close" only
  * elaborates on what the chapters already show. The facts take effect from the chapter the codex is shown at.
  */
-export default function FleshOutEntry({ storyId, chapterId, entryId, name }: { storyId: string; chapterId: string; entryId: string; name: string }) {
-  const [open, setOpen] = useState(false);
+export default function FleshOutEntry({
+  storyId,
+  chapterId,
+  entryId,
+  name,
+  startOpen = false,
+  onCancel,
+}: {
+  storyId: string;
+  chapterId: string;
+  entryId: string;
+  name: string;
+  /** Shows the form at once (the entry page's "+ Flesh out with AI…" button opened it). */
+  startOpen?: boolean;
+  /** Called when the form is cancelled. */
+  onCancel?: () => void;
+}) {
+  const [open, setOpen] = useState(startOpen);
   const [close, setClose] = useState(false);
   const [hint, setHint] = useState("");
   const [starting, setStarting] = useState(false);
@@ -49,7 +65,7 @@ export default function FleshOutEntry({ storyId, chapterId, entryId, name }: { s
     setRunId(null);
     if (failed) setMessage({ ok: false, text: "The AI couldn't do that. Try again." });
     else if (skipped) setMessage({ ok: false, text: skipped.error ?? "Skipped." });
-    else setMessage({ ok: true, text: found === 0 ? "The AI had nothing new to add." : `The AI suggested ${found} fact${found === 1 ? "" : "s"}: see Suggested facts below.` });
+    else setMessage({ ok: true, text: found === 0 ? "The AI had nothing new to add." : `The AI suggested ${found} fact${found === 1 ? "" : "s"}: ${close ? "they are marked on the facts above" : `see AI ideas for ${name}`}.` });
     window.dispatchEvent(new Event(INBOX_CHANGED));
   }
 
@@ -69,7 +85,7 @@ export default function FleshOutEntry({ storyId, chapterId, entryId, name }: { s
           }}
         >
           <p className="meta" style={{ margin: 0 }}>
-            The AI suggests new facts for {name}. Nothing is added until you accept them in the codex inbox.
+            The AI suggests new facts for {name}. Nothing is added until you keep them.
           </p>
           <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
             <input type="checkbox" checked={close} onChange={(e) => setClose(e.target.checked)} style={{ width: "auto" }} />
@@ -85,7 +101,15 @@ export default function FleshOutEntry({ storyId, chapterId, entryId, name }: { s
             <button type="submit" disabled={starting}>
               {starting ? "Starting…" : "Suggest facts"}
             </button>
-            <button type="button" className="secondary" disabled={starting} onClick={() => setOpen(false)}>
+            <button
+              type="button"
+              className="secondary"
+              disabled={starting}
+              onClick={() => {
+                setOpen(false);
+                onCancel?.();
+              }}
+            >
               Cancel
             </button>
           </div>

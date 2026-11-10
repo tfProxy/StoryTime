@@ -75,23 +75,6 @@ export default function CodexPanel({ storyId, embedded, startEditing, chapterId,
       live = false;
     };
   }, [storyId, chapterId]);
-  // The chapters already written after this one (the drawer's "Remove from this chapter only" keeps the entry in them).
-  const [after, setAfter] = useState<{ id: string; title: string }[]>([]);
-  useEffect(() => {
-    if (!embedded) return;
-    let live = true;
-    fetch(`/api/chapters/${encodeURIComponent(chapterId)}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { choices: { child_chapter_id: string | null }[] } | null) => {
-        if (live && d) setAfter(d.choices.flatMap((c) => (c.child_chapter_id ? [{ id: c.child_chapter_id, title: "" }] : [])));
-      })
-      .catch(() => {
-        // the button just stays disabled
-      });
-    return () => {
-      live = false;
-    };
-  }, [embedded, chapterId]);
   const titleOf = (id: string) => path.find((p) => p.id === id)?.title ?? "an earlier chapter";
 
   const draftDepth = (path.at(-1)?.depth ?? -1) + 1;
@@ -213,7 +196,6 @@ export default function CodexPanel({ storyId, embedded, startEditing, chapterId,
           }
           onDiscardHeld={() => discard(open.entry_id)}
           onRetired={() => setOpenId(null)}
-          after={after}
         />
       </div>
     );

@@ -1,12 +1,11 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import StoryTabs from "@/components/StoryTabs";
-import { ChapterPathNav, ChapterSummary, nextChapters } from "@/components/CodexChapterNav";
-import CodexEntryEditor from "@/components/CodexEntryEditor";
+import { nextChapters } from "@/components/CodexChapterNav";
+import CodexEntryPage from "@/components/CodexEntryPage";
 import { ChangeList, CompareForm, comparisonTitle, StopComparing, type Relation } from "@/components/CodexComparison";
 import { compareEntry, foldCodex, usedAspectsOf } from "@/lib/codex";
 import { getStoryChapters } from "@/lib/tree";
-import { entryLastAnchor, getCodexFacts, getCodexOps } from "@/lib/codexDb";
+import { entryLastAnchor, getCodexFacts, getCodexOps, nextFormChange } from "@/lib/codexDb";
 import { codexPictureAt } from "@/lib/codexPictures";
 import { entryStartOptions } from "@/lib/codexStart";
 import EntryStartPicker from "@/components/EntryStartPicker";
@@ -17,7 +16,7 @@ export const dynamic = "force-dynamic";
 // A codex entry: the one place to read and change it. `?at=<chapter id>` is the chapter it is viewed and edited at (its
 // text is as of that chapter, and changes take effect from it). Without one, or when the entry isn't in the codex at that
 // chapter, it is the chapter where the entry was last changed.
-export default async function CodexEntryPage({ params, searchParams }: { params: Promise<{ id: string; entryId: string }>; searchParams: Promise<{ at?: string; compare?: string }> }) {
+export default async function CodexEntryRoute({ params, searchParams }: { params: Promise<{ id: string; entryId: string }>; searchParams: Promise<{ at?: string; compare?: string }> }) {
   const { id, entryId } = await params;
   const { at: atParam, compare: compareParam } = await searchParams;
   const story = getStory(id);
@@ -37,14 +36,20 @@ export default async function CodexEntryPage({ params, searchParams }: { params:
   if (!view) notFound();
   const { path, ops, facts, all, entry, at } = view;
   const here = path[path.length - 1];
-  // Chapters before the entry first appears can't show it.
-  const firstDepth = Math.min(...ops.filter((o) => o.entry_id === entryId).map((o) => o.anchor_depth));
+  // Where the entry starts on this path: its last "create" (an entry removed and added again starts at the new one).
+  // Chapters before it can't show it.
+  const entryOps = ops.filter((o) => o.entry_id === entryId);
+  const startOp = entryOps.filter((o) => o.op === "create").at(-1) ?? entryOps[0];
+  const startChapter = path.find((c) => c.id === startOp.anchor_chapter_id) ?? here;
+  const firstDepth = Math.min(...entryOps.map((o) => o.anchor_depth));
   const picture = codexPictureAt(story.id, entryId, at);
   const after = nextChapters(at).map(({ id: chapterId, title }) => ({ id: chapterId, title }));
+  const earlier = path.filter((c) => c.depth >= firstDepth && c.id !== at).map((c) => ({ id: c.id, title: c.title }));
 
   // `compare=<chapter>`: what changed in the entry between that chapter and this one (earlier to later; across
   // branches, from that chapter to this one). The entry may be missing at the other chapter.
-  const chapters = getStoryChapters(story.id).map((c) => ({ id: c.id, title: c.title, parent_id: c.parent_id, label: c.choice_label }));
+  const storyChapters = getStoryChapters(story.id);
+  const chapters = storyChapters.map((c) => ({ id: c.id, title: c.title, parent_id: c.parent_id, label: c.choice_label }));
   const comparePath = compareParam && compareParam !== at ? getPath(compareParam) : [];
   const compared =
     comparePath.length > 0 && comparePath[0].story_id === story.id
@@ -66,44 +71,16 @@ export default async function CodexEntryPage({ params, searchParams }: { params:
     }
   })();
 
+  // The chapters a form change can start at: this one, then the later ones on its branches, nearest first.
+  const formChapters = [{ id: here.id, title: here.title }];
+  for (let i = 0; i < formChapters.length && formChapters.length < 60; i++) {
+    for (const c of storyChapters) if (c.parent_id === formChapters[i].id) formChapters.push({ id: c.id, title: c.title });
+  }
+
   return (
     <>
       <StoryTabs storyId={story.id} title={story.title} active="bible" />
-      {/* Stays at the top while the page scrolls, so it is always clear which chapter the entry is shown and reviewed at. */}
-      <div className="codex-at-bar">
-        <Link href={`/s/${story.id}/review?tab=codex&chapter=${at}`}>← Codex</Link>
-        <span className="codex-at-title">
-          {entry.name} <span className="meta">at</span> “{here.title}”
-        </span>
-      </div>
-      <ChapterPathNav
-        className="entry-path"
-        prefix="Viewing at:"
-        path={path}
-        currentId={at}
-        hrefFor={(chapterId) => `/s/${story.id}/codex/${entryId}?at=${chapterId}`}
-        isPlain={(chapterId) => (path.find((c) => c.id === chapterId)?.depth ?? 0) < firstDepth}
-      />
-      <ChapterSummary chapter={here} />
-      {compared ? (
-        <section className="entry-compare" aria-label="Comparison">
-          <div className="row entry-compare-head">
-            <h2>{comparisonTitle(compared.relation, compared.other.title)}</h2>
-            <StopComparing href={pageHref} />
-          </div>
-          {compared.missing ? (
-            <p className="meta">{entry.name} isn&apos;t in the codex at “{compared.other.title}”.</p>
-          ) : compared.changes.length === 0 ? (
-            <p className="meta">No changes: {entry.name} is the same at both.</p>
-          ) : (
-            <ChangeList changes={compared.changes} />
-          )}
-          <CompareForm id="entry-compare" chapters={chapters} keep={{ at }} value={compared.other.id} />
-        </section>
-      ) : (
-        <CompareForm id="entry-compare" chapters={chapters} keep={{ at }} value={null} />
-      )}
-      <CodexEntryEditor
+      <CodexEntryPage
         entry={entry}
         ops={ops}
         facts={facts}
@@ -114,7 +91,36 @@ export default async function CodexEntryPage({ params, searchParams }: { params:
         pictureId={picture?.id ?? null}
         picturesHref={`/s/${story.id}/codex/${entryId}/pictures?at=${at}`}
         after={after}
-        belowName={start && <EntryStartPicker start={start} storyId={story.id} viewedChapterId={at} viewedDepth={here.depth} />}
+        nav={{
+          codexHref: `/s/${story.id}/review?tab=codex&chapter=${at}`,
+          prev: earlier.at(-1) ?? null,
+          next: after[0] ?? null,
+          earlier,
+          later: after.map((c) => ({ ...c, more: nextChapters(c.id).length > 0 })),
+        }}
+        start={{ id: startChapter.id, title: startChapter.title }}
+        startPicker={start && <EntryStartPicker start={start} storyId={story.id} viewedChapterId={at} viewedDepth={here.depth} />}
+        compare={{
+          picker: <CompareForm id="entry-compare" chapters={chapters} keep={{ at }} value={compared?.other.id ?? null} />,
+          result: compared && (
+            <>
+              <div className="row entry-compare-head">
+                <h2>{comparisonTitle(compared.relation, compared.other.title)}</h2>
+                <StopComparing href={pageHref} />
+              </div>
+              {compared.missing ? (
+                <p className="meta">{entry.name} isn&apos;t in the codex at “{compared.other.title}”.</p>
+              ) : compared.changes.length === 0 ? (
+                <p className="meta">No changes: {entry.name} is the same at both.</p>
+              ) : (
+                <ChangeList changes={compared.changes} />
+              )}
+            </>
+          ),
+        }}
+        summary={here.summary}
+        laterForm={nextFormChange(entryId, at)}
+        formChapters={formChapters}
       />
     </>
   );

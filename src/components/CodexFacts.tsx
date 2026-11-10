@@ -8,7 +8,6 @@ import {
   factHistory,
   factSharedState,
   FORM_ASPECT,
-  formClashes,
   formLine,
   isAiFact,
   isDraftEntry,
@@ -17,11 +16,10 @@ import {
   STARTER_ASPECTS,
   type CodexEntry,
   type FactOp,
-  type FormClash,
   type LiveFact,
 } from "@/lib/codex";
 import type { PathChapter } from "@/lib/ai/codexAi";
-import { entryHints } from "@/lib/codexHints";
+import { entryHints, type EntryHint } from "@/lib/codexHints";
 import { useSettings } from "@/lib/settings";
 import { AiBadge } from "./CodexEntryCards";
 import ChapterPathPicker from "./ChapterPathPicker";
@@ -47,11 +45,6 @@ type Props = {
   notesToFacts?: { start: () => void; busy: boolean };
   /** Where a fact's "Retcon…" goes (the Story Bible's Retcons section); left out where it isn't offered. */
   retconHref?: (factId: string) => string;
-  /**
-   * Where the facts the AI applied at a chapter are approved or undone (the entry page's "Review changes" at that
-   * chapter). Given, the facts list only marks them and links there; left out (the writing drawer), it offers Approve.
-   */
-  aiReviewHref?: (chapterId: string) => string;
 };
 
 type Body = { op: "set" | "retire"; aspect: string; form: string; text: string; quote: string; fact_id?: string; anchor: string };
@@ -66,7 +59,7 @@ const NEW_FORM = "\u0000new";
  * An entry's form and facts. Every form opens directly beneath the button (or row) that opened it, and the
  * add form at the end of the list.
  */
-export default function CodexFacts({ entry, factOps, path, chapterId, usedAspects, onSaved, anchorPath = path, hold, editingChapter = false, notesToFacts, retconHref, aiReviewHref }: Props) {
+export default function CodexFacts({ entry, factOps, path, chapterId, usedAspects, onSaved, anchorPath = path, hold, editingChapter = false, notesToFacts, retconHref }: Props) {
   const [formOpen, setFormOpen] = useState(false);
   // A fact's id while it is being changed, "new" while one is being added.
   const [editing, setEditing] = useState<string | null>(null);
@@ -226,23 +219,8 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
   }
 
   const showForm = hasForms || entry.type === "character" || entry.form !== null;
-  const clashes = formClashes(entry);
   // In the writing drawer the chapter being written isn't on the path, so whether the entry is mentioned isn't checked there.
   const hints = entryHints(entry, { chapterTexts: hold ? undefined : path.map((c) => c.body), contextTokens: settings.contextTokens });
-  /**
-   * Fixes a clash: the every-form fact becomes the given form's (null: is removed), from the chapter where it was set,
-   * so it reads that way from the start. A fact held in the draft is changed in the draft.
-   */
-  const moveClash = (c: FormClash, form: string | null) =>
-    send({
-      op: form === null ? "retire" : "set",
-      aspect: c.every.aspect,
-      form: form ?? "",
-      text: form === null ? "" : c.every.text,
-      quote: form === null ? "" : c.every.quote,
-      fact_id: c.every.fact_id,
-      anchor: c.every.op.anchor_chapter_id,
-    });
   const toggleHistory = (id: string) => setHistory(history.includes(id) ? history.filter((h) => h !== id) : [...history, id]);
 
   return (
@@ -260,7 +238,7 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
             ) : (
               <span className="meta">No form set.</span>
             )}{" "}
-            {entry.form && isAiFact(entry.form.fact) && !aiReviewHref && (
+            {entry.form && isAiFact(entry.form.fact) && (
               <button type="button" disabled={busy} aria-label="Approve the form" onClick={() => void approve([entry.form!.fact.op.id])}>
                 Approve
               </button>
@@ -302,97 +280,24 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
 
       <EntryFold title="Facts" id="entry-facts" className="facts" open note={rows.length > 0 ? `${rows.length}` : undefined}>
         {groups.length === 0 && <p className="meta">No facts yet.</p>}
-        {aiFacts.length > 0 && aiReviewHref && (
-          <p className="notice ai-facts-note">
-            <AiBadge /> The AI wrote {aiFacts.length === 1 ? "1 fact" : `${aiFacts.length} facts`} from the story that you haven&apos;t approved yet. Approve or
-            undo {aiFacts.length === 1 ? "it" : "them"} under Review changes at{" "}
-            {[...new Map(aiFacts.map((f) => [f.op.anchor_chapter_id, path.find((c) => c.id === f.op.anchor_chapter_id)?.title ?? "its chapter"])).entries()].map(([id, title], i) => (
-              <span key={id}>
-                {i > 0 && ", "}
-                <Link href={aiReviewHref(id)}>“{title}”</Link>
-              </span>
-            ))}
-            .
-          </p>
-        )}
-        {aiFacts.length > 0 && !aiReviewHref && (
-          <p className="notice ai-facts-note">
+        {aiFacts.length > 0 && (
+          <p className="meta ai-facts-note">
             <AiBadge /> The AI wrote {aiFacts.length === 1 ? "1 fact" : `${aiFacts.length} facts`} from the story. Approve or edit{" "}
-            {aiFacts.length === 1 ? "it" : "them"}; the AI replaces unapproved ones when it reads the chapter again.{" "}
-            {aiFacts.length > 1 && (
-              <button type="button" disabled={busy} onClick={() => void approve(aiFacts.map((f) => f.op.id))}>
-                Approve all
-              </button>
-            )}
+            {aiFacts.length === 1 ? "it" : "them"}; the AI replaces unapproved ones when it reads the chapter again.
           </p>
         )}
-        {clashes.length > 0 && (
-          <div className="notice form-clashes">
-            <p>
-              {clashes.length === 1 ? "This fact is" : "These facts are"} for every form, but a form has its own: while {entry.name} is in that form, the AI
-              reads both.
-            </p>
-            <ul>
-              {clashes.map((c) => (
-                <ClashRow key={c.every.fact_id} clash={c} busy={busy} onMove={(form) => void moveClash(c, form)} onRemove={() => void moveClash(c, null)} />
-              ))}
-            </ul>
-          </div>
-        )}
-        {hints.length > 0 && (
-          <div className="notice codex-hints" role="note" aria-label="Hints">
-            <ul>
-              {hints.map((h) => {
-                const dups = h.duplicates?.map((id) => entry.facts.find((f) => f.fact_id === id)).filter((f): f is LiveFact => !!f) ?? [];
-                const toEdit = h.edit ? entry.facts.find((f) => f.fact_id === h.edit) : undefined;
-                return (
-                  <li key={h.key}>
-                    {h.text}
-                    {(toEdit || (h.notes && notesToFacts) || dups.length === 2) && (
-                      <span className="row codex-hint-fix">
-                        {toEdit && (
-                          <button
-                            type="button"
-                            className="secondary"
-                            disabled={busy || editing === toEdit.fact_id}
-                            aria-label={`Edit ${toEdit.aspect || "the fact"}`}
-                            onClick={() => {
-                              setEditing(toEdit.fact_id);
-                              requestAnimationFrame(() => document.getElementById(`fact-${toEdit.fact_id}`)?.scrollIntoView({ block: "nearest" }));
-                            }}
-                          >
-                            Edit it
-                          </button>
-                        )}
-                        {h.notes && notesToFacts && (
-                          <button type="button" disabled={busy || notesToFacts.busy} onClick={notesToFacts.start}>
-                            Turn notes into facts
-                          </button>
-                        )}
-                        {dups.length === 2 &&
-                          dups.map((keep, i) => {
-                            const drop = dups[1 - i];
-                            return (
-                              <button
-                                key={keep.fact_id}
-                                type="button"
-                                className="secondary"
-                                disabled={busy}
-                                aria-label={`Keep “${keep.aspect}: ${keep.text}”, remove “${drop.aspect}: ${drop.text}”`}
-                                onClick={() => void send({ op: "retire", aspect: drop.aspect, form: drop.form, text: "", quote: "", fact_id: drop.fact_id, anchor: drop.op.anchor_chapter_id })}
-                              >
-                                Keep “{keep.aspect}”
-                              </button>
-                            );
-                          })}
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
+        <EntryHints
+          entry={entry}
+          hints={hints}
+          busy={busy}
+          editing={editing}
+          notesToFacts={notesToFacts}
+          onEdit={(factId) => {
+            setEditing(factId);
+            requestAnimationFrame(() => document.getElementById(`fact-${factId}`)?.scrollIntoView({ block: "nearest" }));
+          }}
+          onRemove={(drop) => void send({ op: "retire", aspect: drop.aspect, form: drop.form, text: "", quote: "", fact_id: drop.fact_id, anchor: drop.op.anchor_chapter_id })}
+        />
         {groups.map((g) => (
           <div key={g.key} className={g.dim ? "fact-group dim" : "fact-group"}>
             {g.heading && <h3 className="fact-heading">{g.heading}</h3>}
@@ -419,7 +324,7 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
                     </div>
                   </div>
                   <div className="row" style={{ margin: "0.4rem 0 0" }}>
-                    {isAiFact(f) && !aiReviewHref && (
+                    {isAiFact(f) && (
                       <button type="button" disabled={busy} aria-label={`Approve ${f.aspect || "the fact"}`} onClick={() => void approve([f.op.id])}>
                         Approve
                       </button>
@@ -556,48 +461,73 @@ function ChapterSelect({
   return <ChapterPathPicker path={path} currentId={chapterId} value={value} onChange={onChange} draft={!!held} editing={held === "save"} />;
 }
 
-/** One clash: the two facts, and a button that makes the every-form one belong to the form it fits (or removes it). */
-function ClashRow({ clash, busy, onMove, onRemove }: { clash: FormClash; busy: boolean; onMove: (form: string) => void; onRemove: () => void }) {
-  const { every, clashes, fitsIn } = clash;
-  const [target, setTarget] = useState(fitsIn[0] ?? "");
-  const label = `${every.aspect}: ${every.text}`;
+/**
+ * Plain warnings about an entry above its facts (notes but no facts, never mentioned, long facts, the same aspect written
+ * two ways), each with its fix: Edit it, Turn notes into facts, or keep one of two duplicates.
+ */
+export function EntryHints({
+  entry,
+  hints,
+  busy,
+  editing,
+  notesToFacts,
+  onEdit,
+  onRemove,
+}: {
+  entry: CodexEntry;
+  hints: EntryHint[];
+  busy: boolean;
+  /** The fact being edited, so its "Edit it" is off. */
+  editing: string | null;
+  notesToFacts?: { start: () => void; busy: boolean };
+  onEdit: (factId: string) => void;
+  onRemove: (fact: LiveFact) => void;
+}) {
+  if (hints.length === 0) return null;
   return (
-    <li>
-      <span>
-        <strong>{every.aspect}:</strong> {every.text} <span className="meta">(every form)</span>
-        {clashes.map((c) => (
-          <span key={c.fact.fact_id}>
-            {" "}
-            · {c.fact.text} <span className="meta">({c.form})</span>
-          </span>
-        ))}
-      </span>
-      <span className="row form-clash-fix">
-        {fitsIn.length === 0 ? (
-          <>
-            <span className="meta">Every form has its own {every.aspect}, so this one isn&apos;t needed.</span>
-            <button type="button" className="secondary" disabled={busy} aria-label={`Remove “${label}”`} onClick={onRemove}>
-              Remove it
-            </button>
-          </>
-        ) : (
-          <>
-            {fitsIn.length > 1 && (
-              <select aria-label={`Form for “${label}”`} value={target} onChange={(e) => setTarget(e.target.value)} style={{ width: "auto" }}>
-                {fitsIn.map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </select>
-            )}
-            <button type="button" className="secondary" disabled={busy || !target} aria-label={`Make “${label}” a ${target} fact`} onClick={() => onMove(target)}>
-              {fitsIn.length > 1 ? "Move" : `Move to ${target}`}
-            </button>
-          </>
-        )}
-      </span>
-    </li>
+    <div className="notice codex-hints" role="note" aria-label="Hints">
+      <ul>
+        {hints.map((h) => {
+          const dups = h.duplicates?.map((id) => entry.facts.find((f) => f.fact_id === id)).filter((f): f is LiveFact => !!f) ?? [];
+          const toEdit = h.edit ? entry.facts.find((f) => f.fact_id === h.edit) : undefined;
+          return (
+            <li key={h.key}>
+              {h.text}
+              {(toEdit || (h.notes && notesToFacts) || dups.length === 2) && (
+                <span className="row codex-hint-fix">
+                  {toEdit && (
+                    <button type="button" className="secondary" disabled={busy || editing === toEdit.fact_id} aria-label={`Edit ${toEdit.aspect || "the fact"}`} onClick={() => onEdit(toEdit.fact_id)}>
+                      Edit it
+                    </button>
+                  )}
+                  {h.notes && notesToFacts && (
+                    <button type="button" disabled={busy || notesToFacts.busy} onClick={notesToFacts.start}>
+                      Turn notes into facts
+                    </button>
+                  )}
+                  {dups.length === 2 &&
+                    dups.map((keep, i) => {
+                      const drop = dups[1 - i];
+                      return (
+                        <button
+                          key={keep.fact_id}
+                          type="button"
+                          className="secondary"
+                          disabled={busy}
+                          aria-label={`Keep “${keep.aspect}: ${keep.text}”, remove “${drop.aspect}: ${drop.text}”`}
+                          onClick={() => onRemove(drop)}
+                        >
+                          Keep “{keep.aspect}”
+                        </button>
+                      );
+                    })}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

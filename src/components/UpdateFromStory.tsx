@@ -54,7 +54,7 @@ export default function UpdateFromStory({
     const failed = tasks.filter((t) => t.status === "failed").length;
     const found = tasks.reduce((sum, t) => sum + (t.found ?? 0), 0);
     setRunId(null);
-    const got = found === 0 ? `The AI found nothing to change in ${entry.name}.` : `The AI suggested ${found} change${found === 1 ? "" : "s"}: see Suggested facts below.`;
+    const got = found === 0 ? `The AI found nothing to change in ${entry.name}.` : `The AI suggested ${found} change${found === 1 ? "" : "s"}: they are marked on the facts above, to review beside the text.`;
     if (failed === tasks.length) setMessage({ ok: false, text: "The AI couldn't read the chapters. Try again." });
     else setMessage({ ok: failed === 0, text: failed ? `${got} ${failed} chapter${failed === 1 ? "" : "s"} couldn't be read.` : got });
     window.dispatchEvent(new Event(INBOX_CHANGED));
