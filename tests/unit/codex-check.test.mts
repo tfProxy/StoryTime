@@ -106,4 +106,6 @@ try { parseCodexCheck("no json here", opts); } catch { threw = true; }
 ok(threw, "a reply with no JSON throws, so the task is retried");
 const curly = parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "Voice", text: "Calm.", quote: "“I can smell the Hollow,” she said" }]), opts);
 ok(curly.length === 1, "a quote with different quote marks still matches");
+ok(parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "Voice", form: "every form", text: "Calm.", quote: "I can smell the Hollow" }]), opts)[0]?.form === "", "a form of 'every form' becomes no form");
+ok(parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "Eyes", form: "vixen form", text: "Gold eyes.", quote: "her eyes were gold" }]), opts)[0]?.form === "vixen", "a form of 'vixen form' becomes 'vixen'");
 ok(parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "form", form: "kit", text: "young", quote: "Her ears flicked" }]), opts)[0]?.kind === "form", "a set of the aspect 'form' becomes a form item");

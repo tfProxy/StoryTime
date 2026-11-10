@@ -20,7 +20,7 @@ try {
   const s = await call("POST", "/api/stories", { title: "Auto codex", premise: "P", chapter: { title: "Root", body: "Mira stood in the Hollow.", summary: "s", choices: ["Go"] } });
   const story = s.json.story_id;
   const root = s.json.chapter_id;
-  const body1 = 'Mira gasped. "My ears are tall and russet now," she said. Her tail was gone. Brindle the old fox watched. "Her hair is red," said Tomas.';
+  const body1 = 'Mira gasped. "My ears are tall and russet now," she said. Her tail was gone. Brindle the old fox watched. "Her hair is red," said Tomas. Her eyes were amber, her voice a low rasp, her fur russet, and she smelled of pine.';
   const goId = (await call("GET", `/api/chapters/${root}`)).json.choices[0].id;
   const c1 = (await call("POST", "/api/chapters", { choice_id: goId, title: "Change", body: body1, summary: "s", choices: ["On"] })).json.chapter_id;
   const onId = (await call("GET", `/api/chapters/${c1}`)).json.choices[0].id;
@@ -36,12 +36,14 @@ try {
   const factOf = async (chapter, aspect) => (await factsOf(chapter, aspect))[0];
   const read = (list) => call("POST", `/api/chapters/${c1}/codex-suggestions`, { revision: 1, suggestions: list });
   const counts = async () => (await call("GET", `/api/stories/${story}/codex-suggestions?status=open`)).json.counts;
+  // A quote has to show the fact it backs (share a word with it), or the fact is not applied (see the end of this file).
   const q = "Mira gasped";
+  const qEars = "My ears are tall and russet now", qEyes = "Her eyes were amber", qScent = "she smelled of pine", qFur = "her fur russet", qVoice = "her voice a low rasp";
 
   // ---- the first reading ----
   let r = await read([
     { kind: "set", entry_id: mira, aspect: "Ears", after: "Tall russet fox ears.", quote: "My ears are tall and russet now" },
-    { kind: "set", entry_id: mira, aspect: "Eyes", after: "Amber eyes.", quote: q },
+    { kind: "set", entry_id: mira, aspect: "Eyes", after: "Amber eyes.", quote: qEyes },
     { kind: "form", entry_id: mira, form: "vixen", after: "change begun", quote: q },
     { kind: "retire", entry_id: mira, aspect: "Tail", quote: "Her tail was gone" },
     { kind: "entry", entry: { name: "Brindle", type: "character", facts: [{ aspect: "Age", text: "Old." }] }, quote: "Brindle the old fox watched" },
@@ -62,7 +64,7 @@ try {
   ok(JSON.stringify(open) === JSON.stringify(["conflict", "entry", "retire"]), "the open ones are the removal, the new entry and the contradiction");
 
   // ---- a new reading replaces the unapproved AI facts ----
-  r = await read([{ kind: "set", entry_id: mira, aspect: "Ears", after: "Long fox ears.", quote: q }]);
+  r = await read([{ kind: "set", entry_id: mira, aspect: "Ears", after: "Long fox ears.", quote: qEars }]);
   ok(r.json.applied === 1, "the new reading is applied");
   ok((await factOf(c1, "Ears")).text === "Long fox ears." && (await factsOf(c1, "Ears")).length === 1, "it replaces the AI's earlier Ears");
   ok((await factOf(c1, "Eyes")) === undefined, "the AI's earlier new fact is gone");
@@ -75,29 +77,29 @@ try {
   r = await call("POST", "/api/codex/approve", { ids: [ears.op.id] });
   ok(r.status === 200 && r.json.approved === 1, "an AI fact is approved");
   ok(!(await factOf(c1, "Ears")).op.ai_suggestion_id && (await counts()).aiByChapter[c1] === undefined, "…and isn't the AI's any more");
-  r = await read([{ kind: "set", entry_id: mira, aspect: "Ears", after: "Huge ears.", quote: q }]);
+  r = await read([{ kind: "set", entry_id: mira, aspect: "Ears", after: "Huge ears.", quote: qEars }]);
   ok(r.json.saved === 1 && r.json.applied === 0 && (await factOf(c1, "Ears")).text === "Long fox ears.", "a new reading leaves an approved fact alone; the change waits in the inbox");
 
   // ---- the owner's edit of an AI fact at its chapter ----
-  r = await read([{ kind: "set", entry_id: mira, aspect: "Eyes", after: "Amber eyes.", quote: q }]);
+  r = await read([{ kind: "set", entry_id: mira, aspect: "Eyes", after: "Amber eyes.", quote: qEyes }]);
   const eyes = await factOf(c1, "Eyes");
   ok(r.json.applied === 1 && !!eyes.op.ai_suggestion_id, "the AI adds Eyes");
   await setFact(c1, "Eyes", "Green eyes.", { fact_id: eyes.fact_id });
   ok(!(await factOf(c1, "Eyes")).op.ai_suggestion_id && (await counts()).aiByChapter[c1] === undefined, "the owner's edit is theirs");
-  r = await read([{ kind: "set", entry_id: mira, aspect: "Eyes", after: "Gold eyes.", quote: q }]);
+  r = await read([{ kind: "set", entry_id: mira, aspect: "Eyes", after: "Gold eyes.", quote: qEyes }]);
   ok(r.json.applied === 0 && (await factOf(c1, "Eyes")).text === "Green eyes." && (await factsOf(c1, "Eyes")).length === 1, "a new reading leaves the owner's edit alone");
 
   // ---- a later chapter changes an AI fact: the new reading carries on the same fact ----
-  r = await read([{ kind: "set", entry_id: mira, aspect: "Scent", after: "Smells of pine.", quote: q }]);
+  r = await read([{ kind: "set", entry_id: mira, aspect: "Scent", after: "Smells of pine.", quote: qScent }]);
   const scent = await factOf(c1, "Scent");
   await setFact(c2, "Scent", "Smells of smoke.", { fact_id: scent.fact_id });
-  r = await read([{ kind: "set", entry_id: mira, aspect: "Scent", after: "Smells musky.", quote: q }]);
+  r = await read([{ kind: "set", entry_id: mira, aspect: "Scent", after: "Smells musky.", quote: qScent }]);
   ok(r.json.applied === 1 && (await factOf(c1, "Scent")).text === "Smells musky." && (await factOf(c1, "Scent")).fact_id === scent.fact_id, "the new reading keeps the fact's id");
   ok((await factsOf(c2, "Scent")).length === 1 && (await factOf(c2, "Scent")).text === "Smells of smoke.", "the later chapter has one Scent, its own");
 
   // ---- turned off: suggestions only ----
   await setApply(false);
-  r = await read([{ kind: "set", entry_id: mira, aspect: "Fur", after: "Russet fur.", quote: q }]);
+  r = await read([{ kind: "set", entry_id: mira, aspect: "Fur", after: "Russet fur.", quote: qFur }]);
   ok(r.json.saved === 1 && r.json.applied === 0 && (await factOf(c1, "Fur")) === undefined, "with the setting off, nothing is applied");
   ok((await factOf(c1, "Scent")).text === "Smells musky.", "…and the AI's earlier facts stay");
 
@@ -107,7 +109,7 @@ try {
 
   // ---- undoing an AI fact: the fact goes, the suggestion behind it is dismissed ----
   await setApply(true);
-  r = await read([{ kind: "set", entry_id: mira, aspect: "Voice", after: "A low rasp.", quote: q }]);
+  r = await read([{ kind: "set", entry_id: mira, aspect: "Voice", after: "A low rasp.", quote: qVoice }]);
   const voice = await factOf(c1, "Voice");
   ok(r.json.applied === 1 && !!voice.op.ai_suggestion_id, "the AI adds Voice");
   ok((await call("POST", "/api/codex/undo-ai", { ids: [] })).status === 400, "undo needs ids");
@@ -122,8 +124,13 @@ try {
   ok(dismissed.some((x) => x.aspect === "Voice" && x.after === "A low rasp."), "…and its suggestion is dismissed");
   r = await call("POST", "/api/codex/undo-ai", { ids: [voice.op.id] });
   ok(r.status === 200 && r.json.undone === 0, "undoing it again does nothing");
-  r = await read([{ kind: "set", entry_id: mira, aspect: "Voice", after: "A low rasp.", quote: q }]);
+  r = await read([{ kind: "set", entry_id: mira, aspect: "Voice", after: "A low rasp.", quote: qVoice }]);
   ok(r.json.applied === 0 && (await factOf(c1, "Voice")) === undefined, "a new reading doesn't apply what was undone");
+
+  // ---- a quote that doesn't show the fact is not applied: the fact waits in the inbox ----
+  r = await read([{ kind: "set", entry_id: mira, aspect: "Gait", after: "Moves with a limp.", quote: q }]);
+  ok(r.json.saved === 1 && r.json.applied === 0 && (await factOf(c1, "Gait")) === undefined, "a quote that shares no word with the fact is not applied");
+  ok((await call("GET", `/api/stories/${story}/codex-suggestions?status=open`)).json.suggestions.some((x) => x.aspect === "Gait"), "…it waits as an open suggestion");
 } finally {
   if (settingsBefore === null) {
     const db = new Database(process.env.TEST_DB);

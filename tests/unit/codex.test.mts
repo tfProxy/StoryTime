@@ -1,5 +1,6 @@
 ﻿import { foldFacts, factHistory, describeEntry, formClashes, compareEntry, type FactOp, type LiveFact } from "../../src/lib/codex.ts";
 import { baseForms, foldCodex, storyEntrySummaries, retiredEntries, entryHistory, changedFields, addChange, draftOps, DRAFT_ANCHOR, type CodexChange, type CodexOp } from "../../src/lib/codex.ts";
+import { cleanForm, quoteSupports } from "../../src/lib/codex.ts";
 import { buildCodexBlock, mentions, generatePrompt, refinePrompt, choicesPrompt } from "../../src/lib/ai/prompts.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
@@ -274,4 +275,16 @@ ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length ==
   // a fact moved to a form keeps its id: the label says so
   const moved = compareEntry(at([fo("ears", "Ears", "Round ears.")]), at([fo("ears", "Ears", "Round ears.", "human")]));
   ok(moved.length === 1 && moved[0].label === "Ears → Ears (human)", "a fact moved to a form: " + JSON.stringify(moved));
+}
+
+// cleanForm / quoteSupports
+{
+  ok(["every form", "All forms", "any", "none", "No form", " "].every((f) => cleanForm(f) === ""), "cleanForm: 'every form' and its cousins mean no form");
+  ok(cleanForm("vixen form") === "vixen" && cleanForm(" Vixen ") === "Vixen" && cleanForm("") === "", "cleanForm: 'vixen form' is 'vixen'");
+  const denise = "There it was again, loud and persistent - clearly whoever it was wasn't going to go away. Her roommate was away too, so she'd have to take care of it. Cool. With a great effort, Denise managed to drag herself out of bed.";
+  ok(!quoteSupports(denise, "Hair: Denise has brown hair that's typically messier in the morning, hanging loosely around her shoulders.", ["Denise"]), "quoteSupports: a quote that says nothing about the hair is not support");
+  ok(quoteSupports("Rowan's hair turned silver in the moonlight.", "Hair silver hair", ["Rowan"]), "quoteSupports: shared word 'hair'/'silver'");
+  ok(quoteSupports("her ears", "Ears tall fox ears"), "quoteSupports: 'ears' meets 'ears'");
+  ok(quoteSupports("her silvery hair", "silver"), "quoteSupports: compared by first five letters");
+  ok(!quoteSupports("Denise sat down", "Denise has brown hair", ["Denise"]), "quoteSupports: the entry's own name does not count");
 }

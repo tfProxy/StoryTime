@@ -20,7 +20,7 @@ try {
   const sid = story.story_id;
   const R = story.chapter_id;
   const choice = (await send("GET", `/api/chapters/${R}`)).choices[0];
-  const A = (await post("/api/chapters", { choice_id: choice.id, title: "Chapter A", body: "Rowan's ears changed. Her eyes glowed amber." })).chapter_id;
+  const A = (await post("/api/chapters", { choice_id: choice.id, title: "Chapter A", body: "Rowan's ears changed. Her eyes glowed amber. Her hair was russet." })).chapter_id;
   const rowan = (await post("/api/codex", { anchor_chapter_id: R, op: "create", name: "Rowan", type: "character" })).entry_id;
   await post("/api/codex/facts", { anchor_chapter_id: R, entry_id: rowan, op: "set", aspect: "Ears", form: "", text: "round human ears" });
   await post("/api/codex/facts", { anchor_chapter_id: R, entry_id: rowan, op: "set", aspect: "form", form: "human", text: "" });
@@ -34,7 +34,7 @@ try {
       { kind: "set", entry_id: rowan, aspect: "Ears", after: "tall fox ears", quote: "Rowan's ears changed" },
       { kind: "set", entry_id: rowan, aspect: "Eyes", after: "amber eyes", quote: "Her eyes glowed amber" },
       { kind: "form", entry_id: rowan, form: "vixen", after: "", quote: "Rowan's ears changed" },
-      { kind: "set", entry_id: rowan, aspect: "Hair", after: "russet hair", quote: "Rowan's ears changed" },
+      { kind: "set", entry_id: rowan, aspect: "Hair", after: "russet hair", quote: "Her hair was russet" },
     ],
   });
   await send("PUT", "/api/settings", { ...settings, autoCodex: false, autoApplyCodex: true });
