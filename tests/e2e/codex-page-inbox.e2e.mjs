@@ -1,7 +1,7 @@
 import { launch, useMockAi } from "./browser.mjs";
 
-// The suggestions on a chapter's codex (the Story Bible's Codex section narrowed to the chapter): the "To review" box lists
-// the ones made at the chapter, a row per entry that leads to the entry's page at the chapter, where they are accepted or
+// The suggestions on a chapter's codex (the Story Bible's Codex section narrowed to the chapter): the "Changes waiting" box
+// counts the ones made at the chapter and links to the review page beside the chapter's text, where they are accepted or
 // dismissed; earlier chapters on the branch that still have some are linked. Seeded through the suggestions route, so no
 // AI is involved.
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
@@ -41,10 +41,11 @@ try {
   page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
   page.on("dialog", (d) => d.accept());
   const at = (id) => `${BASE}/s/${sid}/review?tab=codex&chapter=${id}`;
-  const box = () => page.locator("section.codex-review-box[aria-label='To review']");
-  const rows = () => box().locator("a.codex-review-row");
-  const newEntries = () => box().locator("li.codex-review-new");
+  const box = () => page.locator("section.codex-review-box[aria-label='Changes waiting']");
+  const go = () => box().locator("a.codex-review-go");
+  const goText = async () => (await go().innerText()).replace(/\s+/g, " ").trim();
   const rowanCard = () => page.locator("li.entry-with-extra", { hasText: "Rowan" });
+  const crCard = (t) => page.locator("article.cr-card", { hasText: t });
   const settle = async () => {
     await page.locator("details.codex-group").first().waitFor();
     await page.locator("section.codex-review-box").first().waitFor();
@@ -57,34 +58,36 @@ try {
   await page.goto(at(A));
   await settle();
   ok((await page.locator("article.inbox-card").count()) === 0, "no suggestion cards on the chapter's codex");
-  ok((await rows().count()) === 1 && (await rows().first().locator(".codex-review-count").innerText()).trim() === "1", "at Chapter A: one row for Rowan, with her one suggestion made here");
-  ok((await rowanCard().locator(".entry-review-count").innerText()).trim() === "1 to review", "…and her card says 1 to review");
-  ok((await newEntries().count()) === 1 && (await newEntries().getByText("Kestrel", { exact: true }).count()) === 1 && (await newEntries().innerText()).includes("New character:"), "a proposed new entry is a row with Add it / Dismiss");
-  ok((await earlierLinks()).join("|") === "“Root” (1)", "the root's suggestion is linked as one from an earlier chapter: " + (await earlierLinks()).join("|"));
+  ok((await go().count()) === 1 && (await goText()).includes("2 changes waiting from this chapter") && (await goText()).includes("Review beside the text"), "at Chapter A: a link to review the 2 changes made here: " + (await goText()));
+  ok((await go().getAttribute("href")) === `/c/${A}/codex-review`, "…to the chapter's review page");
+  const rowanCount = rowanCard().locator("a.entry-review-count");
+  ok((await rowanCount.innerText()).trim() === "1 change to review" && (await rowanCount.getAttribute("href")) === `/c/${A}/codex-review?entry=${rowan}`, "…and her card says 1 change to review, linking to the review page for her");
+  ok((await box().getByRole("button").count()) === 0 && (await page.locator("li.codex-review-new, a.codex-review-row").count()) === 0, "the box has no Add it / Dismiss or per-entry rows any more");
+  ok((await earlierLinks()).join("|") === "“Root” (1)" && (await box().locator("p.meta a").getAttribute("href")) === `/c/${R}/codex-review`, "the root's suggestion is linked as one from an earlier chapter, to its review page: " + (await earlierLinks()).join("|"));
   await page.goto(at(A2));
   await settle();
-  ok((await rows().count()) === 0 && (await box().getByText("nothing waiting").isVisible()), "Chapter A2, after it: nothing made here");
+  ok((await go().count()) === 0, "Chapter A2, after it: nothing made here");
   ok([...(await earlierLinks())].sort().join("|") === "“Chapter A” (2)|“Root” (1)", "…and the earlier chapters' suggestions are linked with their counts: " + (await earlierLinks()).join("|"));
   await page.goto(at(R));
   await settle();
-  ok((await rows().count()) === 1 && (await newEntries().count()) === 0 && (await earlierLinks()).length === 0, "at the root: only the root's suggestion");
+  ok((await go().count()) === 1 && (await goText()).includes("1 change waiting from this chapter") && (await earlierLinks()).length === 0, "at the root: only the root's suggestion");
   await page.goto(at(B));
   await settle();
-  ok((await rows().count()) === 0 && (await earlierLinks()).join("|") === "“Root” (1)", "on the other branch: only the root's, as an earlier chapter's");
+  ok((await go().count()) === 0 && (await earlierLinks()).join("|") === "“Root” (1)", "on the other branch: only the root's, as an earlier chapter's");
 
-  // ---- accept on the entry's page, then see it on the chapter's codex ----
+  // ---- accept on the review page, then see it on the chapter's codex ----
   await page.goto(at(A));
   await settle();
-  await rows().first().click();
-  await page.waitForURL(new RegExp(`/codex/${rowan}\\?at=${A}`));
-  const hair = fold().locator("article.inbox-card", { hasText: "silver hair" });
+  await go().click();
+  await page.waitForURL(`${BASE}/c/${A}/codex-review`);
+  const hair = crCard("silver hair");
   await hair.waitFor();
-  ok((await fold().locator("article.inbox-card").count()) === 1, "the row opens her page at this chapter, with the suggestion made here (not the root's)");
+  ok((await page.locator("article.cr-card").count()) === 2 && (await crCard("calm").count()) === 0, "the link opens the review page with the changes made here (not the root's)");
   await hair.getByRole("button", { name: "Accept" }).click();
-  await fold().getByText(/Saved:\s*Rowan, Hair/).waitFor({ state: "attached" });
+  await page.locator(".cr-done").getByText(/Saved:\s*Rowan/).waitFor();
   await page.goto(at(A));
   await page.locator(".entry-card", { hasText: "Rowan" }).getByText(/silver hair/).waitFor();
-  ok((await rows().count()) === 0 && (await newEntries().count()) === 1, "accepted: the entry's card shows the new fact and the row is gone");
+  ok((await goText()).includes("1 change waiting") && (await rowanCard().locator("a.entry-review-count").count()) === 0, "accepted: the entry's card shows the new fact and one change (the new entry) still waits");
   const atRoot = (await send("GET", `/api/chapters/${R}/codex`)).entries.find((e) => e.name === "Rowan");
   ok(atRoot.description.includes("dark brown hair") && !atRoot.description.includes("silver"), "…from the chapter it was made at, not above it");
 
@@ -100,7 +103,7 @@ try {
   // after leaving the page, accepted and dismissed ones are gone from the list
   await page.goto(at(A));
   await settle();
-  ok((await rows().count()) === 0 && (await newEntries().count()) === 1 && (await earlierLinks()).length === 0, "back on the chapter's codex, only what is still open is listed");
+  ok((await goText()).includes("1 change waiting") && (await earlierLinks()).length === 0, "back on the chapter's codex, only what is still open is counted");
   await page.getByRole("button", { name: "Show dismissed (1)" }).click();
   ok((await page.locator("ul.inbox-dismissed li", { hasText: "calm" }).getByRole("button", { name: "Reopen" }).count()) === 1, "…and the dismissed one can be found and reopened");
 
