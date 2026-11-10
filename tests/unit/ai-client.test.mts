@@ -1,6 +1,7 @@
 import http from "node:http";
 import { streamChat, listModels, completeChat, AiError } from "../../src/lib/ai/client.ts";
 import { freeOllamaForPictures, freeOllamaMemory, loadedOllamaModels, modelAfterWriting, ollamaRoot } from "../../src/lib/ai/ollama.ts";
+import { matchModelId } from "../../src/lib/ai/providers.ts";
 import { DEFAULT_SETTINGS, favoritesFor, parseSettings, exportSettingsJson, importSettingsJson } from "../../src/lib/settingsSchema.ts";
 
 const seen: { url?: string; headers?: http.IncomingHttpHeaders; body?: any }[] = [];
@@ -248,6 +249,12 @@ const messy = parseSettings({
 assert(messy.temperature === null && messy.connections.length === 2 && messy.connections[0].kind === "custom" && messy.connections[0].apiKey === "" && messy.connections[1].kind === "openrouter", "tolerant parse: connections");
 assert(parseSettings({ connections: [{ id: "f", kind: "featherless" }] }).connections[0].kind === "featherless", "parse: featherless connection kind is kept");
 assert(parseSettings({ connections: [{ id: "n", kind: "nanogpt" }] }).connections[0].kind === "nanogpt", "parse: nanogpt connection kind is kept");
+{
+  const ids = ["TheDrummer/Artemis-v1.1", "thedrummer/artemis-31b-v1.2", "a_b"];
+  assert(matchModelId("TheDrummer/Artemis v1.1", ids) === "TheDrummer/Artemis-v1.1", "a model name typed with spaces finds its id (NanoGPT shows names, wants ids)");
+  assert(matchModelId(" THEDRUMMER/ARTEMIS-31B-V1.2 ", ids) === "thedrummer/artemis-31b-v1.2" && matchModelId("a_b", ids) === "a_b", "…case is ignored, and an exact id is kept");
+  assert(matchModelId("Something else", ids) === null, "…and a name that matches nothing is null");
+}
 assert(messy.favorites.length === 1 && messy.favorites[0].label === "", "tolerant parse: favorites deduped, dangling ones dropped");
 assert(messy.defaults.main === null && messy.defaults.cheap?.model === "x", "tolerant parse: defaults pointing at missing connections are cleared");
 

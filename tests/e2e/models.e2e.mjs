@@ -11,7 +11,7 @@ const mock = http.createServer((req, res) => {
   if (req.method === "OPTIONS") { res.statusCode = 204; return res.end(); }
   if (req.url.endsWith("/models")) {
     res.setHeader("content-type", "application/json");
-    const ids = req.url.startsWith("/a/") ? ["alpha", "beta"] : ["vendor/big", "vendor/small", ...Array.from({ length: 20 }, (_, i) => `other/m${i}`)];
+    const ids = req.url.startsWith("/a/") ? ["alpha", "beta"] : ["vendor/big", "vendor/small-v1.1", ...Array.from({ length: 20 }, (_, i) => `other/m${i}`)];
     return res.end(JSON.stringify({ data: ids.map((id) => ({ id })) }));
   }
   let data = ""; req.on("data", (c) => (data += c));
@@ -102,6 +102,15 @@ ok((await page.getByRole("combobox", { name: /^Thinking for / }).count()) === 2 
 await page.getByRole("tab", { name: "Connections" }).click();
 let s = await settingsNow();
 ok(s.connections.length === 2 && s.favorites.length === 2 && s.defaults.main.model === "alpha", "settings hold both connections and both starred models");
+
+// A model added by the name a provider's website shows is starred under the id the server lists (NanoGPT).
+await router.getByLabel(/Add a model by name/).fill("Vendor/Small v1.1");
+await router.getByRole("button", { name: "Star", exact: true }).click();
+await until(async () => (await settingsNow()).favorites.some((f) => f.model === "vendor/small-v1.1"), "the typed name to be starred as its id");
+ok(await router.getByText("Starred vendor/small-v1.1, the id this server uses for “Vendor/Small v1.1”.").isVisible() && !(await settingsNow()).favorites.some((f) => f.model === "Vendor/Small v1.1"), "a model added by a name with spaces is starred under the listed id, and the page says so");
+await router.getByLabel("Filter models").fill("vendor/s");
+await router.getByRole("button", { name: "Unstar vendor/small-v1.1" }).click();
+await until(async () => (await settingsNow()).favorites.length === 2, "vendor/small-v1.1 to be unstarred again");
 
 // ---- freeing ComfyUI's memory: per connection, and settable with no ComfyUI set up ----
 const freeBox = (conn) => conn.getByRole("checkbox", { name: "Free ComfyUI's memory before each request" });

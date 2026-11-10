@@ -73,6 +73,21 @@ export const PROVIDERS: ProviderInfo[] = [
 
 export const PROVIDER_KINDS = PROVIDERS.map((p) => p.id) as [ProviderKind, ...ProviderKind[]];
 
+/**
+ * The listed model id a typed name stands for: the same id, or one that differs only in case or in spaces and
+ * underscores where the id has dashes (NanoGPT's site shows "TheDrummer/Artemis v1.1" for "TheDrummer/Artemis-v1.1").
+ * Null when nothing matches.
+ */
+export function matchModelId(name: string, ids: readonly string[]): string | null {
+  const typed = name.trim();
+  if (ids.includes(typed)) return typed;
+  const lower = typed.toLowerCase();
+  const byCase = ids.find((id) => id.toLowerCase() === lower);
+  if (byCase) return byCase;
+  const norm = (s: string) => s.trim().toLowerCase().replace(/[\s_-]+/g, "-");
+  return ids.find((id) => norm(id) === norm(typed)) ?? null;
+}
+
 export function providerInfo(id: ProviderKind): ProviderInfo {
   return PROVIDERS.find((p) => p.id === id) ?? PROVIDERS[PROVIDERS.length - 1];
 }

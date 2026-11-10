@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { PROVIDERS, providerInfo, type ProviderKind } from "@/lib/ai/providers";
+import { matchModelId, PROVIDERS, providerInfo, type ProviderKind } from "@/lib/ai/providers";
 import { AiError, listModels, streamChat } from "@/lib/ai/client";
 import { checkFromServer, type ServerCheck } from "@/lib/serverCheck";
 import NumberInput from "./NumberInput";
@@ -157,11 +157,20 @@ function ConnectionCard({
   const matching = (models ?? []).filter((m) => !q || m.toLowerCase().includes(q));
   const shown = matching.slice(0, SHOW_MODELS);
 
-  function addTyped() {
-    const model = typed.trim();
-    if (!model) return;
-    if (!isFav(model)) onToggleFavorite({ connectionId: conn.id, model });
+  /**
+   * Stars a model typed by name. A name copied from a provider's website ("TheDrummer/Artemis v1.1") is often not the
+   * id its API wants ("TheDrummer/Artemis-v1.1"), so it is matched against the listed models (fetched now if they
+   * haven't been) and the id is starred instead. A name with no match is starred as typed.
+   */
+  async function addTyped() {
+    const name = typed.trim();
+    if (!name) return;
     setTyped("");
+    let ids = models;
+    if (!ids) ids = await listModels(conn).catch(() => null);
+    const model = (ids && matchModelId(name, ids)) ?? name;
+    if (!isFav(model)) onToggleFavorite({ connectionId: conn.id, model });
+    setStatus(model !== name ? { kind: "ok", text: `Starred ${model}, the id this server uses for “${name}”.` } : null);
   }
 
   return (
