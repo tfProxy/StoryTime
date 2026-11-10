@@ -8,7 +8,7 @@ import type { PathChapter } from "@/lib/ai/codexAi";
 import { ENTRY_TYPES, TYPE_HEADINGS, TYPE_LABELS, type CodexEntry, type EntryType, type StoryEntrySummary } from "@/lib/codex";
 import type { CodexSuggestion } from "@/lib/codexSuggestions";
 import AiRunProgress from "./AiRunProgress";
-import { Card, DismissedList, INBOX_CHANGED, SourceBadge, suggestionSource, useCodexInbox } from "./CodexInbox";
+import { Card, DismissedList, INBOX_CHANGED, useCodexInbox } from "./CodexInbox";
 import CodexEntryCards, { HintCount, StaleNote } from "./CodexEntryCards";
 import { STALE_FROM } from "@/lib/codexHints";
 import { EntryDetailsForm } from "./CodexEntryEditor";
@@ -259,129 +259,64 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
   );
 
 
-  /** Under an entry's card: how many of its suggestions wait at this chapter (they are reviewed on its page). */
+  // Suggestions with a sentence in a chapter are reviewed beside that chapter's text (/c/<id>/codex-review). AI ideas
+  // with no sentence (Flesh out without a quote) and ones from an entry's notes are decided on the entry's page.
+  const textBased = (s: CodexSuggestion) => openFor(s) && !(s.source === "notes" || (s.source === "expand" && !s.quote));
+  const reviewHref = (chapterId: string, entryId?: string) => `/c/${chapterId}/codex-review${entryId ? `?entry=${encodeURIComponent(entryId)}` : ""}`;
+
+  /** Under an entry's card: how many of its changes wait at this chapter, linking to them beside the text. */
   const reviewCountOf = (entryId: string) => {
-    const n = forEntry(entryId).filter((s) => openFor(s) && s.chapter_id === c.chosenId).length;
-    return n > 0 ? <p className="entry-review-count">{n} to review</p> : null;
+    const n = forEntry(entryId).filter((s) => textBased(s) && s.chapter_id === c.chosenId).length;
+    return n > 0 && c.chosenId ? (
+      <Link className="entry-review-count" href={reviewHref(c.chosenId, entryId)}>
+        {n} change{n === 1 ? "" : "s"} to review
+      </Link>
+    ) : null;
   };
 
-  /**
-   * "To review": what the AI left at this chapter (or, for the whole story, at every chapter), one row per entry that
-   * links to the entry's page at that chapter, where the suggestions are. A new entry has no page yet, so its row has
-   * Add and Dismiss. In a chapter, the earlier chapters on the branch that still have some are linked below.
-   */
+  /** The chapters with changes waiting, by chapter (in the order of the story), with how many. */
   const reviewByChapter = (() => {
-    const out: { id: string; title: string; rows: { key: string; entryId: string | null; name: string; list: CodexSuggestion[] }[] }[] = [];
+    const out: { id: string; title: string; n: number }[] = [];
     for (const s of suggestions) {
-      if (!openFor(s) && s.kind !== "entry") continue;
-      if (s.kind !== "entry" && !(s.entry_id && known.has(s.entry_id))) continue; // listed under "Other suggestions"
-      let ch = out.find((x) => x.id === s.chapter_id);
-      if (!ch) out.push((ch = { id: s.chapter_id, title: s.chapter_title, rows: [] }));
-      const key = s.kind === "entry" ? `new:${s.id}` : s.entry_id!;
-      let row = ch.rows.find((r) => r.key === key);
-      if (!row) ch.rows.push((row = { key, entryId: s.kind === "entry" ? null : s.entry_id, name: s.entry_name, list: [] }));
-      row.list.push(s);
+      if (!textBased(s)) continue;
+      const ch = out.find((x) => x.id === s.chapter_id);
+      if (ch) ch.n++;
+      else out.push({ id: s.chapter_id, title: s.chapter_title, n: 1 });
     }
     return out;
   })();
 
-  const toneSummary = (list: CodexSuggestion[]) => {
-    const counts = new Map<string, number>();
-    for (const s of list) {
-      const { tone } = suggestionSource(s);
-      const word =
-        tone === "invented" ? "AI idea" : tone === "unsure" ? "quote doesn't show it" : tone === "conflict" ? "contradicts the codex" : tone === "notes" ? "from your notes" : "from the text";
-      counts.set(word, (counts.get(word) ?? 0) + 1);
-    }
-    return [...counts].map(([w, n]) => (w === "AI idea" ? `${n} AI idea${n === 1 ? "" : "s"}` : `${n} ${w}`)).join(" · ");
-  };
-
-  const reviewRows = (ch: (typeof reviewByChapter)[number]) => (
-    <ul className="codex-review-rows">
-      {ch.rows.map((r) => {
-        if (r.entryId === null) {
-          const s = r.list[0];
-          if (s.status !== "open") return <li key={r.key}>{cardFor(s, false)}</li>;
-          return (
-            <li key={r.key} className="codex-review-new">
-              <span className="codex-review-new-text">
-                <span>
-                  <strong className="codex-suggested-label">New {s.entry?.type ?? "entry"}:</strong> <strong>{s.entry_name}</strong> <SourceBadge s={s} />
-                </span>
-                {s.entry?.notes && <span className="meta">{s.entry.notes}</span>}
-                {s.quote && <span className="inbox-quote">“{s.quote}”</span>}
-                {live.errors[s.id] && <span className="error">{live.errors[s.id]}</span>}
-              </span>
-              <button type="button" disabled={live.busy.has(s.id)} onClick={() => void live.accept(s)}>
-                Add it
-              </button>
-              <button type="button" className="secondary" disabled={live.busy.has(s.id)} onClick={() => void live.dismiss(s)}>
-                Dismiss
-              </button>
-            </li>
-          );
-        }
-        const open = r.list.filter(openFor);
-        return (
-          <li key={r.key}>
-            <Link className="codex-review-row" href={`/s/${c.storyId}/codex/${r.entryId}?at=${ch.id}#entry-review`}>
-              <span className="codex-review-text">
-                <strong className="codex-review-name">{r.name || "An entry"}</strong>
-                <span className="meta">{toneSummary(open)}</span>
-              </span>
-              <span className="codex-review-count">{open.length}</span>
-              <span aria-hidden="true">›</span>
-            </Link>
-          </li>
-        );
-      })}
-    </ul>
-  );
-
+  /**
+   * "Changes waiting": in a chapter, a link to review its changes beside its text, and the earlier chapters on the
+   * branch that still have some; for the whole story, every chapter that has some.
+   */
   const reviewBox = () => {
-    if (chapterScope) {
-      const here = reviewByChapter.find((ch) => ch.id === c.chosenId);
-      const earlier = reviewByChapter.filter((ch) => ch.id !== c.chosenId && ch.rows.some((r) => r.list.some(openFor)));
-      if (!here && earlier.length === 0) return null;
-      const n = here ? here.rows.reduce((t, r) => t + r.list.filter(openFor).length, 0) : 0;
-      return (
-        <section className="codex-review-box" aria-label="To review">
-          <div className="codex-review-box-head">
-            <h2>To review from this chapter</h2>
-            <span className="meta">{n === 0 ? "nothing waiting" : `${n} waiting`}</span>
-          </div>
-          {here && reviewRows(here)}
-          {earlier.length > 0 && (
-            <p className="meta">
-              Earlier chapters still have some:{" "}
-              {earlier.map((ch, i) => (
-                <span key={ch.id}>
-                  {i > 0 && " · "}
-                  <Link href={`/s/${c.storyId}/review?tab=codex&chapter=${ch.id}`}>
-                    “{ch.title}” ({ch.rows.reduce((t, r) => t + r.list.filter(openFor).length, 0)})
-                  </Link>
-                </span>
-              ))}
-            </p>
-          )}
-        </section>
-      );
-    }
-    if (reviewByChapter.length === 0) return null;
+    const here = chapterScope ? reviewByChapter.find((ch) => ch.id === c.chosenId) : undefined;
+    const others = reviewByChapter.filter((ch) => ch.id !== c.chosenId);
+    if (!here && others.length === 0) return null;
     return (
-      <section className="codex-review-box" aria-label="To review">
-        <div className="codex-review-box-head">
-          <h2>To review</h2>
-          <span className="meta">{openCount(suggestions)} waiting</span>
-        </div>
-        {reviewByChapter.map((ch) => (
-          <div key={ch.id}>
-            <h3 className="inbox-chapter">
-              <Link href={`/s/${c.storyId}/review?tab=codex&chapter=${ch.id}`}>“{ch.title}”</Link>
-            </h3>
-            {reviewRows(ch)}
-          </div>
-        ))}
+      <section className="codex-review-box" aria-label="Changes waiting">
+        {here && (
+          <Link className="codex-review-go" href={reviewHref(here.id)}>
+            <strong>
+              {here.n} change{here.n === 1 ? "" : "s"} waiting from this chapter
+            </strong>
+            <span>Review beside the text →</span>
+          </Link>
+        )}
+        {others.length > 0 && (
+          <p className="meta" style={{ margin: here ? "0.5rem 0 0" : 0 }}>
+            {chapterScope ? "Earlier chapters still have some: " : "Changes waiting: "}
+            {others.map((ch, i) => (
+              <span key={ch.id}>
+                {i > 0 && " · "}
+                <Link href={reviewHref(ch.id)}>
+                  “{ch.title}” ({ch.n})
+                </Link>
+              </span>
+            ))}
+          </p>
+        )}
       </section>
     );
   };

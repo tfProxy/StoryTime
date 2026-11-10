@@ -57,7 +57,7 @@ export default function CodexInboxBanner({ storyId, chapterId }: { storyId: stri
   ];
   return (
     <p className="notice">
-      Codex: {parts.join(" and ")} from this chapter · <Link href={`/s/${storyId}/review?tab=codex&chapter=${chapterId}`}>Review</Link>
+      Codex: {parts.join(" and ")} from this chapter · <Link href={`/c/${chapterId}/codex-review`}>Review beside the text</Link>
     </p>
   );
 }
