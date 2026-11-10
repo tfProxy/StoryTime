@@ -98,6 +98,13 @@ try {
   const children = (await call("GET", `/api/chapters/${a.root}`)).json.choices.map((c) => c.child_chapter_id);
   ok(children.length === 2 && children.every(Boolean), "…and both chapters are posted into the story");
   ok((await itemOf(a.run)).data.done === 2, "…the item counts both");
+  {
+    // Each chapter keeps the request that wrote it (keptRequests.ts), for its "Written with …" line.
+    const writing = (await call("GET", `/api/chapters/${children[0]}/writing`)).json.writing;
+    const chapter = (await call("GET", `/api/chapters/${children[0]}`)).json;
+    const kept = writing?.ai?.[0];
+    ok(!!kept && writing.versions[0].body === (chapter.chapter ?? chapter).body && writing.versions[0].ai[0] === kept, "…each written chapter keeps the AI request that wrote it");
+  }
   await sleep(100);
   ok(events.seen[0]?.type === "run" && events.seen.some((e) => e.type === "event" && e.event.type === "taskDone") && events.seen.some((e) => e.type === "event" && e.event.type === "state" && e.event.status === "done"), "the run's events show it first, then the steps, then the end");
   events.close();

@@ -3,16 +3,19 @@ import { db } from "./db";
 import { LIMITS } from "./limits";
 import { MAX_VERSIONS } from "./generatedDraft";
 import { PostError } from "./stories";
+import { KeptIdsSchema } from "./keptRequests";
 
 // How a chapter was written, kept from its draft when it is posted (or an edit is saved), so the edit page starts
 // with the same direction prompt, generated versions, length and models instead of an empty form.
 
-const VersionSchema = z.object({ title: z.string().max(LIMITS.title), body: z.string().max(LIMITS.body) });
+// `ai`: the kept AI requests (keptRequests.ts) that wrote a version, and, at the top, the chapter's text as posted.
+const VersionSchema = z.object({ title: z.string().max(LIMITS.title), body: z.string().max(LIMITS.body), ai: KeptIdsSchema.optional() });
 const ModelRefSchema = z.object({ connectionId: z.string().max(200), model: z.string().max(500) });
 
 export const ChapterWritingSchema = z.object({
   prompt: z.string().max(LIMITS.body),
   versions: z.array(VersionSchema).max(MAX_VERSIONS),
+  ai: KeptIdsSchema.optional(),
   length: z.enum(["short", "medium", "long"]).optional(),
   models: z.object({ write: ModelRefSchema.optional(), suggest: ModelRefSchema.optional() }).optional(),
   codexOverrides: z.object({ include: z.array(z.string().max(100)).max(500), exclude: z.array(z.string().max(100)).max(500) }).optional(),

@@ -6797,3 +6797,70 @@ dialog.entry-start-dialog::backdrop {
   gap: 0.5rem;
   color: var(--muted);
 }
+
+/* ---- The chapter page's "Written with …" fold (ChapterMaking) ---- */
+.chapter-making {
+  margin: 1.5rem 0 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.chapter-making > summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.chapter-making .meta {
+  display: inline;
+}
+
+.making-request h3 {
+  font-size: 0.95rem;
+  margin: 0.8rem 0 0.2rem;
+}
+
+.making-settings {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0.5rem 0;
+}
+
+.making-settings > div {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  gap: 0.5rem;
+}
+
+.making-settings dt {
+  font-weight: 600;
+}
+
+.making-settings dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.making-text {
+  margin: 0.3rem 0;
+}
+
+.making-text > summary {
+  cursor: pointer;
+}
+
+.making-text h4 {
+  font-size: 0.85rem;
+  margin: 0.5rem 0 0.2rem;
+}
+
+.making-text pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 20rem;
+  overflow: auto;
+  margin: 0;
+  font-size: 0.82rem;
+}

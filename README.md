@@ -119,6 +119,9 @@ and, for pictures, your own ComfyUI machine.
 - **Prompt history** (in the ☰ menu) shows what the app recently sent to the AI and what came back, so
   you can copy an exchange and have a prompt improved. It records by itself and keeps only the last
   200 calls from the last 3 days.
+- **Written with …** under a chapter's text says which model and connection wrote it and how long it
+  took. Open it for the settings (temperature, thinking, max tokens), the exact prompt and the reply,
+  kept for good for every chapter written by Generate, a revise or an AI run from now on.
 - **The codex follows the branch.** A codex change is dated to a chapter and applies to that chapter
   and everything after it on that branch only.
 - **Summaries keep prompts short.** Each chapter has a summary (yours, or the AI's when you post).

@@ -89,6 +89,18 @@ ok(await page.getByRole("heading", { name: "The Door" }).isVisible(), "posted ch
 ok((await page.locator(".card.choice-unwritten").count()) === 2, "two unwritten choices shown");
 const chapterUrl = page.url().split("?")[0];
 
+// The chapter page says which model wrote it, with the request's settings, time taken and prompt. The revise was
+// undone, so only the Generate wrote the posted text.
+{
+  const making = page.locator(".chapter-making");
+  ok(/Written with m on Test/.test(await making.locator("summary").first().innerText()) && !(await making.getByText("Revised (1)").count()), "the chapter page names the model and connection that wrote it (the undone revise isn't counted)");
+  await making.locator("summary").first().click();
+  const settingsText = await making.locator(".making-settings").innerText();
+  ok(/Generate/.test(settingsText) && /http:\/\/localhost:3222\/v1/.test(settingsText) && /ollama/.test(settingsText) && /Time taken\s+\d+ s/.test(settingsText), "…with where it was made, the connection's kind and URL, and the time taken");
+  await making.getByText("Prompt", { exact: true }).click();
+  ok(await making.getByText(/a stranger arrives/).first().isVisible(), "…and the exact prompt sent");
+}
+
 // an unwritten choice can be removed with its "x"; its draft box follows the choice's text
 {
   const chId = chapterUrl.split("/c/")[1];

@@ -141,6 +141,33 @@ mode = "fail";
 setChatRecorder(() => { throw new Error("recorder broke"); });
 try { await completeChat(settings, { messages: msgs }); } catch (e) { ok(/model fell over/.test((e as Error).message), "a throwing recorder does not hide the call's own error"); }
 
+// ---- kept requests (calls that wrote chapter text, kept for good) ----
+const kept = await import("../../src/lib/keptRequests.ts");
+log.installAiRecorder(d);
+mode = "ok";
+const keptCount = () => (d.prepare(`SELECT COUNT(*) AS n FROM ai_requests`).get() as { n: number }).n;
+await completeChat(settings, { messages: msgs });
+ok(keptCount() === 0, "a call without onKeep is not kept");
+let keptId = "";
+reply = await completeChat(settings, { system: "sys", messages: msgs, job: "write", maxTokens: 99, source: { label: "Generate", storyId: "s1" }, onKeep: (i) => (keptId = i) });
+const [k] = kept.getKeptRequests(d, [keptId, "missing"]);
+ok(/^[0-9a-f-]{36}$/.test(keptId) && keptCount() === 1 && !!k, "a call with onKeep is told its id and kept; unknown ids are left out");
+ok(k.connectionId === "c1" && k.connection === "My model" && k.kind === "custom" && k.baseUrl === base2 && k.model === "m1" && k.role === null && k.job === "write", "…with the connection and model");
+ok(k.temperature === 0.3 && k.thinkingOff === false && k.maxTokens === 99 && k.system === "sys" && k.messages[0].content === "hello" && k.reply === "Hello", "…the settings, the prompt and the reply");
+ok(k.ms >= 15 && k.firstTextMs !== null && k.firstTextMs <= k.ms && k.source === "Generate" && k.storyId === "s1" && k.status === "ok", "…how long it took and until the first text, and where it came from");
+ok(!d.prepare(`SELECT data FROM ai_requests`).all().some((r: any) => r.data.includes("SECRET-KEY-123")), "…and never the key");
+
+// Pruning: old ones no draft or chapter writing mentions go; mentioned or recent ones stay.
+const old = Date.now() - (kept.KEPT_UNREFERENCED_DAYS + 1) * 24 * 60 * 60 * 1000;
+const ids = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222", "33333333-3333-4333-8333-333333333333"];
+for (const i of ids) d.prepare(`INSERT INTO ai_requests (id, at, data) VALUES (?, ?, '{}')`).run(i, old);
+d.prepare(`INSERT INTO drafts (key, data, updated_at) VALUES ('k1', ?, 1)`).run(JSON.stringify({ ai: [ids[0]] }));
+d.prepare(`INSERT INTO stories (id, title, created_at) VALUES ('st', 't', 1)`).run();
+d.prepare(`INSERT INTO chapters (id, story_id, depth, title, body, posted_at) VALUES ('ch', 'st', 0, 't', 'b', 1)`).run();
+d.prepare(`INSERT INTO chapter_writing (chapter_id, data, updated_at) VALUES ('ch', ?, 1)`).run(JSON.stringify({ versions: [{ ai: [ids[1]] }] }));
+ok(kept.pruneKeptRequests(d, true) === 1 && kept.getKeptRequests(d, [...ids, keptId]).length === 3, "pruning removes only old, unmentioned kept requests");
+ok(JSON.stringify(kept.withKeptId(["a", "b"], "a")) === '["b","a"]' && kept.withKeptId(Array.from({ length: 60 }, (_, i) => String(i)), "x").length === kept.MAX_KEPT_IDS, "withKeptId adds at the end, once, keeping the newest");
+
 setChatRecorder(undefined);
 server.close();
 fs.rmSync(dir, { recursive: true, force: true });

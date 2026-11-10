@@ -4,6 +4,7 @@
 import crypto from "node:crypto";
 import type Database from "better-sqlite3";
 import { setChatRecorder, type ChatRecord } from "./ai/client";
+import { keepRequest } from "./keptRequests";
 
 /**
  * THIS TABLE IS NEVER MIGRATED and is not in MIGRATIONS (db.ts). Its name carries its version. When its shape has to
@@ -190,6 +191,8 @@ export function getAiCall(d: Database.Database, id: string): AiCallFull | null {
  */
 export function installAiRecorder(d: Database.Database): void {
   setChatRecorder((r: ChatRecord) => {
+    // A call that wrote chapter text is kept for good first, so a failing history write can't lose it.
+    keepRequest(d, r, "server");
     recordAiCall(d, {
       at: r.at,
       ms: r.ms,
