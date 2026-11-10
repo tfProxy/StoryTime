@@ -93,11 +93,12 @@ try {
   await cardOf("Rowan · Hair").waitFor();
   ok((await bar.getByRole("link", { name: "← “Chapter A”" }).getAttribute("href")) === `/c/${A}`, "the bar links back to the chapter");
   ok((await bar.getByRole("heading", { level: 1 }).innerText()) === "Codex changes from “Chapter A”", "the heading names the chapter");
-  ok((await bar.getByText("10 waiting").isVisible()), "the bar counts what waits: 8 changes and 2 applied facts, not the idea with no sentence");
+  ok((await bar.getByText("8 waiting · 2 applied by the AI to approve").isVisible()), "the bar counts what waits: 8 changes, and apart the 2 applied facts, not the idea with no sentence");
   ok((await bar.getByRole("link", { name: "Done" }).getAttribute("href")) === `/c/${A}`, "Done leads back to the chapter");
   ok((await page.locator(".cr-row").count()) === 5 && (await page.locator(".cr-para").count()) === 5, "the text is in one row per paragraph");
   const rowOf = (i) => page.locator(".cr-row").nth(i);
-  const markTexts = async (i) => (await rowOf(i).locator("button.cr-mark").allInnerTexts()).map((t) => t.trim());
+  // A highlight takes the sentence's closing punctuation with it; compare the words.
+  const markTexts = async (i) => (await rowOf(i).locator("button.cr-mark").allInnerTexts()).map((t) => t.trim().replace(/[.,!?;:…”"’)]+$/, ""));
   ok((await markTexts(0)).join("|") === "Rowan's hair turned silver|She laced her red boots", "paragraph 1 highlights the two quoted sentences, and only them: " + (await markTexts(0)).join("|"));
   ok((await markTexts(1)).join("|") === "Her eyes were blue as the sea|The wind carried a scent of smoke", "paragraph 2: " + (await markTexts(1)).join("|"));
   ok((await markTexts(2)).join("|") === "Kestrel the hawk joined her" && (await markTexts(3)).join("|") === "Rowan was tense|Mira tipped her hat" && (await markTexts(4)).join("|") === "Rowan's ears changed|Mira wore a grey cloak", "paragraphs 3 to 5 highlight their sentences");
@@ -162,7 +163,7 @@ try {
   await cardOf("Mira · Hat").waitFor();
   ok((await bar.getByRole("heading", { level: 1 }).innerText()) === "Codex changes from “Chapter A” for Mira", "choosing an entry shows only its changes, and the heading says whose");
   ok((await page.locator("article.cr-card").count()) === 2 && (await cardOf("Mira · Cloak").count()) === 1 && (await page.locator("button.cr-mark").count()) === 2, "…its change and its applied fact, with their two highlights");
-  ok((await bar.getByText("2 waiting").isVisible()) && (await page.locator("section[aria-label='Not quoted from this chapter']").count()) === 0, "…and counts only those");
+  ok((await bar.getByText("1 waiting · 1 applied by the AI to approve").isVisible()) && (await page.locator("section[aria-label='Not quoted from this chapter']").count()) === 0, "…and counts only those: " + (await bar.locator(".meta").first().innerText()));
   await page.goto(url(`?entry=${rowan}`));
   await cardOf("Rowan · Hair").waitFor();
   ok((await page.locator("article.cr-card").count()) === 7 && (await cardOf("New character").count()) === 0 && (await cardOf("Rowan · Voice").count()) === 1, "Rowan's: her six changes and one applied fact (the new entry isn't hers), the not-quoted one included");
@@ -200,7 +201,7 @@ try {
   ok((await markOf("Rowan's hair turned silver").count()) === 1 && (await page.locator("button.cr-mark").count()) === 9, "…and the highlight stays");
   const rowanFacts = async () => (await send("GET", `/api/chapters/${A}/codex`)).entries.find((e) => e.name === "Rowan").facts;
   ok((await rowanFacts()).some((f) => f.aspect === "Hair" && f.text === "silver hair"), "…the codex has the new hair at this chapter");
-  ok((await bar.getByText("9 waiting").isVisible()), "…and the bar counts one fewer");
+  ok((await bar.getByText("7 waiting · 2 applied by the AI to approve").isVisible()), "…and the bar counts one fewer: " + (await bar.locator(".meta").first().innerText()));
 
   // ---- Edit, then Save ----
   const boots = cardOf("Rowan · Boots");

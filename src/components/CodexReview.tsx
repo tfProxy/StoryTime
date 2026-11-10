@@ -25,7 +25,8 @@ function findQuote(quote: string, paragraphs: string[]): { para: number; start: 
   const re = new RegExp(words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/'/g, "['’‘]")).join("[^\\p{L}\\p{N}]+"), "iu");
   for (let i = 0; i < paragraphs.length; i++) {
     const m = re.exec(paragraphs[i]);
-    if (m) return { para: i, start: m.index, end: m.index + m[0].length };
+    // The closing punctuation goes with the sentence, so a highlight that wraps doesn't leave it alone on a line.
+    if (m) return { para: i, start: m.index, end: m.index + m[0].length + (/^[.,!?;:…”"’)]*/.exec(paragraphs[i].slice(m.index + m[0].length))?.[0].length ?? 0) };
   }
   return null;
 }
@@ -100,7 +101,9 @@ export default function CodexReview({
   for (const s of live.shown) if (s.entry_id && !elsewhere(s)) entries.set(s.entry_id, s.entry_name);
   for (const f of applied) entries.set(f.entry_id, f.entry_name);
 
-  const open = suggestions.filter((s) => s.status === "open").length + facts.filter((f) => !factState[f.op_id] || factState[f.op_id] === "busy").length;
+  // Counted apart, as the Codex section counts them: changes waiting, and facts the AI already applied.
+  const open = suggestions.filter((s) => s.status === "open").length;
+  const toApprove = facts.filter((f) => !factState[f.op_id] || factState[f.op_id] === "busy").length;
   const bulk = suggestions.filter(acceptableInBulk);
 
   async function decideFact(f: AppliedFact, action: "approve" | "undo-ai") {
@@ -173,7 +176,11 @@ export default function CodexReview({
         <h1 className="cr-title">
           Codex changes from “{title}”{entryId && entries.get(entryId) ? ` for ${entries.get(entryId)}` : ""}
         </h1>
-        <span className="meta">{live.items === null ? "Reading…" : open === 0 ? "nothing waiting" : `${open} waiting`}</span>
+        <span className="meta">
+          {live.items === null
+            ? "Reading…"
+            : [open === 0 && toApprove === 0 ? "nothing waiting" : `${open} waiting`, toApprove > 0 ? `${toApprove} applied by the AI to approve` : ""].filter(Boolean).join(" · ")}
+        </span>
         {entries.size > 1 || entryId ? (
           <label className="cr-filter">
             <span className="meta">Show</span>
@@ -224,7 +231,7 @@ export default function CodexReview({
 
       <div className="cr-text">
         {paragraphs.map((p, i) => {
-          const here = placed.filter((x) => x.para === i);
+          const here = placed.filter((x) => x.para === i).sort((a, b) => a.start - b.start);
           return (
             <div key={i} className={`cr-row${here.length ? " cr-has" : ""}`}>
               <p className="cr-para">{paragraph(p, i)}</p>

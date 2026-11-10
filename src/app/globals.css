@@ -4445,7 +4445,10 @@ label.retcon-check input,
   margin-left: 0.25rem;
 }
 .entry-review-count {
-  margin: 0.25rem 0 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  margin: 0 0.75rem;
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--accent);
@@ -6454,7 +6457,7 @@ dialog.entry-start-dialog::backdrop {
   margin: 0 0 1rem;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 1.1rem;
-  line-height: 1.75;
+  line-height: 1.95;
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
