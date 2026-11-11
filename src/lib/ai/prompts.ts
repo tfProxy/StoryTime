@@ -1,4 +1,5 @@
 // Prompt construction for chapter drafting. Pure functions, no network.
+import { codexBlock } from "../codex";
 
 export type ContextChapter = {
   /** Present for chapters loaded from the server; needed to save generated summaries. */
@@ -225,7 +226,7 @@ export const codexKey = (e: ContextCodexEntry) => e.id ?? e.name;
 
 function codexLine(e: ContextCodexEntry): string {
   const alias = e.aliases.length ? ` (also: ${e.aliases.join(", ")})` : "";
-  return `- ${e.name} [${e.type}]${alias}: ${e.content.replace(/\s+/g, " ").trim()}`;
+  return codexBlock(`${e.name} [${e.type}]${alias}`, e.content);
 }
 
 /** What the prompt builder will do with every codex entry, and why. */

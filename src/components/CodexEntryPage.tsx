@@ -7,6 +7,7 @@ import {
   DRAFT_ANCHOR,
   FACT_LIMITS,
   factHistory,
+  codexBlock,
   factSharedState,
   formLine,
   isAiFact,
@@ -415,7 +416,7 @@ export default function CodexEntryPage(props: Props) {
         )}
         {tab === "ai" && (
           <>
-            <div className="fact-ai">{entry.description || <em>Nothing yet — add facts. Notes are not sent to the AI.</em>}</div>
+            <AiText entry={entry} />
             <p className="meta">The AI reads this when {entry.name} is named or a keyword appears nearby{entry.always_include ? " (always, here)" : ""}. Your notes and the facts of other forms are not sent.</p>
           </>
         )}
@@ -483,6 +484,13 @@ function ChapterPicker({ storyId, entryId, here, nav }: { storyId: string; entry
   );
 }
 
+/** The entry exactly as a prompt gives it to the AI: its name line and a bullet for each fact (codexBlock). */
+function AiText({ entry }: { entry: CodexEntry }) {
+  if (!entry.description) return <div className="fact-ai"><em>Nothing yet — add facts. Notes are not sent to the AI.</em></div>;
+  const head = `${entry.name} [${entry.type}]${entry.aliases.length ? ` (also: ${entry.aliases.join(", ")})` : ""}`;
+  return <div className="fact-ai">{codexBlock(head, entry.description)}</div>;
+}
+
 /** "What the AI is told at …": the entry's text for the AI, and which every-form facts the current form replaces. */
 function AiToldBox({ entry, here }: { entry: CodexEntry; here: string }) {
   const cur = entry.form?.name ?? entry.baseForm;
@@ -490,7 +498,7 @@ function AiToldBox({ entry, here }: { entry: CodexEntry; here: string }) {
   return (
     <section className="entry-section entry-ai-told" aria-label={`What the AI is told at “${here}”`}>
       <h2>What the AI is told at “{here}”</h2>
-      <div className="fact-ai">{entry.description || <em>Nothing yet — add facts. Notes are not sent to the AI.</em>}</div>
+      <AiText entry={entry} />
       {cur && replaced.length > 0 && (
         <p className="meta">
           {entry.name}&apos;s {cur} facts replace the every-form {replaced.map((f) => f.aspect.trim()).join(", ")} while {entry.name} is {cur}.

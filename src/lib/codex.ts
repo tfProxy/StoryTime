@@ -293,7 +293,21 @@ export function describeEntry(facts: LiveFact[], recentAnchor?: string, baseForm
     if (!f.text.trim()) continue;
     parts.push(sentence(f.aspect.trim() ? `${f.aspect.trim()}: ${f.text.trim()}` : f.text, f));
   }
-  return parts.join(" ");
+  // One fact a line: the AI reads a list as well as a paragraph, and the owner can read it (codexBlock lays it out).
+  return parts.join("\n");
+}
+
+/**
+ * An entry as the AI reads it in a prompt, and as its page shows it: "- Name [type]: fact" for one fact, else the
+ * name on its own line and a bullet for each fact (`content` is describeEntry's text, one fact a line).
+ */
+export function codexBlock(head: string, content: string): string {
+  const lines = content
+    .split("\n")
+    .map((l) => l.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  if (lines.length <= 1) return `- ${head}: ${lines[0] ?? ""}`;
+  return [`- ${head}:`, ...lines.map((l) => `  - ${l}`)].join("\n");
 }
 
 /**

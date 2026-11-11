@@ -3,7 +3,7 @@
 // changes is the codex check (codexCheckAi.ts), which runs on the server.
 import { completeChat, type AiSourceIds } from "./client";
 import { buildStorySoFar, estimateTokens, notesBlock, parseInstruction, type ContextChapter, type PromptParts } from "./prompts";
-import { ENTRY_TYPES, type CodexEntry, type EntryType } from "../codex";
+import { ENTRY_TYPES, codexBlock, type CodexEntry, type EntryType } from "../codex";
 import type { Settings } from "../settings";
 
 export type PathChapter = ContextChapter & { id: string; depth: number };
@@ -80,7 +80,7 @@ Example of the style (illustrative; do not copy its details): {"name":"Harbour M
 function describeCodex(entries: CodexEntry[]): string {
   if (entries.length === 0) return "(empty)";
   return entries
-    .map((e) => `- ${e.name} [${e.type}]${e.aliases.length ? ` (also: ${e.aliases.join(", ")})` : ""}: ${e.description.replace(/\s+/g, " ").trim()}`)
+    .map((e) => codexBlock(`${e.name} [${e.type}]${e.aliases.length ? ` (also: ${e.aliases.join(", ")})` : ""}`, e.description))
     .join("\n");
 }
 
