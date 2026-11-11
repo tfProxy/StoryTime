@@ -44,7 +44,7 @@ ok(!find(await state(root1), "Mara") && !find(await state(b), "Mara"), "it isn't
 let s = await state(a2);
 let e = find(s, "Mara");
 ok(e && e.shared_entry_id === sid && e.content === "Base notes." && e.aliases.join() === "Mar", "it reads the base below the chapter");
-ok(e.description === "Ears: Tall ears. Eyes: Green.", "…with the base's facts: " + e.description);
+ok(e.description === "Ears: Tall ears.\nEyes: Green.", "…with the base's facts: " + e.description);
 r = await call("POST", "/api/codex/link", { anchor_chapter_id: a2, shared_entry_id: sid });
 ok(r.status === 409, "it can't be added twice: " + r.json?.error);
 r = await call("POST", "/api/codex/link", { anchor_chapter_id: a, shared_entry_id: "nope" });
@@ -77,7 +77,7 @@ ok(r.status === 201, "a replace that repeats what it reads is fine");
 r = await call("POST", "/api/codex/facts", { anchor_chapter_id: a2, entry_id: mine, op: "set", aspect: "Ears", text: "Fox ears." });
 ok(r.status === 201 && r.json.fact_id === earsId, "setting a base fact's aspect in a story changes that fact");
 e = find(await state(a2), "Mara Vale");
-ok(e.description === "Ears: Fox ears. Eyes: Green.", "…for the story: " + e.description);
+ok(e.description === "Ears: Fox ears.\nEyes: Green.", "…for the story: " + e.description);
 r = await call("POST", "/api/shared", { name: "Probe" });
 r = await call("POST", "/api/codex/facts", { anchor_chapter_id: a2, entry_id: mine, op: "set", aspect: "Tail", text: "A fox tail." });
 ok(r.status === 201, "a story can add a fact of its own");
@@ -85,7 +85,7 @@ r = await call("PUT", `/api/shared/${sid}/facts/${earsId}`, { aspect: "Ears", te
 ok(r.status === 200, "the base fact is edited");
 ok(find(await state(a2), "Mara Vale").description.startsWith("Ears: Fox ears."), "…the story's own version still wins");
 ok(find(await state(a2), "Mara Vale").description.includes("Tail: A fox tail."), "…and its own fact stays");
-ok(find(await state(other), "Mara Vale").description === "Ears: Base ears, changed. Eyes: Green.", "…while the other story gets the new base text: " + find(await state(other), "Mara Vale").description);
+ok(find(await state(other), "Mara Vale").description === "Ears: Base ears, changed.\nEyes: Green.", "…while the other story gets the new base text: " + find(await state(other), "Mara Vale").description);
 
 // Deleting
 r = await call("DELETE", `/api/shared/${sid}`);

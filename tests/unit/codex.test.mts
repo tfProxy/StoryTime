@@ -1,6 +1,6 @@
 ﻿import { foldFacts, factHistory, describeEntry, formClashes, compareEntry, overriddenFacts, applicableFacts, factLinesForEditing, describeSharedFacts, type FactOp, type LiveFact } from "../../src/lib/codex.ts";
 import { baseForms, foldCodex, storyEntrySummaries, retiredEntries, entryHistory, changedFields, addChange, draftOps, DRAFT_ANCHOR, type CodexChange, type CodexOp } from "../../src/lib/codex.ts";
-import { cleanForm, quoteSupports } from "../../src/lib/codex.ts";
+import { codexBlock, cleanForm, quoteSupports } from "../../src/lib/codex.ts";
 import { buildCodexBlock, mentions, generatePrompt, refinePrompt, choicesPrompt } from "../../src/lib/ai/prompts.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
@@ -121,13 +121,21 @@ ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length ==
   const lf = (o: Partial<FactOp>): LiveFact => { const f = fop(o); return { fact_id: f.fact_id, aspect: f.aspect, form: f.form, text: f.text, quote: f.quote, op: f }; };
   const formFact = lf({ fact_id: "form", aspect: "form", form: "vixen", text: "change complete" });
   let d = describeEntry([formFact, lf({ text: "Fox ears." }), lf({ fact_id: "tail", aspect: "Tail", form: "vixen", text: "Bushy tail." }), lf({ fact_id: "tail2", aspect: "Tail", form: "human", text: "No tail." }), lf({ fact_id: "loose", aspect: "", text: "Hates rain" })]);
-  ok(d === "Form: vixen, change complete. Ears: Fox ears. Tail: Bushy tail. Hates rain.", "describe: form first, current form's facts, then loose facts: " + d);
+  ok(d === "Form: vixen, change complete.\nEars: Fox ears.\nTail: Bushy tail.\nHates rain.", "describe: form first, current form's facts, then loose facts: " + d);
   d = describeEntry([lf({ text: "Fox ears." })]);
   ok(d === "Ears: Fox ears.", "describe: no form");
   d = describeEntry([lf({ fact_id: "tail2", aspect: "Tail", form: "human", text: "No tail." })]);
   ok(d === "", "describe: a form fact without a current form doesn't apply");
   d = describeEntry([lf({ anchor_chapter_id: "prev", text: "Fox ears." }), lf({ fact_id: "x", aspect: "Eyes", text: "Green." })], "prev");
-  ok(d === "Ears: Fox ears (just changed). Eyes: Green.", "describe: recent anchor is marked: " + d);
+  ok(d === "Ears: Fox ears (just changed).\nEyes: Green.", "describe: recent anchor is marked: " + d);
+  ok(codexBlock("Mira [character]", "Ears: Fox ears.") === "- Mira [character]: Ears: Fox ears.", "codexBlock: one fact stays on one line");
+  d = codexBlock("Mira [character]", "Ears: Fox ears.\nEyes: Green.");
+  ok(d === "- Mira [character]:\n  - Ears: Fox ears.\n  - Eyes: Green.", "codexBlock: several facts are a header and a bullet each: " + d);
+  d = codexBlock("Mira [character]", "\n  Ears:   Fox   ears.  \n\n   \nEyes: Green.\n");
+  ok(d === "- Mira [character]:\n  - Ears: Fox ears.\n  - Eyes: Green.", "codexBlock: blank lines and extra spaces are dropped: " + d);
+  ok(codexBlock("Mira [character]", "\n \n  Only   one. ") === "- Mira [character]: Only one.", "codexBlock: blanks dropped leaves one fact on one line");
+  d = buildCodexBlock([e("Mira", "Ears: Fox ears.\nEyes: Green.", { always_include: true })], "", 1000);
+  ok(d.includes("- Mira [character]:\n  - Ears: Fox ears.\n  - Eyes: Green."), "prompt: an entry with two facts is a header plus two bullet lines: " + d);
 
   let es = foldCodex([op({})], [fop({}), fop({ fact_id: "form", aspect: "form", form: "vixen", text: "" })]);
   ok(es[0].facts.length === 2 && es[0].form?.name === "vixen" && es[0].forms.join() === "vixen" && es[0].description === "Ears: Round ears.", "foldCodex: facts folded into the entry; its only form is its normal one, so the AI isn't told it: " + es[0].description);
@@ -194,23 +202,23 @@ ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length ==
   const vixen = f({ fact_id: "t2", aspect: "Tail", form: "vixen", text: "Bushy tail.", posted_at: 5001 });
 
   let es = foldCodex(entry, [f({}), human, vixen, form("c0", 0, "human")]);
-  ok(es[0].baseForm === "human" && es[0].description === "Ears: Round ears. Tail: No tail.", "base form: in its normal form the line is left out but its facts apply: " + es[0].description);
+  ok(es[0].baseForm === "human" && es[0].description === "Ears: Round ears.\nTail: No tail.", "base form: in its normal form the line is left out but its facts apply: " + es[0].description);
   ok(es[0].form?.name === "human", "…the entry still has its form");
 
   es = foldCodex(entry, [f({}), human, vixen, form("c0", 0, "human"), form("c2", 2, "vixen", "half-changed")]);
-  ok(es[0].baseForm === "human" && es[0].description === "Form: vixen, half-changed. Ears: Round ears. Tail: Bushy tail.", "another form is told to the AI, with its facts: " + es[0].description);
+  ok(es[0].baseForm === "human" && es[0].description === "Form: vixen, half-changed.\nEars: Round ears.\nTail: Bushy tail.", "another form is told to the AI, with its facts: " + es[0].description);
 
   const back = [f({}), human, vixen, form("c0", 0, "human"), form("c2", 2, "vixen"), form("c3", 3, "human", "", { id: "bf-back" })];
   es = foldCodex(entry, back);
-  ok(es[0].description === "Ears: Round ears. Tail: No tail.", "back in its normal form, the line is left out again: " + es[0].description);
+  ok(es[0].description === "Ears: Round ears.\nTail: No tail.", "back in its normal form, the line is left out again: " + es[0].description);
   es = foldCodex(entry, back, { recentAnchor: "c3" });
-  ok(es[0].description === "Form: human (just changed). Ears: Round ears. Tail: No tail.", "…except in the chapter after it changed back, so the story shows the change: " + es[0].description);
+  ok(es[0].description === "Form: human (just changed).\nEars: Round ears.\nTail: No tail.", "…except in the chapter after it changed back, so the story shows the change: " + es[0].description);
   es = foldCodex(entry, [f({}), human, form("c0", 0, "human", "settled")]);
-  ok(es[0].description === "Form: human, settled. Ears: Round ears. Tail: No tail.", "a note on the normal form (a stage) is still told: " + es[0].description);
+  ok(es[0].description === "Form: human, settled.\nEars: Round ears.\nTail: No tail.", "a note on the normal form (a stage) is still told: " + es[0].description);
 
   // the form taken away: it reads as in its normal form
   es = foldCodex(entry, [f({}), human, vixen, form("c0", 0, "human"), form("c2", 2, "vixen"), form("c3", 3, "", "", { op: "retire" })]);
-  ok(es[0].form === null && es[0].baseForm === "human" && es[0].description === "Ears: Round ears. Tail: No tail.", "with the form removed the entry reads as in its normal form: " + es[0].description);
+  ok(es[0].form === null && es[0].baseForm === "human" && es[0].description === "Ears: Round ears.\nTail: No tail.", "with the form removed the entry reads as in its normal form: " + es[0].description);
 
   // never had a form: facts of a form can't apply (the entry page asks for a form)
   es = foldCodex(entry, [f({}), human]);
@@ -218,7 +226,7 @@ ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length ==
 
   // the first form is the base, wherever it was given
   es = foldCodex(entry, [f({}), human, vixen, form("c2", 2, "vixen"), form("c4", 4, "human", "", { id: "bf-late" })]);
-  ok(es[0].baseForm === "vixen" && es[0].description === "Form: human. Ears: Round ears. Tail: No tail.", "the first form given is the base: " + es[0].description);
+  ok(es[0].baseForm === "vixen" && es[0].description === "Form: human.\nEars: Round ears.\nTail: No tail.", "the first form given is the base: " + es[0].description);
   ok(baseForms([]).size === 0, "no facts, no base forms");
 }
 
@@ -259,7 +267,7 @@ ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length ==
     fo("loose", "", "Hums when nervous."),
   ];
   let e = at([...shared, fo("form", "Form", "", "human"), fo("form", "Form", "", "vixen")]);
-  ok(e.description === "Form: vixen. EARS: Tall fox ears. Personality: Stubborn. Hums when nervous.", "in the form, its own fact replaces the every-form one (any capitals): " + e.description);
+  ok(e.description === "Form: vixen.\nEARS: Tall fox ears.\nPersonality: Stubborn.\nHums when nervous.", "in the form, its own fact replaces the every-form one (any capitals): " + e.description);
   ok(overriddenFacts(e).join() === "ears", "overriddenFacts names the replaced every-form fact");
   ok(!applicableFacts(e.facts, "vixen").some((f) => f.fact_id === "ears"), "applicableFacts leaves it out");
   ok(e.description.includes("Personality: Stubborn.") && e.description.includes("Hums when nervous."), "facts without a form version are kept");
@@ -267,13 +275,13 @@ ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length ==
   ok(lines.includes("- Ears [every form; not in use now, the vixen form's own replaces it]: Round human ears.") && lines.includes("- EARS [Vixen form]: Tall fox ears."), "the fact lists for AI edits mark the replaced fact: " + lines.join(" | "));
 
   e = at([...shared, fo("form", "Form", "", "human")]);
-  ok(e.description === "Ears: Round human ears. Personality: Stubborn. Tail: No tail. Hums when nervous.", "in another form the every-form fact is used: " + e.description);
+  ok(e.description === "Ears: Round human ears.\nPersonality: Stubborn.\nTail: No tail.\nHums when nervous.", "in another form the every-form fact is used: " + e.description);
   ok(overriddenFacts(e).length === 0 && factLinesForEditing(e).includes("- Ears [every form]: Round human ears."), "…and nothing is overridden");
 
   e = at(shared);
-  ok(e.form === null && e.baseForm === null && e.description === "Ears: Round human ears. Personality: Stubborn. Hums when nervous.", "with no form the every-form fact is used: " + e.description);
+  ok(e.form === null && e.baseForm === null && e.description === "Ears: Round human ears.\nPersonality: Stubborn.\nHums when nervous.", "with no form the every-form fact is used: " + e.description);
   ok(overriddenFacts(e).length === 0, "…and nothing is overridden");
-  ok(describeSharedFacts([...shared, fo("form", "Form", "", "vixen")].map((f) => ({ id: f.fact_id, aspect: f.aspect, form: f.form, text: f.text }))) === "EARS: Tall fox ears. Personality: Stubborn. Hums when nervous.", "a shared entry follows the same rule");
+  ok(describeSharedFacts([...shared, fo("form", "Form", "", "vixen")].map((f) => ({ id: f.fact_id, aspect: f.aspect, form: f.form, text: f.text }))) === "EARS: Tall fox ears.\nPersonality: Stubborn.\nHums when nervous.", "a shared entry follows the same rule");
 }
 
 // comparing an entry between two chapters

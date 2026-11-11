@@ -22,7 +22,7 @@ const fold = (ops: CodexOp[], facts: FactOp[], b: SharedBase) => foldCodex(resol
 let es = fold([op({})], [], base());
 ok(es.length === 1 && es[0].name === "Mara" && es[0].content === "Base notes." && es[0].aliases.join() === "Mar", "a linked entry reads the base's fields");
 ok(es[0].shared_entry_id === "S" && es[0].overridden.length === 0, "…and says it is shared, with nothing changed");
-ok(es[0].description === "Ears: Round ears. Eyes: Green.", "…and the base's facts: " + es[0].description);
+ok(es[0].description === "Ears: Round ears.\nEyes: Green.", "…and the base's facts: " + es[0].description);
 
 // Editing the base reaches the entry
 es = fold([op({})], [], base({ name: "Mara Vale", content: "New notes.", facts: [{ id: "ears", aspect: "Ears", form: "", text: "Tall ears." }] }));
@@ -51,11 +51,11 @@ ok(fold(gone, [], base()).length === 0 && retiredEntries(resolveShared(gone, bas
 
 // Facts: a story's fact on a base fact's id changes it, or hides it, for that story only
 es = fold([op({})], [fop({ anchor_chapter_id: "c2", anchor_depth: 2, text: "Fox ears." })], base());
-ok(es[0].description === "Ears: Fox ears. Eyes: Green.", "a story's fact on a base fact's id replaces it: " + es[0].description);
+ok(es[0].description === "Ears: Fox ears.\nEyes: Green.", "a story's fact on a base fact's id replaces it: " + es[0].description);
 es = fold([op({})], [fop({ anchor_chapter_id: "c2", anchor_depth: 2, op: "retire", fact_id: "eyes" })], base());
 ok(es[0].description === "Ears: Round ears.", "…or hides it");
 es = fold([op({})], [fop({ fact_id: "own", aspect: "Tail", text: "A fox tail." })], base());
-ok(es[0].description === "Ears: Round ears. Eyes: Green. Tail: A fox tail.", "a story can add facts of its own: " + es[0].description);
+ok(es[0].description === "Ears: Round ears.\nEyes: Green.\nTail: A fox tail.", "a story can add facts of its own: " + es[0].description);
 es = fold([op({})], [fop({ anchor_chapter_id: "c2", anchor_depth: 2, text: "Fox ears." })], base({ facts: [{ id: "ears", aspect: "Ears", form: "", text: "Base change." }] }));
 ok(es[0].description === "Ears: Fox ears.", "the story's fact still wins after the base fact changes");
 es = fold([op({})], [], base({ facts: [{ id: "form", aspect: "form", form: "vixen", text: "" }, { id: "tail", aspect: "Tail", form: "vixen", text: "Bushy." }] }));

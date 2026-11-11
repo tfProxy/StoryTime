@@ -59,7 +59,7 @@ try {
   ok(wren && wren.shared_entry_id === shared && wren.description === "Hair: silver braid.", "posting links the shared entry at the new chapter: " + JSON.stringify(wren?.description));
   ok(!(await codexAt(root)).some((e) => e.name === "Wren Ashby"), "…and not at the chapter before it");
   await post(`/api/shared/${shared}/facts`, { aspect: "Eyes", text: "grey" });
-  ok((await codexAt(posted)).find((e) => e.name === "Wren Ashby").description === "Hair: silver braid. Eyes: grey.", "…and it follows the shared entry afterwards");
+  ok((await codexAt(posted)).find((e) => e.name === "Wren Ashby").description === "Hair: silver braid.\nEyes: grey.", "…and it follows the shared entry afterwards");
   await send("DELETE", `/api/stories/${story.story_id}`);
   await context.close();
 } catch (e) {

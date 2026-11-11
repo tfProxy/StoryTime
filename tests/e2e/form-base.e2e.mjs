@@ -52,7 +52,7 @@ try {
   // another form: told to the AI
   await page.goto(at(rowan, A));
   await form().getByText(/normal form: human/).waitFor();
-  ok((await reads().innerText()).startsWith("Form: vixen.") && (await reads().innerText()).includes("a bushy tail"), "in another form the AI is told it: " + (await reads().innerText()));
+  ok((await reads().innerText()).includes("\n  - Form: vixen.\n") && (await reads().innerText()).includes("a bushy tail"), "in another form the AI is told it: " + (await reads().innerText()));
 
   // facts of a form, no form set
   await page.goto(at(wren, R));
