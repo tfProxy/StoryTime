@@ -59,7 +59,7 @@ export type WorkerState = {
   /** The Generates going now, by draft key: the text so far, and how to stop it. */
   /** `discard`: stopped because its draft is gone (its choice was removed), so the text so far is not saved. */
   /** `step` is what it is doing now and since when; `thinking` is the model's reasoning so far. */
-  generates: Map<string, { text: string; ctl: AbortController; discard?: boolean; step?: { text: string; since: number }; thinking?: string }>;
+  generates: Map<string, { text: string; ctl: AbortController; discard?: boolean; step?: { text: string; since: number }; thinking?: string; kept?: string }>;
   /** What each picture run (Fill missing pictures) has asked for, retried once, and finished but not yet put on the run. */
   pictureRuns: Map<string, { asked: Set<string>; retried: Set<string>; results: { taskId: string; jobId?: string; error?: string }[]; flushing: boolean }>;
   /** For the API and browser tests only (the test routes set it): recording a finished job fails with this message. */

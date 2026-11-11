@@ -1,5 +1,5 @@
 import { emptyDraft } from "../../src/lib/drafts.ts";
-import { applyAfterGenerate, applyGenerated, beginGenerated, isBegun, MAX_UNDO, MAX_VERSIONS, pushUndo, startVersion } from "../../src/lib/generatedDraft.ts";
+import { applyAfterGenerate, applyGenerated, beginGenerated, isBegun, MAX_UNDO, MAX_VERSIONS, pushUndo, restore, snapshot, startVersion } from "../../src/lib/generatedDraft.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const draft = (extra = {}) => ({ ...emptyDraft("fill:c1", "/c/p/write?choice=c1", "Story: “Go”"), ...extra });
@@ -55,3 +55,14 @@ ok(isBegun(begun, base), "…after the first text it has");
 ok(isBegun(applyGenerated(begun, { title: "G", body: "The AI" }, { continued: isBegun(begun, base) }), base) && applyGenerated(begun, { title: "G", body: "The AI" }, { continued: isBegun(begun, base) }).undo.length === 1, "…and applying again by that check adds no second undo entry");
 ok(isBegun(draft(), { title: "", body: "" }), "a Generate that started from an empty draft is always begun (nothing to keep)");
 ok(!isBegun(draft({ undo: [{ title: "older", body: "older" }] }), base), "a different last undo entry doesn't count");
+
+// The kept AI requests that wrote the text (`ai`) follow it into versions and undo.
+const g1 = applyGenerated(draft({ title: "Mine", body: "My words." }), { title: "G1", body: "First." }, { ai: "id1" });
+ok(JSON.stringify(g1.ai) === '["id1"]' && !g1.undo[0].ai && !g1.versions![0].ai, "a Generate's text points to its request; the hand-written text before it has none");
+const g1more = applyGenerated(g1, { title: "G1", body: "First, longer." }, { continued: true });
+ok(JSON.stringify(g1more.ai) === '["id1"]', "more text of the same Generate keeps it");
+const g2 = applyGenerated(g1more, { title: "G2", body: "Second." }, { ai: "id2" });
+ok(JSON.stringify(g2.ai) === '["id2"]' && JSON.stringify(g2.undo.at(-1)!.ai) === '["id1"]' && JSON.stringify(g2.versions![g2.versions!.length - 2].ai) === '["id1"]', "a new Generate replaces it; the text before keeps its own in undo and versions");
+const g3 = applyGenerated({ ...g2, ai: ["old"] }, { title: "G3", body: "Third." });
+ok(g3.ai === undefined, "a new Generate's text without an id yet has none, not the previous text's");
+ok(JSON.stringify(restore(snapshot(g2))) === JSON.stringify({ title: "G2", body: "Second.", ai: ["id2"] }) && !("ai" in snapshot(draft({ title: "x", body: "y" }))), "snapshot and restore carry the requests; hand-written text has no `ai`");

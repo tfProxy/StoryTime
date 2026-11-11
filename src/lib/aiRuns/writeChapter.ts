@@ -78,17 +78,21 @@ export async function withPathSummaries(settings: Settings, ctx: StoryContext, s
 export async function writeText(
   settings: Settings,
   p: { ctx: StoryContext; label: string; direction: string; options: RunOptions; signal?: AbortSignal; onText?: (text: string) => void; stream?: Stream; source?: AiSourceIds },
-): Promise<{ title: string; body: string }> {
+): Promise<{ title: string; body: string; ai?: string }> {
   const prompt = generatePrompt(p.ctx, p.direction, p.options.length ?? "medium", settings.contextTokens);
+  let ai: string | undefined;
   const text = await complete(
     p.stream ?? defaultStream,
     settings,
-    { system: SYSTEM_CHAPTER, messages: [{ role: "user", content: prompt }], ...modelRequest(p.options, "main"), job: "write", signal: p.signal, source: { label: "AI run: write", ...p.source } },
+    {
+      system: SYSTEM_CHAPTER, messages: [{ role: "user", content: prompt }], ...modelRequest(p.options, "main"), job: "write", signal: p.signal, source: { label: "AI run: write", ...p.source },
+      onKeep: (id) => (ai = id),
+    },
     p.onText && ((soFar) => p.onText!(soFar)),
   );
   const { title, body } = parseChapterOutput(text);
   if (!body.trim()) throw new Error("The model sent back no chapter text.");
-  return { title: (title ?? "").trim() || p.label, body: body.trim() };
+  return { title: (title ?? "").trim() || p.label, body: body.trim(), ...(ai ? { ai } : {}) };
 }
 
 export type PlannedChoice = { label: string; direction: string; isNew: boolean };
@@ -203,7 +207,7 @@ export async function writeOneChapter(
     /** Saves the older chapters' summaries on the server (the worker's fetch; the page's by default). */
     fetch?: typeof fetch;
   },
-): Promise<{ title: string; body: string; choices: PlannedChoice[]; summary?: string; path_summary?: string }> {
+): Promise<{ title: string; body: string; ai?: string; choices: PlannedChoice[]; summary?: string; path_summary?: string }> {
   const ctx = await withPathSummaries(settings, storyContextOf(p.context, p.label), p.signal, p.onStatus, p.fetch, p.source);
   const chapter = await writeText(settings, { ctx, label: p.label, direction: p.direction, options: p.options, signal: p.signal, onText: p.onText, stream: p.stream, source: p.source });
   // The writing model plans and summarizes too while Ollama still has it loaded, rather than swapping models and back.

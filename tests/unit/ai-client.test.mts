@@ -1,9 +1,11 @@
 import http from "node:http";
 import { streamChat, listModels, completeChat, AiError } from "../../src/lib/ai/client.ts";
 import { freeOllamaForPictures, freeOllamaMemory, loadedOllamaModels, modelAfterWriting, ollamaRoot } from "../../src/lib/ai/ollama.ts";
+import { matchModelId } from "../../src/lib/ai/providers.ts";
 import { DEFAULT_SETTINGS, favoritesFor, parseSettings, exportSettingsJson, importSettingsJson } from "../../src/lib/settingsSchema.ts";
 
 const seen: { url?: string; headers?: http.IncomingHttpHeaders; body?: any }[] = [];
+let busyHits = 0;
 const server = http.createServer((req, res) => {
   let data = "";
   req.on("data", (c) => (data += c));
@@ -16,6 +18,12 @@ const server = http.createServer((req, res) => {
     if (req.url === "/comfy/free") { res.setHeader("content-type", "application/json"); return res.end("{}"); }
     if (req.url === "/ol/api/ps") { res.setHeader("content-type", "application/json"); return res.end(JSON.stringify({ models: [{ name: "big:14b", model: "big:14b" }, { name: "tiny:1b" }] })); }
     if (req.url === "/ol/api/generate") { res.setHeader("content-type", "application/json"); return res.end("{}"); }
+    // Busy: "at capacity" (Featherless's wording) twice, then answers; /full never stops being busy.
+    if ((req.url === "/busy/chat/completions" && ++busyHits <= 2) || req.url === "/full/chat/completions") {
+      res.statusCode = 503;
+      res.setHeader("retry-after", "0");
+      return res.end(JSON.stringify({ error: { message: "some/model is temporarily at capacity. Please try again shortly." } }));
+    }
     if (req.url === "/bad/chat/completions") { res.statusCode = 401; return res.end(JSON.stringify({ error: { message: "bad key" } })); }
     res.setHeader("content-type", "text/event-stream");
     const chunks = req.url!.startsWith("/anth")
@@ -109,8 +117,14 @@ assert(a.body.system === "sys" && a.body.max_tokens === 4096 && a.body.model ===
 }
 
 assert(JSON.stringify(await listModels(conn("custom", base + "/o"))) === '["a-model","b-model"]', "listModels sorted");
+assert(seen.at(-1)!.headers?.["user-agent"] === "StoryTime", "server requests name StoryTime as the User-Agent (Featherless refuses Node's default)");
 try { await completeChat(mk("custom", base + "/bad") as any, { messages: [{ role: "user", content: "x" }] }); assert(false, "should throw"); }
 catch (e) { assert(e instanceof AiError && String(e.message).includes("401") && String(e.message).includes("bad key"), "HTTP error surfaced: " + (e as Error).message); }
+assert(seen.filter((s) => s.url === "/bad/chat/completions").length === 1, "a 401 is not retried");
+const busyText = await completeChat(mk("custom", base + "/busy") as any, { messages: [{ role: "user", content: "x" }] });
+assert(busyText.length > 0 && busyHits === 3, "a model at capacity is retried until it answers");
+try { await completeChat(mk("custom", base + "/full") as any, { messages: [{ role: "user", content: "x" }] }); assert(false, "should throw"); }
+catch (e) { assert(e instanceof AiError && /at capacity/.test(e.message) && seen.filter((s) => s.url === "/full/chat/completions").length === 6, "gives up after 5 retries with the provider's message: " + (e as Error).message); }
 try { await completeChat(mk("custom", "http://localhost:1") as any, { messages: [{ role: "user", content: "x" }] }); }
 catch (e) { assert(e instanceof AiError && /CORS/.test((e as Error).message), "network error hint"); }
 try { await completeChat({ ...DEFAULT_SETTINGS } as any, { messages: [] }); assert(false, "no model"); }
@@ -233,6 +247,14 @@ const messy = parseSettings({
   activeProvider: "old-format",
 });
 assert(messy.temperature === null && messy.connections.length === 2 && messy.connections[0].kind === "custom" && messy.connections[0].apiKey === "" && messy.connections[1].kind === "openrouter", "tolerant parse: connections");
+assert(parseSettings({ connections: [{ id: "f", kind: "featherless" }] }).connections[0].kind === "featherless", "parse: featherless connection kind is kept");
+assert(parseSettings({ connections: [{ id: "n", kind: "nanogpt" }] }).connections[0].kind === "nanogpt", "parse: nanogpt connection kind is kept");
+{
+  const ids = ["TheDrummer/Artemis-v1.1", "thedrummer/artemis-31b-v1.2", "a_b"];
+  assert(matchModelId("TheDrummer/Artemis v1.1", ids) === "TheDrummer/Artemis-v1.1", "a model name typed with spaces finds its id (NanoGPT shows names, wants ids)");
+  assert(matchModelId(" THEDRUMMER/ARTEMIS-31B-V1.2 ", ids) === "thedrummer/artemis-31b-v1.2" && matchModelId("a_b", ids) === "a_b", "…case is ignored, and an exact id is kept");
+  assert(matchModelId("Something else", ids) === null, "…and a name that matches nothing is null");
+}
 assert(messy.favorites.length === 1 && messy.favorites[0].label === "", "tolerant parse: favorites deduped, dangling ones dropped");
 assert(messy.defaults.main === null && messy.defaults.cheap?.model === "x", "tolerant parse: defaults pointing at missing connections are cleared");
 

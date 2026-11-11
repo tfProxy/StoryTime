@@ -29,7 +29,8 @@ import type { PathChapter } from "@/lib/ai/codexAi";
 import type { ChapterWriting } from "@/lib/chapterWriting";
 import { foldWithDraft, isDraftEntry, isDraftFact, type CodexOp, type FactOp } from "@/lib/codex";
 import { deleteDraft, DraftConflict, emptyDraft, getDraft, saveDraft, type Draft } from "@/lib/drafts";
-import { applyAfterGenerate, applyGenerated, isBegun, pushUndo, startVersion } from "@/lib/generatedDraft";
+import { applyAfterGenerate, applyGenerated, isBegun, pushUndo, restore, snapshot, startVersion } from "@/lib/generatedDraft";
+import { withKeptId } from "@/lib/keptRequests";
 import { useWorkQueue, type GenerateItem } from "./WorkQueue";
 import Prose from "./Prose";
 import { AiCallProgress, GenerateStep, ThinkingFold } from "./GenerateProgress";
@@ -106,10 +107,10 @@ async function keepWriting(chapterId: string, d: Draft): Promise<void> {
   // The version being viewed is only refreshed in `versions` on leaving it; one still empty from its Generate takes the text.
   const at = d.versionIndex ?? (d.versions?.length ?? 0) - 1;
   const versions = (d.versions ?? [])
-    .map((v, i) => (i === at && !v.body.trim() ? { title: d.title, body: d.body } : v))
+    .map((v, i) => (i === at && !v.body.trim() ? snapshot(d) : v))
     .filter((v) => v.body.trim());
-  if (!versions.length && !d.prompt.trim()) return;
-  const writing: ChapterWriting = { prompt: d.prompt, versions, length: d.length, models: d.models, codexOverrides: d.codexOverrides };
+  if (!versions.length && !d.prompt.trim() && !d.ai?.length) return;
+  const writing: ChapterWriting = { prompt: d.prompt, versions, ai: d.ai, length: d.length, models: d.models, codexOverrides: d.codexOverrides };
   const res = await fetch(`/api/chapters/${chapterId}/writing`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -397,8 +398,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     // is in reading mode already; the author may switch to editing, and the pieces that follow do not switch it back.
     if (generatingRef.current) setReading(true);
     return listenDraft(draftKey, {
-      onText: (text, base) => {
-        setDraft((d) => (d ? applyGenerated(d, parseChapterOutput(text), { continued: isBegun(d, base) }) : d));
+      onText: (text, base, ai) => {
+        setDraft((d) => (d ? applyGenerated(d, parseChapterOutput(text), { continued: isBegun(d, base), ai }) : d));
         setGenWords(countWords(parseChapterOutput(text).body));
       },
       onStep: (text, since) => setGenStep({ text, since }),
@@ -519,8 +520,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     setDraft((d) => {
       if (!d?.versions?.[j]) return d;
       const versions = [...d.versions];
-      versions[d.versionIndex ?? versions.length - 1] = { title: d.title, body: d.body };
-      return { ...d, versions, versionIndex: j, title: versions[j].title, body: versions[j].body };
+      versions[d.versionIndex ?? versions.length - 1] = snapshot(d);
+      return { ...d, versions, versionIndex: j, ...restore(versions[j]) };
     });
   }
 
@@ -613,6 +614,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
         job: "write",
         signal: ctl.signal,
         source: { label: "Rewrite passage", storyId },
+        // A revise builds on the text there, so it joins the requests that wrote it.
+        onKeep: (id) => setDraft((d) => (d ? { ...d, ai: withKeptId(d.ai, id) } : d)),
       })) {
         text += piece;
         if (picked) {
@@ -693,7 +696,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   function undo() {
     if (!draft || draft.undo.length === 0) return;
     const prev = draft.undo[draft.undo.length - 1];
-    patch({ title: prev.title, body: prev.body, undo: draft.undo.slice(0, -1) });
+    patch({ ...restore(prev), undo: draft.undo.slice(0, -1) });
   }
 
   const finalChoices = draft.choices.map((c) => c.trim()).filter(Boolean);

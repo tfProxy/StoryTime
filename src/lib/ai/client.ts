@@ -25,6 +25,11 @@ export type ChatRequest = {
   onStatus?: (text: string) => void;
   /** Given each piece of the model's reasoning, for models that think before they answer. It is not part of the reply. */
   onThinking?: (piece: string) => void;
+  /**
+   * Keep this call for good (connection, model, settings, prompt, reply and time taken; see keptRequests.ts), for calls
+   * that write chapter text. Told the kept record's id before the request goes out, so the text can point to it.
+   */
+  onKeep?: (id: string) => void;
 };
 
 /** The short, stable label of a call (they are the history's filter list), and what it was made for. */
@@ -48,6 +53,20 @@ export type ChatRecord = {
   reply: string;
   status: "ok" | "failed" | "stopped";
   error?: string;
+  /** Set for a call to keep for good (ChatRequest.onKeep), with what the prompt history leaves out. */
+  keep?: KeptCallDetails;
+};
+
+/** What a kept call adds to its record, so the request can be made again. Never the key. */
+export type KeptCallDetails = {
+  id: string;
+  connectionId: string | null;
+  kind: ProviderKind | null;
+  baseUrl: string | null;
+  job: AiJob | null;
+  maxTokens: number | null;
+  /** From the start of the call until the first text arrived (null if none did). */
+  firstTextMs: number | null;
 };
 export type ChatRecorder = (record: ChatRecord) => void | Promise<unknown>;
 
@@ -70,6 +89,7 @@ function report(record: ChatRecord) {
 export class AiError extends Error {}
 
 type Resolved = {
+  connectionId: string;
   kind: ProviderKind;
   protocol: "openai" | "anthropic";
   baseUrl: string;
@@ -98,6 +118,7 @@ function resolve(settings: Settings, req: Pick<ChatRequest, "role" | "model" | "
   if (!conn) throw new AiError(`The connection for ${ref.model} has been removed. Pick another model.`);
   const info = checkConnection(conn);
   return {
+    connectionId: conn.id,
     kind: conn.kind,
     protocol: info.protocol,
     baseUrl: conn.baseUrl.trim().replace(/\/+$/, ""),
@@ -113,6 +134,9 @@ function resolve(settings: Settings, req: Pick<ChatRequest, "role" | "model" | "
 
 function headers(r: Pick<Resolved, "protocol" | "apiKey">): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
+  // On the server, name ourselves: Featherless answers Node's default User-Agent ("node") with "404 Gone." on
+  // its model list. Browsers set their own and a page can't change it.
+  if (typeof window === "undefined") h["User-Agent"] = "StoryTime";
   if (r.protocol === "anthropic") {
     h["x-api-key"] = r.apiKey;
     h["anthropic-version"] = "2023-06-01";
@@ -124,16 +148,39 @@ function headers(r: Pick<Resolved, "protocol" | "apiKey">): Record<string, strin
   return h;
 }
 
+// Waits before each retry of a busy provider (about a minute and a half in all). A Retry-After header from the
+// provider is used instead, up to a minute.
+const BUSY_WAITS_MS = [5_000, 10_000, 20_000, 30_000, 30_000];
+// Busy or rate-limited: Featherless says "<model> is temporarily at capacity" when a model's servers are full,
+// Anthropic answers 529 when overloaded.
+const BUSY_STATUSES = new Set([429, 502, 503, 529]);
+
+function wait(ms: number, signal?: AbortSignal | null): Promise<void> {
+  return new Promise((done, fail) => {
+    if (signal?.aborted) return fail(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    const t = setTimeout(() => {
+      signal?.removeEventListener("abort", stop);
+      done();
+    }, ms);
+    const stop = () => {
+      clearTimeout(t);
+      fail(signal?.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    signal?.addEventListener("abort", stop, { once: true });
+  });
+}
+
 async function send(url: string, init: RequestInit, hint: string): Promise<Response> {
-  let res: Response;
-  try {
-    res = await fetch(url, init);
-  } catch (e) {
-    if (e instanceof DOMException && e.name === "AbortError") throw e;
-    // fetch only throws a bare TypeError for network failures and blocked CORS requests.
-    throw new AiError(`Couldn't reach ${url}. ${hint}`);
-  }
-  if (!res.ok) {
+  for (let attempt = 0; ; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(url, init);
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") throw e;
+      // fetch only throws a bare TypeError for network failures and blocked CORS requests.
+      throw new AiError(`Couldn't reach ${url}. ${hint}`);
+    }
+    if (res.ok) return res;
     let detail = "";
     try {
       const text = await res.text();
@@ -146,9 +193,15 @@ async function send(url: string, init: RequestInit, hint: string): Promise<Respo
     } catch {
       // ignore
     }
+    const busy = BUSY_STATUSES.has(res.status) || /at capacity|overloaded/i.test(String(detail));
+    if (busy && attempt < BUSY_WAITS_MS.length) {
+      const after = Number(res.headers.get("retry-after"));
+      const ms = Number.isFinite(after) && after >= 0 && res.headers.has("retry-after") ? Math.min(after * 1000, 60_000) : BUSY_WAITS_MS[attempt];
+      await wait(ms, init.signal);
+      continue;
+    }
     throw new AiError(`${res.status} ${res.statusText}${detail ? `: ${String(detail).slice(0, 300)}` : ""}`);
   }
-  return res;
 }
 
 /** Yields the `data:` payloads of a server-sent-events response. */
@@ -182,6 +235,16 @@ async function* sseData(res: Response): AsyncGenerator<string> {
 const CORS_HINT =
   "The server may be down, the URL may be wrong, or it may not allow requests from this site (CORS). For Ollama, set OLLAMA_ORIGINS and restart it.";
 
+/** A random v4 UUID. Browsers only have crypto.randomUUID on https or localhost pages; the NAS is often plain http. */
+function newUuid(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
 /** Streams the model's reply as text chunks, and reports the call to the recorder (once, when it ends). */
 export async function* streamChat(settings: Settings, req: ChatRequest): AsyncGenerator<string> {
   const record: ChatRecord = {
@@ -206,11 +269,17 @@ export async function* streamChat(settings: Settings, req: ChatRequest): AsyncGe
     onStatus: (text) => { activity.status(text); req.onStatus?.(text); },
     onThinking: (piece) => { activity.thinking(piece); req.onThinking?.(piece); },
   };
+  if (req.onKeep) {
+    record.keep = { id: newUuid(), connectionId: null, kind: null, baseUrl: null, job: req.job ?? null, maxTokens: req.maxTokens ?? null, firstTextMs: null };
+    req.onKeep(record.keep.id);
+  }
   try {
     const r = resolve(settings, req);
     Object.assign(record, { connection: r.connection, model: r.model, temperature: r.temperature, thinkingOff: r.disableThinking });
+    if (record.keep) Object.assign(record.keep, { connectionId: r.connectionId, kind: r.kind, baseUrl: r.baseUrl });
     for await (const piece of streamReply(settings, tracked, r)) {
       activity.text();
+      if (record.keep && record.keep.firstTextMs === null) record.keep.firstTextMs = Date.now() - record.at;
       record.reply += piece;
       yield piece;
     }

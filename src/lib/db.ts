@@ -949,6 +949,17 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE codex_ops ADD COLUMN moved_from_chapter_id TEXT;
   `,
+  // 52: kept AI requests (src/lib/keptRequests.ts): each call that wrote chapter text, with the connection, model,
+  // settings, prompt, reply and time taken, so the text's making can be seen and repeated. Drafts and chapter_writing
+  // point to them by id (JSON); `data` is JSON. No foreign keys: unreferenced ones are pruned after a while.
+  `
+  CREATE TABLE ai_requests (
+    id   TEXT PRIMARY KEY,
+    at   INTEGER NOT NULL,
+    data TEXT NOT NULL
+  );
+  CREATE INDEX ai_requests_at ON ai_requests(at);
+  `,
 ];
 
 function open(): Database.Database {

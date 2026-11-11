@@ -7,6 +7,7 @@ import type { CodexEntry } from "../codex";
 import type { TagRule, TagSuggestion } from "../ai/tagAi";
 import type { PathFacts } from "../continuity";
 import type { AiRun, RunStatus, RunTask } from "./types";
+import type { ChapterWriting } from "../chapterWriting";
 
 export type Fetch = typeof fetch;
 
@@ -63,6 +64,10 @@ export type NewChapter = {
 
 export const postChapter = (f: Fetch, chapter: NewChapter) =>
   call<{ story_id: string; chapter_id: string; choice_ids: string[] }>(f, "POST", "/api/chapters", { ...chapter, codex_changes: [] });
+
+/** Keeps how a chapter was written (see chapterWriting.ts): here, the direction and the kept AI request that wrote it. */
+export const putChapterWriting = (f: Fetch, chapterId: string, writing: ChapterWriting) =>
+  call<{ ok: true }>(f, "PUT", `/api/chapters/${chapterId}/writing`, writing);
 
 /** The tags on for a story, with their rules: `GET /api/stories/<id>/tags` lists every tag and the ids switched on. */
 export const getStoryTags = (f: Fetch, storyId: string) => call<{ tags: (TagRule & { kind: string })[]; enabled: string[] }>(f, "GET", `/api/stories/${storyId}/tags`);

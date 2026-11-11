@@ -18,6 +18,7 @@ import {
   getVerdicts,
   patchRun,
   postChapter,
+  putChapterWriting,
   postCodexSuggestions,
   postExpandSuggestions,
   postNotesSuggestions,
@@ -409,12 +410,15 @@ async function doWrite(task: WriteTask, run: AiRun, list: RunTask[], env: StepEn
   const text = (soFar: string) => onEvent?.({ type: "text", taskId: task.id, text: soFar });
   let chapter: NewChapter;
   let planned: PlannedChoice[];
+  /** The kept AI request that wrote the text. */
+  let ai: string | undefined;
   if (grouped) {
     // The text alone, with the choices it was given; its summaries and suggested choices follow in the cheap-model phase.
     const ctx = await withPathSummaries(settings, storyContextOf(parent, task.label), signal, (s) => onEvent?.({ type: "status", text: s }), f, sourceOf(run));
     const out = await writeText(settings, { ctx, label: task.label, direction, options: run.options, signal, onText: text, stream: env.deps?.stream, source: sourceOf(run) });
     planned = task.choices.given.map((label) => ({ label, direction: "", isNew: false }));
-    chapter = { ...out, choices: task.choices.given, ai_run_id: run.id, ...target };
+    ai = out.ai;
+    chapter = { title: out.title, body: out.body, choices: task.choices.given, ai_run_id: run.id, ...target };
   } else {
     const out = await writeOneChapter(settings, {
       context: parent,
@@ -431,6 +435,7 @@ async function doWrite(task: WriteTask, run: AiRun, list: RunTask[], env: StepEn
       fetch: f,
     });
     planned = out.choices;
+    ai = out.ai;
     chapter = { title: out.title, body: out.body, summary: out.summary, path_summary: out.path_summary, choices: out.choices.map((c) => c.label), ai_run_id: run.id, ...target };
   }
   let posted: { chapter_id: string; choice_ids: string[] };
@@ -442,6 +447,11 @@ async function doWrite(task: WriteTask, run: AiRun, list: RunTask[], env: StepEn
     const again = writtenFor(task, slot, await getContext(f, parentOf(task, list)));
     if (!again) throw e;
     return doneWith(task, again, f, list);
+  }
+  if (ai) {
+    // Which model wrote it, with the prompt (see keptRequests.ts). Never fails the task.
+    const version = { title: chapter.title, body: chapter.body, ai: [ai] };
+    await putChapterWriting(f, posted.chapter_id, { prompt: direction, versions: [version], ai: [ai], length: run.options.length }).catch(() => {});
   }
   return replace(list, {
     ...task,

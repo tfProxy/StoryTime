@@ -134,8 +134,8 @@ export type GenerateItem = {
 
 /** What a writing page open on a draft is told while its Generate goes on. */
 export type DraftListener = {
-  /** The text so far (all of it, each time), and the draft's text when the Generate started. */
-  onText: (text: string, base: { title: string; body: string }) => void;
+  /** The text so far (all of it, each time), the draft's text when the Generate started, and the kept request writing it. */
+  onText: (text: string, base: { title: string; body: string }, ai?: string) => void;
   /** What it is doing now ("Waiting for the model…"), and since when. */
   onStep?: (text: string, since: number) => void;
   /** The model's reasoning so far (all of it, each time). */
@@ -697,8 +697,8 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
     const source = new EventSource(`/api/queue/generate/events?key=${encodeURIComponent(draftKey)}`);
     source.onmessage = (m) => {
       try {
-        const e = JSON.parse(m.data) as { type: string; text?: string; since?: number; base?: { title: string; body: string }; after?: { choiceLabel?: string; suggestions?: string[] }; message?: string };
-        if (e.type === "text" && e.text !== undefined && e.base) listener.onText(e.text, e.base);
+        const e = JSON.parse(m.data) as { type: string; text?: string; since?: number; base?: { title: string; body: string }; ai?: string; after?: { choiceLabel?: string; suggestions?: string[] }; message?: string };
+        if (e.type === "text" && e.text !== undefined && e.base) listener.onText(e.text, e.base, e.ai);
         else if (e.type === "step" && e.text !== undefined) listener.onStep?.(e.text, e.since ?? Date.now());
         else if (e.type === "thinking" && e.text !== undefined) listener.onThinking?.(e.text);
         else if (e.type === "done") listener.onDone(e.after ?? {});

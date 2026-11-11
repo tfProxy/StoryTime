@@ -8,7 +8,8 @@ import type { CodexChange, FactChange } from "./codex";
 import type { CodexOverrides, Idea, Length } from "./ai/prompts";
 import type { ModelRef } from "./settingsSchema";
 
-export type DraftVersion = { title: string; body: string };
+/** `ai`: the kept AI requests (keptRequests.ts) that wrote this text, oldest first; absent for text written by hand. */
+export type DraftVersion = { title: string; body: string; ai?: string[] };
 
 export type Draft = {
   /**
@@ -34,6 +35,8 @@ export type Draft = {
   slotLabel?: string;
   title: string;
   body: string;
+  /** The kept AI requests that wrote title/body (a Generate, then any revises), oldest first. Follows the text through versions and undo. */
+  ai?: string[];
   choices: string[];
   prompt: string;
   /** Earlier versions of title/body, newest last, so AI rewrites can be undone. */

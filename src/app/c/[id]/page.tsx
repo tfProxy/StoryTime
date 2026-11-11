@@ -21,6 +21,10 @@ import { draftKeysSaved } from "@/lib/draftStore";
 import { getCodexState } from "@/lib/codexDb";
 import { getSettings } from "@/lib/settingsStore";
 import { parseSettings } from "@/lib/settingsSchema";
+import ChapterMaking from "@/components/ChapterMaking";
+import { getChapterWriting } from "@/lib/chapterWriting";
+import { getKeptRequests } from "@/lib/keptRequests";
+import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -116,6 +120,7 @@ export default async function ChapterPage({
       <ChapterImage chapterId={chapter.id} slot="header" version={images.header} />
       <Prose text={chapter.body} middle={<ChapterImage chapterId={chapter.id} slot="middle" version={images.middle} />} />
       <ChapterImage chapterId={chapter.id} slot="footer" version={images.footer} />
+      <ChapterMaking requests={getKeptRequests(db(), getChapterWriting(chapter.id)?.ai ?? [])} />
 
       <section className="choices">
         <div className="choices-head">

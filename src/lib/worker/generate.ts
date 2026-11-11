@@ -52,7 +52,8 @@ export type GenerateAfter = { choiceLabel?: string; suggestions?: string[] };
 
 /** What a page watching a Generate is sent on `gen:<draft key>`. */
 export type GenerateEvent =
-  | { type: "text"; text: string; base: { title: string; body: string } }
+  /** `ai`: the kept request writing the text (keptRequests.ts), for the draft. */
+  | { type: "text"; text: string; base: { title: string; body: string }; ai?: string }
   /** What it is doing now ("Summarizing the story so far (1 of 3)…", "The model is thinking…"), and since when. */
   | { type: "step"; text: string; since: number }
   /** The model's reasoning so far (all of it, each time), for models that think before they write. */
@@ -107,7 +108,7 @@ export function generateProgress(draftKey: string): GenerateEvent | null {
   const item = getItem(genItemKey(draftKey));
   if (!running || item?.type !== "generate") return null;
   const request = item.data.request as GenerateRequest;
-  return { type: "text", text: running.text, base: request.base };
+  return { type: "text", text: running.text, base: request.base, ai: running.kept };
 }
 
 /** Everything a page that starts watching a Generate going now is sent first: its step, its thinking, its text. */
@@ -123,11 +124,11 @@ export function generateCatchUp(draftKey: string): GenerateEvent[] {
 }
 
 /** Puts the text into the draft, once more if the draft changed meanwhile. */
-function saveGenerated(req: GenerateRequest, text: string, after?: GenerateAfter) {
+function saveGenerated(req: GenerateRequest, text: string, ai: string | undefined, after?: GenerateAfter) {
   for (let attempt = 0; ; attempt++) {
     const stored = getDraft(req.key) as (Draft & Record<string, unknown>) | null;
     const d: Draft = stored ?? { ...req.draft, key: req.key, updatedAt: 0 };
-    let next = applyGenerated(d, parseChapterOutput(text), { continued: isBegun(d, req.base) });
+    let next = applyGenerated(d, parseChapterOutput(text), { continued: isBegun(d, req.base), ai });
     if (after) next = applyAfterGenerate(next, after);
     const saved = putDraft(req.key, next as unknown as Record<string, unknown>, { base: stored ? stored.updatedAt : null });
     if (saved.ok) return;
@@ -149,7 +150,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
   }
   const req = item.data.request as GenerateRequest;
   const settings = getSettings() ?? parseSettings({});
-  const run: { text: string; ctl: AbortController; discard?: boolean; step?: { text: string; since: number }; thinking: string } = { text: "", ctl: new AbortController(), thinking: "" };
+  const run: { text: string; ctl: AbortController; discard?: boolean; step?: { text: string; since: number }; thinking: string; kept?: string } = { text: "", ctl: new AbortController(), thinking: "" };
   workerState().generates.set(draftKey, run);
   updateItem(itemKey, { state: "working", data: { note: undefined, error: undefined, text: undefined } });
   const tell = (event: GenerateEvent) => publish(genChannel(draftKey), event);
@@ -179,7 +180,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
     const message = generatePrompt(ready, req.direction, req.length, settings.contextTokens);
     for await (const piece of streamChat(settings, {
       system: SYSTEM_CHAPTER, messages: [{ role: "user", content: message }], role: "main", model: req.model, job: "write", signal: run.ctl.signal, source: { label: "Generate", ...ids },
-      onStatus: step, onThinking,
+      onStatus: step, onThinking, onKeep: (id) => (run.kept = id),
     })) {
       if (!run.text) {
         if (run.thinking) tell({ type: "thinking", text: run.thinking });
@@ -189,11 +190,11 @@ export async function runGenerate(draftKey: string): Promise<void> {
       // The text so far goes out at most four times a second (the end sends it whole, below).
       if (Date.now() - lastTold >= TEXT_MS) {
         lastTold = Date.now();
-        tell({ type: "text", text: run.text, base: req.base });
+        tell({ type: "text", text: run.text, base: req.base, ai: run.kept });
       }
       if (Date.now() - lastSave > 3000) {
         lastSave = Date.now();
-        saveGenerated(req, run.text);
+        saveGenerated(req, run.text, run.kept);
       }
     }
     const chapter = parseChapterOutput(run.text);
@@ -231,8 +232,8 @@ export async function runGenerate(draftKey: string): Promise<void> {
         }
       }
     }
-    saveGenerated(req, run.text, after);
-    tell({ type: "text", text: run.text, base: req.base });
+    saveGenerated(req, run.text, run.kept, after);
+    tell({ type: "text", text: run.text, base: req.base, ai: run.kept });
     tell({ type: "done", after });
     updateItem(itemKey, { state: "done", data: { note: undefined, noteAt: undefined } });
   } catch (e) {
@@ -240,7 +241,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
       // Stopped: what was written stays in the draft (unless the draft was deleted).
       if (run.text && !run.discard) {
         try {
-          saveGenerated(req, run.text);
+          saveGenerated(req, run.text, run.kept);
         } catch {
           // the draft changed; the stop still stands
         }
@@ -251,7 +252,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
       let message = e instanceof Error ? e.message : String(e);
       if (run.text && !(e instanceof DraftChanged)) {
         try {
-          saveGenerated(req, run.text);
+          saveGenerated(req, run.text, run.kept);
         } catch (saveError) {
           if (saveError instanceof DraftChanged) e = saveError;
         }

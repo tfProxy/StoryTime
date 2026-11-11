@@ -5,13 +5,16 @@ import { launch, startStory } from "./browser.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const calls = [];
+/** How many times the second connection's model list was asked for. */
+let modelCalls = 0;
 const mock = http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "*");
   if (req.method === "OPTIONS") { res.statusCode = 204; return res.end(); }
   if (req.url.endsWith("/models")) {
+    if (req.url.startsWith("/b/")) modelCalls++;
     res.setHeader("content-type", "application/json");
-    const ids = req.url.startsWith("/a/") ? ["alpha", "beta"] : ["vendor/big", "vendor/small", ...Array.from({ length: 20 }, (_, i) => `other/m${i}`)];
+    const ids = req.url.startsWith("/a/") ? ["alpha", "beta"] : ["vendor/big", "vendor/small-v1.1", ...Array.from({ length: 20 }, (_, i) => `other/m${i}`)];
     return res.end(JSON.stringify({ data: ids.map((id) => ({ id })) }));
   }
   let data = ""; req.on("data", (c) => (data += c));
@@ -60,9 +63,9 @@ await ollama.getByText("Connected. 2 models").waitFor();
 await ollama.getByRole("button", { name: "Test from server" }).click();
 await ollama.getByText(/The server reached it\. 2 models available/).waitFor();
 ok(true, "Test from server reaches the connection from the StoryTime server");
-await ollama.getByRole("button", { name: "Star alpha" }).click();
-await until(async () => (await settingsNow())?.defaults.main?.model === "alpha", "the first starred model to become the default");
-ok(true, "the first model starred becomes the default");
+await ollama.getByRole("button", { name: "Use alpha" }).click();
+await until(async () => (await settingsNow())?.defaults.main?.model === "alpha", "the first model used to become the default");
+ok(await ollama.getByRole("button", { name: "Stop using alpha" }).getByText("✓ In use").isVisible(), "the first model put in use becomes the default, and its button says it is in use");
 
 await page.getByLabel("Kind of connection").selectOption("openrouter");
 await page.getByRole("button", { name: "Add connection" }).click();
@@ -71,13 +74,32 @@ ok((await router.getByLabel("Server URL").inputValue()) === "https://openrouter.
 await router.getByLabel("Server URL").fill("http://localhost:3222/b/v1");
 await router.getByLabel("API key").fill("rk");
 await router.getByRole("button", { name: "Test connection" }).click();
-await router.getByLabel("Filter models").fill("vendor/b");
-ok((await router.locator(".codex-pick").count()) === 1, "a long model list can be filtered");
-await router.getByRole("button", { name: "Star vendor/big" }).click();
+await router.getByLabel("Search models").fill("vendor/b");
+ok((await router.locator(".codex-pick").count()) === 1, "the fetched model list can be searched");
+await router.getByLabel("Search models").fill("nothing-like-this");
+ok(await router.getByText("No model matches “nothing-like-this”.").isVisible(), "…and says when nothing matches");
+await router.getByLabel("Search models").fill("vendor/b");
+await router.getByRole("button", { name: "Use vendor/big" }).click();
+
+// The list folds away, and is remembered: after a reload it is there (folded) without asking the server again.
+const routerList = router.locator("details.model-list");
+await routerList.locator("summary").click();
+ok(!(await router.getByLabel("Search models").isVisible()), "the model list folds away");
+await until(async () => !!(await (await fetch(`${BASE}/api/model-lists/${(await settingsNow()).connections[1].id}`)).json()).list, "the list to be remembered on the server");
+const asked = modelCalls;
+await page.reload();
+const routerAgain = page.locator("fieldset.connection").nth(1);
+await routerAgain.locator("details.model-list summary").waitFor();
+ok(/22 models\s*fetched today/.test(await routerAgain.locator("details.model-list summary").innerText()) && modelCalls === asked, "after a reload the fetched models are back, saying when they were fetched, without asking the provider again");
+await routerAgain.locator("details.model-list summary").click();
+await routerAgain.getByRole("button", { name: "Refresh", exact: true }).click();
+ok(await until(async () => modelCalls === asked + 1, "Refresh to ask again"), "Refresh fetches the list again");
+
 await page.getByRole("tab", { name: "Writing" }).click();
 await page.getByLabel("Nickname for vendor/big").fill("Big one");
 await until(async () => (await settingsNow())?.favorites.find((f) => f.model === "vendor/big")?.label === "Big one", "the nickname to be saved");
-ok(true, "starred models are on the Writing tab, where they can be given a nickname");
+ok(true, "models in use are on the Writing tab, where they can be given a nickname");
+ok((await page.locator("section.model-group").count()) === 2 && (await page.getByRole("region", { name: "Models from Ollama" }).locator("fieldset.model-card").count()) === 1 && (await page.getByRole("region", { name: "Models from OpenRouter" }).getByText("vendor/big").count()) === 1, "on the Writing tab the models are grouped under their connection");
 
 // ---- each starred model has its own card: thinking, and the jobs it is offered for ----
 const bigCard = page.locator("fieldset.model-card", { hasText: "vendor/big" });
@@ -102,6 +124,16 @@ ok((await page.getByRole("combobox", { name: /^Thinking for / }).count()) === 2 
 await page.getByRole("tab", { name: "Connections" }).click();
 let s = await settingsNow();
 ok(s.connections.length === 2 && s.favorites.length === 2 && s.defaults.main.model === "alpha", "settings hold both connections and both starred models");
+
+// A model added by the name a provider's website shows is starred under the id the server lists (NanoGPT).
+await router.getByLabel(/Add a model by name/).fill("Vendor/Small v1.1");
+await router.getByRole("button", { name: "Use", exact: true }).click();
+await until(async () => (await settingsNow()).favorites.some((f) => f.model === "vendor/small-v1.1"), "the typed name to be used as its id");
+ok(await router.getByText("Using vendor/small-v1.1, the id this server uses for “Vendor/Small v1.1”.").isVisible() && !(await settingsNow()).favorites.some((f) => f.model === "Vendor/Small v1.1"), "a model added by a name with spaces is used under the listed id, and the page says so");
+if (!(await router.getByLabel("Search models").isVisible())) await router.locator("details.model-list summary").click();
+await router.getByLabel("Search models").fill("vendor/s");
+await router.getByRole("button", { name: "Stop using vendor/small-v1.1" }).click();
+await until(async () => (await settingsNow()).favorites.length === 2, "vendor/small-v1.1 to be dropped again");
 
 // ---- freeing ComfyUI's memory: per connection, and settable with no ComfyUI set up ----
 const freeBox = (conn) => conn.getByRole("checkbox", { name: "Free ComfyUI's memory before each request" });

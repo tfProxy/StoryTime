@@ -51,6 +51,19 @@ try {
   ok(r.status === 200 && full.system === "You are a writer." && full.reply === "Once upon a time." && full.messages[0].content === "Write something." && full.connection === "My Ollama" && full.thinking_off === true && full.temperature === 0.7 && full.role === "main", "…and fetched whole by id");
   ok((await call("GET", "/api/ai-log/nope")).status === 404, "an unknown id is a 404");
 
+  // A browser call that wrote chapter text (a revise) is also kept for good, with what's needed to make it again.
+  const keptId = "44444444-4444-4444-8444-444444444444";
+  r = await call("POST", "/api/ai-log", { ...record, source: "Rewrite passage", keep: { id: keptId, connectionId: "c7", kind: "ollama", baseUrl: "http://nas:11434/v1", job: "write", maxTokens: null, firstTextMs: 120 } });
+  ok(r.status === 201, "a browser record with `keep` is accepted");
+  {
+    const raw = new Database(process.env.TEST_DB, { readonly: true });
+    const keptRow = raw.prepare(`SELECT data FROM ai_requests WHERE id = ?`).get(keptId);
+    raw.close();
+    const k = keptRow && JSON.parse(keptRow.data);
+    ok(!!k && k.side === "browser" && k.source === "Rewrite passage" && k.connectionId === "c7" && k.kind === "ollama" && k.baseUrl === "http://nas:11434/v1" && k.model === "llama3" && k.ms === 840 && k.firstTextMs === 120 && k.messages[0].content === "Write something." && k.reply === "Once upon a time.", "…and kept, with its connection, settings, prompt, reply and time");
+  }
+  ok((await call("POST", "/api/ai-log", { ...record, keep: { id: "not-a-uuid" } })).status === 400, "a `keep` with a bad id is refused");
+
   r = await call("POST", "/api/ai-log", { ...record, source: undefined, status: "failed", error: "boom" });
   const failedId = r.json.id;
   ok((await call("GET", `/api/ai-log/${failedId}`)).json.call.source === "Other", "a record with no label is 'Other'");
