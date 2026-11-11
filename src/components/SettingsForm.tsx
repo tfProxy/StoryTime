@@ -10,6 +10,7 @@ import ComfyConnection from "./ComfyConnection";
 import { DrawingSettings, EditSettings, usePictureSetup } from "./PictureSettings";
 import { EDIT_MODEL_IDS } from "@/lib/comfy/editModels";
 import TagLibrary from "./TagLibrary";
+import CategoryListsEditor from "./CategoryListsEditor";
 import {
   exportSettingsJson,
   favoriteFor,
@@ -798,6 +799,7 @@ export default function SettingsForm() {
               </small>
             </span>
           </label>
+          <CategoryListsEditor lists={settings.codexCategories} onChange={(codexCategories) => update({ codexCategories })} />
         </section>
       </div>
 

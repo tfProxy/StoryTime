@@ -11,6 +11,7 @@ import { codexEntryLabels, createCodexOp, createFactOp, getCodexState } from "./
 import { getPath, PostError } from "./stories";
 import { parseSettings } from "./settingsSchema";
 import { getSettings } from "./settingsStore";
+import { isKnownAspect } from "./codexCategories";
 import { SUGGESTION_KINDS, type SuggestionInput, type SuggestionKind } from "./ai/codexCheckAi";
 
 export type SuggestionStatus = "open" | "accepted" | "dismissed";
@@ -201,6 +202,15 @@ function autoApplyOn(): boolean {
   return s.autoCodex && s.autoApplyCodex;
 }
 
+/**
+ * Whether a fact suggestion uses an aspect on neither the shared category list (Settings → Codex) nor the entry: a new
+ * category, which the owner approves before it's used, so it is never applied on its own or accepted in bulk.
+ */
+function isNewCategory(kind: SuggestionKind, aspect: string, entry: CodexEntry | undefined): boolean {
+  if (!entry || (kind !== "set" && kind !== "conflict") || !aspect.trim()) return false;
+  return !isKnownAspect(aspect, (getSettings() ?? parseSettings({})).codexCategories[entry.type], entry.facts);
+}
+
 const factKey = (entryId: string, aspect: string, form: string) => `${entryId}\n${lc(isFormAspect(aspect) ? FORM_ASPECT : aspect)}\n${isFormAspect(aspect) ? "" : lc(form)}`;
 
 /**
@@ -233,7 +243,7 @@ function removeAiReading(chapterId: string): Map<string, string> {
 function autoApplies(s: SuggestionInput, entries: CodexEntry[], chapterId: string): boolean {
   if (s.kind !== "set" && s.kind !== "form") return false;
   const entry = entries.find((e) => e.entry_id === s.entry_id);
-  if (!entry) return false;
+  if (!entry || isNewCategory(s.kind, s.aspect, entry)) return false;
   // A quote that doesn't mention what the fact says waits for the owner to read it (the card says so).
   if (s.kind === "set" && !quoteSupports(s.quote, [s.aspect, s.form, s.after].join(" "), [entry.name, ...entry.aliases])) return false;
   const fact = s.kind === "form" ? entry.form?.fact : liveFact(entry, s.aspect, s.form);
@@ -262,6 +272,8 @@ export type CodexSuggestion = {
   source: SuggestionSource;
   /** The fact's text at the chapter now (so the page can see it moved since); "" if there is none. */
   current: string;
+  /** The aspect is on neither the shared category list nor the entry: accepting it adds a new category to the entry. */
+  new_category: boolean;
   status: SuggestionStatus;
   created_at: number;
   decided_at: number | null;
@@ -312,6 +324,7 @@ export function listSuggestions(storyId: string, filter: { status?: SuggestionSt
       entry: proposed,
       source: r.source,
       current,
+      new_category: r.status === "open" && isNewCategory(r.kind, r.aspect, entry),
       status: r.status,
       created_at: r.created_at,
       decided_at: r.decided_at,

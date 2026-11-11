@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { describeSharedFacts, ENTRY_TYPES, STARTER_ASPECTS, TYPE_LABELS, type EntryType } from "@/lib/codex";
+import { describeSharedFacts, ENTRY_TYPES, TYPE_LABELS, type EntryType } from "@/lib/codex";
+import { useSettings } from "@/lib/settings";
 import type { SharedEntry } from "@/lib/sharedCodex";
 
 const keywordsOf = (text: string) => text.split(",").map((a) => a.trim()).filter(Boolean);
@@ -168,6 +169,7 @@ function SharedFacts({ entry, busy, send }: { entry: SharedEntry; busy: boolean;
   const [aspect, setAspect] = useState("");
   const [form, setForm] = useState("");
   const [text, setText] = useState("");
+  const categories = useSettings().codexCategories[entry.type];
   const base = `/api/shared/${entry.id}/facts`;
 
   function open(id: string | "new", f?: SharedEntry["facts"][number]) {
@@ -193,8 +195,8 @@ function SharedFacts({ entry, busy, send }: { entry: SharedEntry; busy: boolean;
         Aspect
         <input list="shared-aspects" value={aspect} maxLength={40} onChange={(e) => setAspect(e.target.value)} />
         <datalist id="shared-aspects">
-          {STARTER_ASPECTS[entry.type].map((a) => (
-            <option key={a} value={a} />
+          {categories.map((a) => (
+            <option key={a.name} value={a.name} />
           ))}
         </datalist>
         <small>what it describes (“Ears”); leave empty for a loose fact. “form” sets the form the entry is in.</small>

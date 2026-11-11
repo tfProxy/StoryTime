@@ -14,7 +14,6 @@ import {
   isFormAspect,
   overriddenFacts,
   sameAspect,
-  STARTER_ASPECTS,
   TYPE_LABELS,
   type CodexEntry,
   type CodexOp,
@@ -32,6 +31,7 @@ import FleshOutEntry from "./FleshOutEntry";
 import LinkedEntryDetails from "./LinkedEntryDetails";
 import MoreMenu from "./MoreMenu";
 import UpdateFromStory from "./UpdateFromStory";
+import { AspectPicker } from "./AspectPicker";
 
 type Chapter = { id: string; title: string };
 
@@ -919,7 +919,6 @@ function FactEditor({
   here,
   start,
   titleOf,
-  usedAspects,
   busy,
   onCancel,
   onSave,
@@ -946,10 +945,6 @@ function FactEditor({
   // it reads that way from there on; a change is written here.
   const correctionAt = fact ? fact.op.anchor_chapter_id : start.id;
   const offerKind = correctionAt !== chapterId;
-  const suggestions: string[] = [];
-  for (const a of [...STARTER_ASPECTS[entry.type], ...usedAspects]) {
-    if (a.trim() && !isFormAspect(a) && !suggestions.some((s) => sameAspect(s, a))) suggestions.push(a.trim());
-  }
   const replaces = !fact && aspect.trim() ? entry.facts.find((f) => !isFormAspect(f.aspect) && sameAspect(f.aspect, aspect) && sameAspect(f.form, form)) : undefined;
   const name = `fact-kind-${fact?.fact_id ?? "new"}`;
 
@@ -972,13 +967,10 @@ function FactEditor({
     <div className="fact-form ef-editor">
       <label>
         Aspect
-        <input aria-label="Aspect" list={`aspects-${entry.entry_id}`} value={aspect} maxLength={FACT_LIMITS.aspect} onChange={(e) => setAspect(e.target.value)} />
-        <datalist id={`aspects-${entry.entry_id}`}>
-          {suggestions.map((s) => (
-            <option key={s} value={s} />
-          ))}
-        </datalist>
-        <small>what it describes, such as Ears; leave empty for a loose fact</small>
+        <AspectPicker type={entry.type} value={aspect} onChange={setAspect} have={entry.facts} />
+        <small>
+          what it describes; the list is in <Link href="/settings#codex">Settings</Link>
+        </small>
       </label>
       <label>
         Text

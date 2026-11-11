@@ -57,14 +57,23 @@ export function suggestionSource(s: Sourced): { tone: SourceTone; label: string 
 
 /** What "Accept all" takes: open fact changes backed by the text or the notes, never the AI's own ideas or a conflict. */
 export const acceptableInBulk = (s: CodexSuggestion) =>
-  s.status === "open" && s.kind !== "conflict" && s.kind !== "entry" && !["invented", "unsure"].includes(suggestionSource(s).tone);
+  s.status === "open" && s.kind !== "conflict" && s.kind !== "entry" && !s.new_category && !["invented", "unsure"].includes(suggestionSource(s).tone);
 
 /** The chapter's reading page, scrolled to the quote where the browser supports text fragments. */
 export const quoteHref = (chapterId: string, quote: string) => `/c/${chapterId}#:~:text=${encodeURIComponent(quote.slice(0, 120))}`;
 
-export function SourceBadge({ s }: { s: Sourced }) {
+export function SourceBadge({ s }: { s: Sourced & { new_category?: boolean } }) {
   const { tone, label } = suggestionSource(s);
-  return <span className={`source-badge source-${tone}`}>{label}</span>;
+  return (
+    <>
+      <span className={`source-badge source-${tone}`}>{label}</span>
+      {s.new_category && (
+        <span className="source-badge source-new-category" title="This category isn't on your list in Settings → Codex. Accepting adds it to this entry.">
+          New category: {s.aspect}
+        </span>
+      )}
+    </>
+  );
 }
 
 async function post(url: string, body?: unknown): Promise<{ entry_id?: string }> {

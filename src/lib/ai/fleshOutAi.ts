@@ -6,7 +6,8 @@ import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import { quoteInText } from "./tagAi";
-import { FACT_LIMITS, STARTER_ASPECTS, cleanForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry } from "../codex";
+import { FACT_LIMITS, cleanForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry } from "../codex";
+import { DEFAULT_CATEGORIES, aspectRules, resolveAspect, type CategoryLists } from "../codexCategories";
 import type { SuggestionInput } from "./codexCheckAi";
 import type { Settings } from "../settings";
 
@@ -22,7 +23,7 @@ const SYSTEM_BASE = `You keep the codex of a story. The codex records the lastin
 How to write a fact:
 - One fact per aspect, in the present tense, short (under about 30 words) and standalone: use names, not pronouns.
 - Only what stays true. No plot events, plans or feelings in the moment.
-- Give "aspect" (a short title-case name; prefer ones from the usual list for the entry's type, and aspects the entry doesn't have yet) and "text". Give "form" only when the fact belongs to one form of a character that has several (otherwise leave it empty).
+- Give "aspect" (from the list of aspects in the message; prefer ones the entry doesn't have yet) and "text". Give "form" only when the fact belongs to one form of a character that has several (otherwise leave it empty).
 - Never repeat or contradict a fact the entry already has, or anything the story says. Do not propose an aspect the entry already has.
 - Match the story's tone and style notes. Characters, places and things from well-known works are ones you already know: draw on what you know of them.
 - At most ${MAX_EXPAND_FACTS} facts. Pick the details that make the entry feel most real and useful for writing scenes.`;
@@ -49,6 +50,8 @@ export type FleshOutOptions = {
   mode?: FleshOutMode;
   /** What the author wants more of ("her family, how she talks"). */
   hint?: string;
+  /** The fact categories the AI picks from (Settings → Codex); the defaults when not given. */
+  categories?: CategoryLists;
 };
 
 /** The entry as the AI sees it: its form and facts so far. */
@@ -85,7 +88,7 @@ export function fleshOutRequest(contextTokens: number, opts: FleshOutOptions): P
   const mode = opts.mode ?? "invent";
   const system = systemFor(mode);
   const { entry, story } = opts;
-  const types = STARTER_ASPECTS[entry.type].length ? `Usual aspects for a ${entry.type}: ${STARTER_ASPECTS[entry.type].join(", ")}.` : "";
+  const types = aspectRules(opts.categories ?? DEFAULT_CATEGORIES, [entry.type], { newOnly: true });
   const fixed = [
     `Story: ${story.title}`,
     story.premise.trim() && `Premise: ${story.premise.trim()}`,
@@ -123,7 +126,7 @@ export function parseFleshOut(reply: string, opts: FleshOutOptions): SuggestionI
     if (out.length >= MAX_EXPAND_FACTS) break;
     if (!item || typeof item !== "object") continue;
     const o = item as Record<string, unknown>;
-    const aspect = asString(o.aspect, FACT_LIMITS.aspect);
+    const aspect = resolveAspect(asString(o.aspect, FACT_LIMITS.aspect), (opts.categories ?? DEFAULT_CATEGORIES)[entry.type], entry.facts).aspect;
     const form = cleanForm(asString(o.form, FACT_LIMITS.form));
     const text = asString(o.text, FACT_LIMITS.text);
     if (!aspect || !text || isFormAspect(aspect)) continue;
@@ -144,7 +147,8 @@ export type RunFleshOutOptions = FleshOutOptions & { signal?: AbortSignal; role?
 
 /** Asks the AI for new facts for one entry. Throws when the reply can't be read. */
 export async function runFleshOut(settings: Settings, opts: RunFleshOutOptions): Promise<SuggestionInput[]> {
-  const request = fleshOutRequest(settings.contextTokens, opts);
+  const withLists = { categories: settings.codexCategories, ...opts };
+  const request = fleshOutRequest(settings.contextTokens, withLists);
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
@@ -152,5 +156,5 @@ export async function runFleshOut(settings: Settings, opts: RunFleshOutOptions):
     signal: opts.signal,
     source: { label: "Flesh out", ...opts.source },
   });
-  return parseFleshOut(reply, opts);
+  return parseFleshOut(reply, withLists);
 }

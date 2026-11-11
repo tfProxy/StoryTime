@@ -14,6 +14,8 @@ import {
   type DrawPreset,
   type EditPreset,
 } from "./comfy/presets";
+import { CATEGORY_LIMITS, DEFAULT_CATEGORIES, type CategoryLists } from "./codexCategories";
+import { ENTRY_TYPES } from "./codex";
 
 // Types, defaults and parsing, shared by the browser and the server (which stores the settings).
 
@@ -97,6 +99,8 @@ export type Settings = {
   contentNotes: boolean;
   /** Under the title on a chapter's reading page, list the codex entries there, each linking to its page. Off by default. */
   showCodexList: boolean;
+  /** The fact categories each type of codex entry may use, shared by every story. The AI picks from these. */
+  codexCategories: CategoryLists;
   /** What the outline shows after each chapter's name. */
   outline: OutlineOptions;
   /** How picture prompts are written: tags (SDXL, SD 1.5), booru tags (Illustrious, NoobAI, Pony) or plain sentences (Flux, SD3). */
@@ -208,6 +212,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoApplyCodex: false,
   contentNotes: true,
   showCodexList: false,
+  codexCategories: DEFAULT_CATEGORIES,
   outline: DEFAULT_OUTLINE,
   imagePromptStyle: "tags",
   imagePromptModel: null,
@@ -359,6 +364,25 @@ export function upgradeComfy(comfy: unknown, checkpoints: string[] = []): unknow
 /** The id `upgradeComfy` gives its i-th drawing preset. */
 export const drawPresetIdFor = (i: number) => (i === 0 ? "default" : `draw-${i + 1}`);
 
+const categorySchema = z.object({
+  name: z.string().trim().min(1).max(CATEGORY_LIMITS.name),
+  about: z.string().max(CATEGORY_LIMITS.about).catch(""),
+  also: z.array(z.string().trim().min(1).max(CATEGORY_LIMITS.name)).max(CATEGORY_LIMITS.also).catch([]),
+  group: z.string().max(CATEGORY_LIMITS.group).catch(""),
+});
+// A type that is missing or unreadable gets the default list; the others keep the owner's.
+const listFor = (t: (typeof ENTRY_TYPES)[number]) => z.array(categorySchema).max(CATEGORY_LIMITS.perType).catch(DEFAULT_CATEGORIES[t]);
+const categoriesSchema = z
+  .object({
+    character: listFor("character"),
+    place: listFor("place"),
+    item: listFor("item"),
+    faction: listFor("faction"),
+    lore: listFor("lore"),
+    note: listFor("note"),
+  })
+  .catch(DEFAULT_CATEGORIES);
+
 const settingsSchema = z.object({
   connections: listOf(connectionSchema),
   favorites: listOf(favoriteSchema),
@@ -373,6 +397,7 @@ const settingsSchema = z.object({
   autoApplyCodex: z.boolean().catch(false),
   contentNotes: z.boolean().catch(true),
   showCodexList: z.boolean().catch(false),
+  codexCategories: categoriesSchema,
   // A part that is missing or isn't true/false is shown, as before the options existed.
   outline: z
     .object({

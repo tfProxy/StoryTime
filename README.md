@@ -44,6 +44,12 @@ and, for pictures, your own ComfyUI machine.
   and whether it is **a change in the story** from this chapter on (earlier chapters keep the old text)
   or **a correction** (it was always so). A fact's **⋯** has its **History**, **Remove from this
   chapter on** and **Retcon the chapters…**. **+ Add a fact** adds one.
+  A fact's aspect is picked from the **fact categories** in **Settings › Codex**: one list for each
+  type of entry, shared by every story (Species, Skin, Teeth, Personality…). The AI must use them
+  too: what it calls "fur" or "temperament" is filed under Skin or Personality, and when nothing on
+  the list fits it suggests a **New category**, which waits for you and is never applied on its own.
+  A lost feature (a tail that's gone) is removed rather than written as "Tail: none"; the AI is told
+  it went only in the chapter where it happens.
   A character can have forms (human, vixen…). The **Form** row says which one she is in, since when,
   and until which later chapter; **Change form…** picks the form (or a new one), the chapter it starts
   at and how far along it is ("halfway"), and shows exactly what the AI will read. A form's own fact

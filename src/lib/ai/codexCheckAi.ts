@@ -5,7 +5,8 @@ import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, mentions, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import { quoteInText } from "./tagAi";
-import { ENTRY_TYPES, FACT_LIMITS, STARTER_ASPECTS, cleanForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry, type EntryType } from "../codex";
+import { ENTRY_TYPES, FACT_LIMITS, cleanForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry, type EntryType } from "../codex";
+import { DEFAULT_CATEGORIES, aspectRules, resolveAspect, type CategoryLists } from "../codexCategories";
 import type { Settings } from "../settings";
 
 export const SUGGESTION_KINDS = ["set", "form", "retire", "entry", "conflict"] as const;
@@ -40,12 +41,13 @@ const ALIASES_MAX = 10;
 const asString = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const lc = (s: string) => s.trim().toLowerCase();
 
-const SYSTEM_CODEX_CHECK = `You keep the codex of a story up to date. The codex records the lasting state of the story's characters, places and things as small facts, one per aspect, for example "Ears: tall russet fox ears". You are shown one chapter that has just been posted, and what the codex says now about the entries the chapter mentions. Propose the changes the codex needs because of this chapter.
+const systemCodexCheck = (aspects: string) => `You keep the codex of a story up to date. The codex records the lasting state of the story's characters, places and things as small facts, one per aspect, for example "Ears: tall russet fox ears". You are shown one chapter that has just been posted, and what the codex says now about the entries the chapter mentions. Propose the changes the codex needs because of this chapter.
 
 How to write a fact:
 - Describe the state at the END of the chapter, in the present tense.
 - Keep it short (under about 25 words) and standalone: use names, not pronouns. No plot retelling, no feelings or events; only what stays true.
-- Reuse the aspect names already on the entry when they fit. Otherwise use a short title-case name. For a character, the usual aspects are: ${STARTER_ASPECTS.character.join(", ")}.
+
+${aspects}
 
 This story may involve physical transformation. When a character's body, sex, species or form changes, record each changed aspect separately (Ears, Tail, Fur, Build, Voice, Sex, Species and so on), even when several change in one scene. When the character is now in a different form or stage of a change, also propose a "form" item.
 
@@ -94,6 +96,8 @@ export type CodexCheckRequestOptions = {
    * entries), and anything else in the reply is dropped.
    */
   focus?: CodexEntry;
+  /** The fact categories the AI picks from (Settings → Codex); the defaults when not given. */
+  categories?: CategoryLists;
 };
 
 /** The request for one chapter's codex changes. A chapter too long for the context is cut to fit. */
@@ -106,8 +110,11 @@ export function codexCheckRequest(contextTokens: number, opts: CodexCheckRequest
   }
   const known = shown.length ? shown.map(describeForCheck).join("\n\n") : "(no entry is mentioned in this chapter)";
   const otherList = others.slice(0, 80).join(", ");
+  // The lists for the types shown, and for characters (most new entries are), to keep the prompt short.
+  const types = opts.focus ? [opts.focus.type] : [...new Set<EntryType>(["character", ...shown.map((e) => e.type)])];
+  const system = systemCodexCheck(aspectRules(opts.categories ?? DEFAULT_CATEGORIES, types));
 
-  const budget = Math.max(1000, contextTokens - 2000 - estimateTokens(SYSTEM_CODEX_CHECK));
+  const budget = Math.max(1000, contextTokens - 2000 - estimateTokens(system));
   // The codex is kept whole; the chapter gets what is left (about 2 characters a token).
   const room = Math.max(1000, budget - estimateTokens(known) - estimateTokens(otherList));
   const maxChars = room * 2;
@@ -124,10 +131,10 @@ export function codexCheckRequest(contextTokens: number, opts: CodexCheckRequest
   ]
     .filter(Boolean)
     .join("\n\n");
-  return { system: SYSTEM_CODEX_CHECK, message };
+  return { system, message };
 }
 
-function parseNewEntry(o: Record<string, unknown>, taken: Set<string>): SuggestedEntry | null {
+function parseNewEntry(o: Record<string, unknown>, taken: Set<string>, lists: CategoryLists): SuggestedEntry | null {
   const name = asString(o.name, NAME_MAX);
   if (!name || taken.has(lc(name))) return null;
   const typeWord = lc(asString(o.type, 20));
@@ -147,9 +154,11 @@ function parseNewEntry(o: Record<string, unknown>, taken: Set<string>): Suggeste
       const r = f as Record<string, unknown>;
       const text = asString(r.text, FACT_LIMITS.text);
       if (!text) continue;
-      const aspect = asString(r.aspect, FACT_LIMITS.aspect);
+      const aspect = resolveAspect(asString(r.aspect, FACT_LIMITS.aspect), lists[type], facts).aspect;
       if (isFormAspect(aspect)) continue; // a new entry's form is set after it exists
-      facts.push({ aspect, form: asString(r.form, FACT_LIMITS.form), text });
+      const form = cleanForm(asString(r.form, FACT_LIMITS.form));
+      if (aspect && facts.some((x) => sameAspect(x.aspect, aspect) && sameAspect(x.form, form))) continue; // one fact per aspect
+      facts.push({ aspect, form, text });
       if (facts.length >= NEW_ENTRY_FACTS) break;
     }
   }
@@ -161,6 +170,7 @@ export type ParseCodexCheckOptions = {
   /** Every entry live at the chapter (with its facts). */
   entries: CodexEntry[];
   otherNames: string[];
+  categories?: CategoryLists;
 };
 
 /** Turns a model reply into suggestions, dropping what can't be trusted (bad quotes, unknown entries, no change). */
@@ -172,6 +182,7 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
   const byName = new Map<string, CodexEntry>();
   for (const e of opts.entries) for (const n of [e.name, ...e.aliases]) if (n.trim() && !byName.has(lc(n))) byName.set(lc(n), e);
   const taken = new Set([...byName.keys(), ...opts.otherNames.map(lc)]);
+  const lists = opts.categories ?? DEFAULT_CATEGORIES;
 
   const out: SuggestionInput[] = [];
   for (const item of list) {
@@ -184,7 +195,7 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
     if (!quote || !quoteInText(quote, opts.body)) continue;
 
     if (kind === "entry") {
-      const entry = parseNewEntry(o, taken);
+      const entry = parseNewEntry(o, taken, lists);
       if (!entry) continue;
       taken.add(lc(entry.name)); // a second proposal of the same name in this reply is a duplicate
       for (const a of entry.aliases) taken.add(lc(a));
@@ -194,12 +205,15 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
 
     const target = byName.get(lc(asString(o.entry, NAME_MAX)));
     if (!target) continue;
-    let aspect = asString(o.aspect, FACT_LIMITS.aspect);
+    // The aspect as the list (or the entry) spells it: "Fur" is filed under Skin, "New: Gills" is a new category.
+    let aspect = resolveAspect(asString(o.aspect, FACT_LIMITS.aspect), lists[target.type], target.facts).aspect;
     let form = cleanForm(asString(o.form, FACT_LIMITS.form));
     const text = asString(o.text, FACT_LIMITS.text);
     // A "set" of the aspect "form" is a form change.
     if (kind === "set" && isFormAspect(aspect)) kind = "form";
     const live = (a: string, f: string) => target.facts.find((x) => !isFormAspect(x.aspect) && sameAspect(x.aspect, a) && sameAspect(x.form, f));
+    // One change per aspect: a second one for the same fact in this reply is a duplicate.
+    if (kind !== "form" && out.some((x) => x.kind !== "form" && x.kind !== "entry" && x.entry_id === target.entry_id && sameAspect(x.aspect, aspect) && sameAspect(x.form, form))) continue;
 
     if (kind === "form") {
       if (!form) continue;
@@ -225,7 +239,7 @@ export type RunCodexCheckOptions = CodexCheckRequestOptions & { signal?: AbortSi
 /** Asks the AI what the chapter changes in the codex. Throws when the reply can't be read. */
 export async function runCodexCheck(settings: Settings, opts: RunCodexCheckOptions): Promise<SuggestionInput[]> {
   if (!opts.chapter.body.trim()) return [];
-  const request = codexCheckRequest(settings.contextTokens, opts);
+  const request = codexCheckRequest(settings.contextTokens, { categories: settings.codexCategories, ...opts });
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
@@ -233,6 +247,6 @@ export async function runCodexCheck(settings: Settings, opts: RunCodexCheckOptio
     signal: opts.signal,
     source: { label: opts.focus ? `Update “${opts.focus.name}” from the story` : "Codex check", ...opts.source },
   });
-  const found = parseCodexCheck(reply, { body: opts.chapter.body, entries: opts.entries, otherNames: opts.otherNames });
+  const found = parseCodexCheck(reply, { body: opts.chapter.body, entries: opts.entries, otherNames: opts.otherNames, categories: opts.categories ?? settings.codexCategories });
   return opts.focus ? found.filter((s) => s.kind !== "entry" && s.entry_id === opts.focus!.entry_id) : found;
 }

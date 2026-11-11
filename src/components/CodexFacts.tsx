@@ -13,7 +13,6 @@ import {
   isDraftEntry,
   isFormAspect,
   sameAspect,
-  STARTER_ASPECTS,
   type CodexEntry,
   type FactOp,
   type LiveFact,
@@ -22,6 +21,7 @@ import type { PathChapter } from "@/lib/ai/codexAi";
 import { entryHints, type EntryHint } from "@/lib/codexHints";
 import { useSettings } from "@/lib/settings";
 import { AiBadge } from "./CodexEntryCards";
+import { AspectPicker } from "./AspectPicker";
 import ChapterPathPicker from "./ChapterPathPicker";
 import EntryFold from "./EntryFold";
 
@@ -537,7 +537,6 @@ function FactForm({
   path,
   chapterId,
   held,
-  usedAspects,
   busy,
   onCancel,
   onSave,
@@ -564,10 +563,6 @@ function FactForm({
 
   const showForm = entry.forms.length > 0 || entry.type === "character";
   const form = formSel === NEW_FORM ? newForm.trim() : formSel;
-  const suggestions: string[] = [];
-  for (const a of [...STARTER_ASPECTS[entry.type], ...usedAspects]) {
-    if (a.trim() && !isFormAspect(a) && !suggestions.some((s) => sameAspect(s, a))) suggestions.push(a.trim());
-  }
   // A fact with the same aspect and form is replaced (an aspect-less loose fact is always new).
   const replaced = editing
     ? editing
@@ -579,19 +574,10 @@ function FactForm({
     <div className="fact-form">
       <label>
         Aspect
-        <input
-          aria-label="Aspect"
-          list={`aspects-${entry.entry_id}`}
-          value={aspect}
-          maxLength={FACT_LIMITS.aspect}
-          onChange={(e) => setAspect(e.target.value)}
-        />
-        <datalist id={`aspects-${entry.entry_id}`}>
-          {suggestions.map((s) => (
-            <option key={s} value={s} />
-          ))}
-        </datalist>
-        <small>what it describes, such as Ears; leave empty for a loose fact</small>
+        <AspectPicker type={entry.type} value={aspect} onChange={setAspect} have={entry.facts} />
+        <small>
+          what it describes; the list is in <Link href="/settings#codex">Settings</Link>
+        </small>
       </label>
       {showForm && (
         <label>

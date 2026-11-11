@@ -5,7 +5,8 @@ import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import { quoteInText } from "./tagAi";
-import { FACT_LIMITS, STARTER_ASPECTS, cleanForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry } from "../codex";
+import { FACT_LIMITS, cleanForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry } from "../codex";
+import { DEFAULT_CATEGORIES, aspectRules, resolveAspect, type CategoryLists } from "../codexCategories";
 import type { SuggestionInput } from "./codexCheckAi";
 import type { Settings } from "../settings";
 
@@ -19,7 +20,7 @@ const SYSTEM_NOTES_TO_FACTS = `You keep the codex of a story up to date. The cod
 How to write a fact:
 - One fact per aspect, in the present tense, short (under about 25 words) and standalone: use names, not pronouns.
 - Only what stays true. Skip plot events, plans, feelings in the moment and anything the author is unsure of.
-- Reuse the aspect names already on the entry when they fit. Otherwise use a short title-case name. For a character, the usual aspects are: ${STARTER_ASPECTS.character.join(", ")}.
+- Use the aspects listed in the message (see the rules there).
 - Skip anything the entry already has as a fact.
 
 Kinds of item:
@@ -32,7 +33,11 @@ Rules:
 Reply with JSON only, in this shape ({"facts":[]} if there is nothing to add):
 {"facts":[{"kind":"set|form","aspect":"","form":"","text":"","quote":""}]}`;
 
-export type NotesToFactsOptions = { entry: CodexEntry };
+export type NotesToFactsOptions = {
+  entry: CodexEntry;
+  /** The fact categories the AI picks from (Settings → Codex); the defaults when not given. */
+  categories?: CategoryLists;
+};
 
 /** The entry as the AI sees it: its name and type, what it has as facts now, and the whole of its notes. */
 function describeForNotes(e: CodexEntry): { known: string; notes: string } {
@@ -55,6 +60,7 @@ export function notesToFactsRequest(contextTokens: number, opts: NotesToFactsOpt
   const message = [
     `The entry: ${entry.name} [${entry.type}]${entry.aliases.length ? ` (also: ${entry.aliases.join(", ")})` : ""}`,
     `Its facts now:\n${known || "(none yet)"}`,
+    aspectRules(opts.categories ?? DEFAULT_CATEGORIES, [entry.type]),
     `The author's notes:\n${cut}`,
     "Turn the notes into facts, as JSON.",
   ].join("\n\n");
@@ -79,7 +85,7 @@ export function parseNotesToFacts(reply: string, opts: NotesToFactsOptions): Sug
     if (kind !== "set" && kind !== "form") continue;
     const quote = asString(o.quote, FACT_LIMITS.quote);
     if (!quote || !quoteInText(quote, entry.content)) continue;
-    let aspect = asString(o.aspect, FACT_LIMITS.aspect);
+    let aspect = resolveAspect(asString(o.aspect, FACT_LIMITS.aspect), (opts.categories ?? DEFAULT_CATEGORIES)[entry.type], entry.facts).aspect;
     let form = cleanForm(asString(o.form, FACT_LIMITS.form));
     const text = asString(o.text, FACT_LIMITS.text);
     // A "set" of the aspect "form" is a form change.
@@ -108,7 +114,8 @@ export type RunNotesToFactsOptions = NotesToFactsOptions & { signal?: AbortSigna
 /** Asks the AI for the facts in one entry's notes. Throws when the reply can't be read. */
 export async function runNotesToFacts(settings: Settings, opts: RunNotesToFactsOptions): Promise<SuggestionInput[]> {
   if (!opts.entry.content.trim()) return [];
-  const request = notesToFactsRequest(settings.contextTokens, opts);
+  const withLists = { categories: settings.codexCategories, ...opts };
+  const request = notesToFactsRequest(settings.contextTokens, withLists);
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
@@ -116,5 +123,5 @@ export async function runNotesToFacts(settings: Settings, opts: RunNotesToFactsO
     signal: opts.signal,
     source: { label: "Notes to facts", ...opts.source },
   });
-  return parseNotesToFacts(reply, opts);
+  return parseNotesToFacts(reply, withLists);
 }

@@ -4993,6 +4993,15 @@ button.ef-main:hover {
   border: 1px solid var(--warn);
   color: var(--warn);
 }
+.source-new-category {
+  border: 1px dashed var(--accent);
+  color: var(--accent);
+}
+.aspect-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
 .inbox-card.inbox-tone-unsure {
   border-color: var(--warn);
 }

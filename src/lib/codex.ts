@@ -88,16 +88,6 @@ export const FORM_ASPECT = "form";
 
 export const FACT_LIMITS = { aspect: 40, form: 40, text: 1000, quote: 500 };
 
-/** Aspects offered when adding a fact, by entry type. Any other name may be typed. */
-export const STARTER_ASPECTS: Record<EntryType, string[]> = {
-  character: ["Sex", "Species", "Build", "Height", "Skin", "Fur", "Hair", "Ears", "Eyes", "Tail", "Hands", "Voice", "Clothing", "Personality", "Status", "Relationships"],
-  place: ["Location", "Appearance", "Controlled by", "Rules", "Status"],
-  item: ["Appearance", "Properties", "Held by", "Condition"],
-  faction: ["Leader", "Members", "Goals", "Allies", "Enemies"],
-  lore: ["Rules", "History"],
-  note: [],
-};
-
 export const isFormAspect = (aspect: string) => aspect.trim().toLowerCase() === FORM_ASPECT;
 export const sameAspect = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -190,6 +180,28 @@ export function foldFacts(facts: FactOp[]): Map<string, LiveFact[]> {
   return new Map([...live].map(([id, m]) => [id, [...m.values()]]));
 }
 
+/** A fact removed at the chapter being written (or in the draft), as it was before: its aspect and form. */
+export type GoneFact = { aspect: string; form: string };
+
+/** By entry id: the facts with an aspect whose last change on the path is a removal anchored at `recentAnchor` or held in the draft. */
+export function goneFacts(facts: FactOp[], recentAnchor?: string): Map<string, GoneFact[]> {
+  const out = new Map<string, GoneFact[]>();
+  if (!recentAnchor) return out;
+  const last = new Map<string, { op: FactOp; set: FactOp | null }>();
+  for (const f of orderOps(facts)) {
+    const prev = last.get(f.fact_id);
+    last.set(f.fact_id, { op: f, set: f.op === "set" ? f : (prev?.set ?? null) });
+  }
+  for (const { op, set } of last.values()) {
+    if (op.op !== "retire" || !set || !set.aspect.trim() || isFormAspect(set.aspect)) continue;
+    if (op.anchor_chapter_id !== recentAnchor && op.anchor_chapter_id !== DRAFT_ANCHOR) continue;
+    const list = out.get(op.entry_id) ?? [];
+    list.push({ aspect: set.aspect.trim(), form: set.form.trim() });
+    out.set(op.entry_id, list);
+  }
+  return out;
+}
+
 /** Every version of one fact along the path, oldest first (retirements included). */
 export function factHistory(facts: FactOp[], factId: string): FactOp[] {
   return orderOps(facts).filter((f) => f.fact_id === factId);
@@ -273,7 +285,7 @@ export function baseForms(facts: FactOp[]): Map<string, string> {
  * While the entry is in its `baseForm` (its normal form) the "Form:" line is left out, unless it has a stage note or
  * it just changed back; the facts of that form still apply, also when no form is set at all.
  */
-export function describeEntry(facts: LiveFact[], recentAnchor?: string, baseForm?: string | null): string {
+export function describeEntry(facts: LiveFact[], recentAnchor?: string, baseForm?: string | null, gone: GoneFact[] = []): string {
   const recent = (f: LiveFact) => !!recentAnchor && (f.op.anchor_chapter_id === recentAnchor || f.op.anchor_chapter_id === DRAFT_ANCHOR);
   // "Ears: fox ears (just changed)." — the mark goes inside the sentence's full stop.
   const sentence = (s: string, f: LiveFact) => {
@@ -289,9 +301,18 @@ export function describeEntry(facts: LiveFact[], recentAnchor?: string, baseForm
     const normal = !!baseForm && sameAspect(formFact.form, baseForm) && !formFact.text.trim() && !recent(formFact);
     if (label && !normal) parts.push(sentence(`Form: ${label}`, formFact));
   }
-  for (const f of applicableFacts(facts, formFact ? formFact.form : (baseForm ?? null))) {
+  const current = formFact ? formFact.form : (baseForm ?? null);
+  const applicable = applicableFacts(facts, current);
+  for (const f of applicable) {
     if (!f.text.trim()) continue;
     parts.push(sentence(f.aspect.trim() ? `${f.aspect.trim()}: ${f.text.trim()}` : f.text, f));
+  }
+  // A feature lost in this chapter is named once, so the writer shows it going; after that it is simply not listed
+  // (the codex never says "Tail: none").
+  for (const g of gone) {
+    if (g.form !== "" && !(current !== null && sameAspect(g.form, current))) continue;
+    if (applicable.some((f) => sameAspect(f.aspect, g.aspect)) || parts.some((p) => p.startsWith(`${g.aspect}: gone`))) continue;
+    parts.push(`${g.aspect}: gone (just changed).`);
   }
   // One fact a line: the AI reads a list as well as a paragraph, and the owner can read it (codexBlock lays it out).
   return parts.join("\n");
@@ -345,7 +366,7 @@ export function usedAspectsOf(entries: CodexEntry[]): string[] {
   return out;
 }
 
-function withFacts(op: CodexOp, facts: LiveFact[], recentAnchor?: string, keywordSources?: KeywordSource[], baseForm: string | null = null): CodexEntry {
+function withFacts(op: CodexOp, facts: LiveFact[], recentAnchor?: string, keywordSources?: KeywordSource[], baseForm: string | null = null, gone: GoneFact[] = []): CodexEntry {
   const formFact = facts.find((f) => isFormAspect(f.aspect)) ?? null;
   const forms: string[] = [];
   for (const name of [formFact?.form ?? "", ...facts.filter((f) => !isFormAspect(f.aspect)).map((f) => f.form)]) {
@@ -366,7 +387,7 @@ function withFacts(op: CodexOp, facts: LiveFact[], recentAnchor?: string, keywor
     form: formFact ? { name: formFact.form, note: formFact.text, fact: formFact } : null,
     forms,
     baseForm,
-    description: describeEntry(facts, recentAnchor, baseForm),
+    description: describeEntry(facts, recentAnchor, baseForm, gone),
   };
 }
 
@@ -382,9 +403,10 @@ export type FoldOptions = {
 export function foldCodex(ops: CodexOp[], facts: FactOp[] = [], options: FoldOptions = {}): CodexEntry[] {
   const liveFacts = facts.length ? foldFacts(facts) : new Map<string, LiveFact[]>();
   const bases = facts.length ? baseForms(facts) : new Map<string, string>();
+  const gone = facts.length ? goneFacts(facts, options.recentAnchor) : new Map<string, GoneFact[]>();
   return [...foldEntries(ops).values()]
     .filter((s) => s.alive)
-    .map((s) => withFacts(s.op, liveFacts.get(s.op.entry_id) ?? [], options.recentAnchor, s.sources, bases.get(s.op.entry_id) ?? null))
+    .map((s) => withFacts(s.op, liveFacts.get(s.op.entry_id) ?? [], options.recentAnchor, s.sources, bases.get(s.op.entry_id) ?? null, gone.get(s.op.entry_id)))
     .sort((a, b) => ENTRY_TYPES.indexOf(a.type) - ENTRY_TYPES.indexOf(b.type) || a.name.localeCompare(b.name));
 }
 
