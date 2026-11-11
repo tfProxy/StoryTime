@@ -2,6 +2,7 @@
 import http from "node:http";
 import { launch, useMockAi } from "./browser.mjs";
 import { unfoldEntryFolds } from "./unfold.mjs";
+import { pickAspect } from "./entryPage.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const prompts = [];
@@ -96,7 +97,7 @@ ok(
     (await factEffect.locator(".chapter-picker-pill").count()) === 1,
   "a new entry's fact can only take effect from this chapter",
 );
-await drawer.getByLabel("Aspect").first().fill("Hair");
+await pickAspect(drawer, "Hair");
 await drawer.getByLabel("Fact", { exact: true }).fill("Bright red hair.");
 await drawer.getByRole("button", { name: "Save", exact: true }).click();
 await drawer.locator(".fact-row", { hasText: "Bright red hair." }).getByText("not saved yet").waitFor();
@@ -178,7 +179,7 @@ ok(
     /Saved when you save it/.test(await factEffect.locator(".chapter-picker-explain").innerText()),
   "the chapter being edited is “this chapter”, saved with the edit; the one before it is offered too: " + effect,
 );
-await drawer.getByLabel("Aspect").first().fill("Mood");
+await pickAspect(drawer, "Mood");
 await drawer.getByLabel("Fact", { exact: true }).fill("Cheerful at last.");
 await drawer.getByRole("button", { name: "Save", exact: true }).click();
 await drawer.locator(".fact-row", { hasText: "Cheerful at last." }).getByText("not saved yet").waitFor();

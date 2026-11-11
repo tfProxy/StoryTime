@@ -119,7 +119,7 @@ try {
   ok(fromNotes.length === 4 && open.filter((x) => x.source === "chapter").length === 1, "the inbox has four notes suggestions beside the chapter one: " + JSON.stringify(open.map((x) => [x.source, x.aspect])));
   const eyes = fromNotes.find((x) => x.aspect === "Eyes");
   ok(eyes.chapter_id === root && eyes.entry_id === mira && eyes.after === "Amber eyes." && eyes.quote === "amber eyes", "Mira's suggestion is at the root, with a quote from the notes");
-  ok(fromNotes.find((x) => x.kind === "form").form === "vixen" && fromNotes.find((x) => x.aspect === "Fur").chapter_id === c1, "a form item and Kit's fur arrive too");
+  ok(fromNotes.find((x) => x.kind === "form").form === "vixen" && fromNotes.find((x) => x.aspect === "Skin").chapter_id === c1, "a form item and Kit's fur arrive too");
   ok(open.find((x) => x.source === "chapter").aspect === "Ears" && (await inbox(`?chapter=${root}`)).suggestions.every((x) => x.source === "notes"), "the chapter suggestion is still there, and the filters keep working");
 
   // ---- running again replaces only the open notes suggestions of the same entry ----
@@ -129,7 +129,7 @@ try {
   ok(again.length === 5 && again.filter((x) => x.source === "notes").length === 4, "…it replaced Mira's notes suggestions and left Kit's and the chapter's: " + again.length);
 
   // ---- accept: the fact is saved at the anchor chapter ----
-  const fur = again.find((x) => x.aspect === "Fur");
+  const fur = again.find((x) => x.aspect === "Skin");
   const eyes2 = again.find((x) => x.aspect === "Eyes");
   r = await call("POST", `/api/codex-suggestions/${eyes2.id}/accept`);
   ok(r.status === 200 && r.json.entry_id === mira, "accepting a notes suggestion works");
@@ -143,7 +143,7 @@ try {
   ok(r.status === 200, "a notes suggestion can be dismissed");
   r = await notesRoute({ chapter_id: c1, entry_ids: [kit] });
   ok(r.json.tasks === 1 && (await finish(r.json.run_id)), "Kit's notes are read again");
-  ok(!(await inbox("?status=open")).suggestions.some((x) => x.aspect === "Fur"), "…the dismissed fact does not come back");
+  ok(!(await inbox("?status=open")).suggestions.some((x) => x.aspect === "Skin"), "…the dismissed fact does not come back");
 
   // ---- an edited chapter: the notes task is skipped, nothing saved ----
   const edit = await call("PATCH", `/api/chapters/${c1}`, { title: "Child", body: body1 + " More.", base_revision: 1, codex_changes: [] });

@@ -47,7 +47,7 @@ try {
     revision: await rev(A),
     suggestions: [
       s(rowan, "set", { aspect: "Ears", after: "tall fox ears", quote: "Rowan's ears changed" }),
-      s(mira, "set", { aspect: "Cloak", after: "a grey cloak", quote: "Mira wore a grey cloak" }),
+      s(mira, "set", { aspect: "Clothing", after: "a grey cloak", quote: "Mira wore a grey cloak" }),
     ],
   });
   await send("PUT", "/api/settings", { ...base, autoCodex: false, autoApplyCodex: false });
@@ -62,7 +62,7 @@ try {
       s(rowan, "set", { aspect: "Scarf", after: "a green scarf", quote: "The wind carried a scent of smoke" }),
       { kind: "entry", aspect: "", form: "", after: "", quote: "Kestrel the hawk joined her", entry: { name: "Kestrel", type: "character", aliases: ["the hawk"], notes: "A hunting hawk.", facts: [] } },
       s(rowan, "set", { aspect: "Mood", after: "tense", quote: "Rowan was tense" }),
-      s(mira, "set", { aspect: "Hat", after: "a feathered hat", quote: "Mira tipped her hat" }),
+      s(mira, "set", { aspect: "Gear", after: "a feathered hat", quote: "Mira tipped her hat" }),
     ],
   });
   ok(waiting.saved === 7, "seven changes wait: " + JSON.stringify(waiting));
@@ -76,7 +76,7 @@ try {
 
   const open = (await send("GET", `/api/stories/${sid}/codex-suggestions?status=open`)).suggestions ?? [];
   const idOf = (aspect) => open.find((x) => x.aspect === aspect || (aspect === "Kestrel" && x.kind === "entry"))?.id;
-  ok(open.length >= 9 && ["Hair", "Boots", "Eyes", "Scarf", "Kestrel", "Mood", "Hat", "Voice"].every((a) => idOf(a)), "all the suggestions are there after the later readings: " + open.map((x) => x.aspect || x.kind).join(","));
+  ok(open.length >= 9 && ["Hair", "Boots", "Eyes", "Scarf", "Kestrel", "Mood", "Gear", "Voice"].every((a) => idOf(a)), "all the suggestions are there after the later readings: " + open.map((x) => x.aspect || x.kind).join(","));
 
   const url = (extra = "") => `${BASE}/c/${A}/codex-review${extra}`;
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
@@ -121,7 +121,8 @@ try {
   const eyes = cardOf("Rowan · Eyes");
   ok((await eyes.locator(".source-badge").innerText()) === "Contradicts the codex" && (await eyes.getByRole("button", { name: "Make it blue" }).isVisible()) && (await eyes.getByRole("button", { name: "Keep green" }).isVisible()) && (await eyes.getByRole("button", { name: "Edit" }).count()) === 0, "a conflict card says what the codex has and offers Make it blue / Keep green, no Edit");
   const scarf = cardOf("Rowan · Scarf");
-  ok((await scarf.locator(".source-badge").innerText()) === "Quote doesn't show this" && (await scarf.locator(".inbox-unsure").isVisible()), "a quote that doesn't mention the fact is labelled 'Quote doesn't show this', with a note");
+  ok((await scarf.locator(".source-badge").first().innerText()) === "Quote doesn't show this" && (await scarf.locator(".inbox-unsure").isVisible()), "a quote that doesn't mention the fact is labelled 'Quote doesn't show this', with a note");
+  ok((await scarf.locator(".source-new-category").innerText()) === "New category: Scarf", "an aspect that is not on the list also carries a 'New category' badge");
   const kestrel = cardOf("New character: Kestrel");
   ok((await kestrel.getByText("A hunting hawk.").isVisible()) && (await kestrel.getByRole("button", { name: "Add it" }).isVisible()) && (await kestrel.getByRole("button", { name: "Dismiss" }).isVisible()), "a new entry's card has its notes, Add it and Dismiss");
   const ears = cardOf("Rowan · Ears");
@@ -146,30 +147,30 @@ try {
   await cardOf("Rowan · Hair").locator(".cr-card-title").click();
   ok((await markOf("Rowan's hair turned silver").getAttribute("class")).includes("cr-selected") && (await markOf("Rowan was tense").getAttribute("class")).includes("cr-selected") === false && (await page.locator(".cr-selected").count()) === 2, "tapping a card's title selects its highlight instead");
   await markOf("Mira wore a grey cloak").click();
-  ok((await cardOf("Mira · Cloak").getAttribute("class")).includes("cr-selected") && (await cardOf("Mira · Cloak").getAttribute("id")).startsWith("f-"), "an applied fact's highlight selects its card too");
+  ok((await cardOf("Mira · Clothing").getAttribute("class")).includes("cr-selected") && (await cardOf("Mira · Clothing").getAttribute("id")).startsWith("f-"), "an applied fact's highlight selects its card too");
 
   // ---- a link to one change selects it on load ----
   await page.goto("about:blank"); // (a change of the address's hash alone wouldn't load the page again)
-  await page.goto(url(`#s-${idOf("Hat")}`));
-  await cardOf("Mira · Hat").waitFor();
+  await page.goto(url(`#s-${idOf("Gear")}`));
+  await cardOf("Mira · Gear").waitFor();
   await page.waitForFunction(() => document.querySelectorAll(".cr-selected").length === 2);
-  ok((await cardOf("Mira · Hat").getAttribute("class")).includes("cr-selected") && (await markOf("Mira tipped her hat").getAttribute("class")).includes("cr-selected"), "#s-<id> in the address selects that change and its highlight on load");
+  ok((await cardOf("Mira · Gear").getAttribute("class")).includes("cr-selected") && (await markOf("Mira tipped her hat").getAttribute("class")).includes("cr-selected"), "#s-<id> in the address selects that change and its highlight on load");
 
   // ---- one entry's changes, and the Show select ----
   const options = (await bar.locator("select option").allInnerTexts()).map((t) => t.trim());
   ok(options[0] === "Everyone" && options.slice(1).sort().join("|") === "Mira|Rowan", "the Show select lists everyone and each entry with changes: " + options.join("|"));
   await bar.locator("select").selectOption({ label: "Mira" });
   await page.waitForURL(url(`?entry=${mira}`));
-  await cardOf("Mira · Hat").waitFor();
+  await cardOf("Mira · Gear").waitFor();
   ok((await bar.getByRole("heading", { level: 1 }).innerText()) === "Codex changes from “Chapter A” for Mira", "choosing an entry shows only its changes, and the heading says whose");
-  ok((await page.locator("article.cr-card").count()) === 2 && (await cardOf("Mira · Cloak").count()) === 1 && (await page.locator("button.cr-mark").count()) === 2, "…its change and its applied fact, with their two highlights");
+  ok((await page.locator("article.cr-card").count()) === 2 && (await cardOf("Mira · Clothing").count()) === 1 && (await page.locator("button.cr-mark").count()) === 2, "…its change and its applied fact, with their two highlights");
   ok((await bar.getByText("1 waiting · 1 applied by the AI to approve").isVisible()) && (await page.locator("section[aria-label='Not quoted from this chapter']").count()) === 0, "…and counts only those: " + (await bar.locator(".meta").first().innerText()));
   await page.goto(url(`?entry=${rowan}`));
   await cardOf("Rowan · Hair").waitFor();
   ok((await page.locator("article.cr-card").count()) === 7 && (await cardOf("New character").count()) === 0 && (await cardOf("Rowan · Voice").count()) === 1, "Rowan's: her six changes and one applied fact (the new entry isn't hers), the not-quoted one included");
   await bar.locator("select").selectOption({ label: "Everyone" });
   await page.waitForURL(url());
-  await cardOf("Mira · Hat").waitFor();
+  await cardOf("Mira · Gear").waitFor();
   ok((await page.locator("article.cr-card").count()) === 10, "Everyone shows them all again");
 
   // ---- a phone: the card comes right after its paragraph, nothing scrolls sideways ----
@@ -239,19 +240,19 @@ try {
   await done("Approved: Rowan · Ears").waitFor();
   const earsFact = (await rowanFacts()).find((f) => f.aspect === "Ears");
   ok(earsFact?.text === "tall fox ears" && !earsFact.op.ai_suggestion_id, "Approve keeps the fact and takes the AI mark off");
-  await cardOf("Mira · Cloak").getByRole("button", { name: "Undo" }).click();
-  await done("Undone: Mira · Cloak").waitFor();
+  await cardOf("Mira · Clothing").getByRole("button", { name: "Undo" }).click();
+  await done("Undone: Mira · Clothing").waitFor();
   const miraFacts = (await send("GET", `/api/chapters/${A}/codex`)).entries.find((e) => e.name === "Mira").facts;
-  ok(!miraFacts.some((f) => f.aspect === "Cloak"), "Undo takes the AI's fact out of the codex");
+  ok(!miraFacts.some((f) => f.aspect === "Clothing"), "Undo takes the AI's fact out of the codex");
 
   // ---- Accept the N the text shows ----
   const all = bar.getByRole("button", { name: /^Accept the \d+ the text shows$/ });
-  ok((await all.innerText()) === "Accept the 3 the text shows", "the bulk button counts the open changes the text backs (Mood, Hat, Voice), not the unsure one, the conflict or a new entry: " + (await all.innerText()));
+  ok((await all.innerText()) === "Accept the 3 the text shows", "the bulk button counts the open changes the text backs (Mood, Gear, Voice; Boots, Scarf and Fear are new categories, so they wait for a click), not the unsure one, the conflict or a new entry: " + (await all.innerText()));
   await all.click();
   await done("Saved: Rowan · Mood").waitFor();
-  await done("Saved: Mira · Hat").waitFor();
+  await done("Saved: Mira · Gear").waitFor();
   await done("Saved: Rowan · Voice").waitFor();
-  ok((await scarf.getByRole("button", { name: "Accept" }).isVisible()) && (await scarf.locator(".source-badge").innerText()) === "Quote doesn't show this", "it left the 'Quote doesn't show this' one for the owner to read");
+  ok((await scarf.getByRole("button", { name: "Accept" }).isVisible()) && (await scarf.locator(".source-badge").first().innerText()) === "Quote doesn't show this", "it left the 'Quote doesn't show this' one for the owner to read");
   ok((await all.count()) === 0, "…and the button goes");
   ok((await bar.getByText("1 waiting").isVisible()), "…leaving one waiting");
   ok((await rowanFacts()).every((f) => f.aspect !== "Scarf") && (await rowanFacts()).some((f) => f.aspect === "Voice" && f.text === "low and quiet"), "the codex has the three, and not the scarf");

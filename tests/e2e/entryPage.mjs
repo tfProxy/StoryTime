@@ -22,13 +22,23 @@ export async function openTab(page, name) {
   return page.getByRole("tabpanel");
 }
 
+/** Sets the Aspect select within `scope`: a name on the list (or the entry's own), else "Other…" and a typed name. */
+export async function pickAspect(scope, aspect) {
+  const sel = scope.getByLabel("Aspect", { exact: true });
+  if ((await sel.locator("option", { hasText: new RegExp(`^${aspect}$`) }).count()) > 0) await sel.selectOption({ label: aspect });
+  else {
+    await sel.selectOption({ label: "Other…" });
+    await scope.getByLabel("New aspect").fill(aspect);
+  }
+}
+
 /**
  * Fills the open fact editor and saves it: { aspect, text, applies ("every form", "<form> only", or a new form's name),
  * kind ("change" | "correction") }.
  */
 export async function fillFact(page, { aspect, text, applies, kind }) {
   const form = page.locator(".ef-editor");
-  if (aspect !== undefined) await form.getByLabel("Aspect").fill(aspect);
+  if (aspect !== undefined) await pickAspect(form, aspect);
   if (text !== undefined) await form.getByLabel("Fact", { exact: true }).fill(text);
   if (applies) {
     const sel = form.getByLabel("Applies to");

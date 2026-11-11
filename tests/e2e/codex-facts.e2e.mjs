@@ -61,10 +61,17 @@ try {
 
   // add with the same aspect: "This replaces"
   await ed.getByRole("button", { name: "+ Add a fact" }).click();
-  await editor.getByLabel("Aspect").fill("ears");
+  await editor.getByLabel("Aspect", { exact: true }).selectOption("Ears");
   await page.getByText("This replaces: tall russet fox ears").waitFor();
   ok(true, "'This replaces' hint appears");
+  ok((await editor.getByLabel("Aspect", { exact: true }).locator("option", { hasText: /^Teeth$/ }).count()) === 1, "the Aspect select offers the category list (Teeth)");
   await editor.getByRole("button", { name: "Cancel" }).click();
+  await page.goto(`${BASE}/settings#codex`);
+  const cats = page.getByLabel("Fact categories for a character");
+  await cats.waitFor();
+  ok((await cats.inputValue()).includes("Sexual Characteristics"), "Settings → Codex shows the fact categories for a character, with Sexual Characteristics");
+  await page.goBack();
+  await ed.waitFor();
 
   // history, from the row's ⋯
   const ears = factRow(page, "tall russet fox ears");

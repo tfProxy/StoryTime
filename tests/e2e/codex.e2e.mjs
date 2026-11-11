@@ -1,6 +1,7 @@
 import http from "node:http";
 import { launch, useMockAi } from "./browser.mjs";
 import { unfoldEntryFolds } from "./unfold.mjs";
+import { pickAspect } from "./entryPage.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 const prompts = [];
@@ -60,7 +61,7 @@ await page.getByRole("button", { name: "Save changes" }).click();
 await editor.getByText("always included").waitFor();
 // Only facts reach the AI prompts, so give Mira one at the root.
 await editor.getByRole("button", { name: "+ Add a fact" }).click();
-await page.getByLabel("Aspect").first().fill("Appearance");
+await pickAspect(page, "Appearance");
 await page.getByLabel("Fact", { exact: true }).fill("A human thief with a scar.");
 await page.getByRole("button", { name: "Save", exact: true }).click();
 await fact("A human thief with a scar.").waitFor();

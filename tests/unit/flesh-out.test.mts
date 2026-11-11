@@ -51,7 +51,7 @@ const reply = JSON.stringify({
   ],
 });
 let got = parseFleshOut(reply, base);
-ok(got.map((s) => s.aspect).join() === "Voice,Tail,Family", "invent: new aspects only, no repeats, no form change: " + got.map((s) => s.aspect).join());
+ok(got.map((s) => s.aspect).join() === "Voice,Tail,Relationships", "invent: new aspects only, no repeats, no form change, filed under the list's names (Family is Relationships): " + got.map((s) => s.aspect).join());
 ok(got.every((s) => s.kind === "set" && s.entry_id === "mira" && s.quote === ""), "…as set suggestions for the entry with no quote");
 ok(got[1].form === "vixen" && got[0].after === "Low and dry, with a habit of trailing off.", "…keeping the form and the text");
 const everyForm = parseFleshOut(JSON.stringify({ facts: [{ aspect: "Scent", form: "every form", text: "Woodsmoke." }, { aspect: "Gait", form: "vixen form", text: "Soft-footed." }] }), base);
@@ -73,4 +73,4 @@ const closeReply = JSON.stringify({
   ],
 });
 got = parseFleshOut(closeReply, { ...base, mode: "close" });
-ok(got.map((s) => s.aspect).join() === "Wariness,Posture" && got[0].quote === "I don't trust the river", "close: only facts whose quote is in the chapters, with the quote: " + got.map((s) => s.aspect).join());
+ok(got.map((s) => s.aspect).join() === "Wariness,Mannerisms" && got[0].quote === "I don't trust the river", "close: only facts whose quote is in the chapters, with the quote: " + got.map((s) => s.aspect).join());
