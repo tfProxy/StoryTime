@@ -32,6 +32,7 @@ import LinkedEntryDetails from "./LinkedEntryDetails";
 import MoreMenu from "./MoreMenu";
 import UpdateFromStory from "./UpdateFromStory";
 import { AspectPicker } from "./AspectPicker";
+import TidyEntry from "./TidyEntry";
 
 type Chapter = { id: string; title: string };
 
@@ -587,6 +588,7 @@ function FactsTable({
   const [history, setHistory] = useState<string[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [fleshOpen, setFleshOpen] = useState(false);
+  const [tidyOpen, setTidyOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const here = path.find((c) => c.id === chapterId)?.title ?? "this chapter";
@@ -902,8 +904,14 @@ function FactsTable({
             + Flesh out with AI…
           </button>
         )}
+        {!tidyOpen && rows.length > 1 && (
+          <button type="button" className="secondary" onClick={() => setTidyOpen(true)}>
+            Tidy this entry…
+          </button>
+        )}
       </div>
       {fleshOpen && <FleshOutEntry storyId={storyId} chapterId={chapterId} entryId={entry.entry_id} name={entry.name} startOpen onCancel={() => setFleshOpen(false)} />}
+      {tidyOpen && <TidyEntry entry={entry} storyId={storyId} chapterId={chapterId} onApplied={onSaved} onClose={() => setTidyOpen(false)} />}
     </section>
   );
 }
