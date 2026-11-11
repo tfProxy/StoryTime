@@ -33,6 +33,7 @@ import MoreMenu from "./MoreMenu";
 import UpdateFromStory from "./UpdateFromStory";
 import { AspectPicker } from "./AspectPicker";
 import TidyEntry from "./TidyEntry";
+import { canDifferByForm } from "@/lib/codexCategories";
 
 type Chapter = { id: string; title: string };
 
@@ -947,6 +948,7 @@ function FactEditor({
   const [applies, setApplies] = useState(fact?.form ? (entry.forms.find((f) => sameAspect(f, fact.form)) ?? fact.form) : "");
   const [newForm, setNewForm] = useState("");
   const [kind, setKind] = useState<"change" | "correction">("change");
+  const categories = useSettings().codexCategories[entry.type];
   const showForm = entry.forms.length > 0 || entry.type === "character";
   const form = applies === NEW_FORM ? newForm.trim() : applies;
   // A correction is written where the fact's current version was set (or, for a new fact, where the entry starts), so
@@ -998,6 +1000,11 @@ function FactEditor({
             <option value={NEW_FORM}>+ a new form…</option>
           </select>
           {fact && fact.form === "" && form !== "" && <small>a {form} version is added; the every-form fact stays for the other forms</small>}
+          {form !== "" && aspect.trim() && !canDifferByForm(aspect, categories) && (
+            <small className="ef-form-note">
+              {aspect.trim()} is usually the same in every form (Settings › Codex). Keep it to one form only if it truly differs there.
+            </small>
+          )}
         </label>
       )}
       {showForm && applies === NEW_FORM && (

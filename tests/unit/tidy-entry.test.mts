@@ -17,7 +17,7 @@ const [entry] = foldCodex([op], [
 
 const req = tidyRequest(entry);
 ok(req.message.includes("1. Fur [every form]: Russet fur.") && req.message.includes("5. Eyes and Teeth [Lizard Woman form]") && !req.message.includes("form [every form]"), "the facts are numbered with their forms, the form left out");
-ok(req.message.includes("- Sexual Characteristics:") && req.message.includes("Its forms: Lizard Woman"), "the list and the forms are given");
+ok(req.message.includes("- Sexual Characteristics (can differ by form):") && req.message.includes("Its forms: Lizard Woman"), "the list and the forms are given");
 
 const reply = JSON.stringify({
   changes: [
@@ -45,6 +45,38 @@ ok(sets[0].fact_id === "a" && sets[0].aspect === "Skin" && sets[0].anchor === "c
 ok(sets[1].fact_id === "b" && sets[1].text === "Cheerful but quick to anger.", "a merge keeps the first fact");
 ok(sets[2].fact_id === "e" && sets[2].aspect === "Eyes" && sets[3].fact_id === undefined && sets[3].aspect === "Teeth" && sets[3].anchor === "c1", "a split keeps the fact for its first part and adds the others where it was set");
 ok(retires.map((r) => r.fact_id).sort().join() === "c,d" && retires.find((r) => r.fact_id === "c")!.anchor === "c2", "merged and removed facts are retired where they were set");
-ok(ops.findIndex((o) => o.op === "retire") > ops.findIndex((o) => o.op === "set" && o.fact_id === undefined), "sets come before removals");
+ok(ops.findLastIndex((o) => o.op === "retire") < ops.findIndex((o) => o.op === "set"), "removals come before sets");
 ok(tidyOps(entry, [changes[1]]).filter((o) => o.op === "retire").length === 1, "only the chosen changes are written");
 ok(parseTidy('{"changes":[]}', entry).length === 0, "nothing to tidy");
+
+// One fact per aspect, whatever the AI proposed.
+const [place] = foldCodex([{ ...op, entry_id: "p", name: "The Hatching Ground", type: "place" }], [
+  { ...fact("g1", "Look", "", "Hard, rough ground."), entry_id: "p" },
+  { ...fact("g2", "Lighting", "", "Dim and dark"), entry_id: "p" },
+]);
+const both = parseTidy(JSON.stringify({ changes: [{ from: [1], aspect: "Appearance", text: "Hard, rough ground.", why: "Look is Appearance" }, { from: [2], aspect: "Appearance", text: "Dim and dark", why: "Lighting" }] }), place);
+ok(both.length === 1 && both[0].sources.join() === "g1,g2" && both[0].text === "Hard, rough ground. Dim and dark", "two changes onto one aspect are merged into one");
+const [place2] = foldCodex([{ ...op, entry_id: "p", name: "The Hatching Ground", type: "place" }], [
+  { ...fact("g1", "Appearance", "", "Hard, rough ground."), entry_id: "p" },
+  { ...fact("g2", "Lighting", "", "Dim and dark"), entry_id: "p" },
+]);
+const onto = parseTidy(JSON.stringify({ changes: [{ from: [2], aspect: "Appearance", text: "Dim and dark", why: "x" }] }), place2);
+ok(onto.length === 1 && onto[0].sources.join() === "g1,g2" && onto[0].text.startsWith("Hard, rough ground."), "a change onto a fact left alone takes it in, the fact first");
+ok(parseTidy(JSON.stringify({ changes: [{ from: [2], aspect: "Atmosphere", text: "Dim and dark", why: "Light is atmosphere" }] }), place)[0].aspect === "Atmosphere", "lighting goes under Atmosphere");
+
+// Aspects that are the same in every form lose their form.
+const [lizard] = foldCodex([op], [
+  fact("f-form", "form", "Lizard Woman", ""),
+  fact("p1", "Personality", "", "Cheerful."),
+  fact("p2", "Personality", "Lizard Woman", "Quick to anger."),
+  fact("r1", "Relationships", "Lizard Woman", "Friends with Tomas."),
+  fact("k1", "Skin", "Lizard Woman", "Green scales."),
+]);
+const forms = parseTidy('{"changes":[]}', lizard);
+const pers = forms.find((c) => c.aspect === "Personality");
+const rel = forms.find((c) => c.aspect === "Relationships");
+ok(!!pers && pers.form === "" && pers.sources.join() === "p1,p2" && pers.text === "Cheerful. Quick to anger.", "a form-only Personality is merged into the every-form one");
+ok(!!rel && rel.form === "" && rel.sources.join() === "r1", "a form-only Relationships moves to every form");
+ok(!forms.some((c) => c.aspect === "Skin"), "Skin can differ by form and is left alone");
+const relOps = tidyOps(lizard, [rel!]);
+ok(relOps.length === 1 && relOps[0].op === "set" && relOps[0].fact_id === "r1" && relOps[0].form === "", "moving to every form keeps the fact");

@@ -6,7 +6,7 @@ import { estimateTokens, mentions, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import { quoteInText } from "./tagAi";
 import { ENTRY_TYPES, FACT_LIMITS, cleanForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry, type EntryType } from "../codex";
-import { DEFAULT_CATEGORIES, aspectRules, resolveAspect, type CategoryLists } from "../codexCategories";
+import { DEFAULT_CATEGORIES, aspectRules, formFor, resolveAspect, type CategoryLists } from "../codexCategories";
 import type { Settings } from "../settings";
 
 export const SUGGESTION_KINDS = ["set", "form", "retire", "entry", "conflict"] as const;
@@ -156,7 +156,7 @@ function parseNewEntry(o: Record<string, unknown>, taken: Set<string>, lists: Ca
       if (!text) continue;
       const aspect = resolveAspect(asString(r.aspect, FACT_LIMITS.aspect), lists[type], facts).aspect;
       if (isFormAspect(aspect)) continue; // a new entry's form is set after it exists
-      const form = cleanForm(asString(r.form, FACT_LIMITS.form));
+      const form = formFor(aspect, cleanForm(asString(r.form, FACT_LIMITS.form)), lists[type]);
       if (aspect && facts.some((x) => sameAspect(x.aspect, aspect) && sameAspect(x.form, form))) continue; // one fact per aspect
       facts.push({ aspect, form, text });
       if (facts.length >= NEW_ENTRY_FACTS) break;
@@ -211,6 +211,8 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
     const text = asString(o.text, FACT_LIMITS.text);
     // A "set" of the aspect "form" is a form change.
     if (kind === "set" && isFormAspect(aspect)) kind = "form";
+    // Personality, Relationships and the like are the same in every form: a form the AI gave them is dropped.
+    if (kind === "set" || kind === "conflict") form = formFor(aspect, form, lists[target.type]);
     const live = (a: string, f: string) => target.facts.find((x) => !isFormAspect(x.aspect) && sameAspect(x.aspect, a) && sameAspect(x.form, f));
     // One change per aspect: a second one for the same fact in this reply is a duplicate.
     if (kind !== "form" && out.some((x) => x.kind !== "form" && x.kind !== "entry" && x.entry_id === target.entry_id && sameAspect(x.aspect, aspect) && sameAspect(x.form, form))) continue;

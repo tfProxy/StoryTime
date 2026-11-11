@@ -7,7 +7,7 @@ import { estimateTokens, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import { quoteInText } from "./tagAi";
 import { FACT_LIMITS, cleanForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry } from "../codex";
-import { DEFAULT_CATEGORIES, aspectRules, resolveAspect, type CategoryLists } from "../codexCategories";
+import { DEFAULT_CATEGORIES, aspectRules, formFor, resolveAspect, type CategoryLists } from "../codexCategories";
 import type { SuggestionInput } from "./codexCheckAi";
 import type { Settings } from "../settings";
 
@@ -127,7 +127,8 @@ export function parseFleshOut(reply: string, opts: FleshOutOptions): SuggestionI
     if (!item || typeof item !== "object") continue;
     const o = item as Record<string, unknown>;
     const aspect = resolveAspect(asString(o.aspect, FACT_LIMITS.aspect), (opts.categories ?? DEFAULT_CATEGORIES)[entry.type], entry.facts).aspect;
-    const form = cleanForm(asString(o.form, FACT_LIMITS.form));
+    // An aspect that is the same in every form gets no form.
+    const form = formFor(aspect, cleanForm(asString(o.form, FACT_LIMITS.form)), (opts.categories ?? DEFAULT_CATEGORIES)[entry.type]);
     const text = asString(o.text, FACT_LIMITS.text);
     if (!aspect || !text || isFormAspect(aspect)) continue;
     // New details only: an aspect the entry already has (in that form) is its owner's to change.

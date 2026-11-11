@@ -6,7 +6,7 @@ import { completeChat, type AiSourceIds } from "./client";
 import type { PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import { FACT_LIMITS, cleanForm, isFormAspect, sameAspect, type CodexEntry, type LiveFact } from "../codex";
-import { DEFAULT_CATEGORIES, categoryGuide, resolveAspect, type CategoryLists } from "../codexCategories";
+import { DEFAULT_CATEGORIES, categoryGuide, formFor, resolveAspect, type Category, type CategoryLists } from "../codexCategories";
 import type { Settings } from "../settings";
 
 export const MAX_TIDY_CHANGES = 30;
@@ -32,10 +32,12 @@ Kinds of change:
 - Merge: two or more facts about the same aspect and form become one that keeps every detail. Where they disagree, keep the one listed later.
 - Split: a fact that mixes details of different aspects becomes one fact per aspect. List the same fact number in each part.
 - Remove: a fact that only says something is missing ("Tail: none", "Wings: no wings") is removed: give "text" "".
+- Every form: a fact given a form under an aspect that is not marked "can differ by form" (personality, relationships, history…) moves to every form ("form" ""), merged with that aspect's every-form fact if there is one.
 
 Rules:
 - Never add a detail, never drop one (except a "none" fact), never change what a fact means. Keep the author's wording where you can; facts stay short, in the present tense, using names, not pronouns.
-- Keep each fact's form: "form" is "" for a fact for every form, or the form's name as listed. Only merge facts of the same form.
+- Keep each fact's form, except as above: "form" is "" for a fact for every form, or the form's name as listed. Only merge facts of the same form.
+- Two facts must never end up under the same aspect and form: merge them instead, or file one under another aspect it fits better.
 - Use only the aspects listed, spelled as listed. Only when nothing fits, keep the fact's own aspect.
 - Leave out facts that are already fine. If nothing needs tidying, reply {"changes":[]}.
 - Give each change "from" (the numbers of the facts it replaces), "aspect", "form", "text" and "why" (a few words, such as "Fur is filed under Skin").
@@ -86,7 +88,7 @@ export function parseTidy(reply: string, entry: CodexEntry, lists: CategoryLists
     const resolved = resolveAspect(asString(o.aspect, FACT_LIMITS.aspect), list);
     const aspect = resolved.aspect || (sources.length === 1 ? sources[0].aspect.trim() : "");
     if (isFormAspect(aspect)) continue;
-    let form = cleanForm(asString(o.form, FACT_LIMITS.form));
+    let form = formFor(aspect, cleanForm(asString(o.form, FACT_LIMITS.form)), list);
     const knownForm = [...entry.forms, ...sources.map((s) => s.form)].find((f) => f.trim() && sameAspect(f, form));
     if (form && !knownForm) continue;
     form = knownForm?.trim() ?? "";
@@ -95,7 +97,62 @@ export function parseTidy(reply: string, entry: CodexEntry, lists: CategoryLists
     const known = !aspect || list.length === 0 || resolved.known || sources.some((s) => sameAspect(s.aspect, aspect));
     out.push({ sources: sources.map((s) => s.fact_id), aspect, form, text, why: asString(o.why, 120), newCategory: !known });
   }
-  return out;
+  return oneFactPerAspect(out, facts, list);
+}
+
+/** "Hard, rough ground" + "Dim and dark" → "Hard, rough ground. Dim and dark". */
+const joinTexts = (a: string, b: string) => (!a ? b : !b ? a : `${/[.!?…]$/.test(a.trim()) ? a.trim() : `${a.trim()}.`} ${b.trim()}`);
+const keyOf = (aspect: string, form: string) => (aspect.trim() ? `${aspect.trim().toLowerCase()}\n${form.trim().toLowerCase()}` : "");
+
+/**
+ * Makes sure the result has one fact per aspect and form, whatever the AI proposed: changes that land on the same aspect
+ * are merged into one, a fact left alone that a change lands on joins that change, facts left alone that already share
+ * an aspect are merged, and a fact left alone under an aspect that is the same in every form loses its form. The texts
+ * are joined in order; the owner reads the result before applying it.
+ */
+export function oneFactPerAspect(changes: TidyChange[], facts: LiveFact[], list: Category[]): TidyChange[] {
+  const touched = new Set(changes.flatMap((c) => c.sources));
+  const out: TidyChange[] = [];
+  const at = new Map<string, TidyChange>();
+  const add = (c: TidyChange) => {
+    const key = c.text ? keyOf(c.aspect, c.form) : "";
+    const there = key ? at.get(key) : undefined;
+    if (!there) {
+      out.push(c);
+      if (key) at.set(key, c);
+      return;
+    }
+    for (const id of c.sources) if (!there.sources.includes(id)) there.sources.push(id);
+    there.text = joinTexts(there.text, c.text);
+    there.why = [there.why, c.why].filter(Boolean).join("; ");
+    there.newCategory = there.newCategory || c.newCategory;
+  };
+  for (const c of changes) add({ ...c, sources: [...c.sources] });
+  // Facts the changes leave alone: each may land on a change's aspect, share one with another, or need its form dropped.
+  for (const f of facts) {
+    if (touched.has(f.fact_id) || !f.aspect.trim() || !f.text.trim()) continue;
+    const form = formFor(f.aspect, f.form, list);
+    const there = at.get(keyOf(f.aspect, form));
+    if (there) {
+      // Onto a change: the fact left alone reads first. Onto another fact left alone: in the order they're listed.
+      if (out.includes(there)) {
+        there.sources.unshift(f.fact_id);
+        there.text = joinTexts(f.text, there.text);
+      } else {
+        there.sources.push(f.fact_id);
+        there.text = joinTexts(there.text, f.text);
+      }
+      there.why = there.why || `Two facts for ${there.aspect}`;
+      continue;
+    }
+    const moved = form !== f.form;
+    const c: TidyChange = { sources: [f.fact_id], aspect: f.aspect.trim(), form, text: f.text.trim(), why: moved ? `${f.aspect.trim()} is the same in every form` : "", newCategory: false };
+    if (moved) add(c);
+    else at.set(keyOf(c.aspect, c.form), c); // left alone unless another fact joins it (below)
+  }
+  // A fact left alone that another one joined became a merge; one nothing joined stays as it is.
+  for (const c of at.values()) if (!out.includes(c) && c.sources.length > 1) out.push(c);
+  return out.map((c) => (c.sources.length > 1 && !c.why ? { ...c, why: `Two facts for ${c.aspect}` } : c));
 }
 
 export type TidyOp = { op: "set" | "retire"; fact_id?: string; aspect: string; form: string; text: string; quote: string; anchor: string };
@@ -103,7 +160,8 @@ export type TidyOp = { op: "set" | "retire"; fact_id?: string; aspect: string; f
 /**
  * The fact changes for the chosen tidy changes, as corrections: a set or retire anchored where the fact's current
  * version was set, so it reads that way from there on. A change keeps the first of its facts not already kept by an
- * earlier change (a split's later parts are new facts there); every other fact it replaces is removed. Sets come first.
+ * earlier change (a split's later parts are new facts there); every other fact it replaces is removed. Removals come
+ * first: a fact can't be set to an aspect another live fact of the same form still holds.
  */
 export function tidyOps(entry: CodexEntry, changes: TidyChange[]): TidyOp[] {
   const byId = new Map(entry.facts.map((f) => [f.fact_id, f]));
@@ -126,7 +184,7 @@ export function tidyOps(entry: CodexEntry, changes: TidyChange[]): TidyOp[] {
       const f = byId.get(id)!;
       return { op: "retire", fact_id: id, aspect: f.aspect, form: f.form, text: "", quote: "", anchor: f.op.anchor_chapter_id };
     });
-  return [...sets, ...retires];
+  return [...retires, ...sets];
 }
 
 export async function runTidy(settings: Settings, entry: CodexEntry, opts: { signal?: AbortSignal; source?: AiSourceIds } = {}): Promise<TidyChange[]> {

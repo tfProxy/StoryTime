@@ -11,11 +11,24 @@ export type Category = {
   also: string[];
   /** A heading the list is grouped under ("Body"), or "". */
   group: string;
+  /**
+   * Whether a fact of it can differ by form (a character's Skin as a human and as a lizard). Otherwise it is the same
+   * in every form (Personality, Relationships): the AI may not give it a form, and one it gives is dropped.
+   */
+  perForm: boolean;
 };
 
 export type CategoryLists = Record<EntryType, Category[]>;
 
-const c = (group: string, name: string, about: string, also: string[] = []): Category => ({ name, about, also, group });
+// A character's body, and the few things that go with it (species, sex, clothes, voice), can differ by form.
+const PER_FORM = new Set(["Species", "Sex", "Clothing", "Voice"]);
+const c = (group: string, name: string, about: string, also: string[] = []): Category => ({
+  name,
+  about,
+  also,
+  group,
+  perForm: group === "Body" || (group !== "" && PER_FORM.has(name)),
+});
 
 export const DEFAULT_CATEGORIES: CategoryLists = {
   character: [
@@ -60,8 +73,8 @@ export const DEFAULT_CATEGORIES: CategoryLists = {
   place: [
     c("", "Location", "Where it is.", ["position", "region"]),
     c("", "Size", "How big it is.", ["scale"]),
-    c("", "Appearance", "What it looks like.", ["look", "description", "layout"]),
-    c("", "Atmosphere", "Mood, sounds and smells.", ["mood", "ambience", "ambiance"]),
+    c("", "Appearance", "What it looks like: shape, surfaces and layout.", ["look", "description", "layout"]),
+    c("", "Atmosphere", "Light, mood, sounds, smells and temperature.", ["mood", "ambience", "ambiance", "lighting", "light", "sounds", "smell", "climate", "weather"]),
     c("", "Inhabitants", "Who lives there.", ["population", "residents", "people"]),
     c("", "Controlled by", "Who rules or owns it.", ["ruler", "owner", "government", "control"]),
     c("", "Customs", "Laws, traditions and how things are done.", ["rules", "laws", "culture", "traditions"]),
@@ -129,14 +142,20 @@ export function categoryOf(aspect: string, list: Category[]): Category | null {
 /** Whether an aspect is on the list (or the entry already uses it). */
 export const isKnownAspect = (aspect: string, list: Category[], have: { aspect: string }[] = []) => resolveAspect(aspect, list, have).known;
 
-/** The list for one type, as the AI reads it: "- Skin: what covers the body…", grouped under headings. */
+/** Whether a fact of this aspect may belong to one form. An aspect not on the list may (the owner decides). */
+export const canDifferByForm = (aspect: string, list: Category[]) => categoryOf(aspect, list)?.perForm ?? true;
+
+/** The form a fact of this aspect gets: none for an aspect that is the same in every form. */
+export const formFor = (aspect: string, form: string, list: Category[]) => (canDifferByForm(aspect, list) ? form : "");
+
+/** The list for one type, as the AI reads it: "- Skin (can differ by form): what covers the body…", grouped under headings. */
 export function categoryGuide(list: Category[]): string {
   const lines: string[] = [];
   let group = "";
   for (const x of list) {
     if (x.group && x.group !== group) lines.push(`${x.group}:`);
     group = x.group;
-    lines.push(`${x.group ? "  " : ""}- ${x.name}${x.about ? `: ${x.about}` : ""}`);
+    lines.push(`${x.group ? "  " : ""}- ${x.name}${x.perForm ? " (can differ by form)" : ""}${x.about ? `: ${x.about}` : ""}`);
   }
   return lines.join("\n");
 }
@@ -151,14 +170,19 @@ export function aspectRules(lists: CategoryLists, types: EntryType[], opts: { ne
       ? `One fact per aspect (per form), about one detail; skip aspects the entry already has.`
       : `One fact per aspect (per form), about one detail: when an aspect already has a fact, give its whole new text, and it replaces the old one.`,
     `Don't record what something lacks ("Tail: none", "Wings: no wings"). When a feature is lost, use a "retire" item for it; when something never had it, say nothing.`,
+    ...(shown.some((t) => lists[t].some((x) => x.perForm))
+      ? [`Forms: only the aspects marked "can differ by form" may be given a form, when that form differs. Every other aspect (such as personality, relationships, history) is the same in every form: leave its "form" empty.`]
+      : []),
     ...blocks,
   ].join("\n");
 }
 
 // ---- The lists as the owner edits them in Settings ----
 //
-// One text box per type, a category a line: "Skin: What covers the body. (also: fur, scales)", with "# Body" lines as
-// headings.
+// One text box per type, a category a line: "Skin [per form]: What covers the body. (also: fur, scales)", with "# Body"
+// lines as headings. "[per form]" marks a category that can differ by form.
+
+const PER_FORM_TAG = "[per form]";
 
 export function categoriesToText(list: Category[]): string {
   const lines: string[] = [];
@@ -167,9 +191,22 @@ export function categoriesToText(list: Category[]): string {
     if (x.group !== group && x.group) lines.push(`${lines.length ? "\n" : ""}# ${x.group}`);
     group = x.group;
     const also = x.also.length ? ` (also: ${x.also.join(", ")})` : "";
-    lines.push(`${x.name}${x.about || also ? `: ${x.about}${also}`.replace(/:\s+\(/, ": (") : ""}`);
+    const head = `${x.name}${x.perForm ? ` ${PER_FORM_TAG}` : ""}`;
+    lines.push(`${head}${x.about || also ? `: ${x.about}${also}`.replace(/:\s+\(/, ": (") : ""}`);
   }
   return lines.join("\n");
+}
+
+/**
+ * Settings saved before categories had `perForm`: each category takes the flag of the default category of the same
+ * name (so Skin can still differ by form), and one the owner added is the same in every form.
+ */
+export function withPerForm(lists: Record<EntryType, (Omit<Category, "perForm"> & { perForm?: boolean })[]>): CategoryLists {
+  const out = {} as CategoryLists;
+  for (const t of ENTRY_TYPES) {
+    out[t] = lists[t].map((x) => ({ ...x, perForm: x.perForm ?? DEFAULT_CATEGORIES[t].find((d) => sameAspect(d.name, x.name))?.perForm ?? false }));
+  }
+  return out;
 }
 
 export const CATEGORY_LIMITS = { name: 40, about: 200, also: 12, group: 30, perType: 80 };
@@ -186,7 +223,9 @@ export function categoriesFromText(text: string): Category[] {
       continue;
     }
     const colon = t.indexOf(":");
-    const name = (colon < 0 ? t : t.slice(0, colon)).trim().slice(0, CATEGORY_LIMITS.name);
+    let name = (colon < 0 ? t : t.slice(0, colon)).trim();
+    const perForm = /\[\s*per[\s-]*form\s*\]/i.test(name);
+    name = name.replace(/\[\s*per[\s-]*form\s*\]/gi, "").trim().slice(0, CATEGORY_LIMITS.name);
     let about = colon < 0 ? "" : t.slice(colon + 1).trim();
     let also: string[] = [];
     const m = about.match(/\(also:([^)]*)\)\s*$/i);
@@ -195,7 +234,7 @@ export function categoriesFromText(text: string): Category[] {
       about = about.slice(0, m.index).trim();
     }
     if (!name || isFormAspect(name) || out.some((x) => sameAspect(x.name, name))) continue;
-    out.push({ name, about: about.slice(0, CATEGORY_LIMITS.about), also, group });
+    out.push({ name, about: about.slice(0, CATEGORY_LIMITS.about), also, group, perForm });
     if (out.length >= CATEGORY_LIMITS.perType) break;
   }
   return out;

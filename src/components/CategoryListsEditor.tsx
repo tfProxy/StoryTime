@@ -53,8 +53,9 @@ export default function CategoryListsEditor({ lists, onChange }: { lists: Catego
         onBlur={commit}
       />
       <small>
-        One category a line: <code>Name: what goes in it (also: other names)</code>. A line starting with <code>#</code> is a
-        heading. Notes have no list.
+        One category a line: <code>Name: what goes in it (also: other names)</code>. Add <code>[per form]</code> after the name
+        for one that can differ between a character&apos;s forms (Skin, Tail); the rest (Personality, Relationships) are the
+        same in every form. A line starting with <code>#</code> is a heading. Notes have no list.
       </small>
       <div className="row">
         <button type="button" disabled={isDefault && !draft} onClick={() => {

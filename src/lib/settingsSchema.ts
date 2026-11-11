@@ -14,7 +14,7 @@ import {
   type DrawPreset,
   type EditPreset,
 } from "./comfy/presets";
-import { CATEGORY_LIMITS, DEFAULT_CATEGORIES, type CategoryLists } from "./codexCategories";
+import { CATEGORY_LIMITS, DEFAULT_CATEGORIES, withPerForm, type CategoryLists } from "./codexCategories";
 import { ENTRY_TYPES } from "./codex";
 
 // Types, defaults and parsing, shared by the browser and the server (which stores the settings).
@@ -369,6 +369,8 @@ const categorySchema = z.object({
   about: z.string().max(CATEGORY_LIMITS.about).catch(""),
   also: z.array(z.string().trim().min(1).max(CATEGORY_LIMITS.name)).max(CATEGORY_LIMITS.also).catch([]),
   group: z.string().max(CATEGORY_LIMITS.group).catch(""),
+  // Missing in lists saved before the flag existed: withPerForm fills it in from the defaults.
+  perForm: z.boolean().optional().catch(undefined),
 });
 // A type that is missing or unreadable gets the default list; the others keep the owner's.
 const listFor = (t: (typeof ENTRY_TYPES)[number]) => z.array(categorySchema).max(CATEGORY_LIMITS.perType).catch(DEFAULT_CATEGORIES[t]);
@@ -498,6 +500,7 @@ export function parseSettings(raw: unknown): Settings {
     defaults: { main: live(s.defaults.main), cheap: live(s.defaults.cheap) },
     imagePromptModel: live(s.imagePromptModel),
     comfy: soundPresets(s.comfy),
+    codexCategories: withPerForm(s.codexCategories),
   };
 }
 

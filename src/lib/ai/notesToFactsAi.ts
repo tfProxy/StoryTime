@@ -6,7 +6,7 @@ import { estimateTokens, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import { quoteInText } from "./tagAi";
 import { FACT_LIMITS, cleanForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry } from "../codex";
-import { DEFAULT_CATEGORIES, aspectRules, resolveAspect, type CategoryLists } from "../codexCategories";
+import { DEFAULT_CATEGORIES, aspectRules, formFor, resolveAspect, type CategoryLists } from "../codexCategories";
 import type { SuggestionInput } from "./codexCheckAi";
 import type { Settings } from "../settings";
 
@@ -90,6 +90,8 @@ export function parseNotesToFacts(reply: string, opts: NotesToFactsOptions): Sug
     const text = asString(o.text, FACT_LIMITS.text);
     // A "set" of the aspect "form" is a form change.
     if (kind === "set" && isFormAspect(aspect)) kind = "form";
+    // An aspect that is the same in every form gets no form.
+    if (kind === "set") form = formFor(aspect, form, (opts.categories ?? DEFAULT_CATEGORIES)[entry.type]);
 
     if (kind === "form") {
       if (!form) continue;

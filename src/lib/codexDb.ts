@@ -321,6 +321,9 @@ export function createFactOp(input: z.infer<typeof NewFactOpSchema>, aiSuggestio
       const ownFact = db().prepare(`SELECT 1 FROM codex_facts WHERE fact_id = ? AND entry_id = ? AND story_id = ?`).get(factId, input.entry_id, anchor.story_id);
       const sharedFact = entry.shared_entry_id && getSharedEntry(entry.shared_entry_id)?.facts.some((f) => f.id === factId);
       if (!ownFact && !sharedFact) throw new PostError("That fact doesn't belong to this entry", 409);
+      // One fact per aspect and form: moving a fact onto an aspect another one holds would leave two.
+      const clash = aspect && !isFormAspect(aspect) ? entry.facts.find((f) => f.fact_id !== factId && sameAspect(f.aspect, aspect) && sameAspect(f.form, input.form)) : undefined;
+      if (clash) throw new PostError(`${entry.name} already has a fact for ${clash.aspect.trim()}${clash.form.trim() ? ` (${clash.form.trim()})` : ""}. Change that one, or remove it first.`, 409);
     } else {
       const same = aspect
         ? entry.facts.find((f) => sameAspect(f.aspect, aspect) && (isFormAspect(aspect) || sameAspect(f.form, input.form)))

@@ -46,7 +46,7 @@ ok(custom.character.length === 1 && custom.place.length === DEFAULT_CATEGORIES.p
 
 // The prompt rules.
 const rules = aspectRules(DEFAULT_CATEGORIES, ["character"]);
-ok(rules.includes("- Sexual Characteristics:") && rules.includes('"New: <Name>"') && rules.includes("Tail: none") && !rules.includes("Aspects for a place"), "the rules list the type's categories, new categories and the no-“none” rule");
+ok(rules.includes("- Sexual Characteristics (can differ by form):") && rules.includes('"New: <Name>"') && rules.includes("Tail: none") && !rules.includes("Aspects for a place"), "the rules list the type's categories, new categories and the no-“none” rule");
 
 // The codex check files the AI's aspects.
 let n = 0;
@@ -77,3 +77,20 @@ const at3 = foldCodex([op("mira", "Mira")], tailOps, { recentAnchor: "c3" })[0];
 ok(at2.description.includes("Tail: gone (just changed)."), "the AI is told the tail just went");
 ok(!at3.description.includes("Tail"), "after that the tail isn't mentioned at all");
 ok(describeEntry([], undefined, null, [{ aspect: "Wings", form: "dragon" }]) === "", "a fact gone from another form isn't mentioned");
+
+// Can differ by form, or the same in every form.
+import { canDifferByForm, formFor, withPerForm } from "../../src/lib/codexCategories.ts";
+ok(canDifferByForm("Skin", chars) && canDifferByForm("fur", chars) && canDifferByForm("Voice", chars), "body aspects can differ by form");
+ok(!canDifferByForm("Personality", chars) && !canDifferByForm("Relationships", chars) && !canDifferByForm("status", chars), "personality, relationships and condition are the same in every form");
+ok(canDifferByForm("Gills", chars), "an aspect not on the list may have a form");
+ok(formFor("Personality", "Lizard Woman", chars) === "" && formFor("Eyes", "Lizard Woman", chars) === "Lizard Woman", "formFor drops a form only where it can't differ");
+ok(DEFAULT_CATEGORIES.place.every((x) => !x.perForm), "places have nothing per form");
+const tagged = categoriesFromText("Gills [per form]: Breathing slits.\nMood: How they feel.");
+ok(tagged[0].name === "Gills" && tagged[0].perForm && !tagged[1].perForm, "“[per form]” in the text box sets the flag");
+ok(categoriesToText(chars).includes("Skin [per form]: ") && categoriesToText(chars).includes("\nPersonality: "), "the text box shows the flag");
+const old = withPerForm({ ...DEFAULT_CATEGORIES, character: [{ name: "Skin", about: "", also: [], group: "" }, { name: "Gills", about: "", also: [], group: "" }] });
+ok(old.character[0].perForm && !old.character[1].perForm, "lists saved before the flag take it from the defaults");
+ok(parseSettings({ codexCategories: { character: [{ name: "Tail", about: "", also: [], group: "" }] } }).codexCategories.character[0].perForm, "…also when read from saved settings");
+const formReply = JSON.stringify({ changes: [{ kind: "set", entry: "Mira", aspect: "Personality", form: "lizard", text: "Short-tempered.", quote: "Her temper was short." }] });
+ok(parseCodexCheck(formReply, { body, entries, otherNames: [] })[0]?.form === "", "the codex check drops a form from Personality");
+ok(aspectRules(DEFAULT_CATEGORIES, ["character"]).includes("- Skin (can differ by form):") && aspectRules(DEFAULT_CATEGORIES, ["character"]).includes('leave its "form" empty'), "the AI is told which aspects can differ by form");

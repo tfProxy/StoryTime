@@ -49,7 +49,10 @@ and, for pictures, your own ComfyUI machine.
   too: what it calls "fur" or "temperament" is filed under Skin or Personality, and when nothing on
   the list fits it suggests a **New category**, which waits for you and is never applied on its own.
   A lost feature (a tail that's gone) is removed rather than written as "Tail: none"; the AI is told
-  it went only in the chapter where it happens. **Tidy this entry…** (under the facts) asks the AI to
+  it went only in the chapter where it happens. Categories marked **[per form]** (a character's body,
+  species, sex, clothes and voice) can differ between forms; the rest (Personality, Relationships,
+  History…) are the same in every form, and the AI never files them under one form. An entry holds
+  one fact per category and form. **Tidy this entry…** (under the facts) asks the AI to
   move an older entry onto the list: it proposes renames ("Fur" to Skin), merges of facts about the
   same thing, splits of mixed facts and removal of "none" facts, never new details. Tick the ones to
   keep and **Apply**: they are saved as corrections, so each fact reads the new way from where it
