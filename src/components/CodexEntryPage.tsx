@@ -330,6 +330,9 @@ export default function CodexEntryPage(props: Props) {
         </section>
       )}
 
+      {/* What the AI is actually told comes first: the facts below are how it is made. */}
+      <AiToldBox entry={entry} here={here.title} />
+
       {(waitingHere > 0 || waitingEarlier.length > 0) && (
         <p className="entry-waiting">
           {waitingHere > 0 ? (
@@ -369,8 +372,6 @@ export default function CodexEntryPage(props: Props) {
           reveal("entry-tabpanel");
         }}
       />
-
-      <AiToldBox entry={entry} here={here.title} />
 
       {(ideas.length > 0 || fromNotes.length > 0) && (
         <AiIdeas
