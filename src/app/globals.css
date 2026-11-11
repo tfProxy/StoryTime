@@ -4545,10 +4545,17 @@ label.retcon-check input,
 .entry-facts .fact-group {
   display: grid;
 }
+/* An entry's page uses the width a desktop has: facts are long, and a narrow column wraps them into towers. */
+@media (min-width: 60rem) {
+  main:has(.entry-details-line) {
+    max-width: 64rem;
+  }
+}
+/* The value takes the row's width; "since" sits under it in small text, and ⋯ at the end. */
 .ef-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   column-gap: 0.5rem;
   padding: 0.1rem 0;
   border-top: 1px solid var(--line);
@@ -4556,7 +4563,7 @@ label.retcon-check input,
 .ef-main {
   grid-column: 1;
   display: grid;
-  grid-template-columns: 8.5rem minmax(0, 1fr);
+  grid-template-columns: 10rem minmax(0, 1fr);
   gap: 0.5rem;
   width: 100%;
   min-height: 44px;
@@ -4584,15 +4591,17 @@ button.ef-main:hover {
   overflow-wrap: anywhere;
 }
 .ef-since {
-  grid-column: 2;
-  max-width: 15rem;
+  grid-column: 1;
+  grid-row: 2;
   margin: 0;
-  font-size: 0.85rem;
-  text-align: right;
+  padding: 0 0.25rem 0.4rem calc(10rem + 0.75rem);
+  font-size: 0.8rem;
   overflow-wrap: anywhere;
 }
 .ef-menu {
-  grid-column: 3;
+  grid-column: 2;
+  grid-row: 1;
+  padding-top: 0.2rem;
 }
 .ef-markers,
 .ef-wide {

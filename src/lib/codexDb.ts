@@ -7,6 +7,7 @@ import {
   entryHistory,
   foldCodex,
   isDraftEntry,
+  cleanForm,
   isFormAspect,
   OVERRIDE_FIELDS,
   overridesFor,
@@ -171,6 +172,23 @@ export function getStoryCodexOps(storyId: string): CodexOp[] {
   return withSharedBases(rows.map(toOp));
 }
 
+/**
+ * Facts the AI wrote before forms were cleaned (cleanForm) can say "Lizard Woman form" for the form "Lizard Woman",
+ * or carry the form in the aspect ("Eyes [Lizard Woman form]"). Read that way they make a second form beside the
+ * real one, never sent to the AI. They are read as the plain form, without changing what is saved.
+ */
+function tidyFactForms(ops: FactOp[]) {
+  for (const f of ops) {
+    const inAspect = !f.form && !isFormAspect(f.aspect) ? /^(.+?)\s*[[(]([^\])]+)[\])]$/.exec(f.aspect.trim()) : null;
+    if (inAspect && /\bform\b/i.test(inAspect[2])) {
+      f.aspect = inAspect[1].trim();
+      f.form = cleanForm(inAspect[2]);
+    } else {
+      f.form = cleanForm(f.form);
+    }
+  }
+}
+
 /** Facts that apply at a chapter: those anchored on the path from the root to it, in effect order. */
 export function getCodexFacts(chapterId: string): FactOp[] {
   const path = getPath(chapterId);
@@ -185,6 +203,7 @@ export function getCodexFacts(chapterId: string): FactOp[] {
         ORDER BY c.depth, f.posted_at, f.rowid`,
     )
     .all(...path.map((c) => c.id)) as FactOp[];
+  tidyFactForms(own);
   // A linked entry's base facts come first, so the story's own facts on the same ids change or hide them.
   const links = db()
     .prepare(
@@ -698,5 +717,6 @@ export function nextFormChange(entryId: string, chapterId: string): { chapter_id
         ORDER BY c.depth, f.posted_at, f.rowid`,
     )
     .all(entryId, FORM_ASPECT, here.depth) as { chapter_id: string; title: string; form: string; stage: string }[];
-  return rows.find((r) => getPath(r.chapter_id).some((c) => c.id === chapterId)) ?? null;
+  const next = rows.find((r) => getPath(r.chapter_id).some((c) => c.id === chapterId));
+  return next ? { ...next, form: cleanForm(next.form) } : null;
 }
