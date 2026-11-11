@@ -4166,6 +4166,12 @@ button.refine-fit {
   border-radius: 6px;
 }
 
+/* On the entry page the AI's text is the first thing to read, so it reads like text, not a footnote. */
+.entry-ai-told .fact-ai {
+  color: var(--fg);
+  font-size: 1rem;
+  line-height: 1.6;
+}
 .fact-ai {
   margin: 0 0 0.5rem;
   padding: 0.5rem 0.75rem;
@@ -4710,12 +4716,14 @@ button.ef-main:hover {
   flex: 1 1 12rem;
   min-width: 0;
 }
-@media (max-width: 520px) {
+/* On a phone the aspect goes above its value, so the value gets the whole width instead of a narrow column. */
+@media (max-width: 40rem) {
   .ef-row {
     grid-template-columns: minmax(0, 1fr) auto;
   }
   .ef-main {
-    grid-template-columns: 6.5rem minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.1rem;
   }
   .ef-menu {
     grid-column: 2;
@@ -4725,7 +4733,7 @@ button.ef-main:hover {
     grid-column: 1;
     grid-row: 2;
     max-width: none;
-    padding: 0 0.25rem 0.35rem calc(6.5rem + 0.75rem);
+    padding: 0 0.25rem 0.4rem;
     text-align: left;
   }
   .ef-markers {
