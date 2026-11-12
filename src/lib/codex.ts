@@ -134,7 +134,10 @@ export type CodexEntry = {
   name: string;
   type: EntryType;
   aliases: string[];
-  /** The entry's own free text ("Notes"). What the AI reads is `description`. */
+  /**
+   * The entry's free text, once its "Notes". Notes are gone (migration 53 blanked them), so this is "" and nothing shows
+   * or sends it; the field stays because the codex_ops column does. What the AI reads is `description`.
+   */
   content: string;
   always_include: boolean;
   /** The last op that changed the entry, carrying the entry's folded fields. */
@@ -153,7 +156,7 @@ export type CodexEntry = {
   forms: string[];
   /** The entry's normal form: the first one it was given (null when it never had one). The AI isn't told the entry is in it. */
   baseForm: string | null;
-  /** What the AI reads: the current form and the facts that apply to it (never the notes). */
+  /** What the AI reads: the current form and the facts that apply to it. */
   description: string;
 };
 
@@ -703,7 +706,6 @@ export function compareEntry(from: CodexEntry, to: CodexEntry): EntryChange[] {
   const added = to.aliases.filter((a) => !from.aliases.some((b) => sameAspect(a, b)));
   if (gone.length || added.length) out.push({ label: "Keywords", ...(gone.length ? { before: gone.join(", ") } : {}), ...(added.length ? { after: added.join(", ") } : {}) });
   if (from.always_include !== to.always_include) out.push({ label: "Always include", before: from.always_include ? "on" : "off", after: to.always_include ? "on" : "off" });
-  if (from.content.trim() !== to.content.trim()) out.push({ label: "Notes (not sent to the AI)", before: from.content.trim() || undefined, after: to.content.trim() || undefined });
 
   const facts = (e: CodexEntry) => e.facts.filter((f) => !isFormAspect(f.aspect));
   const before = facts(from);
@@ -802,10 +804,7 @@ export function toCodexMarkdown(storyTitle: string, chapterTitle: string, entrie
       if (e.aliases.length) notes.push(`Also known as: ${e.aliases.join(", ")}`);
       if (e.always_include) notes.push("Always included in AI prompts");
       if (notes.length) out.push(`*${notes.join(" · ")}*`);
-      // The facts are what the AI reads; the notes are the author's own, so they are labelled apart.
-      if (e.description.trim()) out.push(e.description.trim());
-      if (e.content.trim()) out.push(`**Notes** (not sent to the AI)\n\n${e.content.trim()}`);
-      else if (!e.description.trim()) out.push("*(no description)*");
+      out.push(e.description.trim() || "*(no description)*");
     }
   }
   return `${out.join("\n\n")}\n`;
@@ -902,7 +901,6 @@ export function changedFields(prev: CodexOp | undefined, next: CodexOp): string[
   if (prev.name !== next.name) out.push("name");
   if (prev.type !== next.type) out.push("type");
   if (prev.aliases.join("|") !== next.aliases.join("|")) out.push("aliases");
-  if (prev.content !== next.content) out.push("content");
   if (prev.always_include !== next.always_include) out.push("always include");
   return out;
 }

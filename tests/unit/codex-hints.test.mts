@@ -16,8 +16,8 @@ const keys = (e: ReturnType<typeof entry>, opts = {}) => entryHints(e, opts).map
 const ears = fact("Ears", "Round ears.");
 ok(keys(entry([ears]), { chapterTexts: ["Mira ran."], contextTokens: 8000 }).length === 0, "a plain entry, mentioned by name, has no hints");
 
-ok(keys(entry([], { content: "A thief from the docks." })).join() === "notes-only", "notes but no facts: the AI gets nothing");
-ok(keys(entry([])).length === 0, "…an empty entry has no hint (nothing to warn about yet)");
+ok(keys(entry([])).length === 0, "an empty entry has no hint (nothing to warn about yet)");
+ok(keys(entry([], { content: "A thief from the docks." })).length === 0, "…nor one with old notes in content (entries have no notes)");
 
 ok(keys(entry([ears]), { chapterTexts: ["Nobody came."] }).join() === "unmentioned", "named in no chapter up to here");
 ok(keys(entry([ears]), { chapterTexts: ["They saw the thief."] }).length === 0, "…a keyword counts as a mention");
@@ -43,7 +43,6 @@ const dupEntry = entry([ears, fact("Ear", "Pointed.")]);
 const dup = entryHints(dupEntry)[0];
 ok(dup.duplicates?.length === 2 && dup.duplicates.every((id) => dupEntry.facts.some((f) => f.fact_id === id)), "a duplicate hint names both facts, so one can be kept");
 ok(entryHints(entry([long]))[0].edit === entry([long]).facts[0].fact_id, "a long fact's hint opens that fact for editing");
-ok(entryHints(entry([], { content: "Notes." }))[0].notes === true, "the notes-only hint offers Turn notes into facts");
 
 // the count on a card: hints only; a form's own fact replacing an every-form one is not a clash
 const replacing = entry([ears, fact("Ears", "Fox ears.", "vixen"), fact("Form", "", "vixen")]);

@@ -102,10 +102,6 @@ export const getChapterCodex =(f: Fetch, chapterId: string) => call<{ entries: C
 export const postCodexSuggestions = (f: Fetch, chapterId: string, revision: number, suggestions: SuggestionInput[], entryId?: string) =>
   call<{ saved: number }>(f, "POST", `/api/chapters/${chapterId}/codex-suggestions`, { revision, suggestions, ...(entryId && { entry_id: entryId }) });
 
-/** The same for facts the AI read from one entry's notes: replaces only that entry's open "notes" suggestions at the chapter. */
-export const postNotesSuggestions = (f: Fetch, chapterId: string, revision: number, entryId: string, suggestions: SuggestionInput[]) =>
-  call<{ saved: number }>(f, "POST", `/api/chapters/${chapterId}/codex-suggestions`, { revision, suggestions, source: "notes", entry_id: entryId });
-
 /** The same for the facts the AI proposed when fleshing out one entry: replaces only that entry's open "expand" suggestions at the chapter. */
 export const postExpandSuggestions = (f: Fetch, chapterId: string, revision: number, entryId: string, suggestions: SuggestionInput[]) =>
   call<{ saved: number }>(f, "POST", `/api/chapters/${chapterId}/codex-suggestions`, { revision, suggestions, source: "expand", entry_id: entryId });

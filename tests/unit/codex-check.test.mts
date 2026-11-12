@@ -34,7 +34,7 @@ const req = codexCheckRequest(8000, { chapter: { title: "One", body }, entries, 
 ok(req.message.includes("Mira [character] (also: the vixen)"), "request names the mentioned entry with its aliases");
 ok(req.message.includes("Current form: vixen, change complete"), "request shows the current form and its note");
 ok(req.message.includes("- Ears [every form]: Tall russet fox ears.") && req.message.includes("- Eyes [vixen form]: Amber eyes."), "request lists each fact with its aspect and form");
-ok(req.message.includes("Notes: A young fox-girl."), "request shows the notes");
+ok(!req.message.includes("A young fox-girl") && !req.message.includes("Notes:"), "request never shows an entry's old notes");
 ok(req.message.includes("The Hollow [place]"), "request shows another mentioned entry");
 ok(!req.message.includes("Short black hair") && !/^Tomas \[/m.test(req.message), "request leaves out an entry the chapter does not mention");
 ok(/Old Sage \[character\]/.test(req.message), "request keeps an always-included entry");

@@ -98,11 +98,11 @@ ok(r.status === 400, "a fact for a draft entry that isn't being created is rejec
 const md = await fetch(`${B}/api/chapters/${a3}/codex?format=md`);
 const mdText = await md.text();
 ok(md.status === 200 && /text\/markdown/.test(md.headers.get("content-type")) && /filename="s-codex-a3\.md"/.test(md.headers.get("content-disposition")), "codex markdown download");
-ok(mdText.startsWith("# S: codex") && mdText.includes("## Characters") && mdText.includes("### Zed\n\n**Notes** (not sent to the AI)\n\nA ferryman.") && mdText.includes("### Mira") && mdText.includes("A horse with wings."), "entries are grouped by type with their text");
+ok(mdText.startsWith("# S: codex") && mdText.includes("## Characters") && mdText.includes("### Zed\n\n*(no description)*") && !mdText.includes("A ferryman.") && mdText.includes("### Mira") && !mdText.includes("A horse with wings."), "entries are grouped by type, without the old notes");
 ok(!mdText.includes("A human thief") && !mdText.includes("Now a horse."), "only the current version of an entry shows");
 await op(root, { op: "create", name: "Ferry", type: "place", aliases: ["the crossing"], always_include: true, content: "A river crossing." });
 const rootMd = await (await fetch(`${B}/api/chapters/${root}/codex?format=md`)).text();
-ok(rootMd.includes("## Places\n\n### Ferry\n\n*Also known as: the crossing · Always included in AI prompts*\n\n**Notes** (not sent to the AI)\n\nA river crossing.") && rootMd.indexOf("## Characters") < rootMd.indexOf("## Places"), "aliases and the always-include flag are noted, types in order");
+ok(rootMd.includes("## Places\n\n### Ferry\n\n*Also known as: the crossing · Always included in AI prompts*\n\n*(no description)*") && rootMd.indexOf("## Characters") < rootMd.indexOf("## Places"), "aliases and the always-include flag are noted, types in order");
 ok(!(await (await fetch(`${B}/api/chapters/${b}/codex?format=md`)).text()).includes("Zed"), "another branch's codex doesn't include it");
 ok((await fetch(`${B}/api/chapters/${a3}/codex?format=pdf`)).status === 400 && (await fetch(`${B}/api/chapters/nope/codex?format=md`)).status === 404, "bad format 400, unknown chapter 404");
 
@@ -147,7 +147,7 @@ ok(r.status === 400, "a fact needs text");
 r = await fact(root, { entry_id: kit, op: "retire" });
 ok(r.status === 400, "retire needs a fact id");
 const factMd = await (await fetch(`${B}/api/chapters/${a2}/codex?format=md`)).text();
-ok(factMd.includes("Form: vixen, change complete.") && factMd.includes("A fox."), "the markdown download uses facts");
+ok(factMd.includes("Form: vixen, change complete.") && !factMd.includes("A fox."), "the markdown download uses facts, not the old notes");
 
 // removing an entry from one chapter keeps it in the chapters after it
 const tam = (await op(root, { op: "create", name: "Tamsin", type: "character", content: "A fox-woman." })).json.entry_id;

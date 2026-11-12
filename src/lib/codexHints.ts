@@ -3,10 +3,10 @@ import { budgetFor, codexBudget, estimateTokens, mentions, type ContextCodexEntr
 
 /**
  * A plain-code warning about a codex entry, shown on its page: what is wrong and what to do, and the fix the page
- * offers for it. `edit`: the fact to open for editing; `notes`: turn the notes into facts; `duplicates`: the facts
- * that say the same aspect, one of which can be removed.
+ * offers for it. `edit`: the fact to open for editing; `duplicates`: the facts that say the same aspect, one of which
+ * can be removed.
  */
-export type EntryHint = { key: string; text: string; edit?: string; notes?: true; duplicates?: [string, string] };
+export type EntryHint = { key: string; text: string; edit?: string; duplicates?: [string, string] };
 
 /** A fact longer than this many words is hard for the AI to use and crowds the prompt. */
 export const LONG_FACT_WORDS = 25;
@@ -25,10 +25,6 @@ const CHAPTER_REF = /\b(chapters?|ch\.)\s*\d+|\b(this|that|last|next|previous|ea
 export function entryHints(entry: CodexEntry, { chapterTexts, contextTokens }: { chapterTexts?: string[]; contextTokens?: number } = {}): EntryHint[] {
   const hints: EntryHint[] = [];
   const facts = entry.facts.filter((f) => !isFormAspect(f.aspect));
-
-  if (facts.length === 0 && entry.content.trim()) {
-    hints.push({ key: "notes-only", text: "It has notes but no facts, so the AI is told nothing about it.", notes: true });
-  }
 
   if (facts.length > 0 && !entry.always_include && chapterTexts) {
     const who: ContextCodexEntry = { name: entry.name, type: entry.type, aliases: entry.aliases, content: "", always_include: false };

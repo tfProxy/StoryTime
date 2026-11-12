@@ -41,8 +41,6 @@ type Props = {
   hold?: (f: HeldFact) => void;
   /** The draft edits an existing chapter, so held changes are saved when it is saved. */
   editingChapter?: boolean;
-  /** Turns the entry's notes into facts (the notes section's button), offered by the notes-but-no-facts hint; left out where it isn't offered. */
-  notesToFacts?: { start: () => void; busy: boolean };
   /** Where a fact's "Retcon…" goes (the Story Bible's Retcons section); left out where it isn't offered. */
   retconHref?: (factId: string) => string;
 };
@@ -59,7 +57,7 @@ const NEW_FORM = "\u0000new";
  * An entry's form and facts. Every form opens directly beneath the button (or row) that opened it, and the
  * add form at the end of the list.
  */
-export default function CodexFacts({ entry, factOps, path, chapterId, usedAspects, onSaved, anchorPath = path, hold, editingChapter = false, notesToFacts, retconHref }: Props) {
+export default function CodexFacts({ entry, factOps, path, chapterId, usedAspects, onSaved, anchorPath = path, hold, editingChapter = false, retconHref }: Props) {
   const [formOpen, setFormOpen] = useState(false);
   // A fact's id while it is being changed, "new" while one is being added.
   const [editing, setEditing] = useState<string | null>(null);
@@ -291,7 +289,6 @@ export default function CodexFacts({ entry, factOps, path, chapterId, usedAspect
           hints={hints}
           busy={busy}
           editing={editing}
-          notesToFacts={notesToFacts}
           onEdit={(factId) => {
             setEditing(factId);
             requestAnimationFrame(() => document.getElementById(`fact-${factId}`)?.scrollIntoView({ block: "nearest" }));
@@ -462,15 +459,14 @@ function ChapterSelect({
 }
 
 /**
- * Plain warnings about an entry above its facts (notes but no facts, never mentioned, long facts, the same aspect written
- * two ways), each with its fix: Edit it, Turn notes into facts, or keep one of two duplicates.
+ * Plain warnings about an entry above its facts (never mentioned, long facts, the same aspect written two ways), each
+ * with its fix: Edit it, or keep one of two duplicates.
  */
 export function EntryHints({
   entry,
   hints,
   busy,
   editing,
-  notesToFacts,
   onEdit,
   onRemove,
 }: {
@@ -479,7 +475,6 @@ export function EntryHints({
   busy: boolean;
   /** The fact being edited, so its "Edit it" is off. */
   editing: string | null;
-  notesToFacts?: { start: () => void; busy: boolean };
   onEdit: (factId: string) => void;
   onRemove: (fact: LiveFact) => void;
 }) {
@@ -493,16 +488,11 @@ export function EntryHints({
           return (
             <li key={h.key}>
               {h.text}
-              {(toEdit || (h.notes && notesToFacts) || dups.length === 2) && (
+              {(toEdit || dups.length === 2) && (
                 <span className="row codex-hint-fix">
                   {toEdit && (
                     <button type="button" className="secondary" disabled={busy || editing === toEdit.fact_id} aria-label={`Edit ${toEdit.aspect || "the fact"}`} onClick={() => onEdit(toEdit.fact_id)}>
                       Edit it
-                    </button>
-                  )}
-                  {h.notes && notesToFacts && (
-                    <button type="button" disabled={busy || notesToFacts.busy} onClick={notesToFacts.start}>
-                      Turn notes into facts
                     </button>
                   )}
                   {dups.length === 2 &&

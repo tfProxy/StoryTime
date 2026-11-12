@@ -227,7 +227,7 @@ export const MoveStartSchema = z.object({
 });
 
 /** Moves where an entry first appears (see the top of this file), all or nothing. */
-export function moveEntryStart(input: z.infer<typeof MoveStartSchema>): { chapter_id: string; moved: number; pictures: number } {
+export function moveEntryStart(input: z.infer<typeof MoveStartSchema>): { chapter_id: string; moved: number } {
   return db().transaction(() => {
     const ctx = context(input.entry_id, input.from_chapter_id);
     const name = ctx.create.name;
@@ -243,15 +243,7 @@ export function moveEntryStart(input: z.infer<typeof MoveStartSchema>): { chapte
     db().prepare(`UPDATE codex_ops SET anchor_chapter_id = ? WHERE id IN (${marks(ops)})`).run(o.chapter_id, ...ops);
     db().prepare(`UPDATE codex_ops SET moved_from_chapter_id = ? WHERE id = ?`).run(ctx.start.id, ctx.create.id);
     if (facts.length) db().prepare(`UPDATE codex_facts SET anchor_chapter_id = ? WHERE id IN (${marks(facts)})`).run(o.chapter_id, ...facts);
-    // The entry's own pictures at the start chapter are its first look, so moving earlier takes them along (the
-    // chapters it now appears in show it). Moving later leaves pictures alone: one anchored before the new start still
-    // applies from there, after any newer anchor on the way, as before. Shared pictures have no anchor.
-    const pictures =
-      o.relation === "earlier"
-        ? db()
-            .prepare(`UPDATE codex_pictures SET anchor_chapter_id = ? WHERE story_id = ? AND entry_id = ? AND anchor_chapter_id = ? AND shared_entry_id IS NULL`)
-            .run(o.chapter_id, ctx.storyId, input.entry_id, ctx.start.id).changes
-        : 0;
-    return { chapter_id: o.chapter_id, moved: rows.length, pictures };
+    // (The entry's icon belongs to no chapter, so it stays as it is.)
+    return { chapter_id: o.chapter_id, moved: rows.length };
   })();
 }

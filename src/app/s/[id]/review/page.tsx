@@ -24,10 +24,10 @@ import RetconList from "@/components/RetconList";
 import RetconStart from "@/components/RetconStart";
 import { DEFAULT_SETTINGS } from "@/lib/settingsSchema";
 import { getSettings } from "@/lib/settingsStore";
-import { codexPicturesAt } from "@/lib/codexPictures";
+import { codexIcons } from "@/lib/codexIcons";
 import { openSuggestionCounts } from "@/lib/codexSuggestions";
 import { CHANGE_EVENT_TAGS } from "@/lib/continuity";
-import { codexEntryFor, reviewIssues, type ReviewIssue } from "@/lib/review";
+import { reviewIssues, type ReviewIssue } from "@/lib/review";
 import { getPath, getStory } from "@/lib/stories";
 import { chapterTags, decidedTagIdsByChapter, listTags, storyTags } from "@/lib/tags";
 import { getStoryChapters } from "@/lib/tree";
@@ -339,8 +339,6 @@ export default async function StoryBiblePage({
             kind={i.kind}
             fingerprint={i.fingerprint}
             actions={actions}
-            entity={actions.includes("intentional") ? c.entity : undefined}
-            codexEntry={actions.includes("intentional") ? (codexEntryFor(i.chapterId, c.entity)?.name ?? null) : undefined}
           />
         </li>
       );
@@ -375,7 +373,7 @@ export default async function StoryBiblePage({
         alwaysLoad={hints.always}
         path={path.map((c) => ({ id: c.id, title: c.title, depth: c.depth }))}
         entries={entries}
-        pictures={chosen ? Object.fromEntries(Object.entries(codexPicturesAt(story!.id, chosen.id)).map(([entryId, p]) => [entryId, { id: p.id }])) : {}}
+        icons={codexIcons(story!.id)}
         pathIds={chosen ? path.map((c) => c.id) : []}
         summaries={codexEntries}
         entriesForShared={chosen ? entries : foldCodex(getCodexOps(rootId), getCodexFacts(rootId))}

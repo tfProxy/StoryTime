@@ -12,7 +12,7 @@ const keywordsOf = (text: string) => text.split(",").map((a) => a.trim()).filter
 type Usage = { story_id: string; title: string; links: number }[];
 
 /**
- * A shared entry's base: its details, notes and facts. Everything saved here changes the entry in every story that
+ * A shared entry's base: its details and facts. Everything saved here changes the entry in every story that
  * links to it (a story can still change a field or a fact for itself, from its own copy of the entry).
  */
 export default function SharedEntryEditor({ entry, usedIn }: { entry: SharedEntry; usedIn: Usage }) {
@@ -21,7 +21,6 @@ export default function SharedEntryEditor({ entry, usedIn }: { entry: SharedEntr
   const [type, setType] = useState<EntryType>(entry.type);
   const [aliases, setAliases] = useState(entry.aliases.join(", "));
   const [always, setAlways] = useState(entry.always_include);
-  const [content, setContent] = useState(entry.content);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -30,7 +29,6 @@ export default function SharedEntryEditor({ entry, usedIn }: { entry: SharedEntr
     name.trim() !== entry.name ||
     type !== entry.type ||
     always !== entry.always_include ||
-    content.trim() !== entry.content ||
     keywordsOf(aliases).join("\n") !== entry.aliases.join("\n");
 
   /** Sends one request and refreshes the page; returns whether it worked. */
@@ -55,7 +53,7 @@ export default function SharedEntryEditor({ entry, usedIn }: { entry: SharedEntr
   }
 
   async function save() {
-    const ok = await send("PATCH", `/api/shared/${entry.id}`, { name: name.trim(), type, aliases: keywordsOf(aliases), always_include: always, content: content.trim() });
+    const ok = await send("PATCH", `/api/shared/${entry.id}`, { name: name.trim(), type, aliases: keywordsOf(aliases), always_include: always });
     if (ok) {
       setSaved(true);
       setTimeout(() => setSaved(false), 4000);
@@ -109,10 +107,6 @@ export default function SharedEntryEditor({ entry, usedIn }: { entry: SharedEntr
               Always include in AI prompts <small>(otherwise only when a keyword or the name appears nearby)</small>
             </span>
           </label>
-          <label>
-            Your notes (not sent to the AI)
-            <textarea rows={4} style={{ minHeight: "7rem" }} value={content} maxLength={8000} onChange={(e) => setContent(e.target.value)} />
-          </label>
           <div className="row">
             <button type="submit" disabled={busy || !name.trim() || !dirty}>
               {busy ? "Saving…" : "Save changes"}
@@ -130,7 +124,7 @@ export default function SharedEntryEditor({ entry, usedIn }: { entry: SharedEntr
 
       <section className="entry-section">
         <h2>What the AI reads</h2>
-        <div className="fact-ai">{describeSharedFacts(entry.facts) || <em>Nothing yet — add facts. Notes are not sent to the AI.</em>}</div>
+        <div className="fact-ai">{describeSharedFacts(entry.facts) || <em>Nothing yet — add facts.</em>}</div>
         <p className="meta">This is the shared entry on its own. A story that uses it can change or add facts, so what the AI reads there may differ.</p>
       </section>
 

@@ -10,8 +10,8 @@ const keywordsOf = (text: string) => text.split(",").map((a) => a.trim()).filter
 const LABELS: Record<OverrideField, string> = { type: "type", content: "notes", always_include: "“always include”", aliases: "keywords" };
 
 /**
- * The details of an entry linked to a shared entry: the name comes from the shared entry; the type, keywords, notes
- * and "always include" can be changed for this story only (from this chapter on), and each change can be taken back.
+ * The details of an entry linked to a shared entry: the name comes from the shared entry; the type, keywords and
+ * "always include" can be changed for this story only (from this chapter on), and each change can be taken back.
  * Changing the shared entry itself, in every story, is done on its own page.
  */
 export default function LinkedEntryDetails({ entry, chapterId, chapterTitle }: { entry: CodexEntry; chapterId: string; chapterTitle: string }) {
@@ -19,13 +19,12 @@ export default function LinkedEntryDetails({ entry, chapterId, chapterTitle }: {
   const [type, setType] = useState<EntryType>(entry.type);
   const [aliases, setAliases] = useState(entry.aliases.join(", "));
   const [always, setAlways] = useState(entry.always_include);
-  const [content, setContent] = useState(entry.content);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   const dirty =
-    type !== entry.type || always !== entry.always_include || content.trim() !== entry.content || keywordsOf(aliases).join("\n") !== entry.aliases.join("\n");
+    type !== entry.type || always !== entry.always_include || keywordsOf(aliases).join("\n") !== entry.aliases.join("\n");
 
   async function send(body: Record<string, unknown>): Promise<boolean> {
     setBusy(true);
@@ -55,7 +54,6 @@ export default function LinkedEntryDetails({ entry, chapterId, chapterTitle }: {
     const body: Record<string, unknown> = {};
     if (type !== entry.type) body.type = type;
     if (always !== entry.always_include) body.always_include = always;
-    if (content.trim() !== entry.content) body.content = content.trim();
     if (keywordsOf(aliases).join("\n") !== entry.aliases.join("\n")) body.aliases = keywordsOf(aliases);
     if (await send(body)) {
       setSaved(true);
@@ -112,11 +110,6 @@ export default function LinkedEntryDetails({ entry, chapterId, chapterTitle }: {
           </span>
         </label>
         {changed("always_include") && !dirty && reset("always_include")}
-        <label>
-          Your notes (not sent to the AI) {changed("content") && <span className="tag">changed in this story</span>}
-          <textarea rows={4} style={{ minHeight: "7rem" }} value={content} maxLength={8000} onChange={(e) => setContent(e.target.value)} />
-        </label>
-        {changed("content") && !dirty && reset("content")}
         <div className="row">
           <button type="submit" disabled={busy || !dirty}>
             {busy ? "Saving…" : "Save for this story"}

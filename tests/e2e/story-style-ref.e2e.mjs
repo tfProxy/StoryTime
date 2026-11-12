@@ -58,7 +58,7 @@ try {
   ok((await card.innerText()).includes("Style picture (optional)") && (await card.getByRole("button", { name: "Remove" }).count()) === 0, "the picture card has an empty Style picture (optional)");
   await card.getByRole("button", { name: "Choose…" }).click();
   await picker.waitFor();
-  ok((await picker.getByRole("tab").allInnerTexts()).join("|") === "Suggested|Pictures|Codex", "the picker has no Upload tab");
+  ok((await picker.getByRole("tab").allInnerTexts()).join("|") === "Suggested|Pictures", "the picker has no Upload tab, and no Codex tab");
   await picker.getByRole("tab", { name: "Pictures" }).click();
   await picker.getByRole("button", { name: /Cover/ }).click();
   await picker.waitFor({ state: "detached" });

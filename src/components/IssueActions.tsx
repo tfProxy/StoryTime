@@ -23,16 +23,11 @@ export default function IssueActions({
   kind,
   fingerprint,
   actions,
-  entity,
-  codexEntry,
 }: {
   chapterId: string;
   kind: string;
   fingerprint: string;
   actions: Action[];
-  /** For Intentional: the name the issue is about, and whether a codex entry of that name is live at the chapter (its name, or null). */
-  entity?: string;
-  codexEntry?: string | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -110,11 +105,6 @@ export default function IssueActions({
           >
             Cancel
           </button>
-          {entity && (
-            <span className="meta" style={{ flexBasis: "100%" }}>
-              {codexEntry ? `The note is also added to the codex entry “${codexEntry}”.` : `No codex entry named ${entity}; the note is kept here only.`}
-            </span>
-          )}
         </form>
       )}
       {error && <span className="error"> {error}</span>}

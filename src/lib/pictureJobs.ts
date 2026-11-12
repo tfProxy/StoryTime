@@ -208,11 +208,6 @@ export function coverPictureJobs(storyId: string): PictureJob[] {
   return listPictureJobs({ cover: storyId }, { limit: CHAPTER_JOBS }).jobs;
 }
 
-/** A codex entry's jobs, newest first (the most recent 1000), with their marks: what its codex picture page shows. */
-export function codexPictureJobs(storyId: string, entryId: string): PictureJob[] {
-  return listPictureJobs({ codex: storyId, entry: entryId }, { limit: CHAPTER_JOBS }).jobs;
-}
-
 // How many new jobs the picture queue in the header is given.
 const UNSEEN_JOBS = 50;
 

@@ -3,7 +3,7 @@ import { db, newId } from "./db";
 import { PostError } from "./stories";
 
 import { storyVerdicts } from "./continuityVerdicts";
-import { CODEX_LIMITS, createCodexOp, getCodexState, overrideSharedEntry } from "./codexDb";
+import { getCodexState } from "./codexDb";
 import { currentSummaryChecks } from "./summaryChecks";
 
 export const ISSUE_KINDS = ["summary-missing", "summary-stale", "summary-wrong", "continuity", "codex-missing", "ai-unreviewed"] as const;
@@ -251,60 +251,25 @@ export const DecideIssueSchema = z
   .refine((v) => v.status !== "intentional" || v.kind === "continuity", { message: "Only a continuity issue can be marked intentional" })
   .refine((v) => v.status !== "intentional" || (v.note ?? "").length > 0, { message: "Say why it is on purpose" });
 
-/** The codex entry named `entity` (case-insensitive) that is live at the chapter, if any. */
-export function codexEntryFor(chapterId: string, entity: string) {
-  const name = entity.trim().toLowerCase();
-  return getCodexState(chapterId).find((e) => e.name.trim().toLowerCase() === name) ?? null;
-}
-
 /**
- * Records (or with status open, forgets) the author's decision on one issue, at the chapter's current revision.
- * An intentional decision also appends its note to the matching codex entry, as a replace op anchored at the
- * chapter; with no such entry only the decision is kept. Returns the name of the entry that got the note.
+ * Records (or with status open, forgets) the author's decision on one issue, at the chapter's current revision. An
+ * intentional decision keeps its note with the decision. (It was also added to the codex entry's notes once; codex
+ * entries have no notes now.)
  */
-export function decideIssue(chapterId: string, input: z.infer<typeof DecideIssueSchema>): { codex_entry: string | null } {
-  return db().transaction(() => {
+export function decideIssue(chapterId: string, input: z.infer<typeof DecideIssueSchema>): void {
+  db().transaction(() => {
     const chapter = db().prepare(`SELECT revision FROM chapters WHERE id = ?`).get(chapterId) as { revision: number } | undefined;
     if (!chapter) throw new PostError("That chapter does not exist", 404);
     if (input.status === "open") {
       db().prepare(`DELETE FROM review_items WHERE chapter_id = ? AND kind = ? AND fingerprint = ?`).run(chapterId, input.kind, input.fingerprint);
-      return { codex_entry: null };
+      return;
     }
     const intentional = input.status === "intentional";
-    let codexEntry: string | null = null;
-    if (intentional) {
-      const verdict = storyVerdicts(
-        (db().prepare(`SELECT story_id FROM chapters WHERE id = ?`).get(chapterId) as { story_id: string }).story_id,
-      ).find((v) => v.fingerprint === input.fingerprint && v.after.chapterId === chapterId);
-      const entry = verdict ? codexEntryFor(chapterId, verdict.entity) : null;
-      if (verdict && entry) {
-        const added = `Intentional (${verdict.attribute}): ${input.note}`;
-        const content = entry.content.trim() ? `${entry.content.trim()}\n\n${added}` : added;
-        if (content.length <= CODEX_LIMITS.content && entry.shared_entry_id) {
-          // A shared entry's notes belong to the shared entry; the note is this story's own.
-          overrideSharedEntry({ anchor_chapter_id: chapterId, entry_id: entry.entry_id, content });
-          codexEntry = entry.name;
-        } else if (content.length <= CODEX_LIMITS.content) {
-          createCodexOp({
-            anchor_chapter_id: chapterId,
-            op: "replace",
-            entry_id: entry.entry_id,
-            name: entry.name,
-            type: entry.type,
-            aliases: entry.aliases,
-            content,
-            always_include: entry.always_include,
-          });
-          codexEntry = entry.name;
-        }
-      }
-    }
     db()
       .prepare(
         `INSERT INTO review_items (id, chapter_id, kind, fingerprint, status, revision, note, decided_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (chapter_id, kind, fingerprint) DO UPDATE SET status = excluded.status, revision = excluded.revision, note = excluded.note, decided_at = excluded.decided_at`,
       )
       .run(newId(), chapterId, input.kind, input.fingerprint, input.status, chapter.revision, intentional ? input.note : null, Date.now());
-    return { codex_entry: codexEntry };
   })();
 }

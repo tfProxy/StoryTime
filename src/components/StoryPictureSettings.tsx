@@ -167,7 +167,6 @@ export default function StoryPictureSettings({ story, pool }: { story: StoryPict
         <ReferencePicker
           suggested={choices.suggested}
           pictures={choices.pictures}
-          codex={choices.codex}
           chosen={style ? [style.source] : []}
           full={false}
           noUpload

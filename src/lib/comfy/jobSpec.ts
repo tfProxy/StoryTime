@@ -25,7 +25,7 @@ export type JobSpec = Omit<JobInput, "start" | "refs" | "mask"> & {
   mask: SpecMask | null;
 };
 
-/** How the server turns a source (`comfy:`, `saved:`, `codex:`, `upload:`) into the picture's bytes. */
+/** How the server turns a source (`comfy:`, `saved:`, `upload:`) into the picture's bytes. */
 export type ResolveSource = (source: string) => Promise<Blob>;
 
 /** The key `toSpec` looks a mask up by in `uploaded`. */

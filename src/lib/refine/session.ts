@@ -10,11 +10,8 @@ import type { PictureTarget, SavedSlot } from "../pictureTarget";
 import { parseLoras } from "../comfy/editingState";
 import type { LoraOverrides } from "../comfy/loraOverrides";
 
-/** Where a session's picture is fetched from again: one of ComfyUI's, a saved header/footer/cover (at the version it had), or a codex picture. */
-export type StoredOriginal =
-  | { kind: "comfy"; image: ComfyImage }
-  | { kind: "saved"; slot: SavedSlot; version: number }
-  | { kind: "codex"; pictureId: string };
+/** Where a session's picture is fetched from again: one of ComfyUI's, or a saved header/footer/cover (at the version it had). */
+export type StoredOriginal = { kind: "comfy"; image: ComfyImage } | { kind: "saved"; slot: SavedSlot; version: number };
 
 export type RefineSession = {
   id: string;
@@ -170,7 +167,6 @@ export function newSession(init: { target: PictureTarget; original: StoredOrigin
 /** The original of a picture chosen to start from (a `StartPicture`), or null when it can't be fetched again. */
 export function originalOf(p: { image?: ComfyImage; slot?: string; source: string; key: string }): StoredOriginal | null {
   if (p.image) return { kind: "comfy", image: { filename: p.image.filename, subfolder: p.image.subfolder, type: p.image.type } };
-  if (p.source.startsWith("codex:")) return { kind: "codex", pictureId: p.source.slice("codex:".length) };
   if (p.slot === "header" || p.slot === "middle" || p.slot === "footer" || p.slot === "cover") {
     const version = Number(p.key.split(":").pop());
     return Number.isFinite(version) ? { kind: "saved", slot: p.slot, version } : null;
@@ -184,7 +180,7 @@ export function readTarget(v: unknown): PictureTarget | null {
   if (!isObject(v) || !isStr(v.storyId)) return null;
   if (v.kind === "chapter" && isStr(v.chapterId)) return { kind: "chapter", storyId: v.storyId, chapterId: v.chapterId };
   if (v.kind === "cover") return { kind: "cover", storyId: v.storyId };
-  if (v.kind === "codex" && isStr(v.entryId)) return { kind: "codex", storyId: v.storyId, entryId: v.entryId };
+  // A session of a codex entry's picture page (gone since codex pictures became icons) is not read.
   return null;
 }
 
@@ -198,7 +194,6 @@ export function readOriginal(v: unknown): StoredOriginal | null {
     return null;
   }
   if (v.kind === "saved" && (v.slot === "header" || v.slot === "middle" || v.slot === "footer" || v.slot === "cover") && isNum(v.version)) return { kind: "saved", slot: v.slot, version: v.version };
-  if (v.kind === "codex" && isStr(v.pictureId)) return { kind: "codex", pictureId: v.pictureId };
   return null;
 }
 

@@ -20,8 +20,8 @@ const fact = async (anchor, aspect, text) => (await call("POST", "/api/codex/fac
 await fact(a, "Ears", "Round ears.");
 await fact(b, "Hair", "Red hair.");
 await fact(d, "Eyes", "Green eyes.");
-const pic = await fetch(`${B}/api/stories/${story}/codex-pictures?entry=${rowan}&anchor=${a}`, { method: "POST", headers: { "Content-Type": "image/png" }, body: png });
-ok(pic.ok, "a picture of Rowan is saved at A");
+const pic = await fetch(`${B}/api/stories/${story}/codex-icons/${rowan}`, { method: "PUT", headers: { "Content-Type": "image/png" }, body: png });
+ok(pic.ok, "Rowan has an icon");
 
 const at = async (id) => (await call("GET", `/api/chapters/${id}/codex`)).json;
 const entryAt = async (id) => (await at(id)).entries.find((e) => e.entry_id === rowan);
@@ -41,13 +41,13 @@ ok((await call("GET", `/api/codex/move-start?entry_id=${rowan}&chapter_id=${a}`)
 
 // ---- earlier ----
 r = await move({ to_chapter_id: root });
-ok(r.status === 201 && r.json.chapter_id === root && r.json.pictures === 1, "moving earlier works and takes the picture at the start along: " + JSON.stringify(r.json));
+ok(r.status === 201 && r.json.chapter_id === root, "moving earlier works: " + JSON.stringify(r.json));
 let e = await entryAt(root);
 ok(e && aspects(e) === "Ears", "at Root it reads with the fact entered with it, not the later ones");
 ok(aspects(await entryAt(d)) === "Ears,Eyes,Hair", "the later facts stay where they were");
 const create = (await at(d)).ops.find((o) => o.entry_id === rowan && o.op === "create");
 ok(create.anchor_chapter_id === root && create.moved_from_chapter_id === a && create.moved_from_title === "A", "the create records where it moved from");
-ok((await call("GET", `/api/stories/${story}/codex-pictures?chapter=${root}`)).json.pictures[rowan], "the picture shows from Root");
+ok((await call("GET", `/api/stories/${story}/codex-icons`)).json.icons[rowan] > 0, "the icon stays, as it belongs to no chapter");
 
 // ---- later ----
 r = await move({ to_chapter_id: a });

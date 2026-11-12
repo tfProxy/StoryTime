@@ -12,13 +12,11 @@ const ROLE_NAMES: Record<ReferenceRole, string> = { character: "Character", item
 /** The longest side an uploaded reference keeps; bigger pictures are scaled down in the browser first. */
 const MAX_SIDE = 1024;
 
-type Tab = "suggested" | "pictures" | "codex" | "upload";
+type Tab = "suggested" | "pictures" | "upload";
 
 type PickerProps = {
   suggested: RefChoice[];
   pictures: RefChoice[];
-  /** The codex entries that have a picture as of this chapter. */
-  codex: RefChoice[];
   /** The sources already chosen, which can't be chosen again. */
   chosen: string[];
   full: boolean;
@@ -28,8 +26,8 @@ type PickerProps = {
   onClose: () => void;
 };
 
-/** The picker: a modal <dialog> with the pictures that suit this moment, the others on offer, the codex's, and an upload. */
-export function ReferencePicker({ suggested, pictures, codex, chosen, full, noUpload = false, onPick, onClose }: PickerProps) {
+/** The picker: a modal <dialog> with the pictures that suit this moment, the others on offer, and an upload. */
+export function ReferencePicker({ suggested, pictures, chosen, full, noUpload = false, onPick, onClose }: PickerProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [tab, setTab] = useState<Tab>(suggested.length > 0 ? "suggested" : "pictures");
   const [error, setError] = useState<string | null>(null);
@@ -95,7 +93,6 @@ export function ReferencePicker({ suggested, pictures, codex, chosen, full, noUp
   const tabs: { id: Tab; name: string }[] = [
     { id: "suggested", name: "Suggested" },
     { id: "pictures", name: "Pictures" },
-    { id: "codex", name: "Codex" },
     ...(noUpload ? [] : [{ id: "upload" as Tab, name: "Upload" }]),
   ];
   return (
@@ -126,7 +123,6 @@ export function ReferencePicker({ suggested, pictures, codex, chosen, full, noUp
       <div role="tabpanel" className="reference-panel">
         {tab === "suggested" && list(suggested, "Nothing is suggested yet: the pictures that fit this moment (a header for a footer, the previous chapter's footer…) haven't been saved.")}
         {tab === "pictures" && list(pictures, "No pictures to choose from yet. Pin a picture, or save a header, footer or cover.")}
-        {tab === "codex" && list(codex, "No codex entry has a picture here yet. Make one from the Codex panel (Make a picture).")}
         {tab === "upload" && (
           <>
             <label>
@@ -157,7 +153,6 @@ type Props = {
   onChange: (refs: Reference[]) => void;
   suggested: RefChoice[];
   pictures: RefChoice[];
-  codex: RefChoice[];
   /** Why references can't be used with the drawing preset now, or null when they can. Then the section is only its heading and this. */
   unavailable: string | null;
   /** On the Instruct tab: the edit model's name and how many references it uses; the rest are left out. */
@@ -170,7 +165,7 @@ type Props = {
  * The reference pictures of the next picture: a thumbnail for each with a label, what it shows, how strongly
  * to follow it and a button to take it out, and an Add reference button that opens the picker.
  */
-export default function References({ refs, onChange, suggested, pictures, codex, unavailable, editLimit, story = null }: Props) {
+export default function References({ refs, onChange, suggested, pictures, unavailable, editLimit, story = null }: Props) {
   const [picking, setPicking] = useState(false);
   const styleShown = story !== null && !editLimit;
   const full = refs.length + (styleShown && story.on ? 1 : 0) >= MAX_REFERENCES;
@@ -276,7 +271,6 @@ export default function References({ refs, onChange, suggested, pictures, codex,
         <ReferencePicker
           suggested={suggested}
           pictures={pictures}
-          codex={codex}
           chosen={refs.map((r) => r.source)}
           full={full}
           onPick={(picture, label, role = "character") => {

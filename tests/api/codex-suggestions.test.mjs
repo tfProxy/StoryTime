@@ -112,7 +112,7 @@ try {
 
   r = await call("POST", `/api/codex-suggestions/${proposed.id}/accept`);
   const brindle = (await call("GET", `/api/chapters/${c1}/codex`)).json.entries.find((e) => e.name === "Brindle");
-  ok(r.status === 200 && brindle && brindle.entry_id === r.json.entry_id && brindle.aliases[0] === "the old fox" && brindle.content === "An old fox." && brindle.facts[0].aspect === "Age" && brindle.facts[0].text === "Old.", "accepting an entry creates it with its facts");
+  ok(r.status === 200 && brindle && brindle.entry_id === r.json.entry_id && brindle.aliases[0] === "the old fox" && brindle.content === "" && brindle.facts[0].aspect === "Age" && brindle.facts[0].text === "Old.", "accepting an entry creates it with its facts");
   ok(!(await call("GET", `/api/chapters/${root}/codex`)).json.entries.some((e) => e.name === "Brindle"), "…at that chapter, not before");
 
   // ---- dismiss, and a second reading does not bring it back ----

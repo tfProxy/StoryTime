@@ -44,8 +44,8 @@ try {
   const sharedUrl = page.url();
   made.push(sharedUrl.split("/").pop());
   const sid = made[0];
+  ok((await page.getByLabel(/Your notes/).count()) === 0, "a shared entry has no notes box");
   await page.getByLabel("Keywords").fill("Mara, the fox");
-  await page.getByLabel("Your notes (not sent to the AI)").fill("Base notes.");
   await page.getByRole("button", { name: "Save changes" }).click();
   await page.getByRole("status").filter({ hasText: "Saved" }).waitFor();
   await page.getByRole("button", { name: "+ Add fact" }).click();
@@ -57,7 +57,6 @@ try {
   const reads = page.locator(".entry-section", { has: page.getByRole("heading", { name: "What the AI reads", exact: true }) }).locator(".fact-ai");
   await reads.filter({ hasText: "Ears: tall russet fox ears." }).waitFor();
   ok((await reads.innerText()).trim() === "Ears: tall russet fox ears.", "the shared page shows what the AI reads: " + (await reads.innerText()));
-  ok(!(await reads.innerText()).includes("Base notes"), "…and not the notes");
 
   // ---- add it to the story from Chapter A ----
   // (The writing page's drawer is where an entry is added from the UI: see shared-codex-write.)
@@ -76,7 +75,7 @@ try {
   await card.click();
   await page.getByRole("heading", { name: "Mara Vale", level: 1 }).waitFor();
   const body = await page.locator(".entry-editor").innerText();
-  ok(body.includes("This entry is shared") && (await page.getByLabel("Your notes (not sent to the AI)").inputValue()) === "Base notes.", "the entry page says it is shared and shows the base's notes");
+  ok(body.includes("This entry is shared") && (await page.getByLabel(/^Keywords/).inputValue()) === "Mara, the fox", "the entry page says it is shared and shows the base's keywords");
   ok((await page.getByRole("link", { name: "shared entry", exact: true }).getAttribute("href")) === `/shared/${sid}`, "…and links to the base");
   ok((await page.getByLabel("Name").count()) === 0, "…and the name can't be changed here");
 
@@ -84,14 +83,15 @@ try {
   const mine = (await send("GET", `/api/chapters/${A}/codex`)).entries.find((e) => e.name === "Mara Vale").entry_id;
   const mineUrl = `${BASE}/s/${story.story_id}/codex/${mine}?at=${A}`;
   await page.goto(mineUrl);
-  await page.getByLabel("Your notes (not sent to the AI)").fill("Our own notes.");
+  ok((await page.getByLabel(/Your notes/).count()) === 0, "a linked entry has no notes box either");
+  await page.getByLabel(/^Keywords/).fill("Mara, the fox, Vale");
   await page.getByRole("button", { name: "Save for this story" }).click();
   await page.getByText("changed in this story").first().waitFor();
-  ok((await send("GET", `/api/chapters/${A}/codex`)).entries.find((e) => e.name === "Mara Vale").content === "Our own notes.", "the story's notes are changed for the story");
-  ok((await send("GET", `/api/shared/${sid}`)).entry.content === "Base notes.", "…and the shared entry's are not");
-  await page.getByRole("button", { name: "Reset to the shared notes" }).click();
-  await page.getByRole("button", { name: "Reset to the shared notes" }).waitFor({ state: "detached" });
-  ok((await send("GET", `/api/chapters/${A}/codex`)).entries.find((e) => e.name === "Mara Vale").content === "Base notes.", "Reset takes the notes back from the shared entry");
+  ok((await send("GET", `/api/chapters/${A}/codex`)).entries.find((e) => e.name === "Mara Vale").aliases.includes("Vale"), "the story's keywords are changed for the story");
+  ok(!(await send("GET", `/api/shared/${sid}`)).entry.aliases.includes("Vale"), "…and the shared entry's are not");
+  await page.getByRole("button", { name: "Reset to the shared keywords" }).click();
+  await page.getByRole("button", { name: "Reset to the shared keywords" }).waitFor({ state: "detached" });
+  ok(!(await send("GET", `/api/chapters/${A}/codex`)).entries.find((e) => e.name === "Mara Vale").aliases.includes("Vale"), "Reset takes the keywords back from the shared entry");
 
   // a fact changed in the story is marked, and can be reset
   await post("/api/codex/facts", { anchor_chapter_id: A, entry_id: mine, op: "set", aspect: "Ears", text: "fox ears, torn" });

@@ -2,10 +2,8 @@
 // pictures. Pure code (no React); the browser builds the pictures with `fromSaved` and `fromComfyImage`.
 import type { ComfyImage } from "./client";
 import { targetOfIds, type PictureMoment, type SavedSlot } from "../pictureTarget";
-import type { EntryType } from "../codex";
-import { mentions } from "../ai/prompts";
 import { asReference, type Reference, type ReferenceRole, type StoredReference } from "./references";
-import { fromCodex, fromComfyImage, fromSaved, type StartPicture } from "./startPicture";
+import { fromComfyImage, fromSaved, type StartPicture } from "./startPicture";
 
 /** A saved header, middle, footer or cover that can be a reference (`chapterId` null: the story's cover). */
 export type SavedChoice = { chapterId: string | null; slot: SavedSlot; version: number; /** The chapter's title; empty for the cover. */ title: string };
@@ -19,16 +17,9 @@ export type RefPool = {
   storyId: string;
   parentId: string | null;
   saved: SavedChoice[];
-  /** The codex entries that have a picture as of the page's chapter (the cover page: the whole story's pictures). */
-  codex: CodexChoice[];
-  /** The ids of every codex picture in the story, so a kept `codex:<id>` reference can be found again. */
-  codexIds: string[];
 };
 
-/** A codex entry with its picture as of the page's chapter, which can be a reference. */
-export type CodexChoice = { entryId: string; pictureId: string; name: string; type: EntryType; aliases: string[] };
-
-/** One picture on offer in the picker. `role` is what it is added as, when it knows (a codex entry's type); else Character. */
+/** One picture on offer in the picker. `role` is what it is added as, when it knows; else Character. */
 export type RefChoice = {
   id: string;
   label: string;
@@ -39,9 +30,6 @@ export type RefChoice = {
   picture: StartPicture;
   role?: ReferenceRole;
 };
-
-/** What a codex entry's picture shows, by the entry's type. */
-export const codexRole = (type: EntryType): ReferenceRole => (type === "character" ? "character" : type === "place" ? "place" : "item");
 
 /** A picture that can be chosen: ComfyUI's picture, pinned. */
 export type PinnedChoice = { image: ComfyImage };
@@ -64,11 +52,8 @@ export function savedLabel(c: SavedChoice, ownChapterId: string | null): string 
 export function restoreReference(stored: StoredReference, ctx: { pool: RefPool; comfyUrl: string }): Reference | null {
   const { source } = stored;
   let picture: StartPicture | null = null;
-  if (source.startsWith("codex:")) {
-    // A codex picture never changes, so it is found again while it exists (it may be another entry's now, or from another branch).
-    const id = source.slice("codex:".length);
-    if (ctx.pool.codexIds.includes(id)) picture = fromCodex(ctx.pool.storyId, id);
-  } else if (source.startsWith("saved:")) {
+  // (A `codex:<picture id>` reference, kept from before codex pictures became icons, is not found again.)
+  if (source.startsWith("saved:")) {
     const [, owner, slot] = source.split(":");
     const found = ctx.pool.saved.find((c) => c.slot === slot && (slot === "cover" ? owner === ctx.pool.storyId : c.chapterId === owner));
     if (found) picture = savedPicture(ctx.pool, found);
@@ -92,21 +77,8 @@ export function referenceChoices(opts: {
   moment: PictureMoment;
   comfyUrl: string;
   pinned: PinnedChoice[];
-  /** The prompt and What to show: a codex entry named in them, with a picture, is suggested. */
-  text?: string;
-}): { suggested: RefChoice[]; pictures: RefChoice[]; codex: RefChoice[] } {
-  const { pool, chapterId, moment, comfyUrl, pinned, text = "" } = opts;
-  const codex: RefChoice[] = pool.codex.map((c) => ({
-    id: `codex:${c.pictureId}`,
-    label: c.name,
-    hint: c.type,
-    group: "Codex",
-    picture: fromCodex(pool.storyId, c.pictureId),
-    role: codexRole(c.type),
-  }));
-  const named = pool.codex.flatMap((c, i) =>
-    mentions({ name: c.name, type: c.type, aliases: c.aliases, content: "", always_include: false }, text) ? [{ ...codex[i], hint: "Named in the prompt", group: "Suggested" }] : [],
-  );
+}): { suggested: RefChoice[]; pictures: RefChoice[] } {
+  const { pool, chapterId, moment, comfyUrl, pinned } = opts;
   const saved = (c: SavedChoice, hint: string, group: string): RefChoice => {
     const picture = savedPicture(pool, c);
     return { id: picture.key, label: savedLabel(c, chapterId), hint, group, picture };
@@ -127,7 +99,7 @@ export function referenceChoices(opts: {
             [pool.parentId ? find(pool.parentId, "header") : undefined, "The previous chapter's header"],
             [find(chapterId, "footer"), "This chapter's footer"],
           ];
-  const suggested = [...suggestedFrom.flatMap(([c, hint]) => (c ? [saved(c, hint, "Suggested")] : [])), ...named];
+  const suggested = suggestedFrom.flatMap(([c, hint]) => (c ? [saved(c, hint, "Suggested")] : []));
 
   const pictures: RefChoice[] = [];
   if (comfyUrl) {
@@ -144,5 +116,5 @@ export function referenceChoices(opts: {
   const cover = find(null, "cover");
   if (cover) pictures.push(saved(cover, "The saved cover", "Cover"));
   const seen = new Set<string>();
-  return { suggested, pictures: pictures.filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true))), codex };
+  return { suggested, pictures: pictures.filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true))) };
 }

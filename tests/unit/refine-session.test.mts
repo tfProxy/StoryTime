@@ -46,17 +46,17 @@ ok(loadSession(s.id, st) === null && st.raw.size === 0, "a deleted session is go
 ok(loadSession(s.id, null) === null && !saveSession(s, null) && pruneSessions(14, null) === 0, "without storage nothing fails");
 
 // the other origins
-for (const t of [{ kind: "cover", storyId: "s1" }, { kind: "codex", storyId: "s1", entryId: "e1" }] as const) {
-  const x = newSession({ target: t, original: { kind: "saved", slot: "cover", version: 3 } });
-  ok(saveSession(x, st) && JSON.stringify(loadSession(x.id, st)?.target) === JSON.stringify(t), `a ${t.kind} target round-trips`);
-}
-const x2 = newSession({ target, original: { kind: "codex", pictureId: "p9" } });
-ok(saveSession(x2, st) && JSON.stringify(loadSession(x2.id, st)?.original) === JSON.stringify({ kind: "codex", pictureId: "p9" }), "a codex picture origin round-trips");
+const cover = { kind: "cover", storyId: "s1" } as const;
+const x = newSession({ target: cover, original: { kind: "saved", slot: "cover", version: 3 } });
+ok(saveSession(x, st) && JSON.stringify(loadSession(x.id, st)?.target) === JSON.stringify(cover), "a cover target round-trips");
+// A session from a codex entry's picture page, or of a codex picture, is from before codex pictures became icons: not read.
+const before = JSON.parse(JSON.stringify(s));
+ok(readSession({ ...before, target: { kind: "codex", storyId: "s1", entryId: "e1" } }) === null, "a codex entry's session isn't read");
+ok(readSession({ ...before, original: { kind: "codex", pictureId: "p9" } }) === null, "a codex picture origin isn't read");
 
 // originalOf
 ok(JSON.stringify(originalOf({ image: { filename: "a.png", subfolder: "", type: "output" }, source: "comfy:a.png", key: "comfy:a.png" })) === JSON.stringify({ kind: "comfy", image: { filename: "a.png", subfolder: "", type: "output" } }), "a ComfyUI picture is its image");
 ok(JSON.stringify(originalOf({ slot: "header", source: "saved:c1:header", key: "saved:c1:header:7" })) === JSON.stringify({ kind: "saved", slot: "header", version: 7 }), "a saved slot keeps the version it had");
-ok(JSON.stringify(originalOf({ source: "codex:p1", key: "codex:p1" })) === JSON.stringify({ kind: "codex", pictureId: "p1" }), "a codex picture is its id");
 ok(originalOf({ source: "upload:x", key: "upload:x" }) === null, "anything else can't be fetched again");
 
 // defensive validation

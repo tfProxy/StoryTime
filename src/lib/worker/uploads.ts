@@ -62,7 +62,6 @@ async function viaSelf(path: string, what: string): Promise<Blob> {
  *   upload:<id>                 a picture the browser sent (see `saveUpload`)
  *   comfy:<subfolder/file>      one of ComfyUI's own pictures, in its output folder
  *   saved:<owner>:<slot>        a chapter's header, middle or footer (owner is the chapter), or the story's cover (owner is the story)
- *   codex:<picture id>          a codex entry's saved picture
  */
 export async function resolveSource(source: string): Promise<Blob> {
   const colon = source.indexOf(":");
@@ -94,12 +93,8 @@ export async function resolveSource(source: string): Promise<Blob> {
     throw new Error(`Not a picture source: ${source}`);
   }
 
-  if (kind === "codex") {
-    // The source names only the picture, and the route wants its story as well.
-    const row = db().prepare(`SELECT story_id FROM codex_pictures WHERE id = ? AND removed_at IS NULL`).get(rest) as { story_id: string } | undefined;
-    if (!row) throw new Error("Couldn't read the saved codex picture (404).");
-    return viaSelf(`/api/stories/${encodeURIComponent(row.story_id)}/codex-pictures/${encodeURIComponent(rest)}`, "the saved codex picture");
-  }
+  // A job asked for before codex pictures became icons (migration 53) may still name one.
+  if (kind === "codex") throw new Error("Codex pictures can no longer be used in a job. Ask for the job again without it.");
 
   throw new Error(`Not a picture source: ${source}`);
 }

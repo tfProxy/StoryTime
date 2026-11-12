@@ -128,7 +128,7 @@ type Props = {
   /** The reference pictures chosen (shown in the References section, and sent with each job unless the preset can't use them), how to change them, and the pictures the picker offers. Without `onRefs` there is no section. */
   refs?: Reference[];
   onRefs?: (refs: Reference[]) => void;
-  refChoices?: { suggested: RefChoice[]; pictures: RefChoice[]; codex: RefChoice[] };
+  refChoices?: { suggested: RefChoice[]; pictures: RefChoice[] };
   /** The story's style picture, when it has one and it can be found: the References section shows it first, and it is sent with each drawing job (not an edit) unless switched off. */
   styleRef?: Reference | null;
 };
@@ -500,7 +500,6 @@ export default function ComfyGenerate({
         onChange={onRefs}
         suggested={refChoices?.suggested ?? []}
         pictures={refChoices?.pictures ?? []}
-        codex={refChoices?.codex ?? []}
         story={
           styleRef
             ? {

@@ -8,7 +8,9 @@ export type PictureMoment = ImageMoment | "cover" | "codex";
 
 /**
  * A chapter's pictures, the story's cover, or a codex entry's pictures: what a page makes pictures for. Ask
- * the target (the helpers below) rather than checking its kind.
+ * the target (the helpers below) rather than checking its kind. No page makes a codex entry's pictures any more (an
+ * entry has an icon instead, see ../codexIcons): that kind is for the jobs made for one before, which are still in the
+ * job log and may still be in ComfyUI's queue. Nothing can be saved for it.
  */
 export type PictureTarget =
   | { kind: "chapter"; storyId: string; chapterId: string }
@@ -35,29 +37,25 @@ export const entryIdOf = (t: PictureTarget): string | null => (t.kind === "codex
 /** One string per target, for maps and keys: `chapter:<id>`, `cover:<story id>` or `codex:<entry id>`. */
 export const targetKey = (t: PictureTarget) => (t.kind === "chapter" ? `chapter:${t.chapterId}` : t.kind === "cover" ? `cover:${t.storyId}` : `codex:${t.entryId}`);
 
-/** Where a picture can be saved: a chapter's header or footer, the story's cover, or a codex entry's picture. */
-export type PictureSlot = SavedSlot | "codex";
-
-/** The slots that are one saved image of a chapter or the story, apart from a codex entry's pictures. */
+/** The slots that are one saved image of a chapter or the story. */
 export type SavedSlot = ImageSlot | "cover";
 
-/** The slots a target's pictures can be saved in. */
-export const slotsFor = (t: PictureTarget): readonly PictureSlot[] => (t.kind === "chapter" ? IMAGE_SLOTS : t.kind === "cover" ? ["cover"] : ["codex"]);
+/** Where a picture can be saved: a chapter's header, middle or footer, or the story's cover. */
+export type PictureSlot = SavedSlot;
 
-/**
- * Where a saved picture is kept: a chapter's header or footer, or the story's cover (PUT an image to it).
- * A codex entry's pictures are added with POST (and a chapter to start at), and each is fetched by its id.
- */
-export const savedPictureApi = (t: PictureTarget, slot: PictureSlot) =>
-  t.kind === "cover" ? `/api/stories/${t.storyId}/cover` : t.kind === "codex" ? `/api/stories/${t.storyId}/codex-pictures?entry=${encodeURIComponent(t.entryId)}` : `/api/chapters/${t.chapterId}/images/${slot}`;
+/** The slots a target's pictures can be saved in (none for a codex entry's). */
+export const slotsFor = (t: PictureTarget): readonly PictureSlot[] => (t.kind === "chapter" ? IMAGE_SLOTS : t.kind === "cover" ? ["cover"] : []);
 
-/** The URL of a codex picture, which never changes once saved. */
-export const codexPictureUrl = (storyId: string, pictureId: string) => `/api/stories/${storyId}/codex-pictures/${pictureId}`;
+/** Where a saved picture is kept: a chapter's header or footer, or the story's cover (PUT an image to it). */
+export function savedPictureApi(t: PictureTarget, slot: PictureSlot): string {
+  if (t.kind === "codex") throw new Error("Nothing is saved for a codex entry's picture job");
+  return t.kind === "cover" ? `/api/stories/${t.storyId}/cover` : `/api/chapters/${t.chapterId}/images/${slot}`;
+}
 
 /** The URL the browser loads a saved picture from; the version makes a replaced one load afresh. */
 export function savedPictureUrl(t: PictureTarget, slot: PictureSlot, version: number): string {
-  if (t.kind === "codex") throw new Error("A codex picture is loaded by its id (codexPictureUrl)");
-  return t.kind === "cover" || slot === "cover" || slot === "codex" ? `${savedPictureApi(t, slot)}?v=${version}` : chapterImageUrl(t.chapterId, slot, version);
+  if (t.kind === "codex") throw new Error("Nothing is saved for a codex entry's picture job");
+  return t.kind === "cover" || slot === "cover" ? `${savedPictureApi(t, slot)}?v=${version}` : chapterImageUrl(t.chapterId, slot, version);
 }
 
 /** Who owns a saved picture, as in a `saved:<owner>:<slot>` source: the chapter's id, or the story's for the cover. */
@@ -67,20 +65,18 @@ export const savedOwner = (t: PictureTarget) => (t.kind === "chapter" ? t.chapte
 export const COVER_SOURCES = ["premise", "opening", "path"] as const;
 export type CoverSource = (typeof COVER_SOURCES)[number];
 
-/** The page that makes the target's pictures. */
+/** The page that makes the target's pictures (for a codex entry's old jobs, the entry's page, where its icon is). */
 export const targetHref = (t: PictureTarget) =>
-  t.kind === "chapter" ? `/c/${t.chapterId}/illustrate` : t.kind === "cover" ? `/s/${t.storyId}/cover` : `/s/${t.storyId}/codex/${t.entryId}/pictures`;
+  t.kind === "chapter" ? `/c/${t.chapterId}/illustrate` : t.kind === "cover" ? `/s/${t.storyId}/cover` : `/s/${t.storyId}/codex/${encodeURIComponent(t.entryId)}`;
 
 /** What the target's own preset and kept settings are called in a message: "chapter", "cover" or "codex entry". */
 export const targetWord = (t: PictureTarget) => (t.kind === "chapter" ? "chapter" : t.kind === "cover" ? "cover" : "codex entry");
 
 /** The API that keeps the target's own drawing preset. */
-export const presetApi = (t: PictureTarget) =>
-  t.kind === "chapter"
-    ? `/api/chapters/${t.chapterId}/picture-preset`
-    : t.kind === "cover"
-      ? `/api/stories/${t.storyId}/cover-preset`
-      : `/api/stories/${t.storyId}/codex-preset?entry=${encodeURIComponent(t.entryId)}`;
+export function presetApi(t: PictureTarget): string {
+  if (t.kind === "codex") throw new Error("A codex entry has no drawing preset");
+  return t.kind === "chapter" ? `/api/chapters/${t.chapterId}/picture-preset` : `/api/stories/${t.storyId}/cover-preset`;
+}
 
 /** Which of the story's other pictures the "other" view lists: every chapter's (for the cover and codex pages), or the other chapters'. */
 export const othersQuery = (t: PictureTarget) =>

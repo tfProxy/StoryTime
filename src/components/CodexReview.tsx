@@ -77,9 +77,8 @@ export default function CodexReview({
     if (sel && live.items) document.getElementById(domId(sel))?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [sel, live.items]);
 
-  // Text-based changes only: an AI idea (Flesh out without a quote) or one from the entry's notes has no sentence
-  // here and is decided on the entry's page.
-  const elsewhere = (s: CodexSuggestion) => s.source === "notes" || (s.source === "expand" && !s.quote);
+  // Text-based changes only: an AI idea (Flesh out without a quote) has no sentence here and is decided on the entry's page.
+  const elsewhere = (s: CodexSuggestion) => s.source === "expand" && !s.quote;
   const forEntry = (id: string | null) => entryId === null || id === entryId;
   const suggestions = live.shown.filter((s) => !elsewhere(s) && forEntry(s.kind === "entry" ? null : s.entry_id) && (entryId === null || s.kind !== "entry"));
   const ideas = live.shown.filter((s) => s.status === "open" && elsewhere(s) && forEntry(s.entry_id));

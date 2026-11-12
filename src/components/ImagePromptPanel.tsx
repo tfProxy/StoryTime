@@ -129,7 +129,7 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
     setSeenRef(refRequest.nonce);
     refState.add(moment, refRequest.ref);
   }
-  const choices = referenceChoices({ pool, chapterId, moment, comfyUrl: settings.comfy.url, pinned, text: `${result.prompt}\n${direction}` });
+  const choices = referenceChoices({ pool, chapterId, moment, comfyUrl: settings.comfy.url, pinned });
   // Prompts are written in the style of the model that will draw them: the chapter's drawing preset, else the story's.
   const [presetNow, setPresetNow] = useState(chapterPreset);
   const draw = drawPresetFor(settings.comfy.drawPresets, presetNow, story.draw_preset);

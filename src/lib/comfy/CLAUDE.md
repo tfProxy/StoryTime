@@ -9,4 +9,4 @@
 - **ComfyUI may be shared** with other StoryTimes. Jobs carry `extra_data.storytime` (`JobTag`) with this StoryTime's `instance` (`src/lib/instance.ts`); only jobs with our instance (or none, for a chapter that exists here) are shown, recorded or stopped.
 - **Pictures are shown from ComfyUI's `/view` straight to the browser**, so the browser must reach ComfyUI too; making them goes through the server.
 - **Nothing here has been run against a real ComfyUI** except what `TODO.md` says was checked. The fake doesn't run graphs, so browser tests only prove a job is accepted; check graph shapes in `tests/unit/comfy-workflow.test.mts` and `tests/unit/draw-models.test.mts`.
-- Tests: unit `comfy-workflow`, `draw-models`, `job-spec`, `mask`, `inpaint-region`, `pictures`; browser `illustrate-*`, `refine-*`, `cover-make`, `codex-pictures`, `picture-queue*`.
+- Tests: unit `comfy-workflow`, `draw-models`, `job-spec`, `mask`, `inpaint-region`, `pictures`; browser `illustrate-*`, `refine-*`, `cover-make`, `picture-queue*`.

@@ -1730,19 +1730,62 @@ dialog.chapter-image-full img {
   align-items: start;
 }
 
-/* A codex entry's picture in the Codex panel: a small thumbnail beside its name. */
-.codex-thumb-link {
+/* A codex entry's icon (see codexIcons): round, beside its name in the codex lists and on the entry. */
+.codex-icon {
   flex: none;
-  display: block;
-}
-
-.codex-thumb {
   display: block;
   width: 3.5rem;
   height: 3.5rem;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: 50%;
   background: var(--line);
+}
+
+.codex-icon.small {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+/* The entry page's icon: a button that opens the icon picker. Without an icon it shows the name's first letter. */
+button.codex-icon-button {
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+}
+
+.codex-icon-empty {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 1.4rem;
+  font-weight: 600;
+  border: 1px dashed var(--muted);
+  background: none;
+}
+
+.codex-icon.large {
+  width: 6rem;
+  height: 6rem;
+}
+
+.icon-picker {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.icon-picker-current {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.icon-picker .reference-choices {
+  max-height: 22rem;
+  overflow-y: auto;
 }
 
 .reference-thumb {
@@ -4792,7 +4835,7 @@ button.ef-main:hover {
   }
 }
 
-/* "AI ideas for …": the AI's own ideas and what it read in the notes, kept apart from the facts. */
+/* "AI ideas for …": the AI's own ideas, kept apart from the facts. */
 .entry-ideas {
   border: 1px dashed var(--warn);
 }
@@ -4850,12 +4893,6 @@ button.ef-main:hover {
   gap: 0.5rem;
   min-width: 0;
 }
-.entry-picture {
-  max-width: 100%;
-  max-height: 24rem;
-  border-radius: 6px;
-}
-
 /* The codex's "To review" box: one row per entry with suggestions waiting, linking to its page. */
 .codex-review-box {
   margin: 0 0 1rem;
@@ -4967,7 +5004,7 @@ button.ef-main:hover {
   gap: 0.5rem;
 }
 
-/* Where a suggestion comes from: the text (checked quote), the notes, or the AI's own idea. */
+/* Where a suggestion comes from: the text (checked quote), or the AI's own idea. */
 .source-badge {
   margin-left: auto;
   font-size: 0.75rem;
@@ -4980,10 +5017,6 @@ button.ef-main:hover {
 .source-story {
   background: var(--diff-add-bg);
   color: var(--diff-add-fg);
-}
-.source-notes {
-  border: 1px solid var(--accent);
-  color: var(--accent);
 }
 .source-invented {
   background: var(--warn);

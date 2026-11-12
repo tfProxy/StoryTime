@@ -35,9 +35,8 @@ const told = () => ed.locator(".entry-ai-told .fact-ai");
 try {
   // add Ears at the root
   await page.goto(entryUrl(root));
-  ok(await page.getByRole("tabpanel").locator(".entry-notes", { hasText: "A young traveller." }).isVisible(), "notes shown on the entry page, in the Your notes tab");
-  ok(await page.getByRole("tabpanel").getByText("Not sent to the AI.").isVisible(), "…labelled as not sent to the AI");
-  ok(await told().getByText("Nothing yet").isVisible(), "…and the AI is told nothing while there are no facts");
+  ok(!(await ed.innerText()).includes("A young traveller."), "an entry's old notes show nowhere on its page");
+  ok(await told().getByText("Nothing yet").isVisible(), "the AI is told nothing while there are no facts");
   await addFact(page, { aspect: "Ears", text: "round human ears" });
   await line("round human ears").waitFor();
   ok(await factRow(page, "round human ears").getByText("from the start").isVisible(), "row says 'from the start' at the root");
@@ -137,7 +136,7 @@ try {
   // the What the AI reads tab
   const panel = await openTab(page, "What the AI reads");
   ok((await panel.locator(".fact-ai").innerText()).includes("huge fox ears"), "the What the AI reads tab shows the AI's text");
-  ok((await page.getByRole("tab", { name: "What the AI reads" }).getAttribute("aria-selected")) === "true" && (await page.getByRole("tab", { name: "Your notes" }).getAttribute("aria-selected")) === "false", "…and is the selected tab");
+  ok((await page.getByRole("tab", { name: "What the AI reads" }).getAttribute("aria-selected")) === "true" && (await page.getByRole("tab", { name: "History" }).getAttribute("aria-selected")) === "false", "…and is the selected tab");
   await page.getByRole("tab", { name: "What the AI reads" }).press("ArrowRight");
   ok((await page.getByRole("tab", { name: "History" }).getAttribute("aria-selected")) === "true", "the arrow keys move between the tabs");
   ok(await page.getByRole("tabpanel").locator("ol.history").isVisible(), "…and History shows the entry's versions");

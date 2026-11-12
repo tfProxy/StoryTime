@@ -34,13 +34,13 @@ const kindLabel = (s: CodexSuggestion) => (s.kind === "set" && !s.before ? "New 
 /** The words of the proposed text as the diff compares them (a form is "name, note"). */
 const afterText = (s: CodexSuggestion) => (s.kind === "form" ? [s.form, s.after].filter(Boolean).join(", ") : s.after);
 
-export type SourceTone = "text" | "story" | "notes" | "invented" | "unsure" | "conflict";
+export type SourceTone = "text" | "story" | "invented" | "unsure" | "conflict";
 
 type Sourced = Pick<CodexSuggestion, "kind" | "source" | "quote"> & Partial<Pick<CodexSuggestion, "aspect" | "form" | "after" | "entry_name">>;
 
 /**
  * Where a suggestion's claim comes from, as the card labels it. Every quote was checked against its source when the
- * suggestion was saved (a chapter reading's against the chapter, a notes reading's against the notes, a Flesh out's
+ * suggestion was saved (a chapter reading's against the chapter, a Flesh out's
  * against the chapters so far), but that only proves the words are there: a quote that shares no word with the claim
  * is labelled "Quote doesn't show this" for the owner to read. A Flesh out without a quote is the AI's own idea.
  */
@@ -50,12 +50,11 @@ export function suggestionSource(s: Sourced): { tone: SourceTone; label: string 
   const claim = [s.aspect, cleanForm(s.form ?? ""), s.after].filter(Boolean).join(" ");
   if (s.kind !== "entry" && s.kind !== "retire" && claim && s.quote && !quoteSupports(s.quote, claim, s.entry_name ? [s.entry_name] : []))
     return { tone: "unsure", label: "Quote doesn't show this" };
-  if (s.source === "notes") return { tone: "notes", label: "From your notes" };
   if (s.source === "expand") return { tone: "story", label: "From the story" };
   return { tone: "text", label: "From the text" };
 }
 
-/** What "Accept all" takes: open fact changes backed by the text or the notes, never the AI's own ideas or a conflict. */
+/** What "Accept all" takes: open fact changes backed by the text, never the AI's own ideas or a conflict. */
 export const acceptableInBulk = (s: CodexSuggestion) =>
   s.status === "open" && s.kind !== "conflict" && s.kind !== "entry" && !s.new_category && !["invented", "unsure"].includes(suggestionSource(s).tone);
 
@@ -345,7 +344,6 @@ export function Card({ s, busy, error, editing, onEdit, onAccept, onDismiss, onR
               </a>
             </span>
           )}
-          {s.source === "notes" && <span className="inbox-evidence-where">From the entry&apos;s notes</span>}
           {s.source === "expand" && <span className="inbox-evidence-where">From the chapters so far</span>}
         </blockquote>
       ) : (

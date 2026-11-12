@@ -40,7 +40,7 @@ s = foldCodex([op({ entry_id: "a", name: "Zed", type: "place" }), op({ entry_id:
 ok(s.map((e) => e.name).join() === "Amy,Bob,Zed", "sorted by type then name");
 // history + diff summary
 const h = entryHistory([op({ posted_at: 1 }), op({ entry_id: "other" }), op({ op: "replace", content: "x", aliases: ["M"], posted_at: 2 })], "mira");
-ok(h.length === 2 && changedFields(h[0], h[1]).join() === "aliases,content" && changedFields(undefined, h[0]).join() === "created", "history + changed fields");
+ok(h.length === 2 && changedFields(h[0], h[1]).join() === "aliases" && changedFields(undefined, h[0]).join() === "created", "history + changed fields");
 
 // prompt selection
 const e = (name: string, content: string, extra: any = {}) => ({ name, type: "character", aliases: [], content, always_include: false, ...extra });
@@ -303,7 +303,8 @@ ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length ==
   ok(find("Tail (vixen)")?.after === "A bushy tail." && find("Tail (vixen)")?.before === undefined, "an added fact has only after, with its form");
   ok(!find("Personality"), "an unchanged fact isn't listed");
   ok(find("Keywords")?.after === "Vix" && find("Keywords")?.before === undefined, "a keyword added");
-  ok(find("Always include")?.after === "on" && find("Notes (not sent to the AI)")?.after === "Changed at the well.", "Always include and the notes");
+  ok(find("Always include")?.after === "on", "Always include");
+  ok(!changes.some((c) => /notes/i.test(c.label)), "old notes in content are not compared (entries have no notes)");
   ok(compareEntry(before, before).length === 0, "the same entry has no changes");
 
   // two branches set the same aspect as separate facts: read as one change, not a removal and an addition

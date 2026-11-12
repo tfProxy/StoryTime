@@ -152,7 +152,8 @@ type Props = {
   path: MiniChapter[];
   /** Chapter scope: the codex as of the chosen chapter. */
   entries: CodexEntry[];
-  pictures: Record<string, { id: string }>;
+  /** Each entry's icon version, by entry id (see codexIcons). */
+  icons: Record<string, number>;
   /** The chapters whose suggestions apply on the chosen chapter's branch. */
   pathIds: string[];
   /** Whole-story scope: every entry on any branch. */
@@ -173,7 +174,7 @@ type Props = {
 };
 
 /** The Codex section of the Story Bible: entries in folds by type, with their suggestions inside their cards. */
-export default function CodexSection({ path, entries, pictures, pathIds, summaries, entriesForShared, gaps, retired, offerCheck, hintCounts = {}, staleCounts = {}, alwaysLoad = null }: Props) {
+export default function CodexSection({ path, entries, icons, pathIds, summaries, entriesForShared, gaps, retired, offerCheck, hintCounts = {}, staleCounts = {}, alwaysLoad = null }: Props) {
   const c = useCodexBible();
   const router = useRouter();
   const chapterScope = c.chosenId !== null;
@@ -260,8 +261,8 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
 
 
   // Suggestions with a sentence in a chapter are reviewed beside that chapter's text (/c/<id>/codex-review). AI ideas
-  // with no sentence (Flesh out without a quote) and ones from an entry's notes are decided on the entry's page.
-  const textBased = (s: CodexSuggestion) => openFor(s) && !(s.source === "notes" || (s.source === "expand" && !s.quote));
+  // with no sentence (Flesh out without a quote) are decided on the entry's page.
+  const textBased = (s: CodexSuggestion) => openFor(s) && !(s.source === "expand" && !s.quote);
   const reviewHref = (chapterId: string, entryId?: string) => `/c/${chapterId}/codex-review${entryId ? `?entry=${encodeURIComponent(entryId)}` : ""}`;
 
   /** Under an entry's card: how many of its changes wait at this chapter, linking to them beside the text. */
@@ -408,7 +409,7 @@ export default function CodexSection({ path, entries, pictures, pathIds, summari
           stale={staleCounts}
           chapterId={c.chosenId!}
           storyId={c.storyId}
-          pictures={pictures}
+          icons={icons}
           extra={(e) => reviewCountOf(e.entry_id)}
           groupSuggestions={groupCount}
         />

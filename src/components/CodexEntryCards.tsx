@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { ENTRY_TYPES, isAiFact, TYPE_HEADINGS, TYPE_LABELS, type CodexEntry, type EntryType } from "@/lib/codex";
 import { STALE_FROM } from "@/lib/codexHints";
+import { codexIconUrl } from "@/lib/codexIconUrl";
 import CodexGroup from "./CodexGroup";
 
 type Props = {
@@ -11,8 +12,8 @@ type Props = {
   /** The chapter the entries are shown at: cards link to the entry page at this chapter, and mark the entries changed in it. */
   chapterId: string;
   storyId?: string;
-  /** Each entry's picture at this chapter, by entry id. */
-  pictures?: Record<string, { id: string }>;
+  /** Each entry's icon version, by entry id (see codexIcons). */
+  icons?: Record<string, number>;
   /** Entries with a change waiting in a draft, by entry id (the op that is waiting). */
   held?: Record<string, string>;
   /** Open the entry here instead of linking to its page (the writing page's drawer). */
@@ -64,7 +65,7 @@ export function HintCount({ n }: { n: number | undefined }) {
 }
 
 /** The compact list of a codex's entries, grouped by type: every place that lists entries uses it, and each card opens the entry's page. */
-export default function CodexEntryCards({ entries, chapterId, storyId, pictures = {}, held = {}, onOpen, empty, fold, extra, groupExtra, groupSuggestions, hints = {}, stale = {} }: Props) {
+export default function CodexEntryCards({ entries, chapterId, storyId, icons = {}, held = {}, onOpen, empty, fold, extra, groupExtra, groupSuggestions, hints = {}, stale = {} }: Props) {
   if (entries.length === 0 && !groupExtra) return empty ? <p className="meta">{empty}</p> : null;
   return (
     <>
@@ -76,14 +77,14 @@ export default function CodexEntryCards({ entries, chapterId, storyId, pictures 
             <>
             <ul className="entry-cards">
               {group.map((e) => {
-                const picture = pictures[e.entry_id];
+                const icon = icons[e.entry_id];
                 const wait = held[e.entry_id];
                 const ai = e.facts.filter(isAiFact).length;
                 const inner = (
                   <>
-                    {picture && storyId && (
+                    {icon !== undefined && storyId && (
                       // eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size
-                      <img className="codex-thumb" src={`/api/stories/${storyId}/codex-pictures/${picture.id}`} alt="" />
+                      <img className="codex-icon" src={codexIconUrl(storyId, e.entry_id, icon)} alt="" />
                     )}
                     <span className="entry-card-text">
                       <span>

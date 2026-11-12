@@ -21,7 +21,6 @@ import {
   putChapterWriting,
   postCodexSuggestions,
   postExpandSuggestions,
-  postNotesSuggestions,
   postRetconProposal,
   postFacts,
   postVerdict,
@@ -36,10 +35,9 @@ import { LIMITS } from "../limits";
 import { applyPlan, expandAfter, needsReview, nextTask, resolveSlot, withGuidance } from "./plan";
 import type { writeImagePrompt } from "../ai/imagePrompt";
 import { hasPicture, loadSetup, writePicturePrompt } from "./pictures";
-import type { AiRun, CodexTask, ContinuityTask, ExpandTask, FactsTask, NotesTask, PictureTask, PlanTask, RetconTask, RunStatus, RunTask, SummaryTask, TagsTask, WriteTask } from "./types";
+import type { AiRun, CodexTask, ContinuityTask, ExpandTask, FactsTask, PictureTask, PlanTask, RetconTask, RunStatus, RunTask, SummaryTask, TagsTask, WriteTask } from "./types";
 import { runCodexCheck, selectEntries } from "../ai/codexCheckAi";
 import { runRetcon } from "../ai/retconAi";
-import { runNotesToFacts } from "../ai/notesToFactsAi";
 import { runFleshOut } from "../ai/fleshOutAi";
 import { extractFacts, judgeConflict } from "../ai/factAi";
 import { summaryCheck } from "../ai/summaryCheckAi";
@@ -151,7 +149,7 @@ export async function skipTask(runId: string, taskId: string, token: string, dep
   return patchRun(fetcher(deps), run.id, { token, version: run.version, tasks, status: run.status === "running" ? "paused" : run.status });
 }
 
-type Pick = { kind: "plan" | "write" | "finish" | "prompt" | "tags" | "facts" | "continuity" | "summary" | "codex" | "notes" | "expand" | "retcon"; task: RunTask };
+type Pick = { kind: "plan" | "write" | "finish" | "prompt" | "tags" | "facts" | "continuity" | "summary" | "codex" | "expand" | "retcon"; task: RunTask };
 
 /** Whether the task's dependencies are all done: its plan, and for a `fromTask` slot the task it follows. */
 function ready(list: RunTask[], t: RunTask): boolean {
@@ -173,7 +171,7 @@ function pickStep(run: AiRun, list: RunTask[]): Pick | null {
     return todo ? { kind: "prompt", task: todo } : null;
   }
   if (run.mode === "review") {
-    const todo = list.find((t): t is TagsTask | FactsTask | SummaryTask | CodexTask | NotesTask | ExpandTask | RetconTask => (t.kind === "tags" || t.kind === "facts" || t.kind === "summary" || t.kind === "codex" || t.kind === "notes" || t.kind === "expand" || t.kind === "retcon") && t.status === "todo");
+    const todo = list.find((t): t is TagsTask | FactsTask | SummaryTask | CodexTask | ExpandTask | RetconTask => (t.kind === "tags" || t.kind === "facts" || t.kind === "summary" || t.kind === "codex" || t.kind === "expand" || t.kind === "retcon") && t.status === "todo");
     if (todo) return { kind: todo.kind, task: todo };
     // The clashes are judged last, once every chapter's facts are in.
     const judge = list.find((t): t is ContinuityTask => t.kind === "continuity" && t.status === "todo");
@@ -266,8 +264,8 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<StepResult> {
   }
 
   const { task } = picked;
-  const phase = picked.kind === "plan" ? "planning" : picked.kind === "write" || picked.kind === "prompt" || picked.kind === "tags" || picked.kind === "facts" || picked.kind === "continuity" || picked.kind === "summary" || picked.kind === "codex" || picked.kind === "notes" || picked.kind === "expand" || picked.kind === "retcon" ? "writing" : "finishing";
-  const label = task.kind === "write" ? task.label : task.kind === "plan" ? "Plan the choices" : task.kind === "picture" ? `Prompt for “${task.label ?? "a chapter"}” (${task.slot})` : task.kind === "tags" ? `Find tags in “${task.label ?? "a chapter"}”` : task.kind === "facts" ? `Find facts in “${task.label ?? "a chapter"}”` : task.kind === "continuity" ? "Check continuity" : task.kind === "summary" ? `Check the summary of “${task.label ?? "a chapter"}”` : task.kind === "codex" ? (task.entryName ? `Read “${task.label ?? "a chapter"}” for ${task.entryName}` : `Check the codex for “${task.label ?? "a chapter"}”`) : task.kind === "notes" ? `Turn the notes of “${task.label ?? "an entry"}” into facts` : task.kind === "expand" ? `Flesh out “${task.label ?? "an entry"}”` : task.kind === "retcon" ? `Read “${task.label ?? "a chapter"}” for the retcon` : "";
+  const phase = picked.kind === "plan" ? "planning" : picked.kind === "write" || picked.kind === "prompt" || picked.kind === "tags" || picked.kind === "facts" || picked.kind === "continuity" || picked.kind === "summary" || picked.kind === "codex" || picked.kind === "expand" || picked.kind === "retcon" ? "writing" : "finishing";
+  const label = task.kind === "write" ? task.label : task.kind === "plan" ? "Plan the choices" : task.kind === "picture" ? `Prompt for “${task.label ?? "a chapter"}” (${task.slot})` : task.kind === "tags" ? `Find tags in “${task.label ?? "a chapter"}”` : task.kind === "facts" ? `Find facts in “${task.label ?? "a chapter"}”` : task.kind === "continuity" ? "Check continuity" : task.kind === "summary" ? `Check the summary of “${task.label ?? "a chapter"}”` : task.kind === "codex" ? (task.entryName ? `Read “${task.label ?? "a chapter"}” for ${task.entryName}` : `Check the codex for “${task.label ?? "a chapter"}”`) : task.kind === "expand" ? `Flesh out “${task.label ?? "an entry"}”` : task.kind === "retcon" ? `Read “${task.label ?? "a chapter"}” for the retcon` : "";
   let tasks = list;
   let failure: unknown = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -321,7 +319,6 @@ async function doStep(picked: Pick, run: AiRun, list: RunTask[], env: StepEnv, f
   if (picked.kind === "facts") return doFacts(picked.task as FactsTask, run, list, env, f);
   if (picked.kind === "summary") return doSummary(picked.task as SummaryTask, run, list, env, f);
   if (picked.kind === "codex") return doCodex(picked.task as CodexTask, run, list, env, f);
-  if (picked.kind === "notes") return doNotes(picked.task as NotesTask, run, list, env, f);
   if (picked.kind === "expand") return doExpand(picked.task as ExpandTask, run, list, env, f);
   if (picked.kind === "retcon") return doRetcon(picked.task as RetconTask, run, list, env, f);
   if (picked.kind === "continuity") return doContinuity(picked.task as ContinuityTask, run, list, env, f);
@@ -646,33 +643,6 @@ async function doRetcon(task: RetconTask, run: AiRun, list: RunTask[], env: Step
     saved = (await postRetconProposal(f, task.retconId, { chapter_id: task.chapterId, revision: task.revision, edits, note })).saved;
   } catch (e) {
     if (e instanceof ApiError && e.status === 409) return skip(e.message.includes("undone") ? "Skipped: the retcon was undone." : "Skipped: the chapter was edited while it was read.");
-    throw e;
-  }
-  return replace(list, { ...task, status: "done", found: saved, error: undefined });
-}
-
-/**
- * Notes to facts: the AI reads the notes of one codex entry (as the codex stands at the chapter they were written at) and
- * leaves the facts it finds in the codex inbox, anchored at that chapter. The codex is read again here, since the run may
- * be old: an entry that is gone or has no notes, or a chapter edited since the run was made (or while the AI read), is skipped.
- */
-async function doNotes(task: NotesTask, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
-  const context = await getContext(f, task.chapterId);
-  const chapter = context.path.at(-1)!;
-  const skip = (why: string) => replace(list, { ...task, status: "skipped", error: why });
-  if (context.trashed) return skip(TRASHED);
-  if (chapter.revision !== task.revision) return skip("Skipped: the chapter was edited after the run was made.");
-  const { entries } = await getChapterCodex(f, task.chapterId);
-  const entry = entries.find((e) => e.entry_id === task.entryId);
-  if (!entry) return skip("Skipped: the entry is no longer in the codex.");
-  if (!entry.content.trim()) return skip("Skipped: the entry has no notes.");
-  env.onEvent?.({ type: "status", text: `Reading the notes of “${entry.name}”…` });
-  const suggestions = await runNotesToFacts(env.settings, { entry, signal: env.signal, role: "cheap", source: sourceOf(run, task.chapterId) });
-  let saved = 0;
-  try {
-    saved = (await postNotesSuggestions(f, task.chapterId, task.revision, task.entryId, suggestions)).saved;
-  } catch (e) {
-    if (e instanceof ApiError && e.status === 409) return skip("Skipped: the chapter was edited while the notes were read.");
     throw e;
   }
   return replace(list, { ...task, status: "done", found: saved, error: undefined });

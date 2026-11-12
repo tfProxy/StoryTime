@@ -1,4 +1,4 @@
-// Hints on a codex entry's page: plain-code warnings above the Facts (notes but no facts, never mentioned, long facts,
+// Hints on a codex entry's page: plain-code warnings above the Facts (never mentioned, long facts,
 // chapter numbers, the same aspect written two ways), which go once the entry is fixed.
 import { launch } from "./browser.mjs";
 import { unfoldEntryFolds } from "./unfold.mjs";
@@ -30,12 +30,11 @@ const ed = page.locator(".entry-editor");
 const hints = ed.getByRole("note", { name: "Hints" });
 const open = async (entry) => {
   await page.goto(`${BASE}/s/${story.story_id}/codex/${entry}?at=${root}`);
-  await ed.locator(".fact-ai").waitFor();
+  await ed.locator(".fact-ai").first().waitFor();
 };
 
 await open(notesOnly);
-ok(await hints.getByText("It has notes but no facts, so the AI is told nothing about it.").isVisible(), "notes but no facts: the AI gets nothing");
-ok(!(await hints.innerText()).includes("Neither its name"), "…and an entry with no facts isn't flagged as unmentioned");
+ok((await hints.count()) === 0, "an entry with no facts (and old notes) has no hints, not even unmentioned");
 
 await open(messy);
 const text = await hints.innerText();
@@ -56,18 +55,13 @@ await page.getByRole("button", { name: "Cancel" }).first().click();
 await hints.getByRole("button", { name: "Keep “Ears: round ears”, remove “Ear: a notch in the left one”" }).click();
 await ed.locator(".fact-line", { hasText: "a notch in the left one" }).waitFor({ state: "detached" });
 ok(!(await hints.innerText()).includes("same aspect written two ways"), "Keep “Ears” removes the other one, and its hint goes");
-await open(notesOnly);
-ok(await hints.getByRole("button", { name: "Turn notes into facts" }).isVisible(), "the notes-only hint offers Turn notes into facts");
-await page.getByRole("tab", { name: "History" }).click();
-await hints.getByRole("button", { name: "Turn notes into facts" }).click();
-ok((await page.getByRole("tab", { name: "Your notes" }).getAttribute("aria-selected")) === "true" && (await page.getByRole("tabpanel").getByRole("button", { name: "Turn notes into facts" }).isVisible()), "…which shows the notes tab and its button");
 
 // ---- the Story Bible: a count on each card, and always-included entries that crowd the prompt ----
 const cardOf = (name) => page.locator(".entry-card", { hasText: name });
 await page.goto(`${BASE}/s/${story.story_id}/review?tab=codex`);
 await cardOf("Brannoc").waitFor();
 ok(await cardOf("Brannoc").getByText("⚠ 2 hints").isVisible(), "the whole-story card counts its entry's hints (long fact, chapter number)");
-ok(await cardOf("Oda").getByText("⚠ 1 hint").isVisible(), "…one hint, singular");
+ok((await cardOf("Oda").getByText(/⚠/).count()) === 0, "…and an entry without hints has no count");
 await page.goto(`${BASE}/s/${story.story_id}/review?tab=codex&chapter=${root}`);
 await cardOf("Brannoc").waitFor();
 ok(await cardOf("Brannoc").getByText("⚠ 2 hints").isVisible(), "…and so does the card at a chapter");

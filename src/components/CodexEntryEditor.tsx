@@ -16,10 +16,8 @@ import {
   type EntryType,
   type FactOp,
 } from "@/lib/codex";
-import type { AiRun, NotesTask } from "@/lib/aiRuns/types";
 import type { PathChapter } from "@/lib/ai/codexAi";
-import AiRunProgress from "./AiRunProgress";
-import { INBOX_CHANGED } from "./CodexInbox";
+import { codexIconUrl } from "@/lib/codexIconUrl";
 import CodexFacts, { type HeldFact } from "./CodexFacts";
 import ChapterPathPicker from "./ChapterPathPicker";
 import EntryFold from "./EntryFold";
@@ -53,12 +51,11 @@ type Props = {
   chapterId: string;
   storyId?: string;
   usedAspects: string[];
-  /** The entry's picture at this chapter, and the page that makes pictures (absent where leaving the page would lose work). */
-  pictureId?: string | null;
-  picturesHref?: string | null;
+  /** The entry's icon version (see codexIcons), when it has one. */
+  icon?: number | null;
   /** "drawer" inside the writing page's drawer (changes are held in the draft). The entry's own page is CodexEntryPage. */
   variant?: "page" | "drawer";
-  /** How entry-detail and notes changes are saved; the default posts them at `chapterId` and refreshes the page. */
+  /** How entry-detail changes are saved; the default posts them at `chapterId` and refreshes the page. */
   save?: EntrySave;
   /** The change this entry has waiting in the draft, and a way to drop it. */
   held?: CodexChange;
@@ -170,122 +167,6 @@ export function useEntryActions({
   return { busy, error, setError, change, replace, share, removeHere, retire };
 }
 
-/** The entry's notes (never sent to the AI): Edit, Clear and, where offered, Turn notes into facts. */
-export function EntryNotes({
-  entry,
-  busy,
-  replace,
-  readOnly = false,
-  turnIntoFacts,
-}: {
-  entry: CodexEntry;
-  busy: boolean;
-  replace: (patch: Partial<EntryFields>) => Promise<boolean>;
-  /** A linked entry's notes, changed with its details. */
-  readOnly?: boolean;
-  /** Where "Turn notes into facts" is offered: the story and chapter its run reads them at. */
-  turnIntoFacts?: { storyId: string; chapterId: string; done?: string };
-}) {
-  const router = useRouter();
-  const [notes, setNotes] = useState<string | null>(null);
-  const [runId, setRunId] = useState<string | null>(null);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
-  const [starting, setStarting] = useState(false);
-
-  async function start() {
-    if (!turnIntoFacts) return;
-    setMessage(null);
-    setStarting(true);
-    try {
-      const res = await fetch(`/api/stories/${turnIntoFacts.storyId}/notes-to-facts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chapter_id: turnIntoFacts.chapterId, entry_ids: [entry.entry_id] }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? `Couldn't start (${res.status})`);
-      if (typeof data.run_id !== "string") setMessage({ ok: false, text: "There are no notes to read." });
-      else setRunId(data.run_id);
-    } catch (e) {
-      setMessage({ ok: false, text: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setStarting(false);
-    }
-  }
-
-  function finished(run: AiRun) {
-    const tasks = run.tasks.filter((t): t is NotesTask => t.kind === "notes");
-    const failed = tasks.filter((t) => t.status === "failed").length;
-    const found = tasks.reduce((sum, t) => sum + (t.found ?? 0), 0);
-    if (failed > 0) setMessage({ ok: false, text: "The notes could not be read. Try again." });
-    else setMessage({ ok: true, text: found === 0 ? "Nothing to suggest: the facts already cover the notes." : `The AI suggested ${found} fact${found === 1 ? "" : "s"}: ${turnIntoFacts?.done ?? "see them in the codex inbox"}.` });
-    window.dispatchEvent(new Event(INBOX_CHANGED));
-    router.refresh();
-  }
-
-  const inboxHref = turnIntoFacts ? `/s/${turnIntoFacts.storyId}/review?tab=codex&chapter=${entry.op.anchor_chapter_id}` : null;
-  if (readOnly) return entry.content ? <p className="entry-notes">{entry.content}</p> : <p className="meta">No notes.</p>;
-  return (
-    <>
-      {notes === null ? (
-        <>
-          {entry.content ? <p className="entry-notes">{entry.content}</p> : <p className="meta">No notes.</p>}
-          <div className="row">
-            <button type="button" className="secondary" disabled={busy} onClick={() => setNotes(entry.content)}>
-              Edit
-            </button>
-            {entry.content && (
-              <button
-                type="button"
-                className="secondary"
-                disabled={busy}
-                onClick={() => {
-                  if (window.confirm(`Clear the notes of “${entry.name}”?`)) void replace({ content: "" });
-                }}
-              >
-                Clear
-              </button>
-            )}
-            {entry.content && turnIntoFacts && (
-              <button type="button" disabled={busy || starting || runId !== null} onClick={start}>
-                {starting ? "Starting…" : "Turn notes into facts"}
-              </button>
-            )}
-          </div>
-        </>
-      ) : (
-        <div className="fact-form">
-          <label>
-            Notes
-            <textarea aria-label="Notes" rows={6} value={notes} maxLength={CODEX_LIMITS.content} onChange={(e) => setNotes(e.target.value)} />
-          </label>
-          <div className="row">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={async () => {
-                if (await replace({ content: notes.trim() })) setNotes(null);
-              }}
-            >
-              {busy ? "Saving…" : "Save"}
-            </button>
-            <button type="button" className="secondary" disabled={busy} onClick={() => setNotes(null)}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-      {message && <p className={message.ok ? "ok" : "error"}>{message.text}</p>}
-      {runId && <AiRunProgress key={runId} runId={runId} onFinished={finished} />}
-      {runId && inboxHref && (
-        <p className="meta">
-          <Link href={inboxHref}>Open the codex inbox</Link>
-        </p>
-      )}
-    </>
-  );
-}
-
 /** The entry's versions, newest first, each with Restore. */
 export function EntryHistoryList({
   entry,
@@ -320,10 +201,9 @@ export function EntryHistoryList({
                 <div className="version">
                   <strong>{v.name}</strong> [{v.type}]
                   {v.aliases.length > 0 && <div className="meta">Keywords: {v.aliases.join(", ")}</div>}
-                  {v.content && <div style={{ whiteSpace: "pre-wrap" }}>{v.content}</div>}
                 </div>
                 {!isCurrent && (
-                  <button type="button" className="secondary" disabled={busy} onClick={() => replace({ name: v.name, type: v.type, aliases: v.aliases, content: v.content, always_include: v.always_include })}>
+                  <button type="button" className="secondary" disabled={busy} onClick={() => replace({ name: v.name, type: v.type, aliases: v.aliases, always_include: v.always_include })}>
                     Restore this version
                   </button>
                 )}
@@ -337,7 +217,7 @@ export function EntryHistoryList({
 }
 
 /**
- * A codex entry inside the writing page's drawer: its details, keywords, form, facts, notes and history, with changes
+ * A codex entry inside the writing page's drawer: its icon, details, keywords, form, facts and history, with changes
  * held in the draft. (The entry's own page is CodexEntryPage.)
  */
 export default function CodexEntryEditor({
@@ -349,8 +229,7 @@ export default function CodexEntryEditor({
   chapterId,
   storyId,
   usedAspects,
-  pictureId,
-  picturesHref,
+  icon,
   variant = "drawer",
   save,
   holdFact,
@@ -384,15 +263,9 @@ export default function CodexEntryEditor({
   return (
     <div className="entry-editor">
       <div className="entry-head">
-        {pictureId && storyId && picturesHref && (
-          <Link href={picturesHref} title={`The picture of ${entry.name} as of this chapter`} className="codex-thumb-link">
-            {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
-            <img className="codex-thumb" src={`/api/stories/${storyId}/codex-pictures/${pictureId}`} alt={`Picture of ${entry.name}`} />
-          </Link>
-        )}
-        {pictureId && storyId && !picturesHref && (
+        {icon != null && storyId && (
           // eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size
-          <img className="codex-thumb" src={`/api/stories/${storyId}/codex-pictures/${pictureId}`} alt={`Picture of ${entry.name}`} />
+          <img className="codex-icon" src={codexIconUrl(storyId, entry.entry_id, icon)} alt={`Icon of ${entry.name}`} />
         )}
         <div className="entry-head-text">
           <h2 style={{ margin: 0 }}>{entry.name}</h2>
@@ -416,7 +289,6 @@ export default function CodexEntryEditor({
           )}
           <MoreMenu label="More entry actions">
             {!shared && <button type="button" onClick={() => reveal("entry-details", setDetailsOpen)}>Edit name, type and keywords</button>}
-            {picturesHref && <Link href={picturesHref}>Pictures</Link>}
             <button type="button" onClick={() => reveal("entry-history", setHistoryOpen)}>
               History ({hist.length} version{hist.length === 1 ? "" : "s"})
             </button>
@@ -431,7 +303,7 @@ export default function CodexEntryEditor({
       {shared && (
         <section className="entry-section">
           <p className="notice">
-            This entry is shared: its name, type, keywords and notes come from the <Link href={`/shared/${shared}`}>shared entry</Link>.
+            This entry is shared: its name, type and keywords come from the <Link href={`/shared/${shared}`}>shared entry</Link>.
             Open it from its page (not the writing page&apos;s drawer) to change them for this story, or edit the shared entry to change
             them in every story. The facts below can be changed for this story alone.
           </p>
@@ -484,11 +356,7 @@ export default function CodexEntryEditor({
       )}
 
       <EntryFold title="What the AI reads" id="entry-ai-reads">
-        <div className="fact-ai">{entry.description || <em>Nothing yet — add facts. Notes are not sent to the AI.</em>}</div>
-      </EntryFold>
-
-      <EntryFold title="Your notes (not sent to the AI)" id="entry-notes">
-        <EntryNotes entry={entry} busy={busy} replace={replace} readOnly={!!shared} />
+        <div className="fact-ai">{entry.description || <em>Nothing yet — add facts.</em>}</div>
       </EntryFold>
 
       <EntryFold title="History" id="entry-history" open={historyOpen} onToggle={setHistoryOpen} note={`${hist.length} version${hist.length === 1 ? "" : "s"}`}>

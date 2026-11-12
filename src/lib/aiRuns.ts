@@ -142,22 +142,6 @@ export const CodexTaskSchema = z.object({
   error: text(LIMITS.summary).optional(),
 });
 
-export const NotesTaskSchema = z.object({
-  kind: z.literal("notes"),
-  id: taskId,
-  /** The codex entry whose notes the AI turns into facts. */
-  entryId: z.string().min(1).max(100),
-  /** Where the notes were last written; the suggested facts are saved at this chapter. */
-  chapterId: z.string().min(1).max(100),
-  revision: z.number().int().min(1),
-  /** The entry's name. */
-  label: text(LIMITS.title).optional(),
-  status: taskStatus,
-  /** How many suggestions were left in the codex inbox. */
-  found: z.number().int().min(0).optional(),
-  error: text(LIMITS.summary).optional(),
-});
-
 export const ExpandTaskSchema = z.object({
   kind: z.literal("expand"),
   id: taskId,
@@ -190,7 +174,7 @@ export const RetconTaskSchema = z.object({
   error: text(LIMITS.summary).optional(),
 });
 
-export const RunTaskSchema = z.discriminatedUnion("kind", [WriteTaskSchema, PlanTaskSchema, PictureTaskSchema, TagsTaskSchema, FactsTaskSchema, ContinuityTaskSchema, SummaryTaskSchema, CodexTaskSchema, NotesTaskSchema, ExpandTaskSchema, RetconTaskSchema]);
+export const RunTaskSchema = z.discriminatedUnion("kind", [WriteTaskSchema, PlanTaskSchema, PictureTaskSchema, TagsTaskSchema, FactsTaskSchema, ContinuityTaskSchema, SummaryTaskSchema, CodexTaskSchema, ExpandTaskSchema, RetconTaskSchema]);
 export const RunTasksSchema = z.array(RunTaskSchema).max(LIMITS.runTasks);
 
 export const RunOptionsSchema = z.object({
@@ -219,14 +203,13 @@ export const RunOptionsSchema = z.object({
   // A review run: what to read each chapter for (tags unless said otherwise; facts cost one more AI call a chapter;
   // continuity, after the facts, asks the AI about each clash between chapters; summaries checks each summary against its chapter).
   // "codex": reads each chapter for changes to the codex and leaves suggestions in the codex inbox.
-  // "notes": turns the notes of the codex entries (as of the start chapter) into suggested facts; see `entryIds`.
   // "expand": the AI proposes new facts for the entry in `entryIds`, as the codex stands at the start chapter.
   // "update": the AI reads the chapters that name the entry in `entryIds` since its last change (on the way to the start
   // chapter) for that entry's changes alone, and leaves suggestions on it.
   // "retcon": reads the chapters of the retcon `retconId` for passages that no longer fit its change (see ./retcons).
-  checks: z.array(z.enum(["tags", "facts", "continuity", "summaries", "codex", "notes", "expand", "update", "retcon"])).max(9).optional(),
+  checks: z.array(z.enum(["tags", "facts", "continuity", "summaries", "codex", "expand", "update", "retcon"])).max(8).optional(),
   retconId: z.string().min(1).max(100).optional(),
-  // With "notes": only these entries (all those with notes when absent). With "expand" or "update": the entry.
+  // With "expand" or "update": the entry.
   entryIds: z.array(z.string().min(1).max(100)).max(200).optional(),
   expandMode: z.enum(["invent", "close"]).optional(),
   expandHint: text(200).optional(),
@@ -430,19 +413,6 @@ export function reviewTasks(storyId: string, startChapterId: string | null, scop
     for (const c of chosen) {
       if (read.has(c.id)) continue;
       tasks.push({ kind: "codex", id: `t${tasks.length + 1}`, chapterId: c.id, revision: c.revision, label: c.title.slice(0, LIMITS.title), status: "todo" });
-    }
-  }
-  if (checks.includes("notes")) {
-    // One task for each entry (live at the start chapter) that has notes, at the chapter the notes were last written.
-    if (startChapterId === null) throw new PostError("Turning notes into facts needs a chapter to read the codex at", 400);
-    const byId = new Map(chapters.map((c) => [c.id, c]));
-    if (!byId.has(startChapterId)) throw new PostError("That chapter is not in this story's tree", 404);
-    const only = entryIds ? new Set(entryIds) : null;
-    for (const e of getCodexState(startChapterId)) {
-      if (!e.content.trim() || (only && !only.has(e.entry_id))) continue;
-      const anchor = byId.get(e.op.anchor_chapter_id);
-      if (!anchor) continue;
-      tasks.push({ kind: "notes", id: `t${tasks.length + 1}`, entryId: e.entry_id, chapterId: anchor.id, revision: anchor.revision, label: e.name.slice(0, LIMITS.title), status: "todo" });
     }
   }
   if (checks.includes("expand")) {

@@ -2,7 +2,7 @@ import { launch, useMockAi } from "./browser.mjs";
 import { entryAction, factRow, openTab } from "./entryPage.mjs";
 
 // The codex entry's own page: the bar (back, name, chapter picker, ‹ ›, ⋯), the details line and Edit details, the form
-// row and Change form, notes (not sent to the AI) and Turn notes into facts in the tabs, the line to the changes waiting
+// row and Change form, the icon (picked from a saved picture or uploaded, shown in the codex list), the line to the changes waiting
 // beside the text, and the places that lead to the page (the codex list, the Story Bible, the ☰ menu, the writing
 // page's drawer).
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
@@ -111,31 +111,50 @@ try {
   ok((await ed.locator(".entry-ai-told .fact-ai").innerText()).includes("Form: vixen, halfway."), "What the AI is told has the form line");
   ok(await ed.getByRole("heading", { name: "vixen only · the form now" }).isVisible() && (await ed.locator(".ef-other summary", { hasText: "human only" }).isVisible()), "the facts are grouped by form, the current one shown, the other folded");
 
-  // ---- notes, in the Your notes tab: not what the AI reads; Edit and Clear ----
-  const notes = await openTab(page, "Your notes");
-  ok((await notes.innerText()).includes("She is shy and quick.") && !(await ed.locator(".entry-ai-told .fact-ai").innerText()).includes("She is shy"), "the notes are shown apart from what the AI reads");
-  await notes.getByRole("button", { name: "Edit", exact: true }).click();
-  await notes.getByLabel("Notes", { exact: true }).fill("She is shy. She loves apples.");
-  await notes.getByRole("button", { name: "Save", exact: true }).click();
-  await notes.locator(".entry-notes", { hasText: "She loves apples." }).waitFor();
-  const saved = await entryAt(A);
-  ok(saved.content === "She is shy. She loves apples." && saved.name === "Rowan" && saved.aliases.join() === "Ro,the traveller,the fox", "saving the notes keeps the other fields");
-  await notes.getByRole("button", { name: "Clear" }).click();
-  await notes.getByText("No notes.").waitFor();
-  ok((await entryAt(A)).content === "" && (await notes.getByRole("button", { name: "Turn notes into facts" }).count()) === 0, "Clear empties the notes, leaving nothing to turn into facts");
-  await notes.getByRole("button", { name: "Edit", exact: true }).click();
-  await notes.getByLabel("Notes", { exact: true }).fill("She was born in the north. She hates the cold.");
-  await notes.getByRole("button", { name: "Save", exact: true }).click();
+  // ---- no notes: text kept in an entry's old notes shows nowhere ----
+  ok(!(await ed.innerText()).includes("She is shy") && (await page.getByRole("tab", { name: "Your notes" }).count()) === 0, "an entry has no notes: no Your notes tab, and old notes don't show");
+  ok((await page.getByRole("button", { name: "Turn notes into facts" }).count()) === 0, "…and no Turn notes into facts");
+  ok((await fetch(`${BASE}/api/stories/${sid}/notes-to-facts`, { method: "POST" })).status === 404, "…nor its route");
 
-  // ---- Turn notes into facts: a run is queued (the queue is paused, so no AI is called) ----
-  await send("PUT", "/api/queue/paused", { paused: true });
-  const queued = page.waitForResponse((r) => r.url().endsWith(`/api/stories/${sid}/notes-to-facts`) && r.request().method() === "POST");
-  await notes.getByRole("button", { name: "Turn notes into facts" }).click();
-  const made = await (await queued).json();
-  const run = await send("GET", `/api/ai-runs/${made.run_id}`);
-  ok(typeof made.run_id === "string" && made.tasks === 1 && run.tasks[0].kind === "notes" && run.tasks[0].entryId === rowan, "the button makes a run with a notes task for this entry");
-  for (const item of (await send("GET", "/api/queue")).items ?? []) await fetch(`${BASE}/api/queue/items/${item.key}`, { method: "DELETE" });
-  await send("PUT", "/api/queue/paused", { paused: false });
+  // ---- the icon: none yet; picked from a saved picture, or uploaded; shown round on the page and in the codex list ----
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  await fetch(`${BASE}/api/chapters/${A}/images/header`, { method: "PUT", headers: { "Content-Type": "image/png" }, body: png });
+  await page.reload();
+  await ed.locator(".fact-ai").first().waitFor();
+  const iconButton = page.getByRole("button", { name: "Add an icon for Rowan" });
+  ok(await iconButton.isVisible(), "with no icon the details line offers to add one");
+  await iconButton.click();
+  const iconPanel = page.getByRole("region", { name: "Icon" });
+  const savedList = iconPanel.getByRole("list", { name: "The story's saved pictures" });
+  await savedList.waitFor();
+  ok((await savedList.getByRole("button").allInnerTexts()).some((t) => t.includes("Chapter A header")), "the story's saved pictures are offered: " + (await savedList.getByRole("button").allInnerTexts()).join("|"));
+  const putIcon = page.waitForResponse((r) => r.url().includes(`/codex-icons/${rowan}`) && r.request().method() === "PUT");
+  await savedList.getByRole("button", { name: /Chapter A header/ }).click();
+  ok((await putIcon).ok(), "picking a saved picture saves it as the icon");
+  await page.getByRole("button", { name: "Change the icon of Rowan" }).locator("img.codex-icon").waitFor();
+  const icons = (await send("GET", `/api/stories/${sid}/codex-icons`)).icons;
+  ok(typeof icons[rowan] === "number", "the story's icon list has it");
+  const iconRes = await fetch(`${BASE}/api/stories/${sid}/codex-icons/${rowan}?v=${icons[rowan]}`);
+  ok(iconRes.ok && iconRes.headers.get("content-type") === "image/jpeg", "the icon is kept as a square JPEG");
+  // An upload replaces it.
+  const putUpload = page.waitForResponse((r) => r.url().includes(`/codex-icons/${rowan}`) && r.request().method() === "PUT");
+  await iconPanel.getByLabel("Icon file").setInputFiles({ name: "rowan.png", mimeType: "image/png", buffer: png });
+  ok((await putUpload).ok(), "an uploaded file becomes the icon");
+  await iconPanel.getByText("Icon saved.").waitFor();
+  ok((await send("GET", `/api/stories/${sid}/codex-icons`)).icons[rowan] > icons[rowan], "…with a new version");
+  // The codex list in the Story Bible shows it round beside the name.
+  await page.goto(`${BASE}/s/${sid}/review?tab=codex&chapter=${A}`);
+  const rowanCard = page.locator(".entry-card", { hasText: "Rowan" });
+  await rowanCard.waitFor();
+  ok(await rowanCard.locator("img.codex-icon").isVisible(), "the codex list shows the icon on the entry's card");
+  ok(await rowanCard.locator("img.codex-icon").evaluate((el) => getComputedStyle(el).borderRadius === "50%"), "…round");
+  await page.goto(entryUrl(A));
+  await page.getByRole("button", { name: "Change the icon of Rowan" }).click();
+  await page.getByRole("region", { name: "Icon" }).getByRole("button", { name: "Remove the icon" }).click();
+  await page.getByRole("button", { name: "Add an icon for Rowan" }).waitFor();
+  ok(!((await send("GET", `/api/stories/${sid}/codex-icons`)).icons[rowan]), "Remove the icon takes it away");
+  await page.goto(entryUrl(A));
+  await ed.locator(".fact-ai").first().waitFor();
 
   // ---- a suggestion from the text: the line to the review beside the text, and a marker on the fact ----
   ok((await ed.locator(".entry-waiting").count()) === 0, "with nothing waiting there is no changes line");
@@ -238,16 +257,16 @@ try {
   ok((await box(pbar.locator(".entry-bar-at"))).y > (await box(pbar.getByRole("heading", { level: 1 }))).y + 10, "on a phone the chapter goes under the name");
   await pbar.getByLabel("More entry actions", { exact: true }).click();
   const items = (await pbar.locator(".more-menu-items > *").allInnerTexts()).map((t) => t.trim());
-  ok(items.join("|") === "Edit details|Pictures|Compare with a chapter…|Summary of this chapter|Share to other stories…|Remove from this chapter only…|Retire from here on…", "the ⋯ menu lists the entry's actions: " + items.join("|"));
+  ok(items.join("|") === "Edit details|Change the icon…|Compare with a chapter…|Summary of this chapter|Share to other stories…|Remove from this chapter only…|Retire from here on…", "the ⋯ menu lists the entry's actions: " + items.join("|"));
   const menuBox = await box(pbar.locator(".more-menu-items"));
   ok(menuBox.x >= 0 && menuBox.x + menuBox.width <= 390, "the menu stays on the phone screen");
-  ok((await pbar.locator(".more-menu-items").getByRole("link", { name: "Pictures" }).getAttribute("href")) === `/s/${sid}/codex/${rowan}/pictures?at=${A}`, "Pictures in the menu links to the picture page");
+  await pbar.locator(".more-menu-items").getByRole("button", { name: "Change the icon…" }).click();
+  ok(await phone.getByRole("region", { name: "Icon" }).isVisible(), "Change the icon… opens the icon picker");
+  await pbar.getByLabel("More entry actions", { exact: true }).click();
   await pbar.locator(".more-menu-items").getByRole("button", { name: "Compare with a chapter…" }).click();
   ok(await phone.locator("#entry-compare-panel").getByText("Compare with").isVisible(), "Compare with a chapter… opens the comparison picker");
   const tabs = (await phone.getByRole("tab").allInnerTexts()).map((t) => t.trim());
-  ok(tabs.join("|") === "Your notes|What the AI reads|History|Pictures|Update from the story", "the tabs: " + tabs.join("|"));
-  const pics = await openTab(phone, "Pictures");
-  ok((await pics.getByRole("link", { name: "Open the pictures page" }).getAttribute("href")) === `/s/${sid}/codex/${rowan}/pictures?at=${A}`, "the Pictures tab links to the pictures page");
+  ok(tabs.join("|") === "What the AI reads|History|Update from the story", "the tabs: " + tabs.join("|"));
   await openTab(phone, "Update from the story");
   ok(await phone.getByRole("tabpanel").locator(".update-from-story").isVisible(), "the Update from the story tab shows the update");
   ok(await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "the entry page does not scroll sideways at 390px");

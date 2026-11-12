@@ -16,7 +16,7 @@ export async function entryAction(page, name, role = "button") {
   await page.locator(".entry-bar .more-menu-items").getByRole(role, { name, exact: true }).click();
 }
 
-/** Opens a tab at the foot of the page ("Your notes", "What the AI reads", "History", "Pictures", "Update from the story"). */
+/** Opens a tab at the foot of the page ("What the AI reads", "History", "Update from the story"). */
 export async function openTab(page, name) {
   await page.getByRole("tab", { name, exact: true }).click();
   return page.getByRole("tabpanel");

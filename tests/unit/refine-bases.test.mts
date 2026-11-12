@@ -43,8 +43,8 @@ const back = loadSession(s.id, store);
 ok(back?.bases[id1]?.original.kind === "comfy" && back.bases[id1].prompt === "prompt 1" && back.bases[ORIGINAL_BASE].original.kind === "comfy" && back.history.present.base === id1, "bases and the applied state read back");
 const old = readSession(JSON.parse(JSON.stringify({ ...s, bases: undefined })));
 ok(old !== null && old.bases[ORIGINAL_BASE].original.kind === "comfy" && old.bases[ORIGINAL_BASE].prompt === "a cat", "a session saved before bases existed gets the original as its base");
-const damaged = readSession(JSON.parse(JSON.stringify({ ...s, bases: { [id1]: { original: { kind: "bogus" } }, [ORIGINAL_BASE]: { original: { kind: "bogus" } }, ok: { original: { kind: "codex", pictureId: "p1" }, prompt: 5 } } })));
-ok(damaged !== null && !(id1 in damaged.bases) && damaged.bases[ORIGINAL_BASE].original.kind === "comfy" && damaged.bases.ok?.original.kind === "codex" && damaged.bases.ok.prompt === undefined, "damaged bases are dropped, the original base cannot be replaced");
+const damaged = readSession(JSON.parse(JSON.stringify({ ...s, bases: { [id1]: { original: { kind: "bogus" } }, [ORIGINAL_BASE]: { original: { kind: "bogus" } }, ok: { original: { kind: "saved", slot: "header", version: 3 }, prompt: 5 }, gone: { original: { kind: "codex", pictureId: "p1" } } } })));
+ok(damaged !== null && !(id1 in damaged.bases) && !("gone" in damaged.bases) && damaged.bases[ORIGINAL_BASE].original.kind === "comfy" && damaged.bases.ok?.original.kind === "saved" && damaged.bases.ok.prompt === undefined, "damaged bases are dropped, the original base cannot be replaced");
 
 // the tray: oldest first (pictures being made follow it); previous / next along it; Discard picks the next, else the previous, else none
 const list = addResults([], [res(0), res(1), res(2)]);

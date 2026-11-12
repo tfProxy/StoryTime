@@ -33,11 +33,14 @@ and, for pictures, your own ComfyUI machine.
   have pictures that change over the story too (**Pictures** in the entry's **⋯** menu).
 - **An entry's page** shows the entry as of one chapter. The bar at the top stays in view: **← Codex**,
   the name, **as of** with **‹ “chapter” ›** to step through the chapters (tap the chapter to pick
-  another), and **⋯** (Edit details, Pictures, Compare with a chapter…, Summary of this chapter, Share,
-  Remove from this chapter only, Retire). Under it: the type, where the entry first appears (with
-  **Change…**), its keywords and **Edit details**; then the facts as of the chapter, **What the AI is
-  told** there, any **AI ideas**, and tabs for **Your notes**, **What the AI reads**, **History**,
-  **Pictures** and **Update from the story**.
+  another), and **⋯** (Edit details, Change the icon…, Compare with a chapter…, Summary of this chapter,
+  Share, Remove from this chapter only, Retire). Under it: the entry's round icon (tap it to change it),
+  the type, where the entry first appears (with **Change…**), its keywords and **Edit details**; then the
+  facts as of the chapter, **What the AI is told** there, any **AI ideas**, and tabs for **What the AI
+  reads**, **History** and **Update from the story**.
+- **Icons**: each entry has one round icon, shown in the codex lists and on its page, the same in every
+  chapter. Pick it from the story's saved pictures or the pictures made for the story lately, or upload
+  one. It is never sent to ComfyUI or the AI. An entry from the shared codex has its own icon in each story.
 - **Keywords**: each entry lists the words in the story that bring it into the AI's prompt
   ("Ro, the traveller"); **Edit details** on the entry's page changes them, with the name and type.
 - **Codex facts**: an entry holds small facts, one per aspect ("Ears: tall fox ears"), each dated to
@@ -63,9 +66,6 @@ and, for pictures, your own ComfyUI machine.
   at and how far along it is ("halfway"), and shows exactly what the AI will read. A form's own fact
   replaces the every-form fact on the same aspect while she is in that form (the every-form one is
   shown struck through); the other forms' facts are folded away and not sent to the AI.
-- **Your notes**: a free-text note on each entry that is yours and is **not sent to the AI**. **Turn
-  notes into facts** asks the AI to read them; what it finds waits under **AI ideas** › **From your
-  notes**.
 - **Story Bible**: the **Bible** tab of every story page. On a phone its sections are a **Section**
   picker; under it, **Showing** says which chapter (or the whole story) you are looking at, with
   **Change…** to pick another and a link back to reading the chapter.
@@ -96,7 +96,7 @@ and, for pictures, your own ComfyUI machine.
   summaries, continuity slips, names with no codex entry, AI chapters not yet read) and the
   **tags** the AI suggests for chapters, for you to approve. See [Tags](#tags) below.
 - **Edit chapters later**; every earlier version is kept, and an edited chapter links to its history.
-- **Pictures**: chapter headers and footers, covers and codex pictures made by your own ComfyUI, with
+- **Pictures**: chapter headers and footers and covers made by your own ComfyUI, with
   presets, LoRAs, reference pictures, editing by instruction, and a Refine screen for painting and
   redrawing parts of a picture. See [Pictures with ComfyUI](docs/pictures.md).
 - **Covers**: the story list shows each story as a book cover. Make one on the cover page, upload one

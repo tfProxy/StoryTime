@@ -89,12 +89,9 @@ try {
   ok((await resolve(`saved:${story}:cover`)).bytes?.equals(makePng(6)), "saved:<story>:cover is the story's cover");
   ok(!(await resolve(`saved:${chapter}:middle`)).ok, "a saved slot that does not exist is an error");
 
-  // a codex picture
-  const entry = (await call("POST", "/api/codex", { anchor_chapter_id: chapter, op: "create", name: "Mira", type: "character", content: "A thief." })).json.entry_id;
-  const saved = await fetch(`${B}/api/stories/${story}/codex-pictures?entry=${entry}`, { method: "POST", headers: { "Content-Type": "image/png" }, body: makePng(7) });
-  const pictureId = (await saved.json()).id;
-  ok(saved.status === 201 && (await resolve(`codex:${pictureId}`)).bytes?.equals(makePng(7)), "codex:<picture id> is the codex entry's saved picture");
-  ok(!(await resolve("codex:nosuch")).ok, "a codex picture that does not exist is an error");
+  // a codex picture, named by a job from before codex pictures became icons
+  const codex = await resolve("codex:p1");
+  ok(!codex.ok && /Codex pictures can no longer be used/.test(codex.message), "a codex: source is an error that says why");
 
   // what is not a source
   ok(!(await resolve("elsewhere:thing")).ok && !(await resolve("")).ok, "a source of another kind is an error");

@@ -24,8 +24,10 @@ import type { PathChapter } from "@/lib/ai/codexAi";
 import type { CodexSuggestion } from "@/lib/codexSuggestions";
 import { entryHints } from "@/lib/codexHints";
 import { useSettings } from "@/lib/settings";
-import { EntryDetailsForm, EntryHistoryList, EntryNotes, useEntryActions } from "./CodexEntryEditor";
+import { codexIconUrl, type IconChoice } from "@/lib/codexIconUrl";
+import { EntryDetailsForm, EntryHistoryList, useEntryActions } from "./CodexEntryEditor";
 import { EntryHints } from "./CodexFacts";
+import CodexIconPicker from "./CodexIconPicker";
 import { INBOX_CHANGED, useCodexInbox } from "./CodexInbox";
 import FleshOutEntry from "./FleshOutEntry";
 import LinkedEntryDetails from "./LinkedEntryDetails";
@@ -60,8 +62,10 @@ type Props = {
   chapterId: string;
   storyId: string;
   usedAspects: string[];
-  pictureId: string | null;
-  picturesHref: string;
+  /** The entry's icon version (see codexIcons), or null when it has none. */
+  icon: number | null;
+  /** The story's saved pictures the icon can be picked from. */
+  iconChoices: IconChoice[];
   /** The chapters already written after `chapterId`: "Remove from this chapter only" keeps the entry in them. */
   after: Chapter[];
   nav: EntryPageNav;
@@ -80,7 +84,7 @@ type Props = {
 };
 
 type Body = { op: "set" | "retire"; aspect: string; form: string; text: string; quote: string; fact_id?: string; anchor: string };
-type Tab = "notes" | "ai" | "history" | "pictures" | "update";
+type Tab = "ai" | "history" | "update";
 
 const NEW_FORM = "\u0000new";
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -120,18 +124,19 @@ function useCloseOnClickAway() {
  * own ideas, and tabs for the rest.
  */
 export default function CodexEntryPage(props: Props) {
-  const { entry, ops, facts, path, chapterId, storyId, usedAspects, pictureId, picturesHref, after, nav, start, startPicker, compare, summary, laterForm, formChapters } = props;
+  const { entry, ops, facts, path, chapterId, storyId, usedAspects, icon, iconChoices, after, nav, start, startPicker, compare, summary, laterForm, formChapters } = props;
   const router = useRouter();
   const shared = entry.shared_entry_id;
   const { busy, error, setError, replace, share, removeHere, retire } = useEntryActions({ entry, chapterId, storyId });
-  // A linked entry's details hold its notice (where its name and notes come from), so they are open until closed
+  // A linked entry's details hold its notice (where its name and details come from), so they are open until closed
   // (also right after the entry is shared from the ⋯ menu).
   const [detailsToggled, setDetailsOpen] = useState<boolean | null>(null);
   const detailsOpen = detailsToggled ?? Boolean(entry.shared_entry_id);
   const [savedNote, setSavedNote] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
-  const [tab, setTab] = useState<Tab>("notes");
+  const [iconOpen, setIconOpen] = useState(false);
+  const [tab, setTab] = useState<Tab>("ai");
   const refresh = () => router.refresh();
   const inbox = useCodexInbox({ storyId, onPath: { chapterIds: path.map((c) => c.id), entryId: entry.entry_id, onChanged: refresh } });
   const open = useMemo(() => (inbox.items ?? []).filter((s) => s.status === "open"), [inbox.items]);
@@ -155,7 +160,6 @@ export default function CodexEntryPage(props: Props) {
     .reverse();
 
   const ideas = open.filter((s) => s.source === "expand" && !s.quote);
-  const fromNotes = open.filter((s) => s.source === "notes");
 
   function reveal(id: string) {
     setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: "nearest", behavior: "smooth" }), 50);
@@ -201,7 +205,15 @@ export default function CodexEntryPage(props: Props) {
             >
               Edit details
             </button>
-            <Link href={picturesHref}>Pictures</Link>
+            <button
+              type="button"
+              onClick={() => {
+                setIconOpen(true);
+                reveal("entry-icon");
+              }}
+            >
+              Change the icon…
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -278,12 +290,23 @@ export default function CodexEntryPage(props: Props) {
       )}
 
       <div className="entry-details-line">
-        {pictureId && (
-          <Link href={picturesHref} title={`The picture of ${entry.name} as of this chapter`} className="codex-thumb-link">
-            {/* eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size */}
-            <img className="codex-thumb" src={`/api/stories/${storyId}/codex-pictures/${pictureId}`} alt={`Picture of ${entry.name}`} />
-          </Link>
-        )}
+        <button
+          type="button"
+          className="codex-icon-button"
+          aria-expanded={iconOpen}
+          aria-label={icon !== null ? `Change the icon of ${entry.name}` : `Add an icon for ${entry.name}`}
+          title={icon !== null ? "Change the icon" : "Add an icon"}
+          onClick={() => setIconOpen(!iconOpen)}
+        >
+          {icon !== null ? (
+            // eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size
+            <img className="codex-icon" src={codexIconUrl(storyId, entry.entry_id, icon)} alt={`Icon of ${entry.name}`} />
+          ) : (
+            <span className="codex-icon codex-icon-empty" aria-hidden="true">
+              +
+            </span>
+          )}
+        </button>
         <div className="entry-details-text">
           <span>
             {TYPE_LABELS[entry.type]}
@@ -302,6 +325,17 @@ export default function CodexEntryPage(props: Props) {
           </button>
         </div>
       </div>
+      {iconOpen && (
+        <section className="entry-section" id="entry-icon" aria-label="Icon">
+          <h2>Icon</h2>
+          <CodexIconPicker storyId={storyId} entryId={entry.entry_id} entryName={entry.name} version={icon} saved={iconChoices} onChanged={refresh} />
+          <div>
+            <button type="button" className="secondary" onClick={() => setIconOpen(false)}>
+              Close
+            </button>
+          </div>
+        </section>
+      )}
       {detailsOpen && (
         <section className="entry-section" id="entry-details" aria-label={shared ? "Details" : "Name, type and keywords"}>
           <h2>{shared ? "Details" : "Name, type and keywords"}</h2>
@@ -370,17 +404,12 @@ export default function CodexEntryPage(props: Props) {
         suggestions={open.filter(fromText)}
         onSaved={refresh}
         onError={setError}
-        onNotesToFacts={() => {
-          setTab("notes");
-          reveal("entry-tabpanel");
-        }}
       />
 
-      {(ideas.length > 0 || fromNotes.length > 0) && (
+      {ideas.length > 0 && (
         <AiIdeas
           entry={entry}
           ideas={ideas}
-          fromNotes={fromNotes}
           start={start}
           dismiss={async (s) => {
             await inbox.dismiss(s);
@@ -397,45 +426,18 @@ export default function CodexEntryPage(props: Props) {
         tab={tab}
         setTab={setTab}
         tabs={[
-          { id: "notes", label: "Your notes" },
           { id: "ai", label: "What the AI reads" },
           { id: "history", label: "History" },
-          { id: "pictures", label: "Pictures" },
           { id: "update", label: "Update from the story" },
         ]}
       >
-        {tab === "notes" && (
-          <>
-            <p className="meta">Not sent to the AI.</p>
-            <EntryNotes
-              entry={entry}
-              busy={busy}
-              replace={replace}
-              readOnly={!!shared}
-              turnIntoFacts={entry.content ? { storyId, chapterId, done: `see From your notes under AI ideas for ${entry.name}` } : undefined}
-            />
-          </>
-        )}
         {tab === "ai" && (
           <>
             <AiText entry={entry} />
-            <p className="meta">The AI reads this when {entry.name} is named or a keyword appears nearby{entry.always_include ? " (always, here)" : ""}. Your notes and the facts of other forms are not sent.</p>
+            <p className="meta">The AI reads this when {entry.name} is named or a keyword appears nearby{entry.always_include ? " (always, here)" : ""}. The facts of other forms are not sent.</p>
           </>
         )}
         {tab === "history" && <EntryHistoryList entry={entry} ops={ops} titleOf={titleOf} busy={busy} replace={replace} />}
-        {tab === "pictures" && (
-          <>
-            {pictureId ? (
-              // eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size
-              <img className="entry-picture" src={`/api/stories/${storyId}/codex-pictures/${pictureId}`} alt={`Picture of ${entry.name}`} />
-            ) : (
-              <p className="meta">No picture of {entry.name} as of this chapter yet.</p>
-            )}
-            <p>
-              <Link href={picturesHref}>Open the pictures page</Link>
-            </p>
-          </>
-        )}
         {tab === "update" && (
           <UpdateFromStory
             storyId={storyId}
@@ -488,7 +490,7 @@ function ChapterPicker({ storyId, entryId, here, nav }: { storyId: string; entry
 
 /** The entry exactly as a prompt gives it to the AI: its name line and a bullet for each fact (codexBlock). */
 function AiText({ entry }: { entry: CodexEntry }) {
-  if (!entry.description) return <div className="fact-ai"><em>Nothing yet — add facts. Notes are not sent to the AI.</em></div>;
+  if (!entry.description) return <div className="fact-ai"><em>Nothing yet — add facts.</em></div>;
   const head = `${entry.name} [${entry.type}]${entry.aliases.length ? ` (also: ${entry.aliases.join(", ")})` : ""}`;
   return <div className="fact-ai">{codexBlock(head, entry.description)}</div>;
 }
@@ -565,7 +567,6 @@ function FactsTable({
   suggestions,
   onSaved,
   onError,
-  onNotesToFacts,
 }: {
   entry: CodexEntry;
   factOps: FactOp[];
@@ -580,8 +581,6 @@ function FactsTable({
   suggestions: CodexSuggestion[];
   onSaved: () => void;
   onError: (message: string | null) => void;
-  /** The notes-only hint's "Turn notes into facts": shows the notes tab, where the button is. */
-  onNotesToFacts: () => void;
 }) {
   const settings = useSettings();
   // A fact's id while it is being changed, "new" while one is being added.
@@ -772,7 +771,6 @@ function FactsTable({
         hints={hints}
         busy={busy}
         editing={editing}
-        notesToFacts={{ start: onNotesToFacts, busy: false }}
         onEdit={(factId) => {
           setEditing(factId);
           requestAnimationFrame(() => document.getElementById(`fact-${factId}`)?.scrollIntoView({ block: "nearest" }));
@@ -1143,13 +1141,12 @@ function ChangeFormPanel({
 }
 
 /**
- * "AI ideas for …": what Flesh out made up (no quote from the story) and what the AI read in the notes. Keep… asks where
- * the fact starts: where the entry first appears (it was always so), or the chapter it was suggested at.
+ * "AI ideas for …": what Flesh out made up (no quote from the story). Keep… asks where the fact starts: where the entry
+ * first appears (it was always so), or the chapter it was suggested at.
  */
 function AiIdeas({
   entry,
   ideas,
-  fromNotes,
   start,
   dismiss,
   errors,
@@ -1157,7 +1154,6 @@ function AiIdeas({
 }: {
   entry: CodexEntry;
   ideas: CodexSuggestion[];
-  fromNotes: CodexSuggestion[];
   start: Chapter;
   dismiss: (s: CodexSuggestion) => Promise<void>;
   errors: Record<string, string>;
@@ -1166,26 +1162,12 @@ function AiIdeas({
   return (
     <section className="entry-section entry-ideas" aria-labelledby="entry-ideas-title">
       <h2 id="entry-ideas-title">AI ideas for {entry.name}</h2>
-      {ideas.length > 0 && (
-        <>
-          <p className="meta">Made up by the AI, not in the story.</p>
-          <ul className="idea-list">
-            {ideas.map((s) => (
-              <IdeaRow key={s.id} s={s} entry={entry} start={start} dismiss={dismiss} error={errors[s.id]} onKept={onKept} />
-            ))}
-          </ul>
-        </>
-      )}
-      {fromNotes.length > 0 && (
-        <>
-          <h3>From your notes</h3>
-          <ul className="idea-list">
-            {fromNotes.map((s) => (
-              <IdeaRow key={s.id} s={s} entry={entry} start={start} dismiss={dismiss} error={errors[s.id]} onKept={onKept} />
-            ))}
-          </ul>
-        </>
-      )}
+      <p className="meta">Made up by the AI, not in the story.</p>
+      <ul className="idea-list">
+        {ideas.map((s) => (
+          <IdeaRow key={s.id} s={s} entry={entry} start={start} dismiss={dismiss} error={errors[s.id]} onKept={onKept} />
+        ))}
+      </ul>
     </section>
   );
 }
@@ -1228,7 +1210,6 @@ function IdeaRow({
     <li className="idea-row">
       <div className="idea-text">
         <strong>{s.kind === "form" ? "Form" : s.aspect || "General"}</strong> {s.kind === "form" ? [s.form, s.after].filter(Boolean).join(", ") : s.after}
-        {s.source === "notes" && s.quote && <div className="fact-quote">From the notes: “{s.quote}”</div>}
       </div>
       {mode === null && (
         <div className="row idea-actions">

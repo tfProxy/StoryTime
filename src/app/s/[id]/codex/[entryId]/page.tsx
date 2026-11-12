@@ -6,7 +6,7 @@ import { ChangeList, CompareForm, comparisonTitle, StopComparing, type Relation 
 import { compareEntry, foldCodex, usedAspectsOf } from "@/lib/codex";
 import { getStoryChapters } from "@/lib/tree";
 import { entryLastAnchor, getCodexFacts, getCodexOps, nextFormChange } from "@/lib/codexDb";
-import { codexPictureAt } from "@/lib/codexPictures";
+import { codexIconVersion, iconChoices } from "@/lib/codexIcons";
 import { entryStartOptions } from "@/lib/codexStart";
 import EntryStartPicker from "@/components/EntryStartPicker";
 import { getPath, getStory } from "@/lib/stories";
@@ -42,7 +42,6 @@ export default async function CodexEntryRoute({ params, searchParams }: { params
   const startOp = entryOps.filter((o) => o.op === "create").at(-1) ?? entryOps[0];
   const startChapter = path.find((c) => c.id === startOp.anchor_chapter_id) ?? here;
   const firstDepth = Math.min(...entryOps.map((o) => o.anchor_depth));
-  const picture = codexPictureAt(story.id, entryId, at);
   const after = nextChapters(at).map(({ id: chapterId, title }) => ({ id: chapterId, title }));
   const earlier = path.filter((c) => c.depth >= firstDepth && c.id !== at).map((c) => ({ id: c.id, title: c.title }));
 
@@ -88,8 +87,8 @@ export default async function CodexEntryRoute({ params, searchParams }: { params
         chapterId={at}
         storyId={story.id}
         usedAspects={usedAspectsOf(all)}
-        pictureId={picture?.id ?? null}
-        picturesHref={`/s/${story.id}/codex/${entryId}/pictures?at=${at}`}
+        icon={codexIconVersion(story.id, entryId)}
+        iconChoices={iconChoices(story.id, storyChapters, path.map((c) => c.id), story.cover_version)}
         after={after}
         nav={{
           codexHref: `/s/${story.id}/review?tab=codex&chapter=${at}`,

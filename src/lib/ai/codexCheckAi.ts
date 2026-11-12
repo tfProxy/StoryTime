@@ -31,7 +31,6 @@ export type SuggestionInput = {
 
 export const MAX_SUGGESTIONS = 12;
 const MAX_ENTRIES = 25;
-const NOTES_IN_PROMPT = 300;
 const NEW_ENTRY_NOTES = 500;
 const NEW_ENTRY_FACTS = 6;
 const NAME_MAX = 100;
@@ -72,7 +71,7 @@ export function selectEntries(entries: CodexEntry[], body: string): CodexEntry[]
   return picked.slice(0, MAX_ENTRIES);
 }
 
-/** How the AI reads one entry: its name, current form, each live fact and its notes. */
+/** How the AI reads one entry: its name, current form and each live fact. */
 export function describeForCheck(e: CodexEntry): string {
   const lines = [`${e.name} [${e.type}]${e.aliases.length ? ` (also: ${e.aliases.join(", ")})` : ""}`];
   if (e.form) {
@@ -80,8 +79,6 @@ export function describeForCheck(e: CodexEntry): string {
     if (label) lines.push(`Current form: ${label}`);
   }
   lines.push(...factLinesForEditing(e));
-  const notes = e.content.replace(/\s+/g, " ").trim();
-  if (notes) lines.push(`Notes: ${notes.length > NOTES_IN_PROMPT ? `${notes.slice(0, NOTES_IN_PROMPT).trimEnd()}…` : notes}`);
   return lines.join("\n");
 }
 

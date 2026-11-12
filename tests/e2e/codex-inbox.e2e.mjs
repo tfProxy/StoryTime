@@ -173,7 +173,7 @@ try {
   await page.goto(`${BASE}/c/${A}/codex`);
   await page.locator(".entry-card", { hasText: "Kestrel" }).click();
   await page.getByRole("heading", { name: "Kestrel", level: 1 }).waitFor();
-  ok(await page.locator(".entry-notes", { hasText: "A hunting hawk." }).isVisible(), "the new entry was created, with its notes");
+  ok(!(await page.locator(".entry-editor").innerText()).includes("A hunting hawk."), "the new entry was created, without the AI's one-line description as notes");
   await page.goto(`${inbox}&chapter=${A}`);
   ok((await page.locator("nav[aria-label='Story Bible']").getByRole("link", { name: /^Codex/ }).innerText()).trim() === "Codex", "the Codex tab no longer counts anything for the chapter");
   ok((await page.locator("section.codex-review-box").count()) === 0, "…and the box is gone with nothing waiting");

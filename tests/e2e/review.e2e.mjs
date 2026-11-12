@@ -194,7 +194,6 @@ try {
   const why = page.getByPlaceholder("Why it's on purpose, e.g. a disguise");
   const save = page.getByRole("button", { name: "Save", exact: true });
   ok((await why.isVisible()) && (await save.isDisabled()), "Intentional asks for a note, and Save waits for one");
-  ok(await page.getByText("No codex entry named Mira; the note is kept here only.").isVisible(), "…saying when no codex entry matches");
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   ok((await why.count()) === 0, "Cancel closes the note box");
   await page.getByRole("button", { name: "Intentional", exact: true }).click();

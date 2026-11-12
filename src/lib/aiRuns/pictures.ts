@@ -13,7 +13,7 @@ import { ipAdapterProblem } from "../comfy/ipAdapter";
 import type { JobInput } from "../comfy/makeJob";
 import { drawPresetFor, usesFamily, type DrawPreset } from "../comfy/presets";
 import { asReference, type Reference } from "../comfy/references";
-import { fromCodex, fromComfyImage, fromSaved } from "../comfy/startPicture";
+import { fromComfyImage, fromSaved } from "../comfy/startPicture";
 import { describeWorkflow, parseWorkflow } from "../comfy/workflow";
 import { chapterTarget, coverTarget, savedPictureApi } from "../pictureTarget";
 import { prepareImage } from "../prepareImage";
@@ -109,8 +109,8 @@ function styleReference(setup: PictureSetup, comfyUrl: string): Reference | null
   if (!stored) return null;
   const { source } = stored;
   let picture = null;
-  if (source.startsWith("codex:")) picture = fromCodex(setup.story.id, source.slice("codex:".length));
-  else if (source.startsWith("comfy:") && comfyUrl) {
+  // (A `codex:` style picture, kept from before codex pictures became icons, is not found again.)
+  if (source.startsWith("comfy:") && comfyUrl) {
     const path = source.slice("comfy:".length);
     const cut = path.lastIndexOf("/");
     picture = fromComfyImage(comfyUrl, { filename: path.slice(cut + 1), subfolder: cut < 0 ? "" : path.slice(0, cut), type: "output" });

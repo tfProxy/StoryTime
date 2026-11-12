@@ -147,22 +147,6 @@ export type CodexTask = {
   error?: string;
 };
 
-/** Notes to facts: the AI reads the notes of one codex entry and leaves suggested facts in the inbox, anchored at `chapterId` (where the notes were last written). */
-export type NotesTask = {
-  kind: "notes";
-  id: string;
-  entryId: string;
-  chapterId: string;
-  /** That chapter's revision when the run was made; a chapter edited since is skipped. */
-  revision: number;
-  /** The entry's name, for the task list. */
-  label?: string;
-  status: TaskStatus;
-  /** How many suggestions were left in the inbox. */
-  found?: number;
-  error?: string;
-};
-
 /**
  * Flesh out: the AI reads one codex entry and the story down to `chapterId` (the chapter the entry is viewed at) and leaves
  * suggested new facts in the inbox, anchored at that chapter. `mode` "invent" adds new details; "close" sticks to the chapters.
@@ -199,7 +183,7 @@ export type RetconTask = {
   error?: string;
 };
 
-export type RunTask = WriteTask | PlanTask | PictureTask | TagsTask | FactsTask | ContinuityTask | SummaryTask | CodexTask | NotesTask | ExpandTask | RetconTask;
+export type RunTask = WriteTask | PlanTask | PictureTask | TagsTask | FactsTask | ContinuityTask | SummaryTask | CodexTask | ExpandTask | RetconTask;
 
 export type RunOptions = {
   // writing modes
@@ -231,10 +215,10 @@ export type RunOptions = {
   /** A review run the server started by itself after a save or an AI run. */
   automatic?: boolean;
   // review: what to read each chapter for (tags unless said otherwise)
-  checks?: ("tags" | "facts" | "continuity" | "summaries" | "codex" | "notes" | "expand" | "update" | "retcon")[];
+  checks?: ("tags" | "facts" | "continuity" | "summaries" | "codex" | "expand" | "update" | "retcon")[];
   /** With "retcon": the retcon whose chapters are read. */
   retconId?: string;
-  /** With "notes": only these entries (all those with notes when absent). With "expand": the entry to flesh out. */
+  /** With "expand" or "update": the entry. */
   entryIds?: string[];
   /** With "expand": add new details ("invent", the default) or only elaborate on what the chapters show ("close"), and what to focus on. */
   expandMode?: "invent" | "close";

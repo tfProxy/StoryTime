@@ -60,21 +60,21 @@ const localId = () => `draft-${Date.now().toString(36)}${Math.random().toString(
  */
 export default function CodexPanel({ storyId, embedded, startEditing, chapterId, path, ops, facts, draft }: Props) {
   const router = useRouter();
-  // Each entry's picture as of this chapter (by entry id), for the thumbnails.
-  const [pictures, setPictures] = useState<Record<string, { id: string }>>({});
+  // Each entry's icon version (by entry id), for the round icons.
+  const [icons, setIcons] = useState<Record<string, number>>({});
   useEffect(() => {
     if (!storyId) return;
     let live = true;
-    fetch(`/api/stories/${storyId}/codex-pictures?chapter=${encodeURIComponent(chapterId)}`)
+    fetch(`/api/stories/${storyId}/codex-icons`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { pictures: Record<string, { id: string }> } | null) => live && d && setPictures(d.pictures))
+      .then((d: { icons: Record<string, number> } | null) => live && d && setIcons(d.icons))
       .catch(() => {
-        // no thumbnails this time
+        // no icons this time
       });
     return () => {
       live = false;
     };
-  }, [storyId, chapterId]);
+  }, [storyId]);
   const titleOf = (id: string) => path.find((p) => p.id === id)?.title ?? "an earlier chapter";
 
   const draftDepth = (path.at(-1)?.depth ?? -1) + 1;
@@ -184,7 +184,7 @@ export default function CodexPanel({ storyId, embedded, startEditing, chapterId,
           chapterId={chapterId}
           storyId={storyId}
           usedAspects={usedAspects}
-          pictureId={pictures[open.entry_id]?.id}
+          icon={icons[open.entry_id]}
           save={async (c) => (await post(c)).error ?? null}
           holdFact={draft ? holdFact(open.entry_id) : undefined}
           editingChapter={draft?.editing}
@@ -273,7 +273,7 @@ export default function CodexPanel({ storyId, embedded, startEditing, chapterId,
         entries={entries}
         chapterId={chapterId}
         storyId={storyId}
-        pictures={pictures}
+        icons={icons}
         held={held}
         onOpen={embedded ? (e) => setOpenId(e.entry_id) : undefined}
         empty={creating ? undefined : "No entries yet at this point. Add characters, places or facts the story should remember."}
