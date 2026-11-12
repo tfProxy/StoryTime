@@ -1000,6 +1000,11 @@ export const MIGRATIONS: string[] = [
   UPDATE shared_entries SET content = '' WHERE content != '';
   DELETE FROM codex_suggestions WHERE source = 'notes' AND status = 'open';
   `,
+  // 54: the owner wrote or edited the chapter's summary on the writing desk, so Post and Update leave it alone instead of
+  // having the AI rewrite it ("yours · not rewritten"). Existing summaries count as the AI's.
+  `
+  ALTER TABLE chapters ADD COLUMN summary_mine INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 function open(): Database.Database {
