@@ -139,6 +139,17 @@ export const EditChapterSchema = z.object({
   replace_branch: z.boolean().optional(),
 });
 
+/**
+ * What the writing desk adds to a Post or an Update: the summary is rewritten in the background (the work queue) with
+ * `summary_model` (the cheaper model when null), unless it is the owner's. `summary_mine`: a new chapter is posted with
+ * a summary the owner wrote, which is then theirs.
+ */
+export const DeskPostSchema = z.object({
+  rewrite_summary: z.boolean().optional(),
+  summary_mine: z.boolean().optional(),
+  summary_model: z.object({ connectionId: z.string().min(1).max(200), model: z.string().trim().min(1).max(300) }).nullish(),
+});
+
 export const AddChoiceSchema = z.object({
   label: required(LIMITS.label),
 });
@@ -291,6 +302,13 @@ export function storyHasOriginal(storyId: string): boolean {
 export function markReviewed(chapterId: string): { marked: number } {
   if (!getChapter(chapterId)) throw new PostError("That chapter does not exist", 404);
   const { changes } = db().prepare(`UPDATE chapters SET ai_reviewed_at = ? WHERE id = ? AND ai_run_id IS NOT NULL AND ai_reviewed_at IS NULL AND ai_owned_at IS NULL`).run(now(), chapterId);
+  return { marked: changes };
+}
+
+/** "Remove the AI mark" (the writing desk's ⋯ menu): drops the mark from an AI-written chapter for good, as the edit's `mine` does. */
+export function markOwned(chapterId: string): { marked: number } {
+  if (!getChapter(chapterId)) throw new PostError("That chapter does not exist", 404);
+  const { changes } = db().prepare(`UPDATE chapters SET ai_owned_at = ? WHERE id = ? AND ai_run_id IS NOT NULL AND ai_owned_at IS NULL`).run(now(), chapterId);
   return { marked: changes };
 }
 
@@ -570,6 +588,20 @@ export function restoreBranch(chapterId: string): { restored: number; choice_id:
   })();
 }
 
+/** Clears the rolling summaries of every chapter below this one: they build on its own, and are made again when needed. */
+function clearPathSummariesBelow(chapterId: string) {
+  db()
+    .prepare(
+      `WITH RECURSIVE d(id) AS (
+         SELECT c.id FROM choices ch JOIN chapters c ON c.parent_choice_id = ch.id WHERE ch.parent_chapter_id = ?
+         UNION ALL
+         SELECT c.id FROM d JOIN choices ch ON ch.parent_chapter_id = d.id JOIN chapters c ON c.parent_choice_id = ch.id
+       )
+       UPDATE chapters SET path_summary = NULL WHERE id IN (SELECT id FROM d)`,
+    )
+    .run(chapterId);
+}
+
 export function editChapter(chapterId: string, input: z.infer<typeof EditChapterSchema>): { revision: number; trashed: number } {
   return db().transaction(() => {
     const row = chapterRevision(chapterId);
@@ -638,18 +670,7 @@ export function editChapter(chapterId: string, input: z.infer<typeof EditChapter
     // Rolling summaries of everything below this chapter build on this chapter's own. They are only a
     // cache, so when it changes clear them and let clients regenerate them when they next need them.
     // An edit that keeps it (a new title or choices, or text the author chose not to re-summarize) leaves them be.
-    if ((input.path_summary ?? null) !== current.path_summary) {
-      db()
-        .prepare(
-          `WITH RECURSIVE d(id) AS (
-             SELECT c.id FROM choices ch JOIN chapters c ON c.parent_choice_id = ch.id WHERE ch.parent_chapter_id = ?
-             UNION ALL
-             SELECT c.id FROM d JOIN choices ch ON ch.parent_chapter_id = d.id JOIN chapters c ON c.parent_choice_id = ch.id
-           )
-           UPDATE chapters SET path_summary = NULL WHERE id IN (SELECT id FROM d)`,
-        )
-        .run(chapterId);
-    }
+    if ((input.path_summary ?? null) !== current.path_summary) clearPathSummariesBelow(chapterId);
 
     // Choices on this chapter.
     const live = getChoices(chapterId);
@@ -828,6 +849,8 @@ export const ReplaceSummarySchema = z.object({
   revision: z.number().int().min(1),
   summary: required(LIMITS.summary),
   path_summary: required(LIMITS.summary),
+  /** The AI's rewrite after a desk Post or Update: refused (409) when the owner has made the summary theirs meanwhile. */
+  ai: z.boolean().optional(),
 });
 
 export function replaceSummaries(chapterId: string, input: z.infer<typeof ReplaceSummarySchema>): { ok: true } {
@@ -836,9 +859,40 @@ export function replaceSummaries(chapterId: string, input: z.infer<typeof Replac
     if (row.revision !== input.revision) {
       throw new PostError("That chapter was edited since you opened this page. Reload it first.", 409);
     }
+    const current = db().prepare(`SELECT path_summary, summary_mine FROM chapters WHERE id = ?`).get(chapterId) as { path_summary: string | null; summary_mine: number };
+    if (input.ai && current.summary_mine === 1) throw new PostError("The owner wrote this chapter's summary, so it is not rewritten", 409);
     db()
       .prepare(`UPDATE chapters SET summary = ?, path_summary = ? WHERE id = ?`)
       .run(input.summary, input.path_summary, chapterId);
+    // The AI's rewrite is a new story-so-far, which the chapters below build on (as an edit's is, in editChapter).
+    if (input.ai && input.path_summary !== current.path_summary) clearPathSummariesBelow(chapterId);
     return { ok: true as const };
   })();
+}
+
+/** Whether the owner made the chapter's summary theirs on the writing desk ("yours · not rewritten"). */
+export function isSummaryMine(chapterId: string): boolean {
+  const row = db().prepare(`SELECT summary_mine FROM chapters WHERE id = ?`).get(chapterId) as { summary_mine: number } | undefined;
+  return row?.summary_mine === 1;
+}
+
+/**
+ * The writing desk's Summary box. `summary`: the owner's own summary, which Post and Update then leave alone (an empty
+ * one hands it back, as `mine: false` does). `mine: false` alone: "Let the AI rewrite it", the summary staying until the
+ * next Update. The story-so-far is the AI's either way and is not touched. No revision: summaries are not chapter text.
+ */
+export const OwnSummarySchema = z.object({
+  summary: text(LIMITS.summary).optional(),
+  mine: z.boolean(),
+});
+
+export function setOwnSummary(chapterId: string, input: z.infer<typeof OwnSummarySchema>): { mine: boolean } {
+  if (!getChapter(chapterId)) throw new PostError("That chapter does not exist", 404);
+  if (input.summary === undefined) {
+    db().prepare(`UPDATE chapters SET summary_mine = ? WHERE id = ?`).run(input.mine ? 1 : 0, chapterId);
+    return { mine: input.mine };
+  }
+  const mine = input.mine && input.summary !== "";
+  db().prepare(`UPDATE chapters SET summary = ?, summary_mine = ? WHERE id = ?`).run(input.summary || null, mine ? 1 : 0, chapterId);
+  return { mine };
 }

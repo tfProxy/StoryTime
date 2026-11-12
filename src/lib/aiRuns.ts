@@ -10,7 +10,7 @@ import { chaptersSinceChange } from "./codexHints";
 import { factCheckedChapterIds } from "./facts";
 import { currentSummaryChecks } from "./summaryChecks";
 import { LIMITS } from "./limits";
-import { getChapter, getStory, PostError } from "./stories";
+import { getChapter, getStory, isSummaryMine, PostError } from "./stories";
 import { decidedTagIdsByChapter, storyTags } from "./tags";
 import { getStoryChapters } from "./tree";
 import { retconChapters } from "./retcons";
@@ -125,6 +125,8 @@ export const SummaryTaskSchema = z.object({
   /** 1 when the summary does not match the chapter. */
   found: z.number().int().min(0).optional(),
   error: text(LIMITS.summary).optional(),
+  /** Write the summary afresh instead of checking it. */
+  rewrite: z.boolean().optional(),
 });
 
 export const CodexTaskSchema = z.object({
@@ -207,7 +209,8 @@ export const RunOptionsSchema = z.object({
   // "update": the AI reads the chapters that name the entry in `entryIds` since its last change (on the way to the start
   // chapter) for that entry's changes alone, and leaves suggestions on it.
   // "retcon": reads the chapters of the retcon `retconId` for passages that no longer fit its change (see ./retcons).
-  checks: z.array(z.enum(["tags", "facts", "continuity", "summaries", "codex", "expand", "update", "retcon"])).max(8).optional(),
+  // "rewrite": the AI writes each chapter's summary afresh (after a Post or Update on the writing desk), skipping a summary the owner made theirs.
+  checks: z.array(z.enum(["tags", "facts", "continuity", "summaries", "codex", "expand", "update", "retcon", "rewrite"])).max(9).optional(),
   retconId: z.string().min(1).max(100).optional(),
   // With "expand" or "update": the entry.
   entryIds: z.array(z.string().min(1).max(100)).max(200).optional(),
@@ -399,11 +402,20 @@ export function reviewTasks(storyId: string, startChapterId: string | null, scop
       tasks.push({ kind: "facts", id: `t${tasks.length + 1}`, chapterId: c.id, revision: c.revision, label: c.title.slice(0, LIMITS.title), status: "todo" });
     }
   }
+  // Chapters whose summary is rewritten are not checked as well.
+  const rewritten = new Set<string>();
+  if (checks.includes("rewrite")) {
+    for (const c of chosen) {
+      if (isSummaryMine(c.id)) continue;
+      rewritten.add(c.id);
+      tasks.push({ kind: "summary", id: `t${tasks.length + 1}`, chapterId: c.id, revision: c.revision, label: c.title.slice(0, LIMITS.title), status: "todo", rewrite: true });
+    }
+  }
   if (checks.includes("summaries")) {
     // Chapters with no summary are left out (the Issues tab already lists them as missing one).
     const checked = new Set(currentSummaryChecks(storyId).map((k) => k.chapterId));
     for (const c of chosen) {
-      if (!c.summary || c.summary.trim() === "" || checked.has(c.id)) continue;
+      if (!c.summary || c.summary.trim() === "" || checked.has(c.id) || rewritten.has(c.id)) continue;
       tasks.push({ kind: "summary", id: `t${tasks.length + 1}`, chapterId: c.id, revision: c.revision, label: c.title.slice(0, LIMITS.title), status: "todo" });
     }
   }

@@ -165,7 +165,7 @@ export default function AiRunProgress({
     <section className="ai-run" aria-label="Run progress">
       <h2>
         {isTags
-          ? total === 0 ? "No chapters to read" : onlySummaries ? `Checked ${done} of ${total} ${total === 1 ? "summary" : "summaries"}` : hasFacts || tagTasks.some((t) => t.kind === "summary") ? `Did ${done} of ${total} ${total === 1 ? "check" : "checks"}` : `Read ${done} of ${total} ${total === 1 ? "chapter" : "chapters"}`
+          ? total === 0 ? "No chapters to read" : onlySummaries ? `${tagTasks.every((t) => t.kind === "summary" && t.rewrite) ? "Wrote" : "Checked"} ${done} of ${total} ${total === 1 ? "summary" : "summaries"}` : hasFacts || tagTasks.some((t) => t.kind === "summary") ? `Did ${done} of ${total} ${total === 1 ? "check" : "checks"}` : `Read ${done} of ${total} ${total === 1 ? "chapter" : "chapters"}`
           : <>{done} of {total} {isPictures ? "pictures made" : "written"}{item?.state === "working" && item.current ? <>. Now: {isPictures ? item.current : <>“{item.current}”</>}</> : null}</>}
       </h2>
       {item?.state === "working" ? (

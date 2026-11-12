@@ -126,6 +126,8 @@ export type SummaryTask = {
   /** 1 when the summary does not match the chapter (set when checked). */
   found?: number;
   error?: string;
+  /** Write the summary afresh instead of checking it (after a Post or Update on the writing desk). */
+  rewrite?: boolean;
 };
 
 /** Codex check: the AI reads one chapter (at `revision`) for changes to the codex and leaves suggestions in the inbox. Made by the server when a review run asks for it. */
@@ -217,7 +219,7 @@ export type RunOptions = {
   /** A review run the server started by itself after a save or an AI run. */
   automatic?: boolean;
   // review: what to read each chapter for (tags unless said otherwise)
-  checks?: ("tags" | "facts" | "continuity" | "summaries" | "codex" | "expand" | "update" | "retcon")[];
+  checks?: ("tags" | "facts" | "continuity" | "summaries" | "codex" | "expand" | "update" | "retcon" | "rewrite")[];
   /** With "retcon": the retcon whose chapters are read. */
   retconId?: string;
   /** With "expand" or "update": the entry. */

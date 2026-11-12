@@ -265,7 +265,7 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<StepResult> {
 
   const { task } = picked;
   const phase = picked.kind === "plan" ? "planning" : picked.kind === "write" || picked.kind === "prompt" || picked.kind === "tags" || picked.kind === "facts" || picked.kind === "continuity" || picked.kind === "summary" || picked.kind === "codex" || picked.kind === "expand" || picked.kind === "retcon" ? "writing" : "finishing";
-  const label = task.kind === "write" ? task.label : task.kind === "plan" ? "Plan the choices" : task.kind === "picture" ? `Prompt for “${task.label ?? "a chapter"}” (${task.slot})` : task.kind === "tags" ? `Find tags in “${task.label ?? "a chapter"}”` : task.kind === "facts" ? `Find facts in “${task.label ?? "a chapter"}”` : task.kind === "continuity" ? "Check continuity" : task.kind === "summary" ? `Check the summary of “${task.label ?? "a chapter"}”` : task.kind === "codex" ? (task.entryName ? `Read “${task.label ?? "a chapter"}” for ${task.entryName}` : `Check the codex for “${task.label ?? "a chapter"}”`) : task.kind === "expand" ? `Flesh out “${task.label ?? "an entry"}”` : task.kind === "retcon" ? `Read “${task.label ?? "a chapter"}” for the retcon` : "";
+  const label = task.kind === "write" ? task.label : task.kind === "plan" ? "Plan the choices" : task.kind === "picture" ? `Prompt for “${task.label ?? "a chapter"}” (${task.slot})` : task.kind === "tags" ? `Find tags in “${task.label ?? "a chapter"}”` : task.kind === "facts" ? `Find facts in “${task.label ?? "a chapter"}”` : task.kind === "continuity" ? "Check continuity" : task.kind === "summary" ? `${task.rewrite ? "Write" : "Check"} the summary of “${task.label ?? "a chapter"}”` : task.kind === "codex" ? (task.entryName ? `Read “${task.label ?? "a chapter"}” for ${task.entryName}` : `Check the codex for “${task.label ?? "a chapter"}”`) : task.kind === "expand" ? `Flesh out “${task.label ?? "an entry"}”` : task.kind === "retcon" ? `Read “${task.label ?? "a chapter"}” for the retcon` : "";
   let tasks = list;
   let failure: unknown = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -696,6 +696,21 @@ async function doSummary(task: SummaryTask, run: AiRun, list: RunTask[], env: St
   const skip = (why: string) => replace(list, { ...task, status: "skipped", error: why });
   if (context.trashed) return skip(TRASHED);
   if (chapter.revision !== task.revision) return skip("Skipped: the chapter was edited after the run was made.");
+  if (task.rewrite) {
+    // After a Post or Update on the writing desk: the summary and the story-so-far, written afresh from the chapter.
+    env.onEvent?.({ type: "status", text: `Writing the summary of “${chapter.title}”…` });
+    const before = context.path.slice(0, -1);
+    const story = { title: context.story.title, premise: context.story.premise };
+    const s = await summarize(env.settings, { story, previous: before.at(-1)?.path_summary ?? null, chapter, options: run.options, signal: env.signal, stream: env.deps?.stream, source: sourceOf(run, task.chapterId) });
+    if (!s) throw new Error("The model's summary could not be read.");
+    try {
+      await putSummary(f, task.chapterId, task.revision, s.summary, s.path_summary, true);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) return skip("Skipped: the chapter or its summary was edited while it was written.");
+      throw e;
+    }
+    return replace(list, { ...task, status: "done", found: 0, error: undefined });
+  }
   const summary = chapter.summary ?? "";
   if (!summary.trim()) return skip("Skipped: the chapter has no summary.");
   env.onEvent?.({ type: "status", text: `Checking the summary of “${chapter.title}”…` });

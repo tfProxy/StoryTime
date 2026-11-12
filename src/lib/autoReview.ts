@@ -5,9 +5,9 @@ import { createRun, getRun, listUnfinishedRuns, reviewTasks } from "./aiRuns";
 import { LIMITS } from "./limits";
 import { getWorker } from "./worker";
 import { endRun, queueRun } from "./worker/runs";
-import { defaultRef, parseSettings } from "./settingsSchema";
+import { defaultRef, parseSettings, type ModelRef } from "./settingsSchema";
 import { getSettings } from "./settingsStore";
-import { getChapter } from "./stories";
+import { getChapter, isSummaryMine } from "./stories";
 
 export const AUTO_REVIEW_CHECKS = ["tags", "facts", "continuity", "summaries"] as const;
 
@@ -33,8 +33,14 @@ const runGoing = (runId: string) => {
 // One at a time, so two quick saves of a chapter do not both end and make a run.
 let chain: Promise<void> = Promise.resolve();
 
-async function review(chapterId: string) {
-  const checks = autoChecks();
+/** A Post or Update on the writing desk: the summary is rewritten too (unless it is the owner's), with this model. */
+export type AfterSave = { rewriteSummary?: boolean; summaryModel?: ModelRef | null };
+
+async function review(chapterId: string, after: AfterSave = {}) {
+  const s = getSettings() ?? parseSettings({});
+  // The rewrite replaces the check of the old summary; the owner's own summary is left alone (and checked as usual).
+  const rewrite = !!after.rewriteSummary && !isSummaryMine(chapterId) && (after.summaryModel ?? defaultRef(s, "cheap")) !== null;
+  const checks = rewrite ? [...autoChecks().filter((c) => c !== "summaries"), "rewrite" as const] : autoChecks();
   if (checks.length === 0) return;
   const chapter = getChapter(chapterId);
   if (!chapter) return;
@@ -50,7 +56,7 @@ async function review(chapterId: string) {
       await endRun(r.id).catch((e) => console.error("auto review: could not end the earlier run", e));
     }
   }
-  const { id } = createRun({ story_id: chapter.story_id, start_chapter_id: chapterId, mode: "review", options: { tagScope: "chapter", checks, automatic: true } });
+  const { id } = createRun({ story_id: chapter.story_id, start_chapter_id: chapterId, mode: "review", options: { tagScope: "chapter", checks, automatic: true, ...(rewrite && after.summaryModel ? { suggestModel: after.summaryModel } : {}) } });
   await queueRun(id);
 }
 
@@ -103,9 +109,12 @@ export function queueAutoReviewForChapters(storyId: string, chapterIds: string[]
   return next;
 }
 
-/** Queues the automatic review of a saved chapter, if the setting is on. Does not wait for the work and never throws. */
-export function queueAutoReview(chapterId: string): Promise<void> {
-  const next = chain.then(() => review(chapterId)).catch((e) => console.error("auto review failed", e));
+/**
+ * Queues the automatic review of a saved chapter, if the setting is on, and the summary's rewrite after a desk Post or
+ * Update (`after`). Does not wait for the work and never throws.
+ */
+export function queueAutoReview(chapterId: string, after?: AfterSave): Promise<void> {
+  const next = chain.then(() => review(chapterId, after)).catch((e) => console.error("auto review failed", e));
   chain = next;
   return next;
 }

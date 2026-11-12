@@ -130,5 +130,6 @@ export const postVerdict = (f: Fetch, storyId: string, body: { verdict: string; 
 export const addChoice = (f: Fetch, chapterId: string, label: string) => call<{ ok: true }>(f, "POST", `/api/chapters/${chapterId}/choices`, { label });
 
 /** Fills in the summaries of a chapter (replacing any there, as the bulk summaries page does). */
-export const putSummary = (f: Fetch, chapterId: string, revision: number, summary: string, path_summary: string) =>
-  call<unknown>(f, "PUT", `/api/chapters/${chapterId}/summary`, { revision, summary, path_summary });
+/** `ai`: the rewrite after a desk Post or Update, refused (409) when the owner has made the summary theirs. */
+export const putSummary = (f: Fetch, chapterId: string, revision: number, summary: string, path_summary: string, ai?: boolean) =>
+  call<unknown>(f, "PUT", `/api/chapters/${chapterId}/summary`, { revision, summary, path_summary, ...(ai ? { ai: true } : {}) });
