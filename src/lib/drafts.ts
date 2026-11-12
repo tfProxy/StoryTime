@@ -8,8 +8,11 @@ import type { CodexChange, FactChange } from "./codex";
 import type { CodexOverrides, Idea, Length } from "./ai/prompts";
 import type { ModelRef } from "./settingsSchema";
 
-/** `ai`: the kept AI requests (keptRequests.ts) that wrote this text, oldest first; absent for text written by hand. */
-export type DraftVersion = { title: string; body: string; ai?: string[] };
+/**
+ * `ai`: the kept AI requests (keptRequests.ts) that wrote this text, oldest first; absent for text written by hand.
+ * `prompt`: the prompt of the Generate that made it (absent for text written by hand, and in versions kept before this).
+ */
+export type DraftVersion = { title: string; body: string; ai?: string[]; prompt?: string };
 
 export type Draft = {
   /**
@@ -85,7 +88,8 @@ export type Draft = {
   editNote?: string;
 };
 
-export type DraftListItem = Pick<Draft, "key" | "href" | "label" | "title" | "storyTitle" | "updatedAt">;
+/** `unused`: a posted chapter's draft that differs from the chapter ("Draft not used"). */
+export type DraftListItem = Pick<Draft, "key" | "href" | "label" | "title" | "storyTitle" | "updatedAt"> & { unused?: boolean };
 
 /** A save was refused because the draft was saved from somewhere else first. */
 export class DraftConflict extends Error {

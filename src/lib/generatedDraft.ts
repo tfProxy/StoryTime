@@ -15,12 +15,30 @@ export function restore(v: DraftVersion): Pick<Draft, "title" | "body" | "ai"> {
   return { title: v.title, body: v.body, ai: v.ai };
 }
 
-/** A new generated draft gets its own version; the text it started from is kept as the one before it. */
-export function startVersion(d: Draft): Pick<Draft, "versions" | "versionIndex"> {
-  if (!d.body.trim()) return {};
+/**
+ * The draft's versions with the one showing refreshed from its text (a draft with none yet has its text as the only
+ * one). Each version keeps the prompt that made it.
+ */
+export function keptVersions(d: Draft): DraftVersion[] {
   const kept = [...(d.versions ?? [snapshot(d)])];
-  kept[d.versionIndex ?? kept.length - 1] = snapshot(d);
-  const versions = [...kept, { title: "", body: "" }].slice(-MAX_VERSIONS);
+  const at = d.versionIndex ?? kept.length - 1;
+  const prompt = kept[at]?.prompt;
+  kept[at] = prompt !== undefined ? { ...snapshot(d), prompt } : snapshot(d);
+  return kept;
+}
+
+/**
+ * A new generated draft gets its own version, with the prompt that makes it; the text it started from is kept as the
+ * one before it. With no text to keep, the Generate writes into the version showing (the first, in a new draft).
+ */
+export function startVersion(d: Draft, prompt = d.prompt): Pick<Draft, "versions" | "versionIndex"> {
+  if (!d.body.trim()) {
+    const versions = [...(d.versions ?? [{ title: "", body: "" }])];
+    const at = d.versionIndex ?? versions.length - 1;
+    versions[at] = { ...versions[at], prompt };
+    return { versions, versionIndex: at };
+  }
+  const versions = [...keptVersions(d), { title: "", body: "", prompt }].slice(-MAX_VERSIONS);
   return { versions, versionIndex: versions.length - 1 };
 }
 
@@ -31,8 +49,8 @@ export function pushUndo(d: Draft): Draft["undo"] {
 }
 
 /** What happens when a Generate starts: the text now in the draft is kept as the previous version and in undo. */
-export function beginGenerated(d: Draft): Draft {
-  return { ...d, undo: pushUndo(d), ...startVersion(d) };
+export function beginGenerated(d: Draft, prompt?: string): Draft {
+  return { ...d, undo: pushUndo(d), ...startVersion(d, prompt) };
 }
 
 /**
@@ -40,9 +58,10 @@ export function beginGenerated(d: Draft): Draft {
  * (the text is a longer version of what an earlier call already put in), the draft's text is kept first as the
  * previous version and in undo. A title still arriving (`null`) leaves the title as it is. `ai`: the kept request
  * writing it; a Generate writes the text afresh, so it replaces the ones before (a text without it keeps what it has).
+ * `prompt`: the Generate's prompt, kept with its version (the draft's prompt box when not given).
  */
-export function applyGenerated(d: Draft, text: { title: string | null; body: string }, opts: { continued?: boolean; ai?: string } = {}): Draft {
-  const base = opts.continued ? d : { ...beginGenerated(d), ai: undefined };
+export function applyGenerated(d: Draft, text: { title: string | null; body: string }, opts: { continued?: boolean; ai?: string; prompt?: string } = {}): Draft {
+  const base = opts.continued ? d : { ...beginGenerated(d, opts.prompt), ai: undefined };
   return { ...base, ...(text.title !== null ? { title: text.title } : {}), body: text.body, ...(opts.ai ? { ai: [opts.ai] } : {}) };
 }
 

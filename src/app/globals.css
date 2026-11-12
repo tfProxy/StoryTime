@@ -7446,3 +7446,142 @@ main:has(.desk) {
   display: block;
   color: var(--muted);
 }
+
+/* The desk's top bar: the links back, a status line and the chapter's ⋯ menu. */
+.desk-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.desk-bar .crumbs {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.desk-bar-note {
+  margin: 0;
+}
+
+.desk-bar-menu .more-menu-items {
+  right: 0;
+  left: auto;
+  min-width: 15rem;
+}
+
+.desk-menu-model {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+/* The chapter's box: title; "Prompt and drafts"; the text; "Summary"; Post or Update at the bottom. */
+.desk-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.6rem;
+  padding: 0.9rem 1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.desk-box-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  border-color: transparent;
+  background: transparent;
+  padding-left: 0.25rem;
+}
+
+.desk-box-title:hover,
+.desk-box-title:focus {
+  border-color: var(--line);
+}
+
+.desk-fold {
+  justify-self: start;
+  background: none;
+  border: none;
+  padding: 0.2rem 0;
+  color: var(--fg);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.desk-prompt,
+.desk-summary,
+.desk-draft-prompt {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.desk-prompt-box {
+  min-height: 6rem;
+  font-family: inherit;
+}
+
+.desk-gen-row,
+.desk-drafts,
+.desk-box-foot,
+.desk-summary-mine {
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.desk-spacer {
+  flex: 1 1 0;
+}
+
+.desk-draft {
+  min-width: 2.4rem;
+  padding: 0.25rem 0.6rem;
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--line);
+}
+
+.desk-draft.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.desk-drafts-note {
+  margin: 0 0 0 auto;
+}
+
+.desk-draft-prompt {
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.desk-draft-prompt-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.desk-box-foot {
+  border-top: 1px solid var(--line);
+  padding-top: 0.6rem;
+}
+
+.desk-box-foot .meta {
+  margin: 0;
+}
+
+/* "Draft not used" on a written choice and in the Drafts list. */
+.draft-mark {
+  margin-left: 0.5rem;
+}
+
+.choice-unwritten .choice-draft {
+  font-size: 0.8rem;
+}

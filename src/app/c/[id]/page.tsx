@@ -17,7 +17,7 @@ import RemoveChoice from "@/components/RemoveChoice";
 import SuggestChoices from "@/components/SuggestChoices";
 import ChapterImage from "@/components/ChapterImage";
 import { chapterImageVersions } from "@/lib/chapterImages";
-import { draftKeysSaved } from "@/lib/draftStore";
+import { choiceDraftMarks, type DraftMark } from "@/lib/draftMarks";
 import { getCodexState } from "@/lib/codexDb";
 import { getSettings } from "@/lib/settingsStore";
 import { parseSettings } from "@/lib/settingsSchema";
@@ -54,7 +54,9 @@ export default async function ChapterPage({
   // With the "List the codex entries under a chapter's title" setting: the entries live at this chapter.
   const showCodex = (getSettings() ?? parseSettings({})).showCodexList;
   const codexEntries = showCodex ? getCodexState(chapter.id) : [];
-  const drafted = trashed ? new Set<string>() : draftKeysSaved(choices.filter((c) => !c.child_chapter_id).map((c) => choiceDraftKey(c.id)));
+  // A written choice whose chapter has a draft not used is marked too (draftMarks.ts).
+  const marks = trashed ? new Map<string, DraftMark>() : choiceDraftMarks(choices);
+  const drafted = new Set(choices.filter((c) => marks.get(c.id) === "draft").map((c) => choiceDraftKey(c.id)));
   // An imported story's original path: its choices are marked, unless the story's switch hides them.
   const hasOriginal = storyHasOriginal(story.id);
   const markOriginal = hasOriginal && story.show_original;
@@ -145,6 +147,7 @@ export default async function ChapterPage({
                   <AiMark mark={c.child_ai} />
                 </span>
               )}
+              {marks.get(c.id) === "unused" && <span className="desk-chip draft-mark">Draft not used</span>}
               {noteText(notes.get(c.child_chapter_id)) && (
                 <span className="choice-note">{noteText(notes.get(c.child_chapter_id))}</span>
               )}
@@ -167,7 +170,7 @@ export default async function ChapterPage({
                     <svg className="choice-icon" viewBox="0 0 24 24" aria-hidden="true">
                       <path d="M6 3h8l4 4v14H6z M14 3v4h4 M9 12h6 M9 16h6" />
                     </svg>
-                    <span className="visually-hidden">(draft saved)</span>
+                    draft
                   </span>
                 )}
               </Link>

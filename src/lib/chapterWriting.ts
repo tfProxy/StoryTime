@@ -9,7 +9,8 @@ import { KeptIdsSchema } from "./keptRequests";
 // with the same direction prompt, generated versions, length and models instead of an empty form.
 
 // `ai`: the kept AI requests (keptRequests.ts) that wrote a version, and, at the top, the chapter's text as posted.
-const VersionSchema = z.object({ title: z.string().max(LIMITS.title), body: z.string().max(LIMITS.body), ai: KeptIdsSchema.optional() });
+// `prompt`: the prompt of the Generate that made the version.
+const VersionSchema = z.object({ title: z.string().max(LIMITS.title), body: z.string().max(LIMITS.body), ai: KeptIdsSchema.optional(), prompt: z.string().max(LIMITS.body).optional() });
 const ModelRefSchema = z.object({ connectionId: z.string().max(200), model: z.string().max(500) });
 
 export const ChapterWritingSchema = z.object({
