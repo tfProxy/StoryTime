@@ -1,4 +1,4 @@
-// Kept AI requests: every call that wrote chapter text (a Generate, a revise, an AI run's chapter), kept for good with
+// Kept AI requests: every call that wrote chapter text (a Generate, an AI run's chapter), kept for good with
 // what is needed to make it again: the connection (never its key), model, settings, the exact prompt, the reply and how
 // long it took. Drafts (`ai` on the text and on each version and undo step) and chapter_writing point to them by id.
 // Server only. Every function takes the database, so this file never imports db.ts (aiLog.ts calls keepRequest from
@@ -122,9 +122,3 @@ export function pruneKeptRequests(d: Database.Database, force = false): number {
 
 /** Kept request ids as stored in drafts and chapter writing. */
 export const KeptIdsSchema = z.array(z.string().uuid()).max(50);
-export const MAX_KEPT_IDS = 50;
-
-/** Adds an id to a list, keeping the newest MAX_KEPT_IDS. */
-export function withKeptId(ids: readonly string[] | undefined, id: string): string[] {
-  return [...(ids ?? []).filter((x) => x !== id), id].slice(-MAX_KEPT_IDS);
-}

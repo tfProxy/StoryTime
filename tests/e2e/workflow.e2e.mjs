@@ -1,4 +1,4 @@
-// The drafting page's workflow: revising a selected passage, comparing drafts, the save indicator,
+// The drafting page's workflow: comparing drafts, the save indicator,
 // the end-of-branch notice, and posting without writing a summary first.
 import http from "node:http";
 import { launch, useMockAi } from "./browser.mjs";
@@ -22,8 +22,6 @@ const mock = http.createServer((req, res) => {
       text = JSON.stringify({ summary: `SUM(${title})`, story_so_far: `SOFAR(${title})` });
     } else if (user.includes("distinct options the reader could pick")) {
       text = JSON.stringify(["Go left", "Go right", "Hide"]);
-    } else if (user.includes("[[START]]")) {
-      text = "  REWRITTEN  ";
     }
     res.setHeader("content-type", "text/event-stream");
     res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`);
@@ -49,37 +47,15 @@ page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true
 page.on("dialog", (d) => d.accept());
 
 await page.goto(`${BASE}/c/${root}/write?choice=${choice.id}`);
-const instruction = page.getByLabel("Instruction for the AI");
-await instruction.waitFor();
-ok(await instruction.isDisabled(), "the revise box is there but disabled until there is a chapter");
-
+await page.getByLabel("Chapter title").waitFor();
 await page.getByLabel("Chapter title").fill("Door");
 await page.getByLabel("Chapter text").fill("One. Two sentences here. Three.");
-ok(await instruction.isEnabled(), "…and enabled once there is text");
+ok(await page.getByLabel("Instruction for the AI").count() === 0 && await page.getByRole("button", { name: /^Revise|^Undo$/ }).count() === 0, "a hand-written chapter has no Revise box or Undo");
 ok(await page.getByText(/posting now ends this branch/).isVisible() && !/ends the branch/.test(await page.locator(".action-bar").innerText()), "no choices: the notice shows by the choices, not in the footer");
 await page.getByPlaceholder("Choice 1").fill("Go in");
 ok(!(await page.getByText(/posting now ends this branch/).isVisible()), "…and goes away with a choice");
 await page.waitForFunction(() => /Draft saved/.test(document.body.innerText));
 ok(true, "the page says when the draft was saved");
-
-// revise just a selected passage, sent with the Enter key
-const select = (from, to) =>
-  page.locator("textarea[maxlength='50000']").evaluate((el, [a, b]) => {
-    el.focus();
-    el.setSelectionRange(a, b);
-    el.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
-  }, [from, to]);
-await select(5, 24); // "Two sentences here."
-await page.getByRole("button", { name: "Revise selection" }).waitFor();
-ok(true, "selecting text turns Revise into Revise selection");
-await instruction.fill("tighter");
-await instruction.press("Enter");
-await page.getByRole("button", { name: "Edit text" }).waitFor();
-const asked = prompts.at(-1);
-ok(asked.system.includes("one marked passage") && asked.user.includes("One. [[START]]Two sentences here.[[END]] Three.") && asked.user.includes("tighter"), "only the selected passage goes to the AI as the one to change");
-await page.getByRole("button", { name: "Edit text" }).click();
-ok((await page.getByLabel("Chapter text").inputValue()) === "One. REWRITTEN Three.", "the reply replaces just that passage");
-ok((await page.getByLabel("Chapter title").inputValue()) === "Door", "the title is untouched");
 
 // post without writing a summary: one is made
 const before = prompts.length;

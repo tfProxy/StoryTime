@@ -35,11 +35,14 @@ export type Draft = {
   slotLabel?: string;
   title: string;
   body: string;
-  /** The kept AI requests that wrote title/body (a Generate, then any revises), oldest first. Follows the text through versions and undo. */
+  /** The kept AI requests that wrote title/body (a Generate), oldest first. Follows the text through versions. */
   ai?: string[];
   choices: string[];
   prompt: string;
-  /** Earlier versions of title/body, newest last, so AI rewrites can be undone. */
+  /**
+   * The text each Generate started from, newest last. Nothing undoes to it any more; a Generate's last entry here is
+   * how the writing page and the work queue tell that it has begun (isBegun in generatedDraft.ts).
+   */
   undo: DraftVersion[];
   /** Every draft the AI has generated here, oldest first, so you can step between them. The one being viewed lives in title/body; its entry here is only refreshed when you leave it. */
   versions?: DraftVersion[];
@@ -57,8 +60,6 @@ export type Draft = {
   // Working state of the page, kept so a reload (or another browser) picks up where you were:
   /** Chapter length asked for when generating. */
   length?: Length;
-  /** The unsent text in the "ask the AI to change it" box. */
-  instruction?: string;
   /** Brainstorm guidance; absent until edited, so it follows the choice text. */
   guidance?: string;
   /** Each "Suggest ideas" adds a page; `ideaPage` is the one showing. */
@@ -70,7 +71,7 @@ export type Draft = {
   suggestions?: string[];
   /** Codex entries pinned into, or left out of, the prompt by hand. */
   codexOverrides?: CodexOverrides;
-  /** Models picked on this page instead of the defaults: for writing and revising, and for ideas, choices and choice text. */
+  /** Models picked on this page instead of the defaults: for writing, and for ideas, choices and choice text. */
   models?: { write?: ModelRef; suggest?: ModelRef };
 
   // Only used when editing a posted chapter:

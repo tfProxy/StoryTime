@@ -73,11 +73,13 @@ try {
   ok(await until(() => step.getByText("Waiting for the model…").isVisible()), "before the first word, the page says it is waiting for the model");
   const activity = page.locator(".site-header .header-activity-line");
   ok(await until(async () => /Writing “.*” · (Waiting for the model…|The model is thinking…)/.test((await activity.textContent()) ?? "")), "the header's line says what the Generate is doing");
-  // The header stays at the top of the window while the page scrolls.
+  // The header stays at the top of the window while the page scrolls (a shorter window, so this early page scrolls).
+  await page.setViewportSize({ width: 1000, height: 600 });
   await page.mouse.wheel(0, 1500);
   ok(await until(async () => (await page.evaluate(() => window.scrollY)) > 100 && Math.abs((await page.locator(".site-header").boundingBox()).y) < 1), "the header stays in view when the page scrolls");
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/header-activity-desktop.png` });
   await page.evaluate(() => window.scrollTo(0, 0));
+  await page.setViewportSize({ width: 1000, height: 1100 });
   ok(await until(() => step.getByText("The model is thinking…").isVisible()), "…then that the model is thinking");
   const fold = page.locator(".thinking-fold");
   ok(await until(() => fold.isVisible()), "the thinking gets a fold");

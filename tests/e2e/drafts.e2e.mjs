@@ -54,16 +54,16 @@ const page = watch(await ctxA.newPage());
 await page.goto(writeUrl);
 await page.locator("select:has(option[value=long])").selectOption("long");
 await page.getByLabel("Chapter text").fill("She looked up.");
-await page.getByLabel("Instruction for the AI").fill("make it darker");
+await page.getByLabel(/What should happen/).fill("make it darker");
 await page.waitForFunction(() => /Draft saved/.test(document.body.innerText));
 await page.waitForTimeout(700); // the last change's save
 let stored = (await json("GET", draftUrl)).draft;
-ok(stored?.body === "She looked up." && stored.length === "long" && stored.instruction === "make it darker", "the draft and its working state are saved on the server");
+ok(stored?.body === "She looked up." && stored.length === "long" && stored.prompt === "make it darker", "the draft and its working state are saved on the server");
 
 await page.reload();
 await page.getByLabel("Chapter text").waitFor();
 ok((await page.locator("select:has(option[value=long])").inputValue()) === "long", "the chapter length is still there after a reload");
-ok((await page.getByLabel("Instruction for the AI").inputValue()) === "make it darker", "…and the unsent instruction");
+ok((await page.getByLabel(/What should happen/).inputValue()) === "make it darker", "…and the prompt");
 
 // ---- another browser picks it up ----
 const ctxB = await browser.newContext();

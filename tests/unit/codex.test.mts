@@ -1,7 +1,7 @@
 ﻿import { foldFacts, factHistory, describeEntry, formClashes, compareEntry, overriddenFacts, applicableFacts, factLinesForEditing, describeSharedFacts, type FactOp, type LiveFact } from "../../src/lib/codex.ts";
 import { baseForms, foldCodex, storyEntrySummaries, retiredEntries, entryHistory, changedFields, addChange, draftOps, DRAFT_ANCHOR, type CodexChange, type CodexOp } from "../../src/lib/codex.ts";
 import { codexBlock, cleanForm, quoteSupports } from "../../src/lib/codex.ts";
-import { buildCodexBlock, mentions, generatePrompt, refinePrompt, choicesPrompt } from "../../src/lib/ai/prompts.ts";
+import { buildCodexBlock, mentions, generatePrompt, choicesPrompt } from "../../src/lib/ai/prompts.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 let n = 0;
@@ -61,7 +61,6 @@ const ctx = { storyTitle: "T", premise: "P", choiceLabel: "Go", path: [{ title: 
 const g = generatePrompt(ctx, "", "short", 8000);
 ok(g.includes("Codex") && g.includes("Mira [character]: now a horse") && !g.includes("Bram"), "generate prompt carries triggered codex");
 ok(generatePrompt(ctx, "Bram appears", "short", 8000).includes("Bram [character]"), "direction text triggers entries");
-ok(refinePrompt(ctx, { title: "t", body: "Bram hammers" }, "more", 8000).includes("Bram"), "draft body triggers entries when revising");
 ok(choicesPrompt(ctx, { title: "t", body: "x" }, [], 8000).includes("Mira"), "choices prompt carries codex");
 ok(!generatePrompt({ ...ctx, codex: [] }, "", "short", 8000).includes("Codex"), "no codex block when empty");
 

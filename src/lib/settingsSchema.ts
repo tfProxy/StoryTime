@@ -62,8 +62,8 @@ export type Favorite = ModelRef & {
   /** Optional nickname shown instead of the model id. */
   label: string;
   /**
-   * Ask this model not to use extended thinking / reasoning: when writing chapter text (`write`: Generate, AI runs,
-   * Rewrite passage), and for every other job (`other`: suggestions, summaries, tags…). Off for models that only work with it.
+   * Ask this model not to use extended thinking / reasoning: when writing chapter text (`write`: Generate, AI runs),
+   * and for every other job (`other`: suggestions, summaries, tags…). Off for models that only work with it.
    */
   disableThinking: ThinkingOff;
   /** Jobs this model is not offered for. Empty (the default) means it is offered everywhere, including jobs added later. */

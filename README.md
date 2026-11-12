@@ -10,7 +10,8 @@ and, for pictures, your own ComfyUI machine.
 - **Read and write** branching stories. Any chapter can have any number of choices; a choice stays
   "unwritten" until a chapter is written for it.
 - **AI drafting**, in four steps: brainstorm ideas and pick the codex entries, have the AI write the
-  chapter from the story so far (revise, undo, step between drafts), write or generate a summary and
+  chapter from the story so far (change the prompt and Generate again for another draft, step between
+  drafts), write or generate a summary and
   choices, then post. "Continue with AI" jumps straight to a draft. A Generate carries on if you
   leave the page.
 - **Write ahead with AI** (the **Write ahead** button under a chapter's title): let the AI write several chapters on its own: fill the
@@ -134,7 +135,7 @@ and, for pictures, your own ComfyUI machine.
   200 calls from the last 3 days.
 - **Written with …** under a chapter's text says which model and connection wrote it and how long it
   took. Open it for the settings (temperature, thinking, max tokens), the exact prompt and the reply,
-  kept for good for every chapter written by Generate, a revise or an AI run from now on.
+  kept for good for every chapter written by Generate or an AI run from now on.
 - **The codex follows the branch.** A codex change is dated to a chapter and applies to that chapter
   and everything after it on that branch only.
 - **Summaries keep prompts short.** Each chapter has a summary (yours, or the AI's when you post).
