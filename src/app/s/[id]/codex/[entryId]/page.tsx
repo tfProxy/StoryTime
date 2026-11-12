@@ -4,7 +4,7 @@ import { nextChapters } from "@/components/CodexChapterNav";
 import CodexEntryPage from "@/components/CodexEntryPage";
 import { ChangeList, CompareForm, comparisonTitle, StopComparing, type Relation } from "@/components/CodexComparison";
 import { compareEntry, foldCodex, usedAspectsOf } from "@/lib/codex";
-import { getStoryChapters } from "@/lib/tree";
+import { getStoryChapters, laterChaptersFrom } from "@/lib/tree";
 import { entryLastAnchor, getCodexFacts, getCodexOps, nextFormChange } from "@/lib/codexDb";
 import { codexIconVersion, iconChoices } from "@/lib/codexIcons";
 import { entryStartOptions } from "@/lib/codexStart";
@@ -71,10 +71,7 @@ export default async function CodexEntryRoute({ params, searchParams }: { params
   })();
 
   // The chapters a form change can start at: this one, then the later ones on its branches, nearest first.
-  const formChapters = [{ id: here.id, title: here.title }];
-  for (let i = 0; i < formChapters.length && formChapters.length < 60; i++) {
-    for (const c of storyChapters) if (c.parent_id === formChapters[i].id) formChapters.push({ id: c.id, title: c.title });
-  }
+  const formChapters = laterChaptersFrom(here, storyChapters);
 
   return (
     <>

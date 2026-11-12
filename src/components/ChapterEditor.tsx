@@ -76,6 +76,11 @@ type Props = {
   /** The codex as of the chapter being continued; absent when there is no earlier chapter to anchor it to. */
   /** `editing`: the last chapter of `path` is the one being edited, so changes held in the draft are saved at it. */
   codexPanel?: { chapterId: string; editing?: boolean; path: PathChapter[]; ops: CodexOp[]; facts?: FactOp[] };
+  /**
+   * Inside the writing desk, whose own columns show the codex: no "Codex for this prompt" and no codex drawer.
+   * `onText` hears the draft's title, prompt and text as they change (the desk's "In this chapter").
+   */
+  desk?: { onText: (text: string) => void };
 };
 
 const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
@@ -148,7 +153,7 @@ function isBlank(d: Draft, target: Target): boolean {
   );
 }
 
-export default function ChapterEditor({ target, context, storyId, draftKey, resumeHref, draftLabel, autoGenerate, codexPanel }: Props) {
+export default function ChapterEditor({ target, context, storyId, draftKey, resumeHref, draftLabel, autoGenerate, codexPanel, desk }: Props) {
   const router = useRouter();
   const settings = useSettings();
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -410,6 +415,13 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     // rereadGenerated reads only refs and the draft key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey, draftReady, listenDraft]);
+
+  // The writing desk reads the draft's words to list the codex entries named in it.
+  const deskText = draft ? [draft.title, draft.prompt, draft.body].join("\n") : null;
+  const onDeskText = desk?.onText;
+  useEffect(() => {
+    if (deskText !== null) onDeskText?.(deskText);
+  }, [deskText, onDeskText]);
 
   if (!draft) return <p className="meta">Loading draft…</p>;
 
@@ -875,18 +887,21 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
             </p>
           )}
 
-          <div className="ai-panel">
-            <CodexPreview
-              ctx={ctx}
-              direction={draft.prompt}
-              contextTokens={settings.contextTokens}
-              overrides={codexOverrides}
-              onChange={(next) => patch({ codexOverrides: next })}
-              onEdit={codexPanel ? (id) => openCodex(id) : undefined}
-              onNew={codexPanel ? () => openCodex("new") : undefined}
-              held={heldIds}
-            />
-          </div>
+          {/* On the writing desk, its "In this chapter" list takes the place of this. */}
+          {!desk && (
+            <div className="ai-panel">
+              <CodexPreview
+                ctx={ctx}
+                direction={draft.prompt}
+                contextTokens={settings.contextTokens}
+                overrides={codexOverrides}
+                onChange={(next) => patch({ codexOverrides: next })}
+                onEdit={codexPanel ? (id) => openCodex(id) : undefined}
+                onNew={codexPanel ? () => openCodex("new") : undefined}
+                held={heldIds}
+              />
+            </div>
+          )}
         </div>
 
         <div className="editor-main">
@@ -1328,7 +1343,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
         )}
       </div>
 
-      {codexPanel && (
+      {codexPanel && !desk && (
         <>
           <PageMenu onCodex={() => openCodex(null)} />
           {/* Rendered outside the form: the codex panel has forms of its own. */}

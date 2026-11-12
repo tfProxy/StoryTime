@@ -24,7 +24,8 @@ type Props = {
   };
 };
 
-type Edits = { aspect?: string; form?: string; text?: string };
+/** What accepting may change: the text, and the chapter it takes effect from (an earlier one on its path). */
+type Edits = { aspect?: string; form?: string; text?: string; anchor_chapter_id?: string };
 
 const KIND_LABEL: Record<CodexSuggestion["kind"], string> = { set: "Change", form: "Form", retire: "Remove", entry: "New entry", conflict: "Check" };
 

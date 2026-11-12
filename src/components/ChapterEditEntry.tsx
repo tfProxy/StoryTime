@@ -6,7 +6,7 @@ import type { CodexOp, FactOp } from "@/lib/codex";
 import ChapterEditor, { type EditWriting } from "./ChapterEditor";
 import StoryDetailsForm from "./StoryDetailsForm";
 
-type Props = {
+export type ChapterEditEntryProps = {
   chapterId: string;
   baseRevision: number;
   descendantCount: number;
@@ -25,9 +25,11 @@ type Props = {
   codexPanel?: { chapterId: string; editing?: boolean; path: PathChapter[]; ops: CodexOp[]; facts?: FactOp[] };
   /** Present only for a story's first chapter. */
   story: { id: string; title: string; premise: string } | null;
+  /** Inside the writing desk (see ChapterEditor). */
+  desk?: { onText: (text: string) => void };
 };
 
-export default function ChapterEditEntry({ story, ...p }: Props) {
+export default function ChapterEditEntry({ story, ...p }: ChapterEditEntryProps) {
   return (
     <>
       {/* The story's title and summary are also edited alongside its first chapter. */}
@@ -57,6 +59,7 @@ export default function ChapterEditEntry({ story, ...p }: Props) {
         resumeHref={`/c/${p.chapterId}/edit`}
         draftLabel={p.draftLabel}
         codexPanel={p.codexPanel}
+        desk={p.desk}
       />
     </>
   );

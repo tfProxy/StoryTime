@@ -67,6 +67,15 @@ export function getStoryChapters(storyId: string): StoryChapter[] {
   });
 }
 
+/** The chapters a codex form change can start at: `here`, then the later ones on its branches, nearest first (at most 60). */
+export function laterChaptersFrom(here: { id: string; title: string }, chapters: StoryChapter[]): { id: string; title: string }[] {
+  const list = [{ id: here.id, title: here.title }];
+  for (let i = 0; i < list.length && list.length < 60; i++) {
+    for (const c of chapters) if (c.parent_id === list[i].id) list.push({ id: c.id, title: c.title });
+  }
+  return list;
+}
+
 /**
  * Every live chapter of a story as a nested tree, for the outline view. Trashed chapters are left out, unless
  * `trashed` is set: then they are listed under their choice, after the live one.

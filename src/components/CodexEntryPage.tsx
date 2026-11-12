@@ -37,7 +37,9 @@ import { AspectPicker } from "./AspectPicker";
 import TidyEntry from "./TidyEntry";
 import { canDifferByForm } from "@/lib/codexCategories";
 
-type Chapter = { id: string; title: string };
+export type Chapter = { id: string; title: string };
+/** The next chapter on a branch from here that sets the entry's form again ("Lasts until …"). */
+export type LaterForm = { chapter_id: string; title: string; form: string; stage: string } | null;
 
 export type EntryPageNav = {
   /** The chapter's codex in the Story Bible. */
@@ -77,8 +79,7 @@ type Props = {
   compare: { picker: ReactNode; result: ReactNode | null };
   /** The chapter's summary ("Summary of this chapter" in the ⋯ menu). */
   summary: string | null;
-  /** The next chapter on a branch from here that sets the form again ("Lasts until …"). */
-  laterForm: { chapter_id: string; title: string; form: string; stage: string } | null;
+  laterForm: LaterForm;
   /** The chapters a form change can start at: this one, then later ones on its branches. */
   formChapters: Chapter[];
 };
@@ -489,7 +490,7 @@ function ChapterPicker({ storyId, entryId, here, nav }: { storyId: string; entry
 }
 
 /** The entry exactly as a prompt gives it to the AI: its name line and a bullet for each fact (codexBlock). */
-function AiText({ entry }: { entry: CodexEntry }) {
+export function AiText({ entry }: { entry: CodexEntry }) {
   if (!entry.description) return <div className="fact-ai"><em>Nothing yet — add facts.</em></div>;
   const head = `${entry.name} [${entry.type}]${entry.aliases.length ? ` (also: ${entry.aliases.join(", ")})` : ""}`;
   return <div className="fact-ai">{codexBlock(head, entry.description)}</div>;
@@ -554,7 +555,7 @@ function aiMarker(f: LiveFact, entryId: string, titleOf: (id: string) => string)
  * The entry's facts as of the chapter: the form first, then the every-form facts, the current form's own, and the other
  * forms' folded away. Each row opens its editor when tapped; its ⋯ holds History, Remove and Retcon.
  */
-function FactsTable({
+export function FactsTable({
   entry,
   factOps,
   path,
@@ -567,7 +568,10 @@ function FactsTable({
   suggestions,
   onSaved,
   onError,
+  desk = false,
 }: {
+  /** On the writing desk (inside its Facts tab): no heading, the buttons first, and no Flesh out. */
+  desk?: boolean;
   entry: CodexEntry;
   factOps: FactOp[];
   path: PathChapter[];
@@ -575,7 +579,7 @@ function FactsTable({
   storyId: string;
   usedAspects: string[];
   start: Chapter;
-  laterForm: Props["laterForm"];
+  laterForm: LaterForm;
   formChapters: Chapter[];
   /** Open suggestions for the entry backed by the text, on the path. */
   suggestions: CodexSuggestion[];
@@ -763,9 +767,47 @@ function FactsTable({
     );
   };
 
+  // "+ Add a fact" and the rest, with the forms they open. On the writing desk they come first, each form right under
+  // the buttons, and asking the AI for facts is in the Suggestions tab instead.
+  const tidy = tidyOpen && <TidyEntry entry={entry} storyId={storyId} chapterId={chapterId} onApplied={onSaved} onClose={() => setTidyOpen(false)} />;
+  const buttons = (
+    <div className="row ef-add">
+      {editing !== "new" && (
+        <button type="button" className="secondary" disabled={busy} onClick={() => setEditing("new")}>
+          + Add a fact
+        </button>
+      )}
+      {!desk && !fleshOpen && (
+        <button type="button" className="secondary" onClick={() => setFleshOpen(true)}>
+          + Flesh out with AI…
+        </button>
+      )}
+      {!tidyOpen && rows.length > 1 && (
+        <button type="button" className="secondary" onClick={() => setTidyOpen(true)}>
+          Tidy this entry…
+        </button>
+      )}
+    </div>
+  );
+  const adding = desk ? (
+    <>
+      {buttons}
+      {editing === "new" && editor(null)}
+      {tidy}
+    </>
+  ) : (
+    <>
+      {editing === "new" && editor(null)}
+      {buttons}
+      {fleshOpen && <FleshOutEntry storyId={storyId} chapterId={chapterId} entryId={entry.entry_id} name={entry.name} startOpen onCancel={() => setFleshOpen(false)} />}
+      {tidy}
+    </>
+  );
+
   return (
-    <section className="entry-section entry-facts" id="entry-facts" aria-labelledby="entry-facts-title">
-      <h2 id="entry-facts-title">Facts as of “{here}”</h2>
+    <section className={desk ? "entry-section entry-facts desk-facts" : "entry-section entry-facts"} id="entry-facts" aria-labelledby={desk ? undefined : "entry-facts-title"} aria-label={desk ? `Facts as of “${here}”` : undefined}>
+      {!desk && <h2 id="entry-facts-title">Facts as of “{here}”</h2>}
+      {desk && adding}
       <EntryHints
         entry={entry}
         hints={hints}
@@ -891,26 +933,7 @@ function FactsTable({
         </div>
       )}
 
-      {editing === "new" && editor(null)}
-      <div className="row ef-add">
-        {editing !== "new" && (
-          <button type="button" className="secondary" disabled={busy} onClick={() => setEditing("new")}>
-            + Add a fact
-          </button>
-        )}
-        {!fleshOpen && (
-          <button type="button" className="secondary" onClick={() => setFleshOpen(true)}>
-            + Flesh out with AI…
-          </button>
-        )}
-        {!tidyOpen && rows.length > 1 && (
-          <button type="button" className="secondary" onClick={() => setTidyOpen(true)}>
-            Tidy this entry…
-          </button>
-        )}
-      </div>
-      {fleshOpen && <FleshOutEntry storyId={storyId} chapterId={chapterId} entryId={entry.entry_id} name={entry.name} startOpen onCancel={() => setFleshOpen(false)} />}
-      {tidyOpen && <TidyEntry entry={entry} storyId={storyId} chapterId={chapterId} onApplied={onSaved} onClose={() => setTidyOpen(false)} />}
+      {!desk && adding}
     </section>
   );
 }
@@ -1238,21 +1261,7 @@ function IdeaRow({
               </label>
             </>
           )}
-          {!sameChapter && (
-            <fieldset className="ef-kind">
-              <legend>Keep from…</legend>
-              <label>
-                <input type="radio" name={`keep-${s.id}`} checked={atStart} onChange={() => setAtStart(true)} />
-                <span>
-                  where {entry.name} first appears (“{start.title}”): it was always so
-                </span>
-              </label>
-              <label>
-                <input type="radio" name={`keep-${s.id}`} checked={!atStart} onChange={() => setAtStart(false)} />
-                <span>“{s.chapter_title}” on</span>
-              </label>
-            </fieldset>
-          )}
+          {!sameChapter && <KeepFrom legend="Keep from…" s={s} entryName={entry.name} start={start} atStart={atStart} onChange={setAtStart} />}
           <div className="row">
             <button type="button" disabled={busy || (mode === "edit" && !text.trim())} onClick={() => void keep()}>
               {busy ? "Saving…" : "Keep"}
@@ -1268,8 +1277,44 @@ function IdeaRow({
   );
 }
 
+/**
+ * Where an idea the AI made up is kept from: where the entry first appears ("it was always so"), or the chapter it was
+ * suggested at. (Asked only when those differ.)
+ */
+export function KeepFrom({
+  legend,
+  s,
+  entryName,
+  start,
+  atStart,
+  onChange,
+}: {
+  legend: string;
+  s: CodexSuggestion;
+  entryName: string;
+  start: Chapter;
+  atStart: boolean;
+  onChange: (atStart: boolean) => void;
+}) {
+  return (
+    <fieldset className="ef-kind">
+      <legend>{legend}</legend>
+      <label>
+        <input type="radio" name={`keep-${s.id}`} checked={atStart} onChange={() => onChange(true)} />
+        <span>
+          where {entryName} first appears (“{start.title}”): it was always so
+        </span>
+      </label>
+      <label>
+        <input type="radio" name={`keep-${s.id}`} checked={!atStart} onChange={() => onChange(false)} />
+        <span>“{s.chapter_title}” on</span>
+      </label>
+    </fieldset>
+  );
+}
+
 /** The tabs at the foot of the page: one panel shown at a time. Arrow keys move between the tabs. */
-function EntryTabs({ tab, setTab, tabs, children }: { tab: Tab; setTab: (t: Tab) => void; tabs: { id: Tab; label: string }[]; children: ReactNode }) {
+export function EntryTabs<T extends string>({ tab, setTab, tabs, children }: { tab: T; setTab: (t: T) => void; tabs: { id: T; label: string }[]; children: ReactNode }) {
   const list = useRef<HTMLDivElement>(null);
   return (
     <section className="entry-section entry-tabs">

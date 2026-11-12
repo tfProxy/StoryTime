@@ -1,18 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ChapterEditEntry from "@/components/ChapterEditEntry";
-import type { EditWriting } from "@/components/ChapterEditor";
-import { getChapterWriting, versionsForEdit } from "@/lib/chapterWriting";
-import { getCodexFacts, getCodexOps, getContextCodex } from "@/lib/codexDb";
-import { aiMarkOf, countDescendants, getChoices, getIncomingChoice, getPath, getStory } from "@/lib/stories";
+import { chapterEditProps } from "@/lib/chapterEditProps";
+import { getPath, getStory } from "@/lib/stories";
 
 export const dynamic = "force-dynamic";
-
-/** The prompt and versions kept when the chapter was posted, with the chapter as it is now showing. */
-function editWriting(id: string, title: string, body: string): EditWriting | null {
-  const kept = getChapterWriting(id);
-  return kept ? { ...kept, ...versionsForEdit(kept.versions, title, body) } : null;
-}
 
 export default async function EditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -21,7 +13,6 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
   const chapter = path[path.length - 1];
   const story = getStory(chapter.story_id);
   if (!story) notFound();
-  const incoming = getIncomingChoice(id);
 
   if (chapter.trashed_at !== null) {
     return (
@@ -47,42 +38,7 @@ export default async function EditPage({ params }: { params: Promise<{ id: strin
         Revision {chapter.revision}. Saving keeps the current version in the chapter&apos;s{" "}
         <Link href={`/c/${id}/history`}>history</Link>.
       </p>
-      <ChapterEditEntry
-        chapterId={id}
-        baseRevision={chapter.revision}
-        descendantCount={countDescendants(id)}
-        initialTitle={chapter.title}
-        initialBody={chapter.body}
-        initialSummary={chapter.summary}
-        initialPathSummary={chapter.path_summary}
-        existingChoices={getChoices(id).map((c) => ({ id: c.id, label: c.label, hasChild: c.child_chapter_id !== null }))}
-        incomingLabel={incoming?.label ?? null}
-        aiMarked={aiMarkOf(chapter) !== null}
-        writing={editWriting(id, chapter.title, chapter.body)}
-        // The AI sees the story up to, but not including, the chapter being edited.
-        context={{
-          storyTitle: story.title,
-          premise: story.premise,
-          style: story.style,
-          path: path
-            .slice(0, -1)
-            .map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary })),
-          choiceLabel: incoming?.label ?? null,
-          // The codex as of this chapter, its own changes included: what the drawer shows and edits.
-          codex: getContextCodex(id),
-        }}
-        storyId={story.id}
-        draftLabel={`${story.title}: editing “${chapter.title}”`}
-        // Codex changes made while editing are held in the draft and saved at this chapter with the edit.
-        codexPanel={{
-          chapterId: id,
-          editing: true,
-          path: path.map((c) => ({ id: c.id, title: c.title, depth: c.depth, body: c.body, summary: c.summary, path_summary: c.path_summary })),
-          ops: getCodexOps(id),
-          facts: getCodexFacts(id),
-        }}
-        story={path.length === 1 ? { id: story.id, title: story.title, premise: story.premise } : null}
-      />
+      <ChapterEditEntry {...chapterEditProps(story, path)} />
     </>
   );
 }
