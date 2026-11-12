@@ -58,7 +58,7 @@ try {
   const illustrate = page.getByRole("button", { name: "Illustrate", exact: true });
   ok(await illustrate.isEnabled() && (await illustrate.getAttribute("title")) === null, "Illustrate is offered for a posted chapter, with no 'not on the desk yet' note");
   // An entry open in Codex mode, to see it back afterwards.
-  await page.locator(".desk-row", { hasText: "Mara" }).click();
+  await page.locator(".desk-group", { hasText: "Characters" }).locator(".desk-row", { hasText: "Mara" }).click();
   await page.getByRole("region", { name: "Codex entry: Mara" }).waitFor();
   // A mark on the editor's title box (not an edit, which would leave a draft), to see the same editor back afterwards.
   await page.getByLabel("Chapter title").evaluate((e) => (e.dataset.mark = "kept"));
