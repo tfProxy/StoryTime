@@ -960,6 +960,46 @@ export const MIGRATIONS: string[] = [
   );
   CREATE INDEX ai_requests_at ON ai_requests(at);
   `,
+  // 53: a codex entry has one icon (codex_icons, see ./codexIcons) instead of pictures anchored at chapters, and no notes.
+  // Each entry keeps the picture it showed for the whole story: its own whole-story picture (the latest), else its shared
+  // entry's latest, else its own latest from a chapter on. Every other codex picture goes, and so do the codex picture
+  // page's prompt boxes. A linked entry's icon is the story's own. The notes are blanked (codex_ops.content, the shared
+  // entries' content and the story's override of it); the column stays, as nothing reads it now. The AI's open
+  // suggestions read from the notes go with them. Codex picture jobs and their marks stay in the job log.
+  `
+  CREATE TABLE codex_icons (
+    story_id   TEXT NOT NULL REFERENCES stories(id),
+    entry_id   TEXT NOT NULL,
+    image      BLOB NOT NULL,
+    type       TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (story_id, entry_id)
+  );
+  INSERT INTO codex_icons (story_id, entry_id, image, type, updated_at)
+    SELECT story_id, entry_id, image, type, posted_at FROM (
+      SELECT p.*, ROW_NUMBER() OVER (PARTITION BY story_id, entry_id ORDER BY posted_at DESC, rowid DESC) AS n
+        FROM codex_pictures p WHERE removed_at IS NULL AND shared_entry_id IS NULL AND anchor_chapter_id IS NULL
+    ) WHERE n = 1;
+  INSERT OR IGNORE INTO codex_icons (story_id, entry_id, image, type, updated_at)
+    SELECT l.story_id, l.entry_id, s.image, s.type, s.posted_at
+      FROM (SELECT DISTINCT story_id, entry_id, shared_entry_id FROM codex_ops WHERE shared_entry_id IS NOT NULL) l
+      JOIN (
+        SELECT p.*, ROW_NUMBER() OVER (PARTITION BY shared_entry_id ORDER BY posted_at DESC, rowid DESC) AS n
+          FROM codex_pictures p WHERE removed_at IS NULL AND shared_entry_id IS NOT NULL
+      ) s ON s.shared_entry_id = l.shared_entry_id AND s.n = 1;
+  INSERT OR IGNORE INTO codex_icons (story_id, entry_id, image, type, updated_at)
+    SELECT story_id, entry_id, image, type, posted_at FROM (
+      SELECT p.*, ROW_NUMBER() OVER (PARTITION BY story_id, entry_id ORDER BY posted_at DESC, rowid DESC) AS n
+        FROM codex_pictures p WHERE removed_at IS NULL AND shared_entry_id IS NULL
+    ) WHERE n = 1;
+  DROP TABLE codex_pictures;
+  DROP TABLE codex_picture_prompts;
+
+  UPDATE codex_ops SET content = '' WHERE content != '';
+  UPDATE codex_ops SET overrides = json_remove(overrides, '$.content') WHERE overrides IS NOT NULL AND json_type(overrides, '$.content') IS NOT NULL;
+  UPDATE shared_entries SET content = '' WHERE content != '';
+  DELETE FROM codex_suggestions WHERE source = 'notes' AND status = 'open';
+  `,
 ];
 
 function open(): Database.Database {
