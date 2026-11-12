@@ -22,7 +22,7 @@ import {
 } from "@/lib/ai/prompts";
 import type { PathChapter } from "@/lib/ai/codexAi";
 import type { ChapterWriting } from "@/lib/chapterWriting";
-import { foldWithDraft, isDraftEntry, isDraftFact, type CodexOp, type FactOp } from "@/lib/codex";
+import { foldWithDraft, isDraftEntry, isDraftFact, type CodexChange, type CodexOp, type FactChange, type FactOp } from "@/lib/codex";
 import { deleteDraft, DraftConflict, emptyDraft, getDraft, saveDraft, type Draft } from "@/lib/drafts";
 import { applyAfterGenerate, applyGenerated, isBegun, keptVersions, restore, snapshot } from "@/lib/generatedDraft";
 import { useWorkQueue, type GenerateItem } from "./WorkQueue";
@@ -90,7 +90,23 @@ type Props = {
  * title, prompt and text as they change (the desk's "In this chapter"); `menuSlot` is where the top bar's ⋯ menu goes;
  * `onNote` shows a line in the top bar (after an Update, say).
  */
-export type Desk = { onText: (text: string) => void; menuSlot?: HTMLElement | null; onNote?: (note: string) => void };
+export type Desk = {
+  onText: (text: string) => void;
+  menuSlot?: HTMLElement | null;
+  onNote?: (note: string) => void;
+  /**
+   * A new chapter's codex changes held in its draft (null while the draft loads), with a way to change them: the desk's
+   * codex columns hold their changes there, and Post saves them at the new chapter.
+   */
+  onHeld?: (held: HeldCodex | null) => void;
+};
+
+/** Codex changes held in a draft (entries and facts), and how to change them. */
+export type HeldCodex = {
+  changes: CodexChange[];
+  facts: FactChange[];
+  update: (fn: (h: { changes: CodexChange[]; facts: FactChange[] }) => { changes: CodexChange[]; facts: FactChange[] }) => void;
+};
 
 const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
 
@@ -435,6 +451,25 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     // rereadGenerated reads only refs and the draft key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey, draftReady, listenDraft]);
+
+  // The writing desk's codex columns show (and change) the codex changes held in a new chapter's draft.
+  const onHeld = desk?.onHeld;
+  const heldChanges = draft?.codexChanges;
+  const heldFacts = draft?.codexFactChanges;
+  useEffect(() => {
+    if (!onHeld) return;
+    if (!draftReady) return onHeld(null);
+    onHeld({
+      changes: heldChanges ?? [],
+      facts: heldFacts ?? [],
+      update: (fn) =>
+        setDraft((d) => {
+          if (!d) return d;
+          const next = fn({ changes: d.codexChanges ?? [], facts: d.codexFactChanges ?? [] });
+          return { ...d, codexChanges: next.changes, codexFactChanges: next.facts };
+        }),
+    });
+  }, [onHeld, draftReady, heldChanges, heldFacts]);
 
   // The writing desk reads the draft's words to list the codex entries named in it.
   const deskText = draft ? [draft.title, draft.prompt, draft.body].join("\n") : null;
@@ -1130,8 +1165,9 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     let url = "/api/chapters";
     let payload: unknown;
     if (target.kind === "first") {
+      // The desk holds codex entries for a first chapter too; they are saved at it.
       url = `/api/stories/${target.storyId}/first-chapter`;
-      payload = chapter;
+      payload = { ...chapter, ...codexPayload() };
     } else if (target.kind === "fill" && draft.newChoiceLabel.trim() === target.label.trim()) {
       payload = { ...chapter, choice_id: target.choiceId, ...codexPayload() };
     } else {

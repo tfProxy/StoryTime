@@ -9,6 +9,7 @@ import {
   factHistory,
   codexBlock,
   factSharedState,
+  FORM_ASPECT,
   formLine,
   isAiFact,
   isFormAspect,
@@ -26,7 +27,7 @@ import { entryHints } from "@/lib/codexHints";
 import { useSettings } from "@/lib/settings";
 import { codexIconUrl, type IconChoice } from "@/lib/codexIconUrl";
 import { EntryDetailsForm, EntryHistoryList, useEntryActions } from "./CodexEntryEditor";
-import { EntryHints } from "./CodexFacts";
+import { EntryHints, type HeldFact } from "./CodexFacts";
 import CodexIconPicker from "./CodexIconPicker";
 import { INBOX_CHANGED, useCodexInbox } from "./CodexInbox";
 import FleshOutEntry from "./FleshOutEntry";
@@ -85,7 +86,11 @@ type Props = {
 };
 
 type Body = { op: "set" | "retire"; aspect: string; form: string; text: string; quote: string; fact_id?: string; anchor: string };
+/** "Set a form…" / "Change form…", as /api/codex/form takes it (no facts moved or added). */
+type FormBody = { chapter_id: string; entry_id: string; form: { name: string; stage: string; anchor_chapter_id: string }; base_form: string; move: never[]; add: never[] };
 type Tab = "ai" | "history" | "update";
+/** Why an action that works on saved facts is greyed out on a chapter not posted yet (the desk's held changes). */
+export const AFTER_POST = "Works on saved facts: post the chapter first.";
 
 const NEW_FORM = "\u0000new";
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -569,9 +574,16 @@ export function FactsTable({
   onSaved,
   onError,
   desk = false,
+  hold,
 }: {
   /** On the writing desk (inside its Facts tab): no heading, the buttons first, and no Flesh out. */
   desk?: boolean;
+  /**
+   * The desk on a chapter not posted yet: `chapterId` is DRAFT_ANCHOR (the new chapter, last on `path`), and a change
+   * made there is held in the draft with this, to be saved by Post. A correction (at an earlier chapter) is saved at once.
+   * Tidy, Retcon and "Reset to the shared fact" work on saved facts only, so they wait for the Post.
+   */
+  hold?: (f: HeldFact) => void;
   entry: CodexEntry;
   factOps: FactOp[];
   path: PathChapter[];
@@ -612,8 +624,23 @@ export function FactsTable({
     onSaved();
     return true;
   }
-  const send = (b: Body) =>
-    run(() => post("/api/codex/facts", { anchor_chapter_id: b.anchor, entry_id: entry.entry_id, fact_id: b.fact_id, op: b.op, aspect: b.aspect, form: b.form, text: b.text, quote: b.quote }));
+  async function send(b: Body): Promise<boolean> {
+    if (hold && b.anchor === chapterId) {
+      hold({ op: b.op, aspect: b.aspect, form: b.form, text: b.text, quote: b.quote, fact_id: b.fact_id });
+      return true;
+    }
+    return run(() => post("/api/codex/facts", { anchor_chapter_id: b.anchor, entry_id: entry.entry_id, fact_id: b.fact_id, op: b.op, aspect: b.aspect, form: b.form, text: b.text, quote: b.quote }));
+  }
+  /** A form change: held on a new chapter, unless it names the form until now (that waits for the Post). */
+  async function saveForm(body: FormBody): Promise<boolean> {
+    if (!hold) return run(() => post("/api/codex/form", body));
+    if (body.base_form) {
+      onError("Naming the form until now changes earlier chapters, so it waits until this chapter is posted.");
+      return false;
+    }
+    hold({ op: "set", aspect: FORM_ASPECT, form: body.form.name, text: body.form.stage, quote: "", fact_id: entry.form?.fact.fact_id });
+    return true;
+  }
   const resetShared = (factId: string) => run(() => post("/api/codex/reset-fact", { anchor_chapter_id: chapterId, entry_id: entry.entry_id, fact_id: factId }));
 
   const rows = entry.facts.filter((f) => !isFormAspect(f.aspect));
@@ -730,15 +757,20 @@ export function FactsTable({
               Remove from “{here}” on…
             </button>
             {entry.shared_entry_id && sharedState(f.fact_id) === "changed" && (
-              <button type="button" disabled={busy} onClick={() => void resetShared(f.fact_id)}>
+              <button type="button" disabled={busy || !!hold} title={hold ? AFTER_POST : undefined} onClick={() => void resetShared(f.fact_id)}>
                 Reset to the shared fact
               </button>
             )}
-            {!isAiFact(f) && (
-              <Link href={`/s/${storyId}/review?tab=retcons&chapter=${chapterId}&entry=${encodeURIComponent(entry.entry_id)}&fact=${encodeURIComponent(f.fact_id)}`} aria-label={`Retcon ${label}`}>
-                Retcon the chapters…
-              </Link>
-            )}
+            {!isAiFact(f) &&
+              (hold ? (
+                <button type="button" disabled title={AFTER_POST} aria-label={`Retcon ${label}`}>
+                  Retcon the chapters…
+                </button>
+              ) : (
+                <Link href={`/s/${storyId}/review?tab=retcons&chapter=${chapterId}&entry=${encodeURIComponent(entry.entry_id)}&fact=${encodeURIComponent(f.fact_id)}`} aria-label={`Retcon ${label}`}>
+                  Retcon the chapters…
+                </Link>
+              ))}
           </MoreMenu>
         </div>
         <Markers list={rowMarkers.get(f.fact_id) ?? []} />
@@ -783,7 +815,7 @@ export function FactsTable({
         </button>
       )}
       {!tidyOpen && rows.length > 1 && (
-        <button type="button" className="secondary" onClick={() => setTidyOpen(true)}>
+        <button type="button" className="secondary" disabled={!!hold} title={hold ? AFTER_POST : undefined} onClick={() => setTidyOpen(true)}>
           Tidy this entry…
         </button>
       )}
@@ -873,7 +905,7 @@ export function FactsTable({
                 busy={busy}
                 onCancel={() => setFormOpen(false)}
                 onSave={async (body) => {
-                  if (await run(() => post("/api/codex/form", body))) setFormOpen(false);
+                  if (await saveForm(body)) setFormOpen(false);
                 }}
               />
             </div>
@@ -924,7 +956,7 @@ export function FactsTable({
                 {h.aspect && <strong>{h.aspect}</strong>} <span>{h.text}</span>
               </div>
               <div className="row" style={{ margin: "0.4rem 0 0" }}>
-                <button type="button" className="secondary" disabled={busy} onClick={() => void resetShared(h.fact_id)}>
+                <button type="button" className="secondary" disabled={busy || !!hold} title={hold ? AFTER_POST : undefined} onClick={() => void resetShared(h.fact_id)}>
                   Show again
                 </button>
               </div>
@@ -1075,7 +1107,7 @@ function ChangeFormPanel({
   formChapters: Chapter[];
   busy: boolean;
   onCancel: () => void;
-  onSave: (body: unknown) => void;
+  onSave: (body: FormBody) => void;
 }) {
   const currentName = entry.form?.name ?? "";
   const [from, setFrom] = useState(chapterId);

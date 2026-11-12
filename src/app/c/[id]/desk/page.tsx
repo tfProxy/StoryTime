@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { nextChapters } from "@/components/CodexChapterNav";
-import NewChapterDesk from "@/components/NewChapterDesk";
 import WritingDesk from "@/components/WritingDesk";
 import { chapterEditProps } from "@/lib/chapterEditProps";
 import { foldCodex } from "@/lib/codex";
 import { getCodexFacts, getCodexOps, getContextCodex, nextFormChange } from "@/lib/codexDb";
 import { codexIcons, iconChoices } from "@/lib/codexIcons";
+import { newChapterCodex } from "@/lib/deskCodex";
 import { draftMarks } from "@/lib/draftMarks";
 import { illustrateProps } from "@/lib/illustrateProps";
 import { type Chapter, getChoices, getPath, getStory, type Story } from "@/lib/stories";
@@ -57,6 +57,7 @@ export default async function DeskPage({
 
   return (
     <WritingDesk
+      key={id}
       bar={
         <>
           <Link href={`/c/${id}`}>← Back to “{chapter.title}”</Link> · <Link href={`/c/${id}/edit`}>Edit page</Link>
@@ -109,10 +110,13 @@ function newChapter(story: Story, path: Chapter[], query: { choice?: string; new
   const draftKey = target.kind === "fill" ? `fill:${target.choiceId}` : `new:${parent.id}`;
   const resumeHref = target.kind === "fill" ? `/c/${parent.id}/write?choice=${target.choiceId}` : `/c/${parent.id}/write`;
   const draftLabel = target.kind === "fill" ? `${story.title}: “${target.label}”` : `${story.title}: new choice after “${parent.title}”`;
+  const codex = newChapterCodex(story, path);
   return (
-    <NewChapterDesk
+    <WritingDesk
+      key={draftKey}
       bar={<Link href={`/c/${parent.id}`}>← Back to “{parent.title}”</Link>}
-      editor={{
+      codex={codex}
+      newChapter={{
         target,
         context: {
           storyTitle: story.title,
@@ -127,6 +131,8 @@ function newChapter(story: Story, path: Chapter[], query: { choice?: string; new
         draftKey,
         resumeHref,
         draftLabel,
+        // The codex the AI is sent folds in the changes held in the draft, as on the Write page.
+        codexPanel: { chapterId: parent.id, path: codex.path, ops: codex.ops, facts: codex.facts },
       }}
     />
   );

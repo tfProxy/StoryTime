@@ -25,6 +25,7 @@ export default function DeskSuggestions({
   path,
   start,
   inbox,
+  askOff = null,
 }: {
   entry: CodexEntry;
   storyId: string;
@@ -34,6 +35,8 @@ export default function DeskSuggestions({
   /** Where the entry first appears on this path. */
   start: Chapter;
   inbox: Inbox;
+  /** Why "Ask the AI for more" is greyed out (on a chapter not posted yet, it has no text to read). */
+  askOff?: string | null;
 }) {
   const list = inbox.shown.filter((s) => s.entry_id === entry.entry_id);
   const open = list.filter((s) => s.status === "open");
@@ -50,7 +53,14 @@ export default function DeskSuggestions({
           ))}
         </ul>
       )}
-      <AskForMore entry={entry} storyId={storyId} chapterId={chapterId} path={path} />
+      {askOff ? (
+        <div className="desk-ask">
+          <h3 className="desk-label">Ask the AI for more</h3>
+          <p className="meta">{askOff}</p>
+        </div>
+      ) : (
+        <AskForMore entry={entry} storyId={storyId} chapterId={chapterId} path={path} />
+      )}
     </div>
   );
 }

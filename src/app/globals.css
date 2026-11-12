@@ -7585,3 +7585,13 @@ main:has(.desk) {
 .choice-unwritten .choice-draft {
   font-size: 0.8rem;
 }
+
+/* On a chapter not posted yet: the entry column says its codex changes are held in the draft. */
+.desk-held-note {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.desk-row .desk-chip {
+  flex: none;
+}

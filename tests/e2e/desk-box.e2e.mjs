@@ -178,7 +178,7 @@ try {
   const nbox = page.locator("section.desk-box");
   await nbox.getByLabel("Chapter title").waitFor();
   ok((await nbox.getByRole("button", { name: /Prompt and drafts/ }).getAttribute("aria-expanded")) === "true", "Prompt and drafts is unfolded on a new chapter");
-  ok((await page.locator("aside.desk-side").innerText()).includes("Codex changes for a new chapter come in a later step"), "the codex column says codex changes come later");
+  ok(await page.locator("aside.desk-side").getByLabel("New entry").isVisible(), "the codex column works on a new chapter");
   const postButton = nbox.getByRole("button", { name: "Post chapter" });
   ok(await postButton.isDisabled(), "Post chapter is off until there is text");
   await page.locator(".desk-bar").getByLabel("More for this chapter").click();

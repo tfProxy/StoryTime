@@ -1,16 +1,33 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { compareEntry, DRAFT_ANCHOR, foldCodex, TYPE_LABELS, usedAspectsOf, type CodexEntry, type CodexOp, type EntryChange as Change, type EntryType, type FactOp } from "@/lib/codex";
+import {
+  addChange,
+  addFactChange,
+  applyDraft,
+  compareEntry,
+  DRAFT_ANCHOR,
+  foldCodex,
+  isDraftEntry,
+  retiredEntries,
+  TYPE_LABELS,
+  usedAspectsOf,
+  type CodexEntry,
+  type CodexOp,
+  type EntryChange as Change,
+  type EntryType,
+  type FactOp,
+} from "@/lib/codex";
 import type { PathChapter } from "@/lib/ai/codexAi";
 import { mentions } from "@/lib/ai/prompts";
 import { codexIconUrl, type IconChoice } from "@/lib/codexIconUrl";
 import ChapterEditEntry, { type ChapterEditEntryProps } from "./ChapterEditEntry";
+import ChapterEditor, { type HeldCodex } from "./ChapterEditor";
 import ChapterTreePicker, { type PickerChapter } from "./ChapterTreePicker";
 import { AiText, EntryTabs, FactsTable, type Chapter, type LaterForm } from "./CodexEntryPage";
-import { EntryDetailsForm, EntryHistoryList, useEntryActions } from "./CodexEntryEditor";
+import { EntryDetailsForm, EntryHistoryList, useEntryActions, type EntryChange } from "./CodexEntryEditor";
 import CodexIconPicker from "./CodexIconPicker";
 import { ChangeList, comparisonTitle, type Relation } from "./CodexComparison";
 import { useCodexInbox } from "./CodexInbox";
@@ -20,10 +37,16 @@ import DeskSuggestions from "./DeskSuggestions";
 import LinkedEntryDetails from "./LinkedEntryDetails";
 import MoreMenu from "./MoreMenu";
 
-/** The codex as of the chapter on the desk, and what its entries' tabs need. */
+/**
+ * The codex as of the chapter on the desk, and what its entries' tabs need. For a chapter not posted yet it is the
+ * codex as of the chapter before it (`chapterId`), with the changes held in the new chapter's draft on top.
+ */
 export type DeskCodex = {
   storyId: string;
-  /** The chapter on the desk: codex changes made here are saved at once, anchored at it. */
+  /**
+   * The chapter on the desk: codex changes made here are saved at once, anchored at it. For a new chapter, the one it
+   * follows: changes are held for the new chapter, and only those put at an earlier chapter are saved at once.
+   */
   chapterId: string;
   /** The chapters from the story's first to `chapterId`. */
   path: PathChapter[];
@@ -64,22 +87,68 @@ function entryStart(ops: CodexOp[], path: Chapter[], entryId: string): Chapter {
 export type DeskMode = "codex" | "illustrate";
 
 /**
- * The writing desk: the codex (a side column that folds to a rail), the open codex entry, and the chapter's editor.
- * Codex changes made here are saved at once, at the chapter (it is posted).
- * In Illustrate mode the side column holds the picture controls and the story column the chapter's pictures (see
- * `DeskIllustrate`); the entry column closes and the editor is hidden, kept as it was for when Codex is chosen again.
- * `illustrate` is null for a chapter that isn't posted: Illustrate is greyed out. The mode is kept in the address
- * (`?side=illustrate`), so a refresh comes back to it.
+ * On a chapter not posted yet: the codex changes held in its draft (see ChapterEditor's `Desk.onHeld`), and the new
+ * chapter as a place on the path (id DRAFT_ANCHOR) for what is held there.
  */
-export default function WritingDesk({
-  editor,
-  codex,
-  bar,
-  note: firstNote = null,
-  illustrate = null,
-  mode: initialMode = "codex",
-}: {
-  editor: Omit<ChapterEditEntryProps, "desk">;
+type Holding = { held: HeldCodex; here: PathChapter };
+
+/** Why an entry action waits for the Post on a new chapter. */
+const NOT_POSTED = "Post the chapter first.";
+
+const localId = () => `draft-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+
+/**
+ * Saves an entry change from the desk. On a new chapter a change for it (anchor DRAFT_ANCHOR, the default) is held in
+ * the draft, as the Write page's drawer does; one put at an earlier chapter, or any on a posted chapter, is saved now.
+ * Resolves to the entry's id, or an error.
+ */
+async function saveEntryChange(
+  holding: Holding | null,
+  chapterId: string,
+  known: CodexEntry[],
+  { anchor, ...change }: EntryChange,
+): Promise<{ id?: string; error?: string }> {
+  const at = anchor ?? (holding ? DRAFT_ANCHOR : chapterId);
+  if (holding && at === DRAFT_ANCHOR) {
+    const entryId = change.op === "create" ? localId() : change.entry_id!;
+    const was = known.find((e) => e.entry_id === entryId);
+    holding.held.update((h) => ({
+      ...h,
+      changes: addChange(h.changes, {
+        op: change.op,
+        entry_id: entryId,
+        name: change.name ?? was?.name ?? "",
+        type: change.type ?? was?.type ?? "note",
+        aliases: change.aliases ?? was?.aliases ?? [],
+        content: change.content ?? was?.content ?? "",
+        always_include: change.always_include ?? was?.always_include ?? false,
+      }),
+    }));
+    return { id: entryId };
+  }
+  // An entry that only exists in the draft becomes a real one when it is saved to an earlier chapter.
+  const body = change.entry_id && isDraftEntry(change.entry_id) ? { ...change, op: "create", entry_id: undefined } : change;
+  try {
+    const res = await fetch("/api/codex", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ anchor_chapter_id: at, ...body }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { error: data.error ?? `Request failed (${res.status})` };
+    // The saved version now holds what the form showed, so a held change to the same entry would only override it.
+    if (holding && change.entry_id) holding.held.update((h) => ({ ...h, changes: h.changes.filter((c) => c.entry_id !== change.entry_id) }));
+    return { id: data.entry_id ?? change.entry_id };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+type DeskProps = {
+  /** A posted chapter's box (the Edit page's editor). */
+  editor?: Omit<ChapterEditEntryProps, "desk">;
+  /** Or a chapter not posted yet (the Write page's editor, with its draft); Post chapter makes it. */
+  newChapter?: Omit<ComponentProps<typeof ChapterEditor>, "desk">;
   codex: DeskCodex;
   /** The top bar's links ("← Back to …"); the chapter's ⋯ menu and a status line go beside them. */
   bar: ReactNode;
@@ -92,7 +161,27 @@ export default function WritingDesk({
   unusedDrafts?: string[];
   illustrate?: IllustrateProps | null;
   mode?: DeskMode;
-}) {
+};
+
+/**
+ * The writing desk: the codex (a side column that folds to a rail), the open codex entry, and the chapter's editor.
+ * On a posted chapter codex changes made here are saved at once, at the chapter. On a new one (`newChapter`) they are
+ * held in its draft, as the Write page's drawer holds them, and Post saves them at it; the actions that need a posted
+ * chapter are greyed out with why.
+ * In Illustrate mode the side column holds the picture controls and the story column the chapter's pictures (see
+ * `DeskIllustrate`); the entry column closes and the editor is hidden, kept as it was for when Codex is chosen again.
+ * `illustrate` is null for a chapter that isn't posted: Illustrate is greyed out. The mode is kept in the address
+ * (`?side=illustrate`), so a refresh comes back to it.
+ */
+export default function WritingDesk({
+  editor,
+  newChapter,
+  codex,
+  bar,
+  note: firstNote = null,
+  illustrate = null,
+  mode: initialMode = "codex",
+}: DeskProps) {
   const [mode, setMode] = useState<DeskMode>(illustrate ? initialMode : "codex");
   const illus = mode === "illustrate" && illustrate !== null;
   const choose = (next: DeskMode) => {
@@ -131,8 +220,20 @@ export default function WritingDesk({
   const [query, setQuery] = useState("");
   // The entry open in the entry column, or "new" for the new-entry form.
   const [openId, setOpenId] = useState<string | null>(null);
+  // A new chapter's codex changes, held in its draft: the codex shows them on top of the one it follows.
+  const [held, setHeld] = useState<HeldCodex | null>(null);
+  const holding: Holding | null =
+    newChapter && held
+      ? { held, here: { id: DRAFT_ANCHOR, title: "the new chapter", depth: (path.at(-1)?.depth ?? -1) + 1, body: "", summary: null, path_summary: null } }
+      : null;
+  const depth = holding?.here.depth ?? 0;
+  const applied = useMemo(
+    () => (held && newChapter ? applyDraft(ops, facts, held.changes, held.facts, depth) : { ops, facts }),
+    [ops, facts, held, newChapter, depth],
+  );
+  const heldIds = new Set(held && newChapter ? [...held.changes.map((c) => c.entry_id), ...held.facts.map((f) => f.entry_id)] : []);
 
-  const entries = useMemo(() => foldCodex(ops, facts), [ops, facts]);
+  const entries = useMemo(() => foldCodex(applied.ops, applied.facts), [applied]);
   const inbox = useCodexInbox({ storyId, onPath: { chapterIds: path.map((c) => c.id), onChanged: refresh } });
   const waiting = useMemo(() => {
     const n: Record<string, number> = {};
@@ -164,6 +265,11 @@ export default function WritingDesk({
             <span className="desk-row-name">{e.name}</span>
             <small>{e.aliases[0] ?? TYPE_LABELS[e.type]}</small>
           </span>
+          {heldIds.has(e.entry_id) && (
+            <span className="desk-chip" title="Changed for the new chapter: saved when you post it">
+              held
+            </span>
+          )}
           {n > 0 && (
             <span className="desk-badge" title={`${n} suggestion${n === 1 ? "" : "s"} waiting`}>
               {n}
@@ -224,20 +330,46 @@ export default function WritingDesk({
 
       {!illus && openId === "new" && (
         <section className="desk-entry" aria-label="New entry">
-          <NewEntry chapterId={chapterId} path={path} onClose={() => setOpenId(null)} onMade={(id) => setOpenId(id)} />
+          {newChapter && !holding ? (
+            <p className="meta">Loading the draft…</p>
+          ) : (
+            <NewEntry chapterId={chapterId} path={path} holding={holding} entries={entries} onClose={() => setOpenId(null)} onMade={(id) => setOpenId(id)} />
+          )}
         </section>
       )}
       {!illus && open && (
         <section className="desk-entry" aria-label={`Codex entry: ${open.name}`}>
-          <DeskEntry key={open.entry_id} entry={open} entries={entries} codex={codex} waiting={waiting[open.entry_id] ?? 0} inbox={inbox} onClose={() => setOpenId(null)} />
+          {newChapter && !holding ? (
+            <p className="meta">Loading the draft…</p>
+          ) : (
+            <DeskEntry
+              key={open.entry_id}
+              entry={open}
+              entries={entries}
+              codex={{ ...codex, ops: applied.ops, facts: applied.facts }}
+              holding={holding}
+              waiting={waiting[open.entry_id] ?? 0}
+              inbox={inbox}
+              onClose={() => setOpenId(null)}
+            />
+          )}
         </section>
       )}
 
       {/* Hidden, not removed, in Illustrate mode: an unsaved edit is still there when Codex is chosen again. */}
       <div className="desk-story" hidden={illus}>
-        <h1 className="visually-hidden">Edit “{here.title}”</h1>
-        {/* An Update makes a new revision: the box starts again from the chapter, its drafts kept with it. */}
-        <ChapterEditEntry key={editor.baseRevision} {...editor} desk={{ onText: setText, menuSlot, onNote: setNote }} />
+        {editor ? (
+          <>
+            <h1 className="visually-hidden">Edit “{here.title}”</h1>
+            {/* An Update makes a new revision: the box starts again from the chapter, its drafts kept with it. */}
+            <ChapterEditEntry key={editor.baseRevision} {...editor} desk={{ onText: setText, menuSlot, onNote: setNote }} />
+          </>
+        ) : newChapter ? (
+          <>
+            <h1 className="visually-hidden">New chapter</h1>
+            <ChapterEditor {...newChapter} desk={{ onText: setText, menuSlot, onNote: setNote, onHeld: setHeld }} />
+          </>
+        ) : null}
       </div>
     </div>
     </>
@@ -260,7 +392,21 @@ export function DeskBar({ bar, note, onSlot }: { bar: ReactNode; note: string | 
 }
 
 /** "+": a new entry's name, type and keywords, saved at once at the chapter; it opens when it is made. */
-function NewEntry({ chapterId, path, onClose, onMade }: { chapterId: string; path: PathChapter[]; onClose: () => void; onMade: (id: string) => void }) {
+function NewEntry({
+  chapterId,
+  path,
+  holding,
+  entries,
+  onClose,
+  onMade,
+}: {
+  chapterId: string;
+  path: PathChapter[];
+  holding: Holding | null;
+  entries: CodexEntry[];
+  onClose: () => void;
+  onMade: (id: string) => void;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -272,35 +418,44 @@ function NewEntry({ chapterId, path, onClose, onMade }: { chapterId: string; pat
           ×
         </button>
       </div>
+      {holding && <HeldNote />}
       {error && <p className="error">{error}</p>}
       <EntryDetailsForm
         initial={null}
         busy={busy}
         path={path}
         chapterId={chapterId}
-        inDraft={false}
+        inDraft={!!holding}
         onCancel={onClose}
-        onSave={async (f) => {
+        onSave={async (f, anchor) => {
           setBusy(true);
           setError(null);
-          try {
-            const res = await fetch("/api/codex", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ anchor_chapter_id: chapterId, op: "create", ...f, content: "", always_include: false }),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
-            router.refresh();
-            onMade(data.entry_id);
-          } catch (e) {
-            setError(e instanceof Error ? e.message : String(e));
-          } finally {
-            setBusy(false);
-          }
+          const r = await saveEntryChange(holding, chapterId, entries, { op: "create", ...f, content: "", always_include: false, anchor: holding ? anchor : chapterId });
+          setBusy(false);
+          if (r.error || !r.id) return setError(r.error ?? "Couldn't add the entry");
+          if (!holding || anchor !== DRAFT_ANCHOR) router.refresh();
+          onMade(r.id);
         }}
       />
     </div>
+  );
+}
+
+/** The entry column's note on a chapter not posted yet. */
+function HeldNote({ name, onDiscard }: { name?: string; onDiscard?: () => void }) {
+  return (
+    <p className="notice desk-held-note" role="note">
+      This chapter isn&apos;t posted yet: codex changes made here are held in its draft and saved when you post it.
+      {name && onDiscard && (
+        <>
+          {" "}
+          {name} has changes held.{" "}
+          <button type="button" className="link-button" onClick={onDiscard}>
+            Discard them
+          </button>
+        </>
+      )}
+    </p>
   );
 }
 
@@ -312,13 +467,16 @@ function DeskEntry({
   entry,
   entries,
   codex,
+  holding,
   waiting,
   inbox,
   onClose,
 }: {
   entry: CodexEntry;
   entries: CodexEntry[];
+  /** On a new chapter, `ops` and `facts` have the draft's held changes in them. */
   codex: DeskCodex;
+  holding: Holding | null;
   waiting: number;
   inbox: ReturnType<typeof useCodexInbox>;
   onClose: () => void;
@@ -326,22 +484,36 @@ function DeskEntry({
   const router = useRouter();
   const refresh = () => router.refresh();
   const { storyId, chapterId, path, ops, facts } = codex;
-  const here = path[path.length - 1];
+  // On a new chapter, "here" is the new chapter (DRAFT_ANCHOR): what is changed there is held in its draft.
+  const here = holding ? holding.here : path[path.length - 1];
+  const fullPath = holding ? [...path, holding.here] : path;
   const shared = entry.shared_entry_id;
+  // Only in the draft so far (made on this new chapter): it has no page, icon or history on the server yet.
+  const draftOnly = isDraftEntry(entry.entry_id);
   const { busy, error, setError, replace, share, removeHere, retire } = useEntryActions({
     entry,
     chapterId,
     storyId,
+    save: holding
+      ? async (c) => {
+          const r = await saveEntryChange(holding, chapterId, [...entries, ...retiredEntries(ops)], c);
+          if (!r.error && c.anchor && c.anchor !== DRAFT_ANCHOR) router.refresh();
+          return r.error ?? null;
+        }
+      : undefined,
     onRetired: () => {
       onClose();
       router.refresh();
     },
   });
+  const heldHere = !!holding && (holding.held.changes.some((c) => c.entry_id === entry.entry_id) || holding.held.facts.some((f) => f.entry_id === entry.entry_id));
+  const discardHeld = () =>
+    holding?.held.update((h) => ({ changes: h.changes.filter((c) => c.entry_id !== entry.entry_id), facts: h.facts.filter((f) => f.entry_id !== entry.entry_id) }));
   const [tab, setTab] = useState<Tab>(waiting > 0 ? "suggestions" : "facts");
   const [panel, setPanel] = useState<"details" | "icon" | "compare" | null>(null);
   const [savedNote, setSavedNote] = useState(false);
   const icon = codex.icons[entry.entry_id] ?? null;
-  const start = entryStart(ops, path, entry.entry_id);
+  const start = entryStart(ops, fullPath, entry.entry_id);
   const titleOf = (id: string) => (id === DRAFT_ANCHOR ? "this chapter (not posted yet)" : (path.find((p) => p.id === id)?.title ?? "an earlier chapter"));
   const toggle = (p: NonNullable<typeof panel>) => setPanel(panel === p ? null : p);
 
@@ -349,35 +521,60 @@ function DeskEntry({
     <div className="desk-entry-inner">
       <div className="desk-entry-bar">
         <span className="meta">
-          {TYPE_LABELS[entry.type]} · as of “{here.title}”
+          {TYPE_LABELS[entry.type]} · {holding ? "as of the new chapter" : `as of “${here.title}”`}
         </span>
+        {/* On a new chapter the actions that save at a posted chapter wait for the Post (greyed out, with why). */}
         <MoreMenu label="More entry actions">
-          <button type="button" onClick={() => setPanel("details")}>
+          <button
+            type="button"
+            disabled={!!holding && !!shared}
+            title={holding && shared ? `${NOT_POSTED} A shared entry's details are saved at a posted chapter.` : undefined}
+            onClick={() => setPanel("details")}
+          >
             Edit details
           </button>
-          <button type="button" onClick={() => setPanel("compare")}>
+          <button type="button" disabled={draftOnly} title={draftOnly ? `${NOT_POSTED} The entry is only in the draft.` : undefined} onClick={() => setPanel("compare")}>
             Compare with a chapter…
           </button>
           {!shared && (
-            <button type="button" disabled={busy} title={`Make this a shared entry, as it reads at “${here.title}”, so other stories can add it too.`} onClick={() => void share(here.title)}>
+            <button
+              type="button"
+              disabled={busy || !!holding}
+              title={holding ? `${NOT_POSTED} An entry is shared as it reads at a posted chapter.` : `Make this a shared entry, as it reads at “${here.title}”, so other stories can add it too.`}
+              onClick={() => void share(here.title)}
+            >
               Share to other stories…
             </button>
           )}
-          <Link href={`/s/${storyId}/codex/${entry.entry_id}?at=${chapterId}`}>Open on its own page</Link>
+          {draftOnly ? (
+            <button type="button" disabled title={`${NOT_POSTED} The entry is only in the draft.`}>
+              Open on its own page
+            </button>
+          ) : (
+            <Link href={`/s/${storyId}/codex/${entry.entry_id}?at=${chapterId}`}>Open on its own page</Link>
+          )}
           <button
             type="button"
             className="danger"
-            disabled={busy || codex.after.length === 0}
+            disabled={busy || !!holding || codex.after.length === 0}
             title={
-              codex.after.length > 0
-                ? `${entry.name} stays in the ${codex.after.length === 1 ? "chapter" : `${codex.after.length} chapters`} after “${here.title}”.`
-                : "No chapter has been written after this one, so there is nothing to keep it in. Use Retire."
+              holding
+                ? `${NOT_POSTED} Nothing is written after a new chapter.`
+                : codex.after.length > 0
+                  ? `${entry.name} stays in the ${codex.after.length === 1 ? "chapter" : `${codex.after.length} chapters`} after “${here.title}”.`
+                  : "No chapter has been written after this one, so there is nothing to keep it in. Use Retire."
             }
             onClick={() => void removeHere(here.title, codex.after)}
           >
             Remove from this chapter only…
           </button>
-          <button type="button" className="danger" disabled={busy} title={`Gone from “${here.title}” and every chapter after it. Earlier chapters keep it.`} onClick={() => void retire()}>
+          <button
+            type="button"
+            className="danger"
+            disabled={busy || !!holding}
+            title={holding ? `${NOT_POSTED} Then retire it on the desk, from this chapter on.` : `Gone from “${here.title}” and every chapter after it. Earlier chapters keep it.`}
+            onClick={() => void retire()}
+          >
             Retire…
           </button>
         </MoreMenu>
@@ -391,7 +588,8 @@ function DeskEntry({
           className="codex-icon-button"
           aria-expanded={panel === "icon"}
           aria-label={icon !== null ? `Change the icon of ${entry.name}` : `Add an icon for ${entry.name}`}
-          title={icon !== null ? "Change the icon" : "Add an icon"}
+          title={draftOnly ? `${NOT_POSTED} A new entry gets its icon once it is saved.` : icon !== null ? "Change the icon" : "Add an icon"}
+          disabled={draftOnly}
           onClick={() => toggle("icon")}
         >
           {icon !== null ? (
@@ -405,6 +603,7 @@ function DeskEntry({
         </button>
         <h2 className="desk-entry-name-text">{entry.name}</h2>
       </div>
+      {holding && <HeldNote name={heldHere ? entry.name : undefined} onDiscard={heldHere ? discardHeld : undefined} />}
       {error && <p className="error">{error}</p>}
 
       {panel === "icon" && (
@@ -429,7 +628,7 @@ function DeskEntry({
               busy={busy}
               path={path}
               chapterId={chapterId}
-              inDraft={false}
+              inDraft={!!holding}
               keywordSources={entry.keywordSources}
               saved={savedNote}
               onSave={async (f, anchor) => {
@@ -464,16 +663,25 @@ function DeskEntry({
             desk
             entry={entry}
             factOps={facts}
-            path={path}
-            chapterId={chapterId}
+            path={fullPath}
+            chapterId={here.id}
             storyId={storyId}
             usedAspects={usedAspectsOf(entries)}
             start={start}
-            laterForm={codex.laterForms[entry.entry_id] ?? null}
-            formChapters={codex.formChapters}
+            laterForm={holding ? null : (codex.laterForms[entry.entry_id] ?? null)}
+            formChapters={holding ? [holding.here] : codex.formChapters}
             suggestions={[]}
             onSaved={refresh}
             onError={setError}
+            hold={
+              holding
+                ? (f) =>
+                    holding.held.update((h) => ({
+                      ...h,
+                      facts: addFactChange(h.facts, { ...f, entry_id: entry.entry_id, fact_id: f.fact_id ?? `draft-fact-${localId().slice(6)}` }),
+                    }))
+                : undefined
+            }
           />
         )}
         {tab === "preview" && (
@@ -484,7 +692,17 @@ function DeskEntry({
             </p>
           </>
         )}
-        {tab === "suggestions" && <DeskSuggestions entry={entry} storyId={storyId} chapterId={chapterId} path={path} start={start} inbox={inbox} />}
+        {tab === "suggestions" && (
+          <DeskSuggestions
+            entry={entry}
+            storyId={storyId}
+            chapterId={chapterId}
+            path={path}
+            start={start}
+            inbox={inbox}
+            askOff={holding ? `${NOT_POSTED} The AI reads the chapter's text once it is posted.` : null}
+          />
+        )}
         {tab === "history" && <EntryHistoryList entry={entry} ops={ops} titleOf={titleOf} busy={busy} replace={replace} />}
       </EntryTabs>
     </div>
