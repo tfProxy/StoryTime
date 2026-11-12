@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { aiMarkOf, choiceDraftKey, getChoices, getIncomingChoice, getPath, getStory, restoreBlocker, storyHasOriginal } from "@/lib/stories";
-import OriginalPathToggle from "@/components/OriginalPathToggle";
+import { aiMarkOf, getChoices, getIncomingChoice, getPath, getStory, restoreBlocker, storyHasOriginal } from "@/lib/stories";
 import AiMark from "@/components/AiMark";
 import StoryTabs from "@/components/StoryTabs";
 import TrashNotice from "@/components/TrashNotice";
@@ -9,12 +8,10 @@ import AiReviewNotice from "@/components/AiReviewNotice";
 import CodexInboxBanner from "@/components/CodexInboxBanner";
 import { appliedTagNames } from "@/lib/tags";
 import { contentNotes } from "@/lib/contentNotes";
-import { noteText, type ChapterNote } from "@/lib/contentNotesRoll";
+import type { ChapterNote } from "@/lib/contentNotesRoll";
 import Prose from "@/components/Prose";
 import ChapterActions from "@/components/ChapterActions";
-import AddChoice from "@/components/AddChoice";
-import RemoveChoice from "@/components/RemoveChoice";
-import SuggestChoices from "@/components/SuggestChoices";
+import ChapterChoices from "@/components/ChapterChoices";
 import ChapterImage from "@/components/ChapterImage";
 import { chapterImageVersions } from "@/lib/chapterImages";
 import { choiceDraftMarks, type DraftMark } from "@/lib/draftMarks";
@@ -50,16 +47,13 @@ export default async function ChapterPage({
   const images = chapterImageVersions([chapter.id]).get(chapter.id)!;
   const tagNames = appliedTagNames(story.id, chapter.id).get(chapter.id) ?? [];
   const notes = choices.some((c) => c.child_chapter_id) ? contentNotes(story.id) : new Map<string, ChapterNote>();
-  // Unwritten choices with a draft saved (the write page keys a choice's draft "fill:<choice id>").
   // With the "List the codex entries under a chapter's title" setting: the entries live at this chapter.
   const showCodex = (getSettings() ?? parseSettings({})).showCodexList;
   const codexEntries = showCodex ? getCodexState(chapter.id) : [];
-  // A written choice whose chapter has a draft not used is marked too (draftMarks.ts).
+  // Unwritten choices with a draft saved ("draft"), and written ones whose chapter has a draft not used (draftMarks.ts).
   const marks = trashed ? new Map<string, DraftMark>() : choiceDraftMarks(choices);
-  const drafted = new Set(choices.filter((c) => marks.get(c.id) === "draft").map((c) => choiceDraftKey(c.id)));
   // An imported story's original path: its choices are marked, unless the story's switch hides them.
   const hasOriginal = storyHasOriginal(story.id);
-  const markOriginal = hasOriginal && story.show_original;
 
   return (
     <>
@@ -124,67 +118,17 @@ export default async function ChapterPage({
       <ChapterImage chapterId={chapter.id} slot="footer" version={images.footer} />
       <ChapterMaking requests={getKeptRequests(db(), getChapterWriting(chapter.id)?.ai ?? [])} />
 
-      <section className="choices">
-        <div className="choices-head">
-          <h2>{choices.length > 0 ? "What happens next?" : "The story ends here, for now."}</h2>
-          {hasOriginal && <OriginalPathToggle storyId={story.id} show={story.show_original} />}
-        </div>
-        {choices.map((c) =>
-          trashed ? (
-            // Nothing is written below a chapter in the trash; restore the branch first.
-            <div key={c.id} className="card choice-unwritten">
-              {c.label}
-            </div>
-          ) : c.child_chapter_id ? (
-            <Link key={c.id} href={`/c/${c.child_chapter_id}`} className="card choice-written" title="Written">
-              <svg className="choice-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M4 5.5C6.5 4.5 9.5 4.5 12 6c2.5-1.5 5.5-1.5 8-.5v13c-2.5-1-5.5-1-8 .5-2.5-1.5-5.5-1.5-8-.5z M12 6v13" />
-              </svg>
-              {c.label}
-              {markOriginal && c.original && <span className="original-mark">Original</span>}
-              {c.child_ai && (
-                <span className="choice-ai">
-                  <AiMark mark={c.child_ai} />
-                </span>
-              )}
-              {marks.get(c.id) === "unused" && <span className="desk-chip draft-mark">Draft not used</span>}
-              {noteText(notes.get(c.child_chapter_id)) && (
-                <span className="choice-note">{noteText(notes.get(c.child_chapter_id))}</span>
-              )}
-            </Link>
-          ) : (
-            <div key={c.id} className="choice-slot">
-              <Link
-                href={`/c/${chapter.id}/write?choice=${c.id}`}
-                className="card choice-unwritten"
-                title={drafted.has(choiceDraftKey(c.id)) ? "Not written yet, but a draft is saved. Carry on with it?" : "Not written yet. Write it?"}
-              >
-                <svg className="choice-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19z M14.5 6.5l3 3" />
-                </svg>
-                {c.label}
-                {markOriginal && c.original && <span className="original-mark">Original</span>}
-                {drafted.has(choiceDraftKey(c.id)) && (
-                  <span className="choice-draft">
-                    {/* A page with lines of text: the choice has a draft saved. */}
-                    <svg className="choice-icon" viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M6 3h8l4 4v14H6z M14 3v4h4 M9 12h6 M9 16h6" />
-                    </svg>
-                    draft
-                  </span>
-                )}
-              </Link>
-              <RemoveChoice chapterId={chapter.id} choiceId={c.id} label={c.label} />
-            </div>
-          ),
-        )}
-        {!trashed && (
-          <>
-            <AddChoice chapterId={chapter.id} />
-            <SuggestChoices storyId={story.id} chapterId={chapter.id} incoming={incoming} choices={choices.map((c) => c.label)} />
-          </>
-        )}
-      </section>
+      <ChapterChoices
+        storyId={story.id}
+        chapterId={chapter.id}
+        choices={choices}
+        incoming={incoming}
+        marks={marks}
+        notes={notes}
+        trashed={trashed}
+        hasOriginal={hasOriginal}
+        showOriginal={story.show_original}
+      />
     </>
   );
 }

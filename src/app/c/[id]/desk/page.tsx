@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { nextChapters } from "@/components/CodexChapterNav";
+import ChapterChoices from "@/components/ChapterChoices";
 import WritingDesk from "@/components/WritingDesk";
 import { chapterEditProps } from "@/lib/chapterEditProps";
 import { foldCodex } from "@/lib/codex";
 import { getCodexFacts, getCodexOps, getContextCodex, nextFormChange } from "@/lib/codexDb";
 import { codexIcons, iconChoices } from "@/lib/codexIcons";
+import { contentNotes } from "@/lib/contentNotes";
 import { deskPathBlocks, newChapterCodex } from "@/lib/deskProps";
+import { choiceDraftMarks } from "@/lib/draftMarks";
 import { illustrateProps } from "@/lib/illustrateProps";
-import { type Chapter, getChoices, getPath, getStory, type Story } from "@/lib/stories";
+import { type Chapter, getChoices, getIncomingChoice, getPath, getStory, storyHasOriginal, type Story } from "@/lib/stories";
 import { getStoryChapters, laterChaptersFrom } from "@/lib/tree";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +58,7 @@ export default async function DeskPage({
   const facts = getCodexFacts(id);
   const storyChapters = getStoryChapters(story.id);
   const laterForms = Object.fromEntries(foldCodex(ops, facts).map((e) => [e.entry_id, nextFormChange(e.entry_id, id)]));
+  const choices = getChoices(id);
 
   return (
     <WritingDesk
@@ -66,6 +70,19 @@ export default async function DeskPage({
       }
       note={query.posted ? "Posted · the summary and the codex check follow in the background" : null}
       pathBlocks={deskPathBlocks(path.slice(0, -1))}
+      next={
+        <ChapterChoices
+          desk
+          storyId={story.id}
+          chapterId={id}
+          choices={choices}
+          incoming={getIncomingChoice(id)?.label ?? null}
+          marks={choiceDraftMarks(choices)}
+          notes={choices.some((c) => c.child_chapter_id) ? contentNotes(story.id) : new Map()}
+          hasOriginal={storyHasOriginal(story.id)}
+          showOriginal={story.show_original}
+        />
+      }
       mode={query.side === "illustrate" ? "illustrate" : "codex"}
       illustrate={illustrateProps(story, path)}
       editor={chapterEditProps(story, path)}

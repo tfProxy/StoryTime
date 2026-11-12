@@ -6,6 +6,7 @@ import { completeChat } from "@/lib/ai/client";
 import { choicesPrompt, parseChoices, SYSTEM_CHOICES } from "@/lib/ai/prompts";
 import { getContext } from "@/lib/aiRuns/api";
 import { storyContextOf, withPathSummaries } from "@/lib/aiRuns/writeChapter";
+import { markDeskMove } from "@/lib/deskMove";
 import { LIMITS } from "@/lib/limits";
 import { useSettings } from "@/lib/settings";
 import SplitActionButton, { type SplitMode } from "./SplitActionButton";
@@ -26,12 +27,15 @@ export default function SuggestChoices({
   chapterId,
   incoming,
   choices,
+  draftHref,
 }: {
   storyId: string;
   chapterId: string;
   /** The choice the reader took to reach this chapter, if any. */
   incoming: string | null;
   choices: string[];
+  /** Where "Draft a different idea" goes on the writing desk (a new choice's chapter, staying on the desk). */
+  draftHref?: string;
 }) {
   const router = useRouter();
   const settings = useSettings();
@@ -67,6 +71,12 @@ export default function SuggestChoices({
     }
   }
 
+  function draftIdea() {
+    if (!draftHref) return router.push(`/c/${chapterId}/write`);
+    markDeskMove(draftHref);
+    router.push(draftHref, { scroll: false });
+  }
+
   async function add(label: string) {
     setBusy("add");
     setError(null);
@@ -98,7 +108,7 @@ export default function SuggestChoices({
           onMode={(m) => setMode(m as "suggest" | "draft")}
           busyLabel={busy === "suggest" ? "Thinking…" : null}
           disabled={busy !== null}
-          onMain={() => (mode === "draft" ? router.push(`/c/${chapterId}/write`) : void suggest())}
+          onMain={() => (mode === "draft" ? draftIdea() : void suggest())}
         />
       </div>
       {busy === "suggest" && <AiCallProgress labels={["Suggest choices"]} />}
