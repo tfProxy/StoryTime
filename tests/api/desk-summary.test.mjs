@@ -72,9 +72,10 @@ try {
   // The owner's own summary is left alone.
   const own = await call("PATCH", `/api/chapters/${root}/summary`, { summary: "My own words.", mine: true });
   ok(own.status === 200 && own.json.mine === true && (await chapter(root)).summary === "My own words.", "the owner's summary is saved as theirs");
+  const runsBefore = (await runsFor(root)).length;
   await call("PATCH", `/api/chapters/${root}`, { base_revision: 3, title: "Root", body: "The sun came up, finally.", summary: "My own words.", path_summary: "So far 1.", rewrite_summary: true });
   await sleep(600);
-  ok((await chapter(root)).summary === "My own words." && calls === 1 && (await runsFor(root)).length === 0, "an Update leaves the owner's summary alone and asks no AI");
+  ok((await chapter(root)).summary === "My own words." && calls === 1 && (await runsFor(root)).length === runsBefore, "an Update leaves the owner's summary alone and asks no AI");
   const refused = await call("PUT", `/api/chapters/${root}/summary`, { revision: 4, summary: "AI", path_summary: "AI", ai: true });
   ok(refused.status === 409, "the AI's rewrite is refused while the summary is the owner's");
 
