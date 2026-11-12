@@ -14,6 +14,8 @@ import { EntryDetailsForm, EntryHistoryList, useEntryActions } from "./CodexEntr
 import CodexIconPicker from "./CodexIconPicker";
 import { ChangeList, comparisonTitle, type Relation } from "./CodexComparison";
 import { useCodexInbox } from "./CodexInbox";
+import DeskIllustrate from "./DeskIllustrate";
+import type { IllustrateProps } from "./IllustrateWorkspace";
 import DeskSuggestions from "./DeskSuggestions";
 import LinkedEntryDetails from "./LinkedEntryDetails";
 import MoreMenu from "./MoreMenu";
@@ -58,11 +60,54 @@ function entryStart(ops: CodexOp[], path: Chapter[], entryId: string): Chapter {
   return { id: c.id, title: c.title };
 }
 
+/** What the desk's side column shows: the codex, or the controls for illustrating the chapter. */
+export type DeskMode = "codex" | "illustrate";
+
 /**
  * The writing desk: the codex (a side column that folds to a rail), the open codex entry, and the chapter's editor.
  * Codex changes made here are saved at once, at the chapter (it is posted).
+ * In Illustrate mode the side column holds the picture controls and the story column the chapter's pictures (see
+ * `DeskIllustrate`); the entry column closes and the editor is hidden, kept as it was for when Codex is chosen again.
+ * `illustrate` is null for a chapter that isn't posted: Illustrate is greyed out. The mode is kept in the address
+ * (`?side=illustrate`), so a refresh comes back to it.
  */
-export default function WritingDesk({ editor, codex }: { editor: Omit<ChapterEditEntryProps, "desk">; codex: DeskCodex }) {
+export default function WritingDesk({
+  editor,
+  codex,
+  illustrate = null,
+  mode: initialMode = "codex",
+}: {
+  editor: Omit<ChapterEditEntryProps, "desk">;
+  codex: DeskCodex;
+  illustrate?: IllustrateProps | null;
+  mode?: DeskMode;
+}) {
+  const [mode, setMode] = useState<DeskMode>(illustrate ? initialMode : "codex");
+  const illus = mode === "illustrate" && illustrate !== null;
+  const choose = (next: DeskMode) => {
+    setMode(next);
+    const url = new URL(window.location.href);
+    if (next === "illustrate") url.searchParams.set("side", "illustrate");
+    else url.searchParams.delete("side");
+    window.history.replaceState(window.history.state, "", url);
+  };
+  const modes = (
+    <div className="desk-modes" role="group" aria-label="Side column">
+      <button type="button" className={illus ? undefined : "on"} aria-pressed={!illus} onClick={() => choose("codex")}>
+        Codex
+      </button>
+      <button
+        type="button"
+        className={illus ? "on" : undefined}
+        aria-pressed={illus}
+        disabled={!illustrate}
+        title={illustrate ? undefined : "Post the chapter first"}
+        onClick={() => choose("illustrate")}
+      >
+        Illustrate
+      </button>
+    </div>
+  );
   const router = useRouter();
   const refresh = () => router.refresh();
   const { storyId, chapterId, path, ops, facts, icons } = codex;
@@ -125,10 +170,12 @@ export default function WritingDesk({ editor, codex }: { editor: Omit<ChapterEdi
       </details>
     );
 
-  const classes = ["desk", folded ? "desk-folded" : "", openId ? "desk-has-entry" : ""].filter(Boolean).join(" ");
+  const classes = (illus ? ["desk", "desk-illus"] : ["desk", folded ? "desk-folded" : "", openId ? "desk-has-entry" : ""]).filter(Boolean).join(" ");
   return (
     <div className={classes}>
-      {folded ? (
+      {illus ? (
+        <DeskIllustrate p={illustrate} modes={modes} />
+      ) : folded ? (
         <aside className="desk-side desk-rail" aria-label="Codex">
           <button type="button" className="desk-rail-button" aria-expanded={false} title="Show the codex" onClick={() => setFolded(false)}>
             Codex · {entries.length} {entries.length === 1 ? "entry" : "entries"}
@@ -136,14 +183,7 @@ export default function WritingDesk({ editor, codex }: { editor: Omit<ChapterEdi
         </aside>
       ) : (
         <aside className="desk-side" aria-label="Codex">
-          <div className="desk-modes" role="group" aria-label="Side column">
-            <button type="button" className="on" aria-pressed="true">
-              Codex
-            </button>
-            <button type="button" disabled aria-pressed="false" title="Not on the desk yet: use the chapter's Illustrate page for now">
-              Illustrate
-            </button>
-          </div>
+          {modes}
           <div className="desk-side-head">
             <input type="search" aria-label="Search entries" placeholder="Search entries…" value={query} onChange={(e) => setQuery(e.target.value)} />
             <button type="button" className="secondary" aria-label="New entry" title="New entry" onClick={() => setOpenId("new")}>
@@ -166,18 +206,19 @@ export default function WritingDesk({ editor, codex }: { editor: Omit<ChapterEdi
         </aside>
       )}
 
-      {openId === "new" && (
+      {!illus && openId === "new" && (
         <section className="desk-entry" aria-label="New entry">
           <NewEntry chapterId={chapterId} path={path} onClose={() => setOpenId(null)} onMade={(id) => setOpenId(id)} />
         </section>
       )}
-      {open && (
+      {!illus && open && (
         <section className="desk-entry" aria-label={`Codex entry: ${open.name}`}>
           <DeskEntry key={open.entry_id} entry={open} entries={entries} codex={codex} waiting={waiting[open.entry_id] ?? 0} inbox={inbox} onClose={() => setOpenId(null)} />
         </section>
       )}
 
-      <div className="desk-story">
+      {/* Hidden, not removed, in Illustrate mode: an unsaved edit is still there when Codex is chosen again. */}
+      <div className="desk-story" hidden={illus}>
         <h1 className="desk-title">Edit “{here.title}”</h1>
         <ChapterEditEntry {...editor} desk={{ onText: setText }} />
       </div>

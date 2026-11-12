@@ -87,6 +87,8 @@ type Props = {
   dock?: HTMLElement | null;
   /** Where the "Codex entries used" line goes: the bottom of the chapter panel. */
   codexSlot?: HTMLElement | null;
+  /** "desk" lays out the picture controls for the writing desk's side column (see ComfyGenerate's `layout`). */
+  layout?: "page" | "desk";
 };
 
 /**
@@ -94,7 +96,7 @@ type Props = {
  * (chapter start, middle, end) has its own boxes, so switching between them brings each one's prompt back;
  * they are kept for the chapter on the server, so they are there again next time.
  */
-export default function ImagePromptPanel({ chapterId, story, chapterPreset = null, path, codex, pool, refRequest = null, pinned = [], loaded = null, start = null, onClearStart, editModels, onPictures, onQueue, draft = null, fixedPrompt = "", dock = null, codexSlot = null }: Props) {
+export default function ImagePromptPanel({ chapterId, story, chapterPreset = null, path, codex, pool, refRequest = null, pinned = [], loaded = null, start = null, onClearStart, editModels, onPictures, onQueue, draft = null, fixedPrompt = "", dock = null, codexSlot = null, layout = "page" }: Props) {
   const settings = useSettings();
   const chapter = path[path.length - 1];
   const [moment, setMoment] = useState<ImageMoment>(draft?.moment ?? "start");
@@ -321,6 +323,7 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
         onQueue={onQueue}
         dock={dock}
         onClearStart={onClearStart}
+        layout={layout}
       />
     </>
   );

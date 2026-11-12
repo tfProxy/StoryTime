@@ -69,7 +69,7 @@ try {
   ok(true, "the Desk button opens the desk for the chapter");
 
   // ---- the codex column ----
-  ok((await side.getByRole("button", { name: "Codex", exact: true }).getAttribute("aria-pressed")) === "true" && (await side.getByRole("button", { name: "Illustrate", exact: true }).isDisabled()), "Codex | Illustrate at the top; Illustrate is greyed out");
+  ok((await side.getByRole("button", { name: "Codex", exact: true }).getAttribute("aria-pressed")) === "true" && (await side.getByRole("button", { name: "Illustrate", exact: true }).isEnabled()), "Codex | Illustrate at the top, on Codex; Illustrate is offered, as the chapter is posted (desk-illustrate tests it)");
   const inChapter = side.locator(".desk-group", { hasText: "In this chapter" });
   await inChapter.locator(".desk-row-name", { hasText: "Oda" }).waitFor();
   const groupNames = await side.locator(".desk-group > summary").allInnerTexts();

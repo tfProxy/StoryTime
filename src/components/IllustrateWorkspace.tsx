@@ -35,8 +35,11 @@ export type IllustrateProps = {
   jobs: PictureJob[];
 };
 
-/** The chapter's picture prompt and the controls for making pictures (`ImagePromptPanel`), fed from the workspace `w`. */
-export function IllustratePrompt({ p, w, codexSlot }: { p: IllustrateProps; w: WorkspaceControls; codexSlot: HTMLElement | null }) {
+/**
+ * The chapter's picture prompt and the controls for making pictures (`ImagePromptPanel`), fed from the workspace `w`.
+ * `layout` "desk" lays them out for the writing desk's side column.
+ */
+export function IllustratePrompt({ p, w, codexSlot, layout }: { p: IllustrateProps; w: WorkspaceControls; codexSlot: HTMLElement | null; layout?: "page" | "desk" }) {
   return (
     <ImagePromptPanel
       chapterId={p.chapterId}
@@ -57,6 +60,7 @@ export function IllustratePrompt({ p, w, codexSlot }: { p: IllustrateProps; w: W
       fixedPrompt={p.fixedPrompt}
       dock={w.dock}
       codexSlot={codexSlot}
+      layout={layout}
     />
   );
 }

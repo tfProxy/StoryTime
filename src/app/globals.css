@@ -7148,6 +7148,62 @@ main:has(.desk) {
   opacity: 0.45;
 }
 
+/* Illustrate mode: the picture controls in a wider side column (no entry column), the chapter's pictures in the story
+   column. The controls' panels are sections of the side column, not cards inside it. */
+@media (min-width: 60rem) {
+  .desk.desk-illus {
+    grid-template-columns: minmax(20rem, 24rem) minmax(0, 1fr);
+  }
+}
+
+.desk-illus-side {
+  gap: 0.75rem;
+}
+
+.desk-illus-side > .ai-panel {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: none;
+}
+
+.desk-illus-side > .ai-panel + .ai-panel {
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+}
+
+.desk-illus-side h2 {
+  font-size: 1rem;
+}
+
+.desk-queue .generate-bar {
+  border: 0;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+}
+
+/* Pictures per click, then Queue. */
+.desk-queue .queue-row .queue-button {
+  order: 1;
+}
+
+.desk-pictures {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-content: start;
+}
+
+.desk-pictures .desk-title {
+  margin: 0;
+}
+
+/* Header, Middle and Footer side by side on a desktop. */
+.desk-pictures .image-editors {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+}
+
 .desk-side-head {
   display: flex;
   gap: 0.3rem;

@@ -6,15 +6,18 @@ import { chapterEditProps } from "@/lib/chapterEditProps";
 import { foldCodex } from "@/lib/codex";
 import { getCodexFacts, getCodexOps, nextFormChange } from "@/lib/codexDb";
 import { codexIcons, iconChoices } from "@/lib/codexIcons";
+import { illustrateProps } from "@/lib/illustrateProps";
 import { getPath, getStory } from "@/lib/stories";
 import { getStoryChapters, laterChaptersFrom } from "@/lib/tree";
 
 export const dynamic = "force-dynamic";
 
 // The writing desk for a posted chapter: the codex beside the chapter's editor. (It stands next to the Edit page until
-// it replaces it.) Codex changes made here are saved at once, at this chapter.
-export default async function DeskPage({ params }: { params: Promise<{ id: string }> }) {
+// it replaces it.) Codex changes made here are saved at once, at this chapter. `?side=illustrate` opens the side column
+// in Illustrate mode, with the chapter's pictures in the story column.
+export default async function DeskPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ side?: string }> }) {
   const { id } = await params;
+  const { side } = await searchParams;
   const path = getPath(id);
   if (path.length === 0) notFound();
   const chapter = path[path.length - 1];
@@ -46,6 +49,8 @@ export default async function DeskPage({ params }: { params: Promise<{ id: strin
         <Link href={`/c/${id}`}>← Back to “{chapter.title}”</Link> · <Link href={`/c/${id}/edit`}>Edit page</Link>
       </p>
       <WritingDesk
+        mode={side === "illustrate" ? "illustrate" : "codex"}
+        illustrate={illustrateProps(story, path)}
         editor={chapterEditProps(story, path)}
         codex={{
           storyId: story.id,

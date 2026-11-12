@@ -131,6 +131,11 @@ type Props = {
   refChoices?: { suggested: RefChoice[]; pictures: RefChoice[] };
   /** The story's style picture, when it has one and it can be found: the References section shows it first, and it is sent with each drawing job (not an edit) unless switched off. */
   styleRef?: Reference | null;
+  /**
+   * "page" (the picture pages): References, Instruct, then Model Settings with Size and Queue (docked). "desk" (the
+   * writing desk's side column): Size, Queue and the queue's status first, then Model Settings, Instruct and References.
+   */
+  layout?: "page" | "desk";
 };
 
 /** Whether the story's style picture is switched off for a chapter's moment (or a cover or codex page), kept in this browser. */
@@ -159,7 +164,7 @@ function workflowCanRefs(workflow: string): boolean {
  */
 export default function ComfyGenerate({
   target, storyPreset, chapterPreset: savedPreset, moment, prompt: boxPrompt, negative: boxNegative, fixedPrompt = "", loaded = null, start = null, onClearStart,
-  editModels ={ state: "checking" }, onPictures, onQueue, onChapterPreset, dock = null, refs, onRefs, refChoices, styleRef = null,
+  editModels ={ state: "checking" }, onPictures, onQueue, onChapterPreset, dock = null, refs, onRefs, refChoices, styleRef = null, layout = "page",
 }: Props) {
   // The target is rebuilt each render, so what effects depend on is its ids.
   const { storyId } = target;
@@ -492,9 +497,7 @@ export default function ComfyGenerate({
     </label>
   );
 
-  return (
-    <>
-    {onRefs && (
+  const references = onRefs && (
       <References
         refs={refs ?? []}
         onChange={onRefs}
@@ -520,8 +523,9 @@ export default function ComfyGenerate({
         unavailable={refProblem}
         editLimit={editing && chosen ? { model: chosen.model.name, count: editRefLimit(chosen.model.id) } : null}
       />
-    )}
-    {/* Instruct: changing the starting picture by instruction. A section of its own, collapsed while there is no picture. */}
+  );
+  // Instruct: changing the starting picture by instruction. A section of its own, collapsed while there is no picture.
+  const instruct = (
     <section className={`ai-panel edit-panel${start ? "" : " edit-collapsed"}`}>
       <h2>Instruct</h2>
       {start && (
@@ -609,6 +613,10 @@ export default function ComfyGenerate({
       )}
       {!start && <p className="meta" style={{ margin: 0 }}>Choose a picture to change by instruction.</p>}
     </section>
+  );
+  const statusLine = status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>;
+  // On the desk Size and Queue come first, in a panel of their own with the status under them (see `layout`).
+  const modelSettings = (
     <section className="ai-panel comfy-generate">
       <h2>Model Settings</h2>
       {!editing && (
@@ -688,9 +696,30 @@ export default function ComfyGenerate({
         )}
       </div>
       {keepSeed && fixedSeed === null && <p className="error" style={{ margin: 0 }}>The seed has to be a whole number, so a random one is used.</p>}
-      {status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>}
-      {dock ? createPortal(bar, dock) : bar}
+      {layout === "page" && statusLine}
+      {layout === "page" && (dock ? createPortal(bar, dock) : bar)}
     </section>
+  );
+
+  if (layout === "desk") {
+    return (
+      <>
+        {/* No label: the tests find the Size menu and the queue's status with getByLabel("Size") and ("Queue"). */}
+        <section className="ai-panel desk-queue">
+          {bar}
+          {statusLine}
+        </section>
+        {modelSettings}
+        {instruct}
+        {references}
+      </>
+    );
+  }
+  return (
+    <>
+      {references}
+      {instruct}
+      {modelSettings}
     </>
   );
 }
