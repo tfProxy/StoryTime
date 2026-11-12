@@ -604,6 +604,7 @@ async function doCodex(task: CodexTask, run: AiRun, list: RunTask[], env: StepEn
     entries,
     otherNames: entries.filter((e) => !shown.has(e)).map((e) => e.name),
     focus,
+    hint: task.hint,
     signal: env.signal,
     role: "cheap",
     source: sourceOf(run, task.chapterId),

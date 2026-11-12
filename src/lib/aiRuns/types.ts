@@ -141,6 +141,8 @@ export type CodexTask = {
   entryId?: string;
   /** With `entryId`: the entry's name, for the task list. */
   entryName?: string;
+  /** With `entryId`: what the author wants more of, if they said. */
+  hint?: string;
   status: TaskStatus;
   /** How many suggestions were left in the inbox (set when the chapter was read). */
   found?: number;

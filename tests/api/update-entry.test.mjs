@@ -113,6 +113,17 @@ try {
   ok((await call("POST", `/api/codex-suggestions/${mood.id}/accept`, {})).status === 200, "a suggestion is accepted");
   r = await route({ chapter_id: flight, entry_id: mira });
   ok(r.status === 409, "with a change at the last chapter, nothing is left to read");
+
+  // ---- "Read this chapter" (the writing desk): this chapter alone, even with nothing since the last change; with a focus ----
+  const before2 = ai.requests.length;
+  r = await route({ chapter_id: flight, entry_id: mira, scope: "chapter", hint: "her fears" });
+  ok(r.status === 200 && r.json.tasks === 1, "scope chapter: one task: " + JSON.stringify(r.json));
+  const one = (await call("GET", `/api/ai-runs/${r.json.run_id}`)).json;
+  ok(one.options.tagScope === "chapter" && one.tasks.length === 1 && one.tasks[0].chapterId === flight && one.tasks[0].entryId === mira && one.tasks[0].hint === "her fears", "…for Flight and Mira, with the focus");
+  ok(!!(await finish(r.json.run_id)), "the worker takes it to the end");
+  const sent2 = JSON.stringify(ai.requests.slice(before2).map((q) => q.body));
+  ok(sent2.includes("The author wants more of: her fears") && sent2.includes('Chapter to read: \\"Flight\\"'), "the AI read Flight and was told the focus");
+  ok((await route({ chapter_id: flight, entry_id: mira, scope: "nope" })).status === 400, "an unknown scope is refused");
   void quiet;
 } finally {
   for (const id of runs) await call("DELETE", `/api/ai-runs/${id}/queue?end=1`);

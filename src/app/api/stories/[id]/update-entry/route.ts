@@ -12,11 +12,15 @@ const BodySchema = z.object({
   /** The chapter the entry is viewed at: the chapters on the way to it are read. */
   chapter_id: z.string().min(1),
   entry_id: z.string().min(1).max(100),
+  /** "path" (default): the chapters on the way here since the entry last changed. "chapter": this chapter alone. */
+  scope: z.enum(["path", "chapter"]).default("path"),
+  /** What the author wants more of. */
+  hint: z.string().trim().max(200).optional(),
 });
 
 // "Update from the story": makes a review run with the "update" check (one task for each chapter on the way to the
-// chapter that names the entry since its last change, read for that entry alone) and puts it in the work queue.
-// { run_id, tasks }; 409 when no chapter names the entry since its last change.
+// chapter that names the entry since its last change, read for that entry alone; with scope "chapter", the chapter
+// alone) and puts it in the work queue. { run_id, tasks }; 409 when no chapter names the entry since its last change.
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   getWorker();
   const { id } = await ctx.params;
@@ -31,14 +35,14 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   if (!parsed.success) {
     return Response.json({ error: parsed.error.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`).join("; ") }, { status: 400 });
   }
-  const { chapter_id, entry_id } = parsed.data;
+  const { chapter_id, entry_id, scope, hint } = parsed.data;
   try {
-    const tasks = reviewTasks(id, chapter_id, "path", ["update"], [], false, [entry_id]);
+    const tasks = reviewTasks(id, chapter_id, scope, ["update"], [], false, [entry_id], { mode: "invent", hint });
     const { id: runId } = createRun({
       story_id: id,
       start_chapter_id: chapter_id,
       mode: "review",
-      options: { checks: ["update"], tagScope: "path", entryIds: [entry_id] },
+      options: { checks: ["update"], tagScope: scope, entryIds: [entry_id], ...(hint && { expandHint: hint }) },
     });
     await queueRun(runId);
     return Response.json({ run_id: runId, tasks: tasks.length });

@@ -93,6 +93,8 @@ export type CodexCheckRequestOptions = {
    * entries), and anything else in the reply is dropped.
    */
   focus?: CodexEntry;
+  /** With `focus`: what the author wants more of, if they said. */
+  hint?: string;
   /** The fact categories the AI picks from (Settings → Codex); the defaults when not given. */
   categories?: CategoryLists;
 };
@@ -122,6 +124,7 @@ export function codexCheckRequest(contextTokens: number, opts: CodexCheckRequest
     focus ? `The codex now, for ${focus}:\n${known}` : `The codex now, for the entries this chapter mentions:\n${known}`,
     otherList ? `Other names already in the codex (not new): ${otherList}` : "",
     `Chapter to read: "${opts.chapter.title}"\n${body}`,
+    focus && opts.hint?.trim() ? `The author wants more of: ${opts.hint.trim()}` : "",
     focus
       ? `Propose only the changes this chapter makes to ${focus}, as JSON. Leave out every other entry, and propose no new entries.`
       : "Propose the codex changes this chapter needs, as JSON.",

@@ -437,7 +437,8 @@ export function reviewTasks(storyId: string, startChapterId: string | null, scop
   }
   if (checks.includes("update")) {
     // "Update from the story" for the entry in `entryIds`: each chapter on the way to the start chapter that names it
-    // since its last change there, read for its changes alone (`entryId` on the task).
+    // since its last change there, read for its changes alone (`entryId` on the task). With the "chapter" scope (the
+    // writing desk's "Read this chapter"), only the start chapter is read. `expand.hint` is the author's focus.
     if (startChapterId === null) throw new PostError("Updating an entry needs the chapter it is viewed at", 400);
     const byId = new Map(chapters.map((c) => [c.id, c]));
     if (!byId.has(startChapterId)) throw new PostError("That chapter is not in this story's tree", 404);
@@ -445,10 +446,11 @@ export function reviewTasks(storyId: string, startChapterId: string | null, scop
     for (let c = byId.get(startChapterId); c; c = c.parent_id ? byId.get(c.parent_id) : undefined) path.unshift(c);
     const entry = getCodexState(startChapterId).find((e) => entryIds?.includes(e.entry_id));
     if (!entry) throw new PostError("That entry isn't in the codex at this chapter", 404);
-    const since = chaptersSinceChange(path, { who: entry, changes: entryChangeChapters(storyId).get(entry.entry_id) ?? new Set() });
+    const since = scope === "chapter" ? path.slice(-1) : chaptersSinceChange(path, { who: entry, changes: entryChangeChapters(storyId).get(entry.entry_id) ?? new Set() });
     if (since.length === 0) throw new PostError(`No chapter names ${entry.name} since it last changed, so there is nothing to read.`, 409);
+    const hint = expand?.hint?.trim();
     for (const c of since) {
-      tasks.push({ kind: "codex", id: `t${tasks.length + 1}`, chapterId: c.id, revision: c.revision, label: c.title.slice(0, LIMITS.title), entryId: entry.entry_id, entryName: entry.name.slice(0, LIMITS.title), status: "todo" });
+      tasks.push({ kind: "codex", id: `t${tasks.length + 1}`, chapterId: c.id, revision: c.revision, label: c.title.slice(0, LIMITS.title), entryId: entry.entry_id, entryName: entry.name.slice(0, LIMITS.title), ...(hint && { hint }), status: "todo" });
     }
   }
   if (checks.includes("retcon")) {
