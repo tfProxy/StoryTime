@@ -12,9 +12,15 @@ ok(a.undo.length === 1 && a.undo[0].title === "Mine" && a.undo[0].body === "My o
 ok(a.versions?.length === 2 && a.versions[0].body === "My own words." && a.versionIndex === 1, "…and kept as the previous version, with a new one started");
 ok(written.title === "Mine" && written.undo.length === 0 && !written.versions, "the draft given is not changed");
 
-// An empty draft adds no empty version or undo entry.
-const e = applyGenerated(draft(), { title: "First", body: "Words." });
-ok(e.undo.length === 0 && e.versions === undefined && e.body === "Words.", "an empty draft gets no empty version or undo entry");
+// An empty draft adds no undo entry; its first Generate is its first version, with the prompt that made it.
+const e = applyGenerated(draft({ prompt: "A storm comes." }), { title: "First", body: "Words." });
+ok(e.undo.length === 0 && e.versions?.length === 1 && e.versionIndex === 0 && e.versions[0].prompt === "A storm comes." && e.body === "Words.", "an empty draft gets no undo entry; its Generate is draft 1, with its prompt");
+
+// Each version keeps the prompt that made it; a prompt given to the Generate wins over the box.
+const p1 = applyGenerated(draft({ prompt: "one" }), { title: "G1", body: "First." });
+const p2 = applyGenerated({ ...p1, prompt: "two" }, { title: "G2", body: "Second." });
+const p3 = applyGenerated({ ...p2, prompt: "typed since" }, { title: "G3", body: "Third." }, { prompt: "three" });
+ok(p3.versions?.map((v) => v.prompt).join() === "one,two,three" && p3.versions[0].body === "First." && p3.versions[1].body === "Second.", "each draft keeps its own prompt");
 
 // A title still arriving leaves the title.
 const t = applyGenerated(draft({ title: "Keep" }), { title: null, body: "" });
@@ -34,7 +40,7 @@ ok(second.versions?.length === 3 && second.versions[1].body === "The AI's words.
 let d = draft({ title: "x", body: "y" });
 for (let i = 0; i < MAX_UNDO + 5; i++) d = beginGenerated({ ...d, body: `text ${i}` });
 ok(d.undo.length === MAX_UNDO && (d.versions?.length ?? 0) <= MAX_VERSIONS, "undo and versions are kept to their limits");
-ok(pushUndo(draft()).length === 0 && startVersion(draft()).versions === undefined, "the helpers leave an empty draft alone");
+ok(pushUndo(draft()).length === 0 && startVersion(draft()).versions?.length === 1, "an empty draft gets no undo entry, and one version to write into");
 
 // After a Generate.
 const none = draft({ choices: [""] });

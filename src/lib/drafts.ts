@@ -8,8 +8,11 @@ import type { CodexChange, FactChange } from "./codex";
 import type { CodexOverrides, Idea, Length } from "./ai/prompts";
 import type { ModelRef } from "./settingsSchema";
 
-/** `ai`: the kept AI requests (keptRequests.ts) that wrote this text, oldest first; absent for text written by hand. */
-export type DraftVersion = { title: string; body: string; ai?: string[] };
+/**
+ * `ai`: the kept AI requests (keptRequests.ts) that wrote this text, oldest first; absent for text written by hand.
+ * `prompt`: the prompt of the Generate that made it (absent for text written by hand, and in versions kept before this).
+ */
+export type DraftVersion = { title: string; body: string; ai?: string[]; prompt?: string };
 
 export type Draft = {
   /**

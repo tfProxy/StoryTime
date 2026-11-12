@@ -128,7 +128,7 @@ function saveGenerated(req: GenerateRequest, text: string, ai: string | undefine
   for (let attempt = 0; ; attempt++) {
     const stored = getDraft(req.key) as (Draft & Record<string, unknown>) | null;
     const d: Draft = stored ?? { ...req.draft, key: req.key, updatedAt: 0 };
-    let next = applyGenerated(d, parseChapterOutput(text), { continued: isBegun(d, req.base), ai });
+    let next = applyGenerated(d, parseChapterOutput(text), { continued: isBegun(d, req.base), ai, prompt: req.direction });
     if (after) next = applyAfterGenerate(next, after);
     const saved = putDraft(req.key, next as unknown as Record<string, unknown>, { base: stored ? stored.updatedAt : null });
     if (saved.ok) return;

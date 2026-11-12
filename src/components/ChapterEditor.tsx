@@ -24,7 +24,7 @@ import type { PathChapter } from "@/lib/ai/codexAi";
 import type { ChapterWriting } from "@/lib/chapterWriting";
 import { foldWithDraft, isDraftEntry, isDraftFact, type CodexOp, type FactOp } from "@/lib/codex";
 import { deleteDraft, DraftConflict, emptyDraft, getDraft, saveDraft, type Draft } from "@/lib/drafts";
-import { applyAfterGenerate, applyGenerated, isBegun, restore, snapshot } from "@/lib/generatedDraft";
+import { applyAfterGenerate, applyGenerated, isBegun, keptVersions, restore } from "@/lib/generatedDraft";
 import { useWorkQueue, type GenerateItem } from "./WorkQueue";
 import Prose from "./Prose";
 import { AiCallProgress, GenerateStep, ThinkingFold } from "./GenerateProgress";
@@ -102,11 +102,8 @@ function AutoStart({ run }: { run: () => void }) {
 
 /** Saves how the chapter was written (see chapterWriting.ts). Nothing is saved when nothing was generated or asked for. */
 async function keepWriting(chapterId: string, d: Draft): Promise<void> {
-  // The version being viewed is only refreshed in `versions` on leaving it; one still empty from its Generate takes the text.
-  const at = d.versionIndex ?? (d.versions?.length ?? 0) - 1;
-  const versions = (d.versions ?? [])
-    .map((v, i) => (i === at && !v.body.trim() ? snapshot(d) : v))
-    .filter((v) => v.body.trim());
+  // The version being viewed is only refreshed in `versions` on leaving it: it takes the text, keeping its prompt.
+  const versions = (d.versions ? keptVersions(d) : []).filter((v) => v.body.trim());
   if (!versions.length && !d.prompt.trim() && !d.ai?.length) return;
   const writing: ChapterWriting = { prompt: d.prompt, versions, ai: d.ai, length: d.length, models: d.models, codexOverrides: d.codexOverrides };
   const res = await fetch(`/api/chapters/${chapterId}/writing`, {
@@ -202,6 +199,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const skipSaveRef = useRef(false);
   const conflictRef = useRef(false);
   const busyRef = useRef(false);
+  // The prompt of the Generate this page started, kept with the draft it makes (the box may change while it writes).
+  const genPromptRef = useRef<string | null>(null);
 
   /** Shows a draft as stored on the server. */
   function showStored(d: Draft) {
@@ -394,7 +393,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     if (generatingRef.current) setReading(true);
     return listenDraft(draftKey, {
       onText: (text, base, ai) => {
-        setDraft((d) => (d ? applyGenerated(d, parseChapterOutput(text), { continued: isBegun(d, base), ai }) : d));
+        setDraft((d) => (d ? applyGenerated(d, parseChapterOutput(text), { continued: isBegun(d, base), ai, prompt: genPromptRef.current ?? undefined }) : d));
         setGenWords(countWords(parseChapterOutput(text).body));
       },
       onStep: (text, since) => setGenStep({ text, since }),
@@ -494,8 +493,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   function showVersion(j: number) {
     setDraft((d) => {
       if (!d?.versions?.[j]) return d;
-      const versions = [...d.versions];
-      versions[d.versionIndex ?? versions.length - 1] = snapshot(d);
+      const versions = keptVersions(d);
       return { ...d, versions, versionIndex: j, ...restore(versions[j]) };
     });
   }
@@ -509,6 +507,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     setThinking("");
     setGenWords(0);
     setReading(true);
+    genPromptRef.current = draft.prompt;
     // What is typed on the page is saved first, so the server builds on it (the page stops saving while it generates).
     if (!conflictRef.current && !isBlank(draft, target)) queueSave(draft);
     void saveChainRef.current.then(() => generate({
