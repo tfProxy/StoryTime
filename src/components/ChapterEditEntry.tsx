@@ -16,6 +16,8 @@ export type ChapterEditEntryProps = {
   initialPathSummary: string | null;
   existingChoices: { id: string; label: string; hasChild: boolean }[];
   incomingLabel: string | null;
+  /** The choice leading here and the chapter it is on (the writing desk renames it). */
+  incomingChoice?: { id: string; parentChapterId: string } | null;
   aiMarked: boolean;
   /** The owner made the summary theirs on the desk ("yours · not rewritten"). */
   summaryMine?: boolean;
@@ -52,6 +54,7 @@ export default function ChapterEditEntry({ story, ...p }: ChapterEditEntryProps)
           initialPathSummary: p.initialPathSummary,
           existingChoices: p.existingChoices,
           incomingLabel: p.incomingLabel,
+          incomingChoice: p.incomingChoice,
           aiMarked: p.aiMarked,
           summaryMine: p.summaryMine,
           writing: p.writing,

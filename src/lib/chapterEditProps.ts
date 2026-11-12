@@ -28,6 +28,7 @@ export function chapterEditProps(story: Story, path: Chapter[]): Omit<ChapterEdi
     initialPathSummary: chapter.path_summary,
     existingChoices: getChoices(id).map((c) => ({ id: c.id, label: c.label, hasChild: c.child_chapter_id !== null })),
     incomingLabel: incoming?.label ?? null,
+    incomingChoice: incoming && path.length > 1 ? { id: incoming.id, parentChapterId: path[path.length - 2].id } : null,
     aiMarked: aiMarkOf(chapter) !== null,
     summaryMine: isSummaryMine(id),
     writing: editWriting(id, chapter.title, chapter.body),

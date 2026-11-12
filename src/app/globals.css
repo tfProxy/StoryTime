@@ -7595,3 +7595,135 @@ main:has(.desk) {
 .desk-row .desk-chip {
   flex: none;
 }
+
+/* The story column in Codex mode: the path's blocks, the "→ …" line and the chapter's box, "What happens next?". */
+.desk-story:not([hidden]) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+  align-content: start;
+}
+
+.desk-path {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.4rem;
+}
+
+.desk-path-head {
+  margin: 0;
+}
+
+.desk-path-head button {
+  padding: 0.2rem 0.7rem;
+  font-size: 0.85rem;
+}
+
+.desk-block {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  min-width: 0;
+}
+
+.desk-block-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.4rem;
+}
+
+.desk-block-fold {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: 0;
+  color: var(--fg);
+  padding: 0.3rem 0.35rem;
+}
+
+.desk-block-fold small {
+  display: block;
+  color: var(--muted);
+  font-weight: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desk-block-head .draft-mark {
+  flex: none;
+  margin: 0;
+}
+
+.desk-block-edit {
+  flex: none;
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.desk-block-edit:hover {
+  border-color: var(--accent);
+}
+
+.desk-block-text {
+  padding: 0 0.9rem 0.6rem;
+}
+
+.desk-via {
+  margin: 0 0 0 0.9rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.desk-via-button {
+  background: none;
+  border: 0;
+  padding: 0.15rem 0;
+  color: var(--muted);
+  font: inherit;
+  text-align: left;
+  cursor: text;
+}
+
+.desk-via-button:hover {
+  color: var(--fg);
+  text-decoration: underline dotted;
+}
+
+.desk-via-edit .row {
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.desk-via-edit input {
+  flex: 1 1 12rem;
+  width: auto;
+}
+
+.desk-via-note {
+  margin: 0;
+}
+
+.desk-here {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.desk-box-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.4rem;
+}
+
+.choices.desk-next {
+  margin-top: 1rem;
+}

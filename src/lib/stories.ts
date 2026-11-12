@@ -743,6 +743,18 @@ export function removeChoice(chapterId: string, choiceId: string): { ok: true } 
   })();
 }
 
+/**
+ * Renames one choice of a chapter, written or not (the writing desk's "→ …" line above a chapter). Choice text has no
+ * revisions, so this is saved at once and the chapters are not changed.
+ */
+export function renameChoice(chapterId: string, choiceId: string, input: z.infer<typeof AddChoiceSchema>): { ok: true } {
+  return db().transaction(() => {
+    if (!getChoices(chapterId).some((x) => x.id === choiceId)) throw new PostError("That choice isn't on this chapter", 404);
+    db().prepare(`UPDATE choices SET label = ? WHERE id = ?`).run(input.label, choiceId);
+    return { ok: true as const };
+  })();
+}
+
 export function editStory(storyId: string, input: z.infer<typeof EditStorySchema>): { ok: true } {
   return db().transaction(() => {
     const story = getStory(storyId);

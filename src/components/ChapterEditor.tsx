@@ -23,12 +23,14 @@ import {
 import type { PathChapter } from "@/lib/ai/codexAi";
 import type { ChapterWriting } from "@/lib/chapterWriting";
 import { foldWithDraft, isDraftEntry, isDraftFact, type CodexChange, type CodexOp, type FactChange, type FactOp } from "@/lib/codex";
+import { markDeskMove } from "@/lib/deskMove";
 import { deleteDraft, DraftConflict, emptyDraft, getDraft, saveDraft, type Draft } from "@/lib/drafts";
 import { applyAfterGenerate, applyGenerated, isBegun, keptVersions, restore, snapshot } from "@/lib/generatedDraft";
 import { useWorkQueue, type GenerateItem } from "./WorkQueue";
 import Prose from "./Prose";
 import { AiCallProgress, GenerateStep, ThinkingFold } from "./GenerateProgress";
 import AutoTextarea from "./AutoTextarea";
+import DeskVia from "./DeskVia";
 import CodexPanel from "./CodexPanel";
 import { PageMenu } from "./SiteMenu";
 import CodexPreview from "./CodexPreview";
@@ -56,6 +58,8 @@ export type Target =
       existingChoices: { id: string; label: string; hasChild: boolean }[];
       /** Text of the choice leading here, or null for a story's first chapter. */
       incomingLabel: string | null;
+      /** That choice and the chapter it is on: the writing desk renames it at once (its "→ …" line). */
+      incomingChoice?: { id: string; parentChapterId: string } | null;
       /** The chapter currently has an AI mark, so it can be declared the author's own. */
       aiMarked?: boolean;
       /** The owner made the summary theirs on the desk, so Update leaves it alone. */
@@ -346,8 +350,20 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     });
   }
 
+  // A change still waiting for the autosave when the editor goes (the writing desk moving to another chapter, say) is
+  // saved then, so leaving keeps the draft as it was typed. (Declared before the autosave, so it is cleaned up first.)
+  const pendingRef = useRef<Draft | null>(null);
+  useEffect(
+    () => () => {
+      if (pendingRef.current) queueSave(pendingRef.current);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   // Autosave (debounced) to the server.
   useEffect(() => {
+    pendingRef.current = null;
     if (!draft || !loadedRef.current) return;
     if (skipSaveRef.current) {
       skipSaveRef.current = false;
@@ -358,8 +374,10 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     let fired = false;
     const unsaved = unsavedRef;
     unsaved.current++;
+    pendingRef.current = draft;
     const t = setTimeout(() => {
       fired = true;
+      pendingRef.current = null;
       unsaved.current--;
       queueSave(draft);
     }, 500);
@@ -1181,11 +1199,44 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       await saveChainRef.current;
       await keepWriting(data.chapter_id, draft).catch(() => {});
       await deleteDraft(draftKey).catch(() => {});
-      router.push(`/c/${data.chapter_id}/desk?posted=1`);
+      // Still on the desk: the path keeps its fold states.
+      markDeskMove(`/c/${data.chapter_id}/desk?posted=1`);
+      router.push(`/c/${data.chapter_id}/desk?posted=1`, { scroll: false });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(null);
     }
+  }
+
+  /**
+   * The desk's "→ …" line: on a new chapter it is the draft's choice text (as the Write page's Choice text box; for an
+   * existing choice, changing it makes a new choice when posted). On a posted chapter the choice is renamed at once
+   * (choice text has no revisions); a draft that still had the old text takes the new one, so an Update from the Edit
+   * page doesn't put the old text back.
+   */
+  async function renameIncoming(label: string): Promise<string | null> {
+    if (target.kind === "fill" || target.kind === "new") {
+      patch({ newChoiceLabel: label });
+      return null;
+    }
+    if (target.kind !== "edit" || !target.incomingChoice) return null;
+    try {
+      const { id, parentChapterId } = target.incomingChoice;
+      const res = await fetch(`/api/chapters/${parentChapterId}/choices/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return data.error ?? `Request failed (${res.status})`;
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+    const was = target.incomingLabel;
+    if (draft && (draft.incomingLabel ?? was) === was) {
+      const next = { ...draft, incomingLabel: label };
+      if (isBlank(next, { ...target, incomingLabel: label })) skipSaveRef.current = true;
+      setDraft(next);
+    }
+    desk?.onNote?.("Choice renamed");
+    router.refresh();
+    return null;
   }
 
   async function removeAiMark() {
@@ -1263,6 +1314,22 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     return (
       <form className="desk-box-form" onSubmit={(e) => e.preventDefault()}>
         {conflictNotice}
+        {/* The choice that leads here, above the box (none for a story's first chapter). */}
+        {target.kind === "edit" ? (
+          target.incomingLabel !== null && <DeskVia key={target.incomingLabel} label={target.incomingLabel} onSave={target.incomingChoice ? renameIncoming : undefined} />
+        ) : target.kind !== "first" ? (
+          <DeskVia
+            key={draftKey}
+            label={draft.newChoiceLabel}
+            placeholder="The choice that leads here (needed to post)"
+            note={
+              target.kind === "fill" && draft.newChoiceLabel.trim() && draft.newChoiceLabel.trim() !== target.label.trim()
+                ? `Post adds this as a new choice; “${target.label}” stays unwritten.`
+                : null
+            }
+            onSave={renameIncoming}
+          />
+        ) : null}
         <section className="desk-box" aria-label="The chapter">
           <input
             id="chapter-title"

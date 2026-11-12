@@ -6,8 +6,7 @@ import { chapterEditProps } from "@/lib/chapterEditProps";
 import { foldCodex } from "@/lib/codex";
 import { getCodexFacts, getCodexOps, getContextCodex, nextFormChange } from "@/lib/codexDb";
 import { codexIcons, iconChoices } from "@/lib/codexIcons";
-import { newChapterCodex } from "@/lib/deskCodex";
-import { draftMarks } from "@/lib/draftMarks";
+import { deskPathBlocks, newChapterCodex } from "@/lib/deskProps";
 import { illustrateProps } from "@/lib/illustrateProps";
 import { type Chapter, getChoices, getPath, getStory, type Story } from "@/lib/stories";
 import { getStoryChapters, laterChaptersFrom } from "@/lib/tree";
@@ -18,6 +17,8 @@ export const dynamic = "force-dynamic";
 // it replaces it.) Codex changes made here are saved at once, at this chapter.
 // With ?choice=<choice id> (an unwritten choice of this chapter) or ?new=<choice text> (a new choice on it), the desk
 // writes the chapter that follows, as the Write page does (and with the same draft); Post chapter makes it.
+// Above the box, the earlier chapters on the path are blocks that fold; under a posted chapter's box, "What happens
+// next?" lists its choices, each opening its chapter on the desk.
 // `?side=illustrate` opens the side column in Illustrate mode, with the chapter's pictures in the story column.
 export default async function DeskPage({
   params,
@@ -64,7 +65,7 @@ export default async function DeskPage({
         </>
       }
       note={query.posted ? "Posted · the summary and the codex check follow in the background" : null}
-      unusedDrafts={draftMarks([...path.map((c) => c.id), ...getChoices(id).flatMap((c) => (c.child_chapter_id ? [c.child_chapter_id] : []))])}
+      pathBlocks={deskPathBlocks(path.slice(0, -1))}
       mode={query.side === "illustrate" ? "illustrate" : "codex"}
       illustrate={illustrateProps(story, path)}
       editor={chapterEditProps(story, path)}
@@ -102,9 +103,8 @@ function newChapter(story: Story, path: Chapter[], query: { choice?: string; new
     }
     target = { kind: "fill", choiceId: slot.id, label: slot.label, parentChapterId: parent.id };
   } else {
-    const label = (query.new ?? "").trim();
-    if (!label) notFound();
-    target = { kind: "new", parentChapterId: parent.id, label };
+    // An empty ?new= ("Draft a different idea" on the desk) starts with no choice text: the "→ …" line asks for it.
+    target = { kind: "new", parentChapterId: parent.id, label: (query.new ?? "").trim() };
   }
   // The same draft as the Write page's, which the Drafts list opens.
   const draftKey = target.kind === "fill" ? `fill:${target.choiceId}` : `new:${parent.id}`;
@@ -116,6 +116,7 @@ function newChapter(story: Story, path: Chapter[], query: { choice?: string; new
       key={draftKey}
       bar={<Link href={`/c/${parent.id}`}>← Back to “{parent.title}”</Link>}
       codex={codex}
+      pathBlocks={deskPathBlocks(path)}
       newChapter={{
         target,
         context: {
@@ -123,7 +124,7 @@ function newChapter(story: Story, path: Chapter[], query: { choice?: string; new
           premise: story.premise,
           style: story.style,
           path: path.map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary })),
-          choiceLabel: target.label,
+          choiceLabel: target.label || null,
           codex: getContextCodex(parent.id),
           siblingChoices: choices.map((c) => c.label),
         },

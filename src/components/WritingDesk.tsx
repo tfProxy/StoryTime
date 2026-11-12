@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -22,6 +22,7 @@ import {
 } from "@/lib/codex";
 import type { PathChapter } from "@/lib/ai/codexAi";
 import { mentions } from "@/lib/ai/prompts";
+import { markDeskMove } from "@/lib/deskMove";
 import { codexIconUrl, type IconChoice } from "@/lib/codexIconUrl";
 import ChapterEditEntry, { type ChapterEditEntryProps } from "./ChapterEditEntry";
 import ChapterEditor, { type HeldCodex } from "./ChapterEditor";
@@ -32,6 +33,7 @@ import CodexIconPicker from "./CodexIconPicker";
 import { ChangeList, comparisonTitle, type Relation } from "./CodexComparison";
 import { useCodexInbox } from "./CodexInbox";
 import DeskIllustrate from "./DeskIllustrate";
+import DeskPath, { type PathBlock } from "./DeskPath";
 import type { IllustrateProps } from "./IllustrateWorkspace";
 import DeskSuggestions from "./DeskSuggestions";
 import LinkedEntryDetails from "./LinkedEntryDetails";
@@ -154,11 +156,10 @@ type DeskProps = {
   bar: ReactNode;
   /** A status line to start with ("Posted · …" after a Post). */
   note?: string | null;
-  /**
-   * The chapters with a draft not used (draftMarks in src/lib/draftMarks.ts), for the path's blocks and the choices
-   * ("Draft not used"), which step 5 of the writing desk builds. Not shown yet.
-   */
-  unusedDrafts?: string[];
+  /** The earlier chapters on the path, as blocks above the box (marked "Draft not used" from draftMarks.ts). */
+  pathBlocks?: PathBlock[];
+  /** "What happens next?" under the box: the chapter's choices (ChapterChoices), once it is posted. */
+  next?: ReactNode;
   illustrate?: IllustrateProps | null;
   mode?: DeskMode;
 };
@@ -179,9 +180,36 @@ export default function WritingDesk({
   codex,
   bar,
   note: firstNote = null,
+  pathBlocks = [],
+  next = null,
   illustrate = null,
   mode: initialMode = "codex",
 }: DeskProps) {
+  // The chapter's box (with the "→ …" line above it) is scrolled into view on arriving, from outside or by a move, once
+  // its draft has loaded (the box is short until then, and the page couldn't scroll that far).
+  const hereRef = useRef<HTMLDivElement>(null);
+  const scrolled = useRef(pathBlocks.length === 0);
+  // The draft's title, prompt and text, as the editor has them: "In this chapter" lists the entries they name.
+  const [text, setText] = useState("");
+  const onText = useCallback((t: string) => {
+    setText(t);
+    if (scrolled.current) return;
+    scrolled.current = true;
+    requestAnimationFrame(() => hereRef.current?.scrollIntoView({ block: "start" }));
+  }, []);
+  // Back and forward from here to another desk is a move within the desk too. It is heard from the Navigation API's
+  // "navigate" event, which comes before the page it goes to is shown (by popstate the router has already shown it, and
+  // this desk is gone). A browser without the Navigation API opens that desk as from outside, every block unfolded.
+  useEffect(() => {
+    const nav = (window as { navigation?: EventTarget }).navigation;
+    if (!nav) return;
+    const onNavigate = (e: Event) => {
+      const n = e as Event & { navigationType?: string; destination?: { url?: string } };
+      if (n.navigationType === "traverse" && n.destination?.url) markDeskMove(n.destination.url);
+    };
+    nav.addEventListener("navigate", onNavigate);
+    return () => nav.removeEventListener("navigate", onNavigate);
+  }, []);
   const [mode, setMode] = useState<DeskMode>(illustrate ? initialMode : "codex");
   const illus = mode === "illustrate" && illustrate !== null;
   const choose = (next: DeskMode) => {
@@ -214,8 +242,6 @@ export default function WritingDesk({
   const [note, setNote] = useState<string | null>(firstNote);
   const refresh = () => router.refresh();
   const { storyId, chapterId, path, ops, facts, icons } = codex;
-  // The draft's title, prompt and text, as the editor has them: "In this chapter" lists the entries they name.
-  const [text, setText] = useState("");
   const [folded, setFolded] = useState(false);
   const [query, setQuery] = useState("");
   // The entry open in the entry column, or "new" for the new-entry form.
@@ -357,19 +383,19 @@ export default function WritingDesk({
       )}
 
       {/* Hidden, not removed, in Illustrate mode: an unsaved edit is still there when Codex is chosen again. */}
+      {/* The path, the box and "What happens next?" belong to Codex mode; Illustrate shows the chapter's pictures. */}
       <div className="desk-story" hidden={illus}>
-        {editor ? (
-          <>
-            <h1 className="visually-hidden">Edit “{here.title}”</h1>
-            {/* An Update makes a new revision: the box starts again from the chapter, its drafts kept with it. */}
-            <ChapterEditEntry key={editor.baseRevision} {...editor} desk={{ onText: setText, menuSlot, onNote: setNote }} />
-          </>
-        ) : newChapter ? (
-          <>
-            <h1 className="visually-hidden">New chapter</h1>
-            <ChapterEditor {...newChapter} desk={{ onText: setText, menuSlot, onNote: setNote, onHeld: setHeld }} />
-          </>
-        ) : null}
+        <h1 className="visually-hidden">{editor ? `Edit “${here.title}”` : "New chapter"}</h1>
+        <DeskPath storyId={storyId} blocks={pathBlocks} />
+        <div className="desk-here" ref={hereRef}>
+          {editor ? (
+            // An Update makes a new revision: the box starts again from the chapter, its drafts kept with it.
+            <ChapterEditEntry key={editor.baseRevision} {...editor} desk={{ onText, menuSlot, onNote: setNote }} />
+          ) : newChapter ? (
+            <ChapterEditor {...newChapter} desk={{ onText, menuSlot, onNote: setNote, onHeld: setHeld }} />
+          ) : null}
+        </div>
+        {next}
       </div>
     </div>
     </>

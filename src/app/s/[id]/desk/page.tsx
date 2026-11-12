@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import WritingDesk from "@/components/WritingDesk";
-import { newChapterCodex } from "@/lib/deskCodex";
+import { newChapterCodex } from "@/lib/deskProps";
 import { getStory } from "@/lib/stories";
 
 export const dynamic = "force-dynamic";

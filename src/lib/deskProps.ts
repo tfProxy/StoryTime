@@ -1,8 +1,23 @@
+import type { PathBlock } from "@/components/DeskPath";
 import type { DeskCodex } from "@/components/WritingDesk";
 import { getCodexFacts, getCodexOps } from "./codexDb";
 import { codexIcons, iconChoices } from "./codexIcons";
-import type { Chapter, Story } from "./stories";
+import { draftMarks } from "./draftMarks";
+import { getIncomingChoice, type Chapter, type Story } from "./stories";
 import { getStoryChapters } from "./tree";
+
+/** The writing desk's path blocks: `earlier`, the chapters above the box, each with its choice and "Draft not used". */
+export function deskPathBlocks(earlier: Chapter[]): PathBlock[] {
+  const unused = new Set(draftMarks(earlier.map((c) => c.id)));
+  return earlier.map((c) => ({
+    id: c.id,
+    title: c.title,
+    body: c.body,
+    summary: c.summary,
+    via: getIncomingChoice(c.id)?.label ?? null,
+    unused: unused.has(c.id),
+  }));
+}
 
 /**
  * The writing desk's codex for a chapter not posted yet after `path` (empty for a story's first chapter): the codex as
