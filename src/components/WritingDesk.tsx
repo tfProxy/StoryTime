@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { compareEntry, DRAFT_ANCHOR, foldCodex, TYPE_LABELS, usedAspectsOf, type CodexEntry, type CodexOp, type EntryChange as Change, type EntryType, type FactOp } from "@/lib/codex";
@@ -62,8 +62,28 @@ function entryStart(ops: CodexOp[], path: Chapter[], entryId: string): Chapter {
  * The writing desk: the codex (a side column that folds to a rail), the open codex entry, and the chapter's editor.
  * Codex changes made here are saved at once, at the chapter (it is posted).
  */
-export default function WritingDesk({ editor, codex }: { editor: Omit<ChapterEditEntryProps, "desk">; codex: DeskCodex }) {
+export default function WritingDesk({
+  editor,
+  codex,
+  bar,
+  note: firstNote = null,
+}: {
+  editor: Omit<ChapterEditEntryProps, "desk">;
+  codex: DeskCodex;
+  /** The top bar's links ("← Back to …"); the chapter's ⋯ menu and a status line go beside them. */
+  bar: ReactNode;
+  /** A status line to start with ("Posted · …" after a Post). */
+  note?: string | null;
+  /**
+   * The chapters with a draft not used (draftMarks in src/lib/draftMarks.ts), for the path's blocks and the choices
+   * ("Draft not used"), which step 5 of the writing desk builds. Not shown yet.
+   */
+  unusedDrafts?: string[];
+}) {
   const router = useRouter();
+  // Where the chapter's box puts the top bar's ⋯ menu, and the bar's status line (after an Update, say).
+  const [menuSlot, setMenuSlot] = useState<HTMLElement | null>(null);
+  const [note, setNote] = useState<string | null>(firstNote);
   const refresh = () => router.refresh();
   const { storyId, chapterId, path, ops, facts, icons } = codex;
   // The draft's title, prompt and text, as the editor has them: "In this chapter" lists the entries they name.
@@ -127,6 +147,8 @@ export default function WritingDesk({ editor, codex }: { editor: Omit<ChapterEdi
 
   const classes = ["desk", folded ? "desk-folded" : "", openId ? "desk-has-entry" : ""].filter(Boolean).join(" ");
   return (
+    <>
+    <DeskBar bar={bar} note={note} onSlot={setMenuSlot} />
     <div className={classes}>
       {folded ? (
         <aside className="desk-side desk-rail" aria-label="Codex">
@@ -178,9 +200,26 @@ export default function WritingDesk({ editor, codex }: { editor: Omit<ChapterEdi
       )}
 
       <div className="desk-story">
-        <h1 className="desk-title">Edit “{here.title}”</h1>
-        <ChapterEditEntry {...editor} desk={{ onText: setText }} />
+        <h1 className="visually-hidden">Edit “{here.title}”</h1>
+        {/* An Update makes a new revision: the box starts again from the chapter, its drafts kept with it. */}
+        <ChapterEditEntry key={editor.baseRevision} {...editor} desk={{ onText: setText, menuSlot, onNote: setNote }} />
       </div>
+    </div>
+    </>
+  );
+}
+
+/** The desk's top bar: the links back, a status line, and the chapter's ⋯ menu (put there by the chapter's box). */
+export function DeskBar({ bar, note, onSlot }: { bar: ReactNode; note: string | null; onSlot: (el: HTMLElement | null) => void }) {
+  return (
+    <div className="desk-bar">
+      <p className="crumbs">{bar}</p>
+      {note && (
+        <span className="meta desk-bar-note" role="status">
+          {note}
+        </span>
+      )}
+      <span className="desk-bar-menu" ref={onSlot} />
     </div>
   );
 }

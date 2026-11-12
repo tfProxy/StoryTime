@@ -24,7 +24,7 @@ import type { PathChapter } from "@/lib/ai/codexAi";
 import type { ChapterWriting } from "@/lib/chapterWriting";
 import { foldWithDraft, isDraftEntry, isDraftFact, type CodexOp, type FactOp } from "@/lib/codex";
 import { deleteDraft, DraftConflict, emptyDraft, getDraft, saveDraft, type Draft } from "@/lib/drafts";
-import { applyAfterGenerate, applyGenerated, isBegun, keptVersions, restore } from "@/lib/generatedDraft";
+import { applyAfterGenerate, applyGenerated, isBegun, keptVersions, restore, snapshot } from "@/lib/generatedDraft";
 import { useWorkQueue, type GenerateItem } from "./WorkQueue";
 import Prose from "./Prose";
 import { AiCallProgress, GenerateStep, ThinkingFold } from "./GenerateProgress";
@@ -33,13 +33,15 @@ import CodexPanel from "./CodexPanel";
 import { PageMenu } from "./SiteMenu";
 import CodexPreview from "./CodexPreview";
 import ModelPicker from "./ModelPicker";
+import MoreMenu from "./MoreMenu";
 import SaveSplitButton, { type SaveMode } from "./SaveSplitButton";
 
 export type Target =
   /** The first chapter of a story that has none yet. */
   | { kind: "first"; storyId: string }
   | { kind: "fill"; choiceId: string; label: string; parentChapterId: string }
-  | { kind: "new"; parentChapterId: string }
+  /** `label`: the new choice's text, when the page was opened with it (the desk's `?new=`). */
+  | { kind: "new"; parentChapterId: string; label?: string }
   | {
       kind: "edit";
       chapterId: string;
@@ -56,6 +58,8 @@ export type Target =
       incomingLabel: string | null;
       /** The chapter currently has an AI mark, so it can be declared the author's own. */
       aiMarked?: boolean;
+      /** The owner made the summary theirs on the desk, so Update leaves it alone. */
+      summaryMine?: boolean;
       /** How the chapter was written (kept when it was posted), so the edit starts with its prompt and versions. */
       writing?: EditWriting | null;
     };
@@ -76,12 +80,17 @@ type Props = {
   /** The codex as of the chapter being continued; absent when there is no earlier chapter to anchor it to. */
   /** `editing`: the last chapter of `path` is the one being edited, so changes held in the draft are saved at it. */
   codexPanel?: { chapterId: string; editing?: boolean; path: PathChapter[]; ops: CodexOp[]; facts?: FactOp[] };
-  /**
-   * Inside the writing desk, whose own columns show the codex: no "Codex for this prompt" and no codex drawer.
-   * `onText` hears the draft's title, prompt and text as they change (the desk's "In this chapter").
-   */
-  desk?: { onText: (text: string) => void };
+  /** Inside the writing desk: the chapter's box instead of the Edit and Write pages' form (see Desk). */
+  desk?: Desk;
 };
+
+/**
+ * The writing desk, whose own columns show the codex: no "Codex for this prompt" and no codex drawer, and the chapter's
+ * box (title; "Prompt and drafts"; the text; "Summary"; Post or Update) instead of the form. `onText` hears the draft's
+ * title, prompt and text as they change (the desk's "In this chapter"); `menuSlot` is where the top bar's ⋯ menu goes;
+ * `onNote` shows a line in the top bar (after an Update, say).
+ */
+export type Desk = { onText: (text: string) => void; menuSlot?: HTMLElement | null; onNote?: (note: string) => void };
 
 const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
 
@@ -201,6 +210,17 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const busyRef = useRef(false);
   // The prompt of the Generate this page started, kept with the draft it makes (the box may change while it writes).
   const genPromptRef = useRef<string | null>(null);
+  // The desk's box: "Prompt and drafts" starts folded on a posted chapter and unfolded on a new one; "Summary" folded.
+  const [promptOpen, setPromptOpen] = useState(target.kind !== "edit");
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  // A posted chapter's summary on the desk is the chapter's own (saved to it at once, not to the draft).
+  const [chapterSummary, setChapterSummary] = useState({
+    text: target.kind === "edit" ? (target.initialSummary ?? "") : "",
+    mine: target.kind === "edit" && !!target.summaryMine,
+    saved: true,
+  });
+  const summaryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [markRemoved, setMarkRemoved] = useState(false);
 
   /** Shows a draft as stored on the server. */
   function showStored(d: Draft) {
@@ -254,6 +274,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
       const d = emptyDraft(draftKey, resumeHref, draftLabel);
       // Filling in an existing choice starts with its text in the choice box; changing it makes a new choice instead.
       if (target.kind === "fill") return { ...d, newChoiceLabel: target.label, slotLabel: target.label };
+      if (target.kind === "new" && target.label) return { ...d, newChoiceLabel: target.label };
       if (target.kind !== "edit") return d;
       return {
         ...d,
@@ -753,6 +774,19 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     }
   }
 
+  /**
+   * The codex changes held in the draft, saved with the chapter and anchored at it. Entries created in the draft get
+   * their real id from the server, which matches their facts to them by the draft id; facts new in the draft get theirs too.
+   */
+  function codexPayload() {
+    const newEntries = new Set(codexChanges.filter((c) => c.op === "create").map((c) => c.entry_id));
+    const retiredEntries = new Set(codexChanges.filter((c) => c.op === "retire").map((c) => c.entry_id));
+    const codex_fact_changes = factChanges
+      .filter((f) => (!isDraftEntry(f.entry_id) || newEntries.has(f.entry_id)) && !retiredEntries.has(f.entry_id))
+      .map((f) => (isDraftFact(f.fact_id) ? { ...f, fact_id: undefined } : f));
+    return { codex_changes: codexChanges, codex_fact_changes };
+  }
+
   async function post(resummarize = false) {
     if (!draft) return;
     setAskSummary(false);
@@ -794,14 +828,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     const summaryFields = summaries ?? {};
 
     const chapter ={ title: draft.title, body: draft.body, choices: finalChoices, ...summaryFields };
-    // Saved with the chapter and anchored at it. Entries created in the draft get their real id from the server,
-    // which matches their facts to them by the draft id; facts new in the draft get theirs too.
-    const codex_changes = codexChanges;
-    const newEntries = new Set(codexChanges.filter((c) => c.op === "create").map((c) => c.entry_id));
-    const retiredEntries = new Set(codexChanges.filter((c) => c.op === "retire").map((c) => c.entry_id));
-    const codex_fact_changes = factChanges
-      .filter((f) => (!isDraftEntry(f.entry_id) || newEntries.has(f.entry_id)) && !retiredEntries.has(f.entry_id))
-      .map((f) => (isDraftFact(f.fact_id) ? { ...f, fact_id: undefined } : f));
+    const { codex_changes, codex_fact_changes } = codexPayload();
     let url: string;
     let method = "POST";
     let payload: unknown;
@@ -876,6 +903,479 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     setCodexOpen(true);
   };
 
+  // ---- pieces both layouts show ----
+  const conflictNotice = conflict && (
+    <div className="notice" role="alert">
+      <p>
+        {conflict.current
+          ? `This draft was changed in another tab or browser (saved ${new Date(conflict.current.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}). Changes here aren't being saved until you pick one.`
+          : "This draft was posted or deleted in another tab or browser. Changes here aren't being saved."}
+      </p>
+      <div className="row">
+        {conflict.current && (
+          <button
+            type="button"
+            onClick={() => {
+              const current = conflict.current!;
+              conflictRef.current = false;
+              setConflict(null);
+              showStored(current);
+            }}
+          >
+            Load that version
+          </button>
+        )}
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => {
+            baseRef.current = conflict.current?.updatedAt ?? 0;
+            conflictRef.current = false;
+            setConflict(null);
+            queueSave(draft);
+          }}
+        >
+          {conflict.current ? "Keep this one" : "Save it again"}
+        </button>
+      </div>
+    </div>
+  );
+  const genProgress = (
+    <>
+      {generating?.state === "waiting" && (
+        <p className="meta" role="status">
+          {generating.note ?? "Waiting its turn…"}
+        </p>
+      )}
+      {generating?.state === "working" && genStep && (
+        <GenerateStep
+          key={genStep.text}
+          text={genStep.text}
+          since={genStep.since}
+          words={genStep.text === "Writing the chapter…" ? { done: genWords, target: targetWords } : undefined}
+        />
+      )}
+      {thinking && <ThinkingFold text={thinking} live={generating?.state === "working"} />}
+    </>
+  );
+  const autoStart = autoGenerate && !autoDone && !draft.body && (
+    <AutoStart
+      run={() => {
+        setAutoDone(true);
+        startGenerate();
+      }}
+    />
+  );
+  const bodyField = (
+    <div id="field-body">
+      {working || reading ? (
+        <div>
+          <Prose text={draft.body} />
+          {!working && (
+            <button type="button" className="secondary" onClick={() => setReading(false)}>
+              Edit text
+            </button>
+          )}
+        </div>
+      ) : (
+        <AutoTextarea
+          id="chapter-body"
+          aria-label={desk ? "Chapter text" : undefined}
+          placeholder={desk ? "Generate, or write here yourself." : undefined}
+          value={draft.body}
+          maxLength={LIMITS.body}
+          onChange={(e) => patch({ body: e.target.value })}
+        />
+      )}
+    </div>
+  );
+  const saveState = saved && (
+    <div className={`meta save-state${"failed" in saved ? " error" : ""}`}>
+      {"failed" in saved
+        ? "Couldn't save this draft"
+        : `Draft saved · ${new Date(saved.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
+    </div>
+  );
+
+  // ---- the writing desk's box ----
+  // The drafts: the versions, or the draft's text as its only one (a draft with no Generate yet).
+  const deskDrafts = draft.versions ?? (draft.title || draft.body ? [snapshot(draft)] : []);
+  const deskAt = Math.max(0, Math.min(draft.versionIndex ?? deskDrafts.length - 1, deskDrafts.length - 1));
+  const isChapterText = (v: { title: string; body: string }) => target.kind === "edit" && v.title === target.initialTitle && v.body === target.initialBody;
+  const showingIsChapter = isChapterText(draft);
+  // The draft the chapter reads as (✓): its text is the chapter's. The one showing keeps its ✓ while it is typed in.
+  const readsAs = deskDrafts.findIndex((v, i) => isChapterText(v) || (i === deskAt && showingIsChapter));
+  // An older draft shows the prompt that made it, to put back in the box.
+  const showingPrompt = deskAt < deskDrafts.length - 1 ? deskDrafts[deskAt]?.prompt : undefined;
+  // A new chapter with no title is posted with its choice's text (a first chapter: the story's title).
+  const choiceTitle = target.kind === "fill" ? target.label : target.kind === "new" ? draft.newChoiceLabel.trim() : target.kind === "first" ? context.storyTitle : "";
+  const canUpdate = target.kind === "edit" && !showingIsChapter && hasBody && !!draft.title.trim();
+  const canPost = target.kind !== "edit" && hasBody && (target.kind !== "new" || !!draft.newChoiceLabel.trim());
+  const summaryText = target.kind === "edit" ? chapterSummary.text : (draft.summary ?? "");
+  const summaryMine = target.kind === "edit" ? chapterSummary.mine : !!summaryText.trim();
+
+  async function saveChapterSummary(body: { summary?: string; mine: boolean }) {
+    if (target.kind !== "edit") return;
+    try {
+      const res = await fetch(`/api/chapters/${target.chapterId}/summary`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+      setChapterSummary((s) => ({ ...s, mine: data.mine, saved: true }));
+    } catch (e) {
+      setLastAction("summary");
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /** Typing in Summary: a posted chapter's summary is saved to it (as the owner's) a moment after typing stops. */
+  function typeSummary(text: string) {
+    if (target.kind !== "edit") return patch({ summary: text });
+    setChapterSummary((s) => ({ ...s, text, mine: text.trim() !== "", saved: false }));
+    if (summaryTimer.current) clearTimeout(summaryTimer.current);
+    summaryTimer.current = setTimeout(() => {
+      summaryTimer.current = null;
+      void saveChapterSummary({ summary: text.trim(), mine: true });
+    }, 700);
+  }
+
+  async function flushSummary() {
+    if (!summaryTimer.current) return;
+    clearTimeout(summaryTimer.current);
+    summaryTimer.current = null;
+    await saveChapterSummary({ summary: chapterSummary.text.trim(), mine: true });
+  }
+
+  /** Unfolding Summary reads a posted chapter's summary again: the queue may have rewritten it since the desk opened. */
+  function openSummary() {
+    setSummaryOpen((o) => !o);
+    if (summaryOpen || target.kind !== "edit" || !chapterSummary.saved || summaryTimer.current) return;
+    fetch(`/api/chapters/${target.chapterId}`, { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const text = data?.chapter?.summary;
+        if (typeof text === "string" || text === null) setChapterSummary((s) => (s.saved && !summaryTimer.current ? { ...s, text: text ?? "" } : s));
+      })
+      .catch(() => {});
+  }
+
+  /** "Let the AI rewrite it": the next Update (or the Post) has the AI write the summary again. */
+  function handBackSummary() {
+    if (target.kind !== "edit") return patch({ summary: "" });
+    if (summaryTimer.current) clearTimeout(summaryTimer.current);
+    summaryTimer.current = null;
+    setChapterSummary((s) => ({ ...s, mine: false }));
+    void saveChapterSummary({ summary: chapterSummary.text.trim(), mine: false });
+  }
+
+  const afterNote = (what: string) => `${what} · ${summaryMine ? "your summary is kept" : "rewriting its summary"}${settings.autoCodex ? " and checking the codex" : ""}`;
+
+  /** Update chapter: the chapter's text becomes the draft showing; the old text goes to History. The drafts are kept with it. */
+  async function deskUpdate(replaceBranch = false) {
+    if (target.kind !== "edit" || !draft) return;
+    if (replaceBranch && !window.confirm(`Update “${target.initialTitle}” with the draft showing and move the ${belowText} below it to the trash? Their choices stay, unwritten.`)) return;
+    await flushSummary();
+    startBusy("post");
+    setError(null);
+    try {
+      const res = await fetch(`/api/chapters/${target.chapterId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          base_revision: draft.baseRevision ?? target.baseRevision,
+          title: draft.title.trim(),
+          body: draft.body,
+          // The summaries stay as they are until the queue rewrites them.
+          summary: chapterSummary.text.trim() || null,
+          path_summary: target.initialPathSummary,
+          // Changes to the choices held in a draft from the Edit page go with it.
+          incoming_label: target.incomingLabel !== null ? draft.incomingLabel?.trim() || undefined : undefined,
+          rename_choices: existingChoices.filter((c) => !c.removed && c.label.trim() && c.label.trim() !== c.original).map((c) => ({ id: c.id, label: c.label.trim() })),
+          remove_choices: existingChoices.filter((c) => c.removed).map((c) => c.id),
+          add_choices: finalChoices,
+          replace_branch: replaceBranch || undefined,
+          ...codexPayload(),
+          rewrite_summary: true,
+          summary_model: suggestModel,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+      loadedRef.current = false; // stop autosave from re-creating the draft
+      await saveChainRef.current;
+      // The drafts and their prompts are kept with the chapter; the desk starts again from them.
+      await keepWriting(target.chapterId, draft).catch(() => {});
+      await deleteDraft(draftKey).catch(() => {});
+      desk?.onNote?.(afterNote("Updated"));
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setBusy(null);
+    }
+  }
+
+  /** Post chapter: the draft becomes the chapter (choices are added after posting), and the desk stays on it. */
+  async function deskPost() {
+    if (target.kind === "edit" || !draft) return;
+    startBusy("post");
+    setError(null);
+    const own = (draft.summary ?? "").trim();
+    const chapter = {
+      title: (draft.title.trim() || choiceTitle || "Untitled chapter").slice(0, LIMITS.title),
+      body: draft.body,
+      choices: finalChoices,
+      ...(own ? { summary: own, summary_mine: true } : {}),
+      rewrite_summary: true,
+      summary_model: suggestModel,
+    };
+    let url = "/api/chapters";
+    let payload: unknown;
+    if (target.kind === "first") {
+      url = `/api/stories/${target.storyId}/first-chapter`;
+      payload = chapter;
+    } else if (target.kind === "fill" && draft.newChoiceLabel.trim() === target.label.trim()) {
+      payload = { ...chapter, choice_id: target.choiceId, ...codexPayload() };
+    } else {
+      payload = { ...chapter, parent_chapter_id: target.parentChapterId, new_choice_label: draft.newChoiceLabel.trim(), ...codexPayload() };
+    }
+    try {
+      const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+      loadedRef.current = false;
+      await saveChainRef.current;
+      await keepWriting(data.chapter_id, draft).catch(() => {});
+      await deleteDraft(draftKey).catch(() => {});
+      router.push(`/c/${data.chapter_id}/desk?posted=1`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setBusy(null);
+    }
+  }
+
+  async function removeAiMark() {
+    if (target.kind !== "edit") return;
+    try {
+      const res = await fetch(`/api/chapters/${target.chapterId}/owned`, { method: "POST" });
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      setMarkRemoved(true);
+      desk?.onNote?.("The AI mark is removed");
+      router.refresh();
+    } catch (e) {
+      setLastAction("post");
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  if (desk) {
+    const n = deskDrafts.length;
+    const updateNote = !hasBody
+      ? "Write the chapter text to update the chapter."
+      : !draft.title.trim()
+        ? "Add a title to update the chapter."
+        : showingIsChapter
+          ? "The chapter reads as this draft."
+          : deskAt === readsAs
+            ? "You changed the chapter's draft. Update chapter to use your changes."
+            : readsAs >= 0
+              ? `You are looking at draft ${deskAt + 1}. The chapter reads as draft ${readsAs + 1}.`
+              : "This draft differs from the chapter. Update chapter to use it.";
+    const menu =
+      desk.menuSlot &&
+      createPortal(
+        <MoreMenu label="More for this chapter">
+          <label className="desk-menu-model">
+            <span>Summary model</span>
+            <ModelPicker label="Summary model" role="cheap" use="suggest" value={suggestModel} onChange={(r) => setModel("suggest", r)} />
+          </label>
+          {target.kind === "edit" ? (
+            <>
+              <Link href={`/c/${target.chapterId}/history`}>History</Link>
+              <Link href={`/c/${target.chapterId}/write-ahead`}>Write ahead…</Link>
+              <Link href={`/c/${target.chapterId}`}>Open the reading page</Link>
+              {target.aiMarked && !markRemoved && (
+                <button type="button" onClick={() => void removeAiMark()}>
+                  Remove the AI mark
+                </button>
+              )}
+              <button
+                type="button"
+                className="danger"
+                disabled={!canReplace || busy !== null}
+                title={canReplace ? `Update the chapter with the draft showing, and move the ${belowText} below it to the trash.` : "No chapter is written below this one."}
+                onClick={() => void deskUpdate(true)}
+              >
+                Replace branch…
+              </button>
+              <button
+                type="button"
+                className="danger"
+                disabled={!canTrash || busy !== null}
+                title={canTrash ? "Move this chapter and everything below it to the trash." : "The story's first chapter can't go to the trash."}
+                onClick={() => void trashBranch()}
+              >
+                Move to trash…
+              </button>
+            </>
+          ) : (
+            <button type="button" className="danger" disabled={busy !== null} onClick={() => void discardDraft()}>
+              Discard draft…
+            </button>
+          )}
+        </MoreMenu>,
+        desk.menuSlot,
+      );
+    return (
+      <form className="desk-box-form" onSubmit={(e) => e.preventDefault()}>
+        {conflictNotice}
+        <section className="desk-box" aria-label="The chapter">
+          <input
+            id="chapter-title"
+            className="desk-box-title"
+            aria-label="Chapter title"
+            placeholder={choiceTitle || "Untitled chapter"}
+            value={draft.title}
+            maxLength={LIMITS.title}
+            onChange={(e) => patch({ title: e.target.value })}
+          />
+
+          <button type="button" className="desk-fold" aria-expanded={promptOpen} onClick={() => setPromptOpen((o) => !o)}>
+            {promptOpen ? "▾" : "▸"} Prompt and drafts ({n})
+          </button>
+          {promptOpen && (
+            <div className="desk-prompt">
+              <AutoTextarea
+                aria-label="Prompt"
+                className="desk-prompt-box"
+                placeholder="Describe the chapter. [Square brackets] hold extra instructions."
+                value={draft.prompt}
+                onChange={(e) => patch({ prompt: e.target.value })}
+              />
+              <div className="row desk-gen-row">
+                <select aria-label="Length" value={length} onChange={(e) => patch({ length: e.target.value as Length })} style={{ width: "auto" }}>
+                  <option value="short">Short (~300 words)</option>
+                  <option value="medium">Medium (~600 words)</option>
+                  <option value="long">Long (~1000 words)</option>
+                </select>
+                {writePicker}
+                <span className="desk-spacer" />
+                {(working || generating) && (
+                  <button type="button" className="secondary" onClick={stopWork}>
+                    Stop
+                  </button>
+                )}
+                <button type="button" onClick={startGenerate} disabled={busy !== null}>
+                  {busy === "generate" ? (generating?.state === "waiting" ? "Waiting…" : "Writing…") : hasBody ? "Generate again" : "Generate"}
+                </button>
+              </div>
+              {genProgress}
+              {errorFor("generate")}
+              {autoStart}
+              <div className="row desk-drafts" role="group" aria-label="Drafts">
+                <span className="desk-label">{n > 0 ? "Drafts" : "No drafts yet"}</span>
+                {deskDrafts.map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className={i === deskAt ? "desk-draft on" : "desk-draft"}
+                    aria-pressed={i === deskAt}
+                    aria-label={`Draft ${i + 1}${i === readsAs ? ", the chapter's text" : ""}`}
+                    disabled={busy !== null && i !== deskAt}
+                    onClick={() => i !== deskAt && showVersion(i)}
+                  >
+                    {i + 1}
+                    {i === readsAs && " ✓"}
+                  </button>
+                ))}
+                {n > 0 && (
+                  <span className="meta desk-drafts-note">
+                    {deskAt === readsAs && showingIsChapter ? "the chapter's text" : `draft ${deskAt + 1} of ${n}`} · {words.toLocaleString()} word{words === 1 ? "" : "s"}
+                  </span>
+                )}
+              </div>
+              {showingPrompt !== undefined && (
+                <div className="desk-draft-prompt">
+                  <span className="meta">The prompt that made draft {deskAt + 1}:</span>
+                  <p className="desk-draft-prompt-text">{showingPrompt.trim() || "(none: the AI wrote it from the story so far)"}</p>
+                  <div>
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={showingPrompt === draft.prompt}
+                      title={showingPrompt === draft.prompt ? "It is the prompt in the box already." : "Put this prompt back in the box."}
+                      onClick={() => patch({ prompt: showingPrompt })}
+                    >
+                      Use this prompt
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {busy === "generate" && (
+            <span className="meta word-count" aria-live="polite">
+              Writing ({words.toLocaleString()}/~{targetWords.toLocaleString()} words)
+            </span>
+          )}
+          {bodyField}
+          {saveState}
+
+          <button type="button" className="desk-fold" aria-expanded={summaryOpen} onClick={openSummary}>
+            {summaryOpen ? "▾" : "▸"} Summary
+            {summaryMine && <span className="desk-chip">yours · not rewritten</span>}
+          </button>
+          {summaryOpen && (
+            <div className="desk-summary">
+              <AutoTextarea
+                aria-label="Summary"
+                style={{ minHeight: "4rem", fontFamily: "inherit" }}
+                placeholder={target.kind === "edit" ? "No summary yet. One is written when the chapter is updated." : "None yet. One is written when the chapter is posted."}
+                value={summaryText}
+                maxLength={LIMITS.summary}
+                onChange={(e) => typeSummary(e.target.value)}
+                onBlur={() => void flushSummary()}
+              />
+              {summaryMine ? (
+                <div className="row desk-summary-mine">
+                  <span>You edited this summary, so {target.kind === "edit" ? "Update" : "Post"} leaves it alone.</span>
+                  <span className="desk-spacer" />
+                  <button type="button" className="secondary" onClick={handBackSummary}>
+                    Let the AI rewrite it
+                  </button>
+                </div>
+              ) : (
+                <span className="meta">
+                  {target.kind === "edit"
+                    ? "Written by the AI and rewritten each time you update the chapter. Edit it here to keep your own."
+                    : "Written by the AI when you post the chapter. Write your own here to keep it."}
+                </span>
+              )}
+              {errorFor("summary")}
+            </div>
+          )}
+
+          <div className="row desk-box-foot">
+            <span className="meta">
+              {target.kind === "edit" ? updateNote : canPost ? "A draft: nobody can read it yet. Choices are added after posting." : "Post chapter turns on once there is text."}
+            </span>
+            <span className="desk-spacer" />
+            {target.kind === "edit" ? (
+              <button type="button" disabled={!canUpdate || busy !== null} onClick={() => void deskUpdate()}>
+                {posting ? "Updating…" : "Update chapter"}
+              </button>
+            ) : (
+              <button type="button" disabled={!canPost || busy !== null} onClick={() => void deskPost()}>
+                {posting ? "Posting…" : "Post chapter"}
+              </button>
+            )}
+          </div>
+          {errorFor("post")}
+        </section>
+        {menu}
+      </form>
+    );
+  }
+
   return (
     <form onSubmit={(e) => e.preventDefault()}>
       <div className="editor-grid">
@@ -904,42 +1404,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
         </div>
 
         <div className="editor-main">
-          {conflict && (
-            <div className="notice" role="alert">
-              <p>
-                {conflict.current
-                  ? `This draft was changed in another tab or browser (saved ${new Date(conflict.current.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}). Changes here aren't being saved until you pick one.`
-                  : "This draft was posted or deleted in another tab or browser. Changes here aren't being saved."}
-              </p>
-              <div className="row">
-                {conflict.current && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const current = conflict.current!;
-                      conflictRef.current = false;
-                      setConflict(null);
-                      showStored(current);
-                    }}
-                  >
-                    Load that version
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => {
-                    baseRef.current = conflict.current?.updatedAt ?? 0;
-                    conflictRef.current = false;
-                    setConflict(null);
-                    queueSave(draft);
-                  }}
-                >
-                  {conflict.current ? "Keep this one" : "Save it again"}
-                </button>
-              </div>
-            </div>
-          )}
+          {conflictNotice}
           {target.kind === "edit" && target.descendantCount > 0 && (
             <p className="notice">
               {target.descendantCount} chapter{target.descendantCount === 1 ? " continues" : "s continue"} from this one.
@@ -1013,32 +1478,12 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                 </button>
               )}
             </div>
-            {generating?.state === "waiting" && (
-              <p className="meta" role="status">
-                {generating.note ?? "Waiting its turn…"}
-              </p>
-            )}
-            {generating?.state === "working" && genStep && (
-              <GenerateStep
-                key={genStep.text}
-                text={genStep.text}
-                since={genStep.since}
-                words={genStep.text === "Writing the chapter…" ? { done: genWords, target: targetWords } : undefined}
-              />
-            )}
-            {thinking && <ThinkingFold text={thinking} live={generating?.state === "working"} />}
+            {genProgress}
             {hasBody && busy === null && (
               <p className="meta">This adds a new draft; the current text is kept, and you can switch between drafts under Chapter.</p>
             )}
             {errorFor("generate")}
-            {autoGenerate && !autoDone && !draft.body && (
-              <AutoStart
-                run={() => {
-                  setAutoDone(true);
-                  startGenerate();
-                }}
-              />
-            )}
+            {autoStart}
           </section>
 
           <section className="ai-panel">
@@ -1079,33 +1524,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               </span>
             </div>
 
-            <div id="field-body">
-              {working || reading ? (
-                <div>
-                  <Prose text={draft.body} />
-                  {!working && (
-                    <button type="button" className="secondary" onClick={() => setReading(false)}>
-                      Edit text
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <AutoTextarea
-                  id="chapter-body"
-                  value={draft.body}
-                  maxLength={LIMITS.body}
-                  onChange={(e) => patch({ body: e.target.value })}
-                />
-              )}
-            </div>
-
-            {saved && (
-              <div className={`meta save-state${"failed" in saved ? " error" : ""}`}>
-                {"failed" in saved
-                  ? "Couldn't save this draft"
-                  : `Draft saved · ${new Date(saved.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
-              </div>
-            )}
+            {bodyField}
+            {saveState}
           </section>
 
           {/* Folded until the chapter has text: the summary and choices come after writing it. */}

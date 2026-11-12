@@ -2,7 +2,7 @@ import type { ChapterEditEntryProps } from "@/components/ChapterEditEntry";
 import type { EditWriting } from "@/components/ChapterEditor";
 import { getChapterWriting, versionsForEdit } from "./chapterWriting";
 import { getCodexFacts, getCodexOps, getContextCodex } from "./codexDb";
-import { aiMarkOf, countDescendants, getChoices, getIncomingChoice, type Chapter, type Story } from "./stories";
+import { aiMarkOf, countDescendants, getChoices, getIncomingChoice, isSummaryMine, type Chapter, type Story } from "./stories";
 
 /** The prompt and versions kept when the chapter was posted, with the chapter as it is now showing. */
 function editWriting(id: string, title: string, body: string): EditWriting | null {
@@ -29,6 +29,7 @@ export function chapterEditProps(story: Story, path: Chapter[]): Omit<ChapterEdi
     existingChoices: getChoices(id).map((c) => ({ id: c.id, label: c.label, hasChild: c.child_chapter_id !== null })),
     incomingLabel: incoming?.label ?? null,
     aiMarked: aiMarkOf(chapter) !== null,
+    summaryMine: isSummaryMine(id),
     writing: editWriting(id, chapter.title, chapter.body),
     // The AI sees the story up to, but not including, the chapter being edited.
     context: {

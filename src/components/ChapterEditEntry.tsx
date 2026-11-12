@@ -3,7 +3,7 @@
 import type { StoryContext } from "@/lib/ai/prompts";
 import type { PathChapter } from "@/lib/ai/codexAi";
 import type { CodexOp, FactOp } from "@/lib/codex";
-import ChapterEditor, { type EditWriting } from "./ChapterEditor";
+import ChapterEditor, { type Desk, type EditWriting } from "./ChapterEditor";
 import StoryDetailsForm from "./StoryDetailsForm";
 
 export type ChapterEditEntryProps = {
@@ -17,6 +17,8 @@ export type ChapterEditEntryProps = {
   existingChoices: { id: string; label: string; hasChild: boolean }[];
   incomingLabel: string | null;
   aiMarked: boolean;
+  /** The owner made the summary theirs on the desk ("yours · not rewritten"). */
+  summaryMine?: boolean;
   writing: EditWriting | null;
   context: StoryContext;
   storyId: string;
@@ -26,7 +28,7 @@ export type ChapterEditEntryProps = {
   /** Present only for a story's first chapter. */
   story: { id: string; title: string; premise: string } | null;
   /** Inside the writing desk (see ChapterEditor). */
-  desk?: { onText: (text: string) => void };
+  desk?: Desk;
 };
 
 export default function ChapterEditEntry({ story, ...p }: ChapterEditEntryProps) {
@@ -51,6 +53,7 @@ export default function ChapterEditEntry({ story, ...p }: ChapterEditEntryProps)
           existingChoices: p.existingChoices,
           incomingLabel: p.incomingLabel,
           aiMarked: p.aiMarked,
+          summaryMine: p.summaryMine,
           writing: p.writing,
         }}
         context={p.context}

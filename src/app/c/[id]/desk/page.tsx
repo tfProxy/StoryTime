@@ -1,20 +1,31 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { nextChapters } from "@/components/CodexChapterNav";
+import NewChapterDesk from "@/components/NewChapterDesk";
 import WritingDesk from "@/components/WritingDesk";
 import { chapterEditProps } from "@/lib/chapterEditProps";
 import { foldCodex } from "@/lib/codex";
-import { getCodexFacts, getCodexOps, nextFormChange } from "@/lib/codexDb";
+import { getCodexFacts, getCodexOps, getContextCodex, nextFormChange } from "@/lib/codexDb";
 import { codexIcons, iconChoices } from "@/lib/codexIcons";
-import { getPath, getStory } from "@/lib/stories";
+import { draftMarks } from "@/lib/draftMarks";
+import { type Chapter, getChoices, getPath, getStory, type Story } from "@/lib/stories";
 import { getStoryChapters, laterChaptersFrom } from "@/lib/tree";
 
 export const dynamic = "force-dynamic";
 
-// The writing desk for a posted chapter: the codex beside the chapter's editor. (It stands next to the Edit page until
+// The writing desk for a posted chapter: the codex beside the chapter's box. (It stands next to the Edit page until
 // it replaces it.) Codex changes made here are saved at once, at this chapter.
-export default async function DeskPage({ params }: { params: Promise<{ id: string }> }) {
+// With ?choice=<choice id> (an unwritten choice of this chapter) or ?new=<choice text> (a new choice on it), the desk
+// writes the chapter that follows, as the Write page does (and with the same draft); Post chapter makes it.
+export default async function DeskPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ choice?: string; new?: string; posted?: string }>;
+}) {
   const { id } = await params;
+  const query = await searchParams;
   const path = getPath(id);
   if (path.length === 0) notFound();
   const chapter = path[path.length - 1];
@@ -35,32 +46,84 @@ export default async function DeskPage({ params }: { params: Promise<{ id: strin
     );
   }
 
+  if (query.choice !== undefined || query.new !== undefined) return newChapter(story, path, query);
+
   const ops = getCodexOps(id);
   const facts = getCodexFacts(id);
   const storyChapters = getStoryChapters(story.id);
   const laterForms = Object.fromEntries(foldCodex(ops, facts).map((e) => [e.entry_id, nextFormChange(e.entry_id, id)]));
 
   return (
-    <>
-      <p className="crumbs">
-        <Link href={`/c/${id}`}>← Back to “{chapter.title}”</Link> · <Link href={`/c/${id}/edit`}>Edit page</Link>
-      </p>
-      <WritingDesk
-        editor={chapterEditProps(story, path)}
-        codex={{
-          storyId: story.id,
-          chapterId: id,
-          path: path.map((c) => ({ id: c.id, title: c.title, depth: c.depth, body: c.body, summary: c.summary, path_summary: c.path_summary })),
-          ops,
-          facts,
-          icons: codexIcons(story.id),
-          iconChoices: iconChoices(story.id, storyChapters, path.map((c) => c.id), story.cover_version),
-          after: nextChapters(id).map((c) => ({ id: c.id, title: c.title })),
-          laterForms,
-          formChapters: laterChaptersFrom(chapter, storyChapters),
-          chapters: storyChapters.map((c) => ({ id: c.id, title: c.title, parent_id: c.parent_id, label: c.choice_label })),
-        }}
-      />
-    </>
+    <WritingDesk
+      bar={
+        <>
+          <Link href={`/c/${id}`}>← Back to “{chapter.title}”</Link> · <Link href={`/c/${id}/edit`}>Edit page</Link>
+        </>
+      }
+      note={query.posted ? "Posted · the summary and the codex check follow in the background" : null}
+      unusedDrafts={draftMarks([...path.map((c) => c.id), ...getChoices(id).flatMap((c) => (c.child_chapter_id ? [c.child_chapter_id] : []))])}
+      editor={chapterEditProps(story, path)}
+      codex={{
+        storyId: story.id,
+        chapterId: id,
+        path: path.map((c) => ({ id: c.id, title: c.title, depth: c.depth, body: c.body, summary: c.summary, path_summary: c.path_summary })),
+        ops,
+        facts,
+        icons: codexIcons(story.id),
+        iconChoices: iconChoices(story.id, storyChapters, path.map((c) => c.id), story.cover_version),
+        after: nextChapters(id).map((c) => ({ id: c.id, title: c.title })),
+        laterForms,
+        formChapters: laterChaptersFrom(chapter, storyChapters),
+        chapters: storyChapters.map((c) => ({ id: c.id, title: c.title, parent_id: c.parent_id, label: c.choice_label })),
+      }}
+    />
+  );
+}
+
+/** The desk for the chapter after `path`'s last, by an unwritten choice (?choice=) or a new one (?new=). */
+function newChapter(story: Story, path: Chapter[], query: { choice?: string; new?: string }) {
+  const parent = path[path.length - 1];
+  const choices = getChoices(parent.id);
+  let target: { kind: "fill"; choiceId: string; label: string; parentChapterId: string } | { kind: "new"; parentChapterId: string; label: string };
+  if (query.choice !== undefined) {
+    const slot = choices.find((c) => c.id === query.choice);
+    if (!slot) notFound();
+    if (slot.child_chapter_id) {
+      return (
+        <p>
+          That chapter is already written. <Link href={`/c/${slot.child_chapter_id}/desk`}>Open it on the desk</Link>.
+        </p>
+      );
+    }
+    target = { kind: "fill", choiceId: slot.id, label: slot.label, parentChapterId: parent.id };
+  } else {
+    const label = (query.new ?? "").trim();
+    if (!label) notFound();
+    target = { kind: "new", parentChapterId: parent.id, label };
+  }
+  // The same draft as the Write page's, which the Drafts list opens.
+  const draftKey = target.kind === "fill" ? `fill:${target.choiceId}` : `new:${parent.id}`;
+  const resumeHref = target.kind === "fill" ? `/c/${parent.id}/write?choice=${target.choiceId}` : `/c/${parent.id}/write`;
+  const draftLabel = target.kind === "fill" ? `${story.title}: “${target.label}”` : `${story.title}: new choice after “${parent.title}”`;
+  return (
+    <NewChapterDesk
+      bar={<Link href={`/c/${parent.id}`}>← Back to “{parent.title}”</Link>}
+      editor={{
+        target,
+        context: {
+          storyTitle: story.title,
+          premise: story.premise,
+          style: story.style,
+          path: path.map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary })),
+          choiceLabel: target.label,
+          codex: getContextCodex(parent.id),
+          siblingChoices: choices.map((c) => c.label),
+        },
+        storyId: story.id,
+        draftKey,
+        resumeHref,
+        draftLabel,
+      }}
+    />
   );
 }
