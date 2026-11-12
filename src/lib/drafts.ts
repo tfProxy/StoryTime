@@ -88,7 +88,8 @@ export type Draft = {
   editNote?: string;
 };
 
-export type DraftListItem = Pick<Draft, "key" | "href" | "label" | "title" | "storyTitle" | "updatedAt">;
+/** `unused`: a posted chapter's draft that differs from the chapter ("Draft not used"). */
+export type DraftListItem = Pick<Draft, "key" | "href" | "label" | "title" | "storyTitle" | "updatedAt"> & { unused?: boolean };
 
 /** A save was refused because the draft was saved from somewhere else first. */
 export class DraftConflict extends Error {

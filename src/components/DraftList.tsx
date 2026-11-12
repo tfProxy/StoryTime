@@ -32,6 +32,7 @@ export default function DraftList() {
         <div key={d.key} className="card row" style={{ justifyContent: "space-between" }}>
           <Link href={d.href} style={{ flex: 1 }}>
             <strong>{d.title || d.storyTitle || "Untitled draft"}</strong>
+            {d.unused && <span className="desk-chip draft-mark">Draft not used</span>}
             <span className="meta" style={{ display: "block", margin: 0 }}>
               {d.label} · edited {new Date(d.updatedAt).toLocaleString()}
             </span>
