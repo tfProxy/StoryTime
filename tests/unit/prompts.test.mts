@@ -1,4 +1,4 @@
-import { parseBracketNotes, parseInstruction, SYSTEM_CHAPTER, refinePrompt, passageRefinePrompt, choicesPrompt, buildStorySoFar, parseChapterOutput, parseChoices, generatePrompt, estimateTokens, explainCodex, buildCodexBlock, ideasPrompt, parseIdeas, parseChoiceLabel, planStepsPrompt, matchSteps, SYSTEM_PLAN_STEPS, SYSTEM_CHOICES } from "../../src/lib/ai/prompts.ts";
+import { parseBracketNotes, parseInstruction, SYSTEM_CHAPTER, choicesPrompt, buildStorySoFar, parseChapterOutput, parseChoices, generatePrompt, estimateTokens, explainCodex, buildCodexBlock, ideasPrompt, parseIdeas, parseChoiceLabel, planStepsPrompt, matchSteps, SYSTEM_PLAN_STEPS, SYSTEM_CHOICES } from "../../src/lib/ai/prompts.ts";
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
 const ch = (n: number, extra: any = {}) => ({ title: `Ch${n}`, body: `body${n} `.repeat(200), summary: null, path_summary: null, ...extra });
 const path = [1,2,3,4,5,6].map((n) => ch(n));
@@ -31,8 +31,6 @@ ok(!SYSTEM_CHAPTER.includes("many people"), "the system prompt doesn't describe 
 // ---- prompt guidance ----
 const base = { storyTitle: "T", premise: "P", path: [ch(1)], choiceLabel: null };
 ok(SYSTEM_CHAPTER.includes("Pick up exactly where the story left off") && SYSTEM_CHAPTER.includes("open situation with real stakes"), "chapter system prompt covers the opening and the ending");
-ok(refinePrompt(base, { title: "A", body: "B" }, "snappier", 8000).includes("keep every other sentence exactly as written"), "refine prompt keeps untouched text");
-ok(passageRefinePrompt(base, { title: "A", before: "x ", passage: "y", after: " z" }, "shorter", 8000).includes("keep roughly the same length"), "passage prompt keeps the length");
 ok(SYSTEM_CHOICES.includes("meaningfully different outcomes") && !choicesPrompt(base, { title: "A", body: "B" }, [], 8000).includes("meaningfully different outcomes") && ip0().includes("meaningfully different outcomes") && ip0().includes("differ in kind"), "choice and idea prompts say what a good choice is");
 function ip0() { return ideasPrompt(base, 8000); }
 {
@@ -57,10 +55,6 @@ ok(gb.includes("Direction from the author: Jim picks up the ring\n") && gb.inclu
 const gn = generatePrompt(base, "[keep it light]", "short", 8000);
 ok(gn.includes("Use your own judgment") && gn.includes("- keep it light"), "generate prompt: notes without a direction still apply");
 ok(!generatePrompt(base, "dragons", "short", 8000).includes("Additional instructions"), "no notes, no extra block");
-const rb = refinePrompt(base, { title: "A", body: "B" }, "add dialogue [Mira does the talking]", 8000);
-ok(rb.includes("this instruction: add dialogue\n") && rb.includes("- Mira does the talking"), "refine prompt: notes become additional instructions");
-ok(refinePrompt(base, { title: "A", body: "B" }, "[shorter]", 8000).includes("this instruction: shorter\n"), "refine prompt: only a note is still the instruction");
-ok(passageRefinePrompt(base, { title: "A", before: "x ", passage: "y", after: " z" }, "tighter [keep the pun]", 8000).includes("- keep the pun"), "passage prompt: notes become additional instructions");
 const ib = ideasPrompt(base, 8000, "cats attack [none of them die]");
 ok(ib.includes('is about: "cats attack"') && ib.includes("- none of them die") && !ib.includes("[none"), "ideas prompt: notes apply to every idea");
 

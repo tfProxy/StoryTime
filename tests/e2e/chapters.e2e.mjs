@@ -15,7 +15,7 @@ const mock = http.createServer((req, res) => {
     let text;
     if (system.includes("running summary")) text = JSON.stringify({ summary: "A short summary.", story_so_far: "The story so far." });
     else if (prompt.includes("JSON array")) text = '["Open the door", "Run away", "Hide"]';
-    else if (prompt.includes("Revise it")) text = "# The Door Revised\n\nIt creaked, tensely.\n\nShe entered, trembling.";
+    else if (prompt.includes("make it tenser")) text = "# The Door Again\n\nIt creaked, tensely.\n\nShe entered, trembling.";
     else text = "# The Door\n\nIt creaked.\n\nShe entered.";
     res.setHeader("content-type", "text/event-stream");
     const parts = text.match(/.{1,7}/gs);
@@ -53,18 +53,16 @@ ok(body1 === "It creaked.\n\nShe entered.", "body streamed: " + JSON.stringify(b
 const sent = reqs.at(-1).messages;
 ok(sent[0].role === "system" && sent[1].content.includes("Premise: A cursed inn") && sent[1].content.includes("a stranger arrives"), "prompt includes premise + direction");
 
-await page.getByPlaceholder(/Ask the AI to change it/).fill("make it tenser");
-await page.getByRole("button", { name: "Revise" }).click();
+// The page has no Revise: the prompt is adjusted and Generate run again, which adds a draft.
+ok(await page.getByRole("button", { name: /^Revise/ }).count() === 0 && await page.getByRole("button", { name: "Undo" }).count() === 0 && await page.getByLabel("Instruction for the AI").count() === 0, "the writing page has no Revise box or Undo");
+await page.getByLabel(/What should happen/).fill("a stranger arrives, make it tenser");
+await page.getByRole("button", { name: "Generate a new draft" }).click();
 await page.getByRole("button", { name: "Edit text" }).click();
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("trembling"));
-ok((await page.getByLabel("Chapter title").inputValue()) === "The Door Revised", "revise updated title");
-ok(await page.getByText("2/2", { exact: true }).isVisible(), "a revision counts as another draft");
+ok((await page.getByLabel("Chapter title").inputValue()) === "The Door Again", "Generate again writes a new title and text");
+ok(await page.getByText("2/2", { exact: true }).isVisible(), "a second Generate counts as another draft");
 await page.getByRole("button", { name: "Previous draft" }).click();
-ok((await page.getByLabel("Chapter text").inputValue()) === body1, "the previous draft is the text before the revision");
-await page.getByRole("button", { name: "Next draft" }).click();
-ok((await page.getByLabel("Chapter title").inputValue()) === "The Door Revised", "and the revision is the next draft");
-await page.getByRole("button", { name: "Undo" }).click();
-ok((await page.getByLabel("Chapter text").inputValue()) === body1, "undo restores previous text");
+ok((await page.getByLabel("Chapter text").inputValue()) === body1, "the previous draft is the first Generate's text");
 
 await page.getByRole("button", { name: "Suggest choices" }).click();
 await page.getByRole("button", { name: "+ Open the door" }).click();
@@ -89,11 +87,11 @@ ok(await page.getByRole("heading", { name: "The Door" }).isVisible(), "posted ch
 ok((await page.locator(".card.choice-unwritten").count()) === 2, "two unwritten choices shown");
 const chapterUrl = page.url().split("?")[0];
 
-// The chapter page says which model wrote it, with the request's settings, time taken and prompt. The revise was
-// undone, so only the Generate wrote the posted text.
+// The chapter page says which model wrote it, with the request's settings, time taken and prompt. The first draft was
+// posted, so only the first Generate wrote the posted text.
 {
   const making = page.locator(".chapter-making");
-  ok(/Written with m on Test/.test(await making.locator("summary").first().innerText()) && !(await making.getByText("Revised (1)").count()), "the chapter page names the model and connection that wrote it (the undone revise isn't counted)");
+  ok(/Written with m on Test/.test(await making.locator("summary").first().innerText()) && !(await making.getByText(/requests/).count()), "the chapter page names the model and connection that wrote it (one request: the other draft's isn't counted)");
   await making.locator("summary").first().click();
   const settingsText = await making.locator(".making-settings").innerText();
   ok(/Generate/.test(settingsText) && /http:\/\/localhost:3222\/v1/.test(settingsText) && /ollama/.test(settingsText) && /Time taken\s+\d+ s/.test(settingsText), "…with where it was made, the connection's kind and URL, and the time taken");
@@ -145,10 +143,10 @@ await page.locator(".chapter-actions").getByRole("link", { name: "Edit", exact: 
 await page.waitForURL(/\/edit$/);
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.length > 0);
 ok((await page.getByLabel("Chapter title").inputValue()) === "The Door", "edit form pre-filled");
-ok((await page.getByLabel(/What should happen/).inputValue()) === "a stranger arrives", "the edit starts with the prompt the chapter was written from");
+ok((await page.getByLabel(/What should happen/).inputValue()) === "a stranger arrives, make it tenser", "the edit starts with the prompt last typed when the chapter was written");
 ok(await page.getByText("1/2", { exact: true }).isVisible(), "and with its generated drafts, showing the one that was posted");
 await page.getByRole("button", { name: "Next draft" }).click();
-ok((await page.getByLabel("Chapter title").inputValue()) === "The Door Revised", "the other draft is the revision");
+ok((await page.getByLabel("Chapter title").inputValue()) === "The Door Again", "the other draft is the second Generate");
 await page.getByRole("button", { name: "Previous draft" }).click();
 ok(await page.getByRole("heading", { name: "Story details" }).isVisible(), "story details editable on first chapter");
 await page.getByLabel("Chapter text").fill("It creaked, then slammed.\n\nShe entered anyway.");

@@ -1,4 +1,4 @@
-// How a generated (or revised) chapter goes into a draft. Pure, so both the writing page and the work queue (which
+// How a generated chapter goes into a draft. Pure, so both the writing page and the work queue (which
 // finishes a Generate into the draft when the page is gone) do exactly the same thing.
 import type { Draft, DraftVersion } from "./drafts";
 
@@ -15,7 +15,7 @@ export function restore(v: DraftVersion): Pick<Draft, "title" | "body" | "ai"> {
   return { title: v.title, body: v.body, ai: v.ai };
 }
 
-/** A new generated or revised draft gets its own version; the text it started from is kept as the one before it. */
+/** A new generated draft gets its own version; the text it started from is kept as the one before it. */
 export function startVersion(d: Draft): Pick<Draft, "versions" | "versionIndex"> {
   if (!d.body.trim()) return {};
   const kept = [...(d.versions ?? [snapshot(d)])];

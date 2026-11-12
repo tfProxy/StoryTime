@@ -6,20 +6,15 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LIMITS } from "@/lib/limits";
 import { usableRef, useSettings, type ModelRef } from "@/lib/settings";
-import { completeChat, streamChat } from "@/lib/ai/client";
+import { completeChat } from "@/lib/ai/client";
 import { modelAfterWriting } from "@/lib/ai/ollama";
-import { ensurePathSummaries, neededSummaryIndex, summarizeChapter, type Summaries } from "@/lib/ai/summaries";
+import { ensurePathSummaries, summarizeChapter, type Summaries } from "@/lib/ai/summaries";
 import {
   choicesPrompt,
-  generatePrompt,
   LENGTH_WORDS,
   parseChapterOutput,
   parseChoices,
-  passageRefinePrompt,
-  refinePrompt,
-  SYSTEM_CHAPTER,
   SYSTEM_CHOICES,
-  SYSTEM_PASSAGE,
   type CodexOverrides,
   type Length,
   type PromptParts,
@@ -29,8 +24,7 @@ import type { PathChapter } from "@/lib/ai/codexAi";
 import type { ChapterWriting } from "@/lib/chapterWriting";
 import { foldWithDraft, isDraftEntry, isDraftFact, type CodexOp, type FactOp } from "@/lib/codex";
 import { deleteDraft, DraftConflict, emptyDraft, getDraft, saveDraft, type Draft } from "@/lib/drafts";
-import { applyAfterGenerate, applyGenerated, isBegun, pushUndo, restore, snapshot, startVersion } from "@/lib/generatedDraft";
-import { withKeptId } from "@/lib/keptRequests";
+import { applyAfterGenerate, applyGenerated, isBegun, restore, snapshot } from "@/lib/generatedDraft";
 import { useWorkQueue, type GenerateItem } from "./WorkQueue";
 import Prose from "./Prose";
 import { AiCallProgress, GenerateStep, ThinkingFold } from "./GenerateProgress";
@@ -101,7 +95,6 @@ function AutoStart({ run }: { run: () => void }) {
   return null;
 }
 
-// Ideas and suggestions cost an AI call, and a half-typed instruction is work too.
 /** Saves how the chapter was written (see chapterWriting.ts). Nothing is saved when nothing was generated or asked for. */
 async function keepWriting(chapterId: string, d: Draft): Promise<void> {
   // The version being viewed is only refreshed in `versions` on leaving it; one still empty from its Generate takes the text.
@@ -119,8 +112,8 @@ async function keepWriting(chapterId: string, d: Draft): Promise<void> {
   if (!res.ok) throw new Error(`Request failed (${res.status})`);
 }
 
-const hasWorkingState = (d: Draft) =>
-  !!(d.ideaPages?.length || d.suggestions?.length || d.instruction?.trim() || d.guidance?.trim());
+// Ideas and suggestions cost an AI call.
+const hasWorkingState = (d: Draft) => !!(d.ideaPages?.length || d.suggestions?.length || d.guidance?.trim());
 
 // Don't litter the drafts list with untouched forms.
 function isBlank(d: Draft, target: Target): boolean {
@@ -159,7 +152,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const router = useRouter();
   const settings = useSettings();
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [localBusy, setBusy] = useState<null | "generate" | "refine" | "choices" | "summary" | "post">(null);
+  const [localBusy, setBusy] = useState<null | "generate" | "choices" | "summary" | "post">(null);
   // A Generate lives in the work queue (so it goes on if the author leaves the page): the page is busy while that item is.
   const { items: queued, generate, stopGenerate, listenDraft } = useWorkQueue();
   const generating = queued.find((i): i is GenerateItem => i.type === "generate" && i.draftKey === draftKey && (i.state === "waiting" || i.state === "working"));
@@ -182,8 +175,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const [codexStart, setCodexStart] = useState<{ editing: string | null; n: number }>({ editing: null, n: 0 });
   // After the AI writes, keep showing the read-only text until the user chooses to edit it.
   const [reading, setReading] = useState(false);
-  // The part of the chapter text selected in the editor; "Revise" then changes only that.
-  const [selection, setSelection] = useState<{ start: number; end: number; text: string } | null>(null);
   // When the draft was last saved, or that it couldn't be.
   const [saved, setSaved] = useState<{ at: number } | { failed: true } | null>(null);
   // A save was refused because the draft was saved from another tab or browser first.
@@ -211,7 +202,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   function showStored(d: Draft) {
     baseRef.current = d.updatedAt;
     skipSaveRef.current = true;
-    setSelection(null);
     setDraft(upgraded(d));
   }
 
@@ -425,7 +415,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
 
   // Working state kept in the draft, so it survives a reload.
   const length: Length = draft.length ?? "medium";
-  const instruction = draft.instruction ?? "";
   const suggestions = draft.suggestions ?? [];
   // Models picked for this draft; null means the default from Settings (also when the picked one's connection is gone).
   const writeModel = usableRef(settings, draft.models?.write);
@@ -483,32 +472,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     codexOverrides,
   };
 
-  /**
-   * Makes sure the story so far can be condensed before a prompt is built: if older chapters
-   * will be left out, their rolling summary has to exist. Failure is not fatal (the prompt
-   * falls back to short excerpts), so this reports a note and carries on.
-   */
-  async function prepareContext(signal: AbortSignal): Promise<StoryContext> {
-    const upTo = neededSummaryIndex(ctx.path, settings.contextTokens);
-    if (upTo < 0) return ctx;
-    try {
-      const made = await ensurePathSummaries(settings, ctx.path, upTo, {
-        story: storyInfo,
-        signal,
-        onProgress: (done, total) => setStatus(`Summarizing the story so far (${Math.min(done + 1, total)} of ${total})…`),
-      });
-      const all = { ...madeSummaries, ...made };
-      setMadeSummaries(all);
-      return { ...ctx, path: withSummaries(context.path, all) };
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") throw e;
-      setError(`Couldn't summarize the earlier chapters (${e instanceof Error ? e.message : String(e)}). Using short excerpts instead.`);
-      return ctx;
-    } finally {
-      setStatus(null);
-    }
-  }
-
   function startBusy(kind: NonNullable<typeof busy>) {
     setBusy(kind);
     setLastAction(kind);
@@ -525,27 +488,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     });
   }
 
-  /** The selected passage, unless the text has changed since it was selected. */
-  function currentSelection(body: string) {
-    return selection && selection.text.trim() && body.slice(selection.start, selection.end) === selection.text ? selection : null;
-  }
-
-  /** What "Generate" or "Revise" sends; with a passage selected, "Revise" rewrites just that. */
-  function chapterRequest(kind: "generate" | "refine", from: StoryContext, picked: ReturnType<typeof currentSelection>): PromptParts {
-    if (picked) {
-      const body = draft!.body;
-      const parts = { title: draft!.title, before: body.slice(0, picked.start), passage: body.slice(picked.start, picked.end), after: body.slice(picked.end) };
-      return { system: SYSTEM_PASSAGE, message: passageRefinePrompt(from, parts, instruction, settings.contextTokens) };
-    }
-    return {
-      system: SYSTEM_CHAPTER,
-      message:
-        kind === "generate"
-          ? generatePrompt(from, draft!.prompt, length, settings.contextTokens)
-          : refinePrompt(from, { title: draft!.title, body: draft!.body }, instruction, settings.contextTokens),
-    };
-  }
-
   /** Generate goes to the work queue, which finishes it into this draft wherever the author goes. */
   function startGenerate() {
     if (!draft) return;
@@ -555,7 +497,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     setThinking("");
     setGenWords(0);
     setReading(true);
-    setSelection(null);
     // What is typed on the page is saved first, so the server builds on it (the page stops saving while it generates).
     if (!conflictRef.current && !isBlank(draft, target)) queueSave(draft);
     void saveChainRef.current.then(() => generate({
@@ -582,58 +523,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   function stopWork() {
     if (generating) stopGenerate(draftKey);
     else abortRef.current?.abort();
-  }
-
-  async function runAi(kind: "generate" | "refine") {
-    if (!draft) return;
-    if (kind === "generate") return startGenerate();
-    setError(null);
-    const ctl = new AbortController();
-    abortRef.current = ctl;
-    startBusy(kind);
-    setReading(true);
-    // With a passage selected, only that part of the text is rewritten; the rest and the title stay as they are.
-    const picked = kind === "refine" ? currentSelection(draft.body) : null;
-    const before = picked ? draft.body.slice(0, picked.start) : "";
-    const passage = picked ? draft.body.slice(picked.start, picked.end) : "";
-    const after = picked ? draft.body.slice(picked.end) : "";
-    setSelection(null);
-    let text = "";
-    try {
-      const ready = await prepareContext(ctl.signal);
-      const request = chapterRequest(kind, ready, picked);
-      // Keep the text we're replacing, as the previous draft and so the rewrite can be undone.
-      setDraft((d) => (d ? { ...d, undo: pushUndo(d), ...startVersion(d) } : d));
-      const lead = passage.match(/^\s*/)?.[0] ?? "";
-      const trail = passage.match(/\s*$/)?.[0] ?? "";
-      for await (const piece of streamChat(settings, {
-        system: request.system,
-        messages: [{ role: "user", content: request.message }],
-        role: "main",
-        model: writeModel,
-        job: "write",
-        signal: ctl.signal,
-        source: { label: "Rewrite passage", storyId },
-        // A revise builds on the text there, so it joins the requests that wrote it.
-        onKeep: (id) => setDraft((d) => (d ? { ...d, ai: withKeptId(d.ai, id) } : d)),
-      })) {
-        text += piece;
-        if (picked) {
-          const body = `${before}${lead}${text.trim()}${trail}${after}`;
-          setDraft((d) => (d ? { ...d, body } : d));
-        } else {
-          const { title, body } = parseChapterOutput(text);
-          setDraft((d) => (d ? { ...d, ...(title !== null ? { title } : {}), body } : d));
-        }
-      }
-      if (kind === "refine") patch({ instruction: "" });
-    } catch (e) {
-      if (!(e instanceof DOMException && e.name === "AbortError")) {
-        setError(e instanceof Error ? e.message : String(e));
-      }
-    } finally {
-      setBusy(null);
-    }
   }
 
   /** The choices this chapter will have: the ones it has (when editing, unless removed) and the new ones typed or picked. */
@@ -691,12 +580,6 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
     const existing = draft.choices.map((c) => c.trim()).filter(Boolean);
     if (existing.length >= maxNew) return;
     patch({ choices: [...existing, label, ""].slice(0, maxNew), suggestions: suggestions.filter((x) => x !== label) });
-  }
-
-  function undo() {
-    if (!draft || draft.undo.length === 0) return;
-    const prev = draft.undo[draft.undo.length - 1];
-    patch({ ...restore(prev), undo: draft.undo.slice(0, -1) });
   }
 
   const finalChoices = draft.choices.map((c) => c.trim()).filter(Boolean);
@@ -967,12 +850,10 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
 
   const versionCount = draft.versions?.length ?? 0;
   const versionIndex = draft.versionIndex ?? versionCount - 1;
-  const working = busy === "generate" || busy === "refine";
+  const working = busy === "generate";
   const words = countWords(draft.body);
   const hasBody = draft.body.trim() !== "";
   const targetWords = LENGTH_WORDS[length];
-  const picked = currentSelection(draft.body);
-  const pickedWords = picked ? countWords(picked.text) : 0;
   // A chapter with no choices ends its branch.
   const endsBranch = finalChoices.length === 0 && (target.kind !== "edit" || keptExisting === 0);
 
@@ -1109,7 +990,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                 <option value="medium">Medium (~600 words)</option>
                 <option value="long">Long (~1000 words)</option>
               </select>
-              <button type="button" onClick={() => runAi("generate")} disabled={busy !== null}>
+              <button type="button" onClick={startGenerate} disabled={busy !== null}>
                 {busy === "generate" ? (generating?.state === "waiting" ? "Waiting…" : "Writing…") : draft.body ? "Generate a new draft" : "Generate chapter"}
               </button>
               {(working || generating) && (
@@ -1135,13 +1016,12 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
             {hasBody && busy === null && (
               <p className="meta">This adds a new draft; the current text is kept, and you can switch between drafts under Chapter.</p>
             )}
-            {statusFor("generate", "refine")}
-            {errorFor("generate", "refine")}
+            {errorFor("generate")}
             {autoGenerate && !autoDone && !draft.body && (
               <AutoStart
                 run={() => {
                   setAutoDone(true);
-                  void runAi("generate");
+                  startGenerate();
                 }}
               />
             )}
@@ -1181,7 +1061,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
               <span className="meta word-count" aria-live="polite">
                 {busy === "generate"
                   ? `Writing (${words.toLocaleString()}/~${targetWords.toLocaleString()} words)`
-                  : `${working ? "Writing… " : ""}${words.toLocaleString()} word${words === 1 ? "" : "s"}`}
+                  : `${words.toLocaleString()} word${words === 1 ? "" : "s"}`}
               </span>
             </div>
 
@@ -1201,49 +1081,10 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
                   value={draft.body}
                   maxLength={LIMITS.body}
                   onChange={(e) => patch({ body: e.target.value })}
-                  onSelect={(e) => {
-                    const { selectionStart: start, selectionEnd: end, value } = e.currentTarget;
-                    const text = value.slice(start, end);
-                    setSelection(text.trim() ? { start, end, text } : null);
-                  }}
                 />
               )}
             </div>
 
-            <div className="row">
-              <input
-                placeholder={
-                  hasBody
-                    ? picked
-                      ? "How should the selected passage change?"
-                      : "Ask the AI to change it: “make it tenser”, “shorter”, “add dialogue”…"
-                    : "Write or generate the chapter first, then ask the AI to change it"
-                }
-                aria-label="Instruction for the AI"
-                value={instruction}
-                disabled={!hasBody}
-                onChange={(e) => patch({ instruction: e.target.value })}
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
-                  e.preventDefault();
-                  if (busy === null && instruction.trim()) void runAi("refine");
-                }}
-              />
-              <button type="button" onClick={() => runAi("refine")} disabled={busy !== null || !hasBody || !instruction.trim()}>
-                {busy === "refine" ? "Revising…" : picked ? "Revise selection" : "Revise"}
-              </button>
-              <button type="button" className="secondary" onClick={undo} disabled={busy !== null || draft.undo.length === 0}>
-                Undo
-              </button>
-            </div>
-            {busy === "refine" && <AiCallProgress labels={["Rewrite passage", "Summary"]} />}
-            {picked ? (
-              <p className="meta">
-                Only the selected passage ({pickedWords.toLocaleString()} word{pickedWords === 1 ? "" : "s"}) will change.
-              </p>
-            ) : (
-              hasBody && <p className="meta">To change just one passage, select it in the text first{reading ? " (click Edit text)" : ""}.</p>
-            )}
             {saved && (
               <div className={`meta save-state${"failed" in saved ? " error" : ""}`}>
                 {"failed" in saved

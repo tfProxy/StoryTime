@@ -166,7 +166,6 @@ d.prepare(`INSERT INTO stories (id, title, created_at) VALUES ('st', 't', 1)`).r
 d.prepare(`INSERT INTO chapters (id, story_id, depth, title, body, posted_at) VALUES ('ch', 'st', 0, 't', 'b', 1)`).run();
 d.prepare(`INSERT INTO chapter_writing (chapter_id, data, updated_at) VALUES ('ch', ?, 1)`).run(JSON.stringify({ versions: [{ ai: [ids[1]] }] }));
 ok(kept.pruneKeptRequests(d, true) === 1 && kept.getKeptRequests(d, [...ids, keptId]).length === 3, "pruning removes only old, unmentioned kept requests");
-ok(JSON.stringify(kept.withKeptId(["a", "b"], "a")) === '["b","a"]' && kept.withKeptId(Array.from({ length: 60 }, (_, i) => String(i)), "x").length === kept.MAX_KEPT_IDS, "withKeptId adds at the end, once, keeping the newest");
 
 setChatRecorder(undefined);
 server.close();
