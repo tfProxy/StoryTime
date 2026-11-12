@@ -20,7 +20,8 @@ const more = () => page.locator(".more-menu-items");
 // ---- the row ----
 await page.goto(`${BASE}/c/${second}`);
 await page.getByRole("heading", { name: "Act two" }).waitFor();
-ok((await row().locator(":scope > a").allInnerTexts()).map((t) => t.trim()).join(",") === "Edit,Illustrate,Codex,Write ahead", "the row has Edit, Illustrate, Codex and Write ahead");
+ok((await row().locator(":scope > a").allInnerTexts()).map((t) => t.trim()).join(",") === "Edit,Desk,Illustrate,Codex,Write ahead", "the row has Edit, Desk (the writing desk, until it replaces Edit), Illustrate, Codex and Write ahead");
+ok((await row().getByRole("link", { name: "Desk", exact: true }).getAttribute("href")) === `/c/${second}/desk`, "Desk goes to the writing desk");
 ok((await row().getByRole("link", { name: "Edit", exact: true }).getAttribute("href")) === `/c/${second}/edit`, "Edit goes to the edit page");
 ok((await row().getByRole("link", { name: "Write ahead", exact: true }).getAttribute("href")) === `/c/${second}/write-ahead`, "Write ahead goes to the write-ahead page");
 const above = await page.evaluate(() => {

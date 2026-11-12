@@ -6999,3 +6999,394 @@ dialog.entry-start-dialog::backdrop {
   margin: 0;
   font-size: 0.82rem;
 }
+
+/* The writing desk (/c/<id>/desk): the codex, the open entry and the chapter's editor, side by side on a wide screen.
+   The side and entry columns stick under the header and scroll on their own; on a narrower screen they stack. */
+main:has(.desk) {
+  max-width: 100rem;
+}
+
+.desk {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.desk-side,
+.desk-entry {
+  min-width: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.desk-side {
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+  padding: 0 0.6rem 0.75rem;
+}
+
+.desk-story {
+  min-width: 0;
+}
+
+.desk-title {
+  font-size: 1.4rem;
+}
+
+/* The editor's own side column held "Codex for this prompt"; on the desk it is one column. */
+.desk .editor-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.desk .editor-side,
+.desk .editor-main {
+  grid-column: auto;
+  grid-row: auto;
+}
+
+.desk .editor-side {
+  position: static;
+  max-height: none;
+}
+
+/* Nothing in the narrow columns may make them wider than they are. */
+.desk-entry-inner,
+.desk-entry .entry-tabpanel,
+.desk-suggestions,
+.desk-sug-list,
+.desk-sug,
+.desk-ask {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.desk-entry fieldset {
+  min-width: 0;
+}
+
+@media (min-width: 60rem) {
+  .desk {
+    grid-template-columns: 15rem minmax(0, 1fr);
+  }
+  .desk.desk-has-entry {
+    grid-template-columns: 15rem 22rem minmax(0, 1fr);
+  }
+  .desk.desk-folded {
+    grid-template-columns: 2.5rem minmax(0, 1fr);
+  }
+  .desk.desk-folded.desk-has-entry {
+    grid-template-columns: 2.5rem 22rem minmax(0, 1fr);
+  }
+  .desk-side,
+  .desk-entry {
+    position: sticky;
+    top: calc(var(--header-h, 0px) + 1rem);
+    max-height: calc(100vh - 2rem - var(--header-h, 0px));
+    overflow-y: auto;
+  }
+}
+
+@media (min-width: 80rem) {
+  .desk.desk-has-entry {
+    grid-template-columns: 16rem 26rem minmax(0, 1fr);
+  }
+  .desk.desk-folded.desk-has-entry {
+    grid-template-columns: 2.5rem 26rem minmax(0, 1fr);
+  }
+}
+
+/* Folded: a narrow rail with the codex's name on it; one tap opens it again. */
+.desk-rail {
+  padding: 0;
+}
+
+.desk-rail-button {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.75rem 0.4rem;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+@media (min-width: 60rem) {
+  .desk-rail-button {
+    writing-mode: vertical-rl;
+    min-height: 12rem;
+  }
+}
+
+/* Codex | Illustrate */
+.desk-modes {
+  display: flex;
+  margin: 0 -0.6rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.desk-modes button {
+  flex: 1;
+  padding: 0.55rem 0.3rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--muted);
+}
+
+.desk-modes button.on {
+  color: var(--fg);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+
+.desk-modes button:disabled {
+  opacity: 0.45;
+}
+
+.desk-side-head {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.desk-side-head input {
+  flex: 1;
+  min-width: 0;
+}
+
+.desk-side-head button {
+  flex: none;
+  padding: 0.3rem 0.6rem;
+}
+
+.desk-group > summary {
+  cursor: pointer;
+  margin: 0.4rem 0 0.2rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.desk-group-count {
+  font-weight: 400;
+}
+
+.desk-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+
+.desk-row {
+  display: grid;
+  grid-template-columns: 1.75rem minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.3rem 0.4rem;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  text-align: left;
+}
+
+.desk-row:hover,
+.desk-row.on {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.desk-row-icon.codex-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.8rem;
+}
+
+.desk-row-text {
+  min-width: 0;
+  display: grid;
+}
+
+.desk-row-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desk-row-text small {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* How many suggestions wait for the entry. */
+.desk-badge {
+  min-width: 1.4rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+/* The open entry. */
+.desk-entry-inner {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.6rem 0.85rem 1rem;
+}
+
+.desk-entry-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.desk-entry-bar > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.desk-close {
+  padding: 0.15rem 0.6rem;
+}
+
+.desk-entry-name {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.desk-entry-name-text {
+  margin: 0;
+  font-size: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+/* Inside the entry column the tabs and the facts are not cards of their own. */
+.desk-entry .entry-tabs,
+.desk-entry .entry-facts {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.desk-label {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* The Suggestions tab. */
+.desk-suggestions {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.desk-sug-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.desk-sug {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+.desk-sug.done {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  color: var(--muted);
+  border-style: solid;
+}
+
+.desk-sug-source {
+  margin: 0;
+}
+
+.desk-sug-from {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.desk-sug-from {
+  font-weight: 400;
+}
+
+.desk-sug-from select {
+  flex: 1;
+  width: auto;
+}
+
+.desk-chip {
+  display: inline-block;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  color: var(--fg);
+  font-size: 0.75rem;
+}
+
+.desk-ask {
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
+}
+
+.desk-ask-pick {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.desk-pick {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.desk-pick.on {
+  border-color: var(--accent);
+}
+
+.desk-pick input {
+  width: auto;
+  margin-top: 0.2rem;
+}
+
+.desk-pick small {
+  display: block;
+  color: var(--muted);
+}

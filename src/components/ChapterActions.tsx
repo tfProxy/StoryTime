@@ -26,6 +26,16 @@ export default function ChapterActions({
           Edit
         </Link>
       )}
+      {/* The writing desk, beside Edit until it replaces the Edit and Write pages. */}
+      {!trashed && (
+        <Link href={`/c/${chapterId}/desk`}>
+          <svg {...icon}>
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M9 4v16 M15 4v16" />
+          </svg>
+          Desk
+        </Link>
+      )}
       <Link href={`/c/${chapterId}/illustrate`}>
         <svg {...icon}>
           <rect x="3" y="4" width="18" height="16" rx="2" />
