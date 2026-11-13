@@ -61,6 +61,10 @@ ok(isBegun(begun, base), "…after the first text it has");
 ok(isBegun(applyGenerated(begun, { title: "G", body: "The AI" }, { continued: isBegun(begun, base) }), base) && applyGenerated(begun, { title: "G", body: "The AI" }, { continued: isBegun(begun, base) }).undo.length === 1, "…and applying again by that check adds no second undo entry");
 ok(isBegun(draft(), { title: "", body: "" }), "a Generate that started from an empty draft is always begun (nothing to keep)");
 ok(!isBegun(draft({ undo: [{ title: "older", body: "older" }] }), base), "a different last undo entry doesn't count");
+ok(
+  !isBegun(draft({ ...base, undo: [{ ...base }] }), base),
+  "an older draft generated from again: undo ends with its text from an earlier Generate, but it still shows that text, so this one hasn't begun",
+);
 
 // The kept AI requests that wrote the text (`ai`) follow it into versions and undo.
 const g1 = applyGenerated(draft({ title: "Mine", body: "My words." }), { title: "G1", body: "First." }, { ai: "id1" });

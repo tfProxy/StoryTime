@@ -74,7 +74,10 @@ export function applyGenerated(d: Draft, text: { title: string | null; body: str
 export function isBegun(d: Draft, base: { title: string; body: string }): boolean {
   if (!base.title && !base.body) return true;
   const last = d.undo[d.undo.length - 1];
-  return !!last && last.title === base.title && last.body === base.body;
+  // The draft still showing exactly what the Generate started from means it hasn't begun here: an earlier Generate from
+  // the same text (an older draft generated from again) left that same entry at the end of undo.
+  const showingBase = d.title === base.title && d.body === base.body;
+  return !!last && last.title === base.title && last.body === base.body && !showingBase;
 }
 
 /** What follows a Generate: the choice text for the previous chapter, only when the author hasn't written any. */
