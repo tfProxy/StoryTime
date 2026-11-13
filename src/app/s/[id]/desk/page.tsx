@@ -28,7 +28,6 @@ export default async function FirstChapterDeskPage({ params }: { params: Promise
       newChapter={{
         target: { kind: "first", storyId: story.id },
         context: { storyTitle: story.title, premise: story.premise, style: story.style, path: [], choiceLabel: null },
-        storyId: story.id,
         draftKey: `first:${story.id}`,
         resumeHref: `/s/${story.id}/desk`,
         draftLabel: `${story.title}: first chapter`,

@@ -3,7 +3,7 @@ import { db, newId } from "./db";
 import { LIMITS } from "./limits";
 import { deleteDraft } from "./draftStore";
 
-/** The key of the draft for writing an unwritten choice (the write page's `fill:` draft). */
+/** The key of the draft for writing an unwritten choice (the writing desk's `fill:` draft). */
 export const choiceDraftKey = (choiceId: string) => `fill:${choiceId}`;
 import type { StoredReference } from "./comfy/references";
 
@@ -728,7 +728,7 @@ export function addChoice(chapterId: string, input: z.infer<typeof AddChoiceSche
   })();
 }
 
-/** Removes one unwritten choice from a chapter (same rules as removing it on the edit page). */
+/** Removes one unwritten choice from a chapter (same rules as removing it in a chapter update). */
 export function removeChoice(chapterId: string, choiceId: string): { ok: true } {
   return db().transaction(() => {
     const c = getChoices(chapterId).find((x) => x.id === choiceId);

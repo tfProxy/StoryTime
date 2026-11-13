@@ -5,7 +5,7 @@ import { MAX_VERSIONS } from "./generatedDraft";
 import { PostError } from "./stories";
 import { KeptIdsSchema } from "./keptRequests";
 
-// How a chapter was written, kept from its draft when it is posted (or an edit is saved), so the edit page starts
+// How a chapter was written, kept from its draft when it is posted (or updated), so the desk starts
 // with the same direction prompt, generated versions, length and models instead of an empty form.
 
 // `ai`: the kept AI requests (keptRequests.ts) that wrote a version, and, at the top, the chapter's text as posted.

@@ -5,8 +5,8 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 export type SplitMode = { id: string; label: string; hint: string };
 
 /**
- * [ main action | ▾ ]: the same combo button as the "Post chapter" one (see SaveSplitButton). The ▾ opens a menu of
- * actions; picking one changes the main button's label, and the main button then does that action.
+ * [ main action | ▾ ]: a combo button. The ▾ opens a menu of actions; picking one changes the main button's label, and
+ * the main button then does that action.
  */
 export default function SplitActionButton({
   modes,

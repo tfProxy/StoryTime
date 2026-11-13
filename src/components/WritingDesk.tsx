@@ -103,7 +103,7 @@ const localId = () => `draft-${Date.now().toString(36)}${Math.random().toString(
 
 /**
  * Saves an entry change from the desk. On a new chapter a change for it (anchor DRAFT_ANCHOR, the default) is held in
- * the draft, as the Write page's drawer does; one put at an earlier chapter, or any on a posted chapter, is saved now.
+ * the draft; one put at an earlier chapter, or any on a posted chapter, is saved now.
  * Resolves to the entry's id, or an error.
  */
 async function saveEntryChange(
@@ -149,9 +149,9 @@ async function saveEntryChange(
 }
 
 type DeskProps = {
-  /** A posted chapter's box (the Edit page's editor). */
+  /** A posted chapter's box. */
   editor?: Omit<ChapterEditEntryProps, "desk">;
-  /** Or a chapter not posted yet (the Write page's editor, with its draft); Post chapter makes it. */
+  /** Or a chapter not posted yet, with its draft; Post chapter makes it. */
   newChapter?: Omit<ComponentProps<typeof ChapterEditor>, "desk">;
   codex: DeskCodex;
   /** The top bar's links ("← Back to …"); the chapter's ⋯ menu and a status line go beside them. */
@@ -171,7 +171,7 @@ type DeskProps = {
 /**
  * The writing desk: the codex (a side column that folds to a rail), the open codex entry, and the chapter's editor.
  * On a posted chapter codex changes made here are saved at once, at the chapter. On a new one (`newChapter`) they are
- * held in its draft, as the Write page's drawer holds them, and Post saves them at it; the actions that need a posted
+ * held in its draft, and Post saves them at it; the actions that need a posted
  * chapter are greyed out with why.
  * In Illustrate mode the side column holds the picture controls and the story column the chapter's pictures (see
  * `DeskIllustrate`); the entry column closes and the editor is hidden, kept as it was for when Codex is chosen again.

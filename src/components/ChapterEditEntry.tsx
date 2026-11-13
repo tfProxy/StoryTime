@@ -23,14 +23,13 @@ export type ChapterEditEntryProps = {
   summaryMine?: boolean;
   writing: EditWriting | null;
   context: StoryContext;
-  storyId: string;
   draftLabel: string;
   /** The codex as of the previous chapter; absent for a story's first chapter. */
   codexPanel?: { chapterId: string; editing?: boolean; path: PathChapter[]; ops: CodexOp[]; facts?: FactOp[] };
   /** Present only for a story's first chapter. */
   story: { id: string; title: string; premise: string } | null;
-  /** Inside the writing desk (see ChapterEditor). */
-  desk?: Desk;
+  /** The writing desk around the box (see ChapterEditor). */
+  desk: Desk;
 };
 
 export default function ChapterEditEntry({ story, ...p }: ChapterEditEntryProps) {
@@ -60,7 +59,6 @@ export default function ChapterEditEntry({ story, ...p }: ChapterEditEntryProps)
           writing: p.writing,
         }}
         context={p.context}
-        storyId={p.storyId}
         draftKey={`edit:${p.chapterId}`}
         resumeHref={`/c/${p.chapterId}/desk`}
         draftLabel={p.draftLabel}

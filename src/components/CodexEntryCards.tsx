@@ -14,10 +14,6 @@ type Props = {
   storyId?: string;
   /** Each entry's icon version, by entry id (see codexIcons). */
   icons?: Record<string, number>;
-  /** Entries with a change waiting in a draft, by entry id (the op that is waiting). */
-  held?: Record<string, string>;
-  /** Open the entry here instead of linking to its page (the writing page's drawer). */
-  onOpen?: (entry: CodexEntry) => void;
   /** Shown when there are no entries. */
   empty?: string;
   /** The Story Bible's version: each type is a fold ("Characters (2) · 2 suggestions") instead of a heading. */
@@ -65,7 +61,7 @@ export function HintCount({ n }: { n: number | undefined }) {
 }
 
 /** The compact list of a codex's entries, grouped by type: every place that lists entries uses it, and each card opens the entry's page. */
-export default function CodexEntryCards({ entries, chapterId, storyId, icons = {}, held = {}, onOpen, empty, fold, extra, groupExtra, groupSuggestions, hints = {}, stale = {} }: Props) {
+export default function CodexEntryCards({ entries, chapterId, storyId, icons = {}, empty, fold, extra, groupExtra, groupSuggestions, hints = {}, stale = {} }: Props) {
   if (entries.length === 0 && !groupExtra) return empty ? <p className="meta">{empty}</p> : null;
   return (
     <>
@@ -78,7 +74,6 @@ export default function CodexEntryCards({ entries, chapterId, storyId, icons = {
             <ul className="entry-cards">
               {group.map((e) => {
                 const icon = icons[e.entry_id];
-                const wait = held[e.entry_id];
                 const ai = e.facts.filter(isAiFact).length;
                 const inner = (
                   <>
@@ -98,11 +93,7 @@ export default function CodexEntryCards({ entries, chapterId, storyId, icons = {
                             · {ai} AI {ai === 1 ? "fact" : "facts"} to check
                           </span>
                         )}
-                        {wait ? (
-                          <span className="tag"> · {wait === "create" ? "new" : "changed"} in this chapter, saved when you post</span>
-                        ) : (
-                          e.op.anchor_chapter_id === chapterId && <span className="tag"> · changed in this chapter</span>
-                        )}
+                        {e.op.anchor_chapter_id === chapterId && <span className="tag"> · changed in this chapter</span>}
                       </span>
                       <span className="meta entry-card-line">
                         Keywords: {e.aliases.length > 0 ? e.aliases.join(", ") : "none"}
@@ -116,15 +107,9 @@ export default function CodexEntryCards({ entries, chapterId, storyId, icons = {
                 const below = extra?.(e);
                 return (
                   <li key={e.entry_id} className={below ? "entry-with-extra" : undefined}>
-                    {onOpen ? (
-                      <button type="button" className="entry-card" onClick={() => onOpen(e)}>
-                        {inner}
-                      </button>
-                    ) : (
-                      <Link className="entry-card" href={`/s/${storyId}/codex/${e.entry_id}?at=${chapterId}`}>
-                        {inner}
-                      </Link>
-                    )}
+                    <Link className="entry-card" href={`/s/${storyId}/codex/${e.entry_id}?at=${chapterId}`}>
+                      {inner}
+                    </Link>
                     {below}
                   </li>
                 );

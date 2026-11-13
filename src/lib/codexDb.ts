@@ -376,7 +376,7 @@ export const FormChangeSchema = z
     /** The chapter whose codex is shown: the entry and its facts are read as they are there. */
     chapter_id: z.string().min(1),
     entry_id: z.string().min(1),
-    /** The new form and where it starts. Left out when the writing drawer holds it in the draft (only the moves are saved). */
+    /** The new form and where it starts. Left out when a draft holds it (only the moves are saved). */
     form: z.object({ name: text(FACT_LIMITS.form).min(1), stage: text(FACT_LIMITS.text).default(""), anchor_chapter_id: z.string().min(1) }).optional(),
     /** The entry's form until now, for an entry that has never had one: set from where the entry starts, so it is its normal form. */
     base_form: text(FACT_LIMITS.form).default(""),

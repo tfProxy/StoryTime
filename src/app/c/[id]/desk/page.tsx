@@ -147,7 +147,6 @@ function newChapter(story: Story, path: Chapter[], query: { choice?: string; new
           codex: getContextCodex(parent.id),
           siblingChoices: choices.map((c) => c.label),
         },
-        storyId: story.id,
         draftKey,
         resumeHref,
         draftLabel,

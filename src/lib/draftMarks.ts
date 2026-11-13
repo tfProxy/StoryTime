@@ -7,7 +7,7 @@ import { choiceDraftKey, getChapter } from "./stories";
 // whose new chapter has a draft (`fill:<choice id>`). The reading page's choices and the Drafts list show them; the
 // desk's path blocks and "What happens next?" (step 5 of the writing desk) should use `draftMarks`.
 
-/** The edit draft's key for a posted chapter (as the Edit page and the desk save it). */
+/** The edit draft's key for a posted chapter (as the desk saves it, and the old Edit page did). */
 export const editDraftKey = (chapterId: string) => `edit:${chapterId}`;
 
 type Version = { title?: unknown; body?: unknown };

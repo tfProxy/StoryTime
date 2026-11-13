@@ -11,7 +11,7 @@ function editWriting(id: string, title: string, body: string): EditWriting | nul
 }
 
 /**
- * What the chapter editor needs to edit a posted chapter (the Edit page and the writing desk). `path` is the chapters
+ * What the chapter editor needs to edit a posted chapter (on the writing desk). `path` is the chapters
  * from the story's first to this one (this one last).
  */
 export function chapterEditProps(story: Story, path: Chapter[]): Omit<ChapterEditEntryProps, "desk"> {
@@ -41,10 +41,9 @@ export function chapterEditProps(story: Story, path: Chapter[]): Omit<ChapterEdi
         .slice(0, -1)
         .map((c) => ({ id: c.id, revision: c.revision, title: c.title, body: c.body, summary: c.summary, path_summary: c.path_summary })),
       choiceLabel: incoming?.label ?? null,
-      // The codex as of this chapter, its own changes included: what the drawer shows and edits.
+      // The codex as of this chapter, its own changes included: what the AI is sent.
       codex: getContextCodex(id),
     },
-    storyId: story.id,
     draftLabel: `${story.title}: editing “${chapter.title}”`,
     // Codex changes made while editing are held in the draft and saved at this chapter with the edit.
     codexPanel: {

@@ -60,16 +60,14 @@ export default function SiteMenu() {
   );
 }
 
-// Put entries into the header menu. `codexHref` (a link) or `onCodex` (a button) adds Codex in its own group;
-// `codexGroup` adds more entries to that group, above Codex.
+// Put entries into the header menu. `codexHref` adds a Codex link in its own group; `codexGroup` adds more entries to
+// that group, above Codex.
 export function PageMenu({
   codexHref,
-  onCodex,
   codexGroup,
   children,
 }: {
   codexHref?: string;
-  onCodex?: () => void;
   codexGroup?: ReactNode;
   children?: ReactNode;
 }) {
@@ -88,13 +86,6 @@ export function PageMenu({
       {children && createPortal(children, slots.page)}
       {codexGroup && createPortal(codexGroup, slots.codex)}
       {codexHref && createPortal(<Link href={codexHref}>Codex</Link>, slots.codex)}
-      {onCodex &&
-        createPortal(
-          <button type="button" className="menu-item" onClick={onCodex}>
-            Codex
-          </button>,
-          slots.codex,
-        )}
     </>
   );
 }

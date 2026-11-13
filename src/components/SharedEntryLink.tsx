@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { PathChapter } from "@/lib/ai/codexAi";
-import { DRAFT_ANCHOR, type CodexEntry } from "@/lib/codex";
+import type { CodexEntry } from "@/lib/codex";
 import type { SharedEntry } from "@/lib/sharedCodex";
 
 /**
@@ -15,8 +15,6 @@ export default function SharedEntryLink({
   chapterId,
   path,
   entries,
-  onHold,
-  editing = false,
   open: openProp,
   onOpenChange,
 }: {
@@ -27,10 +25,6 @@ export default function SharedEntryLink({
   /** The saved chapters it can be added from. */
   path: PathChapter[];
   entries: CodexEntry[];
-  /** In the writing page's drawer: holds the entry in the draft (for the chapter being written, the default) instead of saving it at once. */
-  onHold?: (entry: SharedEntry) => void;
-  /** The draft edits an existing chapter. */
-  editing?: boolean;
 }) {
   const router = useRouter();
   const [ownOpen, setOwnOpen] = useState(false);
@@ -38,7 +32,7 @@ export default function SharedEntryLink({
   const setOpen = (v: boolean) => (openProp === undefined ? setOwnOpen(v) : onOpenChange?.(v));
   const [shared, setShared] = useState<SharedEntry[] | null>(null);
   const [sharedId, setSharedId] = useState("");
-  const [anchor, setAnchor] = useState(onHold ? DRAFT_ANCHOR : chapterId);
+  const [anchor, setAnchor] = useState(chapterId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,12 +53,6 @@ export default function SharedEntryLink({
   const chosen = sharedId && offered.some((s) => s.id === sharedId) ? sharedId : (offered[0]?.id ?? "");
 
   async function add() {
-    if (onHold && anchor === DRAFT_ANCHOR) {
-      const base = offered.find((s) => s.id === chosen);
-      if (base) onHold(base);
-      setOpen(false);
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
@@ -119,19 +107,18 @@ export default function SharedEntryLink({
               ))}
             </select>
           </label>
-          {(onHold || path.length > 1) && (
+          {path.length > 1 && (
             <label>
               Appears from
               <select value={anchor} onChange={(e) => setAnchor(e.target.value)}>
-                {onHold && <option value={DRAFT_ANCHOR}>This chapter (saved when you {editing ? "save" : "post"} it)</option>}
                 {path.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.title}
-                    {!onHold && c.id === chapterId ? " (this chapter)" : ""}
+                    {c.id === chapterId ? " (this chapter)" : ""}
                   </option>
                 ))}
               </select>
-              <small>it is in the codex from this chapter on, on this branch{onHold ? "; an earlier chapter is saved at once" : ""}</small>
+              <small>it is in the codex from this chapter on, on this branch</small>
             </label>
           )}
         </>

@@ -1,27 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  changedFields,
-  DRAFT_ANCHOR,
-  ENTRY_TYPES,
-  entryHistory,
-  isDraftEntry,
-  TYPE_LABELS,
-  type CodexChange,
-  type CodexEntry,
-  type CodexOp,
-  type EntryType,
-  type FactOp,
-} from "@/lib/codex";
+import { changedFields, DRAFT_ANCHOR, ENTRY_TYPES, entryHistory, type CodexEntry, type CodexOp, type EntryType } from "@/lib/codex";
 import type { PathChapter } from "@/lib/ai/codexAi";
-import { codexIconUrl } from "@/lib/codexIconUrl";
-import CodexFacts, { type HeldFact } from "./CodexFacts";
 import ChapterPathPicker from "./ChapterPathPicker";
-import EntryFold from "./EntryFold";
-import MoreMenu from "./MoreMenu";
 
 export type EntryFields = { name: string; type: EntryType; aliases: string[]; content: string; always_include: boolean };
 /** A change to an entry. `anchor` is the chapter it takes effect from; without it, the editor's own default applies. */
@@ -34,41 +17,9 @@ const CODEX_LIMITS = { name: 100, content: 8000 };
 const when = (t: number) => new Date(t).toISOString().replace("T", " ").slice(0, 16) + " UTC";
 const keywordsOf = (text: string) => text.split(",").map((a) => a.trim()).filter(Boolean);
 
-type Props = {
-  entry: CodexEntry;
-  /** Every entry op on the path to `chapterId` (a draft's held changes included), for the history. */
-  ops: CodexOp[];
-  facts: FactOp[];
-  /** The chapters from the story's first to `chapterId`. */
-  path: PathChapter[];
-  /** The chapters offered under "Takes effect from" (default `path`); in the drawer for an edited chapter, the ones before it. */
-  anchorPath?: PathChapter[];
-  /** In the drawer: holds a fact change in the draft (facts anchored at "this chapter"). */
-  holdFact?: (f: HeldFact) => void;
-  /** In the drawer: the draft edits an existing chapter (saved when it is saved) rather than writing a new one. */
-  editingChapter?: boolean;
-  /** The chapter the entry is viewed and edited at. */
-  chapterId: string;
-  storyId?: string;
-  usedAspects: string[];
-  /** The entry's icon version (see codexIcons), when it has one. */
-  icon?: number | null;
-  /** "drawer" inside the writing page's drawer (changes are held in the draft). The entry's own page is CodexEntryPage. */
-  variant?: "page" | "drawer";
-  /** How entry-detail changes are saved; the default posts them at `chapterId` and refreshes the page. */
-  save?: EntrySave;
-  /** The change this entry has waiting in the draft, and a way to drop it. */
-  held?: CodexChange;
-  onDiscardHeld?: () => void;
-  /** Called after the entry is retired; the default goes to the chapter's codex. */
-  onRetired?: () => void;
-  /** Called after a fact is saved; the default refreshes the page. */
-  onFactsSaved?: () => void;
-};
-
 /**
  * Saving an entry's details and the ⋯ menu's actions (share, remove from one chapter, retire), for the entry page and
- * the writing page's drawer. `change` saves through `save` (default: posted at `chapterId`, then the page refreshes).
+ * the writing desk. `change` saves through `save` (default: posted at `chapterId`, then the page refreshes).
  */
 export function useEntryActions({
   entry,
@@ -213,156 +164,6 @@ export function EntryHistoryList({
         );
       })}
     </ol>
-  );
-}
-
-/**
- * A codex entry inside the writing page's drawer: its icon, details, keywords, form, facts and history, with changes
- * held in the draft. (The entry's own page is CodexEntryPage.)
- */
-export default function CodexEntryEditor({
-  entry,
-  ops,
-  facts,
-  path,
-  anchorPath = path,
-  chapterId,
-  storyId,
-  usedAspects,
-  icon,
-  variant = "drawer",
-  save,
-  holdFact,
-  editingChapter = false,
-  held,
-  onDiscardHeld,
-  onRetired,
-  onFactsSaved,
-}: Props) {
-  const router = useRouter();
-  const inDraft = variant === "drawer";
-  const draftOnly = isDraftEntry(entry.entry_id);
-  /** The shared entry this one is linked to; its details are read from it and changed there. */
-  const shared = entry.shared_entry_id;
-  const [savedNote, setSavedNote] = useState(false);
-  const { busy, error, replace, retire } = useEntryActions({ entry, chapterId, storyId, save, onRetired });
-  // The folds the "⋯" menu opens.
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
-
-  const titleOf = (id: string) => (id === DRAFT_ANCHOR ? "this chapter (not posted yet)" : (path.find((p) => p.id === id)?.title ?? "an earlier chapter"));
-  const hist = entryHistory(ops, entry.entry_id);
-  const refreshed = onFactsSaved ?? (() => router.refresh());
-
-  /** Opens a fold from the menu and brings it into view (after it has rendered open). */
-  function reveal(id: string, setOpen: (open: boolean) => void) {
-    setOpen(true);
-    setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: "nearest", behavior: "smooth" }), 50);
-  }
-
-  return (
-    <div className="entry-editor">
-      <div className="entry-head">
-        {icon != null && storyId && (
-          // eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size
-          <img className="codex-icon" src={codexIconUrl(storyId, entry.entry_id, icon)} alt={`Icon of ${entry.name}`} />
-        )}
-        <div className="entry-head-text">
-          <h2 style={{ margin: 0 }}>{entry.name}</h2>
-          <div className="meta" style={{ margin: 0 }}>
-            {TYPE_LABELS[entry.type]}
-            {entry.always_include && <span className="tag"> · always included</span>}
-            {shared && <span className="tag"> · shared</span>}
-            {held && (
-              <span className="tag">
-                {" "}
-                · {held.op === "create" ? "new" : "changed"} in this chapter, saved when you {editingChapter ? "save" : "post"} it
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="row entry-head-actions">
-          {held && onDiscardHeld && (
-            <button type="button" className="secondary" disabled={busy} onClick={onDiscardHeld}>
-              {held.op === "create" ? "Delete" : "Undo change"}
-            </button>
-          )}
-          <MoreMenu label="More entry actions">
-            {!shared && <button type="button" onClick={() => reveal("entry-details", setDetailsOpen)}>Edit name, type and keywords</button>}
-            <button type="button" onClick={() => reveal("entry-history", setHistoryOpen)}>
-              History ({hist.length} version{hist.length === 1 ? "" : "s"})
-            </button>
-            <button type="button" className="danger" disabled={busy} title="Gone from this chapter and every chapter after it. Earlier chapters keep it." onClick={() => void retire()}>
-              Retire from here on…
-            </button>
-          </MoreMenu>
-        </div>
-      </div>
-      {error && <p className="error">{error}</p>}
-
-      {shared && (
-        <section className="entry-section">
-          <p className="notice">
-            This entry is shared: its name, type and keywords come from the <Link href={`/shared/${shared}`}>shared entry</Link>.
-            Open it from its page (not the writing page&apos;s drawer) to change them for this story, or edit the shared entry to change
-            them in every story. The facts below can be changed for this story alone.
-          </p>
-          <p className="meta">
-            Keywords: {entry.aliases.length > 0 ? entry.aliases.join(", ") : "none"}
-            {entry.always_include && " · always included in AI prompts"}
-          </p>
-        </section>
-      )}
-      {!shared && entry.aliases.length > 0 && !detailsOpen && <p className="entry-keywords-line meta">Keywords: {entry.aliases.join(", ")}</p>}
-      {!shared && (
-        <EntryFold title="Name, type and keywords" id="entry-details" open={detailsOpen} onToggle={setDetailsOpen}>
-          <EntryDetailsForm
-            key={[entry.op.id, entry.name, entry.type, entry.aliases.join("\n"), entry.always_include].join("|")}
-            initial={entry}
-            busy={busy}
-            path={path}
-            anchorPath={anchorPath}
-            chapterId={chapterId}
-            inDraft={inDraft}
-            editingChapter={editingChapter}
-            keywordSources={entry.keywordSources}
-            saved={savedNote}
-            onSave={async (f, anchor) => {
-              if (await replace(f, anchor)) {
-                setSavedNote(true);
-                setTimeout(() => setSavedNote(false), 4000);
-              }
-            }}
-          />
-        </EntryFold>
-      )}
-
-      {draftOnly && !holdFact ? (
-        <EntryFold title="Facts" id="entry-facts" open>
-          <p className="meta">Post the chapter to add facts.</p>
-        </EntryFold>
-      ) : (
-        <CodexFacts
-          entry={entry}
-          factOps={facts}
-          path={path}
-          anchorPath={draftOnly ? [] : anchorPath}
-          chapterId={chapterId}
-          usedAspects={usedAspects}
-          onSaved={refreshed}
-          hold={holdFact}
-          editingChapter={editingChapter}
-        />
-      )}
-
-      <EntryFold title="What the AI reads" id="entry-ai-reads">
-        <div className="fact-ai">{entry.description || <em>Nothing yet — add facts.</em>}</div>
-      </EntryFold>
-
-      <EntryFold title="History" id="entry-history" open={historyOpen} onToggle={setHistoryOpen} note={`${hist.length} version${hist.length === 1 ? "" : "s"}`}>
-        <EntryHistoryList entry={entry} ops={ops} titleOf={titleOf} busy={busy} replace={replace} />
-      </EntryFold>
-    </div>
   );
 }
 
