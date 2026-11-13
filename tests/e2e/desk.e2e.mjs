@@ -196,6 +196,12 @@ try {
   ok((await page.locator("section.desk-entry").count()) === 0, "× closes the entry");
 
   // ---- the column folds to a rail ----
+  // « sits in the tabs' row; the search box and + have the row below to themselves
+  const modesRow = side.locator(".desk-modes-row");
+  const modesText = await modesRow.innerText();
+  ok(modesText.includes("Codex") && modesText.includes("Illustrate") && (await modesRow.getByRole("button", { name: "Fold the codex" }).count()) === 1, "« is in the row with the Codex | Illustrate tabs");
+  const sideHead = side.locator(".desk-side-head");
+  ok((await sideHead.getByLabel("Search entries").count()) === 1 && (await sideHead.getByRole("button", { name: "New entry" }).count()) === 1 && (await sideHead.getByRole("button", { name: "Fold the codex" }).count()) === 0, "the search row has the search box and + , and no «");
   await side.getByRole("button", { name: "Fold the codex" }).click();
   const rail = page.locator("aside.desk-rail");
   ok((await rail.innerText()).toLowerCase().includes("codex · 4 entries") && (await page.getByLabel("Search entries").count()) === 0, "the codex folds to a rail");

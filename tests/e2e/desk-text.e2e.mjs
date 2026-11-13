@@ -128,6 +128,8 @@ try {
 
   // ---- in an unfolded block of the path ----
   const rootText = page.locator('article.desk-block[aria-label^="Chapter 1:"] .desk-block-text');
+  // blocks start folded on arrival; unfold them
+  if ((await page.locator(".desk-path-head button").innerText()) === "Unfold all") await page.locator(".desk-path-head button").click();
   await rootText.locator(".prose").waitFor();
   await rootText.evaluate((el) => {
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);

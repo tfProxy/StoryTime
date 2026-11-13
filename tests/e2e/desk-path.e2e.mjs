@@ -94,11 +94,13 @@ try {
   await page.waitForURL(`**/c/${B}/desk`);
   await boxTitle().waitFor();
   ok((await blocks.count()) === 2, "two blocks above the box: Root and Chapter A");
-  ok((await isOpen(1)) && (await isOpen(2)), "opened from outside, every block starts unfolded");
-  ok((await block(1).locator(".prose").innerText()).includes("It began in the Hollow."), "an unfolded block shows the chapter's text");
+  ok(!(await isOpen(1)) && !(await isOpen(2)) && (await page.locator(".desk-path-head button").innerText()) === "Unfold all", "opened from outside, every block starts folded");
+  ok(!!(await until(() => page.evaluate(() => document.activeElement === document.querySelector(".desk-here")))), "…and the chapter (.desk-here) has the focus");
+  // With the blocks folded the page may be too short to scroll: the chapter just has to be in view, under the header.
+  ok(!!(await until(() => page.evaluate(() => { const t = document.querySelector(".desk-here").getBoundingClientRect().top; return t >= 0 && t < window.innerHeight / 2; }))), "…and in view");
+  await page.locator(".desk-path-head button").click();
+  ok((await block(1).locator(".prose").innerText()).includes("It began in the Hollow."), "Unfold all: an unfolded block shows the chapter's text");
   ok((await block(2).innerText()).includes("Chapter A") && (await block(2).locator(".desk-block-fold small").count()) === 0, "…with its title, and no summary");
-  ok(!!(await until(async () => (await page.evaluate(() => window.scrollY)) > 100)), "the page is scrolled down to the chapter's box");
-  ok(await scrolledToBox(), "…with the box at the top of the window (or the page scrolled as far as it goes)");
   ok((await block(2).locator(".draft-mark").innerText()) === "Draft not used" && (await block(1).locator(".draft-mark").count()) === 0, "Chapter A's block is marked Draft not used, Root's isn't");
   ok((await page.locator(".desk-via").allInnerTexts()).map((t) => t.trim()).join("|") === "→ Go on|→ Climb", "the choices leading to A and to the box show as → lines");
 
@@ -124,7 +126,7 @@ try {
   await page.locator(".desk-next").getByRole("link", { name: /Climb/ }).click();
   await page.waitForURL(`**/c/${B}/desk`);
   await until(async () => (await boxTitle().inputValue()) === "Chapter B");
-  ok(!(await isOpen(1)) && (await isOpen(2)), "a written choice opens its chapter on the desk, the folds as they were");
+  ok(!(await isOpen(1)) && !(await isOpen(2)), "a written choice opens its chapter on the desk, the blocks folded (folds are not carried between chapters)");
   ok(await scrolledToBox(), "…scrolled to its box");
 
   // ---- the → line: rename in place ----
@@ -159,18 +161,18 @@ try {
   await next.locator(".choice-written", { hasText: "Written next" }).click();
   await page.waitForURL(`**/c/${C}/desk`);
   await until(async () => (await boxTitle().inputValue()) === "Chapter C");
-  ok((await blocks.count()) === 3 && !(await isOpen(1)) && (await isOpen(2)) && !(await isOpen(3)), "Chapter C: Root folded, A unfolded, B (new as a block) folded");
+  ok((await blocks.count()) === 3 && !(await isOpen(1)) && !(await isOpen(2)) && !(await isOpen(3)), "Chapter C: Root, A and B all folded");
   await page.goBack();
   await page.waitForURL(`**/c/${B}/desk`);
   await until(async () => (await boxTitle().inputValue()) === "Chapter B");
-  ok(!(await isOpen(1)) && (await isOpen(2)), "Back to B keeps the fold states");
+  ok(!(await isOpen(1)) && !(await isOpen(2)), "Back to B: the blocks start folded");
 
   // ---- an unwritten choice starts its draft, on the desk ----
   await next.locator(".choice-unwritten", { hasText: "Unwritten one" }).click();
   await page.waitForURL(`**/c/${B}/desk?choice=${unwritten.id}`);
   const nbox = page.locator("section.desk-box");
   await nbox.getByRole("button", { name: "Post chapter" }).waitFor();
-  ok((await blocks.count()) === 3 && !(await isOpen(1)) && (await isOpen(2)), "a new chapter's desk: every chapter above it is a block, folds kept");
+  ok((await blocks.count()) === 3 && !(await isOpen(1)) && !(await isOpen(2)), "a new chapter's desk: every chapter above it is a block, folded");
   ok((await page.locator(".desk-here .desk-via").innerText()).includes("Unwritten one"), "…the → line shows its choice");
   ok((await page.locator(".desk-next").count()) === 0, "…and no What happens next? until it is posted");
 
@@ -212,7 +214,7 @@ try {
   const moth = await codexAt(D, "Moth");
   ok(!!moth && moth.description.includes("dusty grey"), "Post saves the new entry and its fact at the new chapter");
   ok((await codexAt(D, "Wren")).description.includes("green as moss") && !(await codexAt(B, "Wren")).description.includes("green as moss"), "…and Wren's fact from the new chapter on, not before");
-  ok((await blocks.count()) === 3 && !(await isOpen(1)) && (await isOpen(2)), "after Post the desk is on the new chapter, the folds kept");
+  ok((await blocks.count()) === 3 && !(await isOpen(1)) && !(await isOpen(2)), "after Post the desk is on the new chapter, its blocks folded");
   ok((await page.locator(".desk-next").count()) === 1, "…and What happens next? shows once it is posted");
 
   // ---- Edit again: from outside, unfolded whatever the folds were ----
@@ -221,7 +223,47 @@ try {
   await page.locator(".chapter-actions").getByRole("link", { name: "Edit", exact: true }).click();
   await page.waitForURL(`**/c/${B}/desk`);
   await boxTitle().waitFor();
-  ok((await isOpen(1)) && (await isOpen(2)), "opened from the reading page's Edit again, the blocks start unfolded");
+  ok(!(await isOpen(1)) && !(await isOpen(2)), "opened from the reading page's Edit again, the blocks start folded");
+
+  // ---- the desk's Facts tab: run-in aspect labels, and "since …" links to the chapter ----
+  await post("/api/codex/facts", { anchor_chapter_id: A, entry_id: wren, op: "set", aspect: "Gait", text: "light and quick" });
+  await post("/api/codex/facts", { anchor_chapter_id: B, entry_id: wren, op: "set", aspect: "Voice", text: "soft" });
+  await page.goto(`${BASE}/c/${B}/desk`);
+  await boxTitle().waitFor();
+  await page.locator("aside.desk-side .desk-row", { hasText: "Wren" }).click();
+  const entryBox = page.locator("section.desk-entry");
+  await entryBox.getByRole("tab", { name: "Facts" }).click();
+  const gait = factRow(page, "light and quick");
+  await gait.waitFor();
+  const label = await gait.locator(".ef-aspect").boundingBox();
+  const text = await gait.locator(".fact-line").boundingBox();
+  ok(text.y < label.y + label.height && text.x > label.x, "in the desk the aspect label and its text are on the same line");
+  ok(text.x >= label.x + label.width - 1, "…the text after the label");
+  // "from the start" is plain text; an earlier chapter and the desk's own chapter are links
+  const hair = factRow(page, "short and brown");
+  ok((await hair.locator(".ef-since").innerText()).includes("from the start") && (await hair.locator(".ef-since-link").count()) === 0, "“from the start” has no link");
+  const inView = (loc) => loc.evaluate((el) => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.top < window.innerHeight && r.bottom > 0; });
+  const link = gait.locator(".ef-since-link");
+  ok((await link.getAttribute("title")) === "Show this chapter" && (await link.innerText()).includes("Chapter A"), "an earlier chapter's “since” is a link");
+  ok(!(await isOpen(2)), "(Chapter A's block starts folded)");
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await link.click();
+  ok(await isOpen(2), "clicking “since Chapter A” unfolds its block");
+  ok(!!(await until(() => inView(block(2)))), "…and brings it into view");
+  const own = factRow(page, "soft").locator(".ef-since-link");
+  ok((await own.innerText()).includes("Chapter B"), "a fact made at the desk's own chapter links to it too");
+  await own.click();
+  ok(!!(await until(() => inView(page.locator("section.desk-box")))), "clicking it scrolls the box into view");
+  // the entry's own page keeps two columns, and its “since” is not a link
+  await page.goto(`${BASE}/s/${story.story_id}/codex/${wren}?at=${B}`);
+  const pageRow = factRow(page, "light and quick");
+  await pageRow.waitFor();
+  const pl = await pageRow.locator(".ef-aspect").boundingBox();
+  const pt = await pageRow.locator(".fact-line").boundingBox();
+  ok(pt.x >= pl.x + pl.width && Math.abs(pt.y - pl.y) < 20 && pt.x - pl.x > 100, "the entry page still has the aspect and its text in two columns");
+  ok((await pageRow.locator(".ef-since-link").count()) === 0, "…and its “since” is not a link");
+  await page.goto(`${BASE}/c/${B}/desk`);
+  await boxTitle().waitFor();
 
   // ---- phone width ----
   await page.setViewportSize({ width: 390, height: 800 });
