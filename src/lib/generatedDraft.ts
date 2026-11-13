@@ -77,13 +77,8 @@ export function isBegun(d: Draft, base: { title: string; body: string }): boolea
   return !!last && last.title === base.title && last.body === base.body;
 }
 
-/**
- * What follows a Generate: the choice text for the previous chapter, only when the author hasn't written any, and
- * suggested choices for this chapter's ending, only when the author hasn't typed any choices.
- */
-export function applyAfterGenerate(d: Draft, after: { choiceLabel?: string; suggestions?: string[] }): Draft {
-  let next = d;
-  if (after.choiceLabel && !d.newChoiceLabel.trim()) next = { ...next, newChoiceLabel: after.choiceLabel };
-  if (after.suggestions && !d.choices.some((c) => c.trim())) next = { ...next, suggestions: after.suggestions };
-  return next;
+/** What follows a Generate: the choice text for the previous chapter, only when the author hasn't written any. */
+export function applyAfterGenerate(d: Draft, after: { choiceLabel?: string }): Draft {
+  if (after.choiceLabel && !d.newChoiceLabel.trim()) return { ...d, newChoiceLabel: after.choiceLabel };
+  return d;
 }

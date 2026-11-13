@@ -45,7 +45,8 @@ const until = async (fn, what) => {
 };
 
 const settingsBefore = await settingsNow();
-await json("PUT", "/api/settings", { autoSuggestChoices: false });
+// Start from the default settings.
+await json("PUT", "/api/settings", {});
 
 const browser = await launch();
 const page = await (await browser.newContext()).newPage();

@@ -44,11 +44,11 @@ ok(pushUndo(draft()).length === 0 && startVersion(draft()).versions?.length === 
 
 // After a Generate.
 const none = draft({ choices: [""] });
-const r = applyAfterGenerate(none, { choiceLabel: "Go left", suggestions: ["Run", "Hide"] });
-ok(r.newChoiceLabel === "Go left" && r.suggestions?.join() === "Run,Hide", "choice text and suggestions are filled in when the author has written neither");
+const r = applyAfterGenerate(none, { choiceLabel: "Go left" });
+ok(r.newChoiceLabel === "Go left", "the choice text is filled in when the author has written none");
 const typed = draft({ newChoiceLabel: "Mine", choices: ["The door", ""] });
-const r2 = applyAfterGenerate(typed, { choiceLabel: "Go left", suggestions: ["Run"] });
-ok(r2.newChoiceLabel === "Mine" && r2.suggestions === undefined, "the author's choice text and typed choices are kept");
+const r2 = applyAfterGenerate(typed, { choiceLabel: "Go left" });
+ok(r2.newChoiceLabel === "Mine", "the author's choice text is kept");
 const r3 = applyAfterGenerate(draft({ newChoiceLabel: "   " }), { choiceLabel: "Go left" });
 ok(r3.newChoiceLabel === "Go left", "a blank choice text counts as empty");
 ok(applyAfterGenerate(none, {}) === none, "nothing to add gives the same draft");

@@ -45,7 +45,7 @@ const fake = await startFakeAi({
     return "1. Run\n2. Hide";
   },
 });
-const ai = await useMockAi(BASE, { autoSuggestChoices: false });
+const ai = await useMockAi(BASE);
 const browser = await launch();
 const drafts = [];
 try {

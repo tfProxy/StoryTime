@@ -729,22 +729,6 @@ export default function SettingsForm() {
             <input
               type="checkbox"
               style={{ width: "auto" }}
-              checked={settings.autoSuggestChoices}
-              onChange={(e) => update({ autoSuggestChoices: e.target.checked })}
-            />
-            <span>
-              Suggest choices after writing{" "}
-              <small>
-                (when the AI finishes a chapter, it also offers a few choices for the ending, using the suggestions
-                model. This is one extra request each time.)
-              </small>
-            </span>
-          </label>
-
-          <label className="row" style={{ alignItems: "flex-start" }}>
-            <input
-              type="checkbox"
-              style={{ width: "auto" }}
               checked={settings.showCodexList}
               onChange={(e) => update({ showCodexList: e.target.checked })}
             />

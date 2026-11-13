@@ -83,8 +83,6 @@ export type Settings = {
   temperature: number | null;
   /** Rough budget for the prompt context, so small local models aren't overflowed. */
   contextTokens: number;
-  /** After the AI writes a chapter, also suggest choices for its ending (one more call to the cheaper model). */
-  autoSuggestChoices: boolean;
   /** After a chapter is saved, queue a review run for it (tags, facts, continuity, summary). Off by default. */
   autoReview: boolean;
   /** After a chapter is saved, the AI reads it for codex changes and leaves suggestions in the codex inbox. On by default. */
@@ -206,7 +204,6 @@ export const DEFAULT_SETTINGS: Settings = {
   defaults: { main: null, cheap: null },
   temperature: null,
   contextTokens: 8000,
-  autoSuggestChoices: false,
   autoReview: false,
   autoCodex: true,
   autoApplyCodex: false,
@@ -393,7 +390,8 @@ const settingsSchema = z.object({
     .catch(DEFAULT_SETTINGS.defaults),
   temperature: z.number().min(0).max(2).nullable().catch(null),
   contextTokens: z.number().int().min(1000).max(2_000_000).catch(DEFAULT_SETTINGS.contextTokens),
-  autoSuggestChoices: z.boolean().catch(false),
+  // Settings saved while "Suggest choices after writing" existed still have `autoSuggestChoices`: like any key not
+  // listed here, it is dropped when they are read.
   autoReview: z.boolean().catch(false),
   autoCodex: z.boolean().catch(true),
   autoApplyCodex: z.boolean().catch(false),
