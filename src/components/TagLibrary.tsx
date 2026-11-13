@@ -369,6 +369,10 @@ function TryIt({ draft }: { draft: Draft }) {
   const [results, setResults] = useState<Result[]>([]);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const [startText, setStartText] = useState("0");
+  const [countText, setCountText] = useState("5");
+  const startDepth = Math.max(0, Math.floor(Number(startText)) || 0);
+  const count = Math.min(50, Math.max(1, Math.floor(Number(countText)) || 1));
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -395,14 +399,18 @@ function TryIt({ draft }: { draft: Draft }) {
         choices: splitChoices(draft.choices),
         examples: draft.examples,
       };
-      // Walk down from the first chapter, breadth first, to get up to five chapters with their text.
+      // Walk down from the first chapter, breadth first. Chapters above the start depth are only passed through;
+      // the next `count` chapters from that depth on are read, with their text.
       const chapters: { id: string; title: string; body: string }[] = [];
-      const queue = [story.root_chapter_id];
-      while (queue.length && chapters.length < 5) {
-        const id = queue.shift()!;
+      const queue: { id: string; depth: number }[] = [{ id: story.root_chapter_id, depth: 0 }];
+      const seen = new Set<string>();
+      while (queue.length && chapters.length < count) {
+        const { id, depth } = queue.shift()!;
+        if (seen.has(id)) continue;
+        seen.add(id);
         const res = await api<{ chapter: { id: string; title: string; body: string }; choices: { child_chapter_id: string | null }[] }>(`/api/chapters/${id}`, "GET");
-        chapters.push(res.chapter);
-        for (const c of res.choices) if (c.child_chapter_id) queue.push(c.child_chapter_id);
+        if (depth >= startDepth) chapters.push(res.chapter);
+        for (const c of res.choices) if (c.child_chapter_id) queue.push({ id: c.child_chapter_id, depth: depth + 1 });
       }
       for (let i = 0; i < chapters.length; i++) {
         setProgress({ n: i + 1, total: chapters.length });
@@ -428,7 +436,35 @@ function TryIt({ draft }: { draft: Draft }) {
   return (
     <div style={{ display: "grid", gap: "0.5rem", borderTop: "1px solid var(--line)", paddingTop: "0.75rem" }}>
       <strong>Try it</strong>
-      <span className="meta">Runs this rule, as written above, on the first chapters of a story. Nothing is saved.</span>
+      <span className="meta">
+        Runs this rule, as written above, on chapters of a story, going down the branches level by level. Nothing is saved.
+      </span>
+      <div className="row">
+        <label className="meta">
+          Start at depth{" "}
+          <input
+            type="number"
+            min={0}
+            aria-label="Depth to start at"
+            value={startText}
+            onChange={(e) => setStartText(e.target.value)}
+            style={{ width: "5rem" }}
+          />
+        </label>
+        <label className="meta">
+          Chapters to read{" "}
+          <input
+            type="number"
+            min={1}
+            max={50}
+            aria-label="Number of chapters to read"
+            value={countText}
+            onChange={(e) => setCountText(e.target.value)}
+            style={{ width: "5rem" }}
+          />
+        </label>
+      </div>
+      <span className="meta">Depth 0 is the first chapter. Start 0 with 5 chapters reads the first five.</span>
       <div className="row">
         <select aria-label="Story to try it on" value={storyId} onChange={(e) => setStoryId(e.target.value)} style={{ width: "auto", maxWidth: "100%" }}>
           <option value="">Choose a story…</option>
