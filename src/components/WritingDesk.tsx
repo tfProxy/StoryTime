@@ -25,7 +25,7 @@ import { mentions } from "@/lib/ai/prompts";
 import { markDeskMove } from "@/lib/deskMove";
 import { codexIconUrl, type IconChoice } from "@/lib/codexIconUrl";
 import ChapterEditEntry, { type ChapterEditEntryProps } from "./ChapterEditEntry";
-import ChapterEditor, { type HeldCodex } from "./ChapterEditor";
+import ChapterEditor, { type DeskOverrides, type HeldCodex } from "./ChapterEditor";
 import ChapterTreePicker, { type PickerChapter } from "./ChapterTreePicker";
 import { AiText, EntryTabs, FactsTable, type Chapter, type LaterForm } from "./CodexEntryPage";
 import { EntryDetailsForm, EntryHistoryList, useEntryActions, type EntryChange } from "./CodexEntryEditor";
@@ -264,6 +264,9 @@ export default function WritingDesk({
     [ops, facts, held, newChapter, depth],
   );
   const heldIds = new Set(held && newChapter ? [...held.changes.map((c) => c.entry_id), ...held.facts.map((f) => f.entry_id)] : []);
+  // The draft's entries pinned to the prompt or left out of it (null while the draft loads).
+  const [overrides, setOverrides] = useState<DeskOverrides | null>(null);
+  const promptPick = (id: string): PromptPick => (overrides?.value.exclude.includes(id) ? "out" : overrides?.value.include.includes(id) ? "pinned" : "auto");
 
   const entries = useMemo(() => foldCodex(applied.ops, applied.facts), [applied]);
   const inbox = useCodexInbox({ storyId, onPath: { chapterIds: path.map((c) => c.id), onChanged: refresh } });
@@ -275,15 +278,17 @@ export default function WritingDesk({
 
   const q = query.trim().toLowerCase();
   const shown = q ? entries.filter((e) => [e.name, ...e.aliases].some((n) => n.toLowerCase().includes(q))) : entries;
-  const inChapter = shown.filter((e) => mentions(e, text));
+  // An entry pinned to the prompt is listed here too, named in the text or not.
+  const inChapter = shown.filter((e) => mentions(e, text) || promptPick(e.entry_id) === "pinned");
   const open = openId && openId !== "new" ? entries.find((e) => e.entry_id === openId) : undefined;
   const here = path[path.length - 1];
 
   const row = (e: CodexEntry) => {
     const n = waiting[e.entry_id] ?? 0;
     const icon = icons[e.entry_id];
+    const pick = promptPick(e.entry_id);
     return (
-      <li key={e.entry_id}>
+      <li key={e.entry_id} className={`desk-row-item pick-${pick}`}>
         <button type="button" className={e.entry_id === openId ? "desk-row on" : "desk-row"} aria-current={e.entry_id === openId ? "true" : undefined} onClick={() => setOpenId(e.entry_id)}>
           {icon != null ? (
             // eslint-disable-next-line @next/next/no-img-element -- a picture of unknown size
@@ -302,6 +307,11 @@ export default function WritingDesk({
               held
             </span>
           )}
+          {pick !== "auto" && (
+            <span className={`desk-chip desk-pick-chip ${pick}`} title={PICKS[pick].note}>
+              {PICKS[pick].chip}
+            </span>
+          )}
           {n > 0 && (
             <span className="desk-badge" title={`${n} suggestion${n === 1 ? "" : "s"} waiting`}>
               {n}
@@ -309,6 +319,7 @@ export default function WritingDesk({
             </span>
           )}
         </button>
+        <PickButton name={e.name} pick={pick} overrides={overrides} id={e.entry_id} />
       </li>
     );
   };
@@ -400,9 +411,9 @@ export default function WritingDesk({
         <div className="desk-here" ref={hereRef}>
           {editor ? (
             // An Update makes a new revision: the box starts again from the chapter, its drafts kept with it.
-            <ChapterEditEntry key={editor.baseRevision} {...editor} desk={{ onText, menuSlot, onNote: setNote }} />
+            <ChapterEditEntry key={editor.baseRevision} {...editor} desk={{ onText, menuSlot, onNote: setNote, onOverrides: setOverrides }} />
           ) : newChapter ? (
-            <ChapterEditor {...newChapter} desk={{ onText, menuSlot, onNote: setNote, onHeld: setHeld }} />
+            <ChapterEditor {...newChapter} desk={{ onText, menuSlot, onNote: setNote, onHeld: setHeld, onOverrides: setOverrides }} />
           ) : null}
         </div>
         {next}
@@ -428,6 +439,39 @@ export default function WritingDesk({
       />
     )}
     </>
+  );
+}
+
+/** How an entry goes into the chapter's prompt: as the text decides, pinned in by hand, or left out by hand. */
+type PromptPick = "auto" | "pinned" | "out";
+
+/** Each pick: its row chip, the toggle's mark, and what it means. The toggle goes auto → pinned → left out → auto. */
+const PICKS: Record<PromptPick, { chip: string; mark: string; note: string; next: PromptPick }> = {
+  auto: { chip: "", mark: "○", note: "Sent with the prompt when it is named in the text, or always included", next: "pinned" },
+  pinned: { chip: "pinned", mark: "●", note: "Pinned: sent with this chapter's prompt even when the text doesn't name it", next: "out" },
+  out: { chip: "left out", mark: "⊘", note: "Left out of this chapter's prompt, even when the text names it", next: "auto" },
+};
+
+/** The small toggle beside a codex row: pins the entry to the chapter's prompt, leaves it out, or puts it back to auto. */
+function PickButton({ id, name, pick, overrides }: { id: string; name: string; pick: PromptPick; overrides: DeskOverrides | null }) {
+  const next = PICKS[pick].next;
+  const label = { pinned: `Pin ${name} to the prompt`, out: `Leave ${name} out of the prompt`, auto: `Let the text decide whether ${name} goes into the prompt` }[next];
+  return (
+    <button
+      type="button"
+      className={`desk-pick ${pick}`}
+      aria-label={label}
+      title={`${PICKS[pick].note}. Click: ${label.charAt(0).toLowerCase()}${label.slice(1)}.`}
+      disabled={!overrides}
+      onClick={() => {
+        if (!overrides) return;
+        const { include, exclude } = overrides.value;
+        const without = (list: string[]) => list.filter((k) => k !== id);
+        overrides.set({ include: next === "pinned" ? [...without(include), id] : without(include), exclude: next === "out" ? [...without(exclude), id] : without(exclude) });
+      }}
+    >
+      <span aria-hidden="true">{PICKS[pick].mark}</span>
+    </button>
   );
 }
 

@@ -7243,7 +7243,10 @@ main:has(.desk) {
 
 .desk-row {
   display: grid;
-  grid-template-columns: 1.75rem minmax(0, 1fr) auto;
+  /* The icon, the name, then a column for each chip or badge it has (held, pinned, waiting suggestions). */
+  grid-template-columns: 1.75rem minmax(0, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: auto;
   gap: 0.5rem;
   align-items: center;
   width: 100%;
@@ -7594,6 +7597,53 @@ main:has(.desk) {
 
 .desk-row .desk-chip {
   flex: none;
+}
+
+/* A codex row and its prompt toggle (auto ○, pinned ●, left out ⊘); pinned and left-out rows are marked. */
+.desk-row-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.desk-pick {
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.desk-pick:hover:not(:disabled),
+.desk-pick:focus-visible {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--fg);
+}
+
+.desk-pick.auto {
+  opacity: 0.55;
+}
+
+.desk-pick.pinned {
+  color: var(--accent);
+}
+
+.desk-pick-chip.pinned {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.desk-pick-chip.out {
+  background: color-mix(in srgb, var(--muted) 20%, transparent);
+}
+
+.pick-out .desk-row-name {
+  color: var(--muted);
+  text-decoration: line-through;
 }
 
 /* The story column in Codex mode: the path's blocks, the "→ …" line and the chapter's box, "What happens next?". */

@@ -104,7 +104,15 @@ export type Desk = {
    * codex columns hold their changes there, and Post saves them at the new chapter.
    */
   onHeld?: (held: HeldCodex | null) => void;
+  /**
+   * The draft's hand-picked codex entries for the prompt (pinned in, or left out: what "Codex for this prompt" sets on
+   * the Edit and Write pages), null while the draft loads, with a way to change them: the desk's codex rows.
+   */
+  onOverrides?: (o: DeskOverrides | null) => void;
 };
+
+/** A draft's codex overrides for the prompt, and how to change them. */
+export type DeskOverrides = { value: CodexOverrides; set: (next: CodexOverrides) => void };
 
 /** Codex changes held in a draft (entries and facts), and how to change them. */
 export type HeldCodex = {
@@ -492,6 +500,15 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
         }),
     });
   }, [onHeld, draftReady, heldChanges, heldFacts]);
+
+  // The writing desk's codex rows pin entries to the prompt, or leave them out, in the draft.
+  const onOverrides = desk?.onOverrides;
+  const overrides = draft?.codexOverrides;
+  useEffect(() => {
+    if (!onOverrides) return;
+    if (!draftReady) return onOverrides(null);
+    onOverrides({ value: overrides ?? { include: [], exclude: [] }, set: (next) => setDraft((d) => (d ? { ...d, codexOverrides: next } : d)) });
+  }, [onOverrides, draftReady, overrides]);
 
   // The writing desk reads the draft's words to list the codex entries named in it.
   const deskText = draft ? [draft.title, draft.prompt, draft.body].join("\n") : null;
