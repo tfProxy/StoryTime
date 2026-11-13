@@ -29,11 +29,13 @@ const codexAt = async (chapter, name) => (await send("GET", `/api/chapters/${cha
 const ai = await useMockAi(BASE);
 const browser = await launch();
 let A = null;
+let R0 = null;
 try {
   // Root -> A (-> an unwritten choice). Wren, the Hollow and the Lantern start at the root; Oda at A.
   const story = await post("/api/stories", { title: "Desk Tale", premise: "p", chapter: { title: "Root", body: "Wren stood in the Hollow.", choices: ["Go on"] } });
   const sid = story.story_id;
   const R = story.chapter_id;
+  R0 = R;
   A = (await post("/api/chapters", { choice_id: (await send("GET", `/api/chapters/${R}`)).choices[0].id, title: "Chapter A", body: "Wren walked with Oda. Oda laughed.", choices: ["Onward"] })).chapter_id;
   const make = async (at, name, type, aliases = []) => (await post("/api/codex", { anchor_chapter_id: at, op: "create", name, type, aliases, content: "" })).entry_id;
   const wren = await make(R, "Wren", "character", ["Little Bird"]);
@@ -41,6 +43,9 @@ try {
   await make(R, "Lantern", "item");
   const oda = await make(A, "Oda", "character");
   await post("/api/codex/facts", { anchor_chapter_id: R, entry_id: wren, op: "set", aspect: "Hair", text: "short and brown" });
+  // Wren is human until Chapter A, where she becomes a vixen; Pip is a character with a keyword and no form.
+  await post("/api/codex/form", { chapter_id: A, entry_id: wren, base_form: "human", form: { name: "vixen", anchor_chapter_id: A } });
+  await make(R, "Pip", "character", ["Sparrow"]);
   // Two suggestions for Oda, from reading Chapter A, and one idea the AI made up for Wren
   const rev = (await send("GET", `/api/chapters/${A}`)).chapter.revision;
   await post(`/api/chapters/${A}/codex-suggestions`, {
@@ -90,6 +95,13 @@ try {
   const odaRow = side.locator(".desk-group", { hasText: "Characters" }).locator(".desk-row", { hasText: "Oda" });
   ok((await odaRow.locator(".desk-badge").innerText()).startsWith("2"), "Oda's row shows 2 suggestions waiting");
   ok((await side.locator(".desk-group", { hasText: "Places" }).locator(".desk-badge").count()) === 0, "entries with none waiting have no badge");
+
+  // the small line under a row's name: a character's form as of this chapter, else its first keyword, else its type
+  const note = (name) => side.locator(".desk-group", { hasText: "Characters" }).locator(".desk-row", { has: page.locator(".desk-row-name", { hasText: new RegExp(`^${name}$`) }) }).locator("small");
+  ok((await note("Wren").innerText()) === "Character (vixen)", "a character's row shows her form in this chapter: Character (vixen)");
+  ok((await note("Pip").innerText()) === "Sparrow", "a character with no form shows her first keyword");
+  ok((await note("Oda").innerText()) === "Character", "…or the type when there is no keyword either");
+  ok((await side.locator(".desk-group", { hasText: "Places" }).locator(".desk-row small").innerText()) === "Place", "a place is unchanged");
 
   // a group folds
   await side.locator(".desk-group > summary", { hasText: "Places" }).click();
@@ -211,7 +223,7 @@ try {
   ok((await sideHead.getByLabel("Search entries").count()) === 1 && (await sideHead.getByRole("button", { name: "New entry" }).count()) === 1 && (await sideHead.getByRole("button", { name: "Fold the codex" }).count()) === 0, "the search row has the search box and + , and no «");
   await side.getByRole("button", { name: "Fold the codex" }).click();
   const rail = page.locator("aside.desk-rail");
-  ok((await rail.innerText()).toLowerCase().includes("codex · 4 entries") && (await page.getByLabel("Search entries").count()) === 0, "the codex folds to a rail");
+  ok((await rail.innerText()).toLowerCase().includes("codex · 5 entries") && (await page.getByLabel("Search entries").count()) === 0, "the codex folds to a rail");
   const railBox = await rail.boundingBox();
   ok(railBox.width < 60, "…a narrow one");
   await rail.getByRole("button").click();
@@ -250,6 +262,13 @@ try {
   ok(true, "the menu's New entry opens the new-entry form");
   await page.locator('section.desk-entry[aria-label="New entry"]').getByRole("button", { name: "Close" }).click();
 
+  // ---- an earlier chapter shows the earlier form ----
+  await page.goto(`${BASE}/c/${R}/desk`);
+  const sideR = page.locator("aside.desk-side");
+  await sideR.waitFor();
+  const wrenR = sideR.locator(".desk-group", { hasText: "Characters" }).locator(".desk-row", { has: page.locator(".desk-row-name", { hasText: /^Wren$/ }) }).locator("small");
+  ok((await wrenR.innerText()) === "Character (human)", "on the earlier chapter the desk shows the earlier form: Character (human)");
+
   // ---- phone width: nothing scrolls sideways ----
   // (On a phone the codex is a sheet from the bottom bar, its entries to read: see desk-phone.e2e.mjs.)
   await page.setViewportSize({ width: 390, height: 800 });
@@ -265,6 +284,7 @@ try {
   await clearQueue();
   await send("PUT", "/api/queue/paused", { paused: false });
   if (A) await fetch(`${BASE}/api/drafts/${encodeURIComponent(`edit:${A}`)}`, { method: "DELETE" });
+  if (R0) await fetch(`${BASE}/api/drafts/${encodeURIComponent(`edit:${R0}`)}`, { method: "DELETE" });
   await browser.close();
   await ai.restore();
 }
