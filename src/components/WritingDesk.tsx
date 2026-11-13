@@ -9,6 +9,7 @@ import {
   applyDraft,
   compareEntry,
   DRAFT_ANCHOR,
+  FACT_LIMITS,
   foldCodex,
   isDraftEntry,
   retiredEntries,
@@ -195,8 +196,11 @@ export default function WritingDesk({
   const scrolled = useRef(pathBlocks.length === 0);
   // The draft's title, prompt and text, as the editor has them: "In this chapter" lists the entries they name.
   const [text, setText] = useState("");
-  const onText = useCallback((t: string) => {
+  // The chapter's text alone: the names found in it are listed under it.
+  const [body, setBody] = useState("");
+  const onText = useCallback((t: string, b: string) => {
     setText(t);
+    setBody(b);
     if (scrolled.current) return;
     scrolled.current = true;
     requestAnimationFrame(() => hereRef.current?.scrollIntoView({ block: "start" }));
@@ -252,6 +256,11 @@ export default function WritingDesk({
   const [query, setQuery] = useState("");
   // The entry open in the entry column, or "new" for the new-entry form.
   const [openId, setOpenId] = useState<string | null>(null);
+  // The words selected in the chapter's text box, and "Add as a fact…" once chosen: the words become a new fact's quote,
+  // in the entry picked for it (`quoteN` counts the times, so the entry's form opens afresh each time).
+  const [selected, setSelected] = useState("");
+  const [quote, setQuote] = useState<string | null>(null);
+  const [quoteN, setQuoteN] = useState(0);
   // A new chapter's codex changes, held in its draft: the codex shows them on top of the one it follows.
   const [held, setHeld] = useState<HeldCodex | null>(null);
   const holding: Holding | null =
@@ -282,6 +291,42 @@ export default function WritingDesk({
   const inChapter = shown.filter((e) => mentions(e, text) || promptPick(e.entry_id) === "pinned");
   const open = openId && openId !== "new" ? entries.find((e) => e.entry_id === openId) : undefined;
   const here = path[path.length - 1];
+
+  // The entries named in the chapter's text (by name or keyword, as "In this chapter"), listed under it.
+  const named = entries.filter((e) => mentions(e, body));
+  // A selection still in the text (the box may have been switched to reading, or the words typed over).
+  const selection = selected.trim() && body.includes(selected) ? selected.trim() : "";
+  /** "Add as a fact…": the words, as a quote, in the entry they name (or the one open), else one to choose. */
+  const startQuote = (words: string) => {
+    const hit = entries.find((e) => mentions(e, words));
+    setQuote(words.slice(0, FACT_LIMITS.quote));
+    setQuoteN((n) => n + 1);
+    setOpenId(hit?.entry_id ?? (open ? open.entry_id : null));
+  };
+  const belowText =
+    named.length > 0 || selection ? (
+      <div className="row desk-named" role="group" aria-label="Codex entries named in the text">
+        {named.length > 0 && <span className="desk-label">Named in the text</span>}
+        {named.map((e) => (
+          <button
+            key={e.entry_id}
+            type="button"
+            className={e.entry_id === openId ? "desk-name on" : "desk-name"}
+            aria-current={e.entry_id === openId ? "true" : undefined}
+            onClick={() => setOpenId(e.entry_id)}
+          >
+            {e.name}
+          </button>
+        ))}
+        <span className="desk-spacer" />
+        {selection && (
+          // Pressing it would take the focus, and the selection's highlight, from the text box: it keeps both.
+          <button type="button" className="secondary desk-add-fact" onMouseDown={(e) => e.preventDefault()} onClick={() => startQuote(selection)}>
+            Add as a fact…
+          </button>
+        )}
+      </div>
+    ) : null;
 
   const row = (e: CodexEntry) => {
     const n = waiting[e.entry_id] ?? 0;
@@ -337,7 +382,38 @@ export default function WritingDesk({
   // (`desk-phone-<sheet>`), or Illustrate mode, full screen. See DeskPhone.
   const phoneSheet = phone && !illus ? sheet : null;
   const onPhone = phone ? [phoneSheet ? `desk-phone-${phoneSheet}` : "", phoneSheet || illus ? "desk-phone-open" : ""] : [];
-  const classes = (illus ? ["desk", "desk-illus", ...onPhone] : ["desk", folded ? "desk-folded" : "", openId ? "desk-has-entry" : "", ...onPhone]).filter(Boolean).join(" ");
+  const classes = (illus ? ["desk", "desk-illus", ...onPhone] : ["desk", folded ? "desk-folded" : "", openId || quote !== null ? "desk-has-entry" : "", ...onPhone]).filter(Boolean).join(" ");
+  // "Add as a fact…": the quote, and which entry it goes in (the entry column then shows that entry's new-fact form).
+  const quotePick = quote !== null && (
+    <div className="desk-quote-pick" role="group" aria-label="Add as a fact">
+      <div className="row">
+        <label className="desk-quote-entry">
+          Add as a fact of
+          <select aria-label="Entry for the fact" value={open ? open.entry_id : ""} onChange={(e) => setOpenId(e.target.value || null)}>
+            <option value="">Choose an entry…</option>
+            {GROUPS.map((g) => {
+              const list = entries.filter((e) => g.types.includes(e.type));
+              return (
+                list.length > 0 && (
+                  <optgroup key={g.title} label={g.title}>
+                    {list.map((e) => (
+                      <option key={e.entry_id} value={e.entry_id}>
+                        {e.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )
+              );
+            })}
+          </select>
+        </label>
+        <button type="button" className="secondary" onClick={() => setQuote(null)}>
+          Cancel
+        </button>
+      </div>
+      {!open && <blockquote className="fact-quote">“{quote}”</blockquote>}
+    </div>
+  );
   return (
     <>
     <DeskBar bar={bar} note={note} onSlot={setMenuSlot} />
@@ -384,13 +460,21 @@ export default function WritingDesk({
           )}
         </section>
       )}
+      {!illus && quote !== null && !open && openId !== "new" && (
+        <section className="desk-entry" aria-label="Add as a fact">
+          <div className="desk-entry-inner">{quotePick}</div>
+        </section>
+      )}
       {!illus && open && (
         <section className="desk-entry" aria-label={`Codex entry: ${open.name}`}>
+          {quotePick}
           {newChapter && !holding ? (
             <p className="meta">Loading the draft…</p>
           ) : (
             <DeskEntry
-              key={open.entry_id}
+              key={`${open.entry_id}|${quoteN}`}
+              quote={quote}
+              onQuoteDone={() => setQuote(null)}
               entry={open}
               entries={entries}
               codex={{ ...codex, ops: applied.ops, facts: applied.facts }}
@@ -407,13 +491,13 @@ export default function WritingDesk({
       {/* The path, the box and "What happens next?" belong to Codex mode; Illustrate shows the chapter's pictures. */}
       <div className="desk-story" hidden={illus}>
         <h1 className="visually-hidden">{editor ? `Edit “${here.title}”` : "New chapter"}</h1>
-        <DeskPath storyId={storyId} blocks={pathBlocks} />
+        <DeskPath storyId={storyId} blocks={pathBlocks} onQuote={startQuote} />
         <div className="desk-here" ref={hereRef}>
           {editor ? (
             // An Update makes a new revision: the box starts again from the chapter, its drafts kept with it.
-            <ChapterEditEntry key={editor.baseRevision} {...editor} desk={{ onText, menuSlot, onNote: setNote, onOverrides: setOverrides }} />
+            <ChapterEditEntry key={editor.baseRevision} {...editor} desk={{ onText, menuSlot, onNote: setNote, onOverrides: setOverrides, onSelection: setSelected, belowText }} />
           ) : newChapter ? (
-            <ChapterEditor {...newChapter} desk={{ onText, menuSlot, onNote: setNote, onHeld: setHeld, onOverrides: setOverrides }} />
+            <ChapterEditor {...newChapter} desk={{ onText, menuSlot, onNote: setNote, onHeld: setHeld, onOverrides: setOverrides, onSelection: setSelected, belowText }} />
           ) : null}
         </div>
         {next}
@@ -570,7 +654,12 @@ function DeskEntry({
   waiting,
   inbox,
   onClose,
+  quote = null,
+  onQuoteDone,
 }: {
+  /** "Add as a fact…": the Facts tab opens with the new-fact form, these words its quote. */
+  quote?: string | null;
+  onQuoteDone?: () => void;
   entry: CodexEntry;
   entries: CodexEntry[];
   /** On a new chapter, `ops` and `facts` have the draft's held changes in them. */
@@ -608,7 +697,7 @@ function DeskEntry({
   const heldHere = !!holding && (holding.held.changes.some((c) => c.entry_id === entry.entry_id) || holding.held.facts.some((f) => f.entry_id === entry.entry_id));
   const discardHeld = () =>
     holding?.held.update((h) => ({ changes: h.changes.filter((c) => c.entry_id !== entry.entry_id), facts: h.facts.filter((f) => f.entry_id !== entry.entry_id) }));
-  const [tab, setTab] = useState<Tab>(waiting > 0 ? "suggestions" : "facts");
+  const [tab, setTab] = useState<Tab>(waiting > 0 && !quote ? "suggestions" : "facts");
   const [panel, setPanel] = useState<"details" | "icon" | "compare" | null>(null);
   const [savedNote, setSavedNote] = useState(false);
   const icon = codex.icons[entry.entry_id] ?? null;
@@ -770,6 +859,8 @@ function DeskEntry({
             laterForm={holding ? null : (codex.laterForms[entry.entry_id] ?? null)}
             formChapters={holding ? [holding.here] : codex.formChapters}
             suggestions={[]}
+            quote={quote}
+            onQuoteDone={onQuoteDone}
             onSaved={refresh}
             onError={setError}
             hold={

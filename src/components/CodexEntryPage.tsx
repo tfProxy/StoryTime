@@ -575,9 +575,17 @@ export function FactsTable({
   onError,
   desk = false,
   hold,
+  quote = null,
+  onQuoteDone,
 }: {
   /** On the writing desk (inside its Facts tab): no heading, the buttons first, and no Flesh out. */
   desk?: boolean;
+  /**
+   * The desk's "Add as a fact…": words chosen in the chapter's text. The new-fact form starts open with them as its quote
+   * (saved with the fact); `onQuoteDone` is called when that form is saved or cancelled.
+   */
+  quote?: string | null;
+  onQuoteDone?: () => void;
   /**
    * The desk on a chapter not posted yet: `chapterId` is DRAFT_ANCHOR (the new chapter, last on `path`), and a change
    * made there is held in the draft with this, to be saved by Post. A correction (at an earlier chapter) is saved at once.
@@ -600,7 +608,12 @@ export function FactsTable({
 }) {
   const settings = useSettings();
   // A fact's id while it is being changed, "new" while one is being added.
-  const [editing, setEditing] = useState<string | null>(null);
+  const [editing, setEditingState] = useState<string | null>(quote ? "new" : null);
+  // The quote belongs to the new-fact form it opened: closing that form ends it.
+  const setEditing = (id: string | null) => {
+    if (quote && editing === "new" && id !== "new") onQuoteDone?.();
+    setEditingState(id);
+  };
   const [history, setHistory] = useState<string[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [fleshOpen, setFleshOpen] = useState(false);
@@ -699,6 +712,7 @@ export function FactsTable({
       key={fact?.fact_id ?? "new"}
       entry={entry}
       fact={fact}
+      quote={fact ? null : quote}
       chapterId={chapterId}
       here={here}
       start={start}
@@ -977,6 +991,7 @@ export function FactsTable({
 function FactEditor({
   entry,
   fact,
+  quote = null,
   chapterId,
   here,
   start,
@@ -987,6 +1002,8 @@ function FactEditor({
 }: {
   entry: CodexEntry;
   fact: LiveFact | null;
+  /** A new fact's quote from the chapter's text (the desk's "Add as a fact…"), shown above the form and saved with it. */
+  quote?: string | null;
   chapterId: string;
   here: string;
   start: Chapter;
@@ -1020,7 +1037,7 @@ function FactEditor({
       aspect: replaces ? replaces.aspect : aspect.trim(),
       form,
       text: text.trim(),
-      quote: fact && !split ? fact.quote : "",
+      quote: fact && !split ? fact.quote : (quote ?? ""),
       fact_id: split ? undefined : (fact?.fact_id ?? replaces?.fact_id),
       anchor,
     });
@@ -1028,6 +1045,12 @@ function FactEditor({
 
   return (
     <div className="fact-form ef-editor">
+      {quote && (
+        <figure className="ef-quote" aria-label="Quote from the text">
+          <figcaption className="meta">From the text, kept with the fact as its quote:</figcaption>
+          <blockquote className="fact-quote">“{quote}”</blockquote>
+        </figure>
+      )}
       <label>
         Aspect
         <AspectPicker type={entry.type} value={aspect} onChange={setAspect} have={entry.facts} />

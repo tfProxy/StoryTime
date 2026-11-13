@@ -7539,6 +7539,82 @@ main:has(.desk) {
   gap: 0.4rem;
 }
 
+/*
+ * Under the chapter's text: the codex entries it names, each opening its entry, and "Add as a fact…" while words are
+ * selected. It stays at the foot of the window while the box is scrolled through, so the button is in reach of a
+ * selection anywhere in a long text.
+ */
+.desk-named {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.4rem;
+  margin: -0.2rem -0.3rem 0;
+  padding: 0.35rem 0.3rem;
+  background: var(--card);
+  border-top: 1px solid var(--line);
+}
+
+.desk-named .desk-label {
+  margin: 0;
+}
+
+.desk-name {
+  padding: 0.1rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  color: var(--accent);
+  font-size: 0.85rem;
+}
+
+.desk-name:hover,
+.desk-name.on {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.desk-add-fact {
+  padding: 0.2rem 0.7rem;
+  font-size: 0.85rem;
+}
+
+.desk-block-quote {
+  justify-content: flex-end;
+}
+
+/* "Add as a fact…" in the entry column: which entry the quote goes in. */
+.desk-quote-pick {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.desk-quote-pick .row {
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: end;
+}
+
+.desk-quote-entry {
+  display: grid;
+  gap: 0.2rem;
+  flex: 1 1 12rem;
+  font-size: 0.85rem;
+}
+
+.ef-quote {
+  margin: 0;
+}
+
+.ef-quote blockquote {
+  margin: 0.2rem 0 0;
+}
+
 .desk-spacer {
   flex: 1 1 0;
 }

@@ -25,7 +25,23 @@ export type PathBlock = {
  * starts unfolded; after a move within the desk they are folded as they were (see deskMove.ts). "Unfold all" or
  * "Fold all" at the top.
  */
-export default function DeskPath({ storyId, blocks }: { storyId: string; blocks: PathBlock[] }) {
+export default function DeskPath({ storyId, blocks, onQuote }: { storyId: string; blocks: PathBlock[]; onQuote?: (words: string) => void }) {
+  // Words selected in an unfolded block's text, and the block: "Add as a fact…" shows under that block's text.
+  const [picked, setPicked] = useState<{ id: string; words: string } | null>(null);
+  const quoting = !!onQuote;
+  useEffect(() => {
+    if (!quoting) return;
+    const onChange = () => {
+      const sel = document.getSelection();
+      const words = sel && !sel.isCollapsed ? sel.toString().trim() : "";
+      const at = (n: Node | null | undefined) => (n instanceof Element ? n : n?.parentElement)?.closest<HTMLElement>(".desk-block-text[data-block]");
+      const from = at(sel?.anchorNode);
+      const id = words && from && from === at(sel?.focusNode) ? from.dataset.block! : null;
+      setPicked((p) => (id ? (p?.id === id && p.words === words ? p : { id, words }) : null));
+    };
+    document.addEventListener("selectionchange", onChange);
+    return () => document.removeEventListener("selectionchange", onChange);
+  }, [quoting]);
   const pathname = usePathname();
   const query = useSearchParams().toString();
   // On the server (a full load is always from outside) and on arriving from outside: all unfolded.
@@ -76,8 +92,16 @@ export default function DeskPath({ storyId, blocks }: { storyId: string; blocks:
                 </DeskLink>
               </div>
               {open && (
-                <div className="desk-block-text">
+                <div className="desk-block-text" data-block={b.id}>
                   <Prose text={b.body} />
+                  {onQuote && picked?.id === b.id && (
+                    <div className="row desk-block-quote">
+                      {/* Pressing it keeps the selection (the focus would clear it). */}
+                      <button type="button" className="secondary desk-add-fact" onMouseDown={(e) => e.preventDefault()} onClick={() => onQuote(picked.words)}>
+                        Add as a fact…
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </article>

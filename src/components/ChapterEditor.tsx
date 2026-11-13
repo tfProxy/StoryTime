@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -96,7 +96,12 @@ type Props = {
  * `onNote` shows a line in the top bar (after an Update, say).
  */
 export type Desk = {
-  onText: (text: string) => void;
+  /** `text`: the title, prompt and text together; `body`: the chapter's text alone (the names listed under it). */
+  onText: (text: string, body: string) => void;
+  /** The text selected in the chapter's text box ("" when nothing is): the desk offers "Add as a fact…" for it. */
+  onSelection?: (selected: string) => void;
+  /** Shown right under the chapter's text: the desk's names found in it, and "Add as a fact…". */
+  belowText?: ReactNode;
   menuSlot?: HTMLElement | null;
   onNote?: (note: string) => void;
   /**
@@ -512,10 +517,11 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
 
   // The writing desk reads the draft's words to list the codex entries named in it.
   const deskText = draft ? [draft.title, draft.prompt, draft.body].join("\n") : null;
+  const deskBody = draft?.body ?? "";
   const onDeskText = desk?.onText;
   useEffect(() => {
-    if (deskText !== null) onDeskText?.(deskText);
-  }, [deskText, onDeskText]);
+    if (deskText !== null) onDeskText?.(deskText, deskBody);
+  }, [deskText, deskBody, onDeskText]);
 
   if (!draft) return <p className="meta">Loading draft…</p>;
 
@@ -1059,6 +1065,14 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
           value={draft.body}
           maxLength={LIMITS.body}
           onChange={(e) => patch({ body: e.target.value })}
+          onSelect={
+            desk?.onSelection
+              ? (e) => {
+                  const t = e.currentTarget;
+                  desk.onSelection?.(t.value.slice(t.selectionStart, t.selectionEnd));
+                }
+              : undefined
+          }
         />
       )}
     </div>
@@ -1442,6 +1456,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
             </span>
           )}
           {bodyField}
+          {desk.belowText}
           {saveState}
 
           <button type="button" className="desk-fold" aria-expanded={summaryOpen} onClick={openSummary}>
