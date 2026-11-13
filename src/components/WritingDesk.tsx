@@ -341,6 +341,13 @@ export default function WritingDesk({
       </div>
     ) : null;
 
+  // The small line under a row's name: a character's form as of this chapter ("Character (Anthro Fox)"); otherwise its
+  // first keyword, or its type.
+  const rowNote = (e: CodexEntry) => {
+    const form = e.type === "character" ? (e.form?.name ?? e.baseForm) : null;
+    return form ? `${TYPE_LABELS[e.type]} (${form})` : (e.aliases[0] ?? TYPE_LABELS[e.type]);
+  };
+
   const row = (e: CodexEntry) => {
     const n = waiting[e.entry_id] ?? 0;
     const icon = icons[e.entry_id];
@@ -358,7 +365,7 @@ export default function WritingDesk({
           )}
           <span className="desk-row-text">
             <span className="desk-row-name">{e.name}</span>
-            <small>{e.aliases[0] ?? TYPE_LABELS[e.type]}</small>
+            <small>{rowNote(e)}</small>
           </span>
           {e.shared_entry_id && (
             <span className="desk-chip" title="From the shared codex: changes to the shared entry reach this story too">
