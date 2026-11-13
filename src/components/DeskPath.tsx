@@ -1,8 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
-import { cameFromDesk, clearDeskMove, readFolds, writeFolds } from "@/lib/deskMove";
+import { clearDeskMove } from "@/lib/deskMove";
 import DeskLink from "./DeskLink";
 import DeskVia from "./DeskVia";
 import Prose from "./Prose";
@@ -28,11 +27,10 @@ export type PathBlock = {
 
 /**
  * The path above the chapter's box: each earlier chapter is a block that folds. Folded, it shows its number, title and
- * summary; unfolded, its title and text only. ✎ makes it the chapter on the desk. Opened from outside, every block
- * starts unfolded; after a move within the desk they are folded as they were (see deskMove.ts). "Unfold all" or
- * "Fold all" at the top.
+ * summary; unfolded, its title and text only. ✎ makes it the chapter on the desk. Every block starts folded, however
+ * the desk was opened; "Unfold all" or "Fold all" at the top.
  */
-export default function DeskPath({ storyId, blocks, onQuote }: { storyId: string; blocks: PathBlock[]; onQuote?: (words: string) => void }) {
+export default function DeskPath({ blocks, onQuote }: { storyId?: string; blocks: PathBlock[]; onQuote?: (words: string) => void }) {
   // Words selected in an unfolded block's text, and the block: "Add as a fact…" shows under that block's text.
   const [picked, setPicked] = useState<{ id: string; words: string } | null>(null);
   const quoting = !!onQuote;
@@ -49,22 +47,10 @@ export default function DeskPath({ storyId, blocks, onQuote }: { storyId: string
     document.addEventListener("selectionchange", onChange);
     return () => document.removeEventListener("selectionchange", onChange);
   }, [quoting]);
-  const pathname = usePathname();
-  const query = useSearchParams().toString();
-  // On the server (a full load is always from outside) and on arriving from outside: all unfolded.
-  const [folds, setFolds] = useState<Record<string, boolean>>(() => {
-    const all = Object.fromEntries(blocks.map((b) => [b.id, true]));
-    if (typeof window === "undefined" || !cameFromDesk(query ? `${pathname}?${query}` : pathname)) return all;
-    const kept = readFolds(storyId);
-    // A chapter the desk hasn't shown as a block before (the one just left, going down) starts folded.
-    return Object.fromEntries(blocks.map((b) => [b.id, kept[b.id] === true]));
-  });
-  useEffect(() => {
-    clearDeskMove();
-    writeFolds(storyId, { ...readFolds(storyId), ...folds });
-    // Only on arriving: later changes are written as they are made.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Every chapter opened on the desk (from outside or by a move within it) starts with the earlier chapters folded, so
+  // the chapter being edited is what shows (the owner's choice, 2026-11-13).
+  const [folds, setFolds] = useState<Record<string, boolean>>({});
+  useEffect(() => clearDeskMove(), []);
 
   // "since “chapter”" on a fact (showDeskChapter): an earlier chapter's block unfolds and comes into view; any other
   // chapter is the one on the desk, so its box does.
@@ -75,23 +61,16 @@ export default function DeskPath({ storyId, blocks, onQuote }: { storyId: string
         document.querySelector(".desk-box")?.scrollIntoView({ behavior: "smooth", block: "start" });
         return;
       }
-      setFolds((f) => {
-        const next = { ...f, [id]: true };
-        writeFolds(storyId, { ...readFolds(storyId), ...next });
-        return next;
-      });
+      setFolds((f) => ({ ...f, [id]: true }));
       // After the block has unfolded, so it is scrolled to at its full height.
       requestAnimationFrame(() => document.getElementById(`desk-block-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
     };
     window.addEventListener(SHOW_CHAPTER, onShow);
     return () => window.removeEventListener(SHOW_CHAPTER, onShow);
-  }, [blocks, storyId]);
+  }, [blocks]);
 
   if (blocks.length === 0) return null;
-  const set = (next: Record<string, boolean>) => {
-    setFolds(next);
-    writeFolds(storyId, { ...readFolds(storyId), ...next });
-  };
+  const set = setFolds;
   const anyOpen = blocks.some((b) => folds[b.id]);
   return (
     <section className="desk-path" aria-label="The path so far">

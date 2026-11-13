@@ -7601,6 +7601,11 @@ button.link-button.ef-since-link {
   min-width: 0;
 }
 
+/* It takes focus on arriving (for the keyboard and screen readers); no ring around the whole chapter. */
+.desk-here:focus {
+  outline: none;
+}
+
 .desk-box-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

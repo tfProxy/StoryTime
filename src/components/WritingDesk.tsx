@@ -203,7 +203,11 @@ export default function WritingDesk({
     setBody(b);
     if (scrolled.current) return;
     scrolled.current = true;
-    requestAnimationFrame(() => hereRef.current?.scrollIntoView({ block: "start" }));
+    // Focus goes to the chapter too (its block, not a text box, so a phone's keyboard doesn't open).
+    requestAnimationFrame(() => {
+      hereRef.current?.scrollIntoView({ block: "start" });
+      hereRef.current?.focus({ preventScroll: true });
+    });
   }, []);
   // Back and forward from here to another desk is a move within the desk too. It is heard from the Navigation API's
   // "navigate" event, which comes before the page it goes to is shown (by popstate the router has already shown it, and
@@ -503,7 +507,7 @@ export default function WritingDesk({
       <div className="desk-story" hidden={illus}>
         <h1 className="visually-hidden">{editor ? `Edit “${here.title}”` : "New chapter"}</h1>
         <DeskPath storyId={storyId} blocks={pathBlocks} onQuote={phone ? undefined : startQuote} />
-        <div className="desk-here" ref={hereRef}>
+        <div className="desk-here" ref={hereRef} tabIndex={-1}>
           {editor ? (
             // An Update makes a new revision: the box starts again from the chapter, its drafts kept with it.
             <ChapterEditEntry key={editor.baseRevision} {...editor} desk={{ onText, menuSlot, onNote: setNote, onOverrides: setOverrides, onSelection: setSelected, belowText }} />
