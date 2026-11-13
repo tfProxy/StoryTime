@@ -16,10 +16,11 @@ import { getStoryChapters, laterChaptersFrom } from "@/lib/tree";
 
 export const dynamic = "force-dynamic";
 
-// The writing desk for a posted chapter: the codex beside the chapter's box. (It stands next to the Edit page until
-// it replaces it.) Codex changes made here are saved at once, at this chapter.
+// The writing desk for a posted chapter: the codex beside the chapter's box (the reading page's Edit opens it; the old
+// /c/<id>/edit redirects here). Codex changes made here are saved at once, at this chapter.
 // With ?choice=<choice id> (an unwritten choice of this chapter) or ?new=<choice text> (a new choice on it), the desk
-// writes the chapter that follows, as the Write page does (and with the same draft); Post chapter makes it.
+// writes the chapter that follows (the old /c/<id>/write redirects here, with the same draft); Post chapter makes it.
+// `?ai=1` on a new chapter starts a Generate as soon as its (empty) draft loads.
 // Above the box, the earlier chapters on the path are blocks that fold; under a posted chapter's box, "What happens
 // next?" lists its choices, each opening its chapter on the desk.
 // `?side=illustrate` opens the side column in Illustrate mode, with the chapter's pictures in the story column.
@@ -28,7 +29,7 @@ export default async function DeskPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ choice?: string; new?: string; posted?: string; side?: string }>;
+  searchParams: Promise<{ choice?: string; new?: string; posted?: string; side?: string; ai?: string }>;
 }) {
   const { id } = await params;
   const query = await searchParams;
@@ -65,7 +66,7 @@ export default async function DeskPage({
       key={id}
       bar={
         <>
-          <Link href={`/c/${id}`}>← Back to “{chapter.title}”</Link> · <Link href={`/c/${id}/edit`}>Edit page</Link>
+          <Link href={`/c/${id}`}>← Back to “{chapter.title}”</Link>
         </>
       }
       note={query.posted ? "Posted · the summary and the codex check follow in the background" : null}
@@ -105,7 +106,7 @@ export default async function DeskPage({
 }
 
 /** The desk for the chapter after `path`'s last, by an unwritten choice (?choice=) or a new one (?new=). */
-function newChapter(story: Story, path: Chapter[], query: { choice?: string; new?: string }) {
+function newChapter(story: Story, path: Chapter[], query: { choice?: string; new?: string; ai?: string }) {
   const parent = path[path.length - 1];
   const choices = getChoices(parent.id);
   let target: { kind: "fill"; choiceId: string; label: string; parentChapterId: string } | { kind: "new"; parentChapterId: string; label: string };
@@ -124,9 +125,9 @@ function newChapter(story: Story, path: Chapter[], query: { choice?: string; new
     // An empty ?new= ("Draft a different idea" on the desk) starts with no choice text: the "→ …" line asks for it.
     target = { kind: "new", parentChapterId: parent.id, label: (query.new ?? "").trim() };
   }
-  // The same draft as the Write page's, which the Drafts list opens.
+  // The same draft as the old Write page's, which the Drafts list opens.
   const draftKey = target.kind === "fill" ? `fill:${target.choiceId}` : `new:${parent.id}`;
-  const resumeHref = target.kind === "fill" ? `/c/${parent.id}/write?choice=${target.choiceId}` : `/c/${parent.id}/write`;
+  const resumeHref = target.kind === "fill" ? `/c/${parent.id}/desk?choice=${target.choiceId}` : `/c/${parent.id}/desk?new=`;
   const draftLabel = target.kind === "fill" ? `${story.title}: “${target.label}”` : `${story.title}: new choice after “${parent.title}”`;
   const codex = newChapterCodex(story, path);
   return (
@@ -150,7 +151,8 @@ function newChapter(story: Story, path: Chapter[], query: { choice?: string; new
         draftKey,
         resumeHref,
         draftLabel,
-        // The codex the AI is sent folds in the changes held in the draft, as on the Write page.
+        autoGenerate: Boolean(query.ai),
+        // The codex the AI is sent folds in the changes held in the draft.
         codexPanel: { chapterId: parent.id, path: codex.path, ops: codex.ops, facts: codex.facts },
       }}
     />

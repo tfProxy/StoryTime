@@ -62,7 +62,7 @@ export default function ChapterEditEntry({ story, ...p }: ChapterEditEntryProps)
         context={p.context}
         storyId={p.storyId}
         draftKey={`edit:${p.chapterId}`}
-        resumeHref={`/c/${p.chapterId}/edit`}
+        resumeHref={`/c/${p.chapterId}/desk`}
         draftLabel={p.draftLabel}
         codexPanel={p.codexPanel}
         desk={p.desk}

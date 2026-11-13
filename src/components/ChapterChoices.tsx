@@ -12,9 +12,9 @@ import SuggestChoices from "./SuggestChoices";
 
 /**
  * "What happens next?": a chapter's choices as a vertical list (a row each: a written one opens its chapter, an unwritten
- * one starts writing it), then "Add a new suggestion" and "Suggest choices". On the reading page the links go to the
- * reading and Write pages; on the writing desk (`desk`) they stay on the desk: a written choice opens its chapter there,
- * an unwritten one its new chapter (`?choice=`), and "Draft a different idea" a new choice (`?new=`).
+ * one starts writing it), then "Add a new suggestion" and "Suggest choices". An unwritten choice opens its new chapter on
+ * the writing desk (`?choice=`), and "Draft a different idea" a new choice (`?new=`). A written choice opens its reading
+ * page, or on the desk (`desk`) its chapter on the desk.
  * Rendered on the server (the reading page, the desk page) and handed to the page as it is.
  */
 export default function ChapterChoices({
@@ -77,7 +77,7 @@ export default function ChapterChoices({
         ) : (
           <div key={c.id} className="choice-slot">
             <ChoiceLink
-              href={desk ? `/c/${chapterId}/desk?choice=${c.id}` : `/c/${chapterId}/write?choice=${c.id}`}
+              href={`/c/${chapterId}/desk?choice=${c.id}`}
               className="card choice-unwritten"
               title={marks.get(c.id) === "draft" ? "Not written yet, but a draft is saved. Carry on with it?" : "Not written yet. Write it?"}
             >

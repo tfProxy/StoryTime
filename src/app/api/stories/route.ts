@@ -17,7 +17,7 @@ export async function POST(request: Request) {
   return handlePost(request, CreateSchema, ({ adopt_draft, ...input }) => {
     const made = createStory(input);
     if (adopt_draft && made.chapter_id === null) {
-      moveDraft("story", `first:${made.story_id}`, { href: `/s/${made.story_id}/write`, label: `${input.title}: first chapter` });
+      moveDraft("story", `first:${made.story_id}`, { href: `/s/${made.story_id}/desk`, label: `${input.title}: first chapter` });
     }
     return made;
   });

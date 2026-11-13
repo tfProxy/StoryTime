@@ -28,7 +28,7 @@ export default async function StoryDetailsPage({ params }: { params: Promise<{ i
         {/* Once there is a chapter, the Read tab leads to it; before that, this is the way in. */}
         {!root && (
           <div className="row" style={{ flexWrap: "wrap" }}>
-            <Link className="button" href={`/s/${story.id}/write`}>
+            <Link className="button" href={`/s/${story.id}/desk`}>
               Start writing
             </Link>
             <span className="meta" style={{ margin: 0 }}>No chapters yet.</span>

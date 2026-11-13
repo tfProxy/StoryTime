@@ -18,22 +18,13 @@ export default function ChapterActions({
 }) {
   return (
     <div className="chapter-actions">
+      {/* Edit opens the chapter on the writing desk. */}
       {!trashed && (
-        <Link href={`/c/${chapterId}/edit`}>
+        <Link href={`/c/${chapterId}/desk`}>
           <svg {...icon}>
             <path d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19z M14.5 6.5l3 3" />
           </svg>
           Edit
-        </Link>
-      )}
-      {/* The writing desk, beside Edit until it replaces the Edit and Write pages. */}
-      {!trashed && (
-        <Link href={`/c/${chapterId}/desk`}>
-          <svg {...icon}>
-            <rect x="3" y="4" width="18" height="16" rx="2" />
-            <path d="M9 4v16 M15 4v16" />
-          </svg>
-          Desk
         </Link>
       )}
       <Link href={`/c/${chapterId}/illustrate`}>

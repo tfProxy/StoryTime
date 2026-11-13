@@ -24,11 +24,24 @@ function parse(row: Row): Record<string, unknown> {
   return { ...(JSON.parse(row.data) as Record<string, unknown>), key: row.key, updatedAt: row.updated_at };
 }
 
+/**
+ * Where a draft opens: drafts saved by the old Edit and Write pages kept those pages' addresses, which now open the
+ * same draft on the writing desk (the old addresses also redirect there).
+ */
+export function deskHref(href: string): string {
+  const m = /^\/([cs])\/([^/?#]+)\/(edit|write)(?:\?choice=([^&#]+))?$/.exec(href);
+  if (!m) return href;
+  const [, kind, id, page, choice] = m;
+  if (kind === "s") return page === "write" ? `/s/${id}/desk` : href;
+  if (page === "edit") return `/c/${id}/desk`;
+  return choice ? `/c/${id}/desk?choice=${choice}` : `/c/${id}/desk?new=`;
+}
+
 export function listDrafts(): DraftListItem[] {
   const rows = db().prepare("SELECT key, data, updated_at FROM drafts ORDER BY updated_at DESC").all() as Row[];
   return rows.map((r) => {
     const d = parse(r);
-    return { key: r.key, href: str(d.href), label: str(d.label), title: str(d.title), storyTitle: str(d.storyTitle), updatedAt: r.updated_at };
+    return { key: r.key, href: deskHref(str(d.href)), label: str(d.label), title: str(d.title), storyTitle: str(d.storyTitle), updatedAt: r.updated_at };
   });
 }
 

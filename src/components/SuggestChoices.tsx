@@ -14,7 +14,7 @@ import { AiCallProgress } from "./GenerateProgress";
 
 const MODES: SplitMode[] = [
   { id: "suggest", label: "Suggest choices", hint: "The AI offers a few choices to add to this chapter." },
-  { id: "draft", label: "Draft a different idea", hint: "Opens the writing page, to draft a new chapter from this one with an idea of your own." },
+  { id: "draft", label: "Draft a different idea", hint: "Opens the writing desk, to draft a new chapter from this one with an idea of your own." },
 ];
 
 /**
@@ -34,7 +34,8 @@ export default function SuggestChoices({
   /** The choice the reader took to reach this chapter, if any. */
   incoming: string | null;
   choices: string[];
-  /** Where "Draft a different idea" goes on the writing desk (a new choice's chapter, staying on the desk). */
+  /** Where "Draft a different idea" goes on the writing desk (a new choice's chapter, staying on the desk). Without it
+   * (the reading page) it opens the desk at `/c/<chapter>/desk?new=`. */
   draftHref?: string;
 }) {
   const router = useRouter();
@@ -72,7 +73,8 @@ export default function SuggestChoices({
   }
 
   function draftIdea() {
-    if (!draftHref) return router.push(`/c/${chapterId}/write`);
+    // From the reading page: the desk opens as from outside (no move marked).
+    if (!draftHref) return router.push(`/c/${chapterId}/desk?new=`);
     markDeskMove(draftHref);
     router.push(draftHref, { scroll: false });
   }

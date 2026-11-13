@@ -263,7 +263,8 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   function showStored(d: Draft) {
     baseRef.current = d.updatedAt;
     skipSaveRef.current = true;
-    setDraft(upgraded(d));
+    // A draft saved by the old Edit and Write pages kept their address: its next save keeps the desk's instead.
+    setDraft(upgraded({ ...d, href: resumeHref }));
   }
 
   /**
