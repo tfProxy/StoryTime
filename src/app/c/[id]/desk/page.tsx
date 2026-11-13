@@ -83,6 +83,7 @@ export default async function DeskPage({
           showOriginal={story.show_original}
         />
       }
+      nextCount={choices.length}
       mode={query.side === "illustrate" ? "illustrate" : "codex"}
       illustrate={illustrateProps(story, path)}
       editor={chapterEditProps(story, path)}

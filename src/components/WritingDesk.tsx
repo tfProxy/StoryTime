@@ -34,6 +34,7 @@ import { ChangeList, comparisonTitle, type Relation } from "./CodexComparison";
 import { useCodexInbox } from "./CodexInbox";
 import DeskIllustrate from "./DeskIllustrate";
 import DeskPath, { type PathBlock } from "./DeskPath";
+import DeskPhone, { usePhone, type PhoneSheet } from "./DeskPhone";
 import type { IllustrateProps } from "./IllustrateWorkspace";
 import DeskSuggestions from "./DeskSuggestions";
 import LinkedEntryDetails from "./LinkedEntryDetails";
@@ -160,6 +161,8 @@ type DeskProps = {
   pathBlocks?: PathBlock[];
   /** "What happens next?" under the box: the chapter's choices (ChapterChoices), once it is posted. */
   next?: ReactNode;
+  /** How many choices `next` lists (the phone's bottom bar shows it). */
+  nextCount?: number;
   illustrate?: IllustrateProps | null;
   mode?: DeskMode;
 };
@@ -182,6 +185,7 @@ export default function WritingDesk({
   note: firstNote = null,
   pathBlocks = [],
   next = null,
+  nextCount = 0,
   illustrate = null,
   mode: initialMode = "codex",
 }: DeskProps) {
@@ -243,6 +247,8 @@ export default function WritingDesk({
   const refresh = () => router.refresh();
   const { storyId, chapterId, path, ops, facts, icons } = codex;
   const [folded, setFolded] = useState(false);
+  const phone = usePhone();
+  const [sheet, setSheet] = useState<PhoneSheet | null>(null);
   const [query, setQuery] = useState("");
   // The entry open in the entry column, or "new" for the new-entry form.
   const [openId, setOpenId] = useState<string | null>(null);
@@ -316,7 +322,11 @@ export default function WritingDesk({
       </details>
     );
 
-  const classes = (illus ? ["desk", "desk-illus"] : ["desk", folded ? "desk-folded" : "", openId ? "desk-has-entry" : ""]).filter(Boolean).join(" ");
+  // On a phone the story column shows only the box; the bottom bar opens the path, the codex or the choices over it
+  // (`desk-phone-<sheet>`), or Illustrate mode, full screen. See DeskPhone.
+  const phoneSheet = phone && !illus ? sheet : null;
+  const onPhone = phone ? [phoneSheet ? `desk-phone-${phoneSheet}` : "", phoneSheet || illus ? "desk-phone-open" : ""] : [];
+  const classes = (illus ? ["desk", "desk-illus", ...onPhone] : ["desk", folded ? "desk-folded" : "", openId ? "desk-has-entry" : "", ...onPhone]).filter(Boolean).join(" ");
   return (
     <>
     <DeskBar bar={bar} note={note} onSlot={setMenuSlot} />
@@ -398,6 +408,25 @@ export default function WritingDesk({
         {next}
       </div>
     </div>
+    {phone && (
+      <DeskPhone
+        sheet={phoneSheet}
+        onSheet={(s) => {
+          if (s === "codex") setFolded(false);
+          // The codex opens on its list; an entry opened there closes with it.
+          else setOpenId(null);
+          setSheet(s);
+        }}
+        illus={illus}
+        canIllustrate={illustrate !== null}
+        onIllustrate={(on) => choose(on ? "illustrate" : "codex")}
+        pathCount={pathBlocks.length}
+        choices={next ? nextCount : null}
+        entry={phoneSheet === "codex" ? open : undefined}
+        asOf={holding ? "as of the new chapter" : `as of “${here.title}”`}
+        onCloseEntry={() => setOpenId(null)}
+      />
+    )}
     </>
   );
 }

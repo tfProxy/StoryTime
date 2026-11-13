@@ -31,6 +31,7 @@ import Prose from "./Prose";
 import { AiCallProgress, GenerateStep, ThinkingFold } from "./GenerateProgress";
 import AutoTextarea from "./AutoTextarea";
 import DeskVia from "./DeskVia";
+import { usePhone } from "./DeskPhone";
 import CodexPanel from "./CodexPanel";
 import { PageMenu } from "./SiteMenu";
 import CodexPreview from "./CodexPreview";
@@ -230,8 +231,11 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
   const busyRef = useRef(false);
   // The prompt of the Generate this page started, kept with the draft it makes (the box may change while it writes).
   const genPromptRef = useRef<string | null>(null);
-  // The desk's box: "Prompt and drafts" starts folded on a posted chapter and unfolded on a new one; "Summary" folded.
-  const [promptOpen, setPromptOpen] = useState(target.kind !== "edit");
+  // The desk's box: "Prompt and drafts" starts folded on a posted chapter and unfolded on a new one, or on a phone
+  // (where the desk is for writing: the prompt and Generate come first); "Summary" folded. Null until it is toggled.
+  const phone = usePhone();
+  const [promptFold, setPromptOpen] = useState<boolean | null>(null);
+  const promptOpen = promptFold ?? (target.kind !== "edit" || phone);
   const [summaryOpen, setSummaryOpen] = useState(false);
   // A posted chapter's summary on the desk is the chapter's own (saved to it at once, not to the draft).
   const [chapterSummary, setChapterSummary] = useState({
@@ -1341,7 +1345,7 @@ export default function ChapterEditor({ target, context, storyId, draftKey, resu
             onChange={(e) => patch({ title: e.target.value })}
           />
 
-          <button type="button" className="desk-fold" aria-expanded={promptOpen} onClick={() => setPromptOpen((o) => !o)}>
+          <button type="button" className="desk-fold" aria-expanded={promptOpen} onClick={() => setPromptOpen(!promptOpen)}>
             {promptOpen ? "▾" : "▸"} Prompt and drafts ({n})
           </button>
           {promptOpen && (

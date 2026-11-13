@@ -7727,3 +7727,177 @@ main:has(.desk) {
 .choices.desk-next {
   margin-top: 1rem;
 }
+
+/* The desk on a phone (the app's phone width, as the chapter picker's sheet): the story column shows only the chapter's
+   box, with the "→" line and the title at its top. The codex, the entry column, the path and "What happens next?" are
+   put away; the bottom bar (DeskPhone) opens the path, the codex or the choices over the box, full screen
+   (`.desk-phone-<sheet>`), and Illustrate mode the same way. They are the desk's own parts, moved, not copies, so the
+   box under them keeps what is typed in it. */
+@media (max-width: 640px) {
+  :root {
+    --desk-tabbar-h: 3.25rem;
+    --desk-sheet-head-h: 3rem;
+  }
+
+  /* Room under the box, so the bar never covers Post or Update. */
+  main:has(.desk) {
+    padding-bottom: calc(var(--desk-tabbar-h) + env(safe-area-inset-bottom, 0px) + 2rem);
+  }
+
+  html:has(.desk-phone-open) {
+    overflow: hidden;
+  }
+
+  .desk:not(.desk-illus) .desk-side,
+  .desk .desk-entry,
+  .desk .desk-path,
+  .desk .desk-next {
+    display: none;
+  }
+
+  .desk.desk-phone-codex:not(.desk-illus) .desk-side,
+  .desk.desk-phone-path .desk-path,
+  .desk.desk-phone-next .desk-next,
+  .desk.desk-illus.desk-phone-open,
+  .desk-phone-entry {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    gap: 0.5rem;
+    position: fixed;
+    inset: 0 0 calc(var(--desk-tabbar-h) + env(safe-area-inset-bottom, 0px));
+    z-index: 60;
+    max-height: none;
+    margin: 0;
+    padding: calc(var(--desk-sheet-head-h) + 0.75rem) 1rem 1.5rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--bg);
+    border: 0;
+    border-radius: 0;
+  }
+
+  .desk-phone-entry {
+    z-index: 61;
+  }
+
+  /* The sheet's head already says "What happens next?". */
+  .desk.desk-phone-next .desk-next .choices-head h2 {
+    display: none;
+  }
+
+  /* The bar does what the Codex | Illustrate switch does, and entries are made and changed on a wide screen. */
+  .desk .desk-modes,
+  .desk .desk-side-head button {
+    display: none;
+  }
+
+  .desk-box {
+    padding: 0.75rem;
+  }
+
+  .desk-sheet-head {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 62;
+    height: var(--desk-sheet-head-h);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0 0.75rem 0 1rem;
+    background: var(--card);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .desk-sheet-head h2 {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 1.05rem;
+  }
+
+  .desk-sheet-head .desk-close {
+    margin-left: auto;
+    font-size: 1.2rem;
+  }
+
+  .desk-sheet-back {
+    padding: 0.25rem 0.7rem;
+  }
+
+  .desk-tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 62;
+    display: flex;
+    height: calc(var(--desk-tabbar-h) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--card);
+    border-top: 1px solid var(--line);
+  }
+
+  .desk-tabbar button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0 0.15rem;
+    border: 0;
+    border-top: 2px solid transparent;
+    border-radius: 0;
+    background: none;
+    color: var(--muted);
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+
+  .desk-tabbar button.on {
+    color: var(--accent);
+    font-weight: 600;
+    border-top-color: var(--accent);
+  }
+
+  .desk-tabbar button:disabled {
+    opacity: 0.45;
+  }
+
+  .desk-phone-entry h2,
+  .desk-phone-entry h3,
+  .desk-phone-entry p {
+    margin: 0;
+  }
+
+  .desk-phone-entry h3 {
+    margin-top: 0.5rem;
+    font-size: 0.95rem;
+  }
+
+  .desk-read-facts {
+    display: grid;
+    gap: 0.4rem;
+    margin: 0;
+  }
+
+  .desk-read-facts > div {
+    padding: 0.4rem 0.6rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+
+  .desk-read-facts dt {
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
+  .desk-read-facts dt small {
+    color: var(--muted);
+    font-weight: normal;
+  }
+
+  .desk-read-facts dd {
+    margin: 0.1rem 0 0;
+  }
+}

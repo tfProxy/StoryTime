@@ -206,9 +206,11 @@ try {
   ok(true, "the rail opens the codex again");
 
   // ---- phone width: nothing scrolls sideways ----
+  // (On a phone the codex is a sheet from the bottom bar, its entries to read: see desk-phone.e2e.mjs.)
   await page.setViewportSize({ width: 390, height: 800 });
+  await page.locator("nav.desk-tabbar").getByRole("button", { name: "Codex", exact: true }).click();
   await side.locator(".desk-row", { hasText: "The Hollow" }).first().click();
-  await entry.getByRole("heading", { name: "The Hollow" }).waitFor();
+  await page.locator("section.desk-phone-entry").getByRole("heading", { name: "The Hollow" }).waitFor();
   ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), "at phone width the desk fits the screen");
   await context.close();
 } catch (e) {
