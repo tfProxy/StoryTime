@@ -230,7 +230,7 @@ try {
   ok((await read.innerText()).includes("red and long") && (await page.locator(".desk-tabbar").getByRole("button", { name: "Codex" }).getAttribute("aria-pressed")) === "true", "a name opens the entry to read in the phone's codex sheet");
   await page.locator(".desk-sheet-back").click();
   await side.locator(".desk-row-item").first().waitFor();
-  ok((await side.locator(".desk-pick").count()) === 0 && (await side.locator(".desk-pick-chip", { hasText: "pinned" }).count()) > 0, "the phone's codex sheet has no prompt toggles, but still marks the pinned Lantern");
+  ok((await side.locator(".desk-pin").count()) === 0 && (await side.locator(".desk-pick-chip", { hasText: "pinned" }).count()) > 0, "the phone's codex sheet has no prompt toggles, but still marks the pinned Lantern");
   await page.locator(".desk-sheet-head").getByRole("button", { name: "Close" }).click();
   ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), "at phone width the page fits the screen");
   await context.close();

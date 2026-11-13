@@ -7060,6 +7060,13 @@ button.link-button.ef-since-link {
   white-space: nowrap;
 }
 
+/* A character's form, on its own line under "Character"; a long one wraps rather than being cut. */
+.desk-row-text small.desk-row-form {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-style: italic;
+}
+
 /* How many suggestions wait for the entry. */
 .desk-badge {
   min-width: 1.4rem;
@@ -7462,7 +7469,8 @@ button.link-button.ef-since-link {
   gap: 0.1rem;
 }
 
-.desk-pick {
+/* Not .desk-pick: that is the "Ask the AI for more" choices' class. */
+.desk-pin {
   width: 1.6rem;
   height: 1.6rem;
   padding: 0;
@@ -7474,17 +7482,17 @@ button.link-button.ef-since-link {
   line-height: 1;
 }
 
-.desk-pick:hover:not(:disabled),
-.desk-pick:focus-visible {
+.desk-pin:hover:not(:disabled),
+.desk-pin:focus-visible {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--fg);
 }
 
-.desk-pick.auto {
+.desk-pin.auto {
   opacity: 0.55;
 }
 
-.desk-pick.pinned {
+.desk-pin.pinned {
   color: var(--accent);
 }
 

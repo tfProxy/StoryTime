@@ -309,8 +309,9 @@ export default function WritingDesk({
     setQuoteN((n) => n + 1);
     setOpenId(hit?.entry_id ?? (open ? open.entry_id : null));
   };
-  const belowText =
-    named.length > 0 || selection ? (
+  // The line under the chapter's text, with the box's "Draft saved" at its right end.
+  const belowText = (saveState: ReactNode) =>
+    named.length > 0 || selection || saveState ? (
       <div className="row desk-named" role="group" aria-label="Codex entries named in the text">
         {named.length > 0 && <span className="desk-label">Named in the text</span>}
         {named.map((e) => (
@@ -338,15 +339,14 @@ export default function WritingDesk({
             Add as a fact…
           </button>
         )}
+        {saveState}
       </div>
     ) : null;
 
-  // The small line under a row's name: a character's form as of this chapter ("Character (Anthro Fox)"); otherwise its
-  // first keyword, or its type.
-  const rowNote = (e: CodexEntry) => {
-    const form = e.type === "character" ? (e.form?.name ?? e.baseForm) : null;
-    return form ? `${TYPE_LABELS[e.type]} (${form})` : (e.aliases[0] ?? TYPE_LABELS[e.type]);
-  };
+  // The small line under a row's name: "Character" with the form as of this chapter on a line of its own under it (forms
+  // are often too long to share the line), or the first keyword, or the type.
+  const rowForm = (e: CodexEntry) => (e.type === "character" ? (e.form?.name ?? e.baseForm ?? null) : null);
+  const rowNote = (e: CodexEntry) => (rowForm(e) ? TYPE_LABELS[e.type] : (e.aliases[0] ?? TYPE_LABELS[e.type]));
 
   const row = (e: CodexEntry) => {
     const n = waiting[e.entry_id] ?? 0;
@@ -366,6 +366,7 @@ export default function WritingDesk({
           <span className="desk-row-text">
             <span className="desk-row-name">{e.name}</span>
             <small>{rowNote(e)}</small>
+            {rowForm(e) && <small className="desk-row-form">{rowForm(e)}</small>}
           </span>
           {e.shared_entry_id && (
             <span className="desk-chip" title="From the shared codex: changes to the shared entry reach this story too">
@@ -578,7 +579,7 @@ function PickButton({ id, name, pick, overrides }: { id: string; name: string; p
   return (
     <button
       type="button"
-      className={`desk-pick ${pick}`}
+      className={`desk-pin ${pick}`}
       aria-label={label}
       title={`${PICKS[pick].note}. Click: ${label.charAt(0).toLowerCase()}${label.slice(1)}.`}
       disabled={!overrides}

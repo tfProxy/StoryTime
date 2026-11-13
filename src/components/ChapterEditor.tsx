@@ -82,8 +82,11 @@ export type Desk = {
   onText: (text: string, body: string) => void;
   /** The text selected in the chapter's text box ("" when nothing is): the desk offers "Add as a fact…" for it. */
   onSelection?: (selected: string) => void;
-  /** Shown right under the chapter's text: the desk's names found in it, and "Add as a fact…". */
-  belowText?: ReactNode;
+  /**
+   * Shown right under the chapter's text: the desk's names found in it, and "Add as a fact…". It is handed the box's
+   * "Draft saved" line to show at its right end.
+   */
+  belowText?: (saveState: ReactNode) => ReactNode;
   menuSlot?: HTMLElement | null;
   onNote?: (note: string) => void;
   /**
@@ -1131,8 +1134,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
           </span>
         )}
         {bodyField}
-        {desk.belowText}
-        {saveState}
+        {desk.belowText ? desk.belowText(saveState || null) : saveState}
 
         <button type="button" className="desk-fold" aria-expanded={summaryOpen} onClick={openSummary}>
           {summaryOpen ? "▾" : "▸"} Summary

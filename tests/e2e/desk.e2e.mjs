@@ -98,7 +98,7 @@ try {
 
   // the small line under a row's name: a character's form as of this chapter, else its first keyword, else its type
   const note = (name) => side.locator(".desk-group", { hasText: "Characters" }).locator(".desk-row", { has: page.locator(".desk-row-name", { hasText: new RegExp(`^${name}$`) }) }).locator("small");
-  ok((await note("Wren").innerText()) === "Character (vixen)", "a character's row shows her form in this chapter: Character (vixen)");
+  ok((await note("Wren").allInnerTexts()).join("|") === "Character|vixen", "a character's row shows her form in this chapter, on its own line under Character: " + (await note("Wren").allInnerTexts()).join("|"));
   ok((await note("Pip").innerText()) === "Sparrow", "a character with no form shows her first keyword");
   ok((await note("Oda").innerText()) === "Character", "…or the type when there is no keyword either");
   ok((await side.locator(".desk-group", { hasText: "Places" }).locator(".desk-row small").innerText()) === "Place", "a place is unchanged");
@@ -267,7 +267,7 @@ try {
   const sideR = page.locator("aside.desk-side");
   await sideR.waitFor();
   const wrenR = sideR.locator(".desk-group", { hasText: "Characters" }).locator(".desk-row", { has: page.locator(".desk-row-name", { hasText: /^Wren$/ }) }).locator("small");
-  ok((await wrenR.innerText()) === "Character (human)", "on the earlier chapter the desk shows the earlier form: Character (human)");
+  ok((await wrenR.allInnerTexts()).join("|") === "Character|human", "on the earlier chapter the desk shows the earlier form: human");
 
   // ---- phone width: nothing scrolls sideways ----
   // (On a phone the codex is a sheet from the bottom bar, its entries to read: see desk-phone.e2e.mjs.)
