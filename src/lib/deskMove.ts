@@ -2,7 +2,7 @@
 // new chapter's), so reload and back work. A move within the desk (✎ on a path block, a choice in "What happens next?",
 // Post, Back or Forward from one desk to another) marks the address it goes to in sessionStorage just before it goes;
 // the desk that opens there finds the mark and
-// keeps the path blocks folded as they were. With no mark (the Desk button, a reload, a link from elsewhere) the desk
+// keeps the path blocks folded as they were. With no mark (the reading page's Edit, a reload, a link from elsewhere) the desk
 // was opened from outside: every block starts unfolded. The fold states are kept per story in sessionStorage.
 
 const MOVE_KEY = "storytime-desk-move";

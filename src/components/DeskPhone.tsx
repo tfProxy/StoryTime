@@ -93,7 +93,8 @@ export default function DeskPhone({
         </div>
       )}
       {reading && <EntryToRead entry={entry} asOf={asOf} />}
-      <nav className="desk-tabbar" aria-label="The desk">
+      {/* data-sticky-bar: typing in the chapter's text keeps the cursor above this bar (AutoTextarea). */}
+      <nav className="desk-tabbar" aria-label="The desk" data-sticky-bar>
         {tab("Path", sheet === "path", () => open("path"), pathCount === 0 ? "This is the story's first chapter" : undefined)}
         {tab("Write", !sheet && !illus, () => open(null))}
         {tab("Codex", sheet === "codex", () => open("codex"))}
