@@ -4,7 +4,7 @@ import { factRow, fillFact } from "./entryPage.mjs";
 // The writing desk (/c/<id>/desk) for a posted chapter: the reading page's Edit opening it; the codex column (Codex |
 // Illustrate, search, "In this chapter", the type groups, the count badge, folding to a rail); an open entry (its tabs in
 // order, Facts first, or Suggestions when some wait; a fact added and saved at once; Keep and Dismiss; Ask the AI for
-// more); and the chapter's editor beside it, with no codex drawer. The queue is paused, so no AI is called.
+// more); "+ ▾" (a new entry, or a shared entry linked in at once); and the chapter's editor beside it, with no codex drawer. The queue is paused, so no AI is called.
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 
 let failed = false;
@@ -16,6 +16,13 @@ const send = async (method, url, body) => {
 const post = (url, body) => send("POST", url, body);
 const clearQueue = async () => {
   for (const item of (await send("GET", "/api/queue")).items ?? []) await fetch(`${BASE}/api/queue/items/${item.key}`, { method: "DELETE" });
+};
+const until = async (fn, ms = 5000) => {
+  for (const end = Date.now() + ms; Date.now() < end; await new Promise((r) => setTimeout(r, 100))) {
+    const v = await fn();
+    if (v) return v;
+  }
+  return fn();
 };
 const codexAt = async (chapter, name) => (await send("GET", `/api/chapters/${chapter}/codex`)).entries.find((e) => e.name === name);
 
@@ -210,6 +217,38 @@ try {
   await rail.getByRole("button").click();
   await page.getByLabel("Search entries").waitFor();
   ok(true, "the rail opens the codex again");
+
+  // ---- "+ ▾": a new entry, or a shared entry linked in, at once on a posted chapter ----
+  const sharedName = `Desk Mill ${Date.now().toString(36)}`;
+  const sharedId = (await post("/api/shared", { name: sharedName, type: "place", aliases: ["the old mill"] })).id;
+  await side.getByRole("button", { name: "More ways to add an entry" }).click();
+  const addMenu = side.getByRole("menu", { name: "Add an entry" });
+  const addChoices = (await addMenu.getByRole("menuitem").allInnerTexts()).map((t) => t.split("\n")[0].trim());
+  ok(addChoices.join("|") === "New entry|Add a shared entry…", "+ ▾ offers New entry and Add a shared entry…: " + addChoices.join(" | "));
+  await addMenu.getByRole("menuitem", { name: /^Add a shared entry/ }).click();
+  const picker = page.locator('section.desk-entry[aria-label="Add a shared entry"]');
+  await picker.getByRole("heading", { name: "Add a shared entry" }).waitFor();
+  ok((await addMenu.count()) === 0, "…the menu closes, and the entry column shows the shared entries");
+  await picker.getByRole("button", { name: new RegExp(sharedName) }).click();
+  await page.locator(`section.desk-entry[aria-label="Codex entry: ${sharedName}"]`).waitFor();
+  const linked = await until(() => codexAt(A, sharedName));
+  ok(linked?.shared_entry_id === sharedId && (await codexAt(R, sharedName)) === undefined, "picking one links it at once, from this chapter on (not before)");
+  const sharedRow = side.locator(".desk-group", { hasText: "Places" }).locator(".desk-row", { hasText: sharedName });
+  await sharedRow.waitFor();
+  ok((await sharedRow.locator(".desk-chip", { hasText: "shared" }).count()) === 1, "…and the codex list shows it, marked shared");
+  await side.getByRole("button", { name: "More ways to add an entry" }).click();
+  await addMenu.getByRole("menuitem", { name: /^Add a shared entry/ }).click();
+  await picker.getByRole("heading", { name: "Add a shared entry" }).waitFor();
+  await picker.locator(".meta").first().waitFor();
+  await page.waitForFunction(() => !/Loading…/.test(document.querySelector('section.desk-entry[aria-label="Add a shared entry"]')?.textContent ?? ""));
+  ok((await picker.getByRole("button", { name: new RegExp(sharedName) }).count()) === 0, "…and is not offered again");
+  await picker.getByRole("button", { name: "Close" }).click();
+  // The menu's New entry opens the new-entry form, as + does.
+  await side.getByRole("button", { name: "More ways to add an entry" }).click();
+  await addMenu.getByRole("menuitem", { name: /^New entry/ }).click();
+  await page.locator('section.desk-entry[aria-label="New entry"]').getByRole("heading", { name: "New entry" }).waitFor();
+  ok(true, "the menu's New entry opens the new-entry form");
+  await page.locator('section.desk-entry[aria-label="New entry"]').getByRole("button", { name: "Close" }).click();
 
   // ---- phone width: nothing scrolls sideways ----
   // (On a phone the codex is a sheet from the bottom bar, its entries to read: see desk-phone.e2e.mjs.)

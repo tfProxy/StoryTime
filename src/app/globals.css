@@ -6977,6 +6977,21 @@ button.link-button.ef-since-link {
   padding: 0.3rem 0.6rem;
 }
 
+/* "+ ▾": the menu opens below, kept inside the codex column (the button is at its right edge). */
+.desk-add {
+  flex: none;
+}
+
+.desk-add .split-menu {
+  left: auto;
+  right: 0;
+  min-width: 14rem;
+}
+
+.desk-side-head .desk-add .split-menu button {
+  padding: 0.4rem 0.6rem;
+}
+
 .desk-group > summary {
   cursor: pointer;
   margin: 0.4rem 0 0.2rem;

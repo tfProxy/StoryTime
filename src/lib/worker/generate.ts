@@ -6,8 +6,7 @@ import { z } from "zod";
 import { completeChat, streamChat } from "../ai/client";
 import { modelAfterWriting } from "../ai/ollama";
 import {
-  choiceLabelPrompt, choicesPrompt, generatePrompt, parseChapterOutput, parseChoiceLabel, parseChoices, SYSTEM_CHAPTER, SYSTEM_CHOICE_LABEL, SYSTEM_CHOICES,
-  type StoryContext,
+  choiceLabelPrompt, generatePrompt, parseChapterOutput, parseChoiceLabel, SYSTEM_CHAPTER, SYSTEM_CHOICE_LABEL, type StoryContext,
 } from "../ai/prompts";
 import { withPathSummaries } from "../aiRuns/writeChapter";
 import type { Draft } from "../drafts";
@@ -39,8 +38,9 @@ export const generateRequest = z.object({
   length: z.enum(["short", "medium", "long"]),
   model: modelRef,
   suggestModel: modelRef,
-  /** After the chapter: make the choice text for the previous chapter, and suggest choices for this one. */
-  after: z.object({ choiceText: z.boolean(), suggestChoices: z.boolean() }),
+  /** After the chapter: make the choice text for the previous chapter. (A request from an older page may also carry
+   * `suggestChoices`; it is dropped, as choices are now suggested only when asked for, after posting.) */
+  after: z.object({ choiceText: z.boolean() }),
   /** The draft's title and text when it started, which applying the new text keeps as the previous version. */
   base: draftText,
   /** The draft as the page has it, to start from when the server has none saved yet. */
@@ -48,7 +48,7 @@ export const generateRequest = z.object({
 });
 export type GenerateRequest = Omit<z.infer<typeof generateRequest>, "ctx" | "draft"> & { ctx: StoryContext; draft: Draft };
 
-export type GenerateAfter = { choiceLabel?: string; suggestions?: string[] };
+export type GenerateAfter = { choiceLabel?: string };
 
 /** What a page watching a Generate is sent on `gen:<draft key>`. */
 export type GenerateEvent =
@@ -137,8 +137,7 @@ function saveGenerated(req: GenerateRequest, text: string, ai: string | undefine
 }
 
 /**
- * One Generate: summarize the story so far if the prompt needs it, stream the chapter, then the choice text and
- * suggested choices. The item goes to `working`, then `done` or `failed`; a Generate that is stopped is removed.
+ * One Generate: summarize the story so far if the prompt needs it, stream the chapter, then the choice text. The item goes to `working`, then `done` or `failed`; a Generate that is stopped is removed.
  */
 export async function runGenerate(draftKey: string): Promise<void> {
   const itemKey = genItemKey(draftKey);
@@ -201,9 +200,9 @@ export async function runGenerate(draftKey: string): Promise<void> {
     const after: GenerateAfter = {};
     if (chapter.body.trim()) {
       const shown = { title: chapter.title ?? "", body: chapter.body };
-      // The writing model, if Ollama still has it loaded, rather than swapping to the suggestions model and back.
-      const small = req.after.choiceText || req.after.suggestChoices ? await modelAfterWriting(settings, req.model, req.suggestModel, run.ctl.signal) : null;
       if (req.after.choiceText) {
+        // The writing model, if Ollama still has it loaded, rather than swapping to the suggestions model and back.
+        const small = await modelAfterWriting(settings, req.model, req.suggestModel, run.ctl.signal);
         step("Writing the choice text…");
         try {
           const reply = await completeChat(settings, {
@@ -213,20 +212,6 @@ export async function runGenerate(draftKey: string): Promise<void> {
           });
           const label = parseChoiceLabel(reply).slice(0, LIMITS.label);
           if (label) after.choiceLabel = label;
-        } catch (e) {
-          if (isAbort(e)) throw e;
-        }
-      }
-      if (req.after.suggestChoices) {
-        step("Suggesting choices…");
-        try {
-          const reply = await completeChat(settings, {
-            system: SYSTEM_CHOICES,
-            messages: [{ role: "user", content: choicesPrompt(ready, shown, [], settings.contextTokens) }],
-            ...small, maxTokens: 400, signal: run.ctl.signal, source: { label: "Generate: choices", ...ids },
-          });
-          const found = parseChoices(reply);
-          if (found.length) after.suggestions = found;
         } catch (e) {
           if (isAbort(e)) throw e;
         }

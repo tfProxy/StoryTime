@@ -70,8 +70,6 @@ export type Draft = {
   ideaPage?: number;
   /** Ideas already added as choices on the previous chapter ("page:index" -> the text used). */
   promoted?: Record<string, string>;
-  /** Suggested choices not yet added. */
-  suggestions?: string[];
   /** Codex entries pinned into, or left out of, the prompt by hand. */
   codexOverrides?: CodexOverrides;
   /** Models picked on this page instead of the defaults: for writing, and for ideas, choices and choice text. */

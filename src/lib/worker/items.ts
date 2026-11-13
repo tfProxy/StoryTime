@@ -79,7 +79,7 @@ export const generateData = z.object({
   label: z.string(),
   /** The `GenerateRequest`, kept so the work can start when its turn comes. */
   request: json,
-  /** Why it waits ("Waiting for pictures to finish (2 left)"), or, while it works, what it is doing ("Suggesting choices…"). */
+  /** Why it waits ("Waiting for pictures to finish (2 left)"), or, while it works, what it is doing ("Writing the choice text…"). */
   note: z.string().optional(),
   /** While it works: when the step in `note` began. */
   noteAt: z.number().optional(),

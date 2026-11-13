@@ -1,5 +1,5 @@
 // Generate on the server: the request is kept as a waiting item; running it streams the chapter into the draft, then
-// the choice text and suggested choices; Stop keeps the text so far; a failure marks the item and says why.
+// the choice text; Stop keeps the text so far; a failure marks the item and says why.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -37,6 +37,7 @@ const request = (key: string, extra: Record<string, unknown> = {}) => ({
   length: "short" as const,
   model: null,
   suggestModel: null,
+  // `suggestChoices` as a page from before the setting was dropped sends it: it is ignored.
   after: { choiceText: true, suggestChoices: true },
   base: { title: "", body: "" },
   draft: { key, href: "/stories/s1/chapters/c1/write", label: "A chapter", updatedAt: 0, storyTitle: "", premise: "", newChoiceLabel: "", title: "", body: "", choices: [""], prompt: "", undo: [] },
@@ -89,25 +90,26 @@ try {
   ok(done?.state === "done" && done.endedAt !== null, "…and done when it finishes");
   const texts = seen.events.filter((e) => e.type === "text").map((e) => e.text ?? "");
   ok(texts.length >= 2 && texts[0] !== chapter && texts.at(-1) === chapter, `its text is published as it comes, at most four times a second, and whole at the end (${texts.length} times)`);
-  ok(seen.events.at(-1)?.type === "done" && seen.events.at(-1)?.after?.choiceLabel === "Open the door" && seen.events.at(-1)?.after?.suggestions?.join() === "Go left,Go right", "…then the end, with the choice text and the suggestions");
-  const draft = getDraft("fill:b") as { title: string; body: string; undo: { title: string; body: string }[]; newChoiceLabel: string; suggestions: string[]; versions: unknown[] } | null;
+  ok(seen.events.at(-1)?.type === "done" && seen.events.at(-1)?.after?.choiceLabel === "Open the door" && seen.events.at(-1)?.after?.suggestions === undefined, "…then the end, with the choice text and no suggested choices");
+  const draft = getDraft("fill:b") as { title: string; body: string; undo: { title: string; body: string }[]; newChoiceLabel: string; suggestions?: string[]; versions: unknown[] } | null;
   ok(draft?.title === "The Door" && draft.body === "She opened it and went in.", "the chapter is in the draft");
   ok(draft?.undo.length === 1 && draft.undo[0].body === "Old text", "…the text it replaced kept once, as the undo");
-  ok(draft?.newChoiceLabel === "Open the door" && draft.suggestions.join() === "Go left,Go right", "…with the choice text and the suggested choices");
+  ok(draft?.newChoiceLabel === "Open the door" && draft.suggestions === undefined, "…with the choice text, and no suggested choices");
   ok(generateProgress("fill:b") === null, "nothing is going once it ends");
   const steps = seen.events.filter((e) => e.type === "step").map((e) => e.text);
   ok(
-    steps.join("|") === "Getting the story ready…|Waiting for the model…|Writing the chapter…|Writing the choice text…|Suggesting choices…",
+    steps.join("|") === "Getting the story ready…|Waiting for the model…|Writing the chapter…|Writing the choice text…",
     `each step is told as it starts (${steps.join("|")})`,
   );
   ok(done?.type === "generate" && done.data.note === undefined, "…and the item's note is cleared when it ends");
   const asked = ai.requests.filter((r: { body: unknown }) => !JSON.stringify(r.body).includes("You help write branching stories"));
-  ok(asked.length >= 1 && ai.requests.length === asked.length + 2, "the chapter was asked for, then the choice text and the choices, once each");
+  ok(asked.length >= 1 && ai.requests.length === asked.length + 1, "the chapter was asked for, then the choice text, once each");
+  ok(!ai.requests.some((r: { body: unknown }) => JSON.stringify(r.body).includes(JSON.stringify(SYSTEM_CHOICES).slice(1, -1))), "…and no choices were asked for");
   startGenerate(generateRequest.parse(request("fill:b")));
   ok(getItem("gen:fill:b")?.state === "waiting", "asking again after it finished starts a new one");
   stopGenerate("fill:b");
 
-  // On Ollama, with the writing model still loaded, the choice text and suggestions are asked of it too.
+  // On Ollama, with the writing model still loaded, the choice text is asked of it too.
   {
     const ol = await startFakeAi({ delay: 1, loaded: ["big:14b"], reply });
     const before = getSettings();
@@ -119,7 +121,7 @@ try {
     startGenerate(generateRequest.parse(request("fill:ol")));
     await runGenerate("fill:ol");
     const models = ol.requests.filter((r: { url: string }) => r.url.endsWith("/chat/completions")).map((r: { body: { model: string } }) => r.body.model);
-    ok(models.length === 3 && models.every((m: string) => m === "big:14b"), `the loaded writing model wrote the chapter, the choice text and the choices (${models.join()})`);
+    ok(models.length === 2 && models.every((m: string) => m === "big:14b"), `the loaded writing model wrote the chapter and the choice text (${models.join()})`);
     ok(ol.requests.some((r: { url: string }) => r.url.endsWith("/api/ps")), "…after asking Ollama what it has loaded");
     stopGenerate("fill:ol");
     putSettings(before!);

@@ -64,9 +64,10 @@ ok(JSON.stringify(r.json.settings.comfy.drawPresets) === JSON.stringify(up.drawP
 r = await call("GET", "/api/settings");
 ok(r.json.settings.contextTokens === 4000 && r.json.settings.connections[0].apiKey === "k" && r.json.settings.defaults.main.model === "m", "a later request gets them back");
 ok(Array.isArray(r.json.settings.favorites) && r.json.settings.temperature === null, "missing parts are filled with defaults");
-ok(r.json.settings.autoSuggestChoices === false, "suggesting choices after writing is off unless asked for");
+// "Suggest choices after writing" was dropped: settings saved with it still load, without it.
 r = await call("PUT", "/api/settings", { ...conns, autoSuggestChoices: true });
-ok(r.json.settings.autoSuggestChoices === true && (await call("GET", "/api/settings")).json.settings.autoSuggestChoices === true, "…and can be turned on");
+ok(r.status === 200 && r.json.settings.contextTokens === 4000 && !("autoSuggestChoices" in r.json.settings), "settings with the old suggest-choices switch are saved, without it");
+ok(!("autoSuggestChoices" in (await call("GET", "/api/settings")).json.settings), "…and read back without it");
 ok(r.json.settings.showCodexList === false, "the codex list on the reading page is off unless asked for");
 r = await call("PUT", "/api/settings", { ...conns, showCodexList: true });
 ok(r.json.settings.showCodexList === true && (await call("GET", "/api/settings")).json.settings.showCodexList === true, "…and can be turned on");

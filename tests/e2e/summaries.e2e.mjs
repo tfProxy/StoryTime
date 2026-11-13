@@ -44,7 +44,7 @@ const until = async (fn, ms = 15000) => { const stop = Date.now() + ms; for (;;)
 
 const browser = await launch();
 const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
-const ai = await useMockAi(BASE, { contextTokens: 1000, autoSuggestChoices: false });
+const ai = await useMockAi(BASE, { contextTokens: 1000 });
 const page = await ctx.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 page.on("dialog", (d) => d.accept());

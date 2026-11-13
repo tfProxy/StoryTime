@@ -23,6 +23,7 @@ import {
 } from "@/lib/codex";
 import type { PathChapter } from "@/lib/ai/codexAi";
 import { mentions } from "@/lib/ai/prompts";
+import type { SharedEntry } from "@/lib/sharedCodex";
 import { markDeskMove } from "@/lib/deskMove";
 import { codexIconUrl, type IconChoice } from "@/lib/codexIconUrl";
 import ChapterEditEntry, { type ChapterEditEntryProps } from "./ChapterEditEntry";
@@ -258,7 +259,7 @@ export default function WritingDesk({
   const phone = usePhone();
   const [sheet, setSheet] = useState<PhoneSheet | null>(null);
   const [query, setQuery] = useState("");
-  // The entry open in the entry column, or "new" for the new-entry form.
+  // The entry open in the entry column, or "new" for the new-entry form, or "shared" for the shared-entry picker.
   const [openId, setOpenId] = useState<string | null>(null);
   // The words selected in the chapter's text box, and "Add as a fact…" once chosen: the words become a new fact's quote,
   // in the entry picked for it (`quoteN` counts the times, so the entry's form opens afresh each time).
@@ -293,7 +294,7 @@ export default function WritingDesk({
   const shown = q ? entries.filter((e) => [e.name, ...e.aliases].some((n) => n.toLowerCase().includes(q))) : entries;
   // An entry pinned to the prompt is listed here too, named in the text or not.
   const inChapter = shown.filter((e) => mentions(e, text) || promptPick(e.entry_id) === "pinned");
-  const open = openId && openId !== "new" ? entries.find((e) => e.entry_id === openId) : undefined;
+  const open = openId && openId !== "new" && openId !== "shared" ? entries.find((e) => e.entry_id === openId) : undefined;
   const here = path[path.length - 1];
 
   // The entries named in the chapter's text (by name or keyword, as "In this chapter"), listed under it.
@@ -359,6 +360,11 @@ export default function WritingDesk({
             <span className="desk-row-name">{e.name}</span>
             <small>{e.aliases[0] ?? TYPE_LABELS[e.type]}</small>
           </span>
+          {e.shared_entry_id && (
+            <span className="desk-chip" title="From the shared codex: changes to the shared entry reach this story too">
+              shared
+            </span>
+          )}
           {heldIds.has(e.entry_id) && (
             <span className="desk-chip" title="Changed for the new chapter: saved when you post it">
               held
@@ -449,9 +455,7 @@ export default function WritingDesk({
           </div>
           <div className="desk-side-head">
             <input type="search" aria-label="Search entries" placeholder="Search entries…" value={query} onChange={(e) => setQuery(e.target.value)} />
-            <button type="button" className="secondary" aria-label="New entry" title="New entry" onClick={() => setOpenId("new")}>
-              +
-            </button>
+            <AddEntryButton onNew={() => setOpenId("new")} onShared={() => setOpenId("shared")} />
           </div>
           {entries.length === 0 ? (
             <p className="meta">No entries yet at this chapter. + adds one.</p>
@@ -475,7 +479,16 @@ export default function WritingDesk({
           )}
         </section>
       )}
-      {!illus && quote !== null && !open && openId !== "new" && (
+      {!illus && openId === "shared" && (
+        <section className="desk-entry" aria-label="Add a shared entry">
+          {newChapter && !holding ? (
+            <p className="meta">Loading the draft…</p>
+          ) : (
+            <SharedEntryPicker chapterId={chapterId} holding={holding} entries={entries} onClose={() => setOpenId(null)} onAdded={(id) => setOpenId(id)} />
+          )}
+        </section>
+      )}
+      {!illus && quote !== null && !open && openId !== "new" && openId !== "shared" && (
         <section className="desk-entry" aria-label="Add as a fact">
           <div className="desk-entry-inner">{quotePick}</div>
         </section>
@@ -635,6 +648,208 @@ function NewEntry({
           onMade(r.id);
         }}
       />
+    </div>
+  );
+}
+
+/**
+ * The codex column's [ + | ▾ ]: "+" makes a new entry; ▾ offers that again and "Add a shared entry…". It looks like
+ * SplitActionButton, but its menu runs an action rather than changing what the main button does.
+ */
+function AddEntryButton({ onNew, onShared }: { onNew: () => void; onShared: () => void }) {
+  const [menu, setMenu] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  const more = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const onDown = (e: MouseEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setMenu(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setMenu(false);
+      more.current?.focus();
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    wrap.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
+  const pick = (run: () => void) => () => {
+    setMenu(false);
+    run();
+  };
+  return (
+    <div className="split-button split-start desk-add" ref={wrap}>
+      <button type="button" className="secondary" aria-label="New entry" title="New entry" onClick={onNew}>
+        +
+      </button>
+      <button
+        ref={more}
+        type="button"
+        className="split-more secondary"
+        aria-label="More ways to add an entry"
+        title="More ways to add an entry"
+        aria-haspopup="menu"
+        aria-expanded={menu}
+        onClick={() => setMenu(!menu)}
+      >
+        <span aria-hidden="true">▾</span>
+      </button>
+      {menu && (
+        <div
+          className="split-menu"
+          role="menu"
+          aria-label="Add an entry"
+          onKeyDown={(e) => {
+            if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+            e.preventDefault();
+            const items = [...(wrap.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+            const at = items.indexOf(document.activeElement as HTMLElement);
+            items[(at + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
+          }}
+        >
+          <button type="button" role="menuitem" onClick={pick(onNew)}>
+            New entry
+            <small>a character, place or thing of this story</small>
+          </button>
+          <button type="button" role="menuitem" onClick={pick(onShared)}>
+            Add a shared entry…
+            <small>one from the shared codex, linked into this story</small>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * "Add a shared entry…": the shared entries not in the codex here, to link one into the story. On a posted chapter it
+ * is linked at once, from this chapter on; on a new chapter it is held in the draft and linked when the chapter is
+ * posted (see `saveWithCodexChanges`).
+ */
+function SharedEntryPicker({
+  chapterId,
+  holding,
+  entries,
+  onClose,
+  onAdded,
+}: {
+  chapterId: string;
+  holding: Holding | null;
+  entries: CodexEntry[];
+  onClose: () => void;
+  onAdded: (id: string) => void;
+}) {
+  const router = useRouter();
+  const [shared, setShared] = useState<SharedEntry[] | null>(null);
+  const [query, setQuery] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetch("/api/shared")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { entries: SharedEntry[] } | null) => live && setShared(d?.entries ?? []))
+      .catch(() => live && setShared([]));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const here = new Set(entries.flatMap((e) => (e.shared_entry_id ? [e.shared_entry_id] : [])));
+  const offered = (shared ?? []).filter((s) => !here.has(s.id));
+  const q = query.trim().toLowerCase();
+  const shown = q ? offered.filter((s) => [s.name, ...s.aliases].some((n) => n.toLowerCase().includes(q))) : offered;
+
+  async function add(s: SharedEntry) {
+    setError(null);
+    // The server refuses a second entry of the same name on the branch; a held one would only fail at Post.
+    if (entries.some((e) => e.name.trim().toLowerCase() === s.name.trim().toLowerCase())) {
+      return setError(`This branch already has an entry called “${s.name}”. Remove or rename it first.`);
+    }
+    if (holding) {
+      const entryId = localId();
+      holding.held.update((h) => ({
+        ...h,
+        changes: addChange(h.changes, {
+          op: "create",
+          entry_id: entryId,
+          name: s.name,
+          type: s.type,
+          aliases: s.aliases,
+          content: s.content,
+          always_include: s.always_include,
+          shared_entry_id: s.id,
+          shared: { id: s.id, name: s.name, type: s.type, aliases: s.aliases, content: s.content, always_include: s.always_include, facts: s.facts },
+        }),
+      }));
+      return onAdded(entryId);
+    }
+    setBusy(true);
+    try {
+      const res = await fetch("/api/codex/link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ anchor_chapter_id: chapterId, shared_entry_id: s.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return setError(data.error ?? `Request failed (${res.status})`);
+      router.refresh();
+      onAdded(data.entry_id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="desk-entry-inner">
+      <div className="desk-entry-bar">
+        <h2 className="desk-entry-name-text">Add a shared entry</h2>
+        <button type="button" className="secondary desk-close" aria-label="Close" title="Close" onClick={onClose}>
+          ×
+        </button>
+      </div>
+      {holding && <HeldNote />}
+      <p className="meta">
+        A shared entry belongs to no one story: it is linked into this one {holding ? "from the new chapter" : "from this chapter"} on, on this branch, and
+        changes to it in the <Link href="/shared">Shared codex</Link> reach every story it is in.
+      </p>
+      {error && <p className="error">{error}</p>}
+      {shared === null ? (
+        <p className="meta">Loading…</p>
+      ) : offered.length === 0 ? (
+        <p className="meta">{shared.length === 0 ? "The shared codex is empty." : "Every shared entry is already in this codex."}</p>
+      ) : (
+        <>
+          {offered.length > 6 && (
+            <input type="search" aria-label="Search shared entries" placeholder="Search shared entries…" value={query} onChange={(e) => setQuery(e.target.value)} />
+          )}
+          {shown.length === 0 ? (
+            <p className="meta">No shared entry matches “{query.trim()}”.</p>
+          ) : (
+            <ul className="desk-rows" aria-label="Shared entries">
+              {shown.map((s) => (
+                <li key={s.id} className="desk-row-item">
+                  <button type="button" className="desk-row" disabled={busy} onClick={() => void add(s)}>
+                    <span className="codex-icon codex-icon-empty desk-row-icon" aria-hidden="true">
+                      {s.name.slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className="desk-row-text">
+                      <span className="desk-row-name">{s.name}</span>
+                      <small>{s.aliases[0] ?? TYPE_LABELS[s.type]}</small>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
     </div>
   );
 }

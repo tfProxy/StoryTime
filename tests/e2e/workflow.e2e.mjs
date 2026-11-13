@@ -64,12 +64,9 @@ const id = /\/c\/([^/?]+)/.exec(page.url())[1];
 const c = await until(async () => { const ch = (await get(`/api/chapters/${id}`)).chapter; return ch.summary && ch; });
 ok(c && c.title === "Door" && c.summary === "SUM(Door)" && prompts.slice(before).some((p) => p.system.includes("running summary")), "posting with no summary has one written");
 
-// suggesting choices after writing is a setting, off by default
+// A Generate makes no choice suggestions (choices are suggested on demand, after posting), even with the switch
+// "Suggest choices after writing" left on in settings saved before it was dropped.
 const settingsNow = (await get("/api/settings")).settings;
-const withSetting = (on) => ({
-  ...(settingsNow ?? { connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } }),
-  autoSuggestChoices: on,
-});
 const put = (body) => fetch(BASE + "/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 const newSlot = async (title) => {
   const st = await post("/api/stories", { title, premise: "p", chapter: { title: "Root", body: "Mira stood there.", choices: ["Open the door"] } });
@@ -85,22 +82,13 @@ const generateOn = async (slot) => {
   return until(async () => (await draftOf(slot.key))?.body?.includes("Generated text here.") && draftOf(slot.key));
 };
 
-await put(withSetting(false));
-const offSlot = await newSlot("Suggest off");
-const offDraft = await generateOn(offSlot);
-await page.waitForTimeout(500);
-ok(offDraft && suggestCalls() === 0 && !offDraft.suggestions?.length, "off by default: no choices are suggested after writing");
-await fetch(`${BASE}/api/drafts/${encodeURIComponent(offSlot.key)}`, { method: "DELETE" });
-
-await put(withSetting(true));
+if (settingsNow) await put({ ...settingsNow, autoSuggestChoices: true });
 const callsBefore = suggestCalls();
-const onSlot = await newSlot("Suggest on");
-await generateOn(onSlot);
-const onDraft = await until(async () => { const d = await draftOf(onSlot.key); return d?.suggestions?.length && d; });
-ok(suggestCalls() === callsBefore + 1 && onDraft?.suggestions?.join() === "Go left,Go right,Hide", "on: choices are suggested once the chapter is written, and kept with the draft");
-await fetch(`${BASE}/api/drafts/${encodeURIComponent(onSlot.key)}`, { method: "DELETE" });
-
-await put(settingsNow ? withSetting(settingsNow.autoSuggestChoices) : withSetting(false));
+const genSlot = await newSlot("No suggestions");
+const genDraft = await generateOn(genSlot);
+await page.waitForTimeout(500);
+ok(genDraft && suggestCalls() === callsBefore && !genDraft.suggestions?.length, "no choices are suggested after writing");
+await fetch(`${BASE}/api/drafts/${encodeURIComponent(genSlot.key)}`, { method: "DELETE" });
 
 // ---- the reading page suggests choices too, and adds the ones picked ----
 {

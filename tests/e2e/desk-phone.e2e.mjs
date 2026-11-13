@@ -17,7 +17,7 @@ const send = async (method, url, body) => {
 const post = (url, body) => send("POST", url, body);
 
 const fake = await startFakeAi({ port: 3222, delay: 5, reply: () => "1. Run\n2. Hide" });
-const ai = await useMockAi(BASE, { autoSuggestChoices: false });
+const ai = await useMockAi(BASE);
 const browser = await launch();
 const drafts = [];
 try {

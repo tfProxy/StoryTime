@@ -16,7 +16,7 @@ const request = {
   length: "short",
   model: null,
   suggestModel: null,
-  after: { choiceText: false, suggestChoices: false },
+  after: { choiceText: false },
   base: { title: "", body: "" },
   draft: { key, href: "/stories/s1/chapters/c1/write", label: "A chapter", updatedAt: 0, storyTitle: "", premise: "", newChoiceLabel: "", title: "", body: "", choices: [""], prompt: "", undo: [] },
 };

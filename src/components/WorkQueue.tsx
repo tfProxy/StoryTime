@@ -105,8 +105,8 @@ export type GenerateRequest = {
   length: Length;
   model: ModelRef | null;
   suggestModel: ModelRef | null;
-  /** After the chapter: make the choice text for the previous chapter, and suggest choices for this one. */
-  after: { choiceText: boolean; suggestChoices: boolean };
+  /** After the chapter: make the choice text for the previous chapter. */
+  after: { choiceText: boolean };
   /** The draft's title and text when it started, which applying the new text keeps as the previous version. */
   base: { title: string; body: string };
   /** The draft as the page has it, to start from when the server has none saved yet. */
@@ -140,7 +140,7 @@ export type DraftListener = {
   onStep?: (text: string, since: number) => void;
   /** The model's reasoning so far (all of it, each time). */
   onThinking?: (text: string) => void;
-  onDone: (after: { choiceLabel?: string; suggestions?: string[] }) => void;
+  onDone: (after: { choiceLabel?: string }) => void;
   onError: (message: string) => void;
 };
 
@@ -697,7 +697,7 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
     const source = new EventSource(`/api/queue/generate/events?key=${encodeURIComponent(draftKey)}`);
     source.onmessage = (m) => {
       try {
-        const e = JSON.parse(m.data) as { type: string; text?: string; since?: number; base?: { title: string; body: string }; ai?: string; after?: { choiceLabel?: string; suggestions?: string[] }; message?: string };
+        const e = JSON.parse(m.data) as { type: string; text?: string; since?: number; base?: { title: string; body: string }; ai?: string; after?: { choiceLabel?: string }; message?: string };
         if (e.type === "text" && e.text !== undefined && e.base) listener.onText(e.text, e.base, e.ai);
         else if (e.type === "step" && e.text !== undefined) listener.onStep?.(e.text, e.since ?? Date.now());
         else if (e.type === "thinking" && e.text !== undefined) listener.onThinking?.(e.text);

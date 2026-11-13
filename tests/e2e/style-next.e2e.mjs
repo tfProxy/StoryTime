@@ -40,7 +40,7 @@ const nextChapterPrompt = async () => {
 };
 
 const settingsBefore = (await json("GET", "/api/settings")).settings;
-await json("PUT", "/api/settings", { ...(settingsBefore ?? {}), autoSuggestChoices: false, connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } });
+await json("PUT", "/api/settings", { ...(settingsBefore ?? {}), connections: [{ id: "t", name: "Test", kind: "ollama", baseUrl: "http://localhost:3222/v1", apiKey: "" }], defaults: { main: { connectionId: "t", model: "main" }, cheap: { connectionId: "t", model: "cheap" } } });
 
 const browser = await launch();
 const page = await (await browser.newContext()).newPage();

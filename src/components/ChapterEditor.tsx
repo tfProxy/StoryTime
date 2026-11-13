@@ -133,8 +133,8 @@ async function keepWriting(chapterId: string, d: Draft): Promise<void> {
   if (!res.ok) throw new Error(`Request failed (${res.status})`);
 }
 
-// Ideas and suggestions cost an AI call.
-const hasWorkingState = (d: Draft) => !!(d.ideaPages?.length || d.suggestions?.length || d.guidance?.trim());
+// Ideas cost an AI call.
+const hasWorkingState = (d: Draft) => !!(d.ideaPages?.length || d.guidance?.trim());
 
 // Don't litter the drafts list with untouched forms.
 function isBlank(d: Draft, target: Target): boolean {
@@ -249,9 +249,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             undo: d.undo,
             versions: d.versions,
             versionIndex: d.versionIndex,
-            // the choice text and suggestions the Generate made, unless the author has written their own meanwhile
+            // the choice text the Generate made, unless the author has written their own meanwhile
             newChoiceLabel: cur.newChoiceLabel.trim() ? cur.newChoiceLabel : d.newChoiceLabel,
-            suggestions: cur.choices.some((c) => c.trim()) ? cur.suggestions : d.suggestions,
           }
         : upgraded(d),
     );
@@ -573,8 +572,6 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       after: {
         // A new branch needs choice text; if the author hasn't written any, make it from the chapter.
         choiceText: (target.kind === "new" || target.kind === "fill") && !draft.newChoiceLabel.trim(),
-        // With the setting on, offer choices for the ending too, unless the author has already written some.
-        suggestChoices: settings.autoSuggestChoices && !draft.choices.some((c) => c.trim()),
       },
       base: { title: draft.title, body: draft.body },
       draft,

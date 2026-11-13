@@ -57,7 +57,7 @@ const request = (key, extra = {}) => ({
   length: "short",
   model: null,
   suggestModel: null,
-  after: { choiceText: false, suggestChoices: false },
+  after: { choiceText: false },
   base: { title: "", body: "" },
   draft: { key, href: "/stories/s1/chapters/c1/write", label: key, updatedAt: 0, storyTitle: "", premise: "", newChoiceLabel: "", title: "", body: "", choices: [""], prompt: "", undo: [] },
   ...extra,
