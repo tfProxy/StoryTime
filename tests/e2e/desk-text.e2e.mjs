@@ -91,6 +91,14 @@ try {
   await textBox.fill("Mara walked with the smith. Her cloak was green.");
   await until(async () => (await namedNames()) === "Mara,Tobin");
   ok((await namedNames()) === "Mara,Tobin", "…they change as the text does (a keyword names Tobin; the Mill is gone): " + (await namedNames()));
+  // "Draft saved · <time>" sits at the right end of this line, on the same row as the names.
+  const saveState = namedLine.locator(".save-state");
+  await saveState.waitFor();
+  ok((await page.locator(".save-state").count()) === 1 && (await saveState.innerText()).startsWith("Draft saved"), "after typing, “Draft saved” is inside the names line");
+  const sb = await saveState.boundingBox();
+  const nb = await namedLine.boundingBox();
+  const nameBox = await namedLine.locator(".desk-name").last().boundingBox();
+  ok(nb.x + nb.width - (sb.x + sb.width) < 24 && sb.x > nameBox.x + nameBox.width && Math.abs(sb.y - nameBox.y) < nameBox.height, "…at the line's right end, right of the names and on their row: " + JSON.stringify({ saveRight: sb.x + sb.width, lineRight: nb.x + nb.width }));
   await namedLine.getByRole("button", { name: "Tobin", exact: true }).click();
   await entryCol("Tobin").waitFor();
   ok(await entryCol("Tobin").isVisible(), "a name opens its entry in the entry column");

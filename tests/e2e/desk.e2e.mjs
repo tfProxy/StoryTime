@@ -180,6 +180,21 @@ try {
   run = await send("GET", `/api/ai-runs/${(await (await queued).json()).run_id}`);
   ok(run.tasks[0].kind === "expand" && run.tasks[0].mode === "invent" && run.tasks[0].chapterId === A, "Invent new details makes a Flesh out run at this chapter");
   await clearQueue();
+  // The three choices were once squeezed into the prompt toggle's small circle: each is wide and they stack.
+  const picks = ask.locator("label.desk-pick");
+  ok((await picks.count()) === 3, "Ask the AI for more has three choices");
+  const pickBoxes = await picks.evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, w: r.width, over: e.scrollWidth > e.clientWidth + 1 }; }));
+  const rem = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
+  ok(pickBoxes.every((b) => b.w > 10 * rem && !b.over), "…each wider than 10rem and holding its text: " + pickBoxes.map((b) => Math.round(b.w)).join(","));
+  ok(pickBoxes.every((b, i) => i === 0 || b.top >= pickBoxes[i - 1].bottom - 1), "…and stacked without overlapping");
+
+  // A long form wraps in the codex row's small line instead of being cut off.
+  await post("/api/codex/form", { chapter_id: A, entry_id: (await codexAt(A, "Pip")).entry_id, base_form: "human", form: { name: "Latex Husky Inflatable Doll", anchor_chapter_id: A } });
+  await page.reload();
+  const pipForm = side.locator(".desk-row", { has: page.locator(".desk-row-name", { hasText: /^Pip$/ }) }).locator("small.desk-row-form");
+  await pipForm.waitFor();
+  ok((await pipForm.innerText()) === "Latex Husky Inflatable Doll", "a long form shows in full on its own line: " + (await pipForm.innerText()));
+  ok(await pipForm.evaluate((el) => el.scrollWidth <= el.clientWidth), "…and is not clipped");
 
   // ---- Oda: Keep one (from its chapter), Dismiss the other ----
   await side.locator(".desk-group", { hasText: "Characters" }).locator(".desk-row", { hasText: "Oda" }).click();
