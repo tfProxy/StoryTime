@@ -9,28 +9,49 @@ and, for pictures, your own ComfyUI machine.
 
 - **Read and write** branching stories. Any chapter can have any number of choices; a choice stays
   "unwritten" until a chapter is written for it.
-- **AI drafting**, in four steps: brainstorm ideas and pick the codex entries, have the AI write the
-  chapter from the story so far (change the prompt and Generate again for another draft, step between
-  drafts), write or generate a summary and
-  choices, then post. "Continue with AI" jumps straight to a draft. A Generate carries on if you
-  leave the page.
+- **The writing desk**: where chapters are written and edited. **Edit** under a chapter's title opens
+  it there; an unwritten choice, **Draft a different idea**, **Start writing** (a new story's details
+  page) and the **Drafts** list open a new chapter there. (Old Edit and Write links still work: they
+  open the desk.) On a wide screen it has three columns:
+  - the **side column**, with two modes: **Codex** (search, the entries the chapter names under **In
+    this chapter**, then each type; the toggle on a row pins an entry to the prompt or leaves it out)
+    and **Illustrate** (the picture controls, with the chapter's pictures in the story column);
+  - the **open entry**, with its facts, preview, suggestions and history, changed right there;
+  - the **story**: the earlier chapters on the path as blocks that fold (**Unfold all** / **Fold
+    all**; ✎ moves the desk to that chapter), the **→** line with the choice that leads here (click it
+    to rename the choice), the chapter's box, and under a posted chapter **What happens next?**, its
+    choices (a written one opens its chapter on the desk, an unwritten one starts it; add a choice, or
+    **Suggest choices**).
+
+  The box has the title, **Prompt and drafts** (the prompt, length, writing model and **Generate**;
+  each Generate adds a numbered draft that keeps its prompt, and ✓ marks the one the chapter reads
+  as), the text (the codex entries it names are listed under it; select words for **Add as a
+  fact…**), **Summary**, and one button: **Post chapter** on a new chapter, which makes it and stays
+  on it, or **Update chapter** on a posted one, which replaces its text (History keeps the old). The
+  summary is written by the AI after a Post or Update, unless you write your own ("yours · not
+  rewritten" until **Let the AI rewrite it**). Choices are added once the chapter is posted. The top
+  bar's **⋯** has the summary model, History, Write ahead, the reading page, **Remove the AI mark**,
+  **Replace branch…** and **Move to trash…** (or **Discard draft…** on a new chapter). Codex changes
+  on a posted chapter are saved at once; on a new one they are held in its draft and saved with it
+  when it is posted (or straight away, if you date them to an earlier chapter), and what needs a
+  posted chapter is greyed out with why. A Generate carries on if you leave the page.
+  On a phone the desk shows only the box (prompt and Generate first), with a bar along the bottom:
+  **Path**, **Write**, **Codex** (to look things up), **Illustrate** and **Next**, each opening full
+  screen.
 - **Write ahead with AI** (the **Write ahead** button under a chapter's title): let the AI write several chapters on its own: fill the
   open choices, grow the tree to a depth, or reach a goal along a plan you edit. It runs on the
   server, so you can close the tab. Chapters it wrote carry an AI mark until you press **Mark
   reviewed**.
 - **Style notes**: per-story instructions for the AI (point of view, tense, tone, things to avoid),
-  sent with every drafting prompt. Set them when starting a story, or change them from the Style
-  notes section on any writing page; a change is tried out on that page until you save it for the
-  whole story.
+  sent with every drafting prompt. Set them when starting a story, or change them on the story's
+  **Details** tab.
 - **Codex**: per-branch entries for characters, places and facts (a character who turns into a horse
   stays human on other branches). The codex lives in the **Codex** section of the Story Bible: entries
   sit in folds by type (characters, places…), each card opens the entry's own page, the one place to
   read and change it, and **⋯** next to the Section picker adds a **New entry** (or one **from the
   shared codex**). Pick a chapter under the picker to see the codex as of that chapter on its branch, or
   the whole story to see every entry on any branch; a chapter's **Codex** button opens it there. While
-  writing, the codex drawer opens the entry in place; changes stay in the draft and are saved with the
-  chapter when it is posted (or straight away, if you date them to an earlier chapter). Entries can
-  have pictures that change over the story too (**Pictures** in the entry's **⋯** menu).
+  writing, the writing desk's side column has the codex beside the chapter (see above).
 - **An entry's page** shows the entry as of one chapter. The bar at the top stays in view: **← Codex**,
   the name, **as of** with **‹ “chapter” ›** to step through the chapters (tap the chapter to pick
   another), and **⋯** (Edit details, Change the icon…, Compare with a chapter…, Summary of this chapter,
@@ -95,7 +116,8 @@ and, for pictures, your own ComfyUI machine.
 - **Review** (a story's menu): a page listing what may need fixing (missing, stale or wrong
   summaries, continuity slips, names with no codex entry, AI chapters not yet read) and the
   **tags** the AI suggests for chapters, for you to approve. See [Tags](#tags) below.
-- **Edit chapters later**; every earlier version is kept, and an edited chapter links to its history.
+- **Edit chapters later** on the writing desk; every earlier version is kept, and an edited chapter
+  links to its history.
 - **Pictures**: chapter headers and footers and covers made by your own ComfyUI, with
   presets, LoRAs, reference pictures, editing by instruction, and a Refine screen for painting and
   redrawing parts of a picture. See [Pictures with ComfyUI](docs/pictures.md).
@@ -124,8 +146,8 @@ and, for pictures, your own ComfyUI machine.
 
 - **Everything is on the server**: stories, settings (including AI keys) and drafts, so every device
   sees the same ones. A draft is saved as you write, so you can start a chapter on one device and
-  finish it on another. If the same draft is changed in two tabs, the second save is refused and the
-  page asks which version to keep.
+  finish it on another (**Drafts** in the ☰ menu opens each on the writing desk). If the same draft
+  is changed in two tabs, the second save is refused and the desk asks which version to keep.
 - **The server does the long work.** Picture jobs, AI runs and Generates go through one queue on the
   server (the header shows it; **Open queue** for the list). It keeps going with every tab closed. So
   the AI and ComfyUI addresses in Settings must work from the machine StoryTime runs on; **Test from
