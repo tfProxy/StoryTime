@@ -7,7 +7,7 @@ import { factRow, fillFact } from "./entryPage.mjs";
 // opening from the reading page's Edit starting unfolded and scrolled to the box; the "→ …" line renaming the choice in place;
 // "What happens next?" (a written choice opens its chapter on the desk, an unwritten one starts its draft, Add a new
 // suggestion, Suggest choices); "Draft not used" and "draft"; Back between two desks keeping the folds. And on a new
-// chapter: a new entry and facts held in the draft (shown on the desk, not saved), then saved at it by Post.
+// chapter: a new entry, facts and a shared entry held in the draft (shown on the desk, not saved), then saved at it by Post.
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 
 let failed = false;
@@ -202,6 +202,24 @@ try {
   ok(held?.codexChanges?.length === 1 && held?.codexFactChanges?.length === 2, "the draft holds the new entry and both facts");
   ok((await codexAt(B, "Moth")) === undefined && !(await codexAt(B, "Wren")).description.includes("green as moss"), "…and nothing is saved yet");
 
+  // A shared entry added on the new chapter is held too, and linked by Post.
+  const sharedName = `Path Beacon ${Date.now().toString(36)}`;
+  const sharedId = (await post("/api/shared", { name: sharedName, type: "item" })).id;
+  await page.locator("aside.desk-side").getByRole("button", { name: "More ways to add an entry" }).click();
+  await page.getByRole("menuitem", { name: /^Add a shared entry/ }).click();
+  const picker = page.locator('section.desk-entry[aria-label="Add a shared entry"]');
+  ok((await picker.locator(".desk-held-note").innerText()).includes("saved when you post it"), "the shared-entry picker says it is held until the Post");
+  await picker.getByRole("button", { name: new RegExp(sharedName) }).click();
+  await page.locator(`section.desk-entry[aria-label="Codex entry: ${sharedName}"]`).waitFor();
+  const beaconRow = page.locator("aside.desk-side .desk-row", { hasText: sharedName });
+  ok((await beaconRow.locator(".desk-chip", { hasText: "shared" }).count()) === 1 && (await beaconRow.locator(".desk-chip", { hasText: "held" }).count()) === 1, "it is in the codex list, marked shared and held");
+  const heldShared = await until(async () => {
+    const d = (await send("GET", `/api/drafts/${encodeURIComponent(`fill:${unwritten.id}`)}`)).draft;
+    return d?.codexChanges?.find((c) => c.shared_entry_id === sharedId);
+  });
+  ok(!!heldShared && heldShared.op === "create", "the draft holds the link");
+  ok((await codexAt(B, sharedName)) === undefined, "…and nothing is saved yet");
+
   // Post saves them at the new chapter.
   await nbox.getByLabel("Chapter text").fill("Moth flew past Wren.");
   await page.waitForFunction(() => /Draft saved/.test(document.querySelector("section.desk-box")?.textContent ?? ""));
@@ -212,6 +230,7 @@ try {
   const moth = await codexAt(D, "Moth");
   ok(!!moth && moth.description.includes("dusty grey"), "Post saves the new entry and its fact at the new chapter");
   ok((await codexAt(D, "Wren")).description.includes("green as moss") && !(await codexAt(B, "Wren")).description.includes("green as moss"), "…and Wren's fact from the new chapter on, not before");
+  ok((await codexAt(D, sharedName))?.shared_entry_id === sharedId && (await codexAt(B, sharedName)) === undefined, "…and links the shared entry at the new chapter");
   ok((await blocks.count()) === 3 && !(await isOpen(1)) && (await isOpen(2)), "after Post the desk is on the new chapter, the folds kept");
   ok((await page.locator(".desk-next").count()) === 1, "…and What happens next? shows once it is posted");
 

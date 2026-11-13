@@ -14,7 +14,9 @@ and, for pictures, your own ComfyUI machine.
   page) and the **Drafts** list open a new chapter there. (Old Edit and Write links still work: they
   open the desk.) On a wide screen it has three columns:
   - the **side column**, with two modes: **Codex** (search, the entries the chapter names under **In
-    this chapter**, then each type; the toggle on a row pins an entry to the prompt or leaves it out)
+    this chapter**, then each type; the toggle on a row pins an entry to the prompt or leaves it out;
+    **+** makes a new entry, and its **▾** also offers **Add a shared entry…**, to link one from the
+    shared codex into the story from this chapter on; on a new chapter it is added when you post it)
     and **Illustrate** (the picture controls, with the chapter's pictures in the story column);
   - the **open entry**, with its facts, preview, suggestions and history, changed right there;
   - the **story**: the earlier chapters on the path as blocks that fold (**Unfold all** / **Fold
