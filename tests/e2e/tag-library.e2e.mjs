@@ -133,6 +133,17 @@ try {
   ok(await form.getByText("She changes species.").isVisible(), "…and the reason");
   ok(await form.getByText("not tagged").isVisible(), "other chapter is not tagged");
   ok((await getJson("/api/tags")).tags.every((t) => t.name !== "Shapeshift"), "Try it saved nothing");
+  ok((await form.locator(".version").allInnerTexts()).map((t) => t.split(":")[0]).join(" | ") === "Start (start) | Horse (1 below)", "the first chapter, then the one below it, each with its level");
+
+  // ---- Try it from a later chapter, reading one ----
+  await form.locator("#try-start").click();
+  await page.getByRole("searchbox", { name: "Search chapter titles" }).fill("Horse");
+  await page.locator(".chapter-tree-results button").first().click();
+  await form.getByLabel("Number of chapters to read").fill("1");
+  await form.getByRole("button", { name: "Try it", exact: true }).click();
+  await form.getByText("Horse (start)").waitFor();
+  await form.getByRole("button", { name: "Try it", exact: true }).waitFor();
+  ok((await form.locator(".version").count()) === 1 && (await form.getByText("tagged (full)").isVisible()), "starting at Horse with 1 chapter reads only Horse");
   await form.getByRole("button", { name: "Save tag" }).click();
   await card("Shapeshift").waitFor();
 

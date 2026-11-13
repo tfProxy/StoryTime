@@ -5,7 +5,11 @@ import { draftRule, suggestTagsForChapter, type TagRule } from "@/lib/ai/tagAi";
 import { saveSettings, useSettings } from "@/lib/settings";
 import type { Tag, TagExample } from "@/lib/tags";
 import AutoTextarea from "./AutoTextarea";
+import ChapterTreePicker, { type PickerChapter } from "./ChapterTreePicker";
 import { AiCallProgress } from "./GenerateProgress";
+
+/** The most chapters Try it reads in one go, so a mistyped number can't start hundreds of AI calls. */
+const MAX_TRY = 50;
 
 type StoryOption = { id: string; title: string; premise: string; root_chapter_id: string | null };
 
@@ -211,7 +215,7 @@ function NewTagStart({ onStart }: { onStart: (d: Draft) => void }) {
   );
 }
 
-type Result = { title: string; found: { value: string | null; quote: string; reason: string } | null };
+type Result = { title: string; /** Levels below the start chapter. */ below: number; found: { value: string | null; quote: string; reason: string } | null };
 
 function TagEditor({
   initial,
@@ -359,20 +363,23 @@ function TagEditor({
   );
 }
 
-/** Runs the rule as it is in the editor (saved or not) on the first few chapters of a story. Saves nothing. */
+/**
+ * Runs the rule as it is in the editor (saved or not) on a chapter of a story (the first by default) and the chapters
+ * below it, level by level, up to a number of chapters. Saves nothing.
+ */
 function TryIt({ draft }: { draft: Draft }) {
   const settings = useSettings();
   const [stories, setStories] = useState<StoryOption[]>([]);
   const [storyId, setStoryId] = useState("");
+  const [tree, setTree] = useState<PickerChapter[]>([]);
+  const [startId, setStartId] = useState<string | null>(null);
+  const [countText, setCountText] = useState("5");
+  const count = Math.min(MAX_TRY, Math.max(1, Math.floor(Number(countText)) || 1));
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<{ n: number; total: number } | null>(null);
   const [results, setResults] = useState<Result[]>([]);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
-  const [startText, setStartText] = useState("0");
-  const [countText, setCountText] = useState("5");
-  const startDepth = Math.max(0, Math.floor(Number(startText)) || 0);
-  const count = Math.min(50, Math.max(1, Math.floor(Number(countText)) || 1));
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -381,9 +388,25 @@ function TryIt({ draft }: { draft: Draft }) {
       .catch(() => {});
   }, []);
 
+  function chooseStory(id: string) {
+    setStoryId(id);
+    setTree([]);
+    setStartId(null);
+    setResults([]);
+    setDone(false);
+    if (!id) return;
+    api<PickerChapter[]>(`/api/stories/${id}/chapters`, "GET")
+      .then((list) => {
+        setTree(list);
+        setStartId(list[0]?.id ?? null);
+      })
+      .catch((e) => setError(errText(e)));
+  }
+
   async function run() {
     const story = stories.find((s) => s.id === storyId);
-    if (!story?.root_chapter_id) return;
+    const start = startId ?? tree[0]?.id;
+    if (!story || !start) return;
     const ctl = new AbortController();
     abortRef.current = ctl;
     setRunning(true);
@@ -399,22 +422,19 @@ function TryIt({ draft }: { draft: Draft }) {
         choices: splitChoices(draft.choices),
         examples: draft.examples,
       };
-      // Walk down from the first chapter, breadth first. Chapters above the start depth are only passed through;
-      // the next `count` chapters from that depth on are read, with their text.
-      const chapters: { id: string; title: string; body: string }[] = [];
-      const queue: { id: string; depth: number }[] = [{ id: story.root_chapter_id, depth: 0 }];
-      const seen = new Set<string>();
-      while (queue.length && chapters.length < count) {
-        const { id, depth } = queue.shift()!;
-        if (seen.has(id)) continue;
-        seen.add(id);
-        const res = await api<{ chapter: { id: string; title: string; body: string }; choices: { child_chapter_id: string | null }[] }>(`/api/chapters/${id}`, "GET");
-        if (depth >= startDepth) chapters.push(res.chapter);
-        for (const c of res.choices) if (c.child_chapter_id) queue.push({ id: c.child_chapter_id, depth: depth + 1 });
+      // The start chapter, then the chapters below it a level at a time (siblings in the outline's order), up to `count`.
+      const children = new Map<string, PickerChapter[]>();
+      for (const c of tree) if (c.parent_id) children.set(c.parent_id, [...(children.get(c.parent_id) ?? []), c]);
+      const picked: { id: string; below: number }[] = [];
+      const queue = [{ id: start, below: 0 }];
+      while (queue.length && picked.length < count) {
+        const next = queue.shift()!;
+        picked.push(next);
+        for (const c of children.get(next.id) ?? []) queue.push({ id: c.id, below: next.below + 1 });
       }
-      for (let i = 0; i < chapters.length; i++) {
-        setProgress({ n: i + 1, total: chapters.length });
-        const ch = chapters[i];
+      for (let i = 0; i < picked.length; i++) {
+        setProgress({ n: i + 1, total: picked.length });
+        const { chapter: ch } = await api<{ chapter: { title: string; body: string } }>(`/api/chapters/${picked[i].id}`, "GET");
         const found = await suggestTagsForChapter(settings, {
           story: { title: story.title, premise: story.premise },
           chapter: { title: ch.title, body: ch.body },
@@ -422,7 +442,7 @@ function TryIt({ draft }: { draft: Draft }) {
           signal: ctl.signal,
         });
         const hit = found[0];
-        setResults((r) => [...r, { title: ch.title, found: hit ? { value: hit.value, quote: hit.quote, reason: hit.reason } : null }]);
+        setResults((r) => [...r, { title: ch.title, below: picked[i].below, found: hit ? { value: hit.value, quote: hit.quote, reason: hit.reason } : null }]);
       }
       setDone(true);
     } catch (e) {
@@ -436,27 +456,30 @@ function TryIt({ draft }: { draft: Draft }) {
   return (
     <div style={{ display: "grid", gap: "0.5rem", borderTop: "1px solid var(--line)", paddingTop: "0.75rem" }}>
       <strong>Try it</strong>
-      <span className="meta">
-        Runs this rule, as written above, on chapters of a story, going down the branches level by level. Nothing is saved.
-      </span>
-      <div className="row">
-        <label className="meta">
-          Start at depth{" "}
-          <input
-            type="number"
-            min={0}
-            aria-label="Depth to start at"
-            value={startText}
-            onChange={(e) => setStartText(e.target.value)}
-            style={{ width: "5rem" }}
-          />
-        </label>
-        <label className="meta">
-          Chapters to read{" "}
+      <span className="meta">Runs this rule, as written above, on a chapter and the chapters below it, one level at a time. Nothing is saved.</span>
+      <select aria-label="Story to try it on" value={storyId} onChange={(e) => chooseStory(e.target.value)} style={{ width: "auto", maxWidth: "100%" }}>
+        <option value="">Choose a story…</option>
+        {stories.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.title}
+          </option>
+        ))}
+      </select>
+      <div className="row" style={{ alignItems: "start" }}>
+        {tree.length > 0 && (
+          <div style={{ display: "grid", gap: "0.2rem", minWidth: 0 }}>
+            <label id="try-start-label" htmlFor="try-start">
+              Start at
+            </label>
+            <ChapterTreePicker id="try-start" labelledBy="try-start-label" chapters={tree} value={startId} onChange={(id) => setStartId(id)} />
+          </div>
+        )}
+        <label style={{ display: "grid", gap: "0.2rem" }}>
+          Chapters to read
           <input
             type="number"
             min={1}
-            max={50}
+            max={MAX_TRY}
             aria-label="Number of chapters to read"
             value={countText}
             onChange={(e) => setCountText(e.target.value)}
@@ -464,17 +487,8 @@ function TryIt({ draft }: { draft: Draft }) {
           />
         </label>
       </div>
-      <span className="meta">Depth 0 is the first chapter. Start 0 with 5 chapters reads the first five.</span>
       <div className="row">
-        <select aria-label="Story to try it on" value={storyId} onChange={(e) => setStoryId(e.target.value)} style={{ width: "auto", maxWidth: "100%" }}>
-          <option value="">Choose a story…</option>
-          {stories.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.title}
-            </option>
-          ))}
-        </select>
-        <button type="button" onClick={run} disabled={running || !storyId || !draft.applies.trim()}>
+        <button type="button" onClick={run} disabled={running || !storyId || !tree.length || !draft.applies.trim()}>
           {running ? "Reading…" : "Try it"}
         </button>
         {running && (
@@ -491,7 +505,7 @@ function TryIt({ draft }: { draft: Draft }) {
       {error && <p className="error">{error}</p>}
       {results.map((r, i) => (
         <div key={i} className="version">
-          <strong>{r.title}</strong>:{" "}
+          <strong>{r.title}</strong> <span className="meta">({r.below === 0 ? "start" : `${r.below} below`})</span>:{" "}
           {r.found ? (
             <>
               tagged{r.found.value ? ` (${r.found.value})` : ""}
