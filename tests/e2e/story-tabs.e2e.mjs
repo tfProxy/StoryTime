@@ -47,9 +47,9 @@ ok((await active()) === "Pictures", "the cover page counts as Pictures");
 await page.goto(`${BASE}/c/${second}/codex`);
 ok((await active()) === "Bible", "a chapter's codex counts as Bible");
 
-await page.goto(`${BASE}/c/${second}/edit`);
-await page.getByRole("heading").first().waitFor();
-ok((await tabs().count()) === 0, "the edit page has no tabs");
+await page.goto(`${BASE}/c/${second}/desk`);
+await page.getByLabel("Chapter title").waitFor();
+ok((await tabs().count()) === 0, "the writing desk has no tabs");
 
 await page.setViewportSize({ width: 390, height: 800 });
 await page.goto(`${BASE}/c/${second}`);

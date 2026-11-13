@@ -1,5 +1,6 @@
-// On a phone, typing in a long, self-growing text box keeps the cursor on screen: the page does not
-// jump while the box measures itself, and typing after scrolling away brings the cursor back.
+// On a phone, typing in a long, self-growing text box (the writing desk's chapter text) keeps the cursor on screen:
+// the page does not jump while the box measures itself, and typing after scrolling away brings the cursor back, above
+// the desk's bottom bar.
 import { launch } from "./browser.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
@@ -16,9 +17,10 @@ const ctx = await browser.newContext({ viewport: { width: 390, height: 700 }, ha
 const page = await ctx.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 page.on("dialog", (d) => d.accept());
-await page.goto(`${BASE}/c/${story.chapter_id}/write?choice=${on.id}`);
+await page.goto(`${BASE}/c/${story.chapter_id}/desk?choice=${on.id}`);
 
 const body = page.getByLabel("Chapter text");
+await body.waitFor();
 const long = Array.from({ length: 80 }, (_, i) => `Paragraph ${i + 1}: the rain kept falling on the old stone road.`).join("\n\n");
 await body.fill(long);
 
@@ -65,8 +67,8 @@ await page.keyboard.type("y");
 await page.waitForTimeout(300);
 c = await caretOnScreen();
 ok(c.top > 0 && c.top < c.height, `typing brings the cursor back on screen (at ${Math.round(c.top)} of ${c.height})`);
-// …and not behind the bar stuck to the bottom of the screen (Post).
-const barTop = await page.locator(".action-bar").evaluate((el) => el.getBoundingClientRect().top);
+// …and not behind the bar stuck to the bottom of the screen (the desk's tab bar).
+const barTop = await page.locator(".desk-tabbar").evaluate((el) => el.getBoundingClientRect().top);
 ok(barTop < c.height && c.top + 26 <= barTop, `the cursor is above the bottom bar (cursor ${Math.round(c.top)}, bar ${Math.round(barTop)})`);
 
 await browser.close();

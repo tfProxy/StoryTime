@@ -1,5 +1,5 @@
-// The drafting page's workflow: comparing drafts, the save indicator,
-// the end-of-branch notice, and posting without writing a summary first.
+// Writing a new chapter on the writing desk: the save indicator, posting without writing a summary first (the
+// summary is written after), and the "Suggest choices after writing" setting; then Suggest choices on the reading page.
 import http from "node:http";
 import { launch, useMockAi } from "./browser.mjs";
 
@@ -46,24 +46,23 @@ const page = await ctx.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 page.on("dialog", (d) => d.accept());
 
-await page.goto(`${BASE}/c/${root}/write?choice=${choice.id}`);
+const until = async (fn) => { for (let i = 0; i < 150; i++) { const v = await fn(); if (v) return v; await new Promise((r) => setTimeout(r, 100)); } return null; };
+
+await page.goto(`${BASE}/c/${root}/desk?choice=${choice.id}`);
 await page.getByLabel("Chapter title").waitFor();
 await page.getByLabel("Chapter title").fill("Door");
 await page.getByLabel("Chapter text").fill("One. Two sentences here. Three.");
 ok(await page.getByLabel("Instruction for the AI").count() === 0 && await page.getByRole("button", { name: /^Revise|^Undo$/ }).count() === 0, "a hand-written chapter has no Revise box or Undo");
-ok(await page.getByText(/posting now ends this branch/).isVisible() && !/ends the branch/.test(await page.locator(".action-bar").innerText()), "no choices: the notice shows by the choices, not in the footer");
-await page.getByPlaceholder("Choice 1").fill("Go in");
-ok(!(await page.getByText(/posting now ends this branch/).isVisible()), "…and goes away with a choice");
-await page.waitForFunction(() => /Draft saved/.test(document.body.innerText));
-ok(true, "the page says when the draft was saved");
+await page.waitForFunction(() => /Draft saved/.test(document.querySelector("section.desk-box")?.textContent ?? ""));
+ok(true, "the desk says when the draft was saved");
 
-// post without writing a summary: one is made
+// post without writing a summary: one is written after, in the background
 const before = prompts.length;
 await page.getByRole("button", { name: "Post chapter" }).click();
-await page.waitForURL(/\/c\/[^/]+\?posted=1/);
+await page.waitForURL(/\/c\/[^/]+\/desk\?posted=1/);
 const id = /\/c\/([^/?]+)/.exec(page.url())[1];
-const c = (await get(`/api/chapters/${id}`)).chapter;
-ok(c.title === "Door" && c.summary === "SUM(Door)" && prompts.slice(before).some((p) => p.system.includes("running summary")), "posting with no summary writes one");
+const c = await until(async () => { const ch = (await get(`/api/chapters/${id}`)).chapter; return ch.summary && ch; });
+ok(c && c.title === "Door" && c.summary === "SUM(Door)" && prompts.slice(before).some((p) => p.system.includes("running summary")), "posting with no summary has one written");
 
 // suggesting choices after writing is a setting, off by default
 const settingsNow = (await get("/api/settings")).settings;
@@ -74,25 +73,32 @@ const withSetting = (on) => ({
 const put = (body) => fetch(BASE + "/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 const newSlot = async (title) => {
   const st = await post("/api/stories", { title, premise: "p", chapter: { title: "Root", body: "Mira stood there.", choices: ["Open the door"] } });
-  return `/c/${st.chapter_id}/write?choice=${(await get(`/api/chapters/${st.chapter_id}`)).choices[0].id}`;
+  const slot = (await get(`/api/chapters/${st.chapter_id}`)).choices[0].id;
+  return { href: `/c/${st.chapter_id}/desk?choice=${slot}`, key: `fill:${slot}` };
 };
 const suggestCalls = () => prompts.filter((p) => p.user.includes("distinct options the reader could pick")).length;
+const draftOf = async (key) => (await get(`/api/drafts/${encodeURIComponent(key)}`)).draft;
+const generateOn = async (slot) => {
+  await page.goto(BASE + slot.href);
+  await page.locator(".desk-gen-row").getByRole("button", { name: "Generate" }).click();
+  await page.getByRole("button", { name: "Edit text" }).waitFor();
+  return until(async () => (await draftOf(slot.key))?.body?.includes("Generated text here.") && draftOf(slot.key));
+};
 
 await put(withSetting(false));
-await page.goto(BASE + (await newSlot("Suggest off")));
-await page.getByRole("button", { name: "Generate chapter" }).click();
-await page.getByRole("button", { name: "Edit text" }).waitFor();
+const offSlot = await newSlot("Suggest off");
+const offDraft = await generateOn(offSlot);
 await page.waitForTimeout(500);
-ok(suggestCalls() === 0 && (await page.locator("button.chip").count()) === 0, "off by default: no choices are suggested after writing");
+ok(offDraft && suggestCalls() === 0 && !offDraft.suggestions?.length, "off by default: no choices are suggested after writing");
+await fetch(`${BASE}/api/drafts/${encodeURIComponent(offSlot.key)}`, { method: "DELETE" });
 
 await put(withSetting(true));
 const callsBefore = suggestCalls();
-await page.goto(BASE + (await newSlot("Suggest on")));
-await page.getByRole("button", { name: "Generate chapter" }).click();
-await page.getByRole("button", { name: "+ Go left" }).waitFor();
-ok(suggestCalls() === callsBefore + 1 && (await page.locator("button.chip").count()) === 3, "on: choices are suggested once the chapter is written");
-await page.getByRole("button", { name: "+ Go left" }).click();
-ok((await page.getByPlaceholder("Choice 1").inputValue()) === "Go left", "a suggestion can be added with one click");
+const onSlot = await newSlot("Suggest on");
+await generateOn(onSlot);
+const onDraft = await until(async () => { const d = await draftOf(onSlot.key); return d?.suggestions?.length && d; });
+ok(suggestCalls() === callsBefore + 1 && onDraft?.suggestions?.join() === "Go left,Go right,Hide", "on: choices are suggested once the chapter is written, and kept with the draft");
+await fetch(`${BASE}/api/drafts/${encodeURIComponent(onSlot.key)}`, { method: "DELETE" });
 
 await put(settingsNow ? withSetting(settingsNow.autoSuggestChoices) : withSetting(false));
 

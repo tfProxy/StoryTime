@@ -1,5 +1,6 @@
-// Drafts are kept on the server: the page's working state survives a reload, another browser
-// picks the draft up, old browser-only drafts move over, and two tabs can't overwrite each other.
+// Drafts are kept on the server: the writing desk's working state survives a reload, another browser
+// picks the draft up, old browser-only drafts move over (and, saved with the old Write page's address, open on the
+// desk), two tabs can't overwrite each other, and Discard draft deletes one.
 import http from "node:http";
 import { launch } from "./browser.mjs";
 
@@ -38,7 +39,7 @@ await json("PUT", "/api/settings", { ...(settingsBefore ?? {}), connections: [{ 
 const story = await json("POST", "/api/stories", { title: "Drafty", premise: "p", chapter: { title: "Root", body: "Mira stood at the gate.", choices: ["Go in", "Turn back"] } });
 const root = story.chapter_id;
 const [goIn, turnBack] = (await json("GET", `/api/chapters/${root}`)).choices;
-const writeUrl = `${BASE}/c/${root}/write?choice=${goIn.id}`;
+const writeUrl = `${BASE}/c/${root}/desk?choice=${goIn.id}`;
 const draftUrl = `/api/drafts/${encodeURIComponent(`fill:${goIn.id}`)}`;
 
 const browser = await launch();
@@ -52,9 +53,9 @@ const watch = (page) => {
 const ctxA = await browser.newContext();
 const page = watch(await ctxA.newPage());
 await page.goto(writeUrl);
-await page.locator("select:has(option[value=long])").selectOption("long");
+await page.getByLabel("Length").selectOption("long");
 await page.getByLabel("Chapter text").fill("She looked up.");
-await page.getByLabel(/What should happen/).fill("make it darker");
+await page.getByLabel("Prompt", { exact: true }).fill("make it darker");
 await page.waitForFunction(() => /Draft saved/.test(document.body.innerText));
 await page.waitForTimeout(700); // the last change's save
 let stored = (await json("GET", draftUrl)).draft;
@@ -62,8 +63,8 @@ ok(stored?.body === "She looked up." && stored.length === "long" && stored.promp
 
 await page.reload();
 await page.getByLabel("Chapter text").waitFor();
-ok((await page.locator("select:has(option[value=long])").inputValue()) === "long", "the chapter length is still there after a reload");
-ok((await page.getByLabel(/What should happen/).inputValue()) === "make it darker", "…and the prompt");
+ok((await page.getByLabel("Length").inputValue()) === "long", "the chapter length is still there after a reload");
+ok((await page.getByLabel("Prompt", { exact: true }).inputValue()) === "make it darker", "…and the prompt");
 
 // ---- another browser picks it up ----
 const ctxB = await browser.newContext();
@@ -71,6 +72,7 @@ const other = watch(await ctxB.newPage());
 await other.goto(`${BASE}/drafts`);
 await other.getByText(/Drafty: “Go in”/).waitFor();
 ok(true, "the drafts list in another browser shows it");
+ok((await other.locator(".card", { hasText: "Drafty: “Go in”" }).getByRole("link").first().getAttribute("href")) === `/c/${root}/desk?choice=${goIn.id}`, "…linking to it on the writing desk");
 await other.goto(writeUrl);
 await other.getByLabel("Chapter text").waitFor();
 ok((await other.getByLabel("Chapter text").inputValue()) === "She looked up.", "…and opens it with its text");
@@ -101,12 +103,13 @@ ok((await json("GET", draftUrl)).draft.title === "Mine wins", "keeping this one 
 // coming back to a tab after writing elsewhere shows the newer draft
 await page.waitForTimeout(700);
 await other.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-await other.waitForFunction(() => document.querySelector("#field-title input")?.value === "Mine wins", null, { timeout: 5000 }).catch(() => {});
+await other.waitForFunction(() => document.querySelector("#chapter-title")?.value === "Mine wins", null, { timeout: 5000 }).catch(() => {});
 ok((await other.getByLabel("Chapter title").inputValue()) === "Mine wins", "returning to the other tab brings in the newer draft");
 
 // posting deletes the draft
+await page.goto("about:blank");
 await other.getByRole("button", { name: "Post chapter" }).click();
-await other.waitForURL(/\/c\/[^/]+\?posted=1/);
+await other.waitForURL(/\/c\/[^/]+\/desk\?posted=1/);
 ok((await fetch(BASE + draftUrl)).status === 404, "posting removes the draft from the server");
 
 // ---- drafts kept in the browser by older versions move to the server ----
@@ -130,9 +133,19 @@ const moved = (await json("GET", `/api/drafts/${encodeURIComponent(`fill:${turnB
 ok(moved?.body === "Written before the upgrade.", "…because it was moved to the server");
 const leftLocal = await old.evaluate(async () => (await indexedDB.databases()).some((d) => d.name === "storytime"));
 ok(!leftLocal, "…and the browser's copy is cleared");
+// It was saved with the old Write page's address: the list opens it on the desk, and so does that address.
+await old.locator(".card", { hasText: "Old local" }).getByRole("link").first().click();
+await old.waitForURL(`${BASE}/c/${root}/desk?choice=${turnBack.id}`);
+await old.getByLabel("Chapter text").waitFor();
+ok((await old.getByLabel("Chapter text").inputValue()) === "Written before the upgrade.", "…and opens on the writing desk, with its text");
+await old.goto(`${BASE}/c/${root}/write?choice=${turnBack.id}`);
+await old.waitForURL(`${BASE}/c/${root}/desk?choice=${turnBack.id}`);
+await old.getByLabel("Chapter text").waitFor();
+ok((await old.getByLabel("Chapter text").inputValue()) === "Written before the upgrade.", "the old Write page's address redirects to the same draft on the desk");
+await old.goto("about:blank");
 await json("DELETE", `/api/drafts/${encodeURIComponent(`fill:${turnBack.id}`)}`);
 
-// ---- Discard draft: the post button's menu deletes the draft, after asking ----
+// ---- Discard draft: the desk's ⋯ menu deletes the draft, after asking ----
 {
   const ctx = await browser.newContext();
   const p = await ctx.newPage();
@@ -141,7 +154,7 @@ await json("DELETE", `/api/drafts/${encodeURIComponent(`fill:${turnBack.id}`)}`)
   let accept = false;
   p.on("dialog", (d) => { dialogs.push(d.message()); return accept ? d.accept() : d.dismiss(); });
   const discardUrl = `/api/drafts/${encodeURIComponent(`fill:${turnBack.id}`)}`;
-  await p.goto(`${BASE}/c/${root}/write?choice=${turnBack.id}`);
+  await p.goto(`${BASE}/c/${root}/desk?choice=${turnBack.id}`);
   await p.getByLabel("Chapter text").fill("To be thrown away.");
   await p.waitForFunction(() => /Draft saved/.test(document.body.innerText));
   await p.waitForTimeout(700);
@@ -151,15 +164,15 @@ await json("DELETE", `/api/drafts/${encodeURIComponent(`fill:${turnBack.id}`)}`)
   await reader.goto(`${BASE}/c/${root}`);
   ok((await draftIcon(reader).count()) === 1, "the reading page shows a draft icon on the choice with a saved draft");
   await reader.close();
-  await p.getByRole("button", { name: "More ways to post" }).click();
-  await p.getByRole("menuitemradio", { name: /^Discard draft/ }).click();
-  const main = p.locator(".split-button > button").first();
-  ok((await main.textContent()) === "Discard draft" && (await main.getAttribute("class"))?.includes("danger"), "choosing Discard draft turns the main button red");
+  await p.locator(".desk-bar").getByLabel("More for this chapter").click();
+  const main = p.locator(".desk-bar .more-menu-items").getByRole("button", { name: "Discard draft…" });
+  ok((await main.getAttribute("class"))?.includes("danger"), "the ⋯ menu has Discard draft…, in red");
   await main.click();
   await p.waitForTimeout(500);
   ok(dialogs.length === 1 && /can't be undone/.test(dialogs[0]), "it asks first: " + dialogs[0]);
   ok((await json("GET", discardUrl)).draft?.body === "To be thrown away.", "saying no keeps the draft");
   accept = true;
+  if (!(await main.isVisible())) await p.locator(".desk-bar").getByLabel("More for this chapter").click();
   await main.click();
   await p.waitForURL((u) => u.pathname === `/c/${root}`);
   ok(true, "saying yes goes back to the chapter above");

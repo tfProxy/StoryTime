@@ -55,7 +55,7 @@ export async function useMockAi(base, { main = "main", cheap = "cheap", ...extra
 
 /**
  * Starts a new story the way the app does: the New story form (title, summary, style notes), then Start
- * writing on its details page. Leaves the page on the first-chapter draft; returns the story's id.
+ * writing on its details page. Leaves the page on the writing desk's first-chapter draft (loaded); returns the story's id.
  */
 export async function startStory(page, base, { title, premise = "", style = "" }) {
   await page.goto(`${base}/new`);
@@ -66,7 +66,7 @@ export async function startStory(page, base, { title, premise = "", style = "" }
   await page.waitForURL(/\/s\/[^/]+\/details$/);
   const id = new URL(page.url()).pathname.split("/")[2];
   await page.getByRole("link", { name: "Start writing" }).click();
-  await page.waitForURL(`**/s/${id}/write`);
-  await page.getByRole("heading", { name: "Write the first chapter" }).waitFor();
+  await page.waitForURL(`**/s/${id}/desk`);
+  await page.getByLabel("Chapter title").waitFor();
   return id;
 }

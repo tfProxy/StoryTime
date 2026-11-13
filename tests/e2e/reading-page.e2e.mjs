@@ -75,8 +75,9 @@ try {
   await page.getByRole("button", { name: "Draft a different idea" }).waitFor();
   ok((await page.getByRole("button", { name: "Suggest choices" }).count()) === 0, "picking the other one changes the main button");
   await page.getByRole("button", { name: "Draft a different idea" }).click();
-  await page.waitForURL(new RegExp(`/c/${R}/write$`));
-  ok(true, "the main button then opens the writing page");
+  await page.waitForURL(new RegExp(`/c/${R}/desk\\?new=$`));
+  await page.getByLabel("Chapter title").waitFor();
+  ok(true, "the main button then opens a new choice's chapter on the writing desk");
 
   // phone width
   await page.setViewportSize({ width: 390, height: 800 });

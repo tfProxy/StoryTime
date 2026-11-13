@@ -3,8 +3,7 @@ import { entryAction, factRow, openTab } from "./entryPage.mjs";
 
 // The codex entry's own page: the bar (back, name, chapter picker, ‹ ›, ⋯), the details line and Edit details, the form
 // row and Change form, the icon (picked from a saved picture or uploaded, shown in the codex list), the line to the changes waiting
-// beside the text, and the places that lead to the page (the codex list, the Story Bible, the ☰ menu, the writing
-// page's drawer).
+// beside the text, and the places that lead to the page (the codex list, the Story Bible, the ☰ menu).
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 
 let failed = false;
@@ -193,19 +192,6 @@ try {
   await page.locator(".site-menu").getByRole("link", { name: "Story Bible", exact: true }).click();
   await page.waitForURL(new RegExp(`/s/${sid}/review\\?chapter=${A}`));
   ok(await page.getByRole("heading", { name: "Story Bible", level: 1 }).isVisible(), "the ☰ menu's Story Bible link lands on the Story Bible");
-  await page.goto(`${BASE}/c/${A2}/write?choice=${(await send("GET", `/api/chapters/${A2}`)).choices[0].id}`);
-
-  // ---- the writing page's drawer opens the entry inside the drawer ----
-  await page.locator(".site-menu > summary").click();
-  await page.getByRole("button", { name: "Codex", exact: true }).click();
-  const drawer = page.locator("aside.codex-drawer");
-  await drawer.waitFor();
-  await drawer.locator(".entry-card", { hasText: "Rowan" }).click();
-  await drawer.getByRole("heading", { name: "Rowan" }).waitFor();
-  ok(page.url().includes("/write") && (await drawer.getByLabel(/Keywords/).count()) === 1, "tapping a card opens the entry in the drawer, without leaving the page");
-  await drawer.getByRole("button", { name: "← All entries" }).click();
-  await drawer.locator(".entry-card", { hasText: "Rowan" }).waitFor();
-  ok(true, "← All entries goes back to the list");
 
   // ---- branches: the chapters after, the summary, inherited keywords, removing from one chapter ----
   const hub = await post("/api/stories", { title: "Hub Tale", premise: "p", chapter: { title: "Hub", body: "A crossroads.", summary: "The travellers meet at the hub.", choices: ["Go down", "Climb up"] } });

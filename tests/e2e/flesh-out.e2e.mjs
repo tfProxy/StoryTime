@@ -121,18 +121,8 @@ try {
   await ideas.waitFor({ state: "detached" });
   ok(!(await descAt(A)).includes("deep water"), "Discard drops the idea, and the box goes when none are left");
 
-  // not in the writing page's drawer
-  await send("PUT", "/api/queue/paused", { paused: false });
-  await page.goto(`${BASE}/c/${A}/write?choice=${(await send("GET", `/api/chapters/${A}`)).choices[0].id}`);
-  await page.locator(".site-menu > summary").click();
-  await page.getByRole("button", { name: "Codex", exact: true }).click();
-  const drawer = page.locator("aside.codex-drawer");
-  await drawer.waitFor();
-  await drawer.locator(".entry-card", { hasText: "Wren" }).click();
-  await drawer.getByRole("heading", { name: "Wren" }).waitFor();
-  ok((await drawer.getByRole("button", { name: /Flesh out/ }).count()) === 0, "not offered in the writing page's drawer");
-
   // phone width
+  await send("PUT", "/api/queue/paused", { paused: false });
   await page.setViewportSize({ width: 390, height: 800 });
   await page.goto(entryUrl(wren));
   await fleshButton.click();

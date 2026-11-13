@@ -33,6 +33,7 @@ ok((await call("GET", url)).json.draft.title === "Two", "…and the stored draft
 r = await call("GET", "/api/drafts");
 const item = r.json.drafts.find((d) => d.key === key);
 ok(item && item.title === "Two" && item.label === "Story: “Go on”" && item.updatedAt === second && item.body === undefined, "the list shows each draft without its text");
+ok(item.href === "/c/x/desk?choice=abc123", `a draft saved with the old Write page's address opens on the writing desk (${item.href})`);
 
 // moving a draft over from browser storage
 r = await call("PUT", url, { draft: draft("Older local", { updatedAt: second - 1000 }), imported: true });

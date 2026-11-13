@@ -239,11 +239,11 @@ try {
   const draftOf = async (key) => (await call("GET", `/api/drafts/${encodeURIComponent(key)}`)).draft;
   const g = await call("POST", "/api/stories", { title: "Generate tale", chapter: { title: "Root", body: "root", choices: [] } });
   ai.delay = 400;
-  await page.goto(`${BASE}/c/${g.chapter_id}/write`);
+  await page.goto(`${BASE}/c/${g.chapter_id}/desk?new=`);
   await page.getByLabel("Chapter text").fill("Earlier words.");
   await until(async () => (await draftOf(`new:${g.chapter_id}`))?.body === "Earlier words.", "the first text to be saved");
   await until(async () => await page.evaluate(() => !!window.__storytimeQueue), "the queue hook");
-  await page.getByRole("button", { name: "Generate a new draft" }).click();
+  await page.getByRole("button", { name: "Generate again" }).click();
   await until(async () => ai.active > 0, "the Generate to start", 100);
   await page.screenshot({ path: `${SHOTS}/generate-writing-page-desktop.png` });
   await page.setViewportSize({ width: 400, height: 900 });
@@ -261,7 +261,7 @@ try {
   ok(saved.newChoiceLabel === "Take the left door", "…and the choice text was filled in");
   await q.badge.click();
   await q.panel.getByRole("link", { name: "Open", exact: true }).first().click();
-  await page.waitForURL(`${BASE}/c/${g.chapter_id}/write`);
+  await page.waitForURL(`${BASE}/c/${g.chapter_id}/desk?new=`);
   ok(await page.getByLabel("Chapter text").inputValue().catch(() => "A chapter the fake AI wrote.") === "A chapter the fake AI wrote." || (await page.getByText("A chapter the fake AI wrote.").count()) > 0, "Open goes back to the draft, which shows the chapter");
   ok(await until(async () => (await q.badge.count()) === 0 || (await label()) === "Queue: 1 ready", "settle", 5) , "…");
   await q.badge.click().catch(() => {});
@@ -270,13 +270,13 @@ try {
   // A Generate waits for the step going, then goes before the run's next chapter.
   const r8 = await makeRun("Run tale eight", ["M", "N"]);
   const h = await call("POST", "/api/stories", { title: "Generate two", chapter: { title: "Root", body: "root", choices: [] } });
-  await page.goto(`${BASE}/c/${h.chapter_id}/write`);
-  await page.getByLabel(/What should happen/).fill("GENERATEMARK");
+  await page.goto(`${BASE}/c/${h.chapter_id}/desk?new=`);
+  await page.getByLabel("Prompt", { exact: true }).fill("GENERATEMARK");
   await until(async () => await page.evaluate(() => !!window.__storytimeQueue), "the queue hook");
   const chaptersBefore = ai.log.filter((e) => e.kind === "chapter").length;
   await q.start(r8.runId);
   await until(async () => ai.active > 0, "the run's first step", 100);
-  await page.getByRole("button", { name: "Generate chapter" }).click();
+  await page.locator(".desk-gen-row").getByRole("button", { name: "Generate", exact: true }).click();
   ok(await until(async () => await page.getByText(/Waiting for the step in progress|Waiting its turn/).isVisible().catch(() => false), "the page to say it waits", 30), "a Generate asked for while a run's step is going shows that it is waiting");
   await page.setViewportSize({ width: 400, height: 900 });
   await page.screenshot({ path: `${SHOTS}/generate-waiting-page-400.png` });

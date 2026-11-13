@@ -115,25 +115,27 @@ try {
   await page.goto(`${BASE}/c/${A}`);
   ok((await page.locator("p.chapter-meta svg.ai-mark").count()) === 1, "…but the chapter page still does");
 
-  // This is my writing now
-  const mineBox = page.getByRole("checkbox", { name: /This is my writing now/ });
-  await page.goto(`${BASE}/c/${C}/edit`);
-  await page.getByRole("button", { name: "Save changes" }).waitFor();
-  ok((await mineBox.count()) === 0, "a chapter the owner wrote has no 'This is my writing now' on its edit page");
-  await page.goto(`${BASE}/c/${A1}/edit`);
-  await mineBox.waitFor();
-  ok(!(await mineBox.isChecked()) && (await page.getByText("Removes the AI mark.").count()) === 1, "an AI chapter's edit page has it, unticked, with its hint");
-  await shoot("edit-mine");
-  await mineBox.check();
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await page.waitForURL(`${BASE}/c/${A1}`);
-  await page.locator("p.chapter-meta").waitFor();
-  ok((await page.locator(".ai-mark").count()) === 0 && (await page.locator(".ai-review-notice").count()) === 0, "saving with it ticked removes the robot and the notice from the chapter");
+  // Remove the AI mark, in the writing desk's ⋯ menu
+  const deskMenu = async (id) => {
+    await page.goto(`${BASE}/c/${id}/desk`);
+    await page.getByLabel("Chapter title").waitFor();
+    await page.locator(".desk-bar").getByLabel("More for this chapter").click();
+    return page.locator(".desk-bar .more-menu-items").getByRole("button", { name: "Remove the AI mark" });
+  };
+  let removeMark = await deskMenu(C);
+  ok((await removeMark.count()) === 0, "a chapter the owner wrote has no 'Remove the AI mark' on the desk");
+  removeMark = await deskMenu(A1);
+  ok((await removeMark.count()) === 1, "an AI chapter's desk menu has it");
+  await shoot("desk-remove-mark");
+  await removeMark.click();
+  await page.locator(".desk-bar-note", { hasText: "The AI mark is removed" }).waitFor();
+  await page.goto(`${BASE}/c/${A1}`);
+  await page.getByRole("heading", { name: "AI A1", level: 1 }).waitFor();
+  ok((await page.locator(".ai-mark").count()) === 0 && (await page.locator(".ai-review-notice").count()) === 0, "it removes the robot and the notice from the chapter");
   await page.goto(`${BASE}/c/${A}`);
   ok((await card("deeper").first().locator("svg.ai-mark").count()) === 0, "…and from the choice card that leads to it");
-  await page.goto(`${BASE}/c/${A1}/edit`);
-  await page.getByRole("button", { name: "Save changes" }).waitFor();
-  ok((await mineBox.count()) === 0, "…and the edit page no longer offers it");
+  removeMark = await deskMenu(A1);
+  ok((await removeMark.count()) === 0, "…and the desk no longer offers it");
 } finally {
   await putSettings(settingsBefore ?? {});
   await browser.close();

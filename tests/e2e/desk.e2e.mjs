@@ -1,10 +1,10 @@
 import { launch, useMockAi } from "./browser.mjs";
 import { factRow, fillFact } from "./entryPage.mjs";
 
-// The writing desk (/c/<id>/desk) for a posted chapter: the Desk button on the reading page; the codex column (Codex |
+// The writing desk (/c/<id>/desk) for a posted chapter: the reading page's Edit opening it; the codex column (Codex |
 // Illustrate, search, "In this chapter", the type groups, the count badge, folding to a rail); an open entry (its tabs in
 // order, Facts first, or Suggestions when some wait; a fact added and saved at once; Keep and Dismiss; Ask the AI for
-// more); and the chapter's editor beside it, without its own codex drawer. The queue is paused, so no AI is called.
+// more); and the chapter's editor beside it, with no codex drawer. The queue is paused, so no AI is called.
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 
 let failed = false;
@@ -51,22 +51,20 @@ try {
   page.on("dialog", (d) => d.accept());
   await send("PUT", "/api/queue/paused", { paused: true });
 
-  // ---- the Desk button, beside Edit on the reading page ----
+  // ---- the reading page's Edit opens the desk ----
   await page.goto(`${BASE}/c/${A}`);
   await page.getByRole("heading", { name: "Chapter A" }).waitFor();
   await page.waitForLoadState("load");
   const actions = page.locator(".chapter-actions");
-  const edit = await actions.getByRole("link", { name: "Edit", exact: true }).boundingBox();
-  const deskLink = actions.getByRole("link", { name: "Desk", exact: true });
-  const deskBox = await deskLink.boundingBox();
-  ok(Math.abs(edit.y - deskBox.y) < 6 && deskBox.x > edit.x, "the reading page has a Desk button beside Edit: " + JSON.stringify([edit, deskBox]));
-  await deskLink.click();
+  ok((await actions.getByRole("link", { name: "Desk", exact: true }).count()) === 0, "the reading page has no separate Desk button");
+  await actions.getByRole("link", { name: "Edit", exact: true }).click();
   await page.waitForURL(`${BASE}/c/${A}/desk`);
   const side = page.locator("aside.desk-side");
   await side.waitFor();
   // The editor has loaded the draft when its title box shows.
   await page.getByRole("heading", { name: "Edit “Chapter A”" }).waitFor();
-  ok(true, "the Desk button opens the desk for the chapter");
+  ok(true, "Edit opens the desk for the chapter");
+  ok((await page.locator(".desk-bar").getByRole("link", { name: "Edit page" }).count()) === 0, "the desk's top bar has no link to an old Edit page");
 
   // ---- the codex column ----
   ok((await side.getByRole("button", { name: "Codex", exact: true }).getAttribute("aria-pressed")) === "true" && (await side.getByRole("button", { name: "Illustrate", exact: true }).isEnabled()), "Codex | Illustrate at the top, on Codex; Illustrate is offered, as the chapter is posted (desk-illustrate tests it)");
@@ -77,7 +75,9 @@ try {
   ok((await inChapter.locator(".desk-row-name").allInnerTexts()).sort().join() === "Oda,Wren", "In this chapter lists the entries the draft names (Wren and Oda), not the Hollow or the Lantern");
   ok((await side.locator(".desk-group", { hasText: "Places" }).locator(".desk-row-name").allInnerTexts()).join() === "The Hollow", "the Hollow is under Places");
   ok((await side.locator(".desk-group", { hasText: "Things" }).locator(".desk-row-name").allInnerTexts()).join() === "Lantern", "the Lantern (an item) is under Things");
-  ok((await page.locator("aside.codex-drawer").count()) === 0 && (await page.getByText("Codex for this prompt").count()) === 0, "the editor shows no codex drawer and no 'Codex for this prompt' on the desk");
+  await page.locator(".site-menu > summary").click();
+  ok((await page.locator(".site-menu").getByRole("button", { name: "Codex", exact: true }).count()) === 0 && (await page.getByText("Codex for this prompt").count()) === 0, "no Codex drawer in the ☰ menu and no 'Codex for this prompt' on the desk");
+  await page.locator(".site-menu > summary").click();
 
   // the count badge
   const odaRow = side.locator(".desk-group", { hasText: "Characters" }).locator(".desk-row", { hasText: "Oda" });

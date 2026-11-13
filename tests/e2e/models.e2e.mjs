@@ -1,5 +1,5 @@
-// AI connections and starred models are set up in Settings; each draft can pick its own
-// model for writing and for suggestions, which is remembered with the draft.
+// AI connections and starred models are set up in Settings; each draft on the writing desk can pick its own
+// model for writing and for its summary, which is remembered with the draft.
 import http from "node:http";
 import { launch, startStory } from "./browser.mjs";
 
@@ -149,7 +149,7 @@ const storyId = await startStory(page, BASE, { title: "Model tale" });
 const draftUrl = `/api/drafts/first:${storyId}`;
 const writePicker = page.getByLabel("Model for writing").first();
 ok((await writePicker.inputValue()) === "", "the writing model starts on the default");
-await page.getByRole("button", { name: "Generate chapter" }).click();
+await page.locator(".desk-gen-row").getByRole("button", { name: "Generate" }).click();
 await page.getByRole("button", { name: "Edit text" }).waitFor();
 // (The server makes the request now, a moment after the click.)
 await until(() => calls.some((c) => c.system.includes("Output format")), "the generate call");
@@ -158,7 +158,7 @@ ok(gen.url === "/a/v1/chat/completions" && gen.model === "alpha", "generating us
 ok(gen.reasoning === undefined, "…which is left to think");
 
 await writePicker.selectOption({ label: "Big one" });
-await page.getByRole("button", { name: "Generate a new draft" }).click();
+await page.getByRole("button", { name: "Generate again" }).click();
 await until(() => calls.filter((c) => c.system.includes("Output format")).length === 2, "the second generate call");
 gen = calls.filter((c) => c.system.includes("Output format")).at(-1);
 ok(gen.url === "/b/v1/chat/completions" && gen.model === "vendor/big" && gen.auth === "Bearer rk", "after picking another model, generating uses it, on its own connection");
@@ -170,17 +170,20 @@ await page.getByLabel("Chapter title").waitFor();
 ok((await page.getByLabel("Model for writing").first().inputValue()).includes("vendor/big"), "the picked model is remembered with the draft");
 ok((await settingsNow()).defaults.main.model === "alpha", "…without changing the default");
 
-// ---- suggestions have their own picker ----
-const suggestPicker = page.locator('select[aria-label="Model for suggestions"]:visible').first();
-await page.getByRole("button", { name: "Suggest choices" }).click();
-await until(() => calls.some((c) => c.system.includes("JSON array of strings")), "a suggest-choices call");
+// ---- the summary has its own picker, in the desk's ⋯ menu ----
+await page.locator(".desk-bar").getByLabel("More for this chapter").click();
+const summaryPicker = page.locator(".desk-bar .more-menu-items").getByLabel("Summary model");
+ok((await summaryPicker.inputValue()) === "", "the summary model starts on the default");
+await summaryPicker.selectOption({ label: "Big one" });
+await until(async () => (await json("GET", draftUrl)).draft?.models?.suggest?.model === "vendor/big", "the summary model's pick to be saved with the draft");
+await page.locator(".desk-bar .more-menu > summary").click();
 const before = calls.length;
-ok(calls.at(-1).model === "alpha", "suggestions fall back to the default when no cheaper model is set");
-await suggestPicker.selectOption({ label: "Big one" });
-await page.getByRole("button", { name: "Suggest choices" }).click();
-await until(() => calls.length > before, "the second suggest-choices call");
-ok(calls.at(-1).model === "vendor/big", "suggestions use the model picked for them");
-ok(calls.at(-1).reasoning?.effort === "none", "…and the same model is asked not to think for them, as set on its card");
+await page.getByRole("button", { name: "Post chapter" }).click();
+await page.waitForURL(/\/desk\?posted=1$/);
+await until(() => calls.slice(before).some((c) => c.system.includes("running summary")), "the summary call after posting");
+const sum = calls.slice(before).find((c) => c.system.includes("running summary"));
+ok(sum.model === "vendor/big", "the summary written after posting uses the model picked for it");
+ok(sum.reasoning?.effort === "none", "…and the same model is asked not to think for it, as set on its card");
 
 // ---- the default is chosen in Settings, not next to the picker ----
 ok((await page.getByRole("button", { name: "Make default" }).count()) === 0, "the picker has no “Make default” button");

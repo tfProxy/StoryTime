@@ -106,8 +106,8 @@ await card.getByText("A human thief with a scar.").waitFor();
 ok((await page.getByText("Now a horse").count()) === 0, "root unaffected by the change at A");
 
 // prompts carry the branch's codex
-await page.goto(`${BASE}/c/${A}/write?choice=${gallop.id}`);
-await page.getByRole("button", { name: "Generate chapter" }).click();
+await page.goto(`${BASE}/c/${A}/desk?choice=${gallop.id}`);
+await page.locator(".desk-gen-row").getByRole("button", { name: /^Generate/ }).click();
 await page.getByRole("button", { name: "Edit text" }).click();
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("Hello there"));
 const p = prompts.at(-1);
@@ -117,8 +117,11 @@ await page.goto(`${BASE}/c/${B}`);
 await page.getByRole("button", { name: "More ways to continue" }).click();
 await page.getByRole("menuitemradio", { name: /Draft a different idea/ }).click();
 await page.getByRole("button", { name: "Draft a different idea" }).click();
-await page.getByLabel(/Choice text/).fill("Wander");
-await page.getByRole("button", { name: "Generate chapter" }).click();
+await page.waitForURL(/\/desk\?new=$/);
+await page.getByRole("button", { name: "Write the choice that leads here" }).click();
+await page.getByLabel("Choice text").fill("Wander");
+await page.getByLabel("Choice text").press("Enter");
+await page.locator(".desk-gen-row").getByRole("button", { name: /^Generate/ }).click();
 await page.getByRole("button", { name: "Edit text" }).click();
 await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("Hello there"));
 ok(prompts.at(-1).includes("A human thief with a scar."), "continuation on B gets the human entry");

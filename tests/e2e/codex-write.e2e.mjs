@@ -1,192 +1,70 @@
-// The codex on the writing page: a drawer to view/add entries, and a preview of which entries go into a prompt.
-import http from "node:http";
-import { launch, useMockAi } from "./browser.mjs";
+// The codex while writing a new chapter on the writing desk: an entry's details changed "from this chapter" are held in
+// the draft (saved by Post at the new chapter), while one put at an earlier chapter is saved at once. (The desk's
+// other codex behaviour is in desk.e2e, desk-path.e2e and desk-text.e2e.)
+import { launch } from "./browser.mjs";
 import { unfoldEntryFolds } from "./unfold.mjs";
-import { pickAspect } from "./entryPage.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
-const prompts = [];
-const mock = http.createServer((req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "*");
-  if (req.method === "OPTIONS") { res.statusCode = 204; return res.end(); }
-  let data = ""; req.on("data", (c) => (data += c));
-  req.on("end", () => {
-    const last = JSON.parse(data || "{}").messages?.at(-1)?.content ?? "";
-    prompts.push(last);
-    const reply = "# T\n\nHello there.";
-    res.setHeader("content-type", "text/event-stream");
-    res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: reply } }] })}\n\n`);
-    res.end("data: [DONE]\n\n");
-  });
-});
-await new Promise((r) => mock.listen(3222, r));
-
 let failed = false;
 const ok = (c, m) => { console.log(c ? "ok  " : "FAIL", m); if (!c) failed = true; };
 const post = async (url, body) => (await fetch(BASE + url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
+const codexAt = async (id) => (await (await fetch(`${BASE}/api/chapters/${id}/codex`)).json()).entries;
+const until = async (fn) => { for (let i = 0; i < 100; i++) { const v = await fn(); if (v) return v; await new Promise((r) => setTimeout(r, 100)); } return null; };
 
 const story = await post("/api/stories", { title: "Codex Write", premise: "p", chapter: { title: "Root", body: "Mira stood there.", choices: ["Go on"] } });
 const root = story.chapter_id;
 const choice = (await (await fetch(`${BASE}/api/chapters/${root}`)).json()).choices[0];
-// Each entry has notes and one fact: only the facts reach the AI prompts, so an entry without a fact adds nothing to them.
-const entry = async (name, content, fact, extra = {}) => {
-  const made = await post("/api/codex", { anchor_chapter_id: root, op: "create", name, type: "character", content, ...extra });
-  await post("/api/codex/facts", { anchor_chapter_id: root, entry_id: made.entry_id, op: "set", aspect: "Role", text: fact });
-};
-await entry("Mira", "A thief with a scar.", "Quick with a lockpick.");
-await entry("Zed", "A grumpy ferryman.", "Owns the river boat.");
-await entry("Qux", "An unrelated hermit.", "Lives in a cave.");
-await entry("The Rule", "Magic costs memories.", "Every spell takes a memory.", { type: "lore", always_include: true });
+await post("/api/codex", { anchor_chapter_id: root, op: "create", name: "Zed", type: "character", content: "" });
+await post("/api/codex", { anchor_chapter_id: root, op: "create", name: "Qux", type: "character", content: "" });
 
 const browser = await launch();
-const ctx = await browser.newContext();
+const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
 await unfoldEntryFolds(ctx);
-const ai = await useMockAi(BASE, { main: "m", cheap: null });
 const page = await ctx.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 page.on("dialog", (d) => d.accept());
+const draftKey = `fill:${choice.id}`;
 
-await page.goto(`${BASE}/c/${root}/write?choice=${choice.id}`);
-const summary = page.locator("details.codex-preview > summary");
-await summary.waitFor();
-ok(/2 of 4 entries/.test(await summary.innerText()), "preview counts the entries that will be sent: " + (await summary.innerText()));
-await summary.click();
-const row = (name) => page.locator("li.codex-pick", { hasText: name });
-ok(/mentioned/.test(await row("Mira").innerText()) && /always included/.test(await row("The Rule").innerText()), "each entry says why it is included");
-ok(/not mentioned/.test(await row("Zed").innerText()), "unmentioned entries are listed separately");
+try {
+  await page.goto(`${BASE}/c/${root}/desk?choice=${choice.id}`);
+  const box = page.locator("section.desk-box");
+  await box.getByLabel("Chapter title").waitFor();
+  const entryCol = page.locator("section.desk-entry");
+  const editDetails = async (name) => {
+    await page.locator("aside.desk-side .desk-row", { hasText: name }).click();
+    await page.locator(`section.desk-entry[aria-label="Codex entry: ${name}"]`).waitFor();
+    await entryCol.getByLabel("More entry actions").click();
+    await entryCol.getByRole("button", { name: "Edit details" }).click();
+    return entryCol.locator('section[aria-label="Name, type and keywords"]');
+  };
 
-// typing in the direction box triggers entries
-await page.getByLabel(/What should happen/).fill("Zed rows the boat");
-ok(/mentioned/.test(await row("Zed").innerText()) && !/not mentioned/.test(await row("Zed").innerText()), "what you type can pull an entry in");
-ok(/3 of 4 entries/.test(await summary.innerText()), "the count follows");
+  // From this chapter (the default on a new chapter): held in the draft.
+  let details = await editDetails("Zed");
+  ok((await details.getByRole("button", { name: "This chapter", exact: true }).getAttribute("aria-pressed")) === "true", "on a new chapter, “Takes effect from” starts on this chapter");
+  ok(/Saved when you post it/.test(await details.locator(".chapter-picker-explain").innerText()), "…saved when the chapter is posted");
+  await details.getByLabel(/^Keywords/).fill("the boatman");
+  await details.getByRole("button", { name: "Save changes" }).click();
+  const held = await until(async () => (await (await fetch(`${BASE}/api/drafts/${encodeURIComponent(draftKey)}`)).json()).draft?.codexChanges?.length === 1);
+  ok(!!held && !(await codexAt(root)).find((e) => e.name === "Zed").aliases.includes("the boatman"), "the change is held in the draft, not saved");
 
-// manual add / leave out
-await row("Qux").getByRole("button", { name: "Add" }).click();
-ok(/added by you/.test(await row("Qux").innerText()), "an entry can be added by hand");
-await row("Mira").getByRole("button", { name: "Leave out" }).click();
-ok(/left out by you/.test(await row("Mira").innerText()), "an entry can be left out");
-await page.getByRole("button", { name: "Generate chapter" }).click();
-await page.getByRole("button", { name: "Edit text" }).click();
-await page.waitForFunction(() => document.querySelector("textarea[maxlength='50000']")?.value.includes("Hello there"));
-// (The chapter prompt is the one with the codex entries: the choice text and the suggestions are asked for after it.)
-const p = prompts.findLast((x) => x.includes("Zed [character]")) ?? "";
-ok(p.includes("Zed [character]") && p.includes("Qux [character]") && p.includes("The Rule [lore]"), "the prompt carries the chosen entries");
-ok(!p.includes("Mira [character]"), "…and not the one that was left out");
-await row("Mira").getByRole("button", { name: "Put back" }).click();
-ok(/mentioned/.test(await row("Mira").innerText()), "a left-out entry can be put back");
+  // At an earlier chapter: saved at once.
+  details = await editDetails("Qux");
+  await details.getByRole("button", { name: "Previous chapter (Root)" }).click();
+  ok(/Saved now/.test(await details.locator(".chapter-picker-explain").innerText()), "an earlier chapter says it is saved now");
+  await details.getByLabel(/^Keywords/).fill("the hermit");
+  await details.getByRole("button", { name: "Save changes" }).click();
+  ok(!!(await until(async () => (await codexAt(root)).find((e) => e.name === "Qux").aliases.join() === "the hermit")), "picking an earlier chapter saves straight away");
 
-// the drawer: add an entry without leaving the page (held in the draft)
-await page.locator(".site-menu > summary").click();
-await page.getByRole("button", { name: "Codex", exact: true }).click();
-const drawer = page.locator("aside.codex-drawer");
-await drawer.waitFor();
-ok(await drawer.getByText("Quick with a lockpick.").isVisible(), "the drawer lists the entries with what the AI reads");
-ok(!(await drawer.innerText()).includes("A thief with a scar."), "…and not the notes");
-ok((await drawer.getByRole("link", { name: "Story Bible" }).getAttribute("href")).endsWith("/review?tab=codex"), "the drawer header links to the Story Bible");
-await drawer.getByRole("button", { name: "+ New entry" }).click();
-await drawer.getByLabel("Name", { exact: true }).fill("Newbie");
-await drawer.getByLabel(/Keywords/).fill("the newcomer");
-await drawer.getByRole("button", { name: "Add entry" }).click();
-await drawer.getByRole("heading", { name: "Newbie" }).waitFor();
-// a fact on the new entry is held in the draft as well
-await drawer.getByRole("button", { name: "+ Add a fact" }).click();
-const factEffect = drawer.locator(".facts .chapter-picker");
-ok(
-  (await factEffect.getByRole("button", { name: "This chapter", exact: true }).getAttribute("aria-pressed")) === "true" &&
-    (await factEffect.locator(".chapter-picker-pill").count()) === 1,
-  "a new entry's fact can only take effect from this chapter",
-);
-await pickAspect(drawer, "Hair");
-await drawer.getByLabel("Fact", { exact: true }).fill("Bright red hair.");
-await drawer.getByRole("button", { name: "Save", exact: true }).click();
-await drawer.locator(".fact-row", { hasText: "Bright red hair." }).getByText("not saved yet").waitFor();
-ok((await drawer.locator(".fact-ai").innerText()).includes("Bright red hair"), "a new entry opens in the drawer, and its facts are held in the draft");
-ok((await drawer.getByLabel("Notes", { exact: true }).count()) === 0 && (await drawer.getByText("Your notes").count()) === 0, "the drawer has no notes");
-await drawer.getByRole("button", { name: "← All entries" }).click();
-await drawer.locator(".entry-card", { hasText: "Newbie" }).getByText(/Bright red hair/).waitFor();
-ok(true, "back to the list, where the new entry shows its held fact");
-await page.getByRole("button", { name: "Close", exact: true }).click();
-ok(/of 5 entries/.test(await summary.innerText()), "the preview picks up the new entry");
-ok((await page.getByLabel("Chapter text").inputValue()).includes("Hello there"), "the draft was kept");
-
-// read and edit an entry straight from the preview
-await row("Zed").getByRole("button", { name: "Zed" }).click();
-await row("Zed").getByText(/Owns the river boat/).waitFor();
-ok(!(await row("Zed").innerText()).includes("A grumpy ferryman."), "clicking a name shows what the AI reads (the facts), not the notes");
-await row("Zed").getByRole("button", { name: "Edit" }).click();
-await drawer.getByRole("heading", { name: "Zed" }).waitFor();
-ok(true, "Edit opens that entry in the drawer");
-ok(!(await drawer.innerText()).includes("A grumpy ferryman."), "the drawer doesn't show an entry's old notes");
-await drawer.getByLabel("More entry actions", { exact: true }).click();
-await drawer.getByRole("button", { name: "Edit name, type and keywords" }).click();
-await drawer.getByLabel(/^Keywords/).fill("the boatman");
-await drawer.getByRole("button", { name: "Save changes" }).click();
-await drawer.getByText(/changed in this chapter, saved when you post it/).waitFor();
-await page.getByRole("button", { name: "Close", exact: true }).click();
-const promptsBefore = prompts.length;
-await page.getByRole("button", { name: "Generate a new draft" }).click();
-await page.getByRole("button", { name: "Edit text" }).waitFor();
-for (let i = 0; i < 50 && prompts.length === promptsBefore; i++) await new Promise((r) => setTimeout(r, 100));
-ok(prompts.length > promptsBefore && prompts.slice(promptsBefore).every((x) => !x.includes("A grumpy ferryman.")), "the next prompt leaves out the old notes");
-await page.getByRole("button", { name: "+ New entry" }).click();
-await drawer.getByLabel("Name", { exact: true }).waitFor();
-ok(true, "+ New entry in the preview opens a blank form");
-await page.getByRole("button", { name: "Close", exact: true }).click();
-
-// changes are held in the draft until the chapter is posted
-const codexAt = async (id) => (await (await fetch(`${BASE}/api/chapters/${id}/codex`)).json()).entries;
-let atRoot = await codexAt(root);
-ok(!atRoot.some((e) => e.name === "Newbie") && atRoot.find((e) => e.name === "Zed").content === "A grumpy ferryman.", "nothing is saved before posting");
-ok(/changed in this draft/.test(await row("Zed").innerText()), "the preview marks entries changed in the draft");
-ok(await page.getByText(/Codex changes to 2 entries will be saved with this chapter/).isVisible(), "step 4 lists the held changes");
-// …unless an earlier chapter is picked
-await row("Qux").getByRole("button", { name: "Edit" }).click();
-await drawer.getByLabel(/Keywords/).fill("the hermit");
-ok((await drawer.getByRole("button", { name: "This chapter", exact: true }).getAttribute("aria-pressed")) === "true", "in the draft, “Takes effect from” starts on this chapter (saved when you post)");
-await drawer.getByRole("button", { name: "Previous chapter (Root)" }).click();
-ok(await drawer.getByText(/Saved now/).isVisible(), "…and an earlier chapter says it is saved now");
-await drawer.getByRole("button", { name: "Save changes" }).click();
-for (let i = 0; i < 50 && (await codexAt(root)).find((e) => e.name === "Qux").aliases.join() !== "the hermit"; i++) await page.waitForTimeout(100);
-ok((await codexAt(root)).find((e) => e.name === "Qux").aliases.join() === "the hermit", "picking an earlier chapter saves straight away");
-await page.getByRole("button", { name: "Close", exact: true }).click();
-await page.getByLabel(/^Summary/).fill("A hermit appears.");
-await page.getByRole("button", { name: "Post chapter" }).click();
-await page.waitForURL(/\/c\/[^/]+(\/summary)?\?/);
-const posted = /\/c\/([^/?]+)/.exec(page.url())[1];
-const atNew = await codexAt(posted);
-ok(atNew.find((e) => e.name === "Zed").aliases.includes("the boatman") && atNew.some((e) => e.name === "Newbie"), "posting saves the held changes at the new chapter");
-atRoot = await codexAt(root);
-ok(atRoot.find((e) => e.name === "Zed").content === "A grumpy ferryman." && !atRoot.some((e) => e.name === "Newbie"), "…and the chapter before it is unchanged");
-ok(atNew.find((e) => e.name === "Newbie").facts.some((f) => f.text === "Bright red hair." && f.op.anchor_chapter_id === posted), "the held fact is saved at the new chapter too");
-
-// editing a posted chapter: the drawer shows that chapter's own codex, and its changes are saved with the edit
-await page.goto(`${BASE}/c/${posted}/edit`);
-await page.locator(".site-menu > summary").click();
-await page.getByRole("button", { name: "Codex", exact: true }).click();
-await drawer.waitFor();
-ok(await drawer.locator(".entry-card", { hasText: "Newbie" }).isVisible(), "the edit page's drawer has the entries added at the chapter being edited");
-await drawer.locator(".entry-card", { hasText: "Zed" }).click();
-await drawer.getByRole("heading", { name: "Zed" }).waitFor();
-await drawer.getByRole("button", { name: "+ Add a fact" }).click();
-const effect = (await factEffect.locator(".chapter-picker-pill").allInnerTexts()).join(" | ");
-ok(
-  effect === "This chapter | Previous chapter (Root)" &&
-    (await factEffect.getByRole("button", { name: "This chapter", exact: true }).getAttribute("aria-pressed")) === "true" &&
-    /Saved when you save it/.test(await factEffect.locator(".chapter-picker-explain").innerText()),
-  "the chapter being edited is “this chapter”, saved with the edit; the one before it is offered too: " + effect,
-);
-await pickAspect(drawer, "Mood");
-await drawer.getByLabel("Fact", { exact: true }).fill("Cheerful at last.");
-await drawer.getByRole("button", { name: "Save", exact: true }).click();
-await drawer.locator(".fact-row", { hasText: "Cheerful at last." }).getByText("not saved yet").waitFor();
-ok(!(await codexAt(posted)).find((e) => e.name === "Zed").facts.some((f) => f.text === "Cheerful at last."), "a fact added while editing waits for the save");
-await page.getByRole("button", { name: "Close", exact: true }).click();
-await page.getByRole("button", { name: "Save changes" }).click();
-await page.waitForURL(new RegExp(`/c/${posted}(\\?|$)`));
-ok((await codexAt(posted)).find((e) => e.name === "Zed").facts.some((f) => f.text === "Cheerful at last." && f.op.anchor_chapter_id === posted), "saving the edit saves the fact at the edited chapter");
-ok(!(await codexAt(root)).find((e) => e.name === "Zed").facts.some((f) => f.text === "Cheerful at last."), "…not at the chapter before it");
-
-await browser.close(); mock.close();
-await ai.restore();
+  // Post saves the held change at the new chapter.
+  await box.getByLabel("Chapter text").fill("Zed rowed on.");
+  await page.waitForFunction(() => /Draft saved/.test(document.querySelector("section.desk-box")?.textContent ?? ""));
+  await box.getByRole("button", { name: "Post chapter" }).click();
+  await page.waitForURL(/\/c\/[^/]+\/desk\?posted=1$/);
+  const posted = new URL(page.url()).pathname.split("/")[2];
+  ok((await codexAt(posted)).find((e) => e.name === "Zed").aliases.includes("the boatman"), "posting saves the held change at the new chapter");
+  ok(!(await codexAt(root)).find((e) => e.name === "Zed").aliases.includes("the boatman"), "…and the chapter before it is unchanged");
+} finally {
+  await fetch(`${BASE}/api/drafts/${encodeURIComponent(draftKey)}`, { method: "DELETE" }).catch(() => {});
+  await browser.close();
+}
 process.exit(failed ? 1 : 0);

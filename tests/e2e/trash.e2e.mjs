@@ -1,5 +1,5 @@
-// The trash on the edit page: the split save button (menu, modes, confirmations), Replace branch, Move to trash,
-// the trashed chapter's page with Restore, and the outline's "Trashed branches" part.
+// The trash from the writing desk's ⋯ menu: Replace branch… and Move to trash… (when each is offered, their
+// confirmations), the trashed chapter's page with Restore, and the outline's "Trashed branches" part.
 import { launch } from "./browser.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
@@ -34,60 +34,47 @@ const settingsBefore = (await getJson("/api/settings")).settings;
 const putSettings = (st) => fetch(`${BASE}/api/settings`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(st) });
 const dialogs = [];
 const answer = (accept) => page.once("dialog", (d) => { dialogs.push(d.message()); return accept ? d.accept() : d.dismiss(); });
-const more = page.getByRole("button", { name: "More ways to save" });
-const item = (name) => page.getByRole("menuitemradio", { name });
-const mainButton = (name) => page.locator(".split-button > button:first-child", { hasText: name });
-const edit = async (id) => { await page.goto(`${BASE}/c/${id}/edit`); await more.waitFor(); };
+// The desk's ⋯ menu (in its top bar).
+const menu = page.locator(".desk-bar .more-menu-items");
+const openMenu = async () => { if (!(await menu.isVisible())) await page.locator(".desk-bar").getByLabel("More for this chapter").click(); };
+const action = (name) => menu.getByRole("button", { name });
+const edit = async (id) => { await page.goto(`${BASE}/c/${id}/desk`); await page.getByLabel("Chapter title").waitFor(); await openMenu(); };
 
 try {
-  // ---- the menu ----
+  // ---- what the menu offers ----
   await edit(s.chapter_id);
-  ok((await mainButton("Save changes").count()) === 1, "the edit page's main button is Save changes");
-  ok((await more.getAttribute("aria-expanded")) === "false", "the menu starts closed");
-  await more.click();
-  ok((await more.getAttribute("aria-expanded")) === "true" && (await page.getByRole("menu").count()) === 1, "the ▾ button opens the menu");
-  ok((await item(/^Save changes/).count()) === 1 && (await item(/^Replace branch/).count()) === 1, "a chapter with chapters below offers Replace branch");
-  ok((await item(/^Move to trash/).count()) === 0, "…but the story's first chapter can't be moved to the trash");
-  ok((await item(/^Replace branch/).textContent()).includes("their choices stay, unwritten"), "the hint says the choices stay");
-  await page.keyboard.press("Escape");
-  ok((await page.getByRole("menu").count()) === 0, "Esc closes the menu");
-  await more.click();
-  await page.getByRole("heading", { name: "Edit chapter" }).click();
-  ok((await page.getByRole("menu").count()) === 0, "clicking outside closes it");
+  ok(await action("Replace branch…").isEnabled(), "a chapter with chapters below offers Replace branch");
+  ok(await action("Move to trash…").isDisabled() && (await action("Move to trash…").getAttribute("title")) === "The story's first chapter can't go to the trash.", "…but the story's first chapter can't be moved to the trash, and says why");
 
   await edit(B);
-  await more.click();
-  ok((await item(/^Move to trash/).count()) === 1 && (await item(/^Replace branch/).count()) === 0, "a chapter with nothing below it offers Move to trash, not Replace branch");
-  await item(/^Move to trash/).click();
-  ok((await mainButton("Move to trash").count()) === 1 && (await page.locator(".split-button > button.danger").count()) >= 1, "choosing it changes the main button to the danger style");
-  ok(await page.getByText("Your edits here are not saved.").first().isVisible(), "…and the action bar says edits are not saved");
+  ok(await action("Move to trash…").isEnabled() && await action("Replace branch…").isDisabled(), "a chapter with nothing below it offers Move to trash, not Replace branch");
+  ok((await action("Replace branch…").getAttribute("title")) === "No chapter is written below this one.", "…and says why");
 
-  // ---- phone width: the split button fits the action bar and its menu stays on screen ----
-  await edit(A);
+  // ---- phone width: the menu stays on screen ----
   await page.setViewportSize({ width: 390, height: 780 });
-  await more.click();
-  const box = await more.boundingBox();
-  const menuBox = await page.getByRole("menu").boundingBox();
-  ok(box && box.x + box.width <= 390 && menuBox && menuBox.x >= 0 && menuBox.x + menuBox.width <= 390, "at 390px the button and its menu are inside the window");
+  await edit(A);
+  const menuBox = await menu.boundingBox();
+  ok(menuBox && menuBox.x >= 0 && menuBox.x + menuBox.width <= 390, "at 390px the ⋯ menu is inside the window");
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.keyboard.press("Escape");
 
   // ---- Replace branch ----
-  await more.click();
-  await item(/^Replace branch/).click();
-  ok((await mainButton("Replace branch").count()) === 1 && (await page.locator(".split-button > button.warning").count()) >= 1, "Replace branch changes the main button to the warning style");
+  await edit(A);
+  await page.locator(".desk-bar .more-menu > summary").click();
   await page.getByLabel("Chapter title").fill("Chapter A v2");
+  await openMenu();
   answer(false);
-  await mainButton("Replace branch").click();
+  await action("Replace branch…").click();
   await until(async () => dialogs.length === 1, "the confirmation");
-  ok(dialogs[0] === "Save your edit and move the 3 chapters below “Chapter A” to the trash?", "it asks, naming the chapters below: " + dialogs[0]);
+  ok(dialogs[0] === "Update “Chapter A” with the draft showing and move the 3 chapters below it to the trash? Their choices stay, unwritten.", "it asks, naming the chapters below: " + dialogs[0]);
   ok((await live()) === 6 && (await getJson(`/api/chapters/${A}`)).chapter.revision === 1, "Cancel changes nothing");
+  await openMenu();
   answer(true);
-  await mainButton("Replace branch").click();
-  await page.waitForURL(`${BASE}/c/${A}`);
+  await action("Replace branch…").click();
+  await page.locator(".desk-bar-note", { hasText: "Updated" }).waitFor();
   const a = await getJson(`/api/chapters/${A}`);
-  ok(a.chapter.title === "Chapter A v2" && a.chapter.revision === 2, "OK saves the edit in place as a new revision");
+  ok(a.chapter.title === "Chapter A v2" && a.chapter.revision === 2, "OK updates the chapter in place as a new revision");
   ok((await live()) === 3 && a.choices.every((c) => c.child_chapter_id === null), "…and the chapters below are in the trash, their choices unwritten");
+  await page.goto(`${BASE}/c/${A}`);
   ok((await page.locator("a.choice-unwritten").count()) === 2 && (await page.locator("a.choice-written").count()) === 0, "the chapter page shows both choices as unwritten");
   ok((await draftOf(A)) == null, "the edit's draft is gone");
 
@@ -98,9 +85,9 @@ try {
   await page.goto(`${BASE}/c/${A1a}`);
   await page.getByText("This branch is in the trash.").waitFor();
   ok((await page.getByRole("button", { name: "Restore" }).count()) === 0 && (await page.locator(`.trash-notice a[href="/c/${A1}"]`).count()) === 1, "a chapter inside it says which chapter to restore, with a link");
-  await page.goto(`${BASE}/c/${A1}/edit`);
+  await page.goto(`${BASE}/c/${A1}/desk`);
   await page.getByText("This chapter is in the trash.").waitFor();
-  ok((await more.count()) === 0, "a trashed chapter has no editor");
+  ok((await page.getByLabel("Chapter title").count()) === 0, "a trashed chapter has no editor on the desk");
 
   // ---- the outline ----
   const outlineUrl = `${BASE}/s/${s.story_id}/outline`;
@@ -127,19 +114,18 @@ try {
   await putSettings(settingsBefore ?? {});
 
   // ---- Move to trash ----
-  await page.goto(`${BASE}/c/${A1}/edit`);
-  await more.waitFor();
+  await page.goto(`${BASE}/c/${A1}/desk`);
   await page.getByLabel("Chapter title").fill("Chapter A1 draft");
   await until(async () => (await draftOf(A1)) != null, "the edit's draft to be saved");
-  await more.click();
-  await item(/^Move to trash/).click();
+  await openMenu();
   answer(false);
-  await mainButton("Move to trash").click();
+  await action("Move to trash…").click();
   await until(async () => dialogs.length === 3, "the confirmation");
   ok(dialogs[2] === "Move “Chapter A1” and the 1 chapter below it to the trash?", "it asks, naming the chapters below: " + dialogs[2]);
   ok((await live()) === 5, "Cancel changes nothing");
+  await openMenu();
   answer(true);
-  await mainButton("Move to trash").click();
+  await action("Move to trash…").click();
   await page.waitForURL(`${BASE}/c/${A}`);
   ok((await live()) === 3, "OK moves the chapter and the one below it to the trash, and lands on the parent");
   ok((await page.locator("a.choice-unwritten").count()) === 2, "the parent's choice is unwritten again");

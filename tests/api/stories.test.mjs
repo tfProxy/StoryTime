@@ -43,6 +43,20 @@ ok((await call("GET", "/api/stories")).json.some((s) => s.id === story && s.chap
 for (const u of ["/", "/new", "/settings", "/drafts", `/s/${story}`, `/c/${root}`, `/c/${root}/write`, `/c/${root}/write?choice=${right.id}`, `/c/${root}/codex`, `/c/${root}/history`]) {
   const x = await fetch(B + u); ok(x.status === 200, `${u} -> ${x.status}`);
 }
+// The old Edit and Write pages redirect (permanently) to the writing desk, keeping the query.
+const redirectOf = async (u) => {
+  const x = await fetch(B + u, { redirect: "manual" });
+  return { status: x.status, to: new URL(x.headers.get("location") ?? "", B).href.slice(B.length) };
+};
+for (const [from, to] of [
+  [`/c/${root}/edit`, `/c/${root}/desk`],
+  [`/c/${root}/write?choice=${right.id}`, `/c/${root}/desk?choice=${right.id}`],
+  [`/c/${root}/write`, `/c/${root}/desk?new=`],
+  [`/c/${root}/write?ai=1`, `/c/${root}/desk?ai=1&new=`],
+]) {
+  const m = await redirectOf(from);
+  ok(m.status === 308 && m.to === to, `${from} redirects to ${to} (${m.status} ${m.to})`);
+}
 ok((await fetch(`${B}/c/nope`)).status === 404, "unknown chapter page 404");
 ok(!(await (await fetch(`${B}/c/${root}`)).text()).includes("<script>alert"), "pages render text safely");
 const xss = await call("POST", "/api/stories", { title: "<script>alert(1)</script>", chapter: { title: "<img src=x onerror=alert(1)>", body: "<b>hi</b>" } });
@@ -60,6 +74,8 @@ ok(r.status === 200 && (await call("GET", `/api/stories/${bare}`)).json.premise 
 for (const u of [`/s/${bare}/details`, `/s/${bare}/write`]) {
   const x = await fetch(B + u); ok(x.status === 200, `${u} -> ${x.status}`);
 }
+const firstMoved = await redirectOf(`/s/${bare}/write`);
+ok(firstMoved.status === 308 && firstMoved.to === `/s/${bare}/desk`, `the old first-chapter page redirects to the desk (${firstMoved.status} ${firstMoved.to})`);
 const toDetails = await fetch(`${B}/s/${bare}`, { redirect: "manual" });
 ok(toDetails.status >= 300 && toDetails.status < 400 && (toDetails.headers.get("location") ?? "").endsWith(`/s/${bare}/details`), "its story link leads to its details page");
 r = await call("POST", `/api/stories/${bare}/first-chapter`, { title: "One", body: "It began.", choices: ["On"] });
@@ -75,7 +91,7 @@ const oldDraft = { href: "/new", label: "New story", storyTitle: "Old tale", pre
 await call("PUT", "/api/drafts/story", { draft: oldDraft, base: null });
 r = await call("POST", "/api/stories", { title: "Old tale", adopt_draft: true });
 const moved = await call("GET", `/api/drafts/first:${r.json.story_id}`);
-ok(moved.status === 200 && moved.json.draft.body === "Half written." && moved.json.draft.href === `/s/${r.json.story_id}/write`, "creating a story from the old draft keeps its chapter as the new story's first-chapter draft");
+ok(moved.status === 200 && moved.json.draft.body === "Half written." && moved.json.draft.href === `/s/${r.json.story_id}/desk`, "creating a story from the old draft keeps its chapter as the new story's first-chapter draft");
 ok((await call("GET", "/api/drafts/story")).status === 404, "…and the old draft is gone");
 await call("DELETE", `/api/drafts/first:${r.json.story_id}`);
 

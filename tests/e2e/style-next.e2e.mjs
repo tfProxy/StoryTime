@@ -1,5 +1,5 @@
-// Story style notes reach the prompts and are edited, with the title, summary and story-wide codex,
-// on the story details page.
+// Story style notes reach the prompts (written on the writing desk) and are edited, with the title, summary and
+// story-wide codex, on the story details page.
 import http from "node:http";
 import { launch, startStory } from "./browser.mjs";
 
@@ -47,33 +47,41 @@ const page = await (await browser.newContext()).newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 page.on("dialog", (d) => d.accept());
 
+const generate = async () => {
+  await page.locator(".desk-gen-row").getByRole("button", { name: /^Generate/ }).click();
+  await page.getByRole("button", { name: "Edit text" }).waitFor();
+};
+/** "What happens next?" under a posted chapter on the desk: adds a choice. */
+const addChoice = async (label) => {
+  await page.getByLabel("Add a new suggestion").fill(label);
+  await page.getByRole("button", { name: "Add choice" }).click();
+  await page.locator(".desk-next a.choice-unwritten", { hasText: label }).waitFor();
+};
+
 // ---- a new story with style notes ----
 await startStory(page, BASE, { title: "Styled tale", style: "STYLE-NEW: first person." });
-await page.getByRole("button", { name: "Generate chapter" }).click();
-await page.getByRole("button", { name: "Edit text" }).waitFor();
+await generate();
 ok((await nextChapterPrompt()).includes("Style notes from the author (follow these in everything you write):\nSTYLE-NEW: first person."), "a new story's style notes go into the prompt");
 ok((await page.getByRole("button", { name: "Post and write next" }).count()) === 0, "there is no “Post and write next” button");
 
-await page.getByPlaceholder("Choice 1").fill("Left");
-await page.getByRole("button", { name: "+ Add choice" }).click();
-await page.getByPlaceholder("Choice 2").fill("Right");
 await page.getByRole("button", { name: "Post chapter" }).click();
-await page.waitForURL(/\/c\/[^/]+\?posted=1/);
+await page.waitForURL(/\/c\/[^/]+\/desk\?posted=1/);
 const root = /\/c\/([^/?]+)/.exec(page.url())[1];
-await page.locator("a.card.choice-unwritten", { hasText: "Right" }).click();
-await page.waitForURL(/\/write\?choice=/);
+await addChoice("Left");
+await addChoice("Right");
+await page.locator(".desk-next a.choice-unwritten", { hasText: "Right" }).click();
+await page.waitForURL(/\/desk\?choice=/);
 const rootData = await json("GET", `/api/chapters/${root}`);
 const right = rootData.choices.find((c) => c.label === "Right");
-ok(page.url().endsWith(`choice=${right.id}`), "posting, then opening a choice from the chapter, goes to writing it");
-ok((await page.getByLabel(/Choice text/).inputValue()) === "Right", "…with its choice text filled in");
+ok(page.url().endsWith(`choice=${right.id}`), "posting, then opening a choice under the chapter, goes to writing it");
+await page.getByLabel("Chapter title").waitFor();
+ok((await page.locator(".desk-box-form .desk-via").innerText()).includes("Right"), "…with its choice text filled in");
 const story = await json("GET", `/api/stories/${rootData.chapter.story_id}`);
 ok(story.style === "STYLE-NEW: first person.", "the style notes are saved with the story");
 
-// ---- the writing page shows the notes; they are edited on the story details page ----
+// ---- the notes are edited on the story details page, not on the desk ----
 const writeUrl = page.url();
-ok(await page.getByText(/Style notes: STYLE-NEW/).isVisible(), "the writing page shows the story's style notes");
-ok((await page.locator("textarea").evaluateAll((els) => els.map((e) => e.value))).every((v) => !v.includes("STYLE-NEW")), "…but they can't be edited there");
-await page.getByRole("link", { name: "Edit story details" }).waitFor();
+ok((await page.locator("textarea").evaluateAll((els) => els.map((e) => e.value))).every((v) => !v.includes("STYLE-NEW")), "the style notes can't be edited on the desk");
 
 await page.goto(`${BASE}/`);
 const card = page.locator(".story-card", { hasText: "Styled tale" });
@@ -101,28 +109,26 @@ const rootCodex = await json("GET", `/api/chapters/${root}/codex`);
 ok(rootCodex.ops.some((o) => o.name === "Lantern" && o.anchor_chapter_id === root), "a codex entry added there is anchored at the first chapter");
 
 await page.goto(writeUrl);
-await page.getByText(/Style notes: STYLE-EDITED/).waitFor();
-ok(true, "the writing page shows the saved notes");
-await page.getByRole("button", { name: "Generate chapter" }).click();
-await page.getByRole("button", { name: "Edit text" }).waitFor();
+await page.getByLabel("Chapter title").waitFor();
+await generate();
 const editedPrompt = await nextChapterPrompt();
-ok(editedPrompt.includes("STYLE-EDITED: third person.") && !editedPrompt.includes("STYLE-NEW"), "…and drafting uses them");
+ok(editedPrompt.includes("STYLE-EDITED: third person.") && !editedPrompt.includes("STYLE-NEW"), "drafting uses the saved notes");
 
 // ---- a second chapter ----
-await page.getByPlaceholder("Choice 1").fill("Onward");
 await page.getByRole("button", { name: "Post chapter" }).click();
-await page.waitForURL(/\/c\/[^/]+\?posted=1/);
-await page.locator("a.card.choice-unwritten", { hasText: "Onward" }).click();
-await page.waitForURL((u) => u.href.includes("/write?choice=") && !u.href.endsWith(right.id));
-ok((await page.getByLabel(/Choice text/).inputValue()) === "Onward", "…and the next chapter's choice opens for writing");
-await page.getByRole("button", { name: "Generate chapter" }).click();
-await page.getByRole("button", { name: "Edit text" }).waitFor();
+await page.waitForURL(/\/c\/[^/]+\/desk\?posted=1/);
+await addChoice("Onward");
+await page.locator(".desk-next a.choice-unwritten", { hasText: "Onward" }).click();
+await page.waitForURL((u) => u.href.includes("/desk?choice=") && !u.href.endsWith(right.id));
+await page.getByLabel("Chapter title").waitFor();
+ok((await page.locator(".desk-box-form .desk-via").innerText()).includes("Onward"), "…and the next chapter's choice opens for writing");
+await generate();
 ok((await nextChapterPrompt()).includes("STYLE-EDITED: third person."), "a later chapter's prompt uses the saved notes");
 
-// ---- plain post still goes to the chapter ----
+// ---- Post stays on the desk, on the posted chapter ----
 await page.getByRole("button", { name: "Post chapter" }).click();
-await page.waitForURL(/\/c\/[^/]+\?posted=1/);
-ok(true, "“Post chapter” still opens the posted chapter");
+await page.waitForURL(/\/c\/[^/]+\/desk\?posted=1/);
+ok(true, "“Post chapter” opens the posted chapter on the desk");
 
 await json("PUT", "/api/settings", settingsBefore ?? {});
 await browser.close();

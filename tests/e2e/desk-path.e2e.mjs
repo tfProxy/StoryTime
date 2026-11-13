@@ -4,7 +4,7 @@ import { factRow, fillFact } from "./entryPage.mjs";
 
 // The writing desk's path and choices (step 5): the earlier chapters as blocks that fold (title and text unfolded,
 // summary folded), "Unfold all" / "Fold all", ✎ moving the desk to a block's chapter with the fold states kept;
-// opening from the Desk button starting unfolded and scrolled to the box; the "→ …" line renaming the choice in place;
+// opening from the reading page's Edit starting unfolded and scrolled to the box; the "→ …" line renaming the choice in place;
 // "What happens next?" (a written choice opens its chapter on the desk, an unwritten one starts its draft, Add a new
 // suggestion, Suggest choices); "Draft not used" and "draft"; Back between two desks keeping the folds. And on a new
 // chapter: a new entry and facts held in the draft (shown on the desk, not saved), then saved at it by Post.
@@ -87,10 +87,10 @@ try {
       }),
     );
 
-  // ---- opened from outside (the Desk button): every block unfolded, scrolled to the box ----
+  // ---- opened from outside (the reading page's Edit): every block unfolded, scrolled to the box ----
   await page.goto(`${BASE}/c/${B}`);
   await page.waitForLoadState("load");
-  await page.locator(".chapter-actions").getByRole("link", { name: "Desk", exact: true }).click();
+  await page.locator(".chapter-actions").getByRole("link", { name: "Edit", exact: true }).click();
   await page.waitForURL(`**/c/${B}/desk`);
   await boxTitle().waitFor();
   ok((await blocks.count()) === 2, "two blocks above the box: Root and Chapter A");
@@ -215,13 +215,13 @@ try {
   ok((await blocks.count()) === 3 && !(await isOpen(1)) && (await isOpen(2)), "after Post the desk is on the new chapter, the folds kept");
   ok((await page.locator(".desk-next").count()) === 1, "…and What happens next? shows once it is posted");
 
-  // ---- the Desk button again: from outside, unfolded whatever the folds were ----
+  // ---- Edit again: from outside, unfolded whatever the folds were ----
   await page.goto(`${BASE}/c/${B}`);
   await page.waitForLoadState("load");
-  await page.locator(".chapter-actions").getByRole("link", { name: "Desk", exact: true }).click();
+  await page.locator(".chapter-actions").getByRole("link", { name: "Edit", exact: true }).click();
   await page.waitForURL(`**/c/${B}/desk`);
   await boxTitle().waitFor();
-  ok((await isOpen(1)) && (await isOpen(2)), "opened from the Desk button again, the blocks start unfolded");
+  ok((await isOpen(1)) && (await isOpen(2)), "opened from the reading page's Edit again, the blocks start unfolded");
 
   // ---- phone width ----
   await page.setViewportSize({ width: 390, height: 800 });
