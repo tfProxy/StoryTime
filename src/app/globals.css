@@ -7922,6 +7922,11 @@ main:has(.desk) {
     padding: 0.75rem;
   }
 
+  /* No "Add as a fact…" here to keep in reach, and the bottom bar would cover it: the names line stays in place. */
+  .desk-named {
+    position: static;
+  }
+
   .desk-sheet-head {
     position: fixed;
     top: 0;

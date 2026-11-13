@@ -218,9 +218,18 @@ try {
   await page.goto(`${BASE}/c/${A}/desk`);
   await textBox.fill("Mara walked with Tobin and the smith to the Mill, carrying the Lantern.");
   await until(async () => (await namedNames()) === "Lantern,Mara,The Mill,Tobin");
+  ok((await namedNames()) === "Lantern,Mara,The Mill,Tobin", "at phone width the names show under the text");
   await selectInText("carrying the Lantern");
-  await addFact.waitFor();
-  ok((await namedNames()) === "Lantern,Mara,The Mill,Tobin", "at phone width the names show under the text, with Add as a fact…");
+  await sleep(300);
+  ok((await page.getByRole("button", { name: "Add as a fact…" }).count()) === 0, "…but no Add as a fact… on a phone (the codex is for looking things up there)");
+  await namedLine.getByRole("button", { name: "Mara", exact: true }).click();
+  const read = page.locator('section.desk-phone-entry[aria-label="Codex entry: Mara"]');
+  await read.waitFor();
+  ok((await read.innerText()).includes("red and long") && (await page.locator(".desk-tabbar").getByRole("button", { name: "Codex" }).getAttribute("aria-pressed")) === "true", "a name opens the entry to read in the phone's codex sheet");
+  await page.locator(".desk-sheet-back").click();
+  await side.locator(".desk-row-item").first().waitFor();
+  ok((await side.locator(".desk-pick").count()) === 0 && (await side.locator(".desk-pick-chip", { hasText: "pinned" }).count()) > 0, "the phone's codex sheet has no prompt toggles, but still marks the pinned Lantern");
+  await page.locator(".desk-sheet-head").getByRole("button", { name: "Close" }).click();
   ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), "at phone width the page fits the screen");
   await context.close();
 } catch (e) {

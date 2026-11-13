@@ -295,7 +295,8 @@ export default function WritingDesk({
   // The entries named in the chapter's text (by name or keyword, as "In this chapter"), listed under it.
   const named = entries.filter((e) => mentions(e, body));
   // A selection still in the text (the box may have been switched to reading, or the words typed over).
-  const selection = selected.trim() && body.includes(selected) ? selected.trim() : "";
+  // On a phone the codex is for looking things up, so there is no "Add as a fact…" (nor the rows' prompt toggles).
+  const selection = !phone && selected.trim() && body.includes(selected) ? selected.trim() : "";
   /** "Add as a fact…": the words, as a quote, in the entry they name (or the one open), else one to choose. */
   const startQuote = (words: string) => {
     const hit = entries.find((e) => mentions(e, words));
@@ -313,7 +314,14 @@ export default function WritingDesk({
             type="button"
             className={e.entry_id === openId ? "desk-name on" : "desk-name"}
             aria-current={e.entry_id === openId ? "true" : undefined}
-            onClick={() => setOpenId(e.entry_id)}
+            onClick={() => {
+              setOpenId(e.entry_id);
+              // On a phone the entry opens to read in the codex sheet.
+              if (phone) {
+                setFolded(false);
+                setSheet("codex");
+              }
+            }}
           >
             {e.name}
           </button>
@@ -364,7 +372,7 @@ export default function WritingDesk({
             </span>
           )}
         </button>
-        <PickButton name={e.name} pick={pick} overrides={overrides} id={e.entry_id} />
+        {!phone && <PickButton name={e.name} pick={pick} overrides={overrides} id={e.entry_id} />}
       </li>
     );
   };
@@ -491,7 +499,7 @@ export default function WritingDesk({
       {/* The path, the box and "What happens next?" belong to Codex mode; Illustrate shows the chapter's pictures. */}
       <div className="desk-story" hidden={illus}>
         <h1 className="visually-hidden">{editor ? `Edit “${here.title}”` : "New chapter"}</h1>
-        <DeskPath storyId={storyId} blocks={pathBlocks} onQuote={startQuote} />
+        <DeskPath storyId={storyId} blocks={pathBlocks} onQuote={phone ? undefined : startQuote} />
         <div className="desk-here" ref={hereRef}>
           {editor ? (
             // An Update makes a new revision: the box starts again from the chapter, its drafts kept with it.
