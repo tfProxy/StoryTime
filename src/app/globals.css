@@ -7413,6 +7413,13 @@ button.link-button.ef-since-link {
   margin: 0;
 }
 
+/* ↻ beside Update / Post: the same as Generate again, at the end of the text. */
+.desk-try-again {
+  min-width: 44px;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
 /* "Draft not used" on a written choice and in the Drafts list. */
 .draft-mark {
   margin-left: 0.5rem;

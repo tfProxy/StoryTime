@@ -111,7 +111,17 @@ try {
   await shown.getByRole("button", { name: "Use this prompt" }).click();
   ok((await promptBox.inputValue()) === "First idea", "Use this prompt puts it back in the box");
   ok(await shown.getByRole("button", { name: "Use this prompt" }).isDisabled(), "…and is off once it is there");
-  ok((await box.locator(".desk-box-foot").innerText()).includes("You are looking at draft 2. The chapter reads as draft 1."), "the line by the button says which draft the chapter reads as");
+  {
+    const foot = await box.locator(".desk-box-foot").innerText();
+    ok(foot.includes("draft 2 of 3 ·") && !foot.includes("You are looking at"), "the foot repeats the drafts line (draft 2 of 3 · words), with no \"You are looking at…\": " + foot);
+  }
+  // ↻ at the foot does what Generate again does: a fourth draft
+  await box.locator(".desk-box-foot").getByRole("button", { name: /^Try again/ }).click();
+  await until(async () => (await draftButtons.count()) === 4 && (await genRow.getByRole("button", { name: "Generate again" }).isEnabled().catch(() => false)));
+  await page.waitForFunction(() => !/Writing/.test(document.querySelector(".desk-gen-row")?.textContent ?? ""));
+  ok((await draftButtons.count()) === 4 && (await draftButtons.nth(3).getAttribute("aria-pressed")) === "true", "↻ at the foot of the box makes a new draft, as Generate again does");
+  await draftButtons.nth(1).click();
+  await shown.waitFor();
   ok(await update.isEnabled(), "Update chapter is on when the draft showing differs from the chapter");
 
   // ---- Update: the chapter's text becomes draft 2, History keeps the old ----
@@ -127,8 +137,8 @@ try {
   ok(JSON.stringify(revisions).includes("Original text."), "…and History keeps the old text");
   await page.waitForFunction(() => document.querySelector("section.desk-box .desk-fold")?.getAttribute("aria-expanded") === "false");
   await promptFold.click();
-  await until(async () => (await draftButtons.allInnerTexts()).join("|") === "1|2 ✓|3");
-  ok((await draftButtons.allInnerTexts()).join("|") === "1|2 ✓|3", "the drafts are kept, ✓ now on draft 2: " + (await draftButtons.allInnerTexts()).join("|"));
+  await until(async () => (await draftButtons.allInnerTexts()).join("|") === "1|2 ✓|3|4");
+  ok((await draftButtons.allInnerTexts()).join("|") === "1|2 ✓|3|4", "the drafts are kept, ✓ now on draft 2: " + (await draftButtons.allInnerTexts()).join("|"));
   ok(await update.isDisabled(), "…and Update is off again");
   ok(!!(await until(async () => (await send("GET", `/api/chapters/${A}`)).chapter.summary === "The AI's summary.")), "the summary is rewritten in the background");
 

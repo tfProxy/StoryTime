@@ -979,8 +979,10 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         : deskAt === readsAs
           ? "You changed the chapter's draft. Update chapter to use your changes."
           : readsAs >= 0
-            ? `You are looking at draft ${deskAt + 1}. The chapter reads as draft ${readsAs + 1}.`
+            ? null // Which draft this is shows in the drafts line, at the top and at the foot.
             : "This draft differs from the chapter. Update chapter to use it.";
+  // "draft 6 of 7 · 1,000 words": in the drafts row, and again at the foot of the box, where the reading ends.
+  const draftsNote = n > 0 ? `${deskAt === readsAs && showingIsChapter ? "the chapter's text" : `draft ${deskAt + 1} of ${n}`} · ${words.toLocaleString()} word${words === 1 ? "" : "s"}` : null;
   const menu =
     desk.menuSlot &&
     createPortal(
@@ -1104,11 +1106,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
                   {i === readsAs && " ✓"}
                 </button>
               ))}
-              {n > 0 && (
-                <span className="meta desk-drafts-note">
-                  {deskAt === readsAs && showingIsChapter ? "the chapter's text" : `draft ${deskAt + 1} of ${n}`} · {words.toLocaleString()} word{words === 1 ? "" : "s"}
-                </span>
-              )}
+              {draftsNote && <span className="meta desk-drafts-note">{draftsNote}</span>}
             </div>
             {showingPrompt !== undefined && (
               <div className="desk-draft-prompt">
@@ -1174,10 +1172,24 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         )}
 
         <div className="row desk-box-foot">
+          {draftsNote && <span className="meta desk-foot-drafts">{draftsNote}</span>}
           <span className="meta">
             {target.kind === "edit" ? updateNote : canPost ? "A draft: nobody can read it yet. Choices are added after posting." : "Post chapter turns on once there is text."}
           </span>
           <span className="desk-spacer" />
+          {/* Generate again where the reading ends, so a draft that doesn't work can be redone without scrolling up. */}
+          {hasBody && (
+            <button
+              type="button"
+              className="secondary desk-try-again"
+              aria-label="Try again: a new draft from the prompt"
+              title="Try again: a new draft from the prompt (as Generate again does)"
+              disabled={busy !== null}
+              onClick={startGenerate}
+            >
+              <span aria-hidden="true">↻</span>
+            </button>
+          )}
           {target.kind === "edit" ? (
             <button type="button" disabled={!canUpdate || busy !== null} onClick={() => void deskUpdate()}>
               {posting ? "Updating…" : "Update chapter"}
