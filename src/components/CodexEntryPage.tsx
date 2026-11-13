@@ -577,9 +577,12 @@ export function FactsTable({
   hold,
   quote = null,
   onQuoteDone,
+  onChapter,
 }: {
   /** On the writing desk (inside its Facts tab): no heading, the buttons first, and no Flesh out. */
   desk?: boolean;
+  /** The desk: "since “chapter”" is a link that shows that chapter in the story column. */
+  onChapter?: (chapterId: string) => void;
   /**
    * The desk's "Add as a fact…": words chosen in the chapter's text. The new-fact form starts open with them as its quote
    * (saved with the fact); `onQuoteDone` is called when that form is saved or cancelled.
@@ -622,7 +625,18 @@ export function FactsTable({
 
   const here = path.find((c) => c.id === chapterId)?.title ?? "this chapter";
   const titleOf = (id: string) => path.find((p) => p.id === id)?.title ?? "an earlier chapter";
-  const since = (id: string) => (path[0]?.id === id ? "from the start" : `since “${titleOf(id)}”`);
+  const since = (id: string) => {
+    if (path[0]?.id === id) return "from the start";
+    if (!onChapter || !path.some((p) => p.id === id)) return `since “${titleOf(id)}”`;
+    return (
+      <>
+        since{" "}
+        <button type="button" className="link-button ef-since-link" title="Show this chapter" onClick={() => onChapter(id)}>
+          “{titleOf(id)}”
+        </button>
+      </>
+    );
+  };
   const sharedState = (factId: string) => factSharedState(factHistory(factOps, factId));
 
   async function run(action: () => Promise<string | null>): Promise<boolean> {

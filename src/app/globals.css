@@ -6845,6 +6845,66 @@ main:has(.desk) {
   opacity: 0.45;
 }
 
+/* Codex mode: « (fold the column to its rail) at the end of the tabs' row. */
+.desk-modes-row {
+  display: flex;
+  align-items: stretch;
+  margin: 0 -0.6rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.desk-modes-row .desk-modes {
+  flex: 1;
+  margin: 0;
+  border-bottom: 0;
+}
+
+.desk-fold-codex {
+  flex: none;
+  padding: 0.3rem 0.7rem;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--muted);
+}
+
+.desk-fold-codex:hover {
+  color: var(--fg);
+}
+
+/* The desk's entry column is narrow: a fact's aspect is a run-in label and its text flows on after it and under it,
+   instead of sitting in a column of its own. "since …" follows under the text. */
+.desk-entry .ef-main {
+  display: block;
+}
+
+.desk-entry .ef-aspect {
+  display: inline-block;
+  margin-right: 0.45rem;
+  padding: 0 0.4rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--fg);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.desk-entry .ef-value {
+  display: inline;
+}
+
+.desk-entry .ef-since {
+  padding-left: 0.25rem;
+}
+
+.desk-entry .ef-markers {
+  padding-left: 0.25rem;
+}
+
+button.link-button.ef-since-link {
+  font-size: inherit;
+}
+
 /* Illustrate mode: the picture controls in a wider side column (no entry column), the chapter's pictures in the story
    column. The controls' panels are sections of the side column, not cards inside it. */
 @media (min-width: 60rem) {
@@ -7610,6 +7670,7 @@ main:has(.desk) {
   }
 
   /* The bar does what the Codex | Illustrate switch does, and entries are made and changed on a wide screen. */
+  .desk .desk-modes-row,
   .desk .desk-modes,
   .desk .desk-side-head button {
     display: none;

@@ -7,6 +7,13 @@ import DeskLink from "./DeskLink";
 import DeskVia from "./DeskVia";
 import Prose from "./Prose";
 
+const SHOW_CHAPTER = "desk-show-chapter";
+
+/** Shows a chapter in the desk's story column: an earlier one's block unfolded, or the chapter's box. */
+export function showDeskChapter(chapterId: string) {
+  window.dispatchEvent(new CustomEvent(SHOW_CHAPTER, { detail: chapterId }));
+}
+
 /** An earlier chapter on the path to the one on the desk. */
 export type PathBlock = {
   id: string;
@@ -59,6 +66,27 @@ export default function DeskPath({ storyId, blocks, onQuote }: { storyId: string
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // "since “chapter”" on a fact (showDeskChapter): an earlier chapter's block unfolds and comes into view; any other
+  // chapter is the one on the desk, so its box does.
+  useEffect(() => {
+    const onShow = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      if (!blocks.some((b) => b.id === id)) {
+        document.querySelector(".desk-box")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      setFolds((f) => {
+        const next = { ...f, [id]: true };
+        writeFolds(storyId, { ...readFolds(storyId), ...next });
+        return next;
+      });
+      // After the block has unfolded, so it is scrolled to at its full height.
+      requestAnimationFrame(() => document.getElementById(`desk-block-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    };
+    window.addEventListener(SHOW_CHAPTER, onShow);
+    return () => window.removeEventListener(SHOW_CHAPTER, onShow);
+  }, [blocks, storyId]);
+
   if (blocks.length === 0) return null;
   const set = (next: Record<string, boolean>) => {
     setFolds(next);
@@ -78,7 +106,7 @@ export default function DeskPath({ storyId, blocks, onQuote }: { storyId: string
         return (
           <Fragment key={b.id}>
             {b.via && <DeskVia label={b.via} />}
-            <article className={open ? "desk-block open" : "desk-block"} aria-label={`Chapter ${i + 1}: ${b.title}`}>
+            <article id={`desk-block-${b.id}`} className={open ? "desk-block open" : "desk-block"} aria-label={`Chapter ${i + 1}: ${b.title}`}>
               <div className="desk-block-head">
                 <button type="button" className="desk-block-fold" aria-expanded={open} onClick={() => set({ ...folds, [b.id]: !open })}>
                   <strong>

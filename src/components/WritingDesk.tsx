@@ -34,7 +34,7 @@ import CodexIconPicker from "./CodexIconPicker";
 import { ChangeList, comparisonTitle, type Relation } from "./CodexComparison";
 import { useCodexInbox } from "./CodexInbox";
 import DeskIllustrate from "./DeskIllustrate";
-import DeskPath, { type PathBlock } from "./DeskPath";
+import DeskPath, { showDeskChapter, type PathBlock } from "./DeskPath";
 import DeskPhone, { usePhone, type PhoneSheet } from "./DeskPhone";
 import type { IllustrateProps } from "./IllustrateWorkspace";
 import DeskSuggestions from "./DeskSuggestions";
@@ -436,14 +436,17 @@ export default function WritingDesk({
         </aside>
       ) : (
         <aside className="desk-side" aria-label="Codex">
-          {modes}
+          {/* The fold sits with the tabs at the top, so the search box and "+" get the row below. */}
+          <div className="desk-modes-row">
+            {modes}
+            <button type="button" className="desk-fold-codex" aria-label="Fold the codex" aria-expanded={true} title="Fold the codex" onClick={() => setFolded(true)}>
+              «
+            </button>
+          </div>
           <div className="desk-side-head">
             <input type="search" aria-label="Search entries" placeholder="Search entries…" value={query} onChange={(e) => setQuery(e.target.value)} />
             <button type="button" className="secondary" aria-label="New entry" title="New entry" onClick={() => setOpenId("new")}>
               +
-            </button>
-            <button type="button" className="secondary" aria-label="Fold the codex" aria-expanded={true} title="Fold the codex" onClick={() => setFolded(true)}>
-              «
             </button>
           </div>
           {entries.length === 0 ? (
@@ -869,6 +872,7 @@ function DeskEntry({
             suggestions={[]}
             quote={quote}
             onQuoteDone={onQuoteDone}
+            onChapter={showDeskChapter}
             onSaved={refresh}
             onError={setError}
             hold={
