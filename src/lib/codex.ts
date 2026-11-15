@@ -101,6 +101,22 @@ export function cleanForm(form: string): string {
   return f.replace(/\s+form$/i, "").trim();
 }
 
+/**
+ * An aspect and form as the AI wrote them, cleaned. The prompts show a fact as "Hair [vixen form]: …", and models copy
+ * that label into the aspect ("Hair [vixen form]", even "Hair [vixen form] [vixen form]"): it is taken off, and gives
+ * the form when the AI left "form" empty. A label of "every form…" or "current" says nothing about the form.
+ */
+export function aspectAndForm(aspect: string, form: string): { aspect: string; form: string } {
+  let rest = aspect.trim();
+  let label = "";
+  for (let m = /^(.*?)\s*\[([^\]]*)\]$/.exec(rest); m; m = /^(.*?)\s*\[([^\]]*)\]$/.exec(rest)) {
+    rest = m[1].trim();
+    const l = m[2].trim();
+    if (!/^(every|all|any)\b|^(current|now)$/i.test(l)) label = cleanForm(l);
+  }
+  return { aspect: rest, form: cleanForm(form) || label };
+}
+
 const STOP_WORDS = new Set(
   "the and but for with that this from have has had was were are her his she him they them their its into onto out over than then there these those what when where which while who whom whose will would could should about after again also been before being both each even just like more most much only other same some such very your you our not now any all can did does doing done get got how off too way yet".split(" "),
 );

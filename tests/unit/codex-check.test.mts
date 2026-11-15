@@ -118,4 +118,6 @@ ok(unquoted[0]?.quote === "The grass was green.", "a new entry without a quote i
 ok(parseCodexCheck(reply([{ kind: "entry", name: "Grasshopper", type: "item", facts: [{ aspect: "Appearance", text: "Green." }] }]), opts).length === 0, "…but not when the chapter never names it");
 ok(parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "Voice", form: "every form", text: "Calm.", quote: "I can smell the Hollow" }]), opts)[0]?.form === "", "a form of 'every form' becomes no form");
 ok(parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "Eyes", form: "vixen form", text: "Gold eyes.", quote: "her eyes were gold" }]), opts)[0]?.form === "vixen", "a form of 'vixen form' becomes 'vixen'");
+const labelled = parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "Eyes [vixen form]", text: "Gold eyes.", quote: "her eyes were gold" }]), opts)[0];
+ok(labelled?.aspect === "Eyes" && labelled.form === "vixen", "an aspect copied with its '[vixen form]' label is 'Eyes' in the form 'vixen': " + JSON.stringify(labelled));
 ok(parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "form", form: "kit", text: "young", quote: "Her ears flicked" }]), opts)[0]?.kind === "form", "a set of the aspect 'form' becomes a form item");

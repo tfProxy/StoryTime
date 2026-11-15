@@ -5,7 +5,7 @@ import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, mentions, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import { matchQuote } from "./tagAi";
-import { ENTRY_TYPES, FACT_LIMITS, cleanForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry, type EntryType } from "../codex";
+import { ENTRY_TYPES, FACT_LIMITS, aspectAndForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry, type EntryType } from "../codex";
 import { DEFAULT_CATEGORIES, aspectRules, formFor, resolveAspect, type CategoryLists } from "../codexCategories";
 import type { Settings } from "../settings";
 
@@ -36,6 +36,8 @@ const NEW_ENTRY_FACTS = 6;
 const NAME_MAX = 100;
 const ALIAS_MAX = 60;
 const ALIASES_MAX = 10;
+/** How much of an aspect is read before its "[… form]" label is taken off (aspectAndForm). */
+const LABELLED_MAX = 120;
 
 const asString = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const lc = (s: string) => s.trim().toLowerCase();
@@ -156,9 +158,10 @@ function parseNewEntry(o: Record<string, unknown>, taken: Set<string>, lists: Ca
       const r = f as Record<string, unknown>;
       const text = asString(r.text, FACT_LIMITS.text);
       if (!text) continue;
-      const aspect = resolveAspect(asString(r.aspect, FACT_LIMITS.aspect), lists[type], facts).aspect;
+      const given = aspectAndForm(asString(r.aspect, LABELLED_MAX), asString(r.form, FACT_LIMITS.form));
+      const aspect = resolveAspect(given.aspect.slice(0, FACT_LIMITS.aspect), lists[type], facts).aspect;
       if (isFormAspect(aspect)) continue; // a new entry's form is set after it exists
-      const form = formFor(aspect, cleanForm(asString(r.form, FACT_LIMITS.form)), lists[type]);
+      const form = formFor(aspect, given.form, lists[type]);
       if (aspect && facts.some((x) => sameAspect(x.aspect, aspect) && sameAspect(x.form, form))) continue; // one fact per aspect
       facts.push({ aspect, form, text });
       if (facts.length >= NEW_ENTRY_FACTS) break;
@@ -229,8 +232,9 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
     const target = byName.get(lc(asString(o.entry, NAME_MAX)));
     if (!target) continue;
     // The aspect as the list (or the entry) spells it: "Fur" is filed under Skin, "New: Gills" is a new category.
-    let aspect = resolveAspect(asString(o.aspect, FACT_LIMITS.aspect), lists[target.type], target.facts).aspect;
-    let form = cleanForm(asString(o.form, FACT_LIMITS.form));
+    const named = aspectAndForm(asString(o.aspect, LABELLED_MAX), asString(o.form, FACT_LIMITS.form));
+    let aspect = resolveAspect(named.aspect.slice(0, FACT_LIMITS.aspect), lists[target.type], target.facts).aspect;
+    let form = named.form;
     const text = asString(o.text, FACT_LIMITS.text);
     // A "set" of the aspect "form" is a form change.
     if (kind === "set" && isFormAspect(aspect)) kind = "form";

@@ -1,6 +1,6 @@
 ﻿import { foldFacts, factHistory, describeEntry, formClashes, compareEntry, overriddenFacts, applicableFacts, factLinesForEditing, describeSharedFacts, type FactOp, type LiveFact } from "../../src/lib/codex.ts";
 import { baseForms, foldCodex, storyEntrySummaries, retiredEntries, entryHistory, changedFields, addChange, draftOps, DRAFT_ANCHOR, type CodexChange, type CodexOp } from "../../src/lib/codex.ts";
-import { codexBlock, cleanForm, quoteSupports } from "../../src/lib/codex.ts";
+import { aspectAndForm, codexBlock, cleanForm, quoteSupports } from "../../src/lib/codex.ts";
 import { buildCodexBlock, mentions, generatePrompt, choicesPrompt } from "../../src/lib/ai/prompts.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
@@ -321,6 +321,12 @@ ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length ==
 {
   ok(["every form", "All forms", "any", "none", "No form", " "].every((f) => cleanForm(f) === ""), "cleanForm: 'every form' and its cousins mean no form");
   ok(cleanForm("vixen form") === "vixen" && cleanForm(" Vixen ") === "Vixen" && cleanForm("") === "", "cleanForm: 'vixen form' is 'vixen'");
+  const af = (a: string, f = "") => JSON.stringify(aspectAndForm(a, f));
+  ok(af("Hair [Latex Husky form]") === '{"aspect":"Hair","form":"Latex Husky"}', "aspectAndForm: the label is taken off and gives the form: " + af("Hair [Latex Husky form]"));
+  ok(af("Hair [Latex Husky form] [Latex Husky form]") === '{"aspect":"Hair","form":"Latex Husky"}', "aspectAndForm: a doubled label too");
+  ok(af("Personality [every form]", "") === '{"aspect":"Personality","form":""}' && af("Personality [current]") === '{"aspect":"Personality","form":""}', "aspectAndForm: 'every form' and 'current' say nothing about the form");
+  ok(af("Build [Human form]", "vixen form") === '{"aspect":"Build","form":"vixen"}', "aspectAndForm: the AI's own form wins over the label");
+  ok(af("Eyes", "Human form") === '{"aspect":"Eyes","form":"Human"}', "aspectAndForm: an aspect without a label is unchanged");
   const denise = "There it was again, loud and persistent - clearly whoever it was wasn't going to go away. Her roommate was away too, so she'd have to take care of it. Cool. With a great effort, Denise managed to drag herself out of bed.";
   ok(!quoteSupports(denise, "Hair: Denise has brown hair that's typically messier in the morning, hanging loosely around her shoulders.", ["Denise"]), "quoteSupports: a quote that says nothing about the hair is not support");
   ok(quoteSupports("Rowan's hair turned silver in the moonlight.", "Hair silver hair", ["Rowan"]), "quoteSupports: shared word 'hair'/'silver'");
