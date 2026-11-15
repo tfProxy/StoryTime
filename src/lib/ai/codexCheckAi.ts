@@ -50,7 +50,7 @@ How to write a fact:
 
 ${aspects}
 
-This story may involve physical transformation. When a character's body, sex, species or form changes, record each changed aspect separately (Ears, Tail, Fur, Build, Voice, Sex, Species and so on), even when several change in one scene. When the character is now in a different form or stage of a change, also propose a "form" item.
+This story may involve physical transformation. When a character's body, sex, species or form changes, record each changed aspect separately (Ears, Tail, Fur, Build, Voice, Sex, Species and so on), even when several change in one scene. When the character is now in a different form or stage of a change, also propose a "form" item. A form the character has had before (its current form or one under "Other forms") keeps the name it has there, spelled the same; give a new name only to a form the character has never had, and a further change to the same form is a new stage of it (in "text"), not a new form.
 
 Kinds of item:
 - "set": a new aspect, or an existing one that changed. Give "entry" (the entry's name as listed), "aspect", "text" and, only if the fact belongs to one form of the character, "form" (otherwise leave it empty).
@@ -73,14 +73,28 @@ export function selectEntries(entries: CodexEntry[], body: string): CodexEntry[]
   return picked.slice(0, MAX_ENTRIES);
 }
 
-/** How the AI reads one entry: its name, current form and each live fact. */
-export function describeForCheck(e: CodexEntry): string {
+/**
+ * How the AI reads one entry: its name, current form and live facts. A character with many forms would fill a small
+ * model's prompt with facts of forms it isn't in (and it then filed details under the wrong one), so only the facts for
+ * every form, the current form and the forms the chapter names are shown; the other forms are listed by name, so a
+ * form the character returns to is called what it was called before.
+ */
+export function describeForCheck(e: CodexEntry, body = ""): string {
   const lines = [`${e.name} [${e.type}]${e.aliases.length ? ` (also: ${e.aliases.join(", ")})` : ""}`];
   if (e.form) {
     const label = [e.form.name, e.form.note].map((s) => s.trim()).filter(Boolean).join(", ");
     if (label) lines.push(`Current form: ${label}`);
   }
-  lines.push(...factLinesForEditing(e));
+  const now = e.form?.name.trim() || e.baseForm;
+  if (!now) {
+    lines.push(...factLinesForEditing(e));
+    return lines.join("\n");
+  }
+  const named = (form: string) => mentions({ name: form, type: "", aliases: [], content: "", always_include: false }, body);
+  const shownForm = (form: string) => !form.trim() || sameAspect(form, now) || named(form);
+  lines.push(...factLinesForEditing({ ...e, facts: e.facts.filter((f) => shownForm(f.form)) }));
+  const others = e.forms.filter((f) => !shownForm(f));
+  if (others.length) lines.push(`Other forms (their facts are not shown): ${others.join(", ")}`);
   return lines.join("\n");
 }
 
@@ -109,7 +123,7 @@ export function codexCheckRequest(contextTokens: number, opts: CodexCheckRequest
     const name = asString(n, 60);
     if (name && !others.some((x) => lc(x) === lc(name)) && !shown.some((e) => lc(e.name) === lc(name))) others.push(name);
   }
-  const known = shown.length ? shown.map(describeForCheck).join("\n\n") : "(no entry is mentioned in this chapter)";
+  const known = shown.length ? shown.map((e) => describeForCheck(e, opts.chapter.body)).join("\n\n") : "(no entry is mentioned in this chapter)";
   const otherList = others.slice(0, 80).join(", ");
   // The lists for the types shown, and for characters (most new entries are), to keep the prompt short.
   const types = opts.focus ? [opts.focus.type] : [...new Set<EntryType>(["character", ...shown.map((e) => e.type)])];

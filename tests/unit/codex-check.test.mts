@@ -1,4 +1,4 @@
-import { codexCheckRequest, parseCodexCheck, selectEntries, MAX_SUGGESTIONS } from "../../src/lib/ai/codexCheckAi.ts";
+import { codexCheckRequest, describeForCheck, parseCodexCheck, selectEntries, MAX_SUGGESTIONS } from "../../src/lib/ai/codexCheckAi.ts";
 import { foldCodex, type CodexOp, type FactOp } from "../../src/lib/codex.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
@@ -42,6 +42,22 @@ ok(/Other names already in the codex \(not new\): Zed, Tomas/.test(req.message),
 ok(req.message.includes('Chapter to read: "One"') && req.message.includes("tail"), "request has the chapter");
 ok(req.system!.includes("Reply with JSON only") && req.system!.includes("physical transformation") && req.system!.includes("Ears"), "system prompt: JSON only, transformation, starter aspects");
 ok(selectEntries(entries, body).map((e) => e.name).join() === "Mira,The Hollow,Old Sage", "selectEntries: mentioned first, then always-included");
+
+// Many forms: only every-form facts, the current form's and the forms the chapter names are shown in full.
+const shifter = foldCodex(
+  [op("syl", "Sylvia")],
+  [
+    fact("syl", "s-form", "form", "husky", ""),
+    fact("syl", "s-pers", "Personality", "", "Blunt."),
+    fact("syl", "s-hair-h", "Hair", "human", "Blonde."),
+    fact("syl", "s-skin-l", "Skin", "lizard", "Green scales."),
+    fact("syl", "s-skin-k", "Skin", "husky", "Black latex."),
+  ],
+);
+const quiet = describeForCheck(shifter[0], "Sylvia wagged her tail.");
+ok(quiet.includes("Personality [every form]: Blunt.") && quiet.includes("Skin [husky form]: Black latex."), "many forms: every-form facts and the current form's are shown");
+ok(!quiet.includes("Green scales") && !quiet.includes("Blonde") && quiet.includes("Other forms (their facts are not shown): human, lizard"), "…other forms are named, without their facts: " + quiet);
+ok(describeForCheck(shifter[0], "Sylvia felt the lizard rising again.").includes("Skin [lizard form]: Green scales."), "…a form the chapter names is shown in full");
 
 // "Update from the story": one entry in focus
 const mira = entries.find((e) => e.entry_id === "mira")!;
