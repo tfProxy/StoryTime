@@ -4,7 +4,7 @@
 import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, mentions, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
-import { quoteInText } from "./tagAi";
+import { matchQuote } from "./tagAi";
 import { ENTRY_TYPES, FACT_LIMITS, cleanForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry, type EntryType } from "../codex";
 import { DEFAULT_CATEGORIES, aspectRules, formFor, resolveAspect, type CategoryLists } from "../codexCategories";
 import type { Settings } from "../settings";
@@ -58,7 +58,7 @@ Kinds of item:
 - "conflict": the chapter states a different value for an existing fact as if it had always been so, rather than showing it change. This is likely a slip by the author. Give "entry", "aspect", "text" (the value the chapter gives) and "form" if the fact has one.
 
 Rules:
-- Every item needs "quote": the exact words copied from the chapter that show it (under 200 characters).
+- Every item needs "quote": one sentence or phrase copied word for word from the chapter that shows it (under 200 characters). Copy one unbroken passage; never join pieces with "...".
 - Only what the chapter shows. Do not guess, and do not repeat what the codex already says.
 - Skip trivia. At most ${MAX_SUGGESTIONS} items; a few valuable ones are better than many.
 Reply with JSON only, in this shape ({"changes":[]} if there is nothing to change):
@@ -165,6 +165,23 @@ function parseNewEntry(o: Record<string, unknown>, taken: Set<string>, lists: Ca
   return { name, type, aliases, notes: asString(o.notes, NEW_ENTRY_NOTES), facts };
 }
 
+/** The first sentence of the chapter that names one of `names` (whole words), or null. */
+function sentenceNaming(names: unknown[], body: string): string | null {
+  let at = -1;
+  for (const n of names) {
+    const name = asString(n, NAME_MAX);
+    if (!name) continue;
+    const m = new RegExp(`(^|[^\\p{L}\\p{N}])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}\\p{N}])`, "iu").exec(body);
+    if (m && (at < 0 || m.index < at)) at = m.index + m[1].length;
+  }
+  if (at < 0) return null;
+  const before = body.slice(0, at);
+  const start = Math.max(before.search(/[^.!?…\n]*$/), 0);
+  const end = body.slice(at).search(/[.!?…](\s|$)|\n/);
+  const sentence = body.slice(start, end < 0 ? body.length : at + end + 1).trim();
+  return sentence.slice(0, FACT_LIMITS.quote) || null;
+}
+
 export type ParseCodexCheckOptions = {
   body: string;
   /** Every entry live at the chapter (with its facts). */
@@ -191,8 +208,12 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
     const o = item as Record<string, unknown>;
     let kind = lc(asString(o.kind, 20)) as SuggestionKind;
     if (!(SUGGESTION_KINDS as readonly string[]).includes(kind)) continue;
-    const quote = asString(o.quote, FACT_LIMITS.quote);
-    if (!quote || !quoteInText(quote, opts.body)) continue;
+    // The chapter's own words for the AI's quote; a new entry without one that fits is shown by where it is named.
+    const given = asString(o.quote, FACT_LIMITS.quote);
+    let quote = given ? matchQuote(given, opts.body, FACT_LIMITS.quote) : null;
+    if (!quote && kind === "entry") quote = sentenceNaming([o.name, ...(Array.isArray(o.aliases) ? o.aliases : [])], opts.body);
+    if (!quote) continue;
+    quote = quote.replace(/\s+/g, " ").trim();
 
     if (kind === "entry") {
       const entry = parseNewEntry(o, taken, lists);

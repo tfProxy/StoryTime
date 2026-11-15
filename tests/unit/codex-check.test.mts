@@ -106,6 +106,11 @@ try { parseCodexCheck("no json here", opts); } catch { threw = true; }
 ok(threw, "a reply with no JSON throws, so the task is retried");
 const curly = parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "Voice", text: "Calm.", quote: "“I can smell the Hollow,” she said" }]), opts);
 ok(curly.length === 1, "a quote with different quote marks still matches");
+const joined = parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "Voice", text: "Calm.", quote: "I can smell the Hollow... Her ears flicked" }]), opts);
+ok(joined[0]?.quote === 'I can smell the Hollow," she said. Her ears flicked',"a quote of pieces joined with ... is kept, as the chapter's own words: " + joined[0]?.quote);
+const unquoted = parseCodexCheck(reply([{ kind: "entry", name: "Grass", type: "item", facts: [{ aspect: "Appearance", text: "Green." }] }]), opts);
+ok(unquoted[0]?.quote === "The grass was green.", "a new entry without a quote is quoted where the chapter names it: " + unquoted[0]?.quote);
+ok(parseCodexCheck(reply([{ kind: "entry", name: "Grasshopper", type: "item", facts: [{ aspect: "Appearance", text: "Green." }] }]), opts).length === 0, "…but not when the chapter never names it");
 ok(parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "Voice", form: "every form", text: "Calm.", quote: "I can smell the Hollow" }]), opts)[0]?.form === "", "a form of 'every form' becomes no form");
 ok(parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "Eyes", form: "vixen form", text: "Gold eyes.", quote: "her eyes were gold" }]), opts)[0]?.form === "vixen", "a form of 'vixen form' becomes 'vixen'");
 ok(parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "form", form: "kit", text: "young", quote: "Her ears flicked" }]), opts)[0]?.kind === "form", "a set of the aspect 'form' becomes a form item");
