@@ -134,6 +134,19 @@ ok(unquoted[0]?.quote === "The grass was green.", "a new entry without a quote i
 ok(parseCodexCheck(reply([{ kind: "entry", name: "Grasshopper", type: "item", facts: [{ aspect: "Appearance", text: "Green." }] }]), opts).length === 0, "…but not when the chapter never names it");
 ok(parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "Voice", form: "every form", text: "Calm.", quote: "I can smell the Hollow" }]), opts)[0]?.form === "", "a form of 'every form' becomes no form");
 ok(parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "Eyes", form: "vixen form", text: "Gold eyes.", quote: "her eyes were gold" }]), opts)[0]?.form === "vixen", "a form of 'vixen form' becomes 'vixen'");
+const moved = parseCodexCheck(reply([
+  { kind: "set", entry: "Mira", aspect: "Eyes", form: "current", text: "Silver eyes.", quote: "her eyes were gold" },
+  { kind: "form", entry: "Mira", form: "moon fox", text: "", quote: "Mira shook out her tail" },
+]), opts);
+ok(moved.find((s) => s.kind === "set")?.form === "moon fox", "a fact for the 'current' form goes to the form the reply moves the entry to: " + JSON.stringify(moved));
+const stays = parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "Eyes", form: "current form", text: "Silver eyes.", quote: "her eyes were gold" }]), opts);
+ok(stays[0]?.form === "vixen", "…or, when it moves nowhere, to the form the entry is in");
+const staged = parseCodexCheck(reply([
+  { kind: "form", entry: "Mira", form: "vixen, fully changed", text: "", quote: "Mira shook out her tail" },
+  { kind: "set", entry: "Mira", aspect: "Eyes", form: "vixen, fully changed", text: "Silver eyes.", quote: "her eyes were gold" },
+]), opts);
+ok(staged[0]?.form === "vixen" && staged[0].after === "fully changed" && staged[1]?.form === "vixen", "a form given as 'vixen, fully changed' (as the request shows it) is the form vixen at that stage: " + JSON.stringify(staged));
+ok(parseCodexCheck(reply([{ kind: "form", entry: "Mira", form: "true", text: "", quote: "Mira shook out her tail" }]), opts).length === 0, "a form item named 'true' names nothing and is dropped");
 const labelled = parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "Eyes [vixen form]", text: "Gold eyes.", quote: "her eyes were gold" }]), opts)[0];
 ok(labelled?.aspect === "Eyes" && labelled.form === "vixen", "an aspect copied with its '[vixen form]' label is 'Eyes' in the form 'vixen': " + JSON.stringify(labelled));
 ok(parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "form", form: "kit", text: "young", quote: "Her ears flicked" }]), opts)[0]?.kind === "form", "a set of the aspect 'form' becomes a form item");

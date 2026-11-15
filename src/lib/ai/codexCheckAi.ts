@@ -209,6 +209,15 @@ export type ParseCodexCheckOptions = {
   categories?: CategoryLists;
 };
 
+/**
+ * The request shows "Current form: Fox, fully transformed" (the form, then its stage), and models give that back as a
+ * form's name: a form of the entry followed by a comma is that form, and the rest is its stage.
+ */
+function withStage(entry: CodexEntry, form: string): { form: string; stage: string } {
+  const known = entry.forms.find((f) => form.toLowerCase().startsWith(`${f.toLowerCase()},`));
+  return known ? { form: known, stage: form.slice(known.length + 1).trim() } : { form, stage: "" };
+}
+
 /** Turns a model reply into suggestions, dropping what can't be trusted (bad quotes, unknown entries, no change). */
 export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): SuggestionInput[] {
   const raw = extractJson(reply);
@@ -219,6 +228,18 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
   for (const e of opts.entries) for (const n of [e.name, ...e.aliases]) if (n.trim() && !byName.has(lc(n))) byName.set(lc(n), e);
   const taken = new Set([...byName.keys(), ...opts.otherNames.map(lc)]);
   const lists = opts.categories ?? DEFAULT_CATEGORIES;
+
+  // Models write "form": "current" for "the form this chapter leaves them in": that is the form the reply moves the
+  // entry to, if it does, or else the one it is in. A form item named "current" or "true" names nothing and goes.
+  const vague = (f: string) => /^(current|now|present|this|true|false|yes)( form)?$/i.test(f.trim());
+  const movedTo = new Map<string, string>();
+  for (const item of list) {
+    const o = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
+    const form = aspectAndForm(asString(o.aspect, LABELLED_MAX), asString(o.form, FACT_LIMITS.form)).form;
+    const isForm = lc(asString(o.kind, 20)) === "form" || (lc(asString(o.kind, 20)) === "set" && isFormAspect(asString(o.aspect, LABELLED_MAX)));
+    const target = byName.get(lc(asString(o.entry, NAME_MAX)));
+    if (isForm && target && form && !vague(form) && !movedTo.has(target.entry_id)) movedTo.set(target.entry_id, withStage(target, form).form);
+  }
 
   const out: SuggestionInput[] = [];
   for (const item of list) {
@@ -252,6 +273,13 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
     const text = asString(o.text, FACT_LIMITS.text);
     // A "set" of the aspect "form" is a form change.
     if (kind === "set" && isFormAspect(aspect)) kind = "form";
+    if (vague(form)) {
+      if (kind === "form") continue;
+      form = movedTo.get(target.entry_id) ?? target.form?.name ?? target.baseForm ?? "";
+    }
+    const split = withStage(target, form);
+    form = split.form;
+    const stage = split.stage;
     // Personality, Relationships and the like are the same in every form: a form the AI gave them is dropped.
     if (kind === "set" || kind === "conflict") form = formFor(aspect, form, lists[target.type]);
     const live = (a: string, f: string) => target.facts.find((x) => !isFormAspect(x.aspect) && sameAspect(x.aspect, a) && sameAspect(x.form, f));
@@ -260,8 +288,9 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
 
     if (kind === "form") {
       if (!form) continue;
-      if (target.form && sameAspect(target.form.name, form) && lc(target.form.note) === lc(text)) continue;
-      out.push({ kind, entry_id: target.entry_id, aspect: "", form, after: text, quote });
+      const note = text || stage;
+      if (target.form && sameAspect(target.form.name, form) && lc(target.form.note) === lc(note)) continue;
+      out.push({ kind, entry_id: target.entry_id, aspect: "", form, after: note, quote });
     } else if (kind === "retire") {
       if (!aspect || !live(aspect, form)) continue;
       out.push({ kind, entry_id: target.entry_id, aspect, form, after: "", quote });
