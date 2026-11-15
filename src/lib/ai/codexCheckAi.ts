@@ -54,7 +54,7 @@ This story may involve physical transformation. When a character's body, sex, sp
 
 Kinds of item:
 - "set": a new aspect, or an existing one that changed. Give "entry" (the entry's name as listed), "aspect", "text" and, only if the fact belongs to one form of the character, "form" (otherwise leave it empty).
-- "form": the character is now in a different form or stage. Give "entry", "form" (the form's name, such as "vixen" or "half-changed") and "text" (a short note about it, or empty).
+- "form": the character is now in a different form or stage. Give "entry", "form" (the form's name, such as "vixen" or "half-changed") and "text" (a short note about it, or empty). A new form needs a real name, a word or two saying what the character now is ("goo creature", "dragon", "vixen"), never "current", "new", "true form" or "transformed". Every "set" item for that form gives the same name as its "form".
 - "retire": an existing fact is no longer true and nothing replaces it. Give "entry" and "aspect" (and "form" if the fact has one).
 - "entry": a new named character, place, item or faction likely to come up again that is not in the codex or in the list of other names. Give "name", "type" (one of ${ENTRY_TYPES.join(", ")}), "aliases", "notes" (one sentence) and up to ${NEW_ENTRY_FACTS} "facts" ({"aspect","form","text"}).
 - "conflict": the chapter states a different value for an existing fact as if it had always been so, rather than showing it change. This is likely a slip by the author. Give "entry", "aspect", "text" (the value the chapter gives) and "form" if the fact has one.
