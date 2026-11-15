@@ -155,6 +155,7 @@ export async function runFleshOut(settings: Settings, opts: RunFleshOutOptions):
     messages: [{ role: "user", content: request.message }],
     role: opts.role ?? "cheap",
     signal: opts.signal,
+    precise: true,
     source: { label: "Flesh out", ...opts.source },
   });
   return parseFleshOut(reply, withLists);

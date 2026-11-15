@@ -86,6 +86,14 @@ const a = seen.at(-1)!;
 assert(a.url === "/anth/v1/messages" && a.headers!["x-api-key"] === "k" && a.headers!["anthropic-dangerous-direct-browser-access"] === "true", "anthropic url+headers");
 assert(a.body.system === "sys" && a.body.max_tokens === 4096 && a.body.model === "sm" && a.body.temperature === 0.7, "anthropic body (summary model, temp, max_tokens)");
 
+// A precise call (reading the story into JSON) asks for a low temperature, except from OpenAI and Anthropic.
+await completeChat(mk("ollama", base + "/o", { temperature: 0.9 }) as any, { messages: [{ role: "user", content: "hi" }], precise: true });
+assert(seen.at(-1)!.body.temperature === 0.2, "precise call to Ollama: temperature 0.2 over the setting: " + seen.at(-1)!.body.temperature);
+await completeChat(mk("ollama", base + "/o") as any, { messages: [{ role: "user", content: "hi" }] });
+assert(!("temperature" in seen.at(-1)!.body), "…an ordinary call keeps the setting (none)");
+await completeChat(mk("anthropic", base + "/anth/v1", { temperature: 0.7 }) as any, { messages: [{ role: "user", content: "hi" }], precise: true });
+assert(seen.at(-1)!.body.temperature === 0.7, "precise call to Anthropic keeps the setting");
+
 // The model's thinking goes to onThinking, never into the reply; the call says what it waits on first.
 {
   let thought = "";

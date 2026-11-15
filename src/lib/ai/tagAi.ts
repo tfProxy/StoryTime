@@ -217,6 +217,7 @@ export async function suggestTagsForChapter(settings: Settings, opts: SuggestOpt
     // Like a single-chapter codex scan: the main model, unless the caller is tagging many chapters.
     role: opts.role ?? "main",
     signal: opts.signal,
+    precise: true,
     source: { label: "Tags", ...opts.source },
   });
   const found = parseTagReply(extractJson(reply), opts.tags);

@@ -268,6 +268,7 @@ export async function runCodexCheck(settings: Settings, opts: RunCodexCheckOptio
     messages: [{ role: "user", content: request.message }],
     role: opts.role ?? "cheap",
     signal: opts.signal,
+    precise: true,
     source: { label: opts.focus ? `Update “${opts.focus.name}” from the story` : "Codex check", ...opts.source },
   });
   const found = parseCodexCheck(reply, { body: opts.chapter.body, entries: opts.entries, otherNames: opts.otherNames, categories: opts.categories ?? settings.codexCategories });

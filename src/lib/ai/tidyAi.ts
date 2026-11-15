@@ -194,6 +194,7 @@ export async function runTidy(settings: Settings, entry: CodexEntry, opts: { sig
     messages: [{ role: "user", content: request.message }],
     role: "cheap",
     signal: opts.signal,
+    precise: true,
     source: { label: `Tidy “${entry.name}”`, ...opts.source },
   });
   return parseTidy(reply, entry, settings.codexCategories);

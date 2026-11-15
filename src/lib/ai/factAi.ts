@@ -138,6 +138,7 @@ export async function judgeConflict(settings: Settings, opts: JudgeConflictOptio
     messages: [{ role: "user", content: request.message }],
     role: opts.role ?? "cheap",
     signal: opts.signal,
+    precise: true,
     source: { label: "Continuity judge", ...opts.source },
   });
   const verdict = parseVerdict(extractJson(reply));
@@ -156,6 +157,7 @@ export async function extractFacts(settings: Settings, opts: ExtractFactsOptions
     // The main model, unless the caller is reading many chapters.
     role: opts.role ?? "main",
     signal: opts.signal,
+    precise: true,
     source: { label: "Continuity facts", ...opts.source },
   });
   // A quote that isn't in the chapter is a sign the fact was made up, so it goes.

@@ -17,6 +17,11 @@ export type ChatRequest = {
   model?: ModelRef | null;
   /** "write" for calls that write chapter text; picks the starred model's thinking setting. Anything else is "other". */
   job?: AiJob;
+  /**
+   * A call that reads the story and answers in JSON with quotes from it (codex scans, tags, facts), not one that writes:
+   * asked for at PRECISE_TEMPERATURE instead of the setting, so a small model copies quotes and follows the format.
+   */
+  precise?: boolean;
   maxTokens?: number;
   signal?: AbortSignal;
   /** Where the call comes from, for the prompt history. A call without one is recorded as "Other". */
@@ -111,7 +116,15 @@ function checkConnection(c: Connection) {
   return info;
 }
 
-function resolve(settings: Settings, req: Pick<ChatRequest, "role" | "model" | "job">): Resolved {
+/**
+ * The temperature of a `precise` call. Ollama's default of 0.8 made Cydonia-24B paraphrase about half its quotes in
+ * codex scans; at 0.2 most were copied. OpenAI and Anthropic are left to the setting: their reasoning models refuse a
+ * temperature, and they copy well anyway.
+ */
+export const PRECISE_TEMPERATURE = 0.2;
+const PRECISE_KINDS: ProviderKind[] = ["ollama", "openrouter", "featherless", "nanogpt", "custom"];
+
+function resolve(settings: Settings, req: Pick<ChatRequest, "role" | "model" | "job" | "precise">): Resolved {
   const ref = req.model ?? defaultRef(settings, req.role ?? "main");
   if (!ref || !ref.model.trim()) throw new AiError("No model is chosen. Open Settings and pick a default model.");
   const conn = findConnection(settings, ref.connectionId);
@@ -124,7 +137,7 @@ function resolve(settings: Settings, req: Pick<ChatRequest, "role" | "model" | "
     baseUrl: conn.baseUrl.trim().replace(/\/+$/, ""),
     apiKey: conn.apiKey.trim(),
     model: ref.model.trim(),
-    temperature: settings.temperature,
+    temperature: req.precise && PRECISE_KINDS.includes(conn.kind) ? PRECISE_TEMPERATURE : settings.temperature,
     // Set per starred model; a model that isn't starred is left to think as it does by default.
     disableThinking: favoriteFor(settings, ref)?.disableThinking[req.job ?? "other"] ?? false,
     freeComfy: conn.freeComfy,

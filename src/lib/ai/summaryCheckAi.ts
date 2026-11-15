@@ -57,6 +57,7 @@ export async function summaryCheck(settings: Settings, opts: SummaryCheckOptions
     messages: [{ role: "user", content: request.message }],
     role: opts.role ?? "cheap",
     signal: opts.signal,
+    precise: true,
     source: { label: "Summary check", ...opts.source },
   });
   const result = parseSummaryCheck(extractJson(reply));
