@@ -100,7 +100,7 @@ ok(good[5].kind === "entry" && good[5].entry_id === undefined && good[5].entry?.
 const dropped = parseCodexCheck(
   reply([
     { kind: "set", entry: "Mira", aspect: "Eyes", form: "vixen", text: "Gold eyes.", quote: "words that are not in the chapter" },
-    { kind: "set", entry: "Nobody", aspect: "Eyes", text: "Blue.", quote: "her eyes were gold" },
+    { kind: "set", entry: "Zed", aspect: "Eyes", text: "Blue.", quote: "her eyes were gold" },
     { kind: "set", entry: "Mira", aspect: "Ears", text: "tall russet fox ears.", quote: "Her ears flicked" },
     { kind: "retire", entry: "Mira", aspect: "Wings", quote: "Her ears flicked" },
     { kind: "form", entry: "Mira", form: "", text: "x", quote: "Her ears flicked" },
@@ -124,6 +124,17 @@ const longReply = [...early, { kind: "set", entry: "Mira", aspect: "Eyes", form:
 const trimmed = parseCodexCheck(reply(longReply), opts);
 ok(trimmed.length === 12 && trimmed.some((s) => s.kind === "form") && trimmed.some((s) => s.aspect === "Eyes"), "over 12: the form change and the latest change are kept: " + trimmed.map((s) => s.aspect || s.kind).join(","));
 ok(trimmed.findIndex((s) => s.aspect === "Eyes") < trimmed.findIndex((s) => s.kind === "form"), "…in the reply's order");
+const strayReply = (extra: unknown[] = []) => reply([
+  ...extra,
+  { kind: "set", entry: "Brindle", aspect: "Species", form: "", text: "Fox.", quote: "The grass was green" },
+  { kind: "set", entry: "Brindle", aspect: "Eyes", form: "", text: "Grey eyes.", quote: "her eyes were gold" },
+  { kind: "form", entry: "Brindle", form: "old fox", text: "", quote: "Her ears flicked" },
+]);
+const stray = parseCodexCheck(strayReply(), opts);
+ok(stray.length === 1 && stray[0].kind === "entry" && stray[0].entry?.name === "Brindle" && stray[0].entry.facts.map((f) => f.aspect).join() === "Species,Eyes" && stray[0].quote === "The grass was green", "changes for a name the codex doesn't have become a proposal of that entry with their facts: " + JSON.stringify(stray));
+const joinedStray = parseCodexCheck(strayReply([{ kind: "entry", name: "Brindle", type: "character", facts: [{ aspect: "Age", text: "Old." }], quote: "Mira shook out her tail" }]), opts);
+ok(joinedStray.length === 1 && joinedStray[0].entry?.facts.map((f) => f.aspect).join() === "Age,Species,Eyes", "…or join the reply's own proposal of it");
+ok(parseCodexCheck(reply([{ kind: "set", entry: "Zed", aspect: "Eyes", text: "Blue.", quote: "her eyes were gold" }]), opts).length === 0, "…but not for a name the codex lists (a misspelling or an entry left out of the request)");
 const twice = parseCodexCheck(reply([
   { kind: "set", entry: "Mira", aspect: "Voice", text: "Calm.", quote: "I can smell the Hollow" },
   { kind: "set", entry: "Mira", aspect: "Voice", text: "Hoarse.", quote: "The grass was green" },

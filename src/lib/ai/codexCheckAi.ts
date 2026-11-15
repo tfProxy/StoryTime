@@ -229,6 +229,9 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
   const byName = new Map<string, CodexEntry>();
   for (const e of opts.entries) for (const n of [e.name, ...e.aliases]) if (n.trim() && !byName.has(lc(n))) byName.set(lc(n), e);
   const taken = new Set([...byName.keys(), ...opts.otherNames.map(lc)]);
+  // The names the codex has; `taken` also gathers the new entries this reply proposes.
+  const known = new Set(taken);
+  const strays = new Map<string, { name: string; quote: string; facts: Record<string, unknown>[] }>();
   const lists = opts.categories ?? DEFAULT_CATEGORIES;
   // Where in the chapter a kept quote (the chapter's own words, spaces made single) starts.
   const flat = opts.body.replace(/\s+/g, " ");
@@ -274,7 +277,17 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
     }
 
     const target = byName.get(lc(asString(o.entry, NAME_MAX)));
-    if (!target) continue;
+    if (!target) {
+      // A change for a name the codex doesn't have: the model is describing someone new without proposing them (on
+      // Amulet of Change, twelve facts about Maren, the lead, who wasn't in the codex). Gathered into a proposal below.
+      const name = asString(o.entry, NAME_MAX);
+      if (name && !known.has(lc(name)) && kind === "set") {
+        const stray = strays.get(lc(name)) ?? { name, quote, facts: [] };
+        stray.facts.push({ aspect: o.aspect, form: o.form, text: o.text });
+        strays.set(lc(name), stray);
+      }
+      continue;
+    }
     // The aspect as the list (or the entry) spells it: "Fur" is filed under Skin, "New: Gills" is a new category.
     const named = aspectAndForm(asString(o.aspect, LABELLED_MAX), asString(o.form, FACT_LIMITS.form));
     let aspect = resolveAspect(named.aspect.slice(0, FACT_LIMITS.aspect), lists[target.type], target.facts).aspect;
@@ -317,6 +330,20 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
       aspect = live(aspect, form)?.aspect ?? aspect; // keep the entry's own spelling of the aspect
       form = live(aspect, form)?.form ?? form;
       out.push({ kind, entry_id: target.entry_id, aspect, form, after: text, quote });
+    }
+  }
+  // The new names' changes become a new entry, or join the one the reply proposed for that name.
+  for (const s of strays.values()) {
+    const made = parseNewEntry({ name: s.name, type: "character", facts: s.facts }, new Set(), lists);
+    if (!made?.facts.length) continue;
+    const proposed = out.find((x) => x.kind === "entry" && [x.entry!.name, ...x.entry!.aliases].some((n) => lc(n) === lc(s.name)))?.entry;
+    if (!proposed) {
+      out.push({ kind: "entry", aspect: "", form: "", after: "", quote: s.quote, entry: made });
+      continue;
+    }
+    for (const f of made.facts) {
+      if (proposed.facts.length >= NEW_ENTRY_FACTS) break;
+      if (!proposed.facts.some((x) => sameAspect(x.aspect, f.aspect) && sameAspect(x.form, f.form))) proposed.facts.push(f);
     }
   }
   if (out.length <= MAX_SUGGESTIONS) return out;
