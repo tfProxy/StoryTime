@@ -17,7 +17,7 @@ import { fromComfyImage, fromSaved } from "../comfy/startPicture";
 import { describeWorkflow, parseWorkflow } from "../comfy/workflow";
 import { chapterTarget, coverTarget, savedPictureApi } from "../pictureTarget";
 import { prepareImage } from "../prepareImage";
-import type { Settings } from "../settingsSchema";
+import { usableRef, type Settings } from "../settingsSchema";
 import type { StoredReference } from "../comfy/references";
 import { getContext, type ChapterContext, type Fetch } from "./api";
 import type { PictureTask, RunOptions } from "./types";
@@ -88,7 +88,8 @@ export async function writePicturePrompt(
     direction: "",
     style,
     fixed: combinePrompts(style, setup.fixed, draw.prompt),
-    model: options.suggestModel ?? null,
+    // The run's own choice, else the model the Illustrate page writes prompts with.
+    model: options.suggestModel ?? usableRef(settings, settings.imagePromptModel),
     signal: deps.signal,
     source: deps.source,
   });
