@@ -774,6 +774,16 @@ export function DrawingSettings({
           On: clicks of Queue made quickly, with nothing changed in between, go to ComfyUI as one job. Off: each click is its own job, for models that don&apos;t batch (such as Krea 2). This applies to every drawing preset.
         </p>
       </section>
+      <section id="picture-nudity" className="settings-section">
+        <h3>Nudity</h3>
+        <label className="inline-label">
+          <input type="checkbox" checked={comfy.allowNudity} onChange={(e) => onChange({ allowNudity: e.target.checked })} /> Allow nudity in pictures
+        </label>
+        <p className="meta" style={{ margin: 0 }}>
+          On: when the AI writes a picture prompt, StoryTime takes &quot;nudity&quot;, &quot;nsfw&quot;, &quot;explicit&quot; and the like out of the negative
+          prompt it wrote, so a scene with nudity isn&apos;t drawn against it. Your presets&apos; own negative prompts are left as they are.
+        </p>
+      </section>
       <SetupSection id="setup-drawing" comfy={comfy} setup={setup} onConnections={onConnections} />
       <section id="drawing-presets" className="settings-section">
         <h3>Drawing presets</h3>

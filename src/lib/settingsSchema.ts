@@ -193,6 +193,8 @@ export type ComfySettings = {
   queueCount: number;
   /** Quick clicks of Queue with nothing changed in between go to ComfyUI as one job; off, each click is its own job. */
   batchClicks: boolean;
+  /** Take nudity and sex out of the negative prompts the AI writes, so a scene that has them isn't drawn against them. */
+  allowNudity: boolean;
 };
 
 /** The numbers of pictures one click of Queue can ask for. */
@@ -213,7 +215,7 @@ export const DEFAULT_SETTINGS: Settings = {
   outline: DEFAULT_OUTLINE,
   imagePromptStyle: "tags",
   imagePromptModel: null,
-  comfy: { url: "", width: 1344, height: 768, coverWidth: 832, coverHeight: 1216, sizeScale: 1, count: 4, drawPresets: DEFAULT_DRAW_PRESETS, editPresets: DEFAULT_EDIT_PRESETS, editPreset: "qwen-image-edit", picturesOldestFirst: false, queueCount: 1, batchClicks: true },
+  comfy: { url: "", width: 1344, height: 768, coverWidth: 832, coverHeight: 1216, sizeScale: 1, count: 4, drawPresets: DEFAULT_DRAW_PRESETS, editPresets: DEFAULT_EDIT_PRESETS, editPreset: "qwen-image-edit", picturesOldestFirst: false, queueCount: 1, batchClicks: true, allowNudity: true },
   queue: DEFAULT_QUEUE,
 };
 
@@ -436,6 +438,7 @@ const settingsSchema = z.object({
           .refine((n) => (QUEUE_COUNTS as readonly number[]).includes(n))
           .catch(1),
         batchClicks: z.boolean().catch(true),
+        allowNudity: z.boolean().catch(true),
       }),
     )
     .catch(DEFAULT_SETTINGS.comfy),

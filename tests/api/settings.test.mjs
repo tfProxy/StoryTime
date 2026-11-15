@@ -134,6 +134,7 @@ const comfyIn = {
   picturesOldestFirst: false,
   queueCount: 1,
   batchClicks: false,
+  allowNudity: false,
 };
 /** comfyIn with the first drawing preset (or the one at `i`) changed. */
 const withDraw = (patch, i = 0) => ({ ...comfyIn, drawPresets: comfyIn.drawPresets.map((p, j) => (j === i ? { ...p, ...patch } : p)) });

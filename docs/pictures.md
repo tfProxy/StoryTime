@@ -16,6 +16,8 @@ How to use StoryTime's picture pages, and how to set up the machine that makes t
 
 **Text added to every prompt.** The story's art style, the drawing preset's own prompt and the chapter's **Always include** box are added when a picture is asked for. They are shown under the Prompt box rather than put into it.
 
+**Nudity.** Some AI models put "nudity", "nsfw" or "explicit" in the negative prompt even when the scene has them, so the picture fights the story. With **Allow nudity in pictures** on (Settings › Drawing, on by default), StoryTime takes those out of the negative prompt the AI writes; your presets' own negative prompts are left alone. A model that won't describe the scene at all is better replaced: pick another under **Model for prompts** on the Illustrate page, which **Make missing pictures** also uses unless you choose another there.
+
 **Instruct changes** (Illustrate page) changes a picture by an instruction ("make it night") with an edit model. See "Edit models" below to set one up.
 
 **Refine…** opens a picture in its own screen to paint on, mask and redraw:

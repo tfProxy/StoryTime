@@ -76,7 +76,7 @@ const TABS = [
     id: "drawing",
     label: "Drawing",
     holds: [
-      "making-pictures", "picture-batching", "setup-drawing", "drawing-presets", "pictures", "picture-setup", "redraw",
+      "making-pictures", "picture-batching", "picture-nudity", "setup-drawing", "drawing-presets", "pictures", "picture-setup", "redraw",
       "editing-pictures", "edit-qwen-image-edit", "setup-qwen-image-edit", "qwen-image-edit-presets", "edit-loras",
       "edit-flux-kontext", "setup-flux-kontext", "flux-kontext-presets",
     ],

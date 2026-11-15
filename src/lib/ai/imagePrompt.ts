@@ -132,6 +132,23 @@ export function parseImagePrompt(reply: string): ImagePrompt {
   return out;
 }
 
+/** Words that mark a negative-prompt item as banning nudity or sex. Censor bars and mosaics are not in it: avoiding those is wanted. */
+const NUDITY_WORDS = /\b(nsfw|nude|nudity|naked|explicit|genitals?|genitalia|nipples?|areolae?|breasts?|topless|bottomless|vagina|pussy|penis|sex|sexual|sexuali[sz]ed|porn\w*|lewd|erotic\w*|suggestive|provocative|cleavage|lingerie)\b/i;
+
+/** The negative without the items that ban nudity or sex; a mainstream model adds them even when the scene has them. */
+export function withoutNudityBans(negative: string): string {
+  return negative
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => t && !NUDITY_WORDS.test(t))
+    .join(", ");
+}
+
+/** The parsed prompt, with the negative's nudity bans taken out when the picture settings allow nudity. */
+export function forPictureSettings(settings: Settings, p: ImagePrompt): ImagePrompt {
+  return settings.comfy.allowNudity ? { ...p, negative: withoutNudityBans(p.negative) } : p;
+}
+
 /** Whether prompts in this style are comma-separated tags (plain or booru) rather than sentences. */
 export const isTagStyle = (style: ImagePromptStyle) => style !== "natural";
 
@@ -194,5 +211,5 @@ export async function writeImagePrompt(
     signal: opts.signal,
     source: { label: "Picture prompt", ...opts.source },
   });
-  return parseImagePrompt(reply);
+  return forPictureSettings(settings, parseImagePrompt(reply));
 }

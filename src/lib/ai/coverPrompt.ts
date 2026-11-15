@@ -3,7 +3,7 @@
 // first chapter, or a path from the first chapter to a chosen one. The request is pure;
 // `writeCoverPrompt` sends it from the browser like every other AI call.
 import { completeChat, type AiSourceIds } from "./client";
-import { parseImagePrompt, STYLE_RULES, type ImagePrompt } from "./imagePrompt";
+import { forPictureSettings, parseImagePrompt, STYLE_RULES, type ImagePrompt } from "./imagePrompt";
 import {
   buildCodexBlock,
   buildStorySoFar,
@@ -100,5 +100,5 @@ export async function writeCoverPrompt(
     signal: opts.signal,
     source: { label: "Cover prompt", ...opts.aiSource },
   });
-  return parseImagePrompt(reply);
+  return forPictureSettings(settings, parseImagePrompt(reply));
 }
