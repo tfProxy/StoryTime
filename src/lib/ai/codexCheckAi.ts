@@ -30,6 +30,8 @@ export type SuggestionInput = {
 };
 
 export const MAX_SUGGESTIONS = 12;
+/** How many of the reply's changes are read before the best MAX_SUGGESTIONS are kept. */
+const READ_MAX = 60;
 const MAX_ENTRIES = 25;
 const NEW_ENTRY_NOTES = 500;
 const NEW_ENTRY_FACTS = 6;
@@ -228,6 +230,9 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
   for (const e of opts.entries) for (const n of [e.name, ...e.aliases]) if (n.trim() && !byName.has(lc(n))) byName.set(lc(n), e);
   const taken = new Set([...byName.keys(), ...opts.otherNames.map(lc)]);
   const lists = opts.categories ?? DEFAULT_CATEGORIES;
+  // Where in the chapter a kept quote (the chapter's own words, spaces made single) starts.
+  const flat = opts.body.replace(/\s+/g, " ");
+  const placeOf = (quote: string) => Math.max(flat.indexOf(quote.split(" … ")[0]), 0);
 
   // Models write "form": "current" for "the form this chapter leaves them in": that is the form the reply moves the
   // entry to, if it does, or else the one it is in. A form item named "current" or "true form" names nothing and goes,
@@ -247,7 +252,7 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
 
   const out: SuggestionInput[] = [];
   for (const item of list) {
-    if (out.length >= MAX_SUGGESTIONS) break;
+    if (out.length >= READ_MAX) break;
     if (!item || typeof item !== "object") continue;
     const o = item as Record<string, unknown>;
     let kind = lc(asString(o.kind, 20)) as SuggestionKind;
@@ -289,8 +294,13 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
     form = split.form;
     const stage = split.stage;
     const live = (a: string, f: string) => target.facts.find((x) => !isFormAspect(x.aspect) && sameAspect(x.aspect, a) && sameAspect(x.form, f));
-    // One change per aspect: a second one for the same fact in this reply is a duplicate.
-    if (kind !== "form" && out.some((x) => x.kind !== "form" && x.kind !== "entry" && x.entry_id === target.entry_id && sameAspect(x.aspect, aspect) && sameAspect(x.form, form))) continue;
+    // One change per aspect: of two for the same fact in this reply, the one quoted later in the chapter is its state
+    // at the end.
+    if (kind !== "form") {
+      const dup = out.findIndex((x) => x.kind !== "form" && x.kind !== "entry" && x.entry_id === target.entry_id && sameAspect(x.aspect, aspect) && sameAspect(x.form, form));
+      if (dup >= 0 && placeOf(quote) <= placeOf(out[dup].quote)) continue;
+      if (dup >= 0) out.splice(dup, 1);
+    }
 
     if (kind === "form") {
       if (!form) continue;
@@ -309,7 +319,13 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
       out.push({ kind, entry_id: target.entry_id, aspect, form, after: text, quote });
     }
   }
-  return out;
+  if (out.length <= MAX_SUGGESTIONS) return out;
+  // Too many: models list changes in the chapter's order, so keeping the first ones lost the chapter's end, which is
+  // the state the codex records. Form changes, contradictions and new entries go first, then the latest in the chapter;
+  // what is kept stays in the reply's order.
+  const rank = (s: SuggestionInput) => (s.kind === "form" ? 0 : s.kind === "conflict" ? 1 : s.kind === "entry" ? 2 : 3);
+  const kept = new Set([...out].sort((a, b) => rank(a) - rank(b) || placeOf(b.quote) - placeOf(a.quote)).slice(0, MAX_SUGGESTIONS));
+  return out.filter((s) => kept.has(s));
 }
 
 export type RunCodexCheckOptions = CodexCheckRequestOptions & { signal?: AbortSignal; role?: "main" | "cheap"; source?: AiSourceIds };

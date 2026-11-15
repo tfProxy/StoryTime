@@ -118,6 +118,17 @@ ok(dropped.length === 1 && dropped[0].entry?.name === "Newcomer", "bad quotes, u
 
 const many = Array.from({ length: 30 }, (_, i) => ({ kind: "set", entry: "Mira", aspect: `Aspect ${i}`, text: `Text ${i}`, quote: "Her ears flicked" }));
 ok(parseCodexCheck(reply(many), opts).length === MAX_SUGGESTIONS && MAX_SUGGESTIONS === 12, "at most 12 items");
+// Over the limit, in the chapter's order: the form change and the chapter's end are kept, not just the first twelve.
+const early = Array.from({ length: 12 }, (_, i) => ({ kind: "set", entry: "Mira", aspect: `Early ${i}`, text: `Text ${i}`, quote: "Mira shook out her tail" }));
+const longReply = [...early, { kind: "set", entry: "Mira", aspect: "Eyes", form: "vixen", text: "Gold eyes.", quote: "her eyes were gold" }, { kind: "form", entry: "Mira", form: "moon fox", text: "", quote: "Her ears flicked" }];
+const trimmed = parseCodexCheck(reply(longReply), opts);
+ok(trimmed.length === 12 && trimmed.some((s) => s.kind === "form") && trimmed.some((s) => s.aspect === "Eyes"), "over 12: the form change and the latest change are kept: " + trimmed.map((s) => s.aspect || s.kind).join(","));
+ok(trimmed.findIndex((s) => s.aspect === "Eyes") < trimmed.findIndex((s) => s.kind === "form"), "…in the reply's order");
+const twice = parseCodexCheck(reply([
+  { kind: "set", entry: "Mira", aspect: "Voice", text: "Calm.", quote: "I can smell the Hollow" },
+  { kind: "set", entry: "Mira", aspect: "Voice", text: "Hoarse.", quote: "The grass was green" },
+]), opts);
+ok(twice.length === 1 && twice[0].after === "Hoarse.", "two changes to one fact: the one quoted later in the chapter wins");
 
 const fenced = parseCodexCheck('Here you go:\n```json\n{"changes":[{"kind":"set","entry":"Mira","aspect":"Voice","text":"Low and calm.","quote":"I can smell the Hollow"}]}\n```', opts);
 ok(fenced.length === 1 && fenced[0].aspect === "Voice", "fenced JSON is read");
