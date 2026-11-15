@@ -230,14 +230,18 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
   const lists = opts.categories ?? DEFAULT_CATEGORIES;
 
   // Models write "form": "current" for "the form this chapter leaves them in": that is the form the reply moves the
-  // entry to, if it does, or else the one it is in. A form item named "current" or "true" names nothing and goes.
+  // entry to, if it does, or else the one it is in. A form item named "current" or "true form" names nothing and goes,
+  // and so do the "current" facts beside it: they belong to a form the reply didn't name, not the old one (on The Lab,
+  // Cydonia moved Sarah to "true form" and gave her new body as "current").
   const vague = (f: string) => /^(current|now|present|this|true|false|yes)( form)?$/i.test(f.trim());
   const movedTo = new Map<string, string>();
+  const movedUnnamed = new Set<string>();
   for (const item of list) {
     const o = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
     const form = aspectAndForm(asString(o.aspect, LABELLED_MAX), asString(o.form, FACT_LIMITS.form)).form;
     const isForm = lc(asString(o.kind, 20)) === "form" || (lc(asString(o.kind, 20)) === "set" && isFormAspect(asString(o.aspect, LABELLED_MAX)));
     const target = byName.get(lc(asString(o.entry, NAME_MAX)));
+    if (isForm && target && form && vague(form)) movedUnnamed.add(target.entry_id);
     if (isForm && target && form && !vague(form) && !movedTo.has(target.entry_id)) movedTo.set(target.entry_id, withStage(target, form).form);
   }
 
@@ -273,15 +277,17 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
     const text = asString(o.text, FACT_LIMITS.text);
     // A "set" of the aspect "form" is a form change.
     if (kind === "set" && isFormAspect(aspect)) kind = "form";
+    // Personality, Relationships and the like are the same in every form: a form the AI gave them is dropped.
+    if (kind === "set" || kind === "conflict") form = formFor(aspect, form, lists[target.type]);
     if (vague(form)) {
       if (kind === "form") continue;
-      form = movedTo.get(target.entry_id) ?? target.form?.name ?? target.baseForm ?? "";
+      const to = movedTo.get(target.entry_id);
+      if (!to && movedUnnamed.has(target.entry_id)) continue;
+      form = to ?? target.form?.name ?? target.baseForm ?? "";
     }
     const split = withStage(target, form);
     form = split.form;
     const stage = split.stage;
-    // Personality, Relationships and the like are the same in every form: a form the AI gave them is dropped.
-    if (kind === "set" || kind === "conflict") form = formFor(aspect, form, lists[target.type]);
     const live = (a: string, f: string) => target.facts.find((x) => !isFormAspect(x.aspect) && sameAspect(x.aspect, a) && sameAspect(x.form, f));
     // One change per aspect: a second one for the same fact in this reply is a duplicate.
     if (kind !== "form" && out.some((x) => x.kind !== "form" && x.kind !== "entry" && x.entry_id === target.entry_id && sameAspect(x.aspect, aspect) && sameAspect(x.form, form))) continue;

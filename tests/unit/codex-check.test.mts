@@ -146,6 +146,12 @@ const staged = parseCodexCheck(reply([
   { kind: "set", entry: "Mira", aspect: "Eyes", form: "vixen, fully changed", text: "Silver eyes.", quote: "her eyes were gold" },
 ]), opts);
 ok(staged[0]?.form === "vixen" && staged[0].after === "fully changed" && staged[1]?.form === "vixen", "a form given as 'vixen, fully changed' (as the request shows it) is the form vixen at that stage: " + JSON.stringify(staged));
+const unnamed = parseCodexCheck(reply([
+  { kind: "set", entry: "Mira", aspect: "Eyes", form: "current", text: "Silver eyes.", quote: "her eyes were gold" },
+  { kind: "set", entry: "Mira", aspect: "Personality", form: "current", text: "Fierce.", quote: "Her ears flicked" },
+  { kind: "form", entry: "Mira", form: "true form", text: "", quote: "Mira shook out her tail" },
+]), opts);
+ok(unnamed.length === 1 && unnamed[0].aspect === "Personality" && unnamed[0].form === "", "a move to a form the reply doesn't name drops its 'current' facts, not filing them under the old form (a fact for every form stays): " + JSON.stringify(unnamed));
 ok(parseCodexCheck(reply([{ kind: "form", entry: "Mira", form: "true", text: "", quote: "Mira shook out her tail" }]), opts).length === 0, "a form item named 'true' names nothing and is dropped");
 const labelled = parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "Eyes [vixen form]", text: "Gold eyes.", quote: "her eyes were gold" }]), opts)[0];
 ok(labelled?.aspect === "Eyes" && labelled.form === "vixen", "an aspect copied with its '[vixen form]' label is 'Eyes' in the form 'vixen': " + JSON.stringify(labelled));
