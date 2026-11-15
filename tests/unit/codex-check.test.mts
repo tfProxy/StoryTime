@@ -53,6 +53,11 @@ const longNotes = foldCodex([op("x", "Mira", { content: "n".repeat(900) })]);
 ok(!codexCheckRequest(8000, { chapter: { title: "t", body }, entries: longNotes, otherNames: [] }).message.includes("n".repeat(400)), "notes are cut to 300 characters");
 const fitted = codexCheckRequest(4000, { chapter: { title: "Long", body: "word ".repeat(30000) }, entries, otherNames: [] });
 ok(fitted.message.length < 20000 && fitted.message.includes("…"), "a long chapter is cut to fit");
+const ending = "word ".repeat(30000) + "THE LAST LINE.";
+ok(codexCheckRequest(4000, { chapter: { title: "Long", body: ending }, entries, otherNames: [] }).message.includes("THE LAST LINE."), "…keeping its end, where the state the codex records is");
+// A 9,000-character chapter (about 2,200 tokens) fits whole in an 8,000-token context.
+const nineK = "A sentence of prose that runs on. ".repeat(270) + "THE END.";
+ok(!codexCheckRequest(8000, { chapter: { title: "Mid", body: nineK }, entries, otherNames: [] }).message.includes("[…]"), "a 9,000-character chapter is not cut at 8,000 tokens");
 
 // ---- parse ----
 const reply = (changes: unknown[]) => JSON.stringify({ changes });

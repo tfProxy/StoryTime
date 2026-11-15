@@ -114,10 +114,12 @@ export function codexCheckRequest(contextTokens: number, opts: CodexCheckRequest
   const system = systemCodexCheck(aspectRules(opts.categories ?? DEFAULT_CATEGORIES, types));
 
   const budget = Math.max(1000, contextTokens - 2000 - estimateTokens(system));
-  // The codex is kept whole; the chapter gets what is left (about 2 characters a token).
+  // The codex is kept whole; the chapter gets what is left, at 3 characters a token (prose runs about 4 to 4.5, so this
+  // leaves a margin). A chapter still too long keeps its start and its end: the facts are its state at the end.
   const room = Math.max(1000, budget - estimateTokens(known) - estimateTokens(otherList));
-  const maxChars = room * 2;
-  const body = opts.chapter.body.length > maxChars ? `${opts.chapter.body.slice(0, maxChars)}…` : opts.chapter.body;
+  const maxChars = room * 3;
+  const full = opts.chapter.body;
+  const body = full.length > maxChars ? `${full.slice(0, maxChars / 2)}\n[…]\n${full.slice(-maxChars / 2)}` : full;
 
   const focus = opts.focus?.name;
   const message = [
