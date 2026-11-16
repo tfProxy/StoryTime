@@ -2,10 +2,14 @@
 
 import { providerInfo } from "@/lib/ai/providers";
 import {
+  favoriteFor,
+  favoritesFor,
   findConnection,
   jobRef,
   MODEL_USES,
   modelLabel,
+  ownJobRef,
+  parseRefKey,
   refKey,
   sameRef,
   withJobDefault,
@@ -28,8 +32,37 @@ const THINKING_OPTIONS: { off: ThinkingOff; label: string; onlyIfSet?: boolean }
 const thinkingKey = (off: ThinkingOff) => `${off.write ? "w" : ""}${off.other ? "o" : ""}` || "none";
 
 /**
+ * One job's default: the models offered for it, or, for every job but Writing, falling back to another job's default
+ * (Summaries to Writing, the rest to Summaries), named with the model that gives.
+ */
+function JobDefault({ settings, use, onChange }: { settings: Settings; use: ModelUse; onChange: (ref: ModelRef | null) => void }) {
+  const value = ownJobRef(settings, use);
+  const offered = favoritesFor(settings, use);
+  const from = use === "summaries" ? "write" : "summaries";
+  const fallback = jobRef(settings, from);
+  const blank =
+    use === "write"
+      ? "Choose a model…"
+      : `Same as ${MODEL_USES.find((u) => u.id === from)!.label}${fallback ? ` (${modelLabel(settings, fallback)})` : ""}`;
+  // Still the default, but no longer in use or offered for this job: say so rather than hide it.
+  const listed = !value || offered.some((f) => sameRef(f, value));
+  const why = value && favoriteFor(settings, value) ? " (not offered for this)" : " (not in use)";
+  return (
+    <select value={value ? refKey(value) : ""} onChange={(e) => onChange(e.target.value ? parseRefKey(e.target.value) : null)}>
+      <option value="">{blank}</option>
+      {value && !listed && <option value={refKey(value)}>{modelLabel(settings, value) + why}</option>}
+      {offered.map((f) => (
+        <option key={refKey(f)} value={refKey(f)}>
+          {modelLabel(settings, f)}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/**
  * Settings › Writing: one row per model in use, with its own settings (nickname, context, thinking) and, for each job,
- * whether its pickers offer the model and whether it is the job's default. On a phone each row is a card.
+ * whether that job's pickers offer the model; then each job's default. On a phone each row is a card.
  */
 export default function ModelGrid({
   settings,
@@ -45,10 +78,6 @@ export default function ModelGrid({
   // In the Connections tab's order; a model whose connection is gone comes last.
   const order = new Map(settings.connections.map((c, i) => [c.id, i]));
   const favs = [...settings.favorites].sort((a, b) => (order.get(a.connectionId) ?? Infinity) - (order.get(b.connectionId) ?? Infinity));
-  const defaults = new Map(MODEL_USES.map((u) => [u.id, jobRef(settings, u.id)]));
-  // A job whose default isn't a model in use (or that has none) says so under the grid.
-  const unlisted = MODEL_USES.filter((u) => !favs.some((f) => sameRef(f, defaults.get(u.id))));
-
   const offered = (f: Favorite, u: ModelUse) => !f.hiddenFrom.includes(u);
   const setOffered = (f: Favorite, u: ModelUse, on: boolean) =>
     onFavorite(f, { hiddenFrom: on ? f.hiddenFrom.filter((x) => x !== u) : [...f.hiddenFrom, u] });
@@ -56,9 +85,9 @@ export default function ModelGrid({
   return (
     <>
       <p className="meta">
-        For each job, the box offers the model in that job&apos;s pickers and the round button makes it the job&apos;s default.
-        Pages with their own model picker (the writing page, Write ahead, Illustrate) can still choose another. A blank
-        Context uses the Context budget under Options.
+        A ticked box offers the model in that job&apos;s pickers; each job&apos;s default is chosen below the grid. Pages with
+        their own model picker (the writing page, Write ahead, Illustrate) can still choose another. A blank Context uses
+        the Context budget under Options.
       </p>
       <div className="model-grid-wrap">
         <table className="model-grid">
@@ -122,25 +151,13 @@ export default function ModelGrid({
                   </td>
                   {MODEL_USES.map((u) => (
                     <td key={u.id} data-label={u.label} className="job">
-                      <span className="job-controls">
-                        <label title={`Offer it in the ${u.label} pickers`}>
-                          <input
-                            type="checkbox"
-                            aria-label={`Offer ${name} for ${u.label}`}
-                            checked={offered(f, u.id)}
-                            onChange={(e) => setOffered(f, u.id, e.target.checked)}
-                          />
-                        </label>
-                        <label title={`The default for ${u.label}`}>
-                          <input
-                            type="radio"
-                            name={`default-${u.id}`}
-                            aria-label={`${name}: default for ${u.label}`}
-                            checked={sameRef(defaults.get(u.id), f)}
-                            onChange={() => onSave(withJobDefault(settings, u.id, f))}
-                          />
-                        </label>
-                      </span>
+                      <input
+                        type="checkbox"
+                        title={`Offer it in the ${u.label} pickers`}
+                        aria-label={`Offer ${name} for ${u.label}`}
+                        checked={offered(f, u.id)}
+                        onChange={(e) => setOffered(f, u.id, e.target.checked)}
+                      />
                     </td>
                   ))}
                   <td className="model-remove">
@@ -154,14 +171,15 @@ export default function ModelGrid({
           </tbody>
         </table>
       </div>
-      {unlisted.map((u) => {
-        const ref: ModelRef | null | undefined = defaults.get(u.id);
-        return (
-          <p key={u.id} className="meta">
-            {u.label}: {ref ? `the default is ${modelLabel(settings, ref)}, which isn't in use.` : "no default yet; choose one with the round button."}
-          </p>
-        );
-      })}
+      <h3>Default model for each job</h3>
+      <div className="job-defaults">
+        {MODEL_USES.map((u) => (
+          <label key={u.id}>
+            {u.label}
+            <JobDefault settings={settings} use={u.id} onChange={(ref) => onSave(withJobDefault(settings, u.id, ref))} />
+          </label>
+        ))}
+      </div>
     </>
   );
 }

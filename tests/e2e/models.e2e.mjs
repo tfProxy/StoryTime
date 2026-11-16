@@ -109,7 +109,7 @@ const alphaRow = page.locator("table.model-grid tbody tr", { has: page.getByLabe
 ok((await bigRow.count()) === 1 && (await alphaRow.count()) === 1, "one row per starred model");
 const offers = (row) => row.getByRole("checkbox", { name: /^Offer / });
 ok((await offers(bigRow).count()) === JOBS.length && (await offers(bigRow).evaluateAll((xs) => xs.every((x) => x.checked))), "a starred model is offered for every job at first");
-ok((await bigRow.getByRole("radio").count()) === JOBS.length, "…and has a default button for each job");
+ok((await bigRow.getByRole("radio").count()) === 0, "…and no default buttons: defaults are dropdowns under the grid");
 const thinking = bigRow.getByLabel("Thinking for vendor/big");
 const shown = await thinking.locator("option").allTextContents();
 ok((await thinking.locator("option:checked").textContent()) === "Think for everything", "…with thinking left on");
@@ -132,9 +132,16 @@ await until(async () => (await settingsNow()).favorites.find((f) => f.model === 
 const alphaFav = (await settingsNow()).favorites.find((f) => f.model === "alpha");
 ok(!alphaFav.disableThinking.write && !alphaFav.disableThinking.other && alphaFav.hiddenFrom.length === 0 && alphaFav.context === null, "the other model's row is untouched");
 ok((await page.getByRole("combobox", { name: /^Thinking for / }).count()) === 2 && (await alphaRow.getByLabel("Thinking for alpha").inputValue()) === "none", "Thinking is chosen on each row");
-// Choosing a default is a round button per job; the job's default is saved under its own key.
-ok(await alphaRow.getByRole("radio", { name: "alpha: default for Writing" }).isChecked() && !(await bigRow.getByRole("radio", { name: "Big one: default for Writing" }).isChecked()), "the Writing default (alpha) is the one chosen");
-await bigRow.getByRole("radio", { name: "Big one: default for Codex" }).check();
+// Each job's default is a dropdown under the grid, saved under the job's own key.
+const jobDefault = (job) => page.locator(".job-defaults label", { hasText: new RegExp(`^${job}`) }).getByRole("combobox");
+ok((await page.locator(".job-defaults select").count()) === JOBS.length, "there is a default dropdown for each job");
+ok((await jobDefault("Writing").locator("option:checked").textContent()) === "alpha · Ollama", "the Writing default (alpha) is the one chosen");
+const codexBlank = await jobDefault("Codex").locator("option:checked").textContent();
+ok(/^Same as Summaries/.test(codexBlank), `Codex starts as the same as Summaries: ${codexBlank}`);
+const codexChoices = await jobDefault("Codex").locator("option").allTextContents();
+ok(codexChoices.includes("Big one · OpenRouter") && codexChoices.includes("alpha · Ollama"), `the Codex dropdown lists the models offered for it: ${codexChoices.join(" / ")}`);
+ok(!(await jobDefault("Choices").locator("option").allTextContents()).includes("Big one · OpenRouter"), "a model opted out of a job isn't in that job's dropdown");
+await jobDefault("Codex").selectOption({ label: "Big one · OpenRouter" });
 await until(async () => (await settingsNow()).defaults.codex?.model === "vendor/big", "the Codex default to be saved");
 ok((await settingsNow()).defaults.main.model === "alpha", "choosing the Codex default leaves the Writing default alone");
 await page.getByRole("tab", { name: "Connections" }).click();
@@ -204,7 +211,7 @@ ok(sum.reasoning?.effort === "none", "…and the same model is asked not to thin
 // ---- the default is chosen in Settings, not next to the picker ----
 ok((await page.getByRole("button", { name: "Make default" }).count()) === 0, "the picker has no “Make default” button");
 await page.goto(`${BASE}/settings#writing`);
-await page.getByRole("radio", { name: "Big one: default for Writing" }).check();
+await page.locator(".job-defaults label", { hasText: /^Writing/ }).getByRole("combobox").selectOption({ label: "Big one · OpenRouter" });
 await until(async () => (await settingsNow()).defaults.main?.model === "vendor/big", "the default to change");
 ok(true, "choosing the Writing default in Settings changes it");
 

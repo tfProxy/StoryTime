@@ -611,7 +611,7 @@ export default function SettingsForm() {
             <span>
               Suggest codex changes after a chapter is saved{" "}
               <small>
-                (the AI, with the cheaper model, reads each new or edited chapter and leaves suggested fact changes in
+                (the AI, with the Codex model, reads each new or edited chapter and leaves suggested fact changes in
                 the Story Bible&apos;s codex inbox.)
               </small>
             </span>

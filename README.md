@@ -176,11 +176,13 @@ Each tab has its own address (`/settings#tags`), so a link or a reload comes bac
   the ComfyUI address.
 - **Writing:** the **Models** grid has a row for each model you use (press Use on a model in the
   Connections tab to add it) and a column for each job: Writing, Choices, Summaries, Codex, Tags &
-  continuity and Picture prompts. In a job's column, the box offers the model in that job's pickers
-  and the round button makes it the job's default. A row also sets the model's nickname, its
-  **Context** (how much the model takes; blank uses the Context budget under Options) and whether it
-  thinks. Pages with their own model picker (the writing page, Write ahead, Illustrate) can still
-  choose another. Options below the grid: temperature, the context budget and the codex list.
+  continuity and Picture prompts. In a job's column, a ticked box offers the model in that job's
+  pickers. A row also sets the model's nickname, its **Context** (how much the model takes; blank uses
+  the Context budget under Options) and whether it thinks. Under the grid, **Default model for each
+  job** has a dropdown per job; Summaries can be left as the same as Writing, and the other jobs as
+  the same as Summaries. Pages with their own model picker (the writing page, Write ahead,
+  Illustrate) can still choose another. Options below: temperature, the context budget and the codex
+  list.
 - **Drawing:** in two parts. **Making pictures** has the drawing presets (new pictures, and redraws on
   the Refine screen); **Editing pictures** has the edit models (Qwen edit, Flux edit) used by the
   Instruct panel. Each has its own ComfyUI setup check ([Pictures with ComfyUI](docs/pictures.md)).

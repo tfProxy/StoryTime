@@ -2912,16 +2912,17 @@ fieldset.connection legend {
   white-space: nowrap;
 }
 
-.model-grid .job-controls {
-  display: inline-flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.model-grid .job-controls input {
+.model-grid .job input {
   width: 1.1rem;
   height: 1.1rem;
   margin: 0;
+}
+
+/* Each job's default, under the grid: two columns of label and dropdown, one on a phone. */
+.job-defaults {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+  gap: 0.75rem 1.25rem;
 }
 
 /* A phone: each model is a card, with one line per setting and per job. */
@@ -2973,11 +2974,7 @@ fieldset.connection legend {
     text-align: left;
   }
 
-  .model-grid .job-controls {
-    gap: 1.25rem;
-  }
-
-  .model-grid .job-controls input {
+  .model-grid .job input {
     width: 1.4rem;
     height: 1.4rem;
   }

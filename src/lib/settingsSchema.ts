@@ -55,7 +55,7 @@ export const MODEL_USES = [
 export type ModelUse = (typeof MODEL_USES)[number]["id"];
 const MODEL_USE_IDS = MODEL_USES.map((u) => u.id) as [ModelUse, ...ModelUse[]];
 /** Jobs whose default is kept in its own key of `defaults`; empty there means "as Summaries". */
-const OWN_DEFAULT = ["choices", "codex", "tags", "picture"] as const;
+type OwnDefault = "choices" | "codex" | "tags" | "picture";
 /** The jobs from before the grid, in a model's `hiddenFrom`: "suggest" was choices, and "summary" covered every small job. */
 const OLD_USES: Record<string, ModelUse[]> = { suggest: ["choices"], summary: ["summaries", "codex", "tags"] };
 
@@ -87,7 +87,7 @@ export type Settings = {
     main: ModelRef | null;
     /** Summaries, and any call that names no job. Falls back to `main` when null. */
     cheap: ModelRef | null;
-  } & Record<(typeof OWN_DEFAULT)[number], ModelRef | null>;
+  } & Record<OwnDefault, ModelRef | null>;
   /** null = use the provider's default. */
   temperature: number | null;
   /** Rough budget for the prompt context, so small local models aren't overflowed. */
@@ -581,13 +581,17 @@ export function jobRef(s: Settings, use: ModelUse): ModelRef | null {
   return s.defaults[use] ?? defaultRef(s, "cheap");
 }
 
-/** The default for one job set to `ref`, leaving every other job's default as it was. */
+/** The model a job's default is set to, null when it is left to fall back (Summaries to Writing, the others to Summaries). */
+export function ownJobRef(s: Settings, use: ModelUse): ModelRef | null {
+  if (use === "write") return s.defaults.main;
+  if (use === "summaries") return s.defaults.cheap;
+  return s.defaults[use] ?? null;
+}
+
+/** The settings with one job's own default set to `ref` (null: fall back). */
 export function withJobDefault(s: Settings, use: ModelUse, ref: ModelRef | null): Settings {
-  if (use === "write") return { ...s, defaults: { ...s.defaults, main: ref } };
-  if (use !== "summaries") return { ...s, defaults: { ...s.defaults, [use]: ref } };
-  // The jobs that follow Summaries keep the model they have now.
-  const kept = Object.fromEntries(OWN_DEFAULT.map((u) => [u, jobRef(s, u)]));
-  return { ...s, defaults: { ...s.defaults, ...kept, cheap: ref } };
+  const key = use === "write" ? "main" : use === "summaries" ? "cheap" : use;
+  return { ...s, defaults: { ...s.defaults, [key]: ref } };
 }
 
 /** How many tokens of prompt a job's call may use: its model's own context, else the global setting. */

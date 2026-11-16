@@ -24,6 +24,7 @@ export {
   usableRef,
   jobRef,
   withJobDefault,
+  ownJobRef,
   contextFor,
 } from "./settingsSchema";
 export type { Connection, Favorite, ModelRef, ModelUse, OutlineOptions, Settings } from "./settingsSchema";

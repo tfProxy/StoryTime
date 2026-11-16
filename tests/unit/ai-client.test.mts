@@ -2,7 +2,7 @@ import http from "node:http";
 import { streamChat, listModels, completeChat, AiError } from "../../src/lib/ai/client.ts";
 import { freeOllamaForPictures, freeOllamaMemory, loadedOllamaModels, modelAfterWriting, ollamaRoot } from "../../src/lib/ai/ollama.ts";
 import { matchModelId } from "../../src/lib/ai/providers.ts";
-import { DEFAULT_SETTINGS, contextFor, favoritesFor, jobRef, parseSettings, exportSettingsJson, importSettingsJson, withJobDefault } from "../../src/lib/settingsSchema.ts";
+import { DEFAULT_SETTINGS, contextFor, favoritesFor, jobRef, ownJobRef, parseSettings, exportSettingsJson, importSettingsJson, withJobDefault } from "../../src/lib/settingsSchema.ts";
 
 const seen: { url?: string; headers?: http.IncomingHttpHeaders; body?: any }[] = [];
 let busyHits = 0;
@@ -292,7 +292,8 @@ assert(favoritesFor(picks, "summaries").map((f) => f.model).join() === "small" &
   const t = withJobDefault(s, "codex", r("w"));
   assert(jobRef(t, "codex")?.model === "w" && jobRef(t, "tags")?.model === "c", "setting one job's default leaves the others");
   const u = withJobDefault(s, "summaries", r("w"));
-  assert(jobRef(u, "summaries")?.model === "w" && jobRef(u, "choices")?.model === "c" && jobRef(u, "tags")?.model === "c", "changing Summaries doesn't move the jobs that followed it");
+  assert(jobRef(u, "summaries")?.model === "w" && jobRef(u, "choices")?.model === "w" && jobRef(t, "choices")?.model === "c", "the jobs left as Same as Summaries follow it");
+  assert(jobRef(withJobDefault(t, "codex", null), "codex")?.model === "c" && ownJobRef(t, "codex")?.model === "w" && ownJobRef(s, "codex") === null, "a job set back to blank follows Summaries again");
   assert(jobRef(withJobDefault(s, "write", r("c")), "write")?.model === "c", "Writing's default is the main model");
   assert(contextFor(s, "write") === 32000 && contextFor(s, "summaries") === 8000 && contextFor(s, "summaries", r("w")) === 32000, "a job's context is its model's own, else the global one");
   assert(parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "x", context: 5 }] }).favorites[0].context === null, "a context too small is dropped");
