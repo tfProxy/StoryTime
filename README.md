@@ -92,7 +92,7 @@ and, for pictures, your own ComfyUI machine.
 - **Story Bible**: the **Bible** tab of every story page. On a phone its sections are a **Section**
   picker; under it, **Showing** says which chapter (or the whole story) you are looking at, with
   **Change…** to pick another and a link back to reading the chapter.
-- **Codex suggestions**: after you save a new or edited chapter, the AI (your cheaper model) reads it
+- **Codex suggestions**: after you save a new or edited chapter, the AI (the Codex job's model) reads it
   in the background and suggests fact changes, each with the sentence that shows it. You review them
   beside the chapter's text (**Review beside the text**, from the chapter's banner, its Codex section or
   an entry's page): **Accept**, **Edit** or **Dismiss** each one, and where the chapter contradicts
@@ -174,8 +174,13 @@ Each tab has its own address (`/settings#tags`), so a link or a reload comes bac
 
 - **Connections:** the AI servers (several are fine, such as two Ollama machines and OpenRouter) and
   the ComfyUI address.
-- **Writing:** star the models you want, pick the defaults, and options such as temperature and the
-  context budget. While writing, each draft can switch to any starred model.
+- **Writing:** the **Models** grid has a row for each model you use (press Use on a model in the
+  Connections tab to add it) and a column for each job: Writing, Choices, Summaries, Codex, Tags &
+  continuity and Picture prompts. In a job's column, the box offers the model in that job's pickers
+  and the round button makes it the job's default. A row also sets the model's nickname, its
+  **Context** (how much the model takes; blank uses the Context budget under Options) and whether it
+  thinks. Pages with their own model picker (the writing page, Write ahead, Illustrate) can still
+  choose another. Options below the grid: temperature, the context budget and the codex list.
 - **Drawing:** in two parts. **Making pictures** has the drawing presets (new pictures, and redraws on
   the Refine screen); **Editing pictures** has the edit models (Qwen edit, Flux edit) used by the
   Instruct panel. Each has its own ComfyUI setup check ([Pictures with ComfyUI](docs/pictures.md)).

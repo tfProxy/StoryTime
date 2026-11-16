@@ -2,7 +2,7 @@ import http from "node:http";
 import { streamChat, listModels, completeChat, AiError } from "../../src/lib/ai/client.ts";
 import { freeOllamaForPictures, freeOllamaMemory, loadedOllamaModels, modelAfterWriting, ollamaRoot } from "../../src/lib/ai/ollama.ts";
 import { matchModelId } from "../../src/lib/ai/providers.ts";
-import { DEFAULT_SETTINGS, favoritesFor, parseSettings, exportSettingsJson, importSettingsJson } from "../../src/lib/settingsSchema.ts";
+import { DEFAULT_SETTINGS, contextFor, favoritesFor, jobRef, parseSettings, exportSettingsJson, importSettingsJson, withJobDefault } from "../../src/lib/settingsSchema.ts";
 
 const seen: { url?: string; headers?: http.IncomingHttpHeaders; body?: any }[] = [];
 let busyHits = 0;
@@ -275,10 +275,30 @@ const oneSwitch = parseSettings({ connections: conns, favorites: [{ connectionId
 assert(th(oneSwitch.favorites[0]) === '{"write":true,"other":true}' && th(oneSwitch.favorites[1]) === '{"write":false,"other":true}', "a model's single switch from before sets both; the split one is kept");
 const fresh = parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "x" }] });
 assert(th(fresh.favorites[0]) === '{"write":false,"other":false}' && fresh.favorites[0].hiddenFrom.length === 0, "a starred model starts thinking as usual and offered for every job");
-const hidden = parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "x", hiddenFrom: ["summary", "summary", "nope", 3, "write"] }] });
-assert(JSON.stringify(hidden.favorites[0].hiddenFrom) === '["write","summary"]', "jobs opted out of are kept once each, unknown ones dropped: " + JSON.stringify(hidden.favorites[0].hiddenFrom));
-const picks = parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "big", hiddenFrom: ["summary", "suggest"] }, { connectionId: "a", model: "small" }] });
-assert(favoritesFor(picks, "summary").map((f) => f.model).join() === "small" && favoritesFor(picks, "write").length === 2, "favoritesFor leaves out models opted out of the job");
+const hidden = parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "x", hiddenFrom: ["summaries", "summaries", "nope", 3, "write"] }] });
+assert(JSON.stringify(hidden.favorites[0].hiddenFrom) === '["write","summaries"]', "jobs opted out of are kept once each, unknown ones dropped: " + JSON.stringify(hidden.favorites[0].hiddenFrom));
+const oldJobs = parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "x", hiddenFrom: ["summary", "suggest", "picture"] }] });
+assert(JSON.stringify(oldJobs.favorites[0].hiddenFrom) === '["choices","summaries","codex","tags","picture"]', "the jobs from before the grid become today's: " + JSON.stringify(oldJobs.favorites[0].hiddenFrom));
+const picks = parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "big", hiddenFrom: ["summaries", "choices"] }, { connectionId: "a", model: "small" }] });
+assert(favoritesFor(picks, "summaries").map((f) => f.model).join() === "small" && favoritesFor(picks, "write").length === 2, "favoritesFor leaves out models opted out of the job");
+
+// ---- each job's default model and context ----
+{
+  const r = (model: string) => ({ connectionId: "a", model });
+  const s = parseSettings({ connections: conns, defaults: { main: r("w"), cheap: r("c") }, imagePromptModel: r("p"), contextTokens: 8000, favorites: [{ connectionId: "a", model: "w", context: 32000 }, { connectionId: "a", model: "c" }] });
+  const job = (u: Parameters<typeof jobRef>[1]) => jobRef(s, u)?.model;
+  assert(job("write") === "w" && job("summaries") === "c" && job("choices") === "c" && job("codex") === "c" && job("tags") === "c", "old settings: Writing is the default model, every small job the cheaper one");
+  assert(job("picture") === "p" && !("imagePromptModel" in s), "the old picture-prompt model becomes the Picture prompts default");
+  const t = withJobDefault(s, "codex", r("w"));
+  assert(jobRef(t, "codex")?.model === "w" && jobRef(t, "tags")?.model === "c", "setting one job's default leaves the others");
+  const u = withJobDefault(s, "summaries", r("w"));
+  assert(jobRef(u, "summaries")?.model === "w" && jobRef(u, "choices")?.model === "c" && jobRef(u, "tags")?.model === "c", "changing Summaries doesn't move the jobs that followed it");
+  assert(jobRef(withJobDefault(s, "write", r("c")), "write")?.model === "c", "Writing's default is the main model");
+  assert(contextFor(s, "write") === 32000 && contextFor(s, "summaries") === 8000 && contextFor(s, "summaries", r("w")) === 32000, "a job's context is its model's own, else the global one");
+  assert(parseSettings({ connections: conns, favorites: [{ connectionId: "a", model: "x", context: 5 }] }).favorites[0].context === null, "a context too small is dropped");
+  const legacy: any = { ...DEFAULT_SETTINGS, defaults: { main: r("w"), cheap: r("c") } };
+  assert(jobRef(legacy, "codex")?.model === "c", "settings with only main and cheap still work");
+}
 assert(JSON.stringify(importSettingsJson(exportSettingsJson(picks)).favorites) === JSON.stringify(picks.favorites), "per-model settings survive export and import");
 assert(!("activeProvider" in messy), "old fields are dropped");
 const rt = importSettingsJson(exportSettingsJson({ ...DEFAULT_SETTINGS, contextTokens: 1234 }));

@@ -62,7 +62,6 @@ export default function ImportTextForm() {
           <span>Model for splitting</span>
           <ModelPicker
             value={options.model}
-            role="main"
             use="write"
             label="Model for splitting"
             onChange={(model: ModelRef | null) => setOptions((o) => ({ ...o, model }))}

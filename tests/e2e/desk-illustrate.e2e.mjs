@@ -40,7 +40,7 @@ const story = await call("POST", "/api/stories", { title: "Desk Lights", premise
 const chapterId = story.chapter_id;
 await call("POST", "/api/codex", { anchor_chapter_id: chapterId, op: "create", name: "Mara", type: "character", content: "" });
 const before = (await call("GET", "/api/settings")).settings;
-const ai = await useMockAi(BASE, { imagePromptModel: null });
+const ai = await useMockAi(BASE);
 const comfy = await startFakeComfy({ port: COMFY_PORT, steps: 4, stepDelay: 50 });
 const withAi = (await call("GET", "/api/settings")).settings;
 await fetch(`${BASE}/api/settings`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...withAi, comfy: comfySettings({ url: comfy.url, checkpoint: "fake_sdxl_a.safetensors", count: 2 }) }) });

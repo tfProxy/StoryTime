@@ -7,7 +7,7 @@ import { extractJson } from "./codexAi";
 import { summaryCoverageIndex, type ContextChapter, type PromptParts } from "./prompts";
 import { LIMITS } from "../limits";
 import type { Settings } from "../settings";
-import type { ModelRef } from "../settingsSchema";
+import { contextFor, type ModelRef } from "../settingsSchema";
 
 /** Which model makes a summary: the cheaper default unless told otherwise (see `modelAfterWriting`). */
 export type SummaryModel = { role: "main" | "cheap"; model: ModelRef | null };
@@ -72,7 +72,7 @@ export async function summarizeChapter(
   },
 ): Promise<Summaries> {
   const own = opts.summary?.trim() ? clip(opts.summary) : null;
-  const request = summaryRequest(settings.contextTokens, opts);
+  const request = summaryRequest(contextFor(settings, "summaries", opts.use?.model), opts);
 
   // Small or "thinking" models sometimes ramble or break the format, so give it one more go.
   let lastError: unknown;
@@ -82,6 +82,7 @@ export async function summarizeChapter(
       {
         system: request.system,
         messages: [{ role: "user", content: request.message }],
+        use: "summaries",
         ...(opts.use ?? { role: "cheap" }),
         maxTokens: 1500,
         signal: opts.signal,

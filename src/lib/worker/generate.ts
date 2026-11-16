@@ -14,7 +14,7 @@ import { getDraft, putDraft } from "../draftStore";
 import { applyAfterGenerate, applyGenerated, isBegun } from "../generatedDraft";
 import { LIMITS } from "../limits";
 import { getSettings } from "../settingsStore";
-import { parseSettings } from "../settingsSchema";
+import { contextFor, parseSettings } from "../settingsSchema";
 import { publish, workerState } from "./bus";
 import { createItem, deleteItem, getItem, updateItem, type WorkRow } from "./items";
 import { selfFetch } from "./selfFetch";
@@ -176,9 +176,9 @@ export async function runGenerate(draftKey: string): Promise<void> {
     const ids = { itemKey };
     step("Getting the story ready…");
     const ready = await withPathSummaries(settings, req.ctx, run.ctl.signal, step, selfFetch, ids);
-    const message = generatePrompt(ready, req.direction, req.length, settings.contextTokens);
+    const message = generatePrompt(ready, req.direction, req.length, contextFor(settings, "write", req.model));
     for await (const piece of streamChat(settings, {
-      system: SYSTEM_CHAPTER, messages: [{ role: "user", content: message }], role: "main", model: req.model, job: "write", signal: run.ctl.signal, source: { label: "Generate", ...ids },
+      system: SYSTEM_CHAPTER, messages: [{ role: "user", content: message }], use: "write", role: "main", model: req.model, job: "write", signal: run.ctl.signal, source: { label: "Generate", ...ids },
       onStatus: step, onThinking, onKeep: (id) => (run.kept = id),
     })) {
       if (!run.text) {
@@ -202,12 +202,13 @@ export async function runGenerate(draftKey: string): Promise<void> {
       const shown = { title: chapter.title ?? "", body: chapter.body };
       if (req.after.choiceText) {
         // The writing model, if Ollama still has it loaded, rather than swapping to the suggestions model and back.
-        const small = await modelAfterWriting(settings, req.model, req.suggestModel, run.ctl.signal);
+        const small = await modelAfterWriting(settings, req.model, req.suggestModel, run.ctl.signal, "choices");
         step("Writing the choice text…");
         try {
           const reply = await completeChat(settings, {
             system: SYSTEM_CHOICE_LABEL,
-            messages: [{ role: "user", content: choiceLabelPrompt({ ...ready, choiceLabel: null }, shown, settings.contextTokens) }],
+            messages: [{ role: "user", content: choiceLabelPrompt({ ...ready, choiceLabel: null }, shown, contextFor(settings, "choices", small.model)) }],
+            use: "choices",
             ...small, maxTokens: 60, signal: run.ctl.signal, source: { label: "Generate: choice text", ...ids },
           });
           const label = parseChoiceLabel(reply).slice(0, LIMITS.label);

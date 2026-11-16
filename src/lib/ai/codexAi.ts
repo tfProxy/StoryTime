@@ -4,7 +4,7 @@
 import { completeChat, type AiSourceIds } from "./client";
 import { buildStorySoFar, estimateTokens, notesBlock, parseInstruction, type ContextChapter, type PromptParts } from "./prompts";
 import { ENTRY_TYPES, codexBlock, type CodexEntry, type EntryType } from "../codex";
-import type { Settings } from "../settings";
+import { contextFor, type Settings } from "../settingsSchema";
 
 export type PathChapter = ContextChapter & { id: string; depth: number };
 
@@ -171,10 +171,11 @@ function buildEntry(
 }
 
 export async function draftEntry(settings: Settings, opts: DraftEntryOptions): Promise<DraftEntryResult> {
-  const { request, numbered } = buildEntry(settings.contextTokens, opts);
+  const { request, numbered } = buildEntry(contextFor(settings, "codex"), opts);
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
+    use: "codex",
     signal: opts.signal,
     source: { label: "Codex entry draft", ...opts.source },
   });

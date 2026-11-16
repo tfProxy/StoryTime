@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { saveSettings, useSettings } from "@/lib/settings";
+import { contextFor, saveSettings, useSettings } from "@/lib/settings";
 import { LIMITS } from "@/lib/limits";
 import { codexBudget, budgetFor, explainCodex, type ContextChapter, type ContextCodexEntry } from "@/lib/ai/prompts";
 import { withArtStyle, withoutGiven } from "@/lib/ai/imagePrompt";
@@ -134,7 +134,7 @@ export default function CoverPromptPanel({
   const [presetNow, setPresetNow] = useState(coverPreset);
   const draw = drawPresetFor(settings.comfy.drawPresets, presetNow, story.draw_preset);
   const style = draw.promptStyle;
-  const model = settings.imagePromptModel;
+  const model = settings.defaults.picture;
   const context = boxes.source === "path" ? pathContext : opening;
   const options = () => ({
     story,
@@ -145,7 +145,7 @@ export default function CoverPromptPanel({
     style,
   });
   const triggerText = [story.premise, ...options().path.map((c) => c.body), boxes.direction].join("\n");
-  const used = explainCodex(options().codex, triggerText, codexBudget(budgetFor(settings.contextTokens)))
+  const used = explainCodex(options().codex, triggerText, codexBudget(budgetFor(contextFor(settings, "picture", model))))
     .filter((r) => r.state === "included")
     .map((r) => r.entry.name);
   const loading = boxes.source === "path" && !pathContext;
@@ -222,10 +222,9 @@ export default function CoverPromptPanel({
         <div className="row" style={{ flexWrap: "wrap" }}>
           <ModelPicker
             label="Model for picture prompts"
-            role="cheap"
             use="picture"
             value={model}
-            onChange={(ref) => void saveSettings({ ...settings, imagePromptModel: ref })}
+            onChange={(ref) => void saveSettings({ ...settings, defaults: { ...settings.defaults, picture: ref } })}
           />
           <button type="button" onClick={() => void write()} disabled={busy || loading}>
             {busy ? "Writing…" : loading ? "Loading the path…" : written ? "Write again" : "Write prompt"}

@@ -1,6 +1,6 @@
 // Ollama's own (native) API, as opposed to the OpenAI-compatible one the app chats through. Used from the browser and
 // the server; it needs plain `fetch`, which both have.
-import { defaultRef, findConnection, sameRef, type Connection, type ModelRef, type Settings } from "../settingsSchema";
+import { findConnection, jobRef, sameRef, type Connection, type ModelRef, type ModelUse, type Settings } from "../settingsSchema";
 
 // How long freeing Ollama's memory may hold up a picture job, all calls together.
 const FREE_TIMEOUT_MS = 3000;
@@ -83,10 +83,12 @@ export async function modelAfterWriting(
   writer: ModelRef | null | undefined,
   small: ModelRef | null | undefined,
   signal?: AbortSignal,
+  /** The small job, whose default model (Settings › Models) is the one used when `small` is null. */
+  use: ModelUse = "summaries",
 ): Promise<{ role: "main" | "cheap"; model: ModelRef | null }> {
   const asked = { role: "cheap" as const, model: small ?? null };
-  const w = writer ?? defaultRef(settings, "main");
-  const s = small ?? defaultRef(settings, "cheap");
+  const w = writer ?? jobRef(settings, "write");
+  const s = small ?? jobRef(settings, use);
   if (!w || !s || sameRef(w, s)) return asked;
   const wc = findConnection(settings, w.connectionId);
   const sc = findConnection(settings, s.connectionId);

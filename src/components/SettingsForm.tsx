@@ -11,19 +11,13 @@ import { DrawingSettings, EditSettings, usePictureSetup } from "./PictureSetting
 import { EDIT_MODEL_IDS } from "@/lib/comfy/editModels";
 import TagLibrary from "./TagLibrary";
 import CategoryListsEditor from "./CategoryListsEditor";
+import ModelGrid from "./ModelGrid";
 import {
   exportSettingsJson,
-  favoriteFor,
-  favoritesFor,
-  findConnection,
   importSettingsJson,
-  MODEL_USES,
-  modelLabel,
   newConnection,
   newFavorite,
   OUTLINE_PARTS,
-  parseRefKey,
-  refKey,
   removeConnection,
   sameRef,
   saveSettings,
@@ -31,20 +25,8 @@ import {
   type Connection,
   type Favorite,
   type ModelRef,
-  type ModelUse,
   type Settings,
 } from "@/lib/settings";
-import type { ThinkingOff } from "@/lib/settingsSchema";
-
-// A starred model's thinking choices. Thinking for everything but writing makes little sense, so it is only shown
-// when settings from elsewhere have it.
-const THINKING_OPTIONS: { off: ThinkingOff; label: string; onlyIfSet?: boolean }[] = [
-  { off: { write: false, other: false }, label: "Think for everything" },
-  { off: { write: false, other: true }, label: "Only when writing chapters" },
-  { off: { write: true, other: true }, label: "Never think" },
-  { off: { write: true, other: false }, label: "Everything but writing", onlyIfSet: true },
-];
-const thinkingKey = (off: ThinkingOff) => `${off.write ? "w" : ""}${off.other ? "o" : ""}` || "none";
 
 // What "Try a sample reply" sends.
 const SAMPLE_REQUEST = {
@@ -354,93 +336,6 @@ function ConnectionCard({
   );
 }
 
-/** One used model's settings: nickname, thinking, and the jobs it is offered for. Shown under its connection's heading. */
-function ModelCard({
-  fav,
-  onChange,
-  onRemove,
-}: {
-  fav: Favorite;
-  onChange: (patch: Partial<Favorite>) => void;
-  onRemove: () => void;
-}) {
-  const offered = (u: ModelUse) => !fav.hiddenFrom.includes(u);
-  const setOffered = (u: ModelUse, on: boolean) =>
-    onChange({ hiddenFrom: on ? fav.hiddenFrom.filter((x) => x !== u) : [...fav.hiddenFrom, u] });
-  return (
-    <fieldset className="card model-card" aria-label={fav.label.trim() || fav.model}>
-      <legend>
-        <span style={{ overflowWrap: "anywhere" }}>{fav.model}</span>
-      </legend>
-      <label>
-        Nickname <small>(optional)</small>
-        <input aria-label={`Nickname for ${fav.model}`} value={fav.label} onChange={(e) => onChange({ label: e.target.value })} />
-      </label>
-      <label>
-        Thinking <small>(writing chapters: Generate, AI runs, rewriting a passage; the rest: suggestions, summaries, tags, codex)</small>
-        <select
-          aria-label={`Thinking for ${fav.model}`}
-          value={thinkingKey(fav.disableThinking)}
-          onChange={(e) => onChange({ disableThinking: THINKING_OPTIONS.find((o) => thinkingKey(o.off) === e.target.value)!.off })}
-        >
-          {THINKING_OPTIONS.filter((o) => !o.onlyIfSet || thinkingKey(o.off) === thinkingKey(fav.disableThinking)).map((o) => (
-            <option key={thinkingKey(o.off)} value={thinkingKey(o.off)}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <fieldset className="model-uses">
-        <legend>Offer this model for</legend>
-        {MODEL_USES.map((u) => (
-          <label key={u.id} className="inline-label">
-            <input type="checkbox" checked={offered(u.id)} onChange={(e) => setOffered(u.id, e.target.checked)} />
-            <span>
-              {u.label} <small>({u.hint})</small>
-            </span>
-          </label>
-        ))}
-      </fieldset>
-      <div className="row">
-        <button type="button" className="secondary" onClick={onRemove} aria-label={`Stop using ${fav.model}`}>
-          Stop using
-        </button>
-      </div>
-    </fieldset>
-  );
-}
-
-/** A default-model dropdown over the starred models offered for its job. */
-function DefaultSelect({
-  settings,
-  value,
-  use,
-  blankLabel,
-  onChange,
-}: {
-  settings: Settings;
-  value: ModelRef | null;
-  use: ModelUse;
-  blankLabel: string;
-  onChange: (ref: ModelRef | null) => void;
-}) {
-  const offered = favoritesFor(settings, use);
-  const listed = !value || offered.some((f) => sameRef(f, value));
-  // Still the default, but no longer offered for this job: say so rather than hide it.
-  const why = value && favoriteFor(settings, value) ? " (not offered for this)" : "";
-  return (
-    <select value={value ? refKey(value) : ""} onChange={(e) => onChange(e.target.value ? parseRefKey(e.target.value) : null)}>
-      <option value="">{blankLabel}</option>
-      {value && !listed && <option value={refKey(value)}>{modelLabel(settings, value) + why}</option>}
-      {offered.map((f) => (
-        <option key={refKey(f)} value={refKey(f)}>
-          {modelLabel(settings, f)}
-        </option>
-      ))}
-    </select>
-  );
-}
-
 export default function SettingsForm() {
   const settings = useSettings();
   const [addKind, setAddKind] = useState<ProviderKind>("ollama");
@@ -489,9 +384,10 @@ export default function SettingsForm() {
   function toggleFavorite(ref: ModelRef) {
     if (settings.favorites.some((f) => sameRef(f, ref))) {
       const clear = (r: ModelRef | null) => (sameRef(r, ref) ? null : r);
+      const d = settings.defaults;
       update({
         favorites: settings.favorites.filter((f) => !sameRef(f, ref)),
-        defaults: { main: clear(settings.defaults.main), cheap: clear(settings.defaults.cheap) },
+        defaults: { main: clear(d.main), cheap: clear(d.cheap), choices: clear(d.choices), codex: clear(d.codex), tags: clear(d.tags), picture: clear(d.picture) },
       });
     } else {
       // The first model starred becomes the default, so a fresh setup works straight away.
@@ -632,7 +528,7 @@ export default function SettingsForm() {
 
       <div {...panel("writing")}>
         <section id="models" className="settings-section">
-          <h2>Models in use</h2>
+          <h2>Models</h2>
           {settings.favorites.length === 0 ? (
             <p className="meta">
               None yet. Test a connection on the{" "}
@@ -644,60 +540,13 @@ export default function SettingsForm() {
           ) : (
             <>
               <p className="meta">
-                These are the models you can switch between while writing. Each is offered for every job unless you
-                untick it, so a big model can be kept for chapters and out of the summary and suggestion pickers.
-                Disable thinking asks a model to skip extended thinking, for faster and cheaper replies (sent as
-                thinking: disabled to Anthropic, reasoning: {"{"}effort: none{"}"} to OpenRouter and reasoning_effort: none
-                to others); leave it off for models that only work with thinking or reject it.
+                The models you use, and which jobs each one does. Where Thinking says not to think, the model is asked to
+                skip extended thinking, for faster and cheaper replies (sent as thinking: disabled to Anthropic, reasoning: {"{"}effort: none{"}"}{" "}
+                to OpenRouter and reasoning_effort: none to others); leave it on for models that only work with thinking.
               </p>
-              {/* Grouped by connection, in the Connections tab's order; a model whose connection is gone comes last. */}
-              {[...settings.connections.map((c) => c.id), null].map((connId) => {
-                const conn = connId ? findConnection(settings, connId) : null;
-                const favs = settings.favorites.filter((f) => (connId ? f.connectionId === connId : !findConnection(settings, f.connectionId)));
-                if (!favs.length) return null;
-                const name = conn ? conn.name || providerInfo(conn.kind).label : "Removed connection";
-                return (
-                  <section key={connId ?? "gone"} className="model-group" aria-label={`Models from ${name}`}>
-                    <h3>
-                      {name}
-                      {conn && <span className="meta">{providerInfo(conn.kind).label}</span>}
-                    </h3>
-                    <div className="model-cards">
-                      {favs.map((f) => (
-                        <ModelCard
-                          key={refKey(f)}
-                          fav={f}
-                          onChange={(patch) => updateFavorite(f, patch)}
-                          onRemove={() => toggleFavorite(f)}
-                        />
-                      ))}
-                    </div>
-                  </section>
-                );
-              })}
+              <ModelGrid settings={settings} onSave={save} onFavorite={updateFavorite} onRemove={toggleFavorite} />
             </>
           )}
-
-          <label>
-            Default model <small>(for writing chapters; each draft can pick another)</small>
-            <DefaultSelect
-              settings={settings}
-              value={settings.defaults.main}
-              use="write"
-              blankLabel="Choose a model in use…"
-              onChange={(r) => update({ defaults: { ...settings.defaults, main: r } })}
-            />
-          </label>
-          <label>
-            Cheaper model <small>(for summaries, suggestions and small jobs; drafts can pick another for suggestions)</small>
-            <DefaultSelect
-              settings={settings}
-              value={settings.defaults.cheap}
-              use="summary"
-              blankLabel="Same as the default model"
-              onChange={(r) => update({ defaults: { ...settings.defaults, cheap: r } })}
-            />
-          </label>
         </section>
 
         <section className="settings-section">

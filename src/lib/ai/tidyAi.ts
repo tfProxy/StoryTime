@@ -193,6 +193,7 @@ export async function runTidy(settings: Settings, entry: CodexEntry, opts: { sig
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
+    use: "codex",
     role: "cheap",
     signal: opts.signal,
     precise: true,

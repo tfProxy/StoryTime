@@ -17,7 +17,7 @@ import {
   type PromptParts,
 } from "./prompts";
 import type { CoverSource } from "../pictureTarget";
-import type { ImagePromptStyle, ModelRef, Settings } from "../settingsSchema";
+import { contextFor, type ImagePromptStyle, type ModelRef, type Settings } from "../settingsSchema";
 
 export type CoverPromptOptions = {
   story: { title: string; premise: string };
@@ -91,10 +91,11 @@ export async function writeCoverPrompt(
   settings: Settings,
   opts: CoverPromptOptions & { model?: ModelRef | null; signal?: AbortSignal; aiSource?: AiSourceIds },
 ): Promise<ImagePrompt> {
-  const request = coverPromptRequest(settings.contextTokens, opts);
+  const request = coverPromptRequest(contextFor(settings, "picture", opts.model), opts);
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
+    use: "picture",
     role: "cheap",
     model: opts.model,
     signal: opts.signal,

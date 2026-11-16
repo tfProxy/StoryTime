@@ -44,7 +44,7 @@ const storyId = created.story_id;
 const browser = await launch();
 const context = await browser.newContext({ viewport: { width: 1000, height: 900 } });
 await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: BASE });
-const ai = await useMockAi(BASE, { favorites: [{ connectionId: "t", model: "artist", label: "Artist" }], imagePromptModel: null });
+const ai = await useMockAi(BASE, { favorites: [{ connectionId: "t", model: "artist", label: "Artist" }] });
 const page = await context.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 const settingsNow = async () => (await get("/api/settings")).settings;
@@ -200,7 +200,7 @@ try {
   const picker = page.getByLabel("Model for picture prompts");
   ok((await picker.locator("option:checked").innerText()).startsWith("Default"), "the model starts on the default");
   await picker.selectOption({ label: "Artist" });
-  ok(await until(async () => (await settingsNow()).imagePromptModel?.model === "artist", "the model to be saved"), "choosing a model saves imagePromptModel on the server");
+  ok(await until(async () => (await settingsNow()).defaults.picture?.model === "artist", "the model to be saved"), "choosing a model saves defaults.picture on the server");
   reply = '{"scene":"s","prompt":"p","negative":""}';
   await page.getByRole("button", { name: "Write again" }).click();
   await page.waitForFunction(() => document.querySelector(".image-prompt-result textarea")?.value.startsWith("p"));
@@ -210,7 +210,7 @@ try {
   await page.waitForFunction(() => document.querySelector('[aria-label="Model for picture prompts"] option:checked')?.textContent === "Artist");
   ok(true, "another chapter's Illustrate page has the same model chosen");
   await page.getByLabel("Model for picture prompts").selectOption({ index: 0 });
-  ok(await until(async () => (await settingsNow()).imagePromptModel === null, "the default to be saved"), "going back to the default saves null");
+  ok(await until(async () => (await settingsNow()).defaults.picture === null, "the default to be saved"), "going back to the default saves null for defaults.picture");
 } finally {
   // leave the server's settings as they were
   await ai.restore();

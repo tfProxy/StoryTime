@@ -499,7 +499,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const setModel = (job: "write" | "suggest", ref: ModelRef | null) =>
     setDraft((d) => (d ? { ...d, models: { ...d.models, [job]: ref ?? undefined } } : d));
   const writePicker = (
-    <ModelPicker label="Model for writing" role="main" use="write" value={writeModel} onChange={(r) => setModel("write", r)} />
+    <ModelPicker label="Model for writing" use="write" value={writeModel} onChange={(r) => setModel("write", r)} />
   );
   // Manual additions to / removals from the codex entries sent with each prompt.
   const codexOverrides: CodexOverrides = draft.codexOverrides ?? { include: [], exclude: [] };
@@ -989,7 +989,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       <MoreMenu label="More for this chapter">
         <label className="desk-menu-model">
           <span>Summary model</span>
-          <ModelPicker label="Summary model" role="cheap" use="suggest" value={suggestModel} onChange={(r) => setModel("suggest", r)} />
+          <ModelPicker label="Summary model" use="summaries" value={suggestModel} onChange={(r) => setModel("suggest", r)} />
         </label>
         {target.kind === "edit" ? (
           <>

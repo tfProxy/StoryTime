@@ -2,7 +2,7 @@
 // from the StoryTime server (the work queue's Generates and AI runs, in src/lib/worker). The keys are in the settings
 // the server keeps, so the server has them; it needs plain `fetch`, which both have.
 import { providerInfo, type ProviderKind } from "./providers";
-import { defaultRef, favoriteFor, findConnection, type AiJob, type Connection, type ModelRef, type Settings } from "../settingsSchema";
+import { defaultRef, favoriteFor, findConnection, jobRef, type AiJob, type Connection, type ModelRef, type ModelUse, type Settings } from "../settingsSchema";
 import { freeComfyMemory } from "../comfy/client";
 import { startActivity } from "./activity";
 
@@ -13,6 +13,8 @@ export type ChatRequest = {
   messages: ChatMessage[];
   /** Which default model to use when `model` isn't given: the main one, or the cheaper one for small jobs. */
   role?: "main" | "cheap";
+  /** The job the call does, whose default model (Settings › Models) is used before `role`'s. */
+  use?: ModelUse;
   /** A specific model to use instead of the default (picked on the writing page). */
   model?: ModelRef | null;
   /** "write" for calls that write chapter text; picks the starred model's thinking setting. Anything else is "other". */
@@ -124,8 +126,8 @@ function checkConnection(c: Connection) {
 export const PRECISE_TEMPERATURE = 0.2;
 const PRECISE_KINDS: ProviderKind[] = ["ollama", "openrouter", "featherless", "nanogpt", "custom"];
 
-function resolve(settings: Settings, req: Pick<ChatRequest, "role" | "model" | "job" | "precise">): Resolved {
-  const ref = req.model ?? defaultRef(settings, req.role ?? "main");
+function resolve(settings: Settings, req: Pick<ChatRequest, "role" | "use" | "model" | "job" | "precise">): Resolved {
+  const ref = req.model ?? (req.use ? jobRef(settings, req.use) : defaultRef(settings, req.role ?? "main"));
   if (!ref || !ref.model.trim()) throw new AiError("No model is chosen. Open Settings and pick a default model.");
   const conn = findConnection(settings, ref.connectionId);
   if (!conn) throw new AiError(`The connection for ${ref.model} has been removed. Pick another model.`);

@@ -66,6 +66,7 @@ export async function writeCodexPrompt(
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
+    use: "picture",
     role: "cheap",
     model: opts.model,
     signal: opts.signal,

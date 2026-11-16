@@ -9,7 +9,7 @@ import { quoteInText } from "./tagAi";
 import { FACT_LIMITS, aspectAndForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry } from "../codex";
 import { DEFAULT_CATEGORIES, aspectRules, formFor, resolveAspect, type CategoryLists } from "../codexCategories";
 import type { SuggestionInput } from "./codexCheckAi";
-import type { Settings } from "../settings";
+import { contextFor, type Settings } from "../settingsSchema";
 
 export const MAX_EXPAND_FACTS = 10;
 
@@ -150,10 +150,11 @@ export type RunFleshOutOptions = FleshOutOptions & { signal?: AbortSignal; role?
 /** Asks the AI for new facts for one entry. Throws when the reply can't be read. */
 export async function runFleshOut(settings: Settings, opts: RunFleshOutOptions): Promise<SuggestionInput[]> {
   const withLists = { categories: settings.codexCategories, ...opts };
-  const request = fleshOutRequest(settings.contextTokens, withLists);
+  const request = fleshOutRequest(contextFor(settings, "codex"), withLists);
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
+    use: "codex",
     role: opts.role ?? "cheap",
     signal: opts.signal,
     precise: true,

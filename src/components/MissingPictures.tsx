@@ -172,7 +172,7 @@ export default function MissingPictures({
 
         <label>
           Model for prompts <small>(the cheaper model by default)</small>
-          <ModelPicker label="Model for prompts" role="cheap" use="suggest" value={model} onChange={setModel} />
+          <ModelPicker label="Model for prompts" use="picture" value={model} onChange={setModel} />
         </label>
 
         {noComfy && (

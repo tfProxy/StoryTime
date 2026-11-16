@@ -7,7 +7,7 @@ import { extractJson } from "./codexAi";
 import { matchQuote } from "./tagAi";
 import { ENTRY_TYPES, FACT_LIMITS, aspectAndForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry, type EntryType } from "../codex";
 import { DEFAULT_CATEGORIES, aspectRules, formFor, resolveAspect, type CategoryLists } from "../codexCategories";
-import type { Settings } from "../settings";
+import { contextFor, type Settings } from "../settingsSchema";
 
 export const SUGGESTION_KINDS = ["set", "form", "retire", "entry", "conflict"] as const;
 export type SuggestionKind = (typeof SUGGESTION_KINDS)[number];
@@ -360,10 +360,11 @@ export type RunCodexCheckOptions = CodexCheckRequestOptions & { signal?: AbortSi
 /** Asks the AI what the chapter changes in the codex. Throws when the reply can't be read. */
 export async function runCodexCheck(settings: Settings, opts: RunCodexCheckOptions): Promise<SuggestionInput[]> {
   if (!opts.chapter.body.trim()) return [];
-  const request = codexCheckRequest(settings.contextTokens, { categories: settings.codexCategories, ...opts });
+  const request = codexCheckRequest(contextFor(settings, "codex"), { categories: settings.codexCategories, ...opts });
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
+    use: "codex",
     role: opts.role ?? "cheap",
     signal: opts.signal,
     precise: true,

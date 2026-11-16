@@ -4,7 +4,7 @@
 import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, type PromptParts } from "./prompts";
 import { extractJson, type StoryInfo } from "./codexAi";
-import type { Settings } from "../settings";
+import { contextFor, type Settings } from "../settingsSchema";
 
 export type TagExample = { text: string; applies: boolean; note?: string };
 
@@ -210,11 +210,12 @@ export type SuggestOptions = TagRequestOptions & { signal?: AbortSignal; role?: 
 
 export async function suggestTagsForChapter(settings: Settings, opts: SuggestOptions): Promise<TagSuggestion[]> {
   if (opts.tags.length === 0) return [];
-  const request = tagRequest(settings.contextTokens, opts);
+  const request = tagRequest(contextFor(settings, "tags"), opts);
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
     // Like a single-chapter codex scan: the main model, unless the caller is tagging many chapters.
+    use: "tags",
     role: opts.role ?? "main",
     signal: opts.signal,
     precise: true,
@@ -278,10 +279,11 @@ export function parseRuleReply(raw: unknown, idea: string, name?: string): RuleD
 export type DraftRuleOptions = RuleOptions & { signal?: AbortSignal; source?: AiSourceIds };
 
 export async function draftRule(settings: Settings, opts: DraftRuleOptions): Promise<RuleDraft> {
-  const request = ruleRequest(settings.contextTokens, opts);
+  const request = ruleRequest(contextFor(settings, "tags"), opts);
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
+    use: "tags",
     signal: opts.signal,
     source: { label: "Tag rule", ...opts.source },
   });

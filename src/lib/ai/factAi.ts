@@ -5,7 +5,7 @@ import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, type PromptParts } from "./prompts";
 import { extractJson, type StoryInfo } from "./codexAi";
 import { quoteInText } from "./tagAi";
-import type { Settings } from "../settings";
+import { contextFor, type Settings } from "../settingsSchema";
 
 export type Fact = { entity: string; attribute: string; value: string; quote: string };
 
@@ -136,6 +136,7 @@ export async function judgeConflict(settings: Settings, opts: JudgeConflictOptio
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
+    use: "tags",
     role: opts.role ?? "cheap",
     signal: opts.signal,
     precise: true,
@@ -150,11 +151,11 @@ export type ExtractFactsOptions = FactRequestOptions & { signal?: AbortSignal; r
 
 export async function extractFacts(settings: Settings, opts: ExtractFactsOptions): Promise<Fact[]> {
   if (!opts.chapter.body.trim()) return [];
-  const request = factRequest(settings.contextTokens, opts);
+  const request = factRequest(contextFor(settings, "tags"), opts);
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
-    // The main model, unless the caller is reading many chapters.
+    use: "tags",
     role: opts.role ?? "main",
     signal: opts.signal,
     precise: true,

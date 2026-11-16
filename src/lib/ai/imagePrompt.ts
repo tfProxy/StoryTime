@@ -14,7 +14,7 @@ import {
   type ContextCodexEntry,
   type PromptParts,
 } from "./prompts";
-import type { ImagePromptStyle, ModelRef, Settings } from "../settingsSchema";
+import { contextFor, type ImagePromptStyle, type ModelRef, type Settings } from "../settingsSchema";
 
 /** Which part of the chapter the picture shows. */
 export type ImageMoment = "start" | "middle" | "end";
@@ -202,10 +202,11 @@ export async function writeImagePrompt(
   settings: Settings,
   opts: ImagePromptOptions & { model?: ModelRef | null; signal?: AbortSignal; source?: AiSourceIds },
 ): Promise<ImagePrompt> {
-  const request = imagePromptRequest(settings.contextTokens, opts);
+  const request = imagePromptRequest(contextFor(settings, "picture", opts.model), opts);
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
+    use: "picture",
     role: "cheap",
     model: opts.model,
     signal: opts.signal,

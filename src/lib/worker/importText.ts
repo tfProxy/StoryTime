@@ -7,7 +7,7 @@ import { parseChoices } from "../ai/prompts";
 import { getDraft, putDraft } from "../draftStore";
 import { LIMITS } from "../limits";
 import { getSettings } from "../settingsStore";
-import { parseSettings } from "../settingsSchema";
+import { contextFor, parseSettings } from "../settingsSchema";
 import {
   alternativesPrompt, chapterBody, chapterRanges, detailsPrompt, fallbackSplit, mergeShort, openingText, parseDetails, parseSplit,
   splitPrompt, SYSTEM_ALTERNATIVES, SYSTEM_DETAILS, SYSTEM_SPLIT, windowEnd, windowWords,
@@ -67,7 +67,7 @@ export async function runImport(draftKey: string): Promise<void> {
   const P = draft.paragraphs;
   const n = P.length;
   const ask = (label: string, system: string, content: string, maxTokens: number) =>
-    completeChat(settings, { system, messages: [{ role: "user", content }], role: "main", model: opts.model, maxTokens, signal, source: { label, itemKey } });
+    completeChat(settings, { system, messages: [{ role: "user", content }], use: "write", role: "main", model: opts.model, maxTokens, signal, source: { label, itemKey } });
   const progress = (text: string, extra: Partial<ImportDraft> = {}) => {
     patchImportDraft(draftKey, () => ({ status: "splitting", progress: text, error: undefined, ...extra }));
     updateItem(itemKey, { data: { note: text } });
@@ -81,7 +81,7 @@ export async function runImport(draftKey: string): Promise<void> {
   try {
     // 1. The breaks, one part of the story at a time. A part that stops mid-story leaves out its last chapter,
     // which may have been cut off: the next part starts after the chapter before it.
-    const words = windowWords(settings.contextTokens);
+    const words = windowWords(contextFor(settings, "write", opts.model));
     let entries: SplitEntry[] = [];
     let from = 0;
     let part = 1;

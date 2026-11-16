@@ -102,13 +102,29 @@ ok(r.status === 200 && r.json.settings.imagePromptStyle === "tags", "an unknown 
 r = await call("PUT", "/api/settings", { ...conns, imagePromptStyle: 7 });
 ok(r.json.settings.imagePromptStyle === "tags", "…as does a value that isn't text");
 
-ok(r.json.settings.imagePromptModel === null, "picture prompts use the default model unless one is chosen");
+ok(r.json.settings.defaults.picture === null && !("imagePromptModel" in r.json.settings), "picture prompts use the Summaries default unless one is chosen, and the old setting is never returned");
+// The old top-level picture-prompt model becomes the Picture prompts default.
 r = await call("PUT", "/api/settings", { ...conns, imagePromptModel: { connectionId: "o", model: "pics" } });
-ok((await call("GET", "/api/settings")).json.settings.imagePromptModel?.model === "pics", "…and a chosen one is kept");
+let got = (await call("GET", "/api/settings")).json.settings;
+ok(got.defaults.picture?.model === "pics" && !("imagePromptModel" in got) && !("imagePromptModel" in r.json.settings), "an old imagePromptModel becomes defaults.picture and is gone from the settings");
 r = await call("PUT", "/api/settings", { ...conns, imagePromptModel: { connectionId: "gone", model: "pics" } });
-ok(r.json.settings.imagePromptModel === null, "…but dropped when its connection doesn't exist");
+ok(r.json.settings.defaults.picture === null, "…but dropped when its connection doesn't exist");
 r = await call("PUT", "/api/settings", { ...conns, imagePromptModel: "pics" });
-ok(r.json.settings.imagePromptModel === null, "…or when it isn't a model");
+ok(r.json.settings.defaults.picture === null, "…or when it isn't a model");
+// Each job's default is kept like the main and cheap ones, and dropped when its connection is gone.
+const jobDefaults = { main: { connectionId: "o", model: "m" }, cheap: { connectionId: "o", model: "c" }, choices: { connectionId: "o", model: "ch" }, codex: { connectionId: "o", model: "cx" }, tags: { connectionId: "o", model: "tg" }, picture: { connectionId: "o", model: "pi" } };
+r = await call("PUT", "/api/settings", { ...conns, defaults: jobDefaults });
+got = (await call("GET", "/api/settings")).json.settings;
+ok(["main", "cheap", "choices", "codex", "tags", "picture"].every((k) => got.defaults[k]?.model === jobDefaults[k].model), "defaults for each job are kept");
+r = await call("PUT", "/api/settings", { ...conns, defaults: { ...jobDefaults, choices: { connectionId: "gone", model: "ch" }, codex: { connectionId: "gone", model: "cx" }, tags: "tg", picture: { connectionId: "gone", model: "pi" } } });
+ok(r.json.settings.defaults.main?.model === "m" && r.json.settings.defaults.cheap?.model === "c" && r.json.settings.defaults.choices === null && r.json.settings.defaults.codex === null && r.json.settings.defaults.tags === null && r.json.settings.defaults.picture === null, "…and dropped when their connection doesn't exist or they aren't models");
+// A starred model's own context.
+const fav = (extra) => ({ connectionId: "o", model: "m", label: "", disableThinking: { write: false, other: false }, hiddenFrom: [], ...extra });
+r = await call("PUT", "/api/settings", { ...conns, favorites: [fav({ context: 32000 }), fav({ model: "n" }), fav({ model: "p", context: "lots" }), fav({ model: "q", context: 5 })] });
+const ctx = Object.fromEntries(r.json.settings.favorites.map((f) => [f.model, f.context]));
+ok(ctx.m === 32000 && ctx.n === null && ctx.p === null && ctx.q === null, "a favorite's own context is kept; a missing, non-number or too small one becomes null");
+ok((await call("GET", "/api/settings")).json.settings.favorites.find((f) => f.model === "m").context === 32000, "…and read back");
+r = await call("PUT", "/api/settings", { ...conns, favorites: [] });
 
 // ---- ComfyUI (picture making), with presets ----
 const draw = (id, extra = {}) => ({ id, name: `Drawing ${id}`, promptStyle: "tags", prompt: "", negative: "", family: "checkpoint", checkpoint: "sdxl.safetensors", files: {}, textEncoderDevice: "default", workflow: "", loras: [], sampler: {}, denoise: 0.55, ...extra });

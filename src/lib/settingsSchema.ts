@@ -43,15 +43,21 @@ export type Connection = {
 /** A model on a particular connection. */
 export type ModelRef = { connectionId: string; model: string };
 
-/** The jobs a starred model can be offered for; each is a model picker (and, for some, a default) in the app. */
+/** The jobs a starred model can be offered for and be the default for: the columns of the Models grid in Settings. */
 export const MODEL_USES = [
-  { id: "write", label: "Writing chapters", hint: "the writing picker and the default model" },
-  { id: "suggest", label: "Suggestions", hint: "ideas, choices and button text" },
-  { id: "summary", label: "Summaries and small jobs", hint: "the cheaper model: summaries and codex scans" },
-  { id: "picture", label: "Picture prompts", hint: "the Illustrate page" },
+  { id: "write", label: "Writing", hint: "Generate, AI runs, Write ahead, Import" },
+  { id: "choices", label: "Choices", hint: "Suggest choices, planned choices, choice button text" },
+  { id: "summaries", label: "Summaries", hint: "chapter and path summaries, summary checks" },
+  { id: "codex", label: "Codex", hint: "codex checks, Flesh out, Tidy, Retcon" },
+  { id: "tags", label: "Tags & continuity", hint: "tag scans, tag rules, continuity facts and checks" },
+  { id: "picture", label: "Picture prompts", hint: "Illustrate, covers, Make missing pictures" },
 ] as const;
 export type ModelUse = (typeof MODEL_USES)[number]["id"];
 const MODEL_USE_IDS = MODEL_USES.map((u) => u.id) as [ModelUse, ...ModelUse[]];
+/** Jobs whose default is kept in its own key of `defaults`; empty there means "as Summaries". */
+const OWN_DEFAULT = ["choices", "codex", "tags", "picture"] as const;
+/** The jobs from before the grid, in a model's `hiddenFrom`: "suggest" was choices, and "summary" covered every small job. */
+const OLD_USES: Record<string, ModelUse[]> = { suggest: ["choices"], summary: ["summaries", "codex", "tags"] };
 
 /** What an AI call is for, which picks a starred model's thinking setting. */
 export type AiJob = "write" | "other";
@@ -68,17 +74,20 @@ export type Favorite = ModelRef & {
   disableThinking: ThinkingOff;
   /** Jobs this model is not offered for. Empty (the default) means it is offered everywhere, including jobs added later. */
   hiddenFrom: ModelUse[];
+  /** How many tokens of prompt this model takes; null uses the global `contextTokens`. */
+  context: number | null;
 };
 
 export type Settings = {
   connections: Connection[];
   favorites: Favorite[];
+  /** The default model for each job (see `jobRef`); a page's own model picker overrides it. */
   defaults: {
-    /** Used for writing chapters, unless a draft picks another model. */
+    /** Writing chapters, unless a draft picks another model. */
     main: ModelRef | null;
-    /** Cheaper model for summaries, suggestions and other small jobs. Falls back to `main` when null. */
+    /** Summaries, and any call that names no job. Falls back to `main` when null. */
     cheap: ModelRef | null;
-  };
+  } & Record<(typeof OWN_DEFAULT)[number], ModelRef | null>;
   /** null = use the provider's default. */
   temperature: number | null;
   /** Rough budget for the prompt context, so small local models aren't overflowed. */
@@ -103,8 +112,6 @@ export type Settings = {
   outline: OutlineOptions;
   /** How picture prompts are written: tags (SDXL, SD 1.5), booru tags (Illustrious, NoobAI, Pony) or plain sentences (Flux, SD3). */
   imagePromptStyle: ImagePromptStyle;
-  /** Model that writes picture prompts on the Illustrate page; null uses the cheaper default. */
-  imagePromptModel: ModelRef | null;
   /** The ComfyUI machine that makes pictures, and the choices last used on the Illustrate page. */
   comfy: ComfySettings;
   /** How the work queue (pictures and writing) shares the machine. */
@@ -203,7 +210,7 @@ export const QUEUE_COUNTS = [1, 2, 4, 5, 8] as const;
 export const DEFAULT_SETTINGS: Settings = {
   connections: [],
   favorites: [],
-  defaults: { main: null, cheap: null },
+  defaults: { main: null, cheap: null, choices: null, codex: null, tags: null, picture: null },
   temperature: null,
   contextTokens: 8000,
   autoReview: false,
@@ -214,7 +221,6 @@ export const DEFAULT_SETTINGS: Settings = {
   codexCategories: DEFAULT_CATEGORIES,
   outline: DEFAULT_OUTLINE,
   imagePromptStyle: "tags",
-  imagePromptModel: null,
   comfy: { url: "", width: 1344, height: 768, coverWidth: 832, coverHeight: 1216, sizeScale: 1, count: 4, drawPresets: DEFAULT_DRAW_PRESETS, editPresets: DEFAULT_EDIT_PRESETS, editPreset: "qwen-image-edit", picturesOldestFirst: false, queueCount: 1, batchClicks: true, allowNudity: true },
   queue: DEFAULT_QUEUE,
 };
@@ -242,7 +248,8 @@ const favoriteSchema = refSchema.extend({
   hiddenFrom: z
     .array(z.unknown())
     .catch([])
-    .transform((xs) => MODEL_USE_IDS.filter((u) => xs.includes(u))),
+    .transform((xs) => MODEL_USE_IDS.filter((u) => xs.includes(u) || xs.some((x) => typeof x === "string" && OLD_USES[x]?.includes(u)))),
+  context: z.number().int().min(1000).max(2_000_000).nullable().catch(null),
 });
 
 const loraSchema = z.object({
@@ -388,7 +395,14 @@ const settingsSchema = z.object({
   connections: listOf(connectionSchema),
   favorites: listOf(favoriteSchema),
   defaults: z
-    .object({ main: refSchema.nullable().catch(null), cheap: refSchema.nullable().catch(null) })
+    .object({
+      main: refSchema.nullable().catch(null),
+      cheap: refSchema.nullable().catch(null),
+      choices: refSchema.nullable().catch(null),
+      codex: refSchema.nullable().catch(null),
+      tags: refSchema.nullable().catch(null),
+      picture: refSchema.nullable().catch(null),
+    })
     .catch(DEFAULT_SETTINGS.defaults),
   temperature: z.number().min(0).max(2).nullable().catch(null),
   contextTokens: z.number().int().min(1000).max(2_000_000).catch(DEFAULT_SETTINGS.contextTokens),
@@ -417,7 +431,8 @@ const settingsSchema = z.object({
     })
     .catch(DEFAULT_OUTLINE),
   imagePromptStyle: z.enum(["tags", "booru", "natural"]).catch("tags"),
-  imagePromptModel: refSchema.nullable().catch(null),
+  // The picture-prompt model from before the Models grid; parseSettings moves it to `defaults.picture`.
+  imagePromptModel: refSchema.nullable().optional().catch(null),
   comfy: z
     .preprocess(
       (v) => upgradeComfy(v),
@@ -492,14 +507,22 @@ export function parseSettings(raw: unknown): Settings {
       label: f.label,
       disableThinking: f.disableThinking ?? { write: legacyThinking, other: legacyThinking },
       hiddenFrom: f.hiddenFrom,
+      context: f.context,
     }));
-  const live = (r: ModelRef | null) => (r && seen.has(r.connectionId) ? { connectionId: r.connectionId, model: r.model } : null);
+  const live = (r: ModelRef | null | undefined) => (r && seen.has(r.connectionId) ? { connectionId: r.connectionId, model: r.model } : null);
+  const { imagePromptModel, defaults: d, ...rest } = s;
   return {
-    ...s,
+    ...rest,
     connections,
     favorites,
-    defaults: { main: live(s.defaults.main), cheap: live(s.defaults.cheap) },
-    imagePromptModel: live(s.imagePromptModel),
+    defaults: {
+      main: live(d.main),
+      cheap: live(d.cheap),
+      choices: live(d.choices),
+      codex: live(d.codex),
+      tags: live(d.tags),
+      picture: live(d.picture ?? imagePromptModel),
+    },
     comfy: soundPresets(s.comfy),
     codexCategories: withPerForm(s.codexCategories),
   };
@@ -544,11 +567,33 @@ export function favoritesFor(s: Settings, use: ModelUse): Favorite[] {
 }
 
 /** A newly starred model: offered for every job, with thinking left as the model does it. */
-export const newFavorite = (r: ModelRef): Favorite => ({ connectionId: r.connectionId, model: r.model, label: "", disableThinking: { write: false, other: false }, hiddenFrom: [] });
+export const newFavorite = (r: ModelRef): Favorite => ({ connectionId: r.connectionId, model: r.model, label: "", disableThinking: { write: false, other: false }, hiddenFrom: [], context: null });
 
 /** The default model for a kind of job. */
 export function defaultRef(s: Settings, role: "main" | "cheap"): ModelRef | null {
   return role === "cheap" ? (s.defaults.cheap ?? s.defaults.main) : s.defaults.main;
+}
+
+/** The default model for a job: Writing is `main`, Summaries is `cheap`, and the others have their own or follow Summaries. */
+export function jobRef(s: Settings, use: ModelUse): ModelRef | null {
+  if (use === "write") return s.defaults.main;
+  if (use === "summaries") return defaultRef(s, "cheap");
+  return s.defaults[use] ?? defaultRef(s, "cheap");
+}
+
+/** The default for one job set to `ref`, leaving every other job's default as it was. */
+export function withJobDefault(s: Settings, use: ModelUse, ref: ModelRef | null): Settings {
+  if (use === "write") return { ...s, defaults: { ...s.defaults, main: ref } };
+  if (use !== "summaries") return { ...s, defaults: { ...s.defaults, [use]: ref } };
+  // The jobs that follow Summaries keep the model they have now.
+  const kept = Object.fromEntries(OWN_DEFAULT.map((u) => [u, jobRef(s, u)]));
+  return { ...s, defaults: { ...s.defaults, ...kept, cheap: ref } };
+}
+
+/** How many tokens of prompt a job's call may use: its model's own context, else the global setting. */
+export function contextFor(s: Settings, use: ModelUse, model?: ModelRef | null): number {
+  const ref = model ?? jobRef(s, use);
+  return (ref && favoriteFor(s, ref)?.context) || s.contextTokens;
 }
 
 /** How a model is named in the interface: its nickname or id, and the connection it's on. */
@@ -577,8 +622,14 @@ export function removeConnection(s: Settings, id: string): Settings {
     ...s,
     connections: s.connections.filter((c) => c.id !== id),
     favorites: s.favorites.filter((f) => f.connectionId !== id),
-    defaults: { main: keep(s.defaults.main), cheap: keep(s.defaults.cheap) },
-    imagePromptModel: keep(s.imagePromptModel),
+    defaults: {
+      main: keep(s.defaults.main),
+      cheap: keep(s.defaults.cheap),
+      choices: keep(s.defaults.choices),
+      codex: keep(s.defaults.codex),
+      tags: keep(s.defaults.tags),
+      picture: keep(s.defaults.picture),
+    },
   };
 }
 
