@@ -82,18 +82,18 @@ try {
     ["prompt", promptBox],
     ["always include", side.locator("label", { hasText: "Always include" }).locator("textarea")],
     ["negative", side.getByRole("textbox", { name: "Negative prompt", exact: true })],
-    ["size", side.getByLabel("Size", { exact: true })],
-    ["pictures per click", side.getByLabel("Pictures per click")],
     ["drawing preset", side.getByLabel("Drawing preset")],
     ["seed", side.getByText("Keep seed")],
     ["instruct", side.getByRole("heading", { name: "Instruct" })],
+    ["size", side.getByLabel("Size", { exact: true })],
+    ["pictures per click", side.getByLabel("Pictures per click")],
   ];
   const boxes = [];
   for (const [name, l] of parts) boxes.push([name, await at(l)]);
   const missing = boxes.filter(([, b]) => !b).map(([n]) => n);
   ok(missing.length === 0, "the side column has every control: " + (missing.join(", ") || "all"));
   const outOfOrder = boxes.filter(([, b], i) => i > 0 && b && boxes[i - 1][1] && b.y < boxes[i - 1][1].y - 1).map(([n]) => n);
-  ok(missing.length === 0 && outOfOrder.length === 0, "…in order: moment, what to show, model, Prompt, always include, negative, size, pictures per click, drawing preset, seed, Instruct " + JSON.stringify(outOfOrder));
+  ok(missing.length === 0 && outOfOrder.length === 0, "…in order: moment, what to show, model, Prompt, always include, negative, drawing preset, seed, Instruct, size, pictures per click " + JSON.stringify(outOfOrder));
   const model = await at(side.getByLabel("Model for picture prompts"));
   const write = await at(side.getByRole("button", { name: "Write prompt", exact: true }));
   const sideBox = await side.boundingBox();
@@ -105,7 +105,7 @@ try {
   const queue = await at(side.getByRole("button", { name: "Queue", exact: true }));
   ok(scale.x > size.x && Math.abs(scale.y - size.y) < 12, "the scale is beside the size");
   ok(Math.abs(perClick.y - queue.y) < 12 && perClick.x < queue.x && perClick.y > size.y, "under them, pictures per click and then Queue");
-  ok(queue.y < (await at(side.getByLabel("Drawing preset"))).y, "Queue comes before the drawing preset");
+  ok(queue.y > (await at(side.getByLabel("Drawing preset"))).y, "Size and Queue come last in the column, after the drawing preset");
   ok((await page.locator(".generate-dock").count()) === 0, "there is no dock at the bottom of the screen: Size and Queue are in the column");
 
   // ---- the pictures and the chapter in the story column ----
