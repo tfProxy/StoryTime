@@ -242,6 +242,9 @@ try {
   ok((await side.locator(".desk-pin").count()) === 0 && (await side.locator(".desk-pick-chip", { hasText: "pinned" }).count()) > 0, "the phone's codex sheet has no prompt toggles, but still marks the pinned Lantern");
   await page.locator(".desk-sheet-head").getByRole("button", { name: "Close" }).click();
   ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), "at phone width the page fits the screen");
+  // The text typed above is saved half a second after the last change: the iPad below reads it from the server, so wait
+  // for the save before this window goes (closing it sooner lost the text, and the iPad then had no names to list).
+  ok(!!(await until(async () => (await draftOf(`edit:${A}`))?.body?.includes("carrying the Lantern"))), "the text typed at phone width is saved to the draft");
   await context.close();
 
   // ---- an iPad (touch, no mouse): the line stays under the text instead of floating ----
