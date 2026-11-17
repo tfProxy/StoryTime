@@ -20,7 +20,8 @@ and, for pictures, your own ComfyUI machine.
     and **Illustrate** (the picture controls, with the chapter's pictures in the story column);
   - the **open entry**, with its facts, preview, suggestions and history, changed right there;
   - the **story**: the earlier chapters on the path as blocks that fold (**Unfold all** / **Fold
-    all**; ✎ moves the desk to that chapter), the **→** line with the choice that leads here (click it
+    all**; ✎ moves the desk to that chapter; unfolded, a chapter shows its pictures in its text, folded, an
+    icon for each that shows it full screen), the **→** line with the choice that leads here (click it
     to rename the choice), the chapter's box, and under a posted chapter **What happens next?**, its
     choices (a written one opens its chapter on the desk, an unwritten one starts it; add a choice, or
     **Suggest choices**).

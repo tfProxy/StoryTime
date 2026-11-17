@@ -7660,6 +7660,26 @@ button.link-button.ef-since-link {
   text-decoration: none;
 }
 
+/* A folded block's icon for one of its pictures. */
+.desk-block-picture {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: 0;
+  padding: 0.2rem;
+  color: var(--muted);
+}
+
+.desk-block-picture:hover {
+  color: var(--fg);
+}
+
+.desk-block-picture svg {
+  width: 1.3em;
+  height: 1.3em;
+}
+
 .desk-block-edit:hover {
   border-color: var(--accent);
 }
