@@ -70,7 +70,9 @@ and, for pictures, your own ComfyUI machine.
   the chapter where it became true. Tap a fact to change it: its text, which forms it **applies to**,
   and whether it is **a change in the story** from this chapter on (earlier chapters keep the old text)
   or **a correction** (it was always so). A fact's **⋯** has its **History**, **Remove from this
-  chapter on** and **Retcon the chapters…**. **+ Add a fact** adds one.
+  chapter on**, **Move to an earlier chapter…** (it then holds from that chapter on, as if entered
+  there; it can't go back past another change of the same fact, or before the entry first appears) and
+  **Retcon the chapters…**. **+ Add a fact** adds one.
   A fact's aspect is picked from the **fact categories** in **Settings › Codex**: one list for each
   type of entry, shared by every story (Species, Skin, Teeth, Personality…). The AI must use them
   too: what it calls "fur" or "temperament" is filed under Skin or Personality, and when nothing on
