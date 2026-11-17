@@ -28,6 +28,7 @@ export default function ChapterChoices({
   hasOriginal = false,
   showOriginal = false,
   desk = false,
+  reading = false,
 }: {
   storyId: string;
   chapterId: string;
@@ -44,6 +45,8 @@ export default function ChapterChoices({
   hasOriginal?: boolean;
   showOriginal?: boolean;
   desk?: boolean;
+  /** On the desk, the chapter is read, not edited: a written choice opens its chapter read too (`?read=1`). */
+  reading?: boolean;
 }) {
   const markOriginal = hasOriginal && showOriginal;
   const ChoiceLink = desk ? DeskLink : Link;
@@ -60,7 +63,7 @@ export default function ChapterChoices({
             {c.label}
           </div>
         ) : c.child_chapter_id ? (
-          <ChoiceLink key={c.id} href={desk ? `/c/${c.child_chapter_id}/desk` : `/c/${c.child_chapter_id}`} className="card choice-written" title="Written">
+          <ChoiceLink key={c.id} href={desk ? `/c/${c.child_chapter_id}/desk${reading ? "?read=1" : ""}` :`/c/${c.child_chapter_id}`} className="card choice-written" title="Written">
             <svg className="choice-icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M4 5.5C6.5 4.5 9.5 4.5 12 6c2.5-1.5 5.5-1.5 8-.5v13c-2.5-1-5.5-1-8 .5-2.5-1.5-5.5-1.5-8-.5z M12 6v13" />
             </svg>

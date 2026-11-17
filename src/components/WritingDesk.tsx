@@ -35,7 +35,8 @@ import CodexIconPicker from "./CodexIconPicker";
 import { ChangeList, comparisonTitle, type Relation } from "./CodexComparison";
 import { useCodexInbox } from "./CodexInbox";
 import DeskIllustrate from "./DeskIllustrate";
-import DeskPath, { showDeskChapter, type PathBlock } from "./DeskPath";
+import DeskPath, { DeskReading, showDeskChapter, type PathBlock } from "./DeskPath";
+import type { ImageVersions } from "@/lib/imageSlots";
 import DeskPhone, { usePhone, type PhoneSheet } from "./DeskPhone";
 import type { IllustrateProps } from "./IllustrateWorkspace";
 import DeskSuggestions from "./DeskSuggestions";
@@ -167,6 +168,10 @@ type DeskProps = {
   nextCount?: number;
   illustrate?: IllustrateProps | null;
   mode?: DeskMode;
+  /** The posted chapter is read, not edited (`?read=1`): its text in place of the box, with ✎ to edit it. */
+  reading?: { title: string; body: string; via: string | null; images: ImageVersions };
+  /** Where the box's "Stop editing" goes: the chapter (or, for a new one, the chapter it follows) read on the desk. */
+  stopHref?: string;
 };
 
 /**
@@ -190,6 +195,8 @@ export default function WritingDesk({
   nextCount = 0,
   illustrate = null,
   mode: initialMode = "codex",
+  reading,
+  stopHref,
 }: DeskProps) {
   // The chapter's box (with the "→ …" line above it) is scrolled into view on arriving, from outside or by a move, once
   // its draft has loaded (the box is short until then, and the page couldn't scroll that far).
@@ -526,14 +533,16 @@ export default function WritingDesk({
       {/* Hidden, not removed, in Illustrate mode: an unsaved edit is still there when Codex is chosen again. */}
       {/* The path, the box and "What happens next?" belong to Codex mode; Illustrate shows the chapter's pictures. */}
       <div className="desk-story" hidden={illus}>
-        <h1 className="visually-hidden">{editor ? `Edit “${here.title}”` : "New chapter"}</h1>
+        <h1 className="visually-hidden">{reading ? `“${here.title}”` : editor ? `Edit “${here.title}”` : "New chapter"}</h1>
         <DeskPath storyId={storyId} blocks={pathBlocks} onQuote={phone ? undefined : startQuote} />
         <div className="desk-here" ref={hereRef} tabIndex={-1}>
-          {editor ? (
+          {reading ? (
+            <DeskReading chapterId={chapterId} reading={reading} onText={onText} />
+          ) : editor ? (
             // An Update makes a new revision: the box starts again from the chapter, its drafts kept with it.
-            <ChapterEditEntry key={editor.baseRevision} {...editor} desk={{ onText, menuSlot, onNote: setNote, onOverrides: setOverrides, onSelection: setSelected, belowText }} />
+            <ChapterEditEntry key={editor.baseRevision} {...editor} desk={{ onText, menuSlot, onNote: setNote, onOverrides: setOverrides, onSelection: setSelected, belowText, stopHref }} />
           ) : newChapter ? (
-            <ChapterEditor {...newChapter} desk={{ onText, menuSlot, onNote: setNote, onHeld: setHeld, onOverrides: setOverrides, onSelection: setSelected, belowText }} />
+            <ChapterEditor {...newChapter} desk={{ onText, menuSlot, onNote: setNote, onHeld: setHeld, onOverrides: setOverrides, onSelection: setSelected, belowText, stopHref }} />
           ) : null}
         </div>
         {next}

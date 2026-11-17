@@ -26,6 +26,10 @@ and, for pictures, your own ComfyUI machine.
     choices (a written one opens its chapter on the desk, an unwritten one starts it; add a choice, or
     **Suggest choices**).
 
+  **Stop editing**, beside the box's title, shows the chapter's text and pictures in place of the box
+  (on a new chapter, the chapter it follows), with ✎ to edit it again. While reading, a written choice
+  opens its chapter to read too; while editing, it opens it to edit. The draft is kept as it was.
+
   The box has the title, **Prompt and drafts** (the prompt, length, writing model and **Generate**;
   each Generate adds a numbered draft that keeps its prompt, and ✓ marks the one the chapter reads
   as), the text (the codex entries it names are listed under it; select words for **Add as a

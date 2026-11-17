@@ -49,6 +49,41 @@ function PictureIcon({ chapterId, slot, version }: { chapterId: string; slot: Im
 }
 
 /**
+ * The chapter on the desk, read and not edited (`?read=1`): in place of its box, its title with ✎ to edit it, then its
+ * text with its pictures. `onText` hears the text, as the box's would, for the desk's "In this chapter".
+ */
+export function DeskReading({
+  chapterId,
+  reading,
+  onText,
+}: {
+  chapterId: string;
+  reading: { title: string; body: string; via: string | null; images: ImageVersions };
+  onText: (text: string, body: string) => void;
+}) {
+  const { title, body, via, images } = reading;
+  useEffect(() => onText(`${title}\n\n${body}`, body), [title, body, onText]);
+  return (
+    <>
+      {via && <DeskVia label={via} />}
+      <section className="desk-box desk-reading" aria-label="The chapter">
+        <div className="desk-reading-head">
+          <h2>{title}</h2>
+          <DeskLink href={`/c/${chapterId}/desk`} className="desk-block-edit" aria-label={`Edit “${title}”`} title="Edit this chapter">
+            ✎
+          </DeskLink>
+        </div>
+        <div className="desk-block-text">
+          <ChapterImage chapterId={chapterId} slot="header" version={images.header} />
+          <Prose text={body} middle={<ChapterImage chapterId={chapterId} slot="middle" version={images.middle} />} />
+          <ChapterImage chapterId={chapterId} slot="footer" version={images.footer} />
+        </div>
+      </section>
+    </>
+  );
+}
+
+/**
  * The path above the chapter's box: each earlier chapter is a block that folds. Folded, it shows its number, title and
  * summary, and an icon for each of its pictures; unfolded, its title and text, with its pictures where the reading
  * page puts them. ✎ makes it the chapter on the desk. Every block starts folded, however

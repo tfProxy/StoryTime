@@ -9,6 +9,7 @@ import { getCodexFacts, getCodexOps, getContextCodex, nextFormChange } from "@/l
 import { codexIcons, iconChoices } from "@/lib/codexIcons";
 import { contentNotes } from "@/lib/contentNotes";
 import { deskPathBlocks, newChapterCodex } from "@/lib/deskProps";
+import { chapterImageVersions } from "@/lib/chapterImages";
 import { choiceDraftMarks } from "@/lib/draftMarks";
 import { illustrateProps } from "@/lib/illustrateProps";
 import { type Chapter, getChoices, getIncomingChoice, getPath, getStory, storyHasOriginal, type Story } from "@/lib/stories";
@@ -23,13 +24,15 @@ export const dynamic = "force-dynamic";
 // `?ai=1` on a new chapter starts a Generate as soon as its (empty) draft loads.
 // Above the box, the earlier chapters on the path are blocks that fold; under a posted chapter's box, "What happens
 // next?" lists its choices, each opening its chapter on the desk.
+// `?read=1` shows the chapter's text in place of its box, with ✎ to edit it: Stop editing opens it so, and a written
+// choice followed from it opens its chapter so too.
 // `?side=illustrate` opens the side column in Illustrate mode, with the chapter's pictures in the story column.
 export default async function DeskPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ choice?: string; new?: string; posted?: string; side?: string; ai?: string }>;
+  searchParams: Promise<{ choice?: string; new?: string; posted?: string; side?: string; ai?: string; read?: string }>;
 }) {
   const { id } = await params;
   const query = await searchParams;
@@ -60,10 +63,18 @@ export default async function DeskPage({
   const storyChapters = getStoryChapters(story.id);
   const laterForms = Object.fromEntries(foldCodex(ops, facts).map((e) => [e.entry_id, nextFormChange(e.entry_id, id)]));
   const choices = getChoices(id);
+  // ?read=1: the chapter is read on the desk, not edited (Stop editing; a written choice followed while reading).
+  const reading = query.read === "1";
 
   return (
     <WritingDesk
-      key={id}
+      key={reading ? `${id}|read` : id}
+      reading={
+        reading
+          ? { title: chapter.title, body: chapter.body, via: getIncomingChoice(id)?.label ?? null, images: chapterImageVersions([id]).get(id)! }
+          : undefined
+      }
+      stopHref={`/c/${id}/desk?read=1`}
       bar={
         <>
           <Link href={`/c/${id}`}>← Back to “{chapter.title}”</Link>
@@ -74,6 +85,7 @@ export default async function DeskPage({
       next={
         <ChapterChoices
           desk
+          reading={reading}
           storyId={story.id}
           chapterId={id}
           choices={choices}
@@ -136,6 +148,7 @@ function newChapter(story: Story, path: Chapter[], query: { choice?: string; new
       bar={<Link href={`/c/${parent.id}`}>← Back to “{parent.title}”</Link>}
       codex={codex}
       pathBlocks={deskPathBlocks(path)}
+      stopHref={`/c/${parent.id}/desk?read=1`}
       newChapter={{
         target,
         context: {
