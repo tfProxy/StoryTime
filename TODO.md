@@ -72,7 +72,7 @@ One page that replaces the Edit and Write pages (`/c/<id>/edit`, `/c/<id>/write`
 - [x] 7. Tie the text to the codex: list the names found under the text and open their entry on click (underlining inside the text box comes later, it needs more than a textarea); select text, then "Add as a fact…" with the selection as the quote.
 - [x] 8. Phone layout: the box first (prompt, length, model, Generate, drafts, text, Post / Update), and a bottom bar opening the path, the codex (a sheet for looking things up; full entry editing is for wide screens), Illustrate and the choices.
 - [x] 9. Switch over: Edit and Write open the desk, the old pages and the codex drawer go, the browser tests and the guides are updated. It closes "'Remove from this chapter only' is not offered in the writing page's codex drawer" under Codex.
-- [ ] Later: Ctrl+K to find an entry, Ctrl+Enter to Generate, Alt+↑/↓ along the path.
+- [ ] Later: Ctrl+K to find an entry, Alt+↑/↓ along the path. (Ctrl+Enter in the prompt box is Generate.)
 
 **Tidying the app**
 - [ ] Maybe: bring back "download this path" (Markdown or HTML of the route to a chapter) in the chapter's ⋯ menu. It was dropped when the downloads moved to Details › Export; "Read this path" still shows the route on one page.

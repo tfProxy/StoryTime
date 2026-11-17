@@ -1104,6 +1104,13 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
               placeholder="Describe the chapter. [Square brackets] hold extra instructions."
               value={draft.prompt}
               onChange={(e) => patch({ prompt: e.target.value })}
+              // Ctrl+Enter (⌘ on a Mac) is Generate, for the prompt, Generate, adjust loop.
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey) || e.nativeEvent.isComposing) return;
+                e.preventDefault();
+                if (busy === null) startGenerate();
+              }}
+              title="Ctrl+Enter generates"
             />
             <div className="row desk-gen-row">
               <select aria-label="Length" value={length} onChange={(e) => patch({ length: e.target.value as Length })} style={{ width: "auto" }}>

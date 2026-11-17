@@ -92,15 +92,17 @@ try {
   const draftButtons = box.locator(".desk-drafts").getByRole("button");
   ok((await draftButtons.allInnerTexts()).join("|") === "1 ✓", "one draft, the chapter's, marked ✓");
 
-  const generate = async (prompt, count) => {
+  const generate = async (prompt, count, keys = false) => {
     await promptBox.fill(prompt);
-    await genRow.getByRole("button", { name: /^Generate/ }).click();
+    if (keys) await promptBox.press("Control+Enter");
+    else await genRow.getByRole("button", { name: /^Generate/ }).click();
     await until(async () => (await draftButtons.count()) === count && (await genRow.getByRole("button", { name: "Generate again" }).isEnabled().catch(() => false)));
     await page.waitForFunction(() => !/Writing/.test(document.querySelector(".desk-gen-row")?.textContent ?? ""));
   };
   await generate("First idea", 2);
-  await generate("Second idea", 3);
-  ok((await draftButtons.allInnerTexts()).join("|") === "1 ✓|2|3", "each Generate adds a numbered draft; ✓ stays on the chapter's: " + (await draftButtons.allInnerTexts()).join("|"));
+  await generate("Second idea", 3, true);
+  ok((await draftButtons.allInnerTexts()).join("|") === "1 ✓|2|3", "each Generate adds a numbered draft (the second by Ctrl+Enter in the prompt box); ✓ stays on the chapter's: " + (await draftButtons.allInnerTexts()).join("|"));
+  ok((await promptBox.inputValue()) === "Second idea", "Ctrl+Enter adds no line to the prompt");
   ok((await draftButtons.nth(2).getAttribute("aria-pressed")) === "true" && (await box.locator(".prose").innerText()).includes("Text number 2"), "the newest draft shows");
   ok((await box.locator(".desk-draft-prompt").count()) === 0, "the newest draft shows no prompt of its own");
 
