@@ -11,8 +11,10 @@ import type { ModelRef } from "./settingsSchema";
 /**
  * `ai`: the kept AI requests (keptRequests.ts) that wrote this text, oldest first; absent for text written by hand.
  * `prompt`: the prompt of the Generate that made it (absent for text written by hand, and in versions kept before this).
+ * `model`, `at`: the model a Generate wrote it with and when it started (absent in versions kept before this), for the
+ * desk's label on each draft.
  */
-export type DraftVersion = { title: string; body: string; ai?: string[]; prompt?: string };
+export type DraftVersion = { title: string; body: string; ai?: string[]; prompt?: string; model?: string; at?: number };
 
 export type Draft = {
   /**

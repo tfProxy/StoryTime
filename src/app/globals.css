@@ -7557,11 +7557,33 @@ button.link-button.ef-since-link {
   margin: 0;
 }
 
-/* ↻ beside Update / Post: the same as Generate again, at the end of the text. */
-.desk-try-again {
-  min-width: 44px;
-  font-size: 1.15rem;
-  line-height: 1;
+/*
+ * The foot stays at the bottom of the window while the box is scrolled through, so Generate again and Post or Update
+ * are in reach wherever the reading is. It spans the box's padding, to cover the text passing under it.
+ */
+.desk-box-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: 0 -1rem -0.9rem;
+  padding: 0.6rem 1rem 0.9rem;
+  background: var(--card);
+  border-radius: 0 0 8px 8px;
+}
+
+/* The "Named in the text" line sticks just above it (ChapterEditor gives the box the foot's height). */
+@media (hover: hover) and (pointer: fine) {
+  .desk-box .desk-named {
+    bottom: var(--desk-foot-h, 0px);
+  }
+}
+
+/* On a touch screen the window's bottom is measured without the on-screen keyboard, so while a box is typed in the
+   foot would float mid-screen: it goes back to its place under the text until the typing ends. */
+@media (hover: none), (pointer: coarse) {
+  .desk-box:has(textarea:focus, input:focus) .desk-box-foot {
+    position: static;
+  }
 }
 
 /* "Draft not used" on a written choice and in the Drafts list. */
@@ -7806,6 +7828,16 @@ button.link-button.ef-since-link {
 
   html:has(.desk-phone-open) {
     overflow: hidden;
+  }
+
+  /* The box's foot sticks just above the bottom bar, as one row of buttons: its notes (the draft's line is in the
+     drafts row too) would make it two or three rows over the text. */
+  .desk-box-foot {
+    bottom: calc(var(--desk-tabbar-h) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .desk-box-foot .meta {
+    display: none;
   }
 
   .desk:not(.desk-illus) .desk-side,

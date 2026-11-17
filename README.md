@@ -32,11 +32,12 @@ and, for pictures, your own ComfyUI machine.
 
   The box has the title, **Prompt and drafts** (the prompt, length, writing model and **Generate**;
   each Generate adds a numbered draft that keeps its prompt, and ✓ marks the one the chapter reads
-  as; the prompt starts with the text of the choice that leads to the chapter, to add to or reword,
+  as; hover over a draft's number for its length, model, time and how its prompt starts; the prompt starts with the text of the choice that leads to the chapter, to add to or reword,
   and Generate sends only what the box holds; Ctrl+Enter in the prompt is Generate; on a posted
   chapter a Generate leaves the title alone and offers its own under it, with **Use it**), the text (the codex entries it names are listed under it; select words for **Add as a
   fact…**), **Summary**, and one button: **Post chapter** on a new chapter, which makes it and stays
   on it, or **Update chapter** on a posted one, which replaces its text (History keeps the old). The
+  button, with **Generate again** beside it, stays at the bottom of the window while you read. The
   summary is written by the AI after a Post or Update, unless you write your own ("yours · not
   rewritten" until **Let the AI rewrite it**). Choices are added once the chapter is posted. The top
   bar's **⋯** has the summary model, History, Write ahead, the reading page, **Remove the AI mark**,

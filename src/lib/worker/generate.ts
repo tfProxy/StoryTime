@@ -11,10 +11,10 @@ import {
 import { withPathSummaries } from "../aiRuns/writeChapter";
 import type { Draft } from "../drafts";
 import { getDraft, putDraft } from "../draftStore";
-import { applyAfterGenerate, applyGenerated, isBegun } from "../generatedDraft";
+import { applyAfterGenerate, applyGenerated, isBegun, type Made } from "../generatedDraft";
 import { LIMITS } from "../limits";
 import { getSettings } from "../settingsStore";
-import { contextFor, parseSettings } from "../settingsSchema";
+import { contextFor, jobRef, parseSettings } from "../settingsSchema";
 import { publish, workerState } from "./bus";
 import { createItem, deleteItem, getItem, updateItem, type WorkRow } from "./items";
 import { selfFetch } from "./selfFetch";
@@ -124,11 +124,11 @@ export function generateCatchUp(draftKey: string): GenerateEvent[] {
 }
 
 /** Puts the text into the draft, once more if the draft changed meanwhile. */
-function saveGenerated(req: GenerateRequest, text: string, ai: string | undefined, after?: GenerateAfter) {
+function saveGenerated(req: GenerateRequest, made: Made, text: string, ai: string | undefined, after?: GenerateAfter) {
   for (let attempt = 0; ; attempt++) {
     const stored = getDraft(req.key) as (Draft & Record<string, unknown>) | null;
     const d: Draft = stored ?? { ...req.draft, key: req.key, updatedAt: 0 };
-    let next = applyGenerated(d, parseChapterOutput(text), { continued: isBegun(d, req.base), ai, prompt: req.direction });
+    let next = applyGenerated(d, parseChapterOutput(text), { continued: isBegun(d, req.base), ai, prompt: req.direction, made });
     if (after) next = applyAfterGenerate(next, after);
     const saved = putDraft(req.key, next as unknown as Record<string, unknown>, { base: stored ? stored.updatedAt : null });
     if (saved.ok) return;
@@ -149,6 +149,8 @@ export async function runGenerate(draftKey: string): Promise<void> {
   }
   const req = item.data.request as GenerateRequest;
   const settings = getSettings() ?? parseSettings({});
+  // Kept with the draft this makes, for the desk's label on it.
+  const made: Made = { model: (req.model ?? jobRef(settings, "write"))?.model, at: Date.now() };
   const run: { text: string; ctl: AbortController; discard?: boolean; step?: { text: string; since: number }; thinking: string; kept?: string } = { text: "", ctl: new AbortController(), thinking: "" };
   workerState().generates.set(draftKey, run);
   updateItem(itemKey, { state: "working", data: { note: undefined, error: undefined, text: undefined } });
@@ -193,7 +195,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
       }
       if (Date.now() - lastSave > 3000) {
         lastSave = Date.now();
-        saveGenerated(req, run.text, run.kept);
+        saveGenerated(req, made, run.text, run.kept);
       }
     }
     const chapter = parseChapterOutput(run.text);
@@ -218,7 +220,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
         }
       }
     }
-    saveGenerated(req, run.text, run.kept, after);
+    saveGenerated(req, made, run.text, run.kept, after);
     tell({ type: "text", text: run.text, base: req.base, ai: run.kept });
     tell({ type: "done", after });
     updateItem(itemKey, { state: "done", data: { note: undefined, noteAt: undefined } });
@@ -227,7 +229,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
       // Stopped: what was written stays in the draft (unless the draft was deleted).
       if (run.text && !run.discard) {
         try {
-          saveGenerated(req, run.text, run.kept);
+          saveGenerated(req, made, run.text, run.kept);
         } catch {
           // the draft changed; the stop still stands
         }
@@ -238,7 +240,7 @@ export async function runGenerate(draftKey: string): Promise<void> {
       let message = e instanceof Error ? e.message : String(e);
       if (run.text && !(e instanceof DraftChanged)) {
         try {
-          saveGenerated(req, run.text, run.kept);
+          saveGenerated(req, made, run.text, run.kept);
         } catch (saveError) {
           if (saveError instanceof DraftChanged) e = saveError;
         }

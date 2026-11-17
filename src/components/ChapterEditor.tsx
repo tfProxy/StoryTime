@@ -1,18 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LIMITS } from "@/lib/limits";
-import { usableRef, useSettings, type ModelRef } from "@/lib/settings";
+import { jobRef, usableRef, useSettings, type ModelRef } from "@/lib/settings";
 import { LENGTH_WORDS, parseChapterOutput, type CodexOverrides, type Length, type StoryContext } from "@/lib/ai/prompts";
 import type { PathChapter } from "@/lib/ai/codexAi";
 import type { ChapterWriting } from "@/lib/chapterWriting";
 import { foldWithDraft, isDraftEntry, isDraftFact, type CodexChange, type CodexOp, type FactChange, type FactOp } from "@/lib/codex";
 import { markDeskMove } from "@/lib/deskMove";
-import { deleteDraft, DraftConflict, emptyDraft, getDraft, saveDraft, type Draft } from "@/lib/drafts";
-import { applyAfterGenerate, applyGenerated, isBegun, keptVersions, restore, snapshot } from "@/lib/generatedDraft";
+import { deleteDraft, DraftConflict, emptyDraft, getDraft, saveDraft, type Draft, type DraftVersion } from "@/lib/drafts";
+import { applyAfterGenerate, applyGenerated, isBegun, keptVersions, restore, snapshot, type Made } from "@/lib/generatedDraft";
 import { useWorkQueue, type GenerateItem } from "./WorkQueue";
 import Prose from "./Prose";
 import { GenerateStep, ThinkingFold } from "./GenerateProgress";
@@ -230,6 +230,19 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const busyRef = useRef(false);
   // The prompt of the Generate this page started, kept with the draft it makes (the box may change while it writes).
   const genPromptRef = useRef<string | null>(null);
+  // …and its model and start time, for the draft's label (the server's draft, which says the same, replaces this one).
+  const genMadeRef = useRef<Made | undefined>(undefined);
+  // The foot of the box (Generate again, Post or Update) stays at the bottom of the window: its height is given to the
+  // box, so the "Named in the text" line can stick just above it.
+  const footRef = useCallback((el: HTMLDivElement | null) => {
+    const box = el?.parentElement;
+    if (!el || !box) return;
+    const measure = () => box.style.setProperty("--desk-foot-h", `${el.offsetHeight}px`);
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, []);
   // The box: "Prompt and drafts" starts folded on a posted chapter and unfolded on a new one, or on a phone
   // (where the desk is for writing: the prompt and Generate come first); "Summary" folded. Null until it is toggled.
   const phone = usePhone();
@@ -453,7 +466,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     if (generatingRef.current) setReading(true);
     return listenDraft(draftKey, {
       onText: (text, base, ai) => {
-        setDraft((d) => (d ? applyGenerated(d, parseChapterOutput(text), { continued: isBegun(d, base), ai, prompt: genPromptRef.current ?? undefined }) : d));
+        setDraft((d) => (d ? applyGenerated(d, parseChapterOutput(text), { continued: isBegun(d, base), ai, prompt: genPromptRef.current ?? undefined, made: genMadeRef.current }) : d));
         setGenWords(countWords(parseChapterOutput(text).body));
       },
       onStep: (text, since) => setGenStep({ text, since }),
@@ -579,6 +592,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     setGenWords(0);
     setReading(true);
     genPromptRef.current = draft.prompt;
+    genMadeRef.current = { model: (writeModel ?? jobRef(settings, "write"))?.model, at: Date.now() };
     // What is typed on the page is saved first, so the server builds on it (the page stops saving while it generates).
     if (!conflictRef.current && !isBlank(draft, target)) queueSave(draft);
     void saveChainRef.current.then(() => generate({
@@ -1001,6 +1015,21 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             : "This draft differs from the chapter. Update chapter to use it.";
   // "draft 6 of 7 · 1,000 words": in the drafts row, and again at the foot of the box, where the reading ends.
   const draftsNote = n > 0 ? `${deskAt === readsAs && showingIsChapter ? "the chapter's text" : `draft ${deskAt + 1} of ${n}`} · ${words.toLocaleString()} word${words === 1 ? "" : "s"}` : null;
+  // What tells one numbered draft from another: its length, the model that wrote it and when, and how its prompt starts.
+  // Shown on hovering its button, and (but for the prompt) in the drafts line for the one showing.
+  const madeBy = (v: DraftVersion | undefined) =>
+    [v?.model, v?.at ? new Date(v.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null].filter(Boolean).join(" · ");
+  const draftTip = (i: number) => {
+    const v = deskDrafts[i];
+    const w = i === deskAt ? words : countWords(v.body);
+    const by = madeBy(v) || (v.prompt === undefined ? "written by hand" : "");
+    const prompt = v.prompt?.trim().replace(/\s+/g, " ");
+    return [
+      [`Draft ${i + 1}${i === readsAs ? " (the chapter's text)" : ""}`, `${w.toLocaleString()} word${w === 1 ? "" : "s"}`, by].filter(Boolean).join(" · "),
+      prompt ? `Prompt: ${prompt.length > 140 ? `${prompt.slice(0, 140)}…` : prompt}` : "",
+    ].filter(Boolean).join("\n");
+  };
+  const showingMadeBy = madeBy(deskDrafts[deskAt]);
   const menu =
     desk.menuSlot &&
     createPortal(
@@ -1141,6 +1170,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
                   className={i === deskAt ? "desk-draft on" : "desk-draft"}
                   aria-pressed={i === deskAt}
                   aria-label={`Draft ${i + 1}${i === readsAs ? ", the chapter's text" : ""}`}
+                  title={draftTip(i)}
                   disabled={busy !== null && i !== deskAt}
                   onClick={() => i !== deskAt && showVersion(i)}
                 >
@@ -1148,7 +1178,12 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
                   {i === readsAs && " ✓"}
                 </button>
               ))}
-              {draftsNote && <span className="meta desk-drafts-note">{draftsNote}</span>}
+              {draftsNote && (
+                <span className="meta desk-drafts-note">
+                  {draftsNote}
+                  {showingMadeBy && ` · ${showingMadeBy}`}
+                </span>
+              )}
             </div>
             {showingPrompt !== undefined && (
               <div className="desk-draft-prompt">
@@ -1212,23 +1247,17 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
           </div>
         )}
 
-        <div className="row desk-box-foot">
+        {/* Stays at the bottom of the window while the box is scrolled through (see .desk-box-foot). */}
+        <div className="row desk-box-foot" ref={footRef}>
           {draftsNote && <span className="meta desk-foot-drafts">{draftsNote}</span>}
-          <span className="meta">
+          <span className="meta desk-foot-note">
             {target.kind === "edit" ? updateNote : canPost ? "A draft: nobody can read it yet. Choices are added after posting." : "Post chapter turns on once there is text."}
           </span>
           <span className="desk-spacer" />
-          {/* Generate again where the reading ends, so a draft that doesn't work can be redone without scrolling up. */}
+          {/* Generate again in reach wherever the reading is, so a draft that doesn't work is redone without scrolling up. */}
           {hasBody && (
-            <button
-              type="button"
-              className="secondary desk-try-again"
-              aria-label="Try again: a new draft from the prompt"
-              title="Try again: a new draft from the prompt (as Generate again does)"
-              disabled={busy !== null}
-              onClick={startGenerate}
-            >
-              <span aria-hidden="true">↻</span>
+            <button type="button" className="secondary desk-try-again" title="A new draft from the prompt" disabled={busy !== null} onClick={startGenerate}>
+              {busy === "generate" ? "Writing…" : "Generate again"}
             </button>
           )}
           {target.kind === "edit" ? (

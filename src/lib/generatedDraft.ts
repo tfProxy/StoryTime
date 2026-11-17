@@ -22,23 +22,26 @@ export function restore(v: DraftVersion): Pick<Draft, "title" | "body" | "ai"> {
 export function keptVersions(d: Draft): DraftVersion[] {
   const kept = [...(d.versions ?? [snapshot(d)])];
   const at = d.versionIndex ?? kept.length - 1;
-  const prompt = kept[at]?.prompt;
-  kept[at] = prompt !== undefined ? { ...snapshot(d), prompt } : snapshot(d);
+  const { prompt, model, at: madeAt } = kept[at] ?? {};
+  kept[at] = { ...snapshot(d), ...(prompt !== undefined ? { prompt } : {}), ...(model !== undefined ? { model } : {}), ...(madeAt !== undefined ? { at: madeAt } : {}) };
   return kept;
 }
+
+/** What made a generated version, besides its prompt: the model's name and when the Generate started. */
+export type Made = { model?: string; at?: number };
 
 /**
  * A new generated draft gets its own version, with the prompt that makes it; the text it started from is kept as the
  * one before it. With no text to keep, the Generate writes into the version showing (the first, in a new draft).
  */
-export function startVersion(d: Draft, prompt = d.prompt): Pick<Draft, "versions" | "versionIndex"> {
+export function startVersion(d: Draft, prompt = d.prompt, made: Made = {}): Pick<Draft, "versions" | "versionIndex"> {
   if (!d.body.trim()) {
     const versions = [...(d.versions ?? [{ title: "", body: "" }])];
     const at = d.versionIndex ?? versions.length - 1;
-    versions[at] = { ...versions[at], prompt };
+    versions[at] = { ...versions[at], prompt, ...made };
     return { versions, versionIndex: at };
   }
-  const versions = [...keptVersions(d), { title: "", body: "", prompt }].slice(-MAX_VERSIONS);
+  const versions = [...keptVersions(d), { title: "", body: "", prompt, ...made }].slice(-MAX_VERSIONS);
   return { versions, versionIndex: versions.length - 1 };
 }
 
@@ -49,8 +52,8 @@ export function pushUndo(d: Draft): Draft["undo"] {
 }
 
 /** What happens when a Generate starts: the text now in the draft is kept as the previous version and in undo. */
-export function beginGenerated(d: Draft, prompt?: string): Draft {
-  return { ...d, undo: pushUndo(d), ...startVersion(d, prompt) };
+export function beginGenerated(d: Draft, prompt?: string, made?: Made): Draft {
+  return { ...d, undo: pushUndo(d), ...startVersion(d, prompt, made) };
 }
 
 /**
@@ -62,8 +65,8 @@ export function beginGenerated(d: Draft, prompt?: string): Draft {
  * A posted chapter being edited (an "edit:" draft) keeps the title it has, so an Update doesn't rename it unasked: the
  * generated title goes to `titleIdea`, for the desk to offer.
  */
-export function applyGenerated(d: Draft, text: { title: string | null; body: string }, opts: { continued?: boolean; ai?: string; prompt?: string } = {}): Draft {
-  const base = opts.continued ? d : { ...beginGenerated(d, opts.prompt), ai: undefined };
+export function applyGenerated(d: Draft, text: { title: string | null; body: string }, opts: { continued?: boolean; ai?: string; prompt?: string; made?: Made } = {}): Draft {
+  const base = opts.continued ? d : { ...beginGenerated(d, opts.prompt, opts.made), ai: undefined };
   const title =
     text.title === null
       ? {}

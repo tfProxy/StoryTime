@@ -245,7 +245,7 @@ try {
   await page.getByLabel("Chapter text").fill("Earlier words.");
   await until(async () => (await draftOf(`new:${g.chapter_id}`))?.body === "Earlier words.", "the first text to be saved");
   await until(async () => await page.evaluate(() => !!window.__storytimeQueue), "the queue hook");
-  await page.getByRole("button", { name: "Generate again" }).click();
+  await page.locator(".desk-gen-row").getByRole("button", { name: "Generate again" }).click();
   await until(async () => ai.active > 0, "the Generate to start", 100);
   await page.screenshot({ path: `${SHOTS}/generate-writing-page-desktop.png` });
   await page.setViewportSize({ width: 400, height: 900 });

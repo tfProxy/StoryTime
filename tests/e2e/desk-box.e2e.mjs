@@ -118,11 +118,26 @@ try {
     const foot = await box.locator(".desk-box-foot").innerText();
     ok(foot.includes("draft 2 of 3 ·") && !foot.includes("You are looking at"), "the foot repeats the drafts line (draft 2 of 3 · words), with no \"You are looking at…\": " + foot);
   }
-  // ↻ at the foot does what Generate again does: a fourth draft
-  await box.locator(".desk-box-foot").getByRole("button", { name: /^Try again/ }).click();
+  // Generate again at the foot does what the one by the prompt does: a fourth draft
+  await box.locator(".desk-box-foot").getByRole("button", { name: "Generate again" }).click();
   await until(async () => (await draftButtons.count()) === 4 && (await genRow.getByRole("button", { name: "Generate again" }).isEnabled().catch(() => false)));
   await page.waitForFunction(() => !/Writing/.test(document.querySelector(".desk-gen-row")?.textContent ?? ""));
-  ok((await draftButtons.count()) === 4 && (await draftButtons.nth(3).getAttribute("aria-pressed")) === "true", "↻ at the foot of the box makes a new draft, as Generate again does");
+  ok((await draftButtons.count()) === 4 && (await draftButtons.nth(3).getAttribute("aria-pressed")) === "true", "Generate again at the foot of the box makes a new draft, as the one by the prompt does");
+  // The foot stays at the bottom of the window while the box is scrolled through.
+  {
+    await page.evaluate(() => document.querySelector("section.desk-box").scrollIntoView({ block: "start" }));
+    const fb = await box.locator(".desk-box-foot").boundingBox();
+    const bb = await box.boundingBox();
+    ok(fb.y + fb.height <= 900 + 1 && (bb.y + bb.height <= 900 || Math.abs(fb.y + fb.height - 900) < 2), `the box's foot is in the window, at its bottom when the box runs past it: foot ends ${Math.round(fb.y + fb.height)}, box ends ${Math.round(bb.y + bb.height)}`);
+  }
+  // Each draft's button says what made it: its length, the model, and how its prompt starts.
+  {
+    const tip = (await draftButtons.nth(1).getAttribute("title")) ?? "";
+    ok(/^Draft 2 · 3 words · main · /.test(tip) && tip.includes("\nPrompt: First idea"), "a draft's button names its words, model, time and prompt: " + JSON.stringify(tip));
+    const first = (await draftButtons.nth(0).getAttribute("title")) ?? "";
+    ok(first.startsWith("Draft 1 (the chapter's text) · 2 words") && first.includes("written by hand"), "…and the chapter's own text as written by hand: " + JSON.stringify(first));
+    ok((await box.locator(".desk-drafts-note").innerText()).includes(" · main · "), "the drafts line names the showing draft's model and time: " + (await box.locator(".desk-drafts-note").innerText()));
+  }
   // A Generate leaves the posted chapter's title alone and offers its own.
   const idea = box.locator(".desk-title-idea");
   await idea.waitFor();

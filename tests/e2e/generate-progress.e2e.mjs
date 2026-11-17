@@ -90,7 +90,7 @@ try {
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/generate-thinking-desktop.png` });
   ok(await until(() => step.getByText("Writing the chapter…").isVisible(), 50), "…then that it is writing the chapter");
   await page.getByRole("button", { name: "Edit text" }).waitFor({ timeout: 15000 });
-  ok(await until(async () => (await page.getByRole("button", { name: "Generate again" }).isEnabled())), "the Generate ends");
+  ok(await until(async () => (await page.locator(".desk-gen-row").getByRole("button", { name: "Generate again" }).isEnabled())), "the Generate ends");
   const text = await page.locator("#field-body").textContent();
   ok(text.includes("She went down the steps.") && !text.includes("THOUGHT-MARK"), "the chapter has the text and not the thinking");
   ok(await fold.locator("summary").textContent().then((s) => s.startsWith("What the model thought")), "after it ends, the fold is kept, as what the model thought");
@@ -100,10 +100,10 @@ try {
   // A server that leaves the thinking in the reply, as a <think> block.
   style = "tag";
   await page.setViewportSize({ width: 400, height: 900 });
-  await page.getByRole("button", { name: "Generate again" }).click();
+  await page.locator(".desk-gen-row").getByRole("button", { name: "Generate again" }).click();
   ok(await until(() => step.getByText("The model is thinking…").isVisible()), "a <think> block also shows as thinking");
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/generate-thinking-400.png` });
-  ok(await until(async () => (await page.getByRole("button", { name: "Generate again" }).isEnabled()), 150), "the second Generate ends");
+  ok(await until(async () => (await page.locator(".desk-gen-row").getByRole("button", { name: "Generate again" }).isEnabled()), 150), "the second Generate ends");
   const second = await page.locator("#field-body").textContent();
   ok(second.includes("She went down the steps.") && !second.includes("THOUGHT-MARK") && !second.includes("think>"), "the <think> block is kept out of the chapter");
   ok((await page.locator(".thinking-fold .thinking-text").textContent()).includes("THOUGHT-MARK"), "…and shown in the fold");

@@ -181,7 +181,7 @@ ok(gen.url === "/a/v1/chat/completions" && gen.model === "alpha", "generating us
 ok(gen.reasoning === undefined, "…which is left to think");
 
 await writePicker.selectOption({ label: "Big one" });
-await page.getByRole("button", { name: "Generate again" }).click();
+await page.locator(".desk-gen-row").getByRole("button", { name: "Generate again" }).click();
 await until(() => calls.filter((c) => c.system.includes("Output format")).length === 2, "the second generate call");
 gen = calls.filter((c) => c.system.includes("Output format")).at(-1);
 ok(gen.url === "/b/v1/chat/completions" && gen.model === "vendor/big" && gen.auth === "Bearer rk", "after picking another model, generating uses it, on its own connection");

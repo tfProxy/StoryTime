@@ -57,7 +57,7 @@ try {
     box.getByLabel("Prompt", { exact: true }),
     box.getByLabel("Length"),
     box.getByLabel("Model for writing"),
-    box.getByRole("button", { name: /^Generate/ }),
+    box.locator(".desk-gen-row").getByRole("button", { name: /^Generate/ }),
     box.getByRole("group", { name: "Drafts" }),
     text,
     box.getByRole("button", { name: "Update chapter" }),
