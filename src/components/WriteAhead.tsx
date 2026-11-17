@@ -9,7 +9,7 @@ import { estimateArc, estimateFill, estimateTree, planArc, planFill, planTree, D
 import { completeChat } from "@/lib/ai/client";
 import type { RunOptions } from "@/lib/aiRuns/types";
 import { LIMITS } from "@/lib/limits";
-import { usableRef, useSettings, type ModelRef } from "@/lib/settings";
+import { contextFor, usableRef, useSettings, type ModelRef } from "@/lib/settings";
 import AiRunProgress from "./AiRunProgress";
 import ModelPicker from "./ModelPicker";
 import NumberInput from "./NumberInput";
@@ -88,7 +88,7 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
   const planContext: StoryContext = { ...context, choiceLabel: startChoice?.label ?? null, siblingChoices: startChoice ? [] : context.siblingChoices };
   const planRequest = () => ({
     system: SYSTEM_ARC_PLAN,
-    message: arcPlanPrompt(planContext, objective.trim(), arcCount, settings.contextTokens),
+    message: arcPlanPrompt(planContext, objective.trim(), arcCount, contextFor(settings, "write", usableRef(settings, writeModel))),
   });
 
   /** Asks the writing model for the steps to the goal; the author edits them before anything is written. */
@@ -97,7 +97,7 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
     setError(null);
     try {
       const request = planRequest();
-      const reply = await completeChat(settings, { system: request.system, messages: [{ role: "user", content: request.message }], role: "main", model: usableRef(settings, writeModel), source: { label: "Write ahead", storyId, chapterId: chapter.id } });
+      const reply = await completeChat(settings, { system: request.system, messages: [{ role: "user", content: request.message }], use: "write", role: "main", model: usableRef(settings, writeModel), source: { label: "Write ahead", storyId, chapterId: chapter.id } });
       const found = parseIdeas(reply, arcCount);
       if (found.length === 0) throw new Error("The model's plan could not be read. Try Plan again.");
       setSteps(found.map((i) => ({ choice: i.choice.slice(0, LIMITS.label), direction: i.direction })));
@@ -288,8 +288,8 @@ export default function WriteAhead({ chapter, storyId, tree, context, runId, unf
             </select>
           </label>
           <div className="row" style={{ alignItems: "center" }}>
-            <ModelPicker label="Writing model" role="main" use="write" value={writeModel} onChange={setWriteModel} />
-            <ModelPicker label="Model for choices and summaries" role="cheap" use="suggest" value={suggestModel} onChange={setSuggestModel} />
+            <ModelPicker label="Writing model" use="write" value={writeModel} onChange={setWriteModel} />
+            <ModelPicker label="Model for choices and summaries" use="summaries" value={suggestModel} onChange={setSuggestModel} />
           </div>
           <label>
             Guidance for every chapter <small>([bracket notes] work as on the writing page)</small>

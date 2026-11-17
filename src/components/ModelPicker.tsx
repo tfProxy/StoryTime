@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { providerInfo } from "@/lib/ai/providers";
 import {
-  defaultRef,
   favoritesFor,
+  jobRef,
   modelLabel,
   parseRefKey,
   refKey,
@@ -20,21 +20,19 @@ import {
  */
 export default function ModelPicker({
   value,
-  role,
   use,
   label,
   onChange,
 }: {
   value: ModelRef | null;
-  role: "main" | "cheap";
-  /** The job, which decides the starred models offered (each can opt out of jobs in Settings). */
+  /** The job, which decides the default and the starred models offered (Settings › Models). */
   use: ModelUse;
   /** Accessible name, like "Model for writing". */
   label: string;
   onChange: (ref: ModelRef | null) => void;
 }) {
   const settings = useSettings();
-  const def = defaultRef(settings, role);
+  const def = jobRef(settings, use);
   const offered = favoritesFor(settings, use);
   const groups = settings.connections
     .map((c) => ({ c, favs: offered.filter((f) => f.connectionId === c.id) }))

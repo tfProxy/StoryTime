@@ -5,7 +5,7 @@
 import { completeChat, type AiSourceIds } from "./client";
 import type { PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
-import { FACT_LIMITS, cleanForm, isFormAspect, sameAspect, type CodexEntry, type LiveFact } from "../codex";
+import { FACT_LIMITS, aspectAndForm, isFormAspect, sameAspect, type CodexEntry, type LiveFact } from "../codex";
 import { DEFAULT_CATEGORIES, categoryGuide, formFor, resolveAspect, type Category, type CategoryLists } from "../codexCategories";
 import type { Settings } from "../settings";
 
@@ -85,10 +85,11 @@ export function parseTidy(reply: string, entry: CodexEntry, lists: CategoryLists
     if (sources.length === 0) continue;
     const text = asString(o.text, FACT_LIMITS.text);
     // Resolved against the list only: the point is to move the entry off its old names.
-    const resolved = resolveAspect(asString(o.aspect, FACT_LIMITS.aspect), list);
+    const given = aspectAndForm(asString(o.aspect, 120), asString(o.form, FACT_LIMITS.form));
+    const resolved = resolveAspect(given.aspect.slice(0, FACT_LIMITS.aspect), list);
     const aspect = resolved.aspect || (sources.length === 1 ? sources[0].aspect.trim() : "");
     if (isFormAspect(aspect)) continue;
-    let form = formFor(aspect, cleanForm(asString(o.form, FACT_LIMITS.form)), list);
+    let form = formFor(aspect, given.form, list);
     const knownForm = [...entry.forms, ...sources.map((s) => s.form)].find((f) => f.trim() && sameAspect(f, form));
     if (form && !knownForm) continue;
     form = knownForm?.trim() ?? "";
@@ -192,8 +193,10 @@ export async function runTidy(settings: Settings, entry: CodexEntry, opts: { sig
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
+    use: "codex",
     role: "cheap",
     signal: opts.signal,
+    precise: true,
     source: { label: `Tidy “${entry.name}”`, ...opts.source },
   });
   return parseTidy(reply, entry, settings.codexCategories);

@@ -49,7 +49,7 @@ const emptyId = empty.story_id;
 
 const browser = await launch();
 const context = await browser.newContext({ viewport: { width: 1000, height: 1300 } });
-const ai = await useMockAi(BASE, { favorites: [], imagePromptModel: null });
+const ai = await useMockAi(BASE, { favorites: [] });
 const before = await settingsNow();
 const comfy = await startFakeComfy({ port: COMFY_PORT, steps: 3, stepDelay: 100, startDelay: 100 });
 await putSettings({ ...before, comfy: comfySettings({ url: comfy.url, checkpoint: "fake_sdxl_a.safetensors", count: 1 }) });

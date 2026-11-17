@@ -72,7 +72,7 @@ try {
   const stored = (id) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? "null"), sessionKey(id));
   const uploads = () => comfy.calls.filter((c) => c.method === "POST" && c.path === "/upload/image").length;
   const ready = () => page.locator('.refine-stage[data-ready="1"]').waitFor();
-  const illustrateUrl = (chapterId) => new RegExp(`/c/${chapterId}/illustrate$`);
+  const illustrateUrl = (chapterId) => new RegExp(`/c/${chapterId}/desk\\?side=illustrate$`);
   const uploadedPixel = (name, fx, fy) => {
     const bytes = comfy.uploaded(name);
     if (!bytes) return null;
@@ -91,7 +91,7 @@ try {
   /** Puts a Refine session on a ComfyUI picture in the browser's storage and opens it. */
   const openSession = async (ctx, original, target = { kind: "chapter", storyId: ctx.storyId, chapterId: ctx.chapterId }) => {
     const id = `acc${++nth}x${Date.now().toString(36)}`;
-    await page.goto(`${BASE}/c/${ctx.chapterId}/illustrate`);
+    await page.goto(`${BASE}/c/${ctx.chapterId}/desk?side=illustrate`);
     await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
     const now = Date.now();
     await page.evaluate(([k, s]) => localStorage.setItem(k, JSON.stringify(s)), [sessionKey(id), {
@@ -211,7 +211,7 @@ try {
     const headerBytes = async () => Buffer.from(await (await fetch(`${BASE}/api/chapters/${ctx.chapterId}/images/header`)).arrayBuffer()).toString("base64");
     await fetch(`${BASE}/api/chapters/${ctx.chapterId}/images/header`, { method: "PUT", headers: { "Content-Type": "image/jpeg" }, body: makePng(0) });
     const headerBefore = await headerBytes();
-    await page.goto(`${BASE}/c/${ctx.chapterId}/illustrate`);
+    await page.goto(`${BASE}/c/${ctx.chapterId}/desk?side=illustrate`);
     const header = page.locator(".image-editor", { has: page.getByRole("heading", { name: "Header picture" }) });
     await header.locator("img.image-editor-preview").waitFor();
     await header.getByRole("button", { name: "More" }).click();

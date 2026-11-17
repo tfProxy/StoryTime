@@ -74,7 +74,7 @@ try {
   ok(await card.getByLabel("Style picture strength").inputValue() === "0.6" && (await card.getByRole("img", { name: "Style picture" }).count()) === 1, "…and it is there after a reload");
 
   // ---- on the Illustrate page ----
-  await page.goto(`${BASE}/c/${chapter}/illustrate`);
+  await page.goto(`${BASE}/c/${chapter}/desk?side=illustrate`);
   await section.waitFor();
   await styleRow.waitFor();
   ok((await styleRow.innerText()).includes("Story style") && (await styleRow.innerText()).includes("0.60") && await useStyle.isChecked(), "the Illustrate page shows the story style first, ticked, with its strength");
@@ -124,7 +124,7 @@ try {
       await card.waitFor();
       await page.waitForTimeout(400);
       await card.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/story-style-card-${width}.png` });
-      await page.goto(`${BASE}/c/${chapter}/illustrate`);
+      await page.goto(`${BASE}/c/${chapter}/desk?side=illustrate`);
       await section.waitFor();
       await page.waitForTimeout(400);
       await section.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/story-style-refs-${width}.png` });
@@ -139,7 +139,7 @@ try {
   await card.getByRole("button", { name: "Save picture settings" }).click();
   await card.getByText("Picture settings saved.").waitFor();
   ok((await call("GET", `/api/stories/${storyId}`)).style_ref === null, "Remove and save takes the style picture off the story");
-  await page.goto(`${BASE}/c/${chapter}/illustrate`);
+  await page.goto(`${BASE}/c/${chapter}/desk?side=illustrate`);
   await section.waitFor();
   ok((await styleRow.count()) === 0, "…and the Illustrate page no longer shows it");
 } finally {

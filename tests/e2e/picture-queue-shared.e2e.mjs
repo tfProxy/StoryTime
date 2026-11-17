@@ -76,7 +76,7 @@ try {
   ok(!comfy.calls.some((c) => c.path === "/interrupt" || (c.path === "/queue" && c.method === "POST")), "…and nothing was cancelled in ComfyUI");
 
   // A job this StoryTime queues now carries its id.
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("fresh job");
   await page.getByRole("button", { name: "Queue", exact: true }).click();

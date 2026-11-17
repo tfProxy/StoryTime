@@ -4,7 +4,7 @@ How to use StoryTime's picture pages, and how to set up the machine that makes t
 
 ## Using the picture pages
 
-**Where pictures are made.** Each chapter has an Illustrate page (header, middle and footer pictures). The writing desk has the same controls: switch its side column from **Codex** to **Illustrate**, and the chapter's pictures show in the story column beside them (switch back to **Codex** and the chapter's box is as you left it). The middle picture is shown inside the text, at the paragraph break nearest the middle of the chapter; choose **Chapter Middle** for a prompt about a moment from around the middle. The story has a cover page (Make a cover, on the story's details page). Both work the same way: write or let the AI write a prompt, press **Queue**, and pick from the results.
+**Where pictures are made.** A chapter's pictures (header, middle and footer) are made on the writing desk: press **Illustrate** on the chapter (or switch the desk's side column from **Codex** to **Illustrate**), and the picture controls fill the side column with the chapter's pictures in the story column beside them (switch back to **Codex** and the chapter's box is as you left it). Old links to a chapter's Illustrate page open the desk this way. The middle picture is shown inside the text, at the paragraph break nearest the middle of the chapter; choose **Chapter Middle** for a prompt about a moment from around the middle. The story has a cover page (Make a cover, on the story's details page). Both work the same way: write or let the AI write a prompt, press **Queue**, and pick from the results.
 
 **The queue runs on the StoryTime server.** Jobs carry on when you close the tab, change page or lock the phone. The header shows how many are being made and how many are ready; **Open queue** lists them, with Pause, Move up/down and Do next. Writing (Generate, write-ahead runs) shares the same queue, and by default writing and pictures take turns on the machine (Settings › General › Queue). Because the server talks to ComfyUI and the AI, the addresses in Settings must work from the NAS, not just from your browser (**Test from server** checks this). Your browser still needs to reach ComfyUI to show the pictures.
 
@@ -16,7 +16,9 @@ How to use StoryTime's picture pages, and how to set up the machine that makes t
 
 **Text added to every prompt.** The story's art style, the drawing preset's own prompt and the chapter's **Always include** box are added when a picture is asked for. They are shown under the Prompt box rather than put into it.
 
-**Instruct changes** (Illustrate page) changes a picture by an instruction ("make it night") with an edit model. See "Edit models" below to set one up.
+**Nudity.** Some AI models put "nudity", "nsfw" or "explicit" in the negative prompt even when the scene has them, so the picture fights the story. With **Allow nudity in pictures** on (Settings › Drawing, on by default), StoryTime takes those out of the negative prompt the AI writes; your presets' own negative prompts are left alone. A model that won't describe the scene at all is better replaced: pick another under **Model for prompts** in Illustrate, which **Make missing pictures** also uses unless you choose another there.
+
+**Instruct changes** (in Illustrate) changes a picture by an instruction ("make it night") with an edit model. See "Edit models" below to set one up.
 
 **Refine…** opens a picture in its own screen to paint on, mask and redraw:
 - Paint on the picture, or paint a **mask** over the part to redraw. With no mask the whole picture is redrawn.
@@ -57,11 +59,11 @@ Which drawing preset a picture uses:
 1. Each story chooses one on its details page, under **Pictures** (with its prompt style and art
    style). A story that hasn't chosen one uses the top preset; **Move to top** on a card changes
    which that is.
-2. On a chapter's Illustrate page, **Make pictures** has a **Preset** menu, which starts on the
+2. When you Illustrate a chapter on the writing desk, **Make pictures** has a **Preset** menu, which starts on the
    story's (marked "the story's"). Choosing another is saved for that chapter only; choosing the
    story's again makes the chapter follow the story.
 
-The edit presets are chosen in the Illustrate page's Instruct section, from one menu that lists each model's
+The edit presets are chosen in Illustrate's Instruct section, from one menu that lists each model's
 presets under its name; the last one used is remembered.
 
 Upgrading from a version without presets: the first time StoryTime starts, your picture settings
@@ -243,7 +245,7 @@ Style references ignore both and always run to the end.
 
 ## Edit models in ComfyUI
 
-On a chapter's Illustrate page, a picture's ☰ menu has **Instruct changes**, which changes the
+When you Illustrate a chapter, a picture's ☰ menu has **Instruct changes**, which changes the
 picture by following an instruction, such as "remove the logo on his shirt" or "add more smoke
 around him". The prompt isn't used. Each click makes one edit with a new seed, and **Instruct
 changes** on an edit carries on from it. (To paint on a picture, mask a part of it and redraw only
@@ -345,8 +347,8 @@ for each part:
   doesn't know, mean ComfyUI needs updating (step 1). For Qwen-Image-Edit, also the Lightning LoRA it
   found and its steps, or that it isn't installed. It is optional: Qwen is ready without it.
 
-Each edit model's tab also says whether the model is installed. A model's presets can be chosen on
-the Illustrate page only when everything it needs is there. The check looks
+Each edit model's tab also says whether the model is installed. A model's presets can be chosen in
+Illustrate only when everything it needs is there. The check looks
 for the files above by name, and also accepts other versions of the same file, such as a bf16
 model, another fp8 version, `t5xxl_fp16`, or a newer Qwen-Image-Edit release. If several match, the
 one listed above is used. A preset can also choose its own files (see
@@ -367,7 +369,7 @@ or for an art style, so its pictures keep that look.
    the file from ComfyUI's list and set its strength: 1 is full strength, 0.5 half, and below 0 works
    against the LoRA. ↑ moves a LoRA earlier; ✕ takes it out. A stack holds up to 8 LoRAs. Settings
    asks ComfyUI for its files each time it opens, so a LoRA added since shows up there.
-3. On the Illustrate page, the chosen preset's LoRAs are listed under its menu, each with a box to
+3. In Illustrate, the chosen preset's LoRAs are listed under its menu, each with a box to
    switch it on or off for the next pictures. The boxes are saved with the preset.
 
 The LoRAs apply in the order listed: in a drawing preset, after the checkpoint (with ComfyUI's
@@ -377,7 +379,7 @@ Lightning LoRA when **Fast** is on (with **LoraLoaderModelOnly**, so they change
 the text encoder; a trigger word still works if you put it in the instruction). A drawing preset with
 a workflow of your own gets its LoRAs after the workflow's Load Checkpoint node, or after its Load
 Diffusion Model node (model only) when it has no checkpoint loader. A LoRA that ComfyUI no longer
-lists is marked "missing" on the Illustrate page, and pictures go ahead without it. A picture's
+lists is marked "missing" in Illustrate, and pictures go ahead without it. A picture's
 caption says how many LoRAs made it, and **Info** lists each one with its strength.
 
 ### Your own edit models

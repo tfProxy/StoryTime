@@ -82,7 +82,7 @@ try {
   }, comfy.uploaded(name)?.toString("base64") ?? "");
 
   // ================= a session on a picture of the fake ComfyUI =================
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   const now = Date.now();
   await page.evaluate(([id, s]) => localStorage.setItem(`storytime.refine.${id}`, JSON.stringify(s)), [sessionId, {

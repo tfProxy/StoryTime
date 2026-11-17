@@ -133,7 +133,7 @@ type Props = {
   styleRef?: Reference | null;
   /**
    * "page" (the picture pages): References, Instruct, then Model Settings with Size and Queue (docked). "desk" (the
-   * writing desk's side column): Size, Queue and the queue's status first, then Model Settings, Instruct and References.
+   * writing desk's side column): Model Settings, Instruct and References, then Size, Queue and the queue's status last.
    */
   layout?: "page" | "desk";
 };
@@ -279,23 +279,18 @@ export default function ComfyGenerate({
   // (A model family's preset has no checkpoint; its files are checked when a picture is asked for.)
   const checkpoint = fromFamily ? "" : draw.checkpoint;
   const drawName = presetName(draw);
-  // Why the chosen references can't be used with the drawing preset (an edit needs no IP-Adapter), or null. Then none are sent.
-  const refProblem: string | null = editing
-    ? null
-    : fromFamily
-      ? `The drawing preset “${drawName}” is for a model family, and those can't use reference pictures yet.`
-      : !workflowCanRefs(draw.workflow)
-        ? `The drawing preset “${drawName}” has a workflow with placeholders, which can't take reference pictures.`
-        : editModels.state === "checking"
-          ? null
-          : ipAdapterProblem(drawPresetIpAdapter(editModels, draw));
+  // The drawing preset can never take reference pictures (a model family's, or a workflow with placeholders): the
+  // References section is left out and none are sent. An edit needs no IP-Adapter, so it always can.
+  const noRefs = !editing && (fromFamily || !workflowCanRefs(draw.workflow));
+  // Why the chosen references can't be used with the drawing preset just now (ComfyUI lacks the IP-Adapter), or null. Then none are sent.
+  const refProblem: string | null = editing || noRefs || editModels.state === "checking" ? null : ipAdapterProblem(drawPresetIpAdapter(editModels, draw));
   // The story's style picture goes first, counts toward the limit, and is left out of an edit or when it is switched off.
   const styleKey = styleOffKey(at, moment);
   const [styleOff, setStyleOff] = useState<{ key: string; off: boolean }>({ key: "", off: false });
   if (styleOff.key !== styleKey) setStyleOff({ key: styleKey, off: readStyleOff(styleKey) });
   const styleOn = styleRef !== null && !styleOff.off;
   const withStyle = styleOn && !editing && !(refs ?? []).some((r) => r.source === styleRef.source);
-  const sentRefs = refProblem ? undefined : withStyle && styleRef ? [styleRef, ...(refs ?? [])].slice(0, MAX_REFERENCES) : refs;
+  const sentRefs = noRefs || refProblem ? undefined : withStyle && styleRef ? [styleRef, ...(refs ?? [])].slice(0, MAX_REFERENCES) : refs;
   useEffect(() => {
     if (!comfy.url) return;
     let live = true;
@@ -497,7 +492,7 @@ export default function ComfyGenerate({
     </label>
   );
 
-  const references = onRefs && (
+  const references = onRefs && !noRefs && (
       <References
         refs={refs ?? []}
         onChange={onRefs}
@@ -615,7 +610,7 @@ export default function ComfyGenerate({
     </section>
   );
   const statusLine = status && <p className={status.ok ? "ok" : "error"} style={{ margin: 0 }}>{status.text}</p>;
-  // On the desk Size and Queue come first, in a panel of their own with the status under them (see `layout`).
+  // On the desk Size and Queue come last, in a panel of their own with the status under them (see `layout`).
   const modelSettings = (
     <section className="ai-panel comfy-generate">
       <h2>Model Settings</h2>
@@ -704,14 +699,14 @@ export default function ComfyGenerate({
   if (layout === "desk") {
     return (
       <>
+        {modelSettings}
+        {instruct}
+        {references}
         {/* No label: the tests find the Size menu and the queue's status with getByLabel("Size") and ("Queue"). */}
         <section className="ai-panel desk-queue">
           {bar}
           {statusLine}
         </section>
-        {modelSettings}
-        {instruct}
-        {references}
       </>
     );
   }

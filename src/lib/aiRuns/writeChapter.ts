@@ -15,7 +15,7 @@ import {
 } from "../ai/prompts";
 import { ensurePathSummaries, neededSummaryIndex, parseSummaryReply, summaryRequest, type Summaries } from "../ai/summaries";
 import { LIMITS } from "../limits";
-import type { ModelRef, Settings } from "../settingsSchema";
+import { contextFor, type ModelRef, type ModelUse, type Settings } from "../settingsSchema";
 import type { ChapterContext } from "./api";
 import type { RunOptions } from "./types";
 
@@ -24,9 +24,9 @@ export type Stream = (settings: Settings, req: ChatRequest) => AsyncIterable<str
 export const defaultStream: Stream = streamChat;
 
 /** Which model a request goes to: the writing model, or the cheaper one, which "Use the writing model for everything" (D20) replaces. */
-export function modelRequest(options: RunOptions, role: "main" | "cheap"): { role: "main" | "cheap"; model: ModelRef | null } {
-  if (role === "main" || options.models === "writing") return { role: "main", model: options.model ?? null };
-  return { role: "cheap", model: options.suggestModel ?? null };
+export function modelRequest(options: RunOptions, role: "main" | "cheap", use: ModelUse = "write"): { role: "main" | "cheap"; use: ModelUse; model: ModelRef | null } {
+  if (role === "main" || options.models === "writing") return { role: "main", use: "write", model: options.model ?? null };
+  return { role: "cheap", use, model: options.suggestModel ?? null };
 }
 
 async function complete(stream: Stream, settings: Settings, req: ChatRequest, onText?: (soFar: string) => void): Promise<string> {
@@ -79,7 +79,7 @@ export async function writeText(
   settings: Settings,
   p: { ctx: StoryContext; label: string; direction: string; options: RunOptions; signal?: AbortSignal; onText?: (text: string) => void; stream?: Stream; source?: AiSourceIds },
 ): Promise<{ title: string; body: string; ai?: string }> {
-  const prompt = generatePrompt(p.ctx, p.direction, p.options.length ?? "medium", settings.contextTokens);
+  const prompt = generatePrompt(p.ctx, p.direction, p.options.length ?? "medium", contextFor(settings, "write", p.options.model));
   let ai: string | undefined;
   const text = await complete(
     p.stream ?? defaultStream,
@@ -125,11 +125,12 @@ export async function planNext(
   const add = Math.min(p.suggest, room);
   if (p.given.length === 0 && add === 0) return [];
   try {
-    const prompt = planStepsPrompt(p.ctx, p.chapter, p.given, add, settings.contextTokens);
+    const model = modelRequest(p.options, "cheap", "choices");
+    const prompt = planStepsPrompt(p.ctx, p.chapter, p.given, add, contextFor(settings, model.use, model.model));
     const reply = await complete(p.stream ?? defaultStream, settings, {
       system: SYSTEM_PLAN_STEPS,
       messages: [{ role: "user", content: prompt }],
-      ...modelRequest(p.options, "cheap"),
+      ...model,
       signal: p.signal,
       source: { label: "AI run: plan choices", ...p.source },
     });
@@ -167,13 +168,14 @@ export async function summarize(
   settings: Settings,
   p: { story: { title: string; premise: string }; previous: string | null; chapter: { title: string; body: string }; options: RunOptions; signal?: AbortSignal; stream?: Stream; source?: AiSourceIds },
 ): Promise<Summaries | null> {
-  const request = summaryRequest(settings.contextTokens, p);
+  const model = modelRequest(p.options, "cheap", "summaries");
+  const request = summaryRequest(contextFor(settings, model.use, model.model), p);
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const reply = await complete(p.stream ?? defaultStream, settings, {
         system: request.system,
         messages: [{ role: "user", content: request.message }],
-        ...modelRequest(p.options, "cheap"),
+        ...model,
         maxTokens: 1500,
         signal: p.signal,
         source: { label: "Summary", ...p.source },

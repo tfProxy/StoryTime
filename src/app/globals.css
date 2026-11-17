@@ -2838,69 +2838,150 @@ fieldset.connection legend {
   padding: 0 0.25rem;
 }
 
-/* Settings: one card per starred model (nickname, thinking, the jobs it is offered for). */
-/* Settings › Writing: the models in use, one block per connection. */
-.model-group {
-  border-left: 4px solid var(--accent);
-  padding: 0.1rem 0 0.1rem 0.9rem;
-  margin: 1rem 0 1.25rem;
+/* Settings › Writing: the Models grid, one row per model in use and a column per job (ModelGrid.tsx). */
+/* Wider than the page's column, centred on it, so the job columns fit beside the model's settings. The section's
+   column keeps the page's width rather than growing to the table's. */
+#models.settings-section {
+  grid-template-columns: minmax(0, 1fr);
 }
 
-.model-group > h3 {
-  margin: 0 0 0.6rem;
-  font-size: 1.05rem;
+.model-grid-wrap {
+  overflow-x: auto;
+  width: min(calc(100vw - 2rem), 72rem);
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
-.model-group > h3 .meta {
-  display: inline;
-  margin: 0 0 0 0.5rem;
+.model-grid {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.92rem;
+}
+
+.model-grid th,
+.model-grid td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.45rem 0.4rem;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.model-grid thead th {
+  font-size: 0.82rem;
+  font-weight: 600;
+  vertical-align: bottom;
+}
+
+.model-grid .job {
+  text-align: center;
+  min-width: 4.5rem;
+}
+
+.model-grid thead th.job {
+  cursor: help;
+}
+
+.model-grid .model-name {
   font-weight: 400;
-  font-size: 0.85rem;
+  min-width: 11rem;
 }
 
-.model-cards {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
-  margin-bottom: 0.75rem;
-}
-
-fieldset.model-card {
-  display: grid;
-  gap: 0.6rem;
-  align-content: start;
-  margin: 0;
-  min-width: 0;
-}
-
-fieldset.model-card > legend {
+.model-grid .model-name input {
+  width: 100%;
   font-weight: 600;
-  padding: 0 0.25rem;
-  max-width: 100%;
 }
 
-fieldset.model-uses {
-  display: grid;
-  gap: 0.35rem;
+.model-grid .model-name .meta {
+  display: block;
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.model-grid td[data-label="Context"] input {
+  width: 6.5rem;
+}
+
+.model-grid td[data-label="Thinking"] select {
+  width: auto;
+  max-width: 11rem;
+}
+
+.model-grid .model-remove button {
+  white-space: nowrap;
+}
+
+.model-grid .job input {
+  width: 1.1rem;
+  height: 1.1rem;
   margin: 0;
-  padding: 0.5rem 0.75rem 0.6rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  min-width: 0;
 }
 
-fieldset.model-uses > legend {
-  font-weight: 600;
-  font-size: 0.9rem;
-  padding: 0 0.25rem;
+/* Each job's default, under the grid: two columns of label and dropdown, one on a phone. */
+.job-defaults {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+  gap: 0.75rem 1.25rem;
 }
 
-fieldset.model-uses .inline-label {
-  align-items: flex-start;
-}
+/* A phone: each model is a card, with one line per setting and per job. */
+@media (max-width: 700px) {
+  .model-grid-wrap {
+    width: auto;
+    left: 0;
+    transform: none;
+  }
 
-fieldset.model-uses .inline-label input[type="checkbox"] {
-  margin-top: 0.2rem;
+  .model-grid,
+  .model-grid tbody,
+  .model-grid tr,
+  .model-grid th,
+  .model-grid td {
+    display: block;
+  }
+
+  .model-grid thead {
+    display: none;
+  }
+
+  .model-grid tr {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .model-grid th,
+  .model-grid td {
+    border-bottom: none;
+    padding: 0.3rem 0;
+  }
+
+  .model-grid td[data-label] {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .model-grid td[data-label]::before {
+    content: attr(data-label);
+    font-weight: 600;
+  }
+
+  .model-grid .job {
+    text-align: left;
+  }
+
+  .model-grid .job input {
+    width: 1.4rem;
+    height: 1.4rem;
+  }
+
+  .model-grid .model-remove {
+    padding-top: 0.5rem;
+  }
 }
 
 /* A connection's fetched models: folds away; the search and Refresh stay put while the list scrolls. */
@@ -7280,6 +7361,35 @@ button.link-button.ef-since-link {
   padding-left: 0.25rem;
 }
 
+/* The box's title, with "Stop editing" at its right (where a path block has ✎). */
+.desk-box-head,
+.desk-reading-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.desk-box-head .desk-box-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.desk-stop {
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+
+.desk-reading-head h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.desk-reading .desk-block-text {
+  padding: 0;
+}
+
 .desk-box-title:hover,
 .desk-box-title:focus {
   border-color: var(--line);
@@ -7584,6 +7694,26 @@ button.link-button.ef-since-link {
   border-radius: 6px;
   color: var(--fg);
   text-decoration: none;
+}
+
+/* A folded block's icon for one of its pictures. */
+.desk-block-picture {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: 0;
+  padding: 0.2rem;
+  color: var(--muted);
+}
+
+.desk-block-picture:hover {
+  color: var(--fg);
+}
+
+.desk-block-picture svg {
+  width: 1.3em;
+  height: 1.3em;
 }
 
 .desk-block-edit:hover {

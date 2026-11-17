@@ -58,7 +58,7 @@ const tileFor = (prompt) => gallery.getByRole("list", { name: `Pictures from “
 const other = page.locator("#other-pictures");
 const exported = async () => (await call("GET", `/api/stories/${story.story_id}/export?format=json`)).images;
 const open = async (id) => {
-  await page.goto(`${BASE}/c/${id}/illustrate`);
+  await page.goto(`${BASE}/c/${id}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
 };
 

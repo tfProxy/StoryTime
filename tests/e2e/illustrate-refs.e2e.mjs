@@ -59,7 +59,7 @@ const ready = async () => (await page.locator(".comfy-pending-tile [role=status]
 
 try {
   // ---- the section, and a suggestion for the footer ----
-  await page.goto(`${BASE}/c/${second}/illustrate`);
+  await page.goto(`${BASE}/c/${second}/desk?side=illustrate`);
   await section.waitFor();
   ok((await section.innerText()).includes("Pictures to keep a character, item, place or style the same.") && (await rows.count()) === 0, "with no references the section says what they are for");
   await moment.selectOption("end");
@@ -131,7 +131,7 @@ try {
   await until(async () => (await rows.count()) === 1, "the reference to come back");
   ok(await moment.inputValue() === "end" && await rows.first().getByLabel("Role of reference 1").inputValue() === "place" && await rows.first().getByLabel("Strength of reference 1").inputValue() === "0.35", "after a reload the footer's reference is back, with its role and strength");
   // Only pinned pictures show after a reload; the picture made earlier is under All.
-  await page.locator(".illustrate-gallery").getByRole("group", { name: "Show" }).getByRole("button", { name: /^All/ }).click();
+  await page.locator(".desk-pictures").getByRole("group", { name: "Show" }).getByRole("button", { name: /^All/ }).click();
   await moment.selectOption("start");
   ok((await rows.count()) === 0, "…and the header's moment has none");
   await add.click();
@@ -182,8 +182,8 @@ try {
 
   // ---- a preset that can't use references ----
   await drawMenu.selectOption("flux");
-  await until(async () => (await section.innerText()).includes("model family"), "the reason");
-  ok((await rows.count()) === 0 && (await add.count()) === 0 && (await section.getByRole("link", { name: "Settings" }).count()) === 1, "a model-family preset collapses the section to the reason and a link to Settings");
+  await until(async () => (await section.count()) === 0, "the References section to go");
+  ok((await rows.count()) === 0 && (await add.count()) === 0, "a model-family preset has no References section at all");
   await drawMenu.selectOption("noob");
   await until(async () => (await rows.count()) === 3, "the references to be back");
 
@@ -206,7 +206,7 @@ try {
     fs.mkdirSync(process.env.E2E_SCREENSHOT_DIR, { recursive: true });
     for (const [width, height] of [[1000, 1500], [390, 900]]) {
       await page.setViewportSize({ width, height });
-      await page.goto(`${BASE}/c/${second}/illustrate`);
+      await page.goto(`${BASE}/c/${second}/desk?side=illustrate`);
       await section.waitFor();
       await until(async () => (await rows.count()) === 3, "the references");
       await page.waitForTimeout(500);

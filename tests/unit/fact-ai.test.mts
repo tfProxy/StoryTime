@@ -72,11 +72,14 @@ handler = () => JSON.stringify({ facts: [
 ] });
 let facts = await extractFacts(settings, { chapter, codexNames });
 ok(facts.length === 3 && !facts.some((f) => f.attribute === "age"), "good facts parsed; fact with an invented quote dropped; malformed item dropped");
-ok(prompts.at(-1)!.model === "main" && prompts.at(-1)!.user.includes("Known names: Mira, The Hollow"), "main model by default, codex names sent");
+ok(prompts.at(-1)!.model === "cheap" && prompts.at(-1)!.user.includes("Known names: Mira, The Hollow"), "the Tags job's default (the cheap model unless set) is used, codex names sent");
 const before = prompts.length;
-await extractFacts(settings, { chapter, codexNames, role: "cheap" });
-ok(prompts.at(-1)!.model === "cheap" && prompts.length === before + 1, "role is passed through to the cheap model");
-ok((await extractFacts(settings, { chapter: { title: "Empty", body: "  " }, codexNames })).length === 0 && prompts.length === before + 1, "empty chapter -> no call");
+const tagsSettings: any = { ...settings, defaults: { ...settings.defaults, tags: { connectionId: "t", model: "tagger" } } };
+await extractFacts(tagsSettings, { chapter, codexNames });
+ok(prompts.at(-1)!.model === "tagger" && prompts.length === before + 1, "a Tags default is used for fact extraction");
+await extractFacts(tagsSettings, { chapter, codexNames, role: "main" });
+ok(prompts.at(-1)!.model === "tagger" && prompts.length === before + 2, "the job's default wins over the role");
+ok((await extractFacts(settings, { chapter: { title: "Empty", body: "  " }, codexNames })).length === 0 && prompts.length === before + 2, "empty chapter -> no call");
 
 handler = () => 'Sure! Here are the facts:\n```json\n{"facts":[{"entity":"Mira","attribute":"eye colour","value":"green","quote":"green-eyed fox"}]}\n```\nHope that helps.';
 facts = await extractFacts(settings, { chapter, codexNames });
@@ -105,9 +108,11 @@ ok(parseVerdict({ verdict: "maybe" }) === null && parseVerdict({}) === null && p
 handler = () => '{"verdict":"contradiction"}';
 const jb = prompts.length;
 ok((await judgeConflict(settings, { conflict: clash })) === "contradiction" && prompts.length === jb + 1, "contradiction judged");
-ok(prompts.at(-1)!.model === "cheap", "the judge uses the cheap model unless told otherwise");
+ok(prompts.at(-1)!.model === "cheap", "the judge uses the Tags job's default (the cheap model unless set)");
 await judgeConflict(settings, { conflict: clash, role: "main" });
-ok(prompts.at(-1)!.model === "main", "role is passed through");
+ok(prompts.at(-1)!.model === "cheap", "the job's default wins over the role");
+await judgeConflict(tagsSettings, { conflict: clash });
+ok(prompts.at(-1)!.model === "tagger", "a Tags default is used by the judge");
 handler = () => 'Sure:\n```json\n{"verdict":"change"}\n```';
 ok((await judgeConflict(settings, { conflict: clash })) === "change", "JSON wrapped in prose and code fences is read");
 handler = () => '{"verdict":"fine"}';

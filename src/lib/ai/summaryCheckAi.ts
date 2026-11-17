@@ -3,7 +3,7 @@
 import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
-import type { Settings } from "../settings";
+import { contextFor, type Settings } from "../settingsSchema";
 
 export type SummaryCheckResult = { ok: true } | { ok: false; problem: string };
 
@@ -51,12 +51,14 @@ export type SummaryCheckOptions = SummaryCheckRequestOptions & { signal?: AbortS
 
 /** Asks whether a chapter's summary matches it. Throws when the reply can't be read. */
 export async function summaryCheck(settings: Settings, opts: SummaryCheckOptions): Promise<SummaryCheckResult> {
-  const request = summaryCheckRequest(settings.contextTokens, opts);
+  const request = summaryCheckRequest(contextFor(settings, "summaries"), opts);
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
+    use: "summaries",
     role: opts.role ?? "cheap",
     signal: opts.signal,
+    precise: true,
     source: { label: "Summary check", ...opts.source },
   });
   const result = parseSummaryCheck(extractJson(reply));

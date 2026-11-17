@@ -75,7 +75,7 @@ const hbox = await headerBtn("Level 3").boundingBox(), fbox = await footerBtn("L
 ok(Math.abs(hbox.y - fbox.y) < 4 && hbox.x < fbox.x, "the header icon comes before the footer icon, on the chapter's line");
 ok((await headerBtn("Level 3").innerHTML()).includes("<svg") && (await headerBtn("Level 3").innerHTML()) !== (await footerBtn("Level 3").innerHTML()), "the two icons are drawn differently");
 const brushes = page.getByRole("link", { name: "Illustrate this chapter" });
-ok((await brushes.count()) === 5 && (await brushes.nth(2).getAttribute("href")) === `/c/${ids[2]}/illustrate` && (await brushes.nth(2).innerHTML()).includes("<svg"), "every chapter has a paintbrush linking to its Illustrate page");
+ok((await brushes.count()) === 5 && (await brushes.nth(2).getAttribute("href")) === `/c/${ids[2]}/desk?side=illustrate` && (await brushes.nth(2).innerHTML()).includes("<svg"), "every chapter has a paintbrush linking to its Illustrate page");
 const dlg = page.getByRole("dialog");
 ok((await dlg.count()) === 0, "no picture is open at first");
 await headerBtn("Level 1").click();
@@ -101,7 +101,7 @@ await page.mouse.click(5, 5);
 await dlg.waitFor({ state: "detached" });
 ok(true, "a click outside the picture closes it");
 await brushes.nth(1).click();
-await page.waitForURL(new RegExp(`/c/${ids[1]}/illustrate$`));
+await page.waitForURL(new RegExp(`/c/${ids[1]}/desk\\?side=illustrate$`));
 ok(await page.getByRole("heading", { name: "Picture prompt" }).isVisible(), "the paintbrush opens that chapter's Illustrate page");
 await page.goBack();
 await page.getByText(/5 chapters/).waitFor();

@@ -44,7 +44,7 @@ const storyId = created.story_id;
 const browser = await launch();
 const context = await browser.newContext({ viewport: { width: 1000, height: 900 } });
 await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: BASE });
-const ai = await useMockAi(BASE, { favorites: [{ connectionId: "t", model: "artist", label: "Artist" }], imagePromptModel: null });
+const ai = await useMockAi(BASE, { favorites: [{ connectionId: "t", model: "artist", label: "Artist" }] });
 const page = await context.newPage();
 page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
 const settingsNow = async () => (await get("/api/settings")).settings;
@@ -55,7 +55,7 @@ const until = async (fn, what) => {
 };
 
 try {
-  await page.goto(`${BASE}/c/${chapter}/illustrate`);
+  await page.goto(`${BASE}/c/${chapter}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
 
   // ---- the codex entries that would be used ----
@@ -97,7 +97,7 @@ try {
   ok(await styleMenu.inputValue() === "tags", "a drawing preset's Prompt style starts on tags");
   await styleMenu.selectOption({ label: "Sentences (Flux, SD3)" });
   ok(await until(async () => (await settingsNow()).comfy.drawPresets[0].promptStyle === "natural", "the prompt style to be saved"), "choosing sentences saves it with the preset");
-  await page.goto(`${BASE}/c/${chapter}/illustrate`);
+  await page.goto(`${BASE}/c/${chapter}/desk?side=illustrate`);
   ok((await page.locator(".prompt-art-style").innerText()) === "watercolor storybook, soft light", "the story's art style is shown in small type under the Prompt box");
 
   // ---- write a prompt for the chapter's end ----
@@ -200,17 +200,17 @@ try {
   const picker = page.getByLabel("Model for picture prompts");
   ok((await picker.locator("option:checked").innerText()).startsWith("Default"), "the model starts on the default");
   await picker.selectOption({ label: "Artist" });
-  ok(await until(async () => (await settingsNow()).imagePromptModel?.model === "artist", "the model to be saved"), "choosing a model saves imagePromptModel on the server");
+  ok(await until(async () => (await settingsNow()).defaults.picture?.model === "artist", "the model to be saved"), "choosing a model saves defaults.picture on the server");
   reply = '{"scene":"s","prompt":"p","negative":""}';
   await page.getByRole("button", { name: "Write again" }).click();
   await page.waitForFunction(() => document.querySelector(".image-prompt-result textarea")?.value.startsWith("p"));
   ok(calls.at(-1).model === "artist", "…and prompts are written with it");
-  await page.goto(`${BASE}/c/${created.chapter_id}/illustrate`);
+  await page.goto(`${BASE}/c/${created.chapter_id}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   await page.waitForFunction(() => document.querySelector('[aria-label="Model for picture prompts"] option:checked')?.textContent === "Artist");
   ok(true, "another chapter's Illustrate page has the same model chosen");
   await page.getByLabel("Model for picture prompts").selectOption({ index: 0 });
-  ok(await until(async () => (await settingsNow()).imagePromptModel === null, "the default to be saved"), "going back to the default saves null");
+  ok(await until(async () => (await settingsNow()).defaults.picture === null, "the default to be saved"), "going back to the default saves null for defaults.picture");
 } finally {
   // leave the server's settings as they were
   await ai.restore();

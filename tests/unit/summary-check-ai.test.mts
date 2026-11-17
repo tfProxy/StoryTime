@@ -50,9 +50,9 @@ ok(parseSummaryCheck({}) === null && parseSummaryCheck(null) === null && parseSu
 reply = '{"ok":true}';
 let r = await summaryCheck(settings, { chapter, summary });
 ok(r.ok === true && prompts.length === 1, "ok reply");
-ok(prompts[0].model === "cheap", "uses the cheap model by default");
+ok(prompts[0].model === "cheap", "uses the Summaries default (the cheap model) by default");
 await summaryCheck(settings, { chapter, summary, role: "main" });
-ok(prompts[1].model === "main", "the role can be changed");
+ok(prompts[1].model === "cheap", "the job's default wins over the role");
 reply = 'Sure! ```json\n{"ok":false,"problem":"Leaves out that she ran home."}\n```';
 r = await summaryCheck(settings, { chapter, summary });
 ok(!r.ok && r.problem === "Leaves out that she ran home.", "problem reply, JSON found inside the text");

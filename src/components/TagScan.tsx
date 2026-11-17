@@ -166,7 +166,7 @@ export default function TagScan({ storyId, story, chapters, chapterId, tags, unf
           The whole story ({counted(chapters.length)})
         </label>
       </fieldset>
-      {scope !== "chapter" && <p className="meta">One AI call per chapter, using your cheaper model.</p>}
+      {scope !== "chapter" && <p className="meta">One AI call per chapter, using your Tags &amp; continuity model.</p>}
       <div className="row">
         <button type="button" onClick={scan} disabled={scanning || runGoing}>
           {scanning || runGoing ? "Reading…" : "Find tags"}

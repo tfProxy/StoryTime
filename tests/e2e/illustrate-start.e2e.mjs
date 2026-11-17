@@ -53,7 +53,7 @@ const make = async (total) => {
 const settingsNow = async () => (await call("GET", "/api/settings")).settings.comfy;
 
 try {
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("a keeper beside a lamp");
   await page.getByRole("textbox", { name: "Negative prompt", exact: true }).fill("blurry");
@@ -144,7 +144,7 @@ try {
   await until(async () => (await items.count()) === 8 && (await ready()), "eight pictures", 150);
 
   // ---- from a past picture ----
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   const pastTiles = page.locator(".chapter-pictures .picture-tile");
   // Earlier pictures are under All once the page is opened again.
   const showAll = async () => {
@@ -195,7 +195,7 @@ try {
   ok(true, "…and that the built-in workflow can");
 
   if (process.env.E2E_SCREENSHOT_DIR) {
-    await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+    await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
     await showAll();
     await startFrom(pastTiles.nth(1));
     await thumb.waitFor();

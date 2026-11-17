@@ -93,7 +93,7 @@ export default function ContinuityCheck({ storyId, chapters, chapterId, unfinish
           {starting || runGoing ? "Checking…" : "Check continuity"}
         </button>
       </div>
-      <p className="meta">Reads each chapter for facts, then asks about each clash. Uses your cheaper model.</p>
+      <p className="meta">Reads each chapter for facts, then asks about each clash. Uses your Tags &amp; continuity model.</p>
       {message && <p className={message.ok ? "ok" : "error"}>{message.text}</p>}
       {runId && <AiRunProgress key={runId} runId={runId} onFinished={finishedRun} />}
     </div>

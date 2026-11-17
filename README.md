@@ -20,10 +20,15 @@ and, for pictures, your own ComfyUI machine.
     and **Illustrate** (the picture controls, with the chapter's pictures in the story column);
   - the **open entry**, with its facts, preview, suggestions and history, changed right there;
   - the **story**: the earlier chapters on the path as blocks that fold (**Unfold all** / **Fold
-    all**; ✎ moves the desk to that chapter), the **→** line with the choice that leads here (click it
+    all**; ✎ moves the desk to that chapter; unfolded, a chapter shows its pictures in its text, folded, an
+    icon for each that shows it full screen), the **→** line with the choice that leads here (click it
     to rename the choice), the chapter's box, and under a posted chapter **What happens next?**, its
     choices (a written one opens its chapter on the desk, an unwritten one starts it; add a choice, or
     **Suggest choices**).
+
+  **Stop editing**, beside the box's title, shows the chapter's text and pictures in place of the box
+  (on a new chapter, the chapter it follows), with ✎ to edit it again. While reading, a written choice
+  opens its chapter to read too; while editing, it opens it to edit. The draft is kept as it was.
 
   The box has the title, **Prompt and drafts** (the prompt, length, writing model and **Generate**;
   each Generate adds a numbered draft that keeps its prompt, and ✓ marks the one the chapter reads
@@ -70,7 +75,9 @@ and, for pictures, your own ComfyUI machine.
   the chapter where it became true. Tap a fact to change it: its text, which forms it **applies to**,
   and whether it is **a change in the story** from this chapter on (earlier chapters keep the old text)
   or **a correction** (it was always so). A fact's **⋯** has its **History**, **Remove from this
-  chapter on** and **Retcon the chapters…**. **+ Add a fact** adds one.
+  chapter on**, **Move to an earlier chapter…** (it then holds from that chapter on, as if entered
+  there; it can't go back past another change of the same fact, or before the entry first appears) and
+  **Retcon the chapters…**. **+ Add a fact** adds one.
   A fact's aspect is picked from the **fact categories** in **Settings › Codex**: one list for each
   type of entry, shared by every story (Species, Skin, Teeth, Personality…). The AI must use them
   too: what it calls "fur" or "temperament" is filed under Skin or Personality, and when nothing on
@@ -92,7 +99,7 @@ and, for pictures, your own ComfyUI machine.
 - **Story Bible**: the **Bible** tab of every story page. On a phone its sections are a **Section**
   picker; under it, **Showing** says which chapter (or the whole story) you are looking at, with
   **Change…** to pick another and a link back to reading the chapter.
-- **Codex suggestions**: after you save a new or edited chapter, the AI (your cheaper model) reads it
+- **Codex suggestions**: after you save a new or edited chapter, the AI (the Codex job's model) reads it
   in the background and suggests fact changes, each with the sentence that shows it. You review them
   beside the chapter's text (**Review beside the text**, from the chapter's banner, its Codex section or
   an entry's page): **Accept**, **Edit** or **Dismiss** each one, and where the chapter contradicts
@@ -174,8 +181,15 @@ Each tab has its own address (`/settings#tags`), so a link or a reload comes bac
 
 - **Connections:** the AI servers (several are fine, such as two Ollama machines and OpenRouter) and
   the ComfyUI address.
-- **Writing:** star the models you want, pick the defaults, and options such as temperature and the
-  context budget. While writing, each draft can switch to any starred model.
+- **Writing:** the **Models** grid has a row for each model you use (press Use on a model in the
+  Connections tab to add it) and a column for each job: Writing, Choices, Summaries, Codex, Tags &
+  continuity and Picture prompts. In a job's column, a ticked box offers the model in that job's
+  pickers. A row also sets the model's nickname, its **Context** (how much the model takes; blank uses
+  the Context budget under Options) and whether it thinks. Under the grid, **Default model for each
+  job** has a dropdown per job; Summaries can be left as the same as Writing, and the other jobs as
+  the same as Summaries. Pages with their own model picker (the writing page, Write ahead,
+  Illustrate) can still choose another. Options below: temperature, the context budget and the codex
+  list.
 - **Drawing:** in two parts. **Making pictures** has the drawing presets (new pictures, and redraws on
   the Refine screen); **Editing pictures** has the edit models (Qwen edit, Flux edit) used by the
   Instruct panel. Each has its own ComfyUI setup check ([Pictures with ComfyUI](docs/pictures.md)).

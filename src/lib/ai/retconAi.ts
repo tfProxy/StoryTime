@@ -5,7 +5,7 @@ import { completeChat, type AiSourceIds } from "./client";
 import { extractJson } from "./codexAi";
 import { estimateTokens, type PromptParts } from "./prompts";
 import { findPassage, type RetconEdit } from "../retconText";
-import type { Settings } from "../settings";
+import { contextFor, type Settings } from "../settingsSchema";
 
 export const MAX_RETCON_EDITS = 30;
 const PASSAGE_MAX = 2000;
@@ -74,10 +74,11 @@ export type RunRetconOptions = RetconRequestOptions & { signal?: AbortSignal; ro
 /** Asks the AI what the chapter needs changed for the retcon. Throws when the call fails. */
 export async function runRetcon(settings: Settings, opts: RunRetconOptions): Promise<{ edits: RetconEdit[]; note: string }> {
   if (!opts.chapter.body.trim()) return { edits: [], note: "" };
-  const request = retconRequest(settings.contextTokens, opts);
+  const request = retconRequest(contextFor(settings, "codex"), opts);
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
+    use: "codex",
     role: opts.role ?? "main",
     signal: opts.signal,
     source: { label: "Retcon", ...opts.source },

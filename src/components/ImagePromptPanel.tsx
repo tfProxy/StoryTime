@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { saveSettings, useSettings } from "@/lib/settings";
+import { contextFor, saveSettings, useSettings } from "@/lib/settings";
 import { LIMITS } from "@/lib/limits";
 import { codexBudget, budgetFor, explainCodex, type ContextChapter, type ContextCodexEntry } from "@/lib/ai/prompts";
 import { combinePrompts, withArtStyle, withoutGiven, writeImagePrompt, type ImageMoment } from "@/lib/ai/imagePrompt";
@@ -136,7 +136,7 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
   const [presetNow, setPresetNow] = useState(chapterPreset);
   const draw = drawPresetFor(settings.comfy.drawPresets, presetNow, story.draw_preset);
   const style = draw.promptStyle;
-  const model = settings.imagePromptModel;
+  const model = settings.defaults.picture;
 
   // Text always included in this chapter's prompts: kept on the server 0.7 s after typing stops, and when the page is left.
   const [fixed, setFixed] = useState(fixedPrompt);
@@ -179,7 +179,7 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
   }, [saveFixed]);
 
   const options = () => ({ story, path, codex, moment, direction, style, fixed: combinePrompts(style, fixed, draw.prompt) });
-  const used = explainCodex(codex, `${chapter.body}\n${direction}`, codexBudget(budgetFor(settings.contextTokens)))
+  const used = explainCodex(codex, `${chapter.body}\n${direction}`, codexBudget(budgetFor(contextFor(settings, "picture", model))))
     .filter((r) => r.state === "included")
     .map((r) => r.entry.name);
 
@@ -243,10 +243,9 @@ export default function ImagePromptPanel({ chapterId, story, chapterPreset = nul
       <div className="row prompt-writer-row">
         <ModelPicker
           label="Model for picture prompts"
-          role="cheap"
           use="picture"
           value={model}
-          onChange={(ref) => void saveSettings({ ...settings, imagePromptModel: ref })}
+          onChange={(ref) => void saveSettings({ ...settings, defaults: { ...settings.defaults, picture: ref } })}
         />
         <span className="row prompt-writer-buttons" style={{ flexWrap: "nowrap", gap: "0.4rem" }}>
           <button

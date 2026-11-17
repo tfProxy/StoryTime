@@ -27,7 +27,7 @@ const negativeBox = page.getByRole("textbox", { name: "Negative prompt", exact: 
 const showBox = page.getByLabel("What to show (optional)");
 const momentMenu = page.getByLabel("Moment to show");
 const open = async (id) => {
-  await page.goto(`${BASE}/c/${id}/illustrate`);
+  await page.goto(`${BASE}/c/${id}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
 };
 
@@ -67,7 +67,7 @@ try {
   ok((await momentMenu.inputValue()) === "start" && (await showBox.inputValue()) === "the keeper at the lamp", "…as reopening shows");
   const fresh = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const phone = await fresh.newPage();
-  await phone.goto(`${BASE}/c/${first}/illustrate`);
+  await phone.goto(`${BASE}/c/${first}/desk?side=illustrate`);
   ok((await phone.getByRole("textbox", { name: "Prompt", exact: true }).inputValue()) === "a lighthouse at dusk, “gulls” – wide", "…in another browser too (it is kept on the server, not in the browser)");
   await fresh.close();
 

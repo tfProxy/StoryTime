@@ -65,9 +65,12 @@ export const savedOwner = (t: PictureTarget) => (t.kind === "chapter" ? t.chapte
 export const COVER_SOURCES = ["premise", "opening", "path"] as const;
 export type CoverSource = (typeof COVER_SOURCES)[number];
 
+/** Where a chapter's pictures are made: the writing desk in Illustrate mode. */
+export const illustrateHref = (chapterId: string) => `/c/${chapterId}/desk?side=illustrate`;
+
 /** The page that makes the target's pictures (for a codex entry's old jobs, the entry's page, where its icon is). */
 export const targetHref = (t: PictureTarget) =>
-  t.kind === "chapter" ? `/c/${t.chapterId}/illustrate` : t.kind === "cover" ? `/s/${t.storyId}/cover` : `/s/${t.storyId}/codex/${encodeURIComponent(t.entryId)}`;
+  t.kind === "chapter" ? illustrateHref(t.chapterId) : t.kind === "cover" ? `/s/${t.storyId}/cover` : `/s/${t.storyId}/codex/${encodeURIComponent(t.entryId)}`;
 
 /** What the target's own preset and kept settings are called in a message: "chapter", "cover" or "codex entry". */
 export const targetWord = (t: PictureTarget) => (t.kind === "chapter" ? "chapter" : t.kind === "cover" ? "cover" : "codex entry");

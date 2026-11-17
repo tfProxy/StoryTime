@@ -30,6 +30,7 @@ import { EntryDetailsForm, EntryHistoryList, useEntryActions } from "./CodexEntr
 import { EntryHints, type HeldFact } from "./CodexFacts";
 import CodexIconPicker from "./CodexIconPicker";
 import { INBOX_CHANGED, useCodexInbox } from "./CodexInbox";
+import FactMover from "./FactMover";
 import FleshOutEntry from "./FleshOutEntry";
 import LinkedEntryDetails from "./LinkedEntryDetails";
 import MoreMenu from "./MoreMenu";
@@ -618,6 +619,8 @@ export function FactsTable({
     setEditingState(id);
   };
   const [history, setHistory] = useState<string[]>([]);
+  // The change (codex_facts row) of the fact whose "Move to an earlier chapter" dialog is open.
+  const [moving, setMoving] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [fleshOpen, setFleshOpen] = useState(false);
   const [tidyOpen, setTidyOpen] = useState(false);
@@ -784,6 +787,11 @@ export function FactsTable({
             >
               Remove from “{here}” on…
             </button>
+            {sharedState(f.fact_id) !== "base" && f.op.anchor_chapter_id !== path[0]?.id && (
+              <button type="button" disabled={busy || !!hold} title={hold ? AFTER_POST : undefined} onClick={() => setMoving(f.op.id)}>
+                Move to an earlier chapter…
+              </button>
+            )}
             {entry.shared_entry_id && sharedState(f.fact_id) === "changed" && (
               <button type="button" disabled={busy || !!hold} title={hold ? AFTER_POST : undefined} onClick={() => void resetShared(f.fact_id)}>
                 Reset to the shared fact
@@ -802,6 +810,7 @@ export function FactsTable({
           </MoreMenu>
         </div>
         <Markers list={rowMarkers.get(f.fact_id) ?? []} />
+        {moving === f.op.id && <FactMover entryId={entry.entry_id} factOpId={f.op.id} chapterId={chapterId} onMoved={onSaved} onClose={() => setMoving(null)} />}
         {editing === f.fact_id && <div className="ef-wide">{editor(f)}</div>}
         {history.includes(f.fact_id) && (
           <ol className="history ef-wide">

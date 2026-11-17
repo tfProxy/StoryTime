@@ -1,5 +1,5 @@
-// The Illustrate page shows the chapter being illustrated: its summary, the whole text and the story so far
-// (folded away, and remembered), in a column beside the prompt on a wide screen and above it on a phone.
+// The desk's Illustrate mode shows the chapter being illustrated: its summary, the whole text and the story so far
+// (folded away, and remembered), below the pictures in the story column, beside the prompt's column.
 import { launch } from "./browser.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
@@ -24,7 +24,7 @@ page.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true
 const panel = page.getByRole("complementary", { name: "The chapter" });
 
 try {
-  await page.goto(`${BASE}/c/${lit}/illustrate`);
+  await page.goto(`${BASE}/c/${lit}/desk?side=illustrate`);
   await panel.waitFor();
   const summaryFold = panel.locator("details", { hasText: "Summary" });
   ok(!(await summaryFold.evaluate((d) => d.open)) && !(await panel.getByText("The lantern glows blue and so do the walls.").isVisible()), "the chapter's summary starts folded");
@@ -39,21 +39,12 @@ try {
   ok(await panel.getByText("Mara stepped back as the walls began to glow.").isVisible() && await panel.getByText("The lantern flared blue.").isVisible(), "opening it shows the whole chapter, paragraph by paragraph");
   ok((await text.locator(".prose p").count()) === 2, "…as two paragraphs");
 
-  // above the prompt, in a column beside the pictures, and in view while the page is scrolled
+  // on the desk: the chapter is in the story column, below the pictures, and the prompt is in the side column beside it
   const side = await panel.boundingBox();
   const prompt = await page.locator(".image-prompt").boundingBox();
-  const gallery = await page.locator(".illustrate-gallery").boundingBox();
-  ok(Math.abs(side.x - prompt.x) < 2 && side.y + side.height <= prompt.y + 1, "on a wide screen the chapter is above the prompt, in the same column");
-  ok(gallery.x > side.x + side.width - 1 && gallery.width > side.width, `…and the pictures have the wider column beside it (pictures from ${Math.round(gallery.x)}px, ${Math.round(gallery.width)}px wide)`);
-  // stands in for a long list of pictures
-  await page.evaluate(() => {
-    const tall = document.createElement("div");
-    tall.style.height = "3000px";
-    document.querySelector(".illustrate-gallery").append(tall);
-    window.scrollTo(0, document.body.scrollHeight);
-  });
-  const scrolled = await panel.boundingBox();
-  ok(scrolled.y >= 0 && scrolled.y < 100, `…and it stays in view when the page is scrolled to the bottom (top at ${Math.round(scrolled.y)}px)`);
+  const editors = await page.locator(".desk-pictures .image-editors").boundingBox();
+  ok(side.y >= editors.y + editors.height - 1, "on a wide screen the chapter is below the pictures, in the story column");
+  ok(prompt.x + prompt.width <= side.x + 1 || side.x + side.width <= prompt.x + 1, `…and the prompt is in the column beside it (prompt from ${Math.round(prompt.x)}px, chapter from ${Math.round(side.x)}px)`);
 
   // the story so far is the previous chapter's running summary
   const earlier = panel.locator("details", { hasText: "Story so far" });
@@ -76,36 +67,33 @@ try {
   ok(await panel.getByText("Mara went down").isVisible() && !(await panel.getByText("Mara stepped back").isVisible()), "closing the chapter is remembered too");
 
   // the first chapter has no earlier story, and this one has no summary yet
-  await page.goto(`${BASE}/c/${story.chapter_id}/illustrate`);
+  await page.goto(`${BASE}/c/${story.chapter_id}/desk?side=illustrate`);
   await panel.waitFor();
   ok((await panel.getByText("Story so far").count()) === 0, "the first chapter has no story-so-far fold");
 
   // a chapter without a summary says so and points to where one is written
   const second = await call("POST", "/api/stories", { title: "No summary", chapter: { title: "Plain", body: "Just words here." } });
-  await page.goto(`${BASE}/c/${second.chapter_id}/illustrate`);
+  await page.goto(`${BASE}/c/${second.chapter_id}/desk?side=illustrate`);
   await panel.waitFor();
   ok(await panel.getByText("No summary yet.").isVisible(), "a chapter without a summary says so");
   const link = panel.getByRole("link", { name: "Write one" });
   ok((await link.getAttribute("href")) === `/s/${second.story_id}/review?tab=summaries&chapter=${second.chapter_id}`, "…with a link to the chapter's summary in the Story Bible");
 
-  // phone: the chapter comes first, folded, and nothing runs off the side
+  // phone: nothing runs off the side
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`${BASE}/c/${lit}/illustrate`);
+  await page.goto(`${BASE}/c/${lit}/desk?side=illustrate`);
   await panel.waitFor();
   await page.locator(".illustrate-fold summary").first().click();
   const small = await page.evaluate(() => {
-    const side = document.querySelector(".illustrate-chapter").getBoundingClientRect();
-    const main = document.querySelector(".image-prompt").getBoundingClientRect();
-    const wide = [...document.querySelectorAll(".illustrate-controls *")].filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1).length;
-    return { above: side.bottom <= main.top + 1, scroll: document.documentElement.scrollWidth, inner: window.innerWidth, wide };
+    const wide = [...document.querySelectorAll(".desk-illus-side *, .illustrate-chapter *")].filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1).length;
+    return { scroll: document.documentElement.scrollWidth, inner: window.innerWidth, wide };
   });
-  ok(small.above, "on a phone the chapter is above the prompt");
   ok(small.scroll <= small.inner && small.wide === 0, `no sideways scrolling at 390px wide (page ${small.scroll}px, window ${small.inner}px)`);
 
   if (process.env.E2E_SCREENSHOT_DIR) {
     await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-chapter-390.png`, fullPage: true });
     await page.setViewportSize({ width: 1280, height: 900 });
-    await page.goto(`${BASE}/c/${lit}/illustrate`);
+    await page.goto(`${BASE}/c/${lit}/desk?side=illustrate`);
     await panel.waitFor();
     await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-chapter-1280.png` });
   }

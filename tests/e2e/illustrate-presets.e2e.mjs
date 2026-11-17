@@ -80,7 +80,7 @@ try {
   ok((await call("GET", `/api/stories/${storyId}`)).draw_preset === "plain", "choosing one there saves it with the story");
 
   // ---- the Illustrate page uses it, and a chapter can choose another ----
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("boats in a harbour");
   await drawMenu.waitFor();
   ok(await drawMenu.inputValue() === "plain" && (await drawMenu.locator("option").allInnerTexts()).join() === "Ink,Plain (default)", "the chapter uses the story's preset, marked as the default");
@@ -185,7 +185,7 @@ try {
     "choosing an all-in-one checkpoint saves it in the preset",
   );
   ok((await nightFiles.innerText()).includes("The checkpoint's own") && (await nightFiles.innerText()).includes("ComfyUI has every file this preset uses"), "…the text encoder and VAE then come from it");
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await editMenu.waitFor();
   await editMenu.selectOption("night");
   await page.getByRole("textbox", { name: "What to change" }).fill("make it night");
@@ -210,7 +210,7 @@ try {
       await page.locator("#preset-night").waitFor();
       await page.waitForTimeout(400);
       await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/settings-qwen-${width}.png`, fullPage: true });
-      await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+      await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
       await page.getByRole("heading", { name: "Model Settings" }).waitFor();
       await page.waitForTimeout(500);
       // A refresh brings back the picture being edited; the drawing preset shows without one.

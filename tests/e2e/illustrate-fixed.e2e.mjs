@@ -46,7 +46,7 @@ const makeOne = async () => {
 };
 
 try {
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await promptBox.fill("boats, Best_Quality, harbour");
   await negativeBox.fill("blurry");
   ok((await page.locator(".prompt-field").nth(0).innerText()).includes("Preset: masterpiece, best quality"), "the preset's prompt is shown under the Prompt box");

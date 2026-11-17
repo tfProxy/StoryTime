@@ -132,7 +132,7 @@ try {
   const horseBefore = horseCalls();
   const cheapBefore = calls.filter((c) => c.model === "cheap").length;
   await page.getByRole("radio", { name: /The way here \(2 chapters/ }).check();
-  await page.getByText("One AI call per chapter, using your cheaper model.").waitFor();
+  await page.getByText("One AI call per chapter, using your Tags & continuity model.").waitFor();
   await page.getByRole("button", { name: "Find tags" }).click();
   await page.getByText(/Read 0 chapters; found 0 new suggestions\. 2 chapters were skipped/).waitFor();
   ok(startCalls() === startBefore && horseCalls() === horseBefore, "The way here skips decided chapters and chapters already checked at their current revision");

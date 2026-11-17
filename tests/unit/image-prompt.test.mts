@@ -123,6 +123,21 @@ ok(withArtStyle("A man eats.", "Soft\n  light  ", "natural") === "A man eats. So
 ok(withArtStyle("  a man ", "", "tags") === "a man" && withArtStyle("A man.", "   ", "natural") === "A man.", "no art style leaves the prompt as it is (trimmed)");
 ok(withArtStyle("", "watercolor", "tags") === "watercolor" && withArtStyle("  ", "watercolor", "natural") === "watercolor", "no prompt gives just the art style");
 
+// ---- nudity bans in the negative ----
+{
+  const { withoutNudityBans, forPictureSettings } = await import("../../src/lib/ai/imagePrompt.ts");
+  const neg = "text, lettering, watermark, explicit nudity, genitals, sexual act, extra limbs, NSFW, bare breasts, mosaic censoring, deformed hands";
+  ok(withoutNudityBans(neg) === "text, lettering, watermark, extra limbs, mosaic censoring, deformed hands", "nudity and sex bans are taken out; censor marks and the rest are kept");
+  ok(withoutNudityBans("unisex clothing, sussex, essex") === "unisex clothing, sussex, essex", "whole words only");
+  ok(withoutNudityBans("") === "", "an empty negative stays empty");
+  const p = { scene: "s", prompt: "a nude woman", negative: "nudity, blurry" };
+  const on = { ...DEFAULT_SETTINGS, comfy: { ...DEFAULT_SETTINGS.comfy, allowNudity: true } };
+  const off = { ...DEFAULT_SETTINGS, comfy: { ...DEFAULT_SETTINGS.comfy, allowNudity: false } };
+  ok(forPictureSettings(on, p).negative === "blurry" && forPictureSettings(on, p).prompt === "a nude woman", "allowed: the negative is cleaned, the prompt untouched");
+  ok(forPictureSettings(off, p).negative === "nudity, blurry", "not allowed: the negative is kept");
+  ok(DEFAULT_SETTINGS.comfy.allowNudity === true, "nudity is allowed by default");
+}
+
 // ---- end to end against a fake model ----
 const seen: { system: string; user: string; model: string }[] = [];
 const server = http.createServer((req, res) => {

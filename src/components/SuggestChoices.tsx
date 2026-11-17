@@ -8,7 +8,7 @@ import { getContext } from "@/lib/aiRuns/api";
 import { storyContextOf, withPathSummaries } from "@/lib/aiRuns/writeChapter";
 import { markDeskMove } from "@/lib/deskMove";
 import { LIMITS } from "@/lib/limits";
-import { useSettings } from "@/lib/settings";
+import { contextFor, useSettings } from "@/lib/settings";
 import SplitActionButton, { type SplitMode } from "./SplitActionButton";
 import { AiCallProgress } from "./GenerateProgress";
 
@@ -57,7 +57,8 @@ export default function SuggestChoices({
       const have = context.choices.map((c) => c.label);
       const text = await completeChat(settings, {
         system: SYSTEM_CHOICES,
-        messages: [{ role: "user", content: choicesPrompt(ctx, chapter, have, settings.contextTokens, suggestions) }],
+        messages: [{ role: "user", content: choicesPrompt(ctx, chapter, have, contextFor(settings, "choices"), suggestions) }],
+        use: "choices",
         role: "cheap",
         maxTokens: 400,
         source: { label: "Suggest choices", storyId, chapterId },

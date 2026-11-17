@@ -6,10 +6,10 @@ import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import { quoteInText } from "./tagAi";
-import { FACT_LIMITS, cleanForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry } from "../codex";
+import { FACT_LIMITS, aspectAndForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry } from "../codex";
 import { DEFAULT_CATEGORIES, aspectRules, formFor, resolveAspect, type CategoryLists } from "../codexCategories";
 import type { SuggestionInput } from "./codexCheckAi";
-import type { Settings } from "../settings";
+import { contextFor, type Settings } from "../settingsSchema";
 
 export const MAX_EXPAND_FACTS = 10;
 
@@ -126,9 +126,10 @@ export function parseFleshOut(reply: string, opts: FleshOutOptions): SuggestionI
     if (out.length >= MAX_EXPAND_FACTS) break;
     if (!item || typeof item !== "object") continue;
     const o = item as Record<string, unknown>;
-    const aspect = resolveAspect(asString(o.aspect, FACT_LIMITS.aspect), (opts.categories ?? DEFAULT_CATEGORIES)[entry.type], entry.facts).aspect;
+    const given = aspectAndForm(asString(o.aspect, 120), asString(o.form, FACT_LIMITS.form));
+    const aspect = resolveAspect(given.aspect.slice(0, FACT_LIMITS.aspect), (opts.categories ?? DEFAULT_CATEGORIES)[entry.type], entry.facts).aspect;
     // An aspect that is the same in every form gets no form.
-    const form = formFor(aspect, cleanForm(asString(o.form, FACT_LIMITS.form)), (opts.categories ?? DEFAULT_CATEGORIES)[entry.type]);
+    const form = formFor(aspect, given.form, (opts.categories ?? DEFAULT_CATEGORIES)[entry.type]);
     const text = asString(o.text, FACT_LIMITS.text);
     if (!aspect || !text || isFormAspect(aspect)) continue;
     // New details only: an aspect the entry already has (in that form) is its owner's to change.
@@ -149,12 +150,14 @@ export type RunFleshOutOptions = FleshOutOptions & { signal?: AbortSignal; role?
 /** Asks the AI for new facts for one entry. Throws when the reply can't be read. */
 export async function runFleshOut(settings: Settings, opts: RunFleshOutOptions): Promise<SuggestionInput[]> {
   const withLists = { categories: settings.codexCategories, ...opts };
-  const request = fleshOutRequest(settings.contextTokens, withLists);
+  const request = fleshOutRequest(contextFor(settings, "codex"), withLists);
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
+    use: "codex",
     role: opts.role ?? "cheap",
     signal: opts.signal,
+    precise: true,
     source: { label: "Flesh out", ...opts.source },
   });
   return parseFleshOut(reply, withLists);

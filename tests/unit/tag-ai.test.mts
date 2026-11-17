@@ -1,5 +1,5 @@
 import http from "node:http";
-import { draftRule, parseRuleReply, parseTagReply, quoteInText, ruleRequest, suggestTagsForChapter, tagRequest, type TagRule } from "../../src/lib/ai/tagAi.ts";
+import { draftRule, matchQuote, parseRuleReply, parseTagReply, quoteInText,ruleRequest, suggestTagsForChapter, tagRequest, type TagRule } from "../../src/lib/ai/tagAi.ts";
 import { DEFAULT_SETTINGS } from "../../src/lib/settingsSchema.ts";
 
 const ok = (c: boolean, m: string) => { console.log(c ? "ok  " : "FAIL", m); if (!c) process.exitCode = 1; };
@@ -78,6 +78,17 @@ ok(quoteInText("hooves. Blood sprayed", body), "quote spanning a paragraph break
 ok(!quoteInText("Her hands became wings.", body), "invented quote not found");
 ok(!quoteInText("", body) && !quoteInText("   ", body), "empty quote not found");
 
+// ---- matchQuote: the chapter's own words for a loose quote ----
+const prose = "The back of her hoodie was bulging, straining, and then it split with a soft rip as a long, stiffening tail lashed free. Feathers were unfurling along Lily’s forearms. More rippled up her neck and down her spine, iridescent in the morning light.";
+ok(matchQuote("then it split with a soft rip", prose) === "then it split with a soft rip", "an exact quote comes back as it is");
+ok(matchQuote("Feathers were unfurling along Lily's forearms... More rippled up her neck", prose) === "Feathers were unfurling along Lily’s forearms. More rippled up her neck", "pieces joined with ... become the passage they span, in the chapter's words");
+ok(matchQuote("The back of her hoodie was bulging, straining, and then split with a soft rip as a long, stiffening tail lashed free", prose)?.startsWith("The back of her hoodie") === true, "a long quote with a word left out still matches");
+ok(matchQuote("The back of her coat was swelling and then tore with a loud rip as a tail came out", prose) === null, "a paraphrase does not match");
+ok(matchQuote("More rippled up her neck... Feathers were unfurling along", prose) === null, "pieces out of order do not match");
+ok(matchQuote("Feathers were unfurling... wings burst from her back", prose) === null, "a quote with one invented piece does not match");
+ok(matchQuote("hoodie", prose) === "hoodie" && matchQuote("wings", prose) === null, "a one-word quote must be exact");
+ok(matchQuote("The back of her hoodie... iridescent in the morning light", prose, 60) === "The back of her hoodie … iridescent in the morning light", "pieces too far apart are joined with an ellipsis");
+
 // ---- suggestTagsForChapter ----
 handler = () => JSON.stringify({ tags: [
   { name: "TF", value: null, quote: "her hands became hooves", reason: "Hands turn to hooves." },
@@ -85,11 +96,14 @@ handler = () => JSON.stringify({ tags: [
 ] });
 let s = await suggestTagsForChapter(settings, { story, chapter: { title: "Two", body }, tags });
 ok(s.length === 1 && s[0].tag_id === "t-tf", "suggestion with an invented quote is dropped");
-ok(prompts.at(-1)!.model === "main" && prompts.at(-1)!.user.includes("Tag: Gore"), "one call to the main model carrying the rules");
+ok(prompts.at(-1)!.model === "cheap" && prompts.at(-1)!.user.includes("Tag: Gore"), "one call to the Tags job's default (the cheap model unless set) carrying the rules");
 const before = prompts.length;
-await suggestTagsForChapter(settings, { story, chapter: { title: "Two", body }, tags, role: "cheap" });
-ok(prompts.at(-1)!.model === "cheap" && prompts.length === before + 1, "role can be switched to the cheap model");
-ok((await suggestTagsForChapter(settings, { story, chapter: { title: "Two", body }, tags: [] })).length === 0 && prompts.length === before + 1, "no tags -> no call");
+const tagsSettings: any = { ...settings, defaults: { ...settings.defaults, tags: { connectionId: "t", model: "tagger" } } };
+await suggestTagsForChapter(tagsSettings, { story, chapter: { title: "Two", body }, tags });
+ok(prompts.at(-1)!.model === "tagger" && prompts.length === before + 1, "a Tags default is used for tag scans");
+await suggestTagsForChapter(tagsSettings, { story, chapter: { title: "Two", body }, tags, role: "main" });
+ok(prompts.at(-1)!.model === "tagger" && prompts.length === before + 2, "the job's default wins over the role");
+ok((await suggestTagsForChapter(settings, { story, chapter: { title: "Two", body }, tags: [] })).length === 0 && prompts.length === before + 2, "no tags -> no call");
 handler = () => '```json\n{"tags":[]}\n```';
 ok((await suggestTagsForChapter(settings, { story, chapter: { title: "Two", body }, tags })).length === 0, "empty result");
 handler = () => "I cannot help";
@@ -106,7 +120,9 @@ try { ruleRequest(8000, { idea: "  " }); ok(false, "needs idea"); } catch (e) { 
 handler = () => '```json\n{"name":"TF","applies":"A character changes species on the page.","not_applies":["dreams","disguises","past events","dreams"],"choices":["mild", "", "full"]}\n```';
 let d = await draftRule(settings, { idea: "tf: a character changes species" });
 ok(d.name === "TF" && d.applies === "A character changes species on the page." && d.not_applies === "dreams; disguises; past events" && d.choices.join() === "mild,full", "draftRule parses a good reply (list not_applies joined, choices cleaned)");
-ok(prompts.at(-1)!.model === "main", "draftRule uses the main model");
+ok(prompts.at(-1)!.model === "cheap", "draftRule uses the Tags job's default (the cheap model unless set)");
+await draftRule({ ...settings, defaults: { ...settings.defaults, tags: { connectionId: "t", model: "tagger" } } }, { idea: "tf: a character changes species" });
+ok(prompts.at(-1)!.model === "tagger", "draftRule uses a Tags default when set");
 handler = () => "Sure! Here you go: it should be about a tf.";
 d = await draftRule(settings, { idea: "tf: a character changes species" });
 ok(d.name === "tf" && d.applies === "a character changes species" && d.not_applies === "" && d.choices.length === 0, "bad JSON falls back to the idea");

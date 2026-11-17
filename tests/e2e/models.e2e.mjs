@@ -100,28 +100,50 @@ await page.getByRole("tab", { name: "Writing" }).click();
 await page.getByLabel("Nickname for vendor/big").fill("Big one");
 await until(async () => (await settingsNow())?.favorites.find((f) => f.model === "vendor/big")?.label === "Big one", "the nickname to be saved");
 ok(true, "models in use are on the Writing tab, where they can be given a nickname");
-ok((await page.locator("section.model-group").count()) === 2 && (await page.getByRole("region", { name: "Models from Ollama" }).locator("fieldset.model-card").count()) === 1 && (await page.getByRole("region", { name: "Models from OpenRouter" }).getByText("vendor/big").count()) === 1, "on the Writing tab the models are grouped under their connection");
+ok((await page.locator("table.model-grid").count()) === 1 && (await page.locator("table.model-grid tbody tr").count()) === 2 && (await page.getByRole("heading", { name: "Models", exact: true }).count()) >= 1, "on the Writing tab the models in use are rows of one grid");
 
-// ---- each starred model has its own card: thinking, and the jobs it is offered for ----
-const bigCard = page.locator("fieldset.model-card", { hasText: "vendor/big" });
-const alphaCard = page.locator("fieldset.model-card", { hasText: "alpha" });
-ok((await page.locator("fieldset.model-card").count()) === 2, "one card per starred model");
-const usesOf = (card) => card.locator("fieldset.model-uses input[type=checkbox]");
-ok((await usesOf(bigCard).count()) === 4 && (await usesOf(bigCard).evaluateAll((xs) => xs.every((x) => x.checked))), "a starred model is offered for every job at first");
-const thinking = bigCard.getByLabel("Thinking for vendor/big");
+// ---- each starred model has a row: context, thinking, and per job whether it is offered and the default ----
+const JOBS = ["Writing", "Choices", "Summaries", "Codex", "Tags & continuity", "Picture prompts"];
+const bigRow = page.locator("table.model-grid tbody tr", { has: page.getByLabel("Nickname for vendor/big") });
+const alphaRow = page.locator("table.model-grid tbody tr", { has: page.getByLabel("Nickname for alpha") });
+ok((await bigRow.count()) === 1 && (await alphaRow.count()) === 1, "one row per starred model");
+const offers = (row) => row.getByRole("checkbox", { name: /^Offer / });
+ok((await offers(bigRow).count()) === JOBS.length && (await offers(bigRow).evaluateAll((xs) => xs.every((x) => x.checked))), "a starred model is offered for every job at first");
+ok((await bigRow.getByRole("radio").count()) === 0, "…and no default buttons: defaults are dropdowns under the grid");
+const thinking = bigRow.getByLabel("Thinking for vendor/big");
 const shown = await thinking.locator("option").allTextContents();
 ok((await thinking.locator("option:checked").textContent()) === "Think for everything", "…with thinking left on");
 ok(shown.join(" / ") === "Think for everything / Only when writing chapters / Never think", `…and three choices: ${shown.join(" / ")}`);
 await thinking.selectOption({ label: "Only when writing chapters" });
 await until(async () => JSON.stringify((await settingsNow()).favorites.find((f) => f.model === "vendor/big")?.disableThinking) === '{"write":false,"other":true}', "thinking to be turned off for vendor/big's other jobs only");
-await bigCard.getByRole("checkbox", { name: /Summaries and small jobs/ }).uncheck();
-await until(async () => (await settingsNow()).favorites.find((f) => f.model === "vendor/big")?.hiddenFrom.includes("summary"), "vendor/big to opt out of summaries");
+ok((await settingsNow()).favorites.find((f) => f.model === "vendor/big").context === null, "a model's context starts blank (it uses the Context budget)");
+await bigRow.getByLabel("Context for vendor/big").fill("32000");
+await until(async () => (await settingsNow()).favorites.find((f) => f.model === "vendor/big")?.context === 32000, "the model's context to be saved");
+ok(true, "a model can be given its own context");
+await bigRow.getByRole("checkbox", { name: "Offer Big one for Summaries" }).uncheck();
+await until(async () => (await settingsNow()).favorites.find((f) => f.model === "vendor/big")?.hiddenFrom.includes("summaries"), "vendor/big to opt out of summaries");
+let bigFav = (await settingsNow()).favorites.find((f) => f.model === "vendor/big");
+ok(bigFav.hiddenFrom.length === 1 && !(await bigRow.getByRole("checkbox", { name: "Offer Big one for Summaries" }).isChecked()) && (await bigRow.getByRole("checkbox", { name: "Offer Big one for Writing" }).isChecked()), "opting out of summaries only affects that job");
+await bigRow.getByRole("checkbox", { name: "Offer Big one for Summaries" }).check();
+await until(async () => (await settingsNow()).favorites.find((f) => f.model === "vendor/big")?.hiddenFrom.length === 0, "vendor/big to be offered for summaries again");
+// (Left offered for Summaries: the desk's Summary model picker below picks it. Choices is opted out of instead.)
+await bigRow.getByRole("checkbox", { name: "Offer Big one for Choices" }).uncheck();
+await until(async () => (await settingsNow()).favorites.find((f) => f.model === "vendor/big")?.hiddenFrom.join() === "choices", "vendor/big to opt out of choices");
 const alphaFav = (await settingsNow()).favorites.find((f) => f.model === "alpha");
-ok(!alphaFav.disableThinking.write && !alphaFav.disableThinking.other && alphaFav.hiddenFrom.length === 0, "the other model's card is untouched");
-const cheapOptions = await page.getByLabel(/^Cheaper model/).locator("option").allTextContents();
-const mainOptions = await page.getByLabel(/^Default model/).locator("option").allTextContents();
-ok(!cheapOptions.some((t) => t.includes("Big one")) && mainOptions.some((t) => t.includes("Big one")), "a model opted out of summaries isn't offered as the cheaper model, but still is for writing");
-ok((await page.getByRole("combobox", { name: /^Thinking for / }).count()) === 2 && (await alphaCard.getByLabel("Thinking for alpha").inputValue()) === "none", "Thinking is chosen on each card, no longer one switch for all");
+ok(!alphaFav.disableThinking.write && !alphaFav.disableThinking.other && alphaFav.hiddenFrom.length === 0 && alphaFav.context === null, "the other model's row is untouched");
+ok((await page.getByRole("combobox", { name: /^Thinking for / }).count()) === 2 && (await alphaRow.getByLabel("Thinking for alpha").inputValue()) === "none", "Thinking is chosen on each row");
+// Each job's default is a dropdown under the grid, saved under the job's own key.
+const jobDefault = (job) => page.locator(".job-defaults label", { hasText: new RegExp(`^${job}`) }).getByRole("combobox");
+ok((await page.locator(".job-defaults select").count()) === JOBS.length, "there is a default dropdown for each job");
+ok((await jobDefault("Writing").locator("option:checked").textContent()) === "alpha · Ollama", "the Writing default (alpha) is the one chosen");
+const codexBlank = await jobDefault("Codex").locator("option:checked").textContent();
+ok(/^Same as Summaries/.test(codexBlank), `Codex starts as the same as Summaries: ${codexBlank}`);
+const codexChoices = await jobDefault("Codex").locator("option").allTextContents();
+ok(codexChoices.includes("Big one · OpenRouter") && codexChoices.includes("alpha · Ollama"), `the Codex dropdown lists the models offered for it: ${codexChoices.join(" / ")}`);
+ok(!(await jobDefault("Choices").locator("option").allTextContents()).includes("Big one · OpenRouter"), "a model opted out of a job isn't in that job's dropdown");
+await jobDefault("Codex").selectOption({ label: "Big one · OpenRouter" });
+await until(async () => (await settingsNow()).defaults.codex?.model === "vendor/big", "the Codex default to be saved");
+ok((await settingsNow()).defaults.main.model === "alpha", "choosing the Codex default leaves the Writing default alone");
 await page.getByRole("tab", { name: "Connections" }).click();
 let s = await settingsNow();
 ok(s.connections.length === 2 && s.favorites.length === 2 && s.defaults.main.model === "alpha", "settings hold both connections and both starred models");
@@ -189,16 +211,16 @@ ok(sum.reasoning?.effort === "none", "…and the same model is asked not to thin
 // ---- the default is chosen in Settings, not next to the picker ----
 ok((await page.getByRole("button", { name: "Make default" }).count()) === 0, "the picker has no “Make default” button");
 await page.goto(`${BASE}/settings#writing`);
-await page.getByLabel(/^Default model/).selectOption({ index: 2 }); // after the blank entry and "alpha"
+await page.locator(".job-defaults label", { hasText: /^Writing/ }).getByRole("combobox").selectOption({ label: "Big one · OpenRouter" });
 await until(async () => (await settingsNow()).defaults.main?.model === "vendor/big", "the default to change");
-ok(true, "choosing the default model in Settings changes it");
+ok(true, "choosing the Writing default in Settings changes it");
 
 // ---- removing a connection drops its starred models ----
 await page.goto(`${BASE}/settings`);
 await page.locator("fieldset.connection").nth(1).getByRole("button", { name: "Remove connection" }).click();
 await until(async () => (await settingsNow()).connections.length === 1, "the connection to be removed");
 s = await settingsNow();
-ok(s.favorites.length === 1 && s.favorites[0].model === "alpha" && s.defaults.main === null, "removing a connection drops its starred models and the default that used it");
+ok(s.favorites.length === 1 && s.favorites[0].model === "alpha" && s.defaults.main === null && s.defaults.codex === null, "removing a connection drops its starred models and the defaults that used it");
 
 await fetch(`${BASE}${draftUrl}`, { method: "DELETE" });
 await json("PUT", "/api/settings", settingsBefore ?? {});

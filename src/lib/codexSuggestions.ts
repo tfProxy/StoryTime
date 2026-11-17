@@ -104,6 +104,32 @@ function parseEntry(json: string): (z.infer<typeof SuggestedEntrySchema>) | null
   }
 }
 
+/** A proposed entry's name and aliases, lower case. */
+function proposalNames(json: string): string[] {
+  const e = parseEntry(json);
+  return e ? [e.name, ...e.aliases].map(lc).filter(Boolean) : [];
+}
+
+/**
+ * Closes (as dismissed) the story's open new-entry proposals that the codex has caught up with: the entry is there at
+ * the proposal's chapter, under that name or an alias, because the owner added it by hand or accepted another proposal.
+ * Run after a reading is saved and after an entry is created, renamed or accepted.
+ */
+export function closeStaleProposals(storyId: string): number {
+  const open = db().prepare(`SELECT id, chapter_id, entry FROM codex_suggestions WHERE story_id = ? AND kind = 'entry' AND status = 'open'`).all(storyId) as { id: string; chapter_id: string; entry: string }[];
+  const close = db().prepare(`UPDATE codex_suggestions SET status = 'dismissed', decided_at = ? WHERE id = ?`);
+  const now = Date.now();
+  let closed = 0;
+  for (const p of open) {
+    const names = proposalNames(p.entry);
+    if (getCodexState(p.chapter_id).some((e) => [e.name, ...e.aliases].some((n) => names.includes(lc(n))))) {
+      close.run(now, p.id);
+      closed += 1;
+    }
+  }
+  return closed;
+}
+
 /**
  * Saves what the AI read from a chapter revision: replaces the chapter's open suggestions (an earlier reading), keeps
  * out any the owner dismissed before, and records that the chapter was read. 404 / 409 as saveFacts.
@@ -138,6 +164,12 @@ export function saveSuggestions(chapterId: string, revision: number, list: Sugge
       ...d,
       who: d.kind === "entry" ? lc(parseEntry(d.entry)?.name ?? "") : (d.entry_id ?? ""),
     }));
+    const path = getPath(chapterId).map((c) => c.id);
+    const openProposals = (
+      db()
+        .prepare(`SELECT entry FROM codex_suggestions WHERE kind = 'entry' AND status = 'open' AND chapter_id IN (${path.map(() => "?").join(",")})`)
+        .all(...path) as { entry: string }[]
+    ).map((r) => ({ names: proposalNames(r.entry) }));
     const insert = db().prepare(
       `INSERT INTO codex_suggestions (id, story_id, chapter_id, revision, kind, entry_id, aspect, form, before, after, quote, entry, source, status, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)`,
@@ -153,6 +185,8 @@ export function saveSuggestions(chapterId: string, revision: number, list: Sugge
         if (!s.entry) continue;
         const name = lc(s.entry.name);
         if (entries.some((e) => [e.name, ...e.aliases].some((n) => lc(n) === name))) continue;
+        // Proposed already, at this chapter or one before it, and still waiting: the inbox needs it once.
+        if (openProposals.some((p) => p.names.includes(name))) continue;
         who = name;
       } else {
         const entry = entries.find((e) => e.entry_id === s.entry_id);
@@ -188,6 +222,7 @@ export function saveSuggestions(chapterId: string, revision: number, list: Sugge
         if (!(e instanceof PostError)) throw e;
       }
     }
+    closeStaleProposals(chapter.story_id);
     if (source === "chapter" && !notesEntryId) {
       db()
         .prepare(
@@ -395,6 +430,7 @@ export function acceptSuggestion(id: string, edits: z.infer<typeof AcceptEditsSc
     }
     const entryId = writeSuggestion(row, edits);
     db().prepare(`UPDATE codex_suggestions SET status = 'accepted', decided_at = ? WHERE id = ?`).run(Date.now(), id);
+    if (row.kind === "entry") closeStaleProposals(row.story_id);
     return { entry_id: entryId };
   })();
 }

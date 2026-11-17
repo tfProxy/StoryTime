@@ -37,7 +37,8 @@ export default function ChapterImage({ chapterId, slot, version }: { chapterId: 
   );
 }
 
-function FullPicture({ src, onClose }: { src: string; onClose: () => void }) {
+/** A picture full screen; a click anywhere or Esc closes it. Put it on <body> (createPortal). */
+export function FullPicture({ src, onClose }: { src: string; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const d = dialog.current;

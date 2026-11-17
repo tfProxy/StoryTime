@@ -34,7 +34,7 @@ const tiles = page.locator(".candidates li.picture-tile");
 const jobs = async () => (await call("GET", `/api/picture-jobs?chapter=${chapterId}`)).jobs;
 const posted = () => comfy.calls.filter((c) => c.method === "POST" && c.path === "/prompt").length;
 const open = async () => {
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
 };
 

@@ -61,7 +61,7 @@ try {
     await tiles.first().waitFor();
   };
   const openRefine = async () => {
-    await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+    await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
     await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
     await showAll();
     await tiles.first().getByRole("button", { name: "More" }).click();
@@ -97,7 +97,7 @@ try {
   };
 
   // ================= a picture on the Illustrate page, with the page's own changes =================
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   await box("Prompt").fill("a keeper at a lamp");
   await box("Negative prompt").fill("ugly");
@@ -274,14 +274,14 @@ try {
   ok(nodes(lastWorkflow(), "LoadImageMask").length === 0 && nodes(lastWorkflow(), "SetLatentNoiseMask").length === 0 && await results.count() === 10, "a mask with nothing left painted redraws the whole picture, with no error");
 
   // ================= the Illustrate page does not see these jobs =================
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   await showAll();
   ok(await tiles.count() === 1, "the Illustrate page still shows one picture (the Refine ones are temporary)");
   ok(await page.getByRole("button", { name: /Pictures:/ }).count() === 0, "…and nothing is “ready” in the header");
 
   // ================= a session's jobs are not given to the page, and wait for the screen =================
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   await showAll();
   await tiles.first().getByRole("button", { name: "More" }).click();
@@ -332,7 +332,7 @@ try {
   ok(await pageLoraStore() === pageLorasBefore && await presetNow() === presetAtStart && await fixedNow() === "gold light", "at the end the page's LoRA changes, the preset and the chapter's Always include text are what they were");
 
   // ================= a picture with no prompt of its own uses the page's saved boxes =================
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   const fallbackId = "fallback01a";
   const orphan = {

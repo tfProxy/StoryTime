@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { chapterImageUrl, type ImageSlot, type ImageVersions } from "@/lib/imageSlots";
+import { illustrateHref } from "@/lib/pictureTarget";
 import type { OutlineOptions } from "@/lib/settingsSchema";
 import type { AiMark as AiMarkState } from "@/lib/stories";
 import { BrushIcon, FooterIcon, HeaderIcon, MiddleIcon } from "./PictureIcons";
@@ -163,7 +164,7 @@ export function NodeSummary({
               {show.illustrate && (
                 <Link
                   className="outline-action outline-icon"
-                  href={`/c/${chapterId}/illustrate`}
+                  href={illustrateHref(chapterId)}
                   title="Make pictures for this chapter"
                   aria-label="Illustrate this chapter"
                 >

@@ -2,7 +2,7 @@
 // text as of a chapter (so it follows the entry as the story changes it). Like the cover's (see ./coverPrompt)
 // and the chapters' (see ./imagePrompt), the request is pure and `writeCodexPrompt` sends it from the browser.
 import { completeChat, type AiSourceIds } from "./client";
-import { parseImagePrompt, STYLE_RULES, type ImagePrompt } from "./imagePrompt";
+import { forPictureSettings, parseImagePrompt, STYLE_RULES, type ImagePrompt } from "./imagePrompt";
 import { notesBlock, parseBracketNotes, type PromptParts } from "./prompts";
 import type { EntryType } from "../codex";
 import type { ImagePromptStyle, ModelRef, Settings } from "../settingsSchema";
@@ -66,10 +66,11 @@ export async function writeCodexPrompt(
   const reply = await completeChat(settings, {
     system: request.system,
     messages: [{ role: "user", content: request.message }],
+    use: "picture",
     role: "cheap",
     model: opts.model,
     signal: opts.signal,
     source: { label: "Codex picture prompt", ...opts.source },
   });
-  return parseImagePrompt(reply);
+  return forPictureSettings(settings, parseImagePrompt(reply));
 }

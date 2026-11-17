@@ -88,6 +88,7 @@ export async function writePicturePrompt(
     direction: "",
     style,
     fixed: combinePrompts(style, setup.fixed, draw.prompt),
+    // The run's own choice, else the Picture prompts default.
     model: options.suggestModel ?? null,
     signal: deps.signal,
     source: deps.source,

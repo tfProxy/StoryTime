@@ -17,6 +17,7 @@ import { useWorkQueue, type GenerateItem } from "./WorkQueue";
 import Prose from "./Prose";
 import { GenerateStep, ThinkingFold } from "./GenerateProgress";
 import AutoTextarea from "./AutoTextarea";
+import DeskLink from "./DeskLink";
 import DeskVia from "./DeskVia";
 import { usePhone } from "./DeskPhone";
 import ModelPicker from "./ModelPicker";
@@ -99,6 +100,8 @@ export type Desk = {
    * way to change them: the desk's codex rows.
    */
   onOverrides?: (o: DeskOverrides | null) => void;
+  /** "Stop editing" beside the title: the chapter read on the desk (for a new one, the chapter it follows). */
+  stopHref?: string;
 };
 
 /** A draft's codex overrides for the prompt, and how to change them. */
@@ -499,7 +502,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const setModel = (job: "write" | "suggest", ref: ModelRef | null) =>
     setDraft((d) => (d ? { ...d, models: { ...d.models, [job]: ref ?? undefined } } : d));
   const writePicker = (
-    <ModelPicker label="Model for writing" role="main" use="write" value={writeModel} onChange={(r) => setModel("write", r)} />
+    <ModelPicker label="Model for writing" use="write" value={writeModel} onChange={(r) => setModel("write", r)} />
   );
   // Manual additions to / removals from the codex entries sent with each prompt.
   const codexOverrides: CodexOverrides = draft.codexOverrides ?? { include: [], exclude: [] };
@@ -989,7 +992,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       <MoreMenu label="More for this chapter">
         <label className="desk-menu-model">
           <span>Summary model</span>
-          <ModelPicker label="Summary model" role="cheap" use="suggest" value={suggestModel} onChange={(r) => setModel("suggest", r)} />
+          <ModelPicker label="Summary model" use="summaries" value={suggestModel} onChange={(r) => setModel("suggest", r)} />
         </label>
         {target.kind === "edit" ? (
           <>
@@ -1048,15 +1051,23 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
         />
       ) : null}
       <section className="desk-box" aria-label="The chapter">
-        <input
-          id="chapter-title"
-          className="desk-box-title"
-          aria-label="Chapter title"
-          placeholder={choiceTitle || "Untitled chapter"}
-          value={draft.title}
-          maxLength={LIMITS.title}
-          onChange={(e) => patch({ title: e.target.value })}
-        />
+        <div className="desk-box-head">
+          <input
+            id="chapter-title"
+            className="desk-box-title"
+            aria-label="Chapter title"
+            placeholder={choiceTitle || "Untitled chapter"}
+            value={draft.title}
+            maxLength={LIMITS.title}
+            onChange={(e) => patch({ title: e.target.value })}
+          />
+          {/* Leaving keeps the draft: a change not yet autosaved is saved as the box goes. */}
+          {desk.stopHref && (
+            <DeskLink href={desk.stopHref} className="desk-block-edit desk-stop" title="Stop editing: read the chapter here">
+              Stop editing
+            </DeskLink>
+          )}
+        </div>
 
         <button type="button" className="desk-fold" aria-expanded={promptOpen} onClick={() => setPromptOpen(!promptOpen)}>
           {promptOpen ? "▾" : "▸"} Prompt and drafts ({n})

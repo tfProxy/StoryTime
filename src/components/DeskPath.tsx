@@ -1,7 +1,11 @@
 "use client";
 
 import { Fragment, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { clearDeskMove } from "@/lib/deskMove";
+import { chapterImageUrl, IMAGE_SLOTS, type ImageSlot, type ImageVersions } from "@/lib/imageSlots";
+import ChapterImage, { FullPicture } from "./ChapterImage";
+import { FooterIcon, HeaderIcon, MiddleIcon } from "./PictureIcons";
 import DeskLink from "./DeskLink";
 import DeskVia from "./DeskVia";
 import Prose from "./Prose";
@@ -23,11 +27,66 @@ export type PathBlock = {
   via: string | null;
   /** It has a draft not used (draftMarks.ts). */
   unused: boolean;
+  /** Its pictures: in its text when unfolded, as icons on its head when folded. */
+  images: ImageVersions;
 };
+
+const SLOT_ICON: Record<ImageSlot, () => React.JSX.Element> = { header: HeaderIcon, middle: MiddleIcon, footer: FooterIcon };
+const SLOT_NAME: Record<ImageSlot, string> = { header: "header picture", middle: "middle picture", footer: "footer picture" };
+
+/** A folded block's icon for one of its pictures; it shows the picture full screen. */
+function PictureIcon({ chapterId, slot, version }: { chapterId: string; slot: ImageSlot; version: number }) {
+  const [open, setOpen] = useState(false);
+  const Icon = SLOT_ICON[slot];
+  return (
+    <>
+      <button type="button" className="desk-block-picture" title={`Show the ${SLOT_NAME[slot]}`} aria-label={`Show the ${SLOT_NAME[slot]}`} onClick={() => setOpen(true)}>
+        <Icon />
+      </button>
+      {open && createPortal(<FullPicture src={chapterImageUrl(chapterId, slot, version)} onClose={() => setOpen(false)} />, document.body)}
+    </>
+  );
+}
+
+/**
+ * The chapter on the desk, read and not edited (`?read=1`): in place of its box, its title with ✎ to edit it, then its
+ * text with its pictures. `onText` hears the text, as the box's would, for the desk's "In this chapter".
+ */
+export function DeskReading({
+  chapterId,
+  reading,
+  onText,
+}: {
+  chapterId: string;
+  reading: { title: string; body: string; via: string | null; images: ImageVersions };
+  onText: (text: string, body: string) => void;
+}) {
+  const { title, body, via, images } = reading;
+  useEffect(() => onText(`${title}\n\n${body}`, body), [title, body, onText]);
+  return (
+    <>
+      {via && <DeskVia label={via} />}
+      <section className="desk-box desk-reading" aria-label="The chapter">
+        <div className="desk-reading-head">
+          <h2>{title}</h2>
+          <DeskLink href={`/c/${chapterId}/desk`} className="desk-block-edit" aria-label={`Edit “${title}”`} title="Edit this chapter">
+            ✎
+          </DeskLink>
+        </div>
+        <div className="desk-block-text">
+          <ChapterImage chapterId={chapterId} slot="header" version={images.header} />
+          <Prose text={body} middle={<ChapterImage chapterId={chapterId} slot="middle" version={images.middle} />} />
+          <ChapterImage chapterId={chapterId} slot="footer" version={images.footer} />
+        </div>
+      </section>
+    </>
+  );
+}
 
 /**
  * The path above the chapter's box: each earlier chapter is a block that folds. Folded, it shows its number, title and
- * summary; unfolded, its title and text only. ✎ makes it the chapter on the desk. Every block starts folded, however
+ * summary, and an icon for each of its pictures; unfolded, its title and text, with its pictures where the reading
+ * page puts them. ✎ makes it the chapter on the desk. Every block starts folded, however
  * the desk was opened; "Unfold all" or "Fold all" at the top.
  */
 export default function DeskPath({ blocks, onQuote }: { storyId?: string; blocks: PathBlock[]; onQuote?: (words: string) => void }) {
@@ -93,14 +152,21 @@ export default function DeskPath({ blocks, onQuote }: { storyId?: string; blocks
                   </strong>
                   {!open && <small>{b.summary?.trim() || "No summary yet"}</small>}
                 </button>
-                {b.unused && <span className="desk-chip draft-mark">Draft not used</span>}
+                {!open &&
+                  IMAGE_SLOTS.map((slot) => {
+                    const v = b.images[slot];
+                    return v === null ? null : <PictureIcon key={slot} chapterId={b.id} slot={slot} version={v} />;
+                  })}
+                {b.unused &&<span className="desk-chip draft-mark">Draft not used</span>}
                 <DeskLink href={`/c/${b.id}/desk`} className="desk-block-edit" aria-label={`Edit “${b.title}”`} title="Edit this chapter here">
                   ✎
                 </DeskLink>
               </div>
               {open && (
                 <div className="desk-block-text" data-block={b.id}>
-                  <Prose text={b.body} />
+                  <ChapterImage chapterId={b.id} slot="header" version={b.images.header} />
+                  <Prose text={b.body} middle={<ChapterImage chapterId={b.id} slot="middle" version={b.images.middle} />} />
+                  <ChapterImage chapterId={b.id} slot="footer" version={b.images.footer} />
                   {onQuote && picked?.id === b.id && (
                     <div className="row desk-block-quote">
                       {/* Pressing it keeps the selection (the focus would clear it). */}
