@@ -789,7 +789,7 @@ export function DrawingSettings({
         <h3>Drawing presets</h3>
         <p className="meta" style={{ margin: 0 }}>
           How new pictures are drawn, and redrawn on the Refine screen: the checkpoint, its LoRAs and the sampler. Each story chooses its
-          preset on its details page (stories that choose none use the top one), and a chapter can choose another on the Illustrate page.
+          preset on its details page (stories that choose none use the top one), and a chapter can choose another in the writing desk's Illustrate mode.
         </p>
         {presets.map((p, i) => (
           <PresetCard
@@ -1063,7 +1063,7 @@ export function EditSettings({
       <section id={`${modelId}-presets`} className="settings-section">
         <h4>{model.name} presets</h4>
         <p className="meta" style={{ margin: 0 }}>
-          {model.blurb} Each preset has its own LoRAs and settings; choose one in the Instruct panel on the Illustrate page.
+          {model.blurb} Each preset has its own LoRAs and settings; choose one in the Instruct panel in the writing desk's Illustrate mode.
         </p>
         {installed !== null && (
           <p className={installed ? "ok" : "error"} style={{ margin: 0 }}>

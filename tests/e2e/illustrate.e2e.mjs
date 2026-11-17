@@ -50,10 +50,10 @@ const choose = async (title, name) => {
 await page.goto(`${BASE}/c/${root}`);
 ok((await page.locator(".chapter-image").count()) === 0, "a chapter with no pictures shows none");
 
-// ---- from the chapter's menu to the illustrate page ----
+// ---- from the chapter's menu to the writing desk in Illustrate mode ----
 await page.locator(".chapter-actions").getByRole("link", { name: "Illustrate", exact: true }).click();
-await page.waitForURL(`**/c/${root}/illustrate`);
-ok(await page.getByRole("heading", { name: "Header picture" }).isVisible() && await page.getByRole("heading", { name: "Footer picture" }).isVisible(), "the chapter's menu leads to the illustrate page, with a header and a footer picture");
+await page.waitForURL(`**/c/${root}/desk?side=illustrate`);
+ok(await page.getByRole("heading", { name: "Header picture" }).isVisible() && await page.getByRole("heading", { name: "Footer picture" }).isVisible(), "the chapter's menu leads to the desk in Illustrate mode, with a header and a footer picture");
 ok((await menuItems("Header picture")).join("|") === "Upload picture", "each starts empty, with a ☰ menu that offers Upload only");
 
 // ---- header ----
@@ -131,7 +131,7 @@ ok(st.y + st.height <= sh.y + 1 && sh.y + sh.height <= sp.y + 1 && sp.y + sp.hei
 ok((await childSection.locator("img").count()) === 0, "…and none for a chapter without any");
 
 // ---- a file that isn't a picture is turned down ----
-await page.goto(`${BASE}/c/${child}/illustrate`);
+await page.goto(`${BASE}/c/${child}/desk?side=illustrate`);
 await page.getByLabel("Header picture file").setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hello") });
 await card("Header picture").getByText(/isn't an image/).waitFor();
 ok(true, "a file that isn't an image is turned down");
@@ -139,7 +139,10 @@ ok((await stored("header", child)).status === 404, "…and nothing is stored");
 ok((await menuItems("Header picture")).includes("Upload picture"), "…the card still offers Upload");
 
 // ---- remove the header ----
+// The old standalone page's address still works: it goes to the desk in Illustrate mode.
 await page.goto(`${BASE}/c/${root}/illustrate`);
+await page.waitForURL(`**/c/${root}/desk?side=illustrate`);
+ok(true, "the old /c/<id>/illustrate address lands on the desk in Illustrate mode");
 await card("Header picture").locator("img.image-editor-preview").waitFor();
 await choose("Header picture", "Clear Header");
 await card("Header picture").getByText("Picture removed.").waitFor();

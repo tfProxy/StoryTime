@@ -6,6 +6,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getRun } from "@/lib/aiRuns/api";
+import { illustrateHref } from "@/lib/pictureTarget";
 import type { RunEvent } from "@/lib/aiRuns/runner";
 import type { AiRun, CodexTask, ContinuityTask, FactsTask, PictureTask, RetconTask, SummaryTask, TagsTask, WriteTask } from "@/lib/aiRuns/types";
 import { useWorkQueue, type RunItem } from "./WorkQueue";
@@ -299,11 +300,11 @@ export default function AiRunProgress({
         {pics.map((t) => (
           <li key={t.id} className={`ai-run-task ai-run-task-${t.status}`}>
             <div>
-              <Link href={`/c/${t.chapterId}/illustrate`}>{t.label ?? "A chapter"}</Link> <span className="meta">· {t.slot} · {t.status === "written" ? "prompt written, drawing" : STATUS_WORDS[t.status]}</span>
+              <Link href={illustrateHref(t.chapterId)}>{t.label ?? "A chapter"}</Link> <span className="meta">· {t.slot} · {t.status === "written" ? "prompt written, drawing" : STATUS_WORDS[t.status]}</span>
             </div>
             {t.status !== "todo" && <AiExchangeLink runId={runId} chapterId={t.chapterId} />}
             {t.status === "done" && (
-              <Link href={`/c/${t.chapterId}/illustrate`} className="picture-queue-thumbs" aria-label={`The ${t.slot} picture of “${t.label ?? "the chapter"}”`}>
+              <Link href={illustrateHref(t.chapterId)} className="picture-queue-thumbs" aria-label={`The ${t.slot} picture of “${t.label ?? "the chapter"}”`}>
                 {/* eslint-disable-next-line @next/next/no-img-element -- served by StoryTime */}
                 <img src={`/api/chapters/${t.chapterId}/images/${t.slot}${run.updated_at ? `?v=${run.updated_at}` : ""}`} alt="" loading="lazy" />
               </Link>

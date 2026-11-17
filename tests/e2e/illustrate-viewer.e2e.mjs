@@ -48,7 +48,7 @@ const showAll = async () => {
 };
 
 try {
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await gallery.getByRole("heading", { name: "Pictures" }).waitFor();
   await showAll();
 
@@ -61,7 +61,7 @@ try {
   ok((await viewer.locator(".viewer-keys").innerText()).includes("P pin · X trash"),"…and, with a mouse, the keys to use");
   const box = await viewer.locator(".viewer-stage img").boundingBox();
   ok(box.width > 1000, `…as large as the screen allows (${Math.round(box.width)} × ${Math.round(box.height)})`);
-  ok(page.url().endsWith("/illustrate"), "…without leaving the page");
+  ok(page.url().endsWith("/desk?side=illustrate"), "…without leaving the page");
 
   // ---- moving ----
   await page.keyboard.press("ArrowRight");

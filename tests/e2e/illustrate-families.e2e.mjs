@@ -81,7 +81,7 @@ try {
   comfy.setMode({ gguf: true });
 
   // ---- a picture ----
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("a fox on the ice");
   const mark = comfy.calls.length;
   await queue.click();
@@ -112,7 +112,7 @@ try {
   };
   /** Opens the Illustrate page afresh (so ComfyUI is asked again), queues one picture and returns its workflow. */
   const draw = async (text) => {
-    await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+    await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
     await page.getByRole("textbox", { name: "Prompt", exact: true }).fill(text);
     const mark = comfy.calls.length;
     await queue.click();
@@ -151,7 +151,7 @@ try {
   // ---- a preset whose files are missing says so and doesn't queue ----
   const now = (await call("GET", "/api/settings")).settings;
   await putSettings({ ...now, comfy: { ...now.comfy, drawPresets: [{ ...(await presetNow()), family: "chroma", files: { model: "deleted.safetensors" } }] } });
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   const markGone = comfy.calls.length;
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("never drawn");
   await until(async () => (await page.getByRole("button", { name: "Queue", exact: true }).isEnabled()), "Queue");

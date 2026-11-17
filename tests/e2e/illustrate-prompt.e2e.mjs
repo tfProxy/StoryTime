@@ -55,7 +55,7 @@ const until = async (fn, what) => {
 };
 
 try {
-  await page.goto(`${BASE}/c/${chapter}/illustrate`);
+  await page.goto(`${BASE}/c/${chapter}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
 
   // ---- the codex entries that would be used ----
@@ -97,7 +97,7 @@ try {
   ok(await styleMenu.inputValue() === "tags", "a drawing preset's Prompt style starts on tags");
   await styleMenu.selectOption({ label: "Sentences (Flux, SD3)" });
   ok(await until(async () => (await settingsNow()).comfy.drawPresets[0].promptStyle === "natural", "the prompt style to be saved"), "choosing sentences saves it with the preset");
-  await page.goto(`${BASE}/c/${chapter}/illustrate`);
+  await page.goto(`${BASE}/c/${chapter}/desk?side=illustrate`);
   ok((await page.locator(".prompt-art-style").innerText()) === "watercolor storybook, soft light", "the story's art style is shown in small type under the Prompt box");
 
   // ---- write a prompt for the chapter's end ----
@@ -205,7 +205,7 @@ try {
   await page.getByRole("button", { name: "Write again" }).click();
   await page.waitForFunction(() => document.querySelector(".image-prompt-result textarea")?.value.startsWith("p"));
   ok(calls.at(-1).model === "artist", "…and prompts are written with it");
-  await page.goto(`${BASE}/c/${created.chapter_id}/illustrate`);
+  await page.goto(`${BASE}/c/${created.chapter_id}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   await page.waitForFunction(() => document.querySelector('[aria-label="Model for picture prompts"] option:checked')?.textContent === "Artist");
   ok(true, "another chapter's Illustrate page has the same model chosen");

@@ -63,7 +63,7 @@ try {
   ok(await until(async () => (await presetNow()).files.model === GGUF && (await presetNow()).textEncoderDevice === "cpu", "the preset to be saved"), "the preset keeps the .gguf model and the CPU choice");
 
   // ---- Instruct changes ----
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("a smith at the forge");
   const queue = page.getByRole("button", { name: "Queue", exact: true });
   await queue.click();

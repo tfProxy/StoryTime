@@ -39,15 +39,14 @@ const toStoryList = async () => {
 };
 
 try {
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   ok((await badge.count()) === 0, "with nothing queued the header shows no picture queue");
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("boats in a harbour");
 
   // ---- queued, then away ----
   await page.getByRole("button", { name: "Queue", exact: true }).click();
-  await until(() => posted() === 1, "the job to be sent to ComfyUI", 60);
-  ok(await until(async () => (await badge.getAttribute("aria-label")) === "Pictures: 1 being made", "the header to show the job"), "the header shows the job being made");
+  await until(() => posted() === 1, "the job to be sent to ComfyUI", 60);  ok(await until(async () => (await badge.getAttribute("aria-label")) === "Pictures: 1 being made", "the header to show the job"), "the header shows the job being made");
   ok(await until(async () => (await page.title()) === "StoryTime (1)", "the tab title"), "…and the tab's title says StoryTime (1)");
   await toStoryList();
   ok((await badge.getAttribute("aria-label")) === "Pictures: 1 being made", "on another page the job is still shown being made");
@@ -62,7 +61,7 @@ try {
 
   // ---- back to the chapter ----
   await row.getByRole("link", { name: "Open", exact: true }).click();
-  await page.waitForURL(`${BASE}/c/${chapterId}/illustrate`);
+  await page.waitForURL(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   ok(await until(async () => (await tiles.count()) === 1, "the picture on the chapter's page"), "Open goes to the chapter, where the picture shows with the new ones");
   ok(await until(async () => (await badge.count()) === 0, "the header to clear"), "…and the header no longer lists it");
@@ -89,7 +88,7 @@ try {
   ok(await until(async () => (await badge.getAttribute("aria-label")) === "Pictures: 1 ready", "the ready job after a reload", 60), "it is still ready after another reload (the server keeps it as new)");
   await badge.click();
   await panel.getByRole("listitem", { name: "The harbour: ready" }).getByRole("link", { name: "Open", exact: true }).click();
-  await page.waitForURL(`${BASE}/c/${chapterId}/illustrate`);
+  await page.waitForURL(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   ok(await until(async () => (await tiles.count()) === 1, "the new picture"), "its chapter's page shows it with the new ones");
   ok(await until(async () => (await tiles.first().locator(".picture-new").count()) === 1, "the New badge"), "…marked New");

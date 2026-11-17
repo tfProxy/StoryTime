@@ -8,17 +8,17 @@ import { PictureGallery, workspaceControls } from "./PictureWorkspace";
 import { usePictureWorkspace } from "./usePictureWorkspace";
 
 /**
- * The writing desk's Illustrate mode: the Illustrate page's parts, laid out on the desk. The side column holds the picture
+ * The writing desk's Illustrate mode, where a chapter's pictures are made (the old /c/<id>/illustrate redirects here). The side column holds the picture
  * prompt and the controls for making pictures (`modes`, the Codex | Illustrate switch, at its top); the story column
  * holds the chapter's header, middle and footer pictures, the pictures made for them, and the chapter folded below.
  * Both are children of the desk's grid, so this returns them side by side.
  */
 export default function DeskIllustrate({ p, modes }: { p: IllustrateProps; modes: ReactNode }) {
   const target = chapterTarget(p.story.id, p.chapterId);
-  // The grid, its column handle and the dock are the Illustrate page's; on the desk Size and Queue sit among the controls.
+  // The grid, its column handle and the dock are for the cover page's layout; on the desk Size and Queue sit among the controls.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- left out on purpose
   const { gridProps, resizerProps, setDock, ...w } = usePictureWorkspace(target, p.jobs, p.versions);
-  // Where the prompt puts its "Codex entries used" line: under the chapter, as on the Illustrate page.
+  // Where the prompt puts its "Codex entries used" line: under the chapter.
   const [codexSlot, setCodexSlot] = useState<HTMLElement | null>(null);
 
   return (

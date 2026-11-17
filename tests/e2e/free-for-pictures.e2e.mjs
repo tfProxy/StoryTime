@@ -59,7 +59,7 @@ try {
   await box("local").check();
   ok(await until(async () => (await call("GET", "/api/settings")).settings.connections[0].freeForPictures === true, "the box to be saved"), "ticking it is saved for that connection");
 
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("a pier at dusk");
   await page.getByRole("button", { name: "Queue", exact: true }).click();
@@ -72,7 +72,7 @@ try {
   // ---- off again: nothing is asked ----
   const now = (await call("GET", "/api/settings")).settings;
   await putSettings({ ...now, connections: now.connections.map((c) => ({ ...c, freeForPictures: false })) });
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   const count = asked.length;
   await page.getByRole("button", { name: "Queue", exact: true }).click();

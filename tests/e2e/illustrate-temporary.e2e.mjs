@@ -45,7 +45,7 @@ const heads = () => gallery.locator(".picture-group .candidates").evaluateAll((u
 const viewButton = (name) => gallery.getByRole("group", { name: "Show" }).getByRole("button", { name });
 const showView = (name) => viewButton(name).click();
 const open = async (id) => {
-  await page.goto(`${BASE}/c/${id}/illustrate`);
+  await page.goto(`${BASE}/c/${id}/desk?side=illustrate`);
   await gallery.getByRole("heading", { name: "Pictures" }).waitFor();
 };
 

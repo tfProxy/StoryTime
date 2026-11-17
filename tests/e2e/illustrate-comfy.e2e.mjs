@@ -73,7 +73,7 @@ const picturesLoaded = (n) => page.waitForFunction((n) => {
   return imgs.length === n && imgs.every((i) => i.complete && i.naturalWidth > 0);
 }, n);
 const openIllustrate = async () => {
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
 };
 const openSettings = async () => {
@@ -267,13 +267,14 @@ try {
   ok((await makeButton.innerText()) === "Queue" && (await queueStatus.innerText()).trim() === "In progress: 0 · Queued: 0", "the button is just Queue, with the queue's status under it (nothing yet)");
   const [queueBox, dockBox] = [await makeButton.boundingBox(), await page.locator(".generate-bar").boundingBox()];
   const perClickBox = await page.getByLabel("Pictures per click").boundingBox();
-  ok(queueBox.width > dockBox.width / 2 && perClickBox.x >= queueBox.x + queueBox.width - 1 && Math.abs(perClickBox.y - queueBox.y) < queueBox.height, "…the button takes most of the line, with the Pictures per click menu beside it");
+  // On the desk the Pictures per click menu comes first, then the button, which takes the rest of the line.
+  ok(queueBox.width > dockBox.width / 2 && perClickBox.x + perClickBox.width <= queueBox.x + 1 && Math.abs(perClickBox.y - queueBox.y) < queueBox.height, "…the button takes most of the line, with the Pictures per click menu beside it");
   const sizeBox = await page.getByLabel("Size").boundingBox();
   ok(sizeBox.y + sizeBox.height <= queueBox.y + 1, "…with the Size menu just above it");
   const scaleBox = await page.getByLabel("Scale by").boundingBox();
   ok(scaleBox.x >= sizeBox.x + sizeBox.width - 1 && Math.abs(scaleBox.y + scaleBox.height / 2 - (sizeBox.y + sizeBox.height / 2)) < 4, "…and the size multiplier to the right of the Size menu, on its line");
-  // On a wide, short screen the controls scroll in their column. Wheeled to the end over them (on a page with few
-  // pictures, so the page itself is short), their last panel ends above the dock, not under it.
+  // On a wide, short screen the desk's side column scrolls by itself. Wheeled to the end over it, its last panel is
+  // in view above the bottom of the window.
   await page.setViewportSize({ width: 1400, height: 800 });
   await page.waitForTimeout(300);
   await page.mouse.move(150, 400);
@@ -282,9 +283,8 @@ try {
     await page.waitForTimeout(50);
   }
   await page.waitForTimeout(300);
-  const lastBottom = await page.locator(".illustrate-controls > *").last().evaluate((e) => e.getBoundingClientRect().bottom);
-  const dockTop = (await page.locator(".generate-bar").boundingBox()).y;
-  ok(lastBottom <= dockTop + 1, `…and scrolled to the end, the controls' last panel ends above the dock (${Math.round(lastBottom)} ≤ ${Math.round(dockTop)})`);
+  const lastBottom = await page.locator(".desk-illus-side > *").last().evaluate((e) => e.getBoundingClientRect().bottom);
+  ok(lastBottom <= 800 + 1, `…and scrolled to the end, the side column's last panel ends inside the window (${Math.round(lastBottom)} ≤ 800)`);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.setViewportSize({ width: 1000, height: 1300 });
 
@@ -333,8 +333,9 @@ try {
   ok(await page.evaluate(() => navigator.clipboard.readText()) === "a lighthouse at dawn, gulls", "Copy prompt copies the prompt");
   await info.getByRole("button", { name: "Copy all as Markdown" }).click();
   await info.getByText("Copied everything as Markdown.").waitFor();
-  const md = await page.evaluate(() => navigator.clipboard.readText());
-  ok(md.includes("## Prompt\n\n```\na lighthouse at dawn, gulls\n```") && md.includes("## Negative prompt\n\n```\nblurry, text\n```") && md.includes(`- **Seed:** ${firstSeed}`), "Copy all as Markdown copies the prompts in code blocks and the settings as a list");
+  // (Windows browsers hand the clipboard text back with \r\n line ends.)
+  const md = (await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, "\n");
+  ok(md.includes("## Prompt\n\n```\na lighthouse at dawn, gulls\n```") && md.includes("## Negative prompt\n\n```\nblurry, text\n```") && md.includes(`- **Seed:** ${firstSeed}`), `Copy all as Markdown copies the prompts in code blocks and the settings as a list (${JSON.stringify(md)})`);
   // Served over plain http (the NAS), there is no navigator.clipboard: the copy falls back to a hidden text box inside the popup.
   await page.evaluate(() => {
     const read = navigator.clipboard.readText.bind(navigator.clipboard);
@@ -348,8 +349,8 @@ try {
   ok(await until(async () => (await info.count()) === 0, "Info to close") && await firstTile.getByRole("button", { name: "More" }).evaluate((b) => b === document.activeElement), "Esc closes it, back on the picture's ☰");
   ok((await page.locator(".picture-caption").first().innerText()) === "fake_sdxl_b · 1344 × 768", "each picture says its checkpoint and size, but not its seed (Info has that)");
   const boxes = await page.locator(".candidates img").evaluateAll((imgs) => imgs.map((i) => { const r = i.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }));
-  ok(boxes.length === 2 && boxes[1].x > boxes[0].x + boxes[0].w - 1 && Math.abs(boxes[0].y - boxes[1].y) < 2 && boxes[0].w > 300, "at 1000px wide the pictures sit two side by side");
-  ok(Math.abs(boxes[0].w - pendingBoxes[0].w) < 2, "…as wide as the places kept for them");
+  // The desk's story column is about half of 1000px, so the pictures stack in one column there (the old page had two).
+  ok(boxes.length === 2 && Math.abs(boxes[1].x - boxes[0].x) < 2 && boxes[1].y > boxes[0].y + boxes[0].h - 1 && boxes[0].w > 300, `at 1000px wide the pictures are stacked in the story column (${JSON.stringify(boxes)})`);
   const clearBox = await page.getByRole("button", { name: "Clear unpinned" }).boundingBox();
   ok(clearBox.y < boxes[0].y, "Clear unpinned is above the pictures");
   const srcs = await page.locator(".candidates img").evaluateAll((imgs) => imgs.map((i) => i.src));
@@ -530,10 +531,10 @@ try {
   const overflow = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth, wide: [...document.querySelectorAll(".candidates img, .comfy-generate select, .comfy-generate button, .generate-bar select, .generate-bar button")].filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1).length }));
   ok(overflow.scroll <= overflow.inner, `no sideways scrolling at 390px wide with pictures showing (page ${overflow.scroll}px, window ${overflow.inner}px)`);
   ok(overflow.wide === 0, "…and no picture, menu or button sticks out past the right edge");
-  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
-  await page.waitForFunction(() => window.scrollY === 0);
+  // (The desk has no dock that keeps Queue at the bottom of the screen: on a phone it is in the Illustrate sheet, which scrolls.)
+  await makeButton.scrollIntoViewIfNeeded();
   const stuck = await makeButton.boundingBox();
-  ok(stuck.y + stuck.height <= 844 && stuck.y > 400, `scrolled to the top, Size, Queue and the status are still at the bottom of the screen (Queue at ${Math.round(stuck.y)}px of 844)`);
+  ok(stuck.y >= 0 && stuck.y + stuck.height <= 844, `Queue can be scrolled into view on a phone (Queue at ${Math.round(stuck.y)}px of 844)`);
   if (process.env.E2E_SCREENSHOT_DIR) {
     fs.mkdirSync(process.env.E2E_SCREENSHOT_DIR, { recursive: true });
     await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/illustrate-comfy-390.png`, fullPage: true });
@@ -545,7 +546,7 @@ try {
   // ---- ComfyUI refuses the workflow ----
   comfy.setMode({ fail: "refuse" });
   await makeButton.click();
-  const refused = page.locator(".comfy-generate p.error");
+  const refused = page.locator(".comfy-generate p.error, .desk-queue p.error");
   await refused.waitFor();
   const refusedText = await refused.innerText();
   ok(refusedText.includes("Prompt outputs failed validation") && refusedText.includes("KSampler 3: Required input is missing (positive)"), `a workflow ComfyUI refuses shows its reason: "${refusedText}"`);
@@ -563,13 +564,13 @@ try {
   await page.getByText("ComfyUI doesn't list the checkpoint of the preset “Ink” (gone.safetensors). Choose another in Settings.").waitFor();
   ok(true, "a preset's checkpoint that ComfyUI no longer lists is reported when the page opens");
   await makeButton.click();
-  const gone = page.locator(".comfy-generate p.error", { hasText: "Value not in list" });
+  const gone = page.locator(".comfy-generate p.error, .desk-queue p.error", { hasText: "Value not in list" });
   await gone.waitFor();
   const goneText = await gone.innerText();
   ok(goneText.includes("CheckpointLoaderSimple") && goneText.includes("gone.safetensors"), `…and trying it shows ComfyUI's node error: "${goneText}"`);
   await setCheckpoint("fake_sdxl_a.safetensors");
   await openIllustrate();
-  ok(await page.locator(".comfy-generate p.error").count() === 0, "choosing a listed checkpoint again fixes it");
+  ok(await page.locator(".comfy-generate p.error, .desk-queue p.error").count() === 0, "choosing a listed checkpoint again fixes it");
 
   // a job that fails while running
   comfy.setMode({ fail: "error", steps: 6, stepDelay: 100 });

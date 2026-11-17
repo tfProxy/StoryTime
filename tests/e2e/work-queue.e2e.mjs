@@ -190,7 +190,7 @@ try {
   // ---- taking turns: a picture asked for while a run writes waits for the batch limit ----
   const shared = await call("POST", "/api/stories", { title: "Turns tale", chapter: { title: "The harbour", body: "Boats came in.", choices: [] } });
   const r6 = await makeRun("Run tale six", ["P", "Q"]);
-  await page.goto(`${BASE}/c/${shared.chapter_id}/illustrate`);
+  await page.goto(`${BASE}/c/${shared.chapter_id}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("boats in a harbour");
   const posted = () => comfy.calls.filter((c) => c.method === "POST" && c.path === "/prompt").length;
@@ -205,6 +205,8 @@ try {
   ok(posted() === postedBefore && ai.active > 0, "while a run writes, a picture job is held (ComfyUI gets nothing)");
   ok(await page.getByText(/waiting its turn/i).first().isVisible(), "…and its place says it is waiting its turn");
   await page.setViewportSize({ width: 400, height: 900 });
+  // On a phone the desk's Illustrate sheet covers the header, so the list is opened from another page.
+  await page.goto(`${BASE}/`);
   await q.badge.click();
   const note = await q.panel.locator(".picture-queue-note").innerText().catch(() => "");
   ok(/^Writing until .+ or 0 more steps, then 1 picture job$/.test(note), `the list says who has the machine: “${note}”`);
@@ -223,7 +225,7 @@ try {
   // ---- at the same time: both go at once ----
   await putQueue({ sharing: "together", switchMinutes: 10, switchItems: 1, groupPictures: true });
   const r7 = await makeRun("Run tale seven", ["R", "S"]);
-  await page.goto(`${BASE}/c/${shared.chapter_id}/illustrate`);
+  await page.goto(`${BASE}/c/${shared.chapter_id}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("gulls over the harbour");
   await until(async () => await page.evaluate(() => !!window.__storytimeQueue), "the queue hook");

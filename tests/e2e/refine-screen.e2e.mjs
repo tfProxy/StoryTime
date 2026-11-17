@@ -70,7 +70,7 @@ try {
   const ready = async () => (await page.locator(".comfy-pending-tile [role=status]").count()) === 0;
 
   // ================= a picture, and its ☰ menu =================
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("a keeper at a lamp");
   await page.getByRole("button", { name: "Queue", exact: true }).click();
@@ -345,7 +345,7 @@ try {
   await page.reload();
   await page.locator('.refine-stage[data-ready="1"]').waitFor();
   await until(async () => (await strokes()) === snapshot.strokes, "the strokes to come back");
-  ok(await maskStrokes() === snapshot.masks && (await stats("paint")).n === snapshot.paintN && (await stats("mask")).n === snapshot.maskN, "after a reload the picture, paint and mask are back");
+  ok(await maskStrokes() === snapshot.masks && (await stats("paint")).n === snapshot.paintN && (await stats("mask")).n === snapshot.maskN, `after a reload the picture, paint and mask are back (${await maskStrokes()}/${snapshot.masks}, paint ${(await stats("paint")).n}/${snapshot.paintN}, mask ${(await stats("mask")).n}/${snapshot.maskN})`);
   ok((await hex.inputValue()) === snapshot.color && (await page.getByRole("slider", { name: "Soft edge", exact: true }).inputValue()) === "4", "…with the colour and soft edge");
   ok(await btn("Undo").isEnabled(), "…and the undo history");
   await btn("Undo").click();
@@ -367,7 +367,7 @@ try {
   const id1 = sessionId();
   page.once("dialog", (d) => d.accept());
   await btn("Cancel").click();
-  await page.waitForURL(new RegExp(`/c/${chapterId}/illustrate$`));
+  await page.waitForURL(new RegExp(`/c/${chapterId}/desk\\?side=illustrate$`));
   ok(await page.evaluate((id) => localStorage.getItem(`storytime.refine.${id}`), id1) === null, "accepting deletes the session and goes back to the Illustrate page");
   await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
   // 3. a session with no changes: no question
@@ -380,7 +380,7 @@ try {
   let asked = false;
   page.once("dialog", (d) => { asked = true; d.dismiss(); });
   await page.getByRole("button", { name: "Cancel" }).click();
-  await page.waitForURL(new RegExp(`/c/${chapterId}/illustrate$`));
+  await page.waitForURL(new RegExp(`/c/${chapterId}/desk\\?side=illustrate$`));
   ok(!asked, "Cancel with no changes just goes back (the header's Cancel too)");
 
   // ================= a missing session =================
@@ -405,7 +405,7 @@ try {
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
   const p = await phone.newPage();
   p.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
-  await p.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await p.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await p.getByRole("heading", { name: "Picture prompt" }).waitFor();
   await p.getByRole("group", { name: "Show" }).getByRole("button", { name: /^All/ }).click();
   const past = p.locator(".chapter-pictures .picture-tile");

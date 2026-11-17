@@ -1,17 +1,16 @@
 "use client";
 
-import { useState, type ComponentProps } from "react";
+import type { ComponentProps } from "react";
 import type { ImageMade, ImageSlot, ImageVersions } from "@/lib/imageSlots";
 import type { ContextChapter, ContextCodexEntry } from "@/lib/ai/prompts";
-import IllustrateChapter from "./IllustrateChapter";
+import type IllustrateChapter from "./IllustrateChapter";
 import ImagePromptPanel, { type IllustratedStory } from "./ImagePromptPanel";
-import PictureWorkspace, { type WorkspaceControls } from "./PictureWorkspace";
+import type { WorkspaceControls } from "./PictureWorkspace";
 import type { PictureDraft } from "@/lib/pictureDrafts";
-import { chapterTarget } from "@/lib/pictureTarget";
 import type { PictureJob } from "@/lib/pictureJobs";
 import type { RefPool } from "@/lib/comfy/referenceChoices";
 
-/** What illustrating a chapter needs (see `illustrateProps`): the Illustrate page's, and the writing desk's Illustrate mode's. */
+/** What illustrating a chapter needs (see `illustrateProps`): the writing desk's Illustrate mode's. */
 export type IllustrateProps = {
   chapterId: string;
   /** The chapter panel's text, shown above the prompt. */
@@ -61,30 +60,6 @@ export function IllustratePrompt({ p, w, codexSlot, layout }: { p: IllustratePro
       dock={w.dock}
       codexSlot={codexSlot}
       layout={layout}
-    />
-  );
-}
-
-/**
- * The Illustrate page: the chapter and the prompt on one side, the pictures on the other (see
- * `PictureWorkspace`).
- */
-export default function IllustrateWorkspace(p: IllustrateProps) {
-  const [codexSlot, setCodexSlot] = useState<HTMLElement | null>(null);
-
-  return (
-    <PictureWorkspace
-      target={chapterTarget(p.story.id, p.chapterId)}
-      jobs={p.jobs}
-      titles={p.titles}
-      versions={p.versions}
-      made={p.made}
-      controls={(w) => (
-        <>
-          <IllustrateChapter {...p.chapter} storyId={p.story.id} slotRef={setCodexSlot} />
-          <IllustratePrompt p={p} w={w} codexSlot={codexSlot} />
-        </>
-      )}
     />
   );
 }

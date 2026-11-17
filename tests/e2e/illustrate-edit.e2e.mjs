@@ -58,7 +58,7 @@ const showAll = async () => {
 
 try {
   // ---- no edit model installed ----
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await page.getByRole("textbox", { name: "Prompt", exact: true }).fill("a smith at the forge");
   await makeEdit.click();
   await until(async () => (await items.count()) === 1 && (await ready()), "a picture");
@@ -125,7 +125,7 @@ try {
   comfy.setMode({ missingNodes: [] });
 
   // ---- Instruct changes ----
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await showAll();
   menu = await openMenu(items.first());
   await until(async () => (await menu.getByRole("menuitem", { name: "Instruct changes" }).getAttribute("aria-disabled")) === null, "Instruct changes to be offered");
@@ -331,7 +331,7 @@ try {
     await page.setViewportSize({ width: 1000, height: 1300 });
   }
 
-  await page.goto(`${BASE}/c/${chapterId}/illustrate`);
+  await page.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
   await showAll();
   await choose(items.first(), "Instruct changes");
   await thumb.waitFor();

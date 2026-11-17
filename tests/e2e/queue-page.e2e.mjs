@@ -67,7 +67,7 @@ try {
   ok((await badge.innerText()).includes("Paused"), "…with the word on the button");
   ok(await page.getByRole("button", { name: "Resume queue" }).isVisible(), "…and the page offers Resume queue");
   for (let i = 0; i < 3; i++) {
-    await go(`/c/${ids[i]}/illustrate`);
+    await go(`/c/${ids[i]}/desk?side=illustrate`);
     await page.getByRole("heading", { name: "Picture prompt" }).waitFor();
     await page.getByRole("textbox", { name: "Prompt", exact: true }).fill(words[i]);
     await page.getByRole("button", { name: "Queue", exact: true }).click();

@@ -108,7 +108,7 @@ export default function StoryPictureSettings({ story, pool }: { story: StoryPict
         </select>
       </label>
       <p className="meta" style={{ margin: 0 }}>
-        {drawPresetSummary(shown)}. A chapter can choose another on its Illustrate page.{" "}
+        {drawPresetSummary(shown)}. A chapter can choose another when you Illustrate it.{" "}
         <Link href={`/settings#preset-${shown.id}`}>Change presets in Settings</Link>
       </p>
       <div id="style-picture" className="reference-item story-style-setting">
