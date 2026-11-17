@@ -7434,15 +7434,22 @@ button.link-button.ef-since-link {
  * selection anywhere in a long text.
  */
 .desk-named {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
   flex-wrap: wrap;
   gap: 0.3rem 0.4rem;
   margin: -0.2rem -0.3rem 0;
   padding: 0.35rem 0.3rem;
   background: var(--card);
   border-top: 1px solid var(--line);
+}
+
+/* With a mouse it sticks to the bottom of the window, so "Add as a fact…" stays in reach in a long chapter. Not on a
+   touch screen: an iPad measures the window's bottom without the on-screen keyboard, and the line floated mid-screen. */
+@media (hover: hover) and (pointer: fine) {
+  .desk-named {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+  }
 }
 
 .desk-named .desk-label {

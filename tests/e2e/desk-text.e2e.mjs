@@ -88,6 +88,7 @@ try {
   const tb = await textBox.boundingBox();
   const lb = await namedLine.boundingBox();
   ok(lb.y >= tb.y + tb.height - 2, "…right under the text box");
+  ok((await namedLine.evaluate((el) => getComputedStyle(el).position)) === "sticky", "with a mouse the line sticks to the bottom of the screen (position: sticky)");
   await textBox.fill("Mara walked with the smith. Her cloak was green.");
   await until(async () => (await namedNames()) === "Mara,Tobin");
   ok((await namedNames()) === "Mara,Tobin", "…they change as the text does (a keyword names Tobin; the Mill is gone): " + (await namedNames()));
@@ -242,6 +243,20 @@ try {
   await page.locator(".desk-sheet-head").getByRole("button", { name: "Close" }).click();
   ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), "at phone width the page fits the screen");
   await context.close();
+
+  // ---- an iPad (touch, no mouse): the line stays under the text instead of floating ----
+  const ipad = await browser.newContext({ viewport: { width: 1194, height: 834 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+  try {
+    const ipadPage = await ipad.newPage();
+    ipadPage.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
+    await ipadPage.goto(`${BASE}/c/${A}/desk`);
+    const ipadNamed = ipadPage.locator("section.desk-box .desk-named");
+    await ipadNamed.waitFor();
+    ok(await ipadPage.evaluate(() => !matchMedia("(pointer: fine)").matches && !matchMedia("(hover: hover)").matches), "the iPad context reports no fine pointer or hover");
+    ok((await ipadNamed.evaluate((el) => getComputedStyle(el).position)) === "static", "on a touch screen the line stays in place under the text (position: static)");
+  } finally {
+    await ipad.close();
+  }
 } catch (e) {
   console.log("ERROR", e);
   failed = true;
