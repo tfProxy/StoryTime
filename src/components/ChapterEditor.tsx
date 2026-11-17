@@ -268,6 +268,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             ...cur,
             updatedAt: d.updatedAt,
             title: d.title,
+            titleIdea: d.titleIdea,
             body: d.body,
             undo: d.undo,
             versions: d.versions,
@@ -1082,6 +1083,15 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             </DeskLink>
           )}
         </div>
+        {/* A Generate leaves a posted chapter's title alone, and its own is offered here. */}
+        {draft.titleIdea && draft.titleIdea !== draft.title && (
+          <p className="meta desk-title-idea">
+            The AI’s title: “{draft.titleIdea}”{" "}
+            <button type="button" className="link-button" onClick={() => patch({ title: draft.titleIdea, titleIdea: undefined })}>
+              Use it
+            </button>
+          </p>
+        )}
 
         <button type="button" className="desk-fold" aria-expanded={promptOpen} onClick={() => setPromptOpen(!promptOpen)}>
           {promptOpen ? "▾" : "▸"} Prompt and drafts ({n})

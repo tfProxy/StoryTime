@@ -7374,6 +7374,11 @@ button.link-button.ef-since-link {
   min-width: 0;
 }
 
+.desk-title-idea {
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+}
+
 .desk-stop {
   white-space: nowrap;
   font-size: 0.85rem;

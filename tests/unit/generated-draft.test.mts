@@ -12,6 +12,15 @@ ok(a.undo.length === 1 && a.undo[0].title === "Mine" && a.undo[0].body === "My o
 ok(a.versions?.length === 2 && a.versions[0].body === "My own words." && a.versionIndex === 1, "…and kept as the previous version, with a new one started");
 ok(written.title === "Mine" && written.undo.length === 0 && !written.versions, "the draft given is not changed");
 
+// A posted chapter being edited keeps its title: the generated one is offered instead.
+const posted = { ...written, key: "edit:c9" };
+const kept = applyGenerated(posted, { title: "Generated", body: "The AI's words." });
+ok(kept.title === "Mine" && kept.titleIdea === "Generated" && kept.body === "The AI's words.", "a posted chapter keeps its title and the generated one becomes the idea");
+ok(kept.versions?.[1] === undefined || kept.versions.length === 2, "…with a new version started as usual");
+ok(applyGenerated(kept, { title: null, body: "More." }, { continued: true }).titleIdea === "Generated", "…which a title still arriving leaves alone");
+ok(applyGenerated(kept, { title: "Mine", body: "Again." }).titleIdea === undefined, "…and the same title as the chapter's is no idea");
+ok(applyGenerated({ ...posted, title: "" }, { title: "Generated", body: "x" }).title === "Generated", "a posted chapter with no title takes the generated one");
+
 // An empty draft adds no undo entry; its first Generate is its first version, with the prompt that made it.
 const e = applyGenerated(draft({ prompt: "A storm comes." }), { title: "First", body: "Words." });
 ok(e.undo.length === 0 && e.versions?.length === 1 && e.versionIndex === 0 && e.versions[0].prompt === "A storm comes." && e.body === "Words.", "an empty draft gets no undo entry; its Generate is draft 1, with its prompt");

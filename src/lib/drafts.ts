@@ -37,6 +37,11 @@ export type Draft = {
    */
   slotLabel?: string;
   title: string;
+  /**
+   * The title the last Generate gave a posted chapter. The chapter keeps its own title (generatedDraft.ts); the desk
+   * offers this one beside it.
+   */
+  titleIdea?: string;
   body: string;
   /** The kept AI requests that wrote title/body (a Generate), oldest first. Follows the text through versions. */
   ai?: string[];

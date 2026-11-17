@@ -37,7 +37,8 @@ const fake = await startFakeAi({
     const system = body.messages?.[0]?.content ?? "";
     if (system.includes("Output format")) {
       n++;
-      return `# Chapter A\n\nText number ${n}.`;
+      // The third Generate (the fourth draft) gives a title of its own.
+      return `# ${n === 3 ? "The AI's Title" : "Chapter A"}\n\nText number ${n}.`;
     }
     if (system.includes("running summary")) return "SUMMARY: The AI's summary.\nSTORY SO FAR: The AI's story so far.";
     if (system.includes("button text and nothing else")) return "Go";
@@ -120,6 +121,13 @@ try {
   await until(async () => (await draftButtons.count()) === 4 && (await genRow.getByRole("button", { name: "Generate again" }).isEnabled().catch(() => false)));
   await page.waitForFunction(() => !/Writing/.test(document.querySelector(".desk-gen-row")?.textContent ?? ""));
   ok((await draftButtons.count()) === 4 && (await draftButtons.nth(3).getAttribute("aria-pressed")) === "true", "↻ at the foot of the box makes a new draft, as Generate again does");
+  // A Generate leaves the posted chapter's title alone and offers its own.
+  const idea = box.locator(".desk-title-idea");
+  await idea.waitFor();
+  ok((await title.inputValue()) === "Chapter A" && (await idea.innerText()).includes("“The AI's Title”"), "a Generate keeps the posted chapter's title and offers its own: " + (await idea.innerText()));
+  await idea.getByRole("button", { name: "Use it" }).click();
+  ok((await title.inputValue()) === "The AI's Title" && (await idea.count()) === 0, "Use it takes the AI's title, and the offer goes");
+  await title.fill("Chapter A");
   await draftButtons.nth(1).click();
   await shown.waitFor();
   ok(await update.isEnabled(), "Update chapter is on when the draft showing differs from the chapter");

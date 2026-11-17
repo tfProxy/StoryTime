@@ -59,10 +59,18 @@ export function beginGenerated(d: Draft, prompt?: string): Draft {
  * previous version and in undo. A title still arriving (`null`) leaves the title as it is. `ai`: the kept request
  * writing it; a Generate writes the text afresh, so it replaces the ones before (a text without it keeps what it has).
  * `prompt`: the Generate's prompt, kept with its version (the draft's prompt box when not given).
+ * A posted chapter being edited (an "edit:" draft) keeps the title it has, so an Update doesn't rename it unasked: the
+ * generated title goes to `titleIdea`, for the desk to offer.
  */
 export function applyGenerated(d: Draft, text: { title: string | null; body: string }, opts: { continued?: boolean; ai?: string; prompt?: string } = {}): Draft {
   const base = opts.continued ? d : { ...beginGenerated(d, opts.prompt), ai: undefined };
-  return { ...base, ...(text.title !== null ? { title: text.title } : {}), body: text.body, ...(opts.ai ? { ai: [opts.ai] } : {}) };
+  const title =
+    text.title === null
+      ? {}
+      : d.key.startsWith("edit:") && d.title.trim()
+        ? { titleIdea: text.title.trim() && text.title !== d.title ? text.title : undefined }
+        : { title: text.title };
+  return { ...base, ...title, body: text.body, ...(opts.ai ? { ai: [opts.ai] } : {}) };
 }
 
 /**
