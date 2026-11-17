@@ -202,9 +202,28 @@ await page.goto(chapterUrl);
 await page.locator("a.card.choice-unwritten", { hasText: "Open the door" }).click();
 await page.waitForURL(/desk\?choice=/);
 await box.getByLabel("Chapter title").waitFor();
+// The choice's text starts the prompt box, and is sent as the direction, not on a line of its own.
+ok((await promptBox.inputValue()) === "Open the door", "following a choice starts the prompt box with its text: " + (await promptBox.inputValue()));
+await page.waitForTimeout(1200);
+const fillDraft = await fetch(`${BASE}/api/drafts/${encodeURIComponent(`fill:${new URL(page.url()).searchParams.get("choice")}`)}`).then((r) => r.json()).catch(() => ({}));
+ok(!fillDraft.draft, "…which alone doesn't leave a draft behind");
+await promptBox.fill("Open the door, slowly");
 await generateAndWait("She entered.");
 const c2 = reqs.at(-1).messages[1].content;
-ok(c2.includes("The reader chose: \"Open the door\"") && c2.includes("It creaked, then slammed.") && c2.includes("Premise: A cursed inn"), "continuation prompt carries story so far + choice");
+ok(c2.includes("It creaked, then slammed.") && c2.includes("Premise: A cursed inn"), "continuation prompt carries the story so far");
+ok(c2.includes("Direction from the author: Open the door, slowly") && !c2.includes("The reader chose"), "…and the choice only as the prompt box has it");
+// An emptied box stays empty (the choice is not put back), and then nothing about the choice is sent.
+await promptBox.fill("");
+await page.waitForTimeout(1200);
+await page.reload();
+await promptBox.waitFor();
+ok((await promptBox.inputValue()) === "", "an emptied prompt box stays empty after a reload");
+const sentBefore = reqs.length;
+await generate().click();
+await until(() => reqs.length > sentBefore);
+await generate().waitFor();
+const c3 = reqs.at(-1).messages[1].content;
+ok(c3.includes("Use your own judgment") && !c3.includes("Open the door") && !c3.includes("The reader chose"), "…and Generate then says nothing of the choice");
 
 // error path: dead server
 await ai.breakConnection();

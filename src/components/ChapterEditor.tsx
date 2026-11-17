@@ -139,6 +139,23 @@ async function keepWriting(chapterId: string, d: Draft): Promise<void> {
   if (!res.ok) throw new Error(`Request failed (${res.status})`);
 }
 
+/**
+ * What the prompt box starts with: the text of the choice that leads to the chapter, so it can be added to or reworded
+ * in place. Generate sends the box and nothing else about the choice. A posted chapter starts with its kept prompt.
+ */
+function startPrompt(target: Target): string {
+  if (target.kind === "fill") return target.label;
+  if (target.kind === "new") return target.label ?? "";
+  if (target.kind === "edit") return target.writing?.prompt || (target.incomingLabel ?? "");
+  return "";
+}
+
+/** A draft whose prompt box has not been started from the choice yet (one saved before that was done) gets it now. */
+function withStartPrompt(d: Draft, target: Target): Draft {
+  if (d.promptFilled) return d;
+  return { ...d, promptFilled: true, prompt: d.prompt.trim() ? d.prompt : startPrompt(target) };
+}
+
 // Ideas cost an AI call.
 const hasWorkingState = (d: Draft) => !!(d.ideaPages?.length || d.guidance?.trim());
 
@@ -149,7 +166,7 @@ function isBlank(d: Draft, target: Target): boolean {
     return (
       d.title === target.initialTitle &&
       d.body === target.initialBody &&
-      d.prompt === (target.writing?.prompt ?? "") &&
+      d.prompt === startPrompt(target) &&
       (d.versions?.length ?? 0) === (target.writing?.versions.length ?? 0) &&
       !d.editNote &&
       (d.summary ?? "") === (target.initialSummary ?? "") &&
@@ -167,7 +184,7 @@ function isBlank(d: Draft, target: Target): boolean {
     (d.newChoiceLabel && !(target.kind === "fill" && d.newChoiceLabel === target.label)) ||
     d.title ||
     d.body ||
-    d.prompt ||
+    (d.prompt && d.prompt !== startPrompt(target)) ||
     d.summary ||
     d.codexChanges?.length ||
     d.codexFactChanges?.length ||
@@ -233,7 +250,7 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     baseRef.current = d.updatedAt;
     skipSaveRef.current = true;
     // A draft saved by the old Edit and Write pages kept their address: its next save keeps the desk's instead.
-    setDraft(upgraded({ ...d, href: resumeHref }));
+    setDraft(withStartPrompt(upgraded({ ...d, href: resumeHref }), target));
   }
 
   /**
@@ -276,7 +293,8 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   // Load any saved draft for this spot.
   useEffect(() => {
     let cancelled = false;
-    const fresh = (): Draft => {
+    const fresh = (): Draft => withStartPrompt(blank(), target);
+    const blank = (): Draft => {
       const d = emptyDraft(draftKey, resumeHref, draftLabel);
       // Filling in an existing choice starts with its text in the choice box; changing it makes a new choice instead.
       if (target.kind === "fill") return { ...d, newChoiceLabel: target.label, slotLabel: target.label };
@@ -529,13 +547,9 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     codex,
     // The story's style notes are edited on its details page.
     style: context.style ?? "",
-    // The choice text being typed here (a new branch, or a renamed one) is what the reader will have picked.
-    choiceLabel:
-      target.kind === "new" || target.kind === "fill"
-        ? draft.newChoiceLabel.trim() || null
-        : target.kind === "edit" && target.incomingLabel !== null
-          ? (draft.incomingLabel ?? "").trim() || target.incomingLabel
-          : context.choiceLabel,
+    // The choice that leads here is not sent on its own: the prompt box starts with its text (startPrompt), and what
+    // the box holds is the whole direction.
+    choiceLabel: null,
     codexOverrides,
   };
 

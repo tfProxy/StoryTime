@@ -43,6 +43,11 @@ export type Draft = {
   choices: string[];
   prompt: string;
   /**
+   * The prompt box has been started with the text of the choice that leads to the chapter (ChapterEditor's
+   * `startPrompt`). It is done once: a box the author emptied afterwards stays empty.
+   */
+  promptFilled?: boolean;
+  /**
    * The text each Generate started from, newest last. Nothing undoes to it any more; a Generate's last entry here is
    * how the writing page and the work queue tell that it has begun (isBegun in generatedDraft.ts).
    */
