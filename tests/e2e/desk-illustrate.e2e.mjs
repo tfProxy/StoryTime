@@ -174,7 +174,38 @@ try {
   await p2.getByRole("button", { name: "Queue", exact: true }).waitFor();
   const wide = await p2.evaluate(() => [...document.querySelectorAll(".desk *")].filter((e) => e.getBoundingClientRect().right > window.innerWidth + 1).map((e) => e.className || e.tagName).slice(0, 5));
   ok(wide.length === 0, "on a phone nothing is wider than the screen: " + JSON.stringify(wide));
+  // Size and Queue stay at the top of the sheet, below its head, while the pictures scroll; the filter bar scrolls away.
+  const sheet = p2.locator(".desk.desk-illus.desk-phone-open");
+  const phoneQueue = p2.getByRole("button", { name: "Queue", exact: true });
+  for (let i = 0; i < 3; i++) await phoneQueue.click();
+  await until(async () => (await p2.locator(".desk-pictures .candidates li.picture-tile").count()) >= 3 &&(await p2.locator(".desk-pictures .comfy-pending-tile").count()) === 0, "the phone's pictures", 300);
+  await p2.evaluate(() => { const s = document.querySelector(".desk.desk-illus.desk-phone-open"); s.scrollTop = s.scrollHeight; });
+  await p2.waitForTimeout(300);
+  const geo = await p2.evaluate(() => {
+    const s = document.querySelector(".desk.desk-illus.desk-phone-open");
+    const r = (sel) => document.querySelector(sel)?.getBoundingClientRect();
+    const q = r(".desk-queue"), h = r(".desk-sheet-head"), bar = r(".chapter-pictures-bar");
+    const btn = [...document.querySelectorAll(".desk-queue button")].find((b) => b.textContent.trim() === "Queue")?.getBoundingClientRect();
+    const hit = btn && document.elementFromPoint(btn.left + btn.width / 2, btn.top + btn.height / 2);
+    const sizeEl = document.querySelector('.desk-queue [aria-label="Size"], .desk-queue select')?.getBoundingClientRect();
+    return { scrolled: s.scrollTop, qTop: q.top, headBottom: h.bottom, barBottom: bar.bottom, barPos: getComputedStyle(document.querySelector(".chapter-pictures-bar")).position,
+      queueClickable: !!hit?.closest(".desk-queue"), sizeVisible: !!sizeEl && sizeEl.top >= h.bottom - 1 && sizeEl.bottom <= window.innerHeight };
+  });
+  console.log("phone geometry", JSON.stringify(geo));
+  ok(geo.scrolled > 300, `the sheet is scrolled well down into the pictures (${Math.round(geo.scrolled)}px)`);
+  ok(Math.abs(geo.qTop - geo.headBottom) <= 2, `Queue and Size sit just below the sheet head (${geo.qTop} vs ${geo.headBottom})`);
+  ok(geo.queueClickable && geo.sizeVisible, "…Queue is tappable there and Size is in view");
+  ok(geo.barPos === "static" && geo.barBottom <= geo.headBottom, "the pictures' views and filters have scrolled out of view");
   await phone.close();
+
+  // The desktop layout is unchanged: the side column is a column and the filter bar sticks.
+  const wideCtx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const p3 = await wideCtx.newPage();
+  await p3.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
+  await p3.getByRole("heading", { name: "Illustrate “The lamp”" }).waitFor();
+  ok((await p3.locator(".desk-illus-side").evaluate((e) => getComputedStyle(e).display)) !== "contents", "on a desktop the side column is still a box");
+  ok((await p3.locator(".chapter-pictures-bar").evaluate((e) => getComputedStyle(e).position)) === "sticky", "…and the pictures' filter bar still sticks");
+  await wideCtx.close();
 } finally {
   // Take this file's queue items off, so the next file starts clean.
   for (const item of (await call("GET", "/api/queue")).items ?? []) await fetch(`${BASE}/api/queue/items/${item.key}`, { method: "DELETE" });
