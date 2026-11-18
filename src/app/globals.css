@@ -7868,6 +7868,27 @@ button.link-button.ef-since-link {
     position: static;
   }
 
+  /* Illustrate: Size and Queue stay at the top of the sheet while the pictures scroll under them (they are used all the
+     time); the pictures' views and filters scroll away. The side column's box goes, so Queue's section is a child of the
+     sheet itself and can stick past the end of the controls. */
+  .desk.desk-illus.desk-phone-open .desk-illus-side {
+    display: contents;
+  }
+
+  .desk.desk-illus.desk-phone-open .desk-queue {
+    position: sticky;
+    top: -0.75rem; /* the sheet's top padding is head height + 0.75rem, and a sticky offset is measured inside it */
+    z-index: 3;
+    margin: 0 -1rem;
+    padding: 0.5rem 1rem;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .desk .chapter-pictures-bar {
+    position: static;
+  }
+
   .desk-sheet-head {
     position: fixed;
     top: var(--header-h, 0px);
