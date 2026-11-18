@@ -6864,6 +6864,13 @@ main:has(.desk) {
     max-height: calc(100vh - 2rem - var(--header-h, 0px));
     overflow-y: auto;
   }
+
+  /* The columns above are sized to end 1rem above the window's bottom, so the page ends 1rem below the desk. With
+     main's usual 4rem, scrolling to the very end pushed a column that fills the window up under the header, until
+     something moved it back. */
+  main:has(.desk) {
+    padding-bottom: 1rem;
+  }
 }
 
 @media (min-width: 80rem) {
