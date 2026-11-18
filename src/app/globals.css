@@ -7792,7 +7792,8 @@ button.link-button.ef-since-link {
    box, with the "→" line and the title at its top. The codex, the entry column, the path and "What happens next?" are
    put away; the bottom bar (DeskPhone) opens the path, the codex or the choices over the box, full screen
    (`.desk-phone-<sheet>`), and Illustrate mode the same way. They are the desk's own parts, moved, not copies, so the
-   box under them keeps what is typed in it. */
+   box under them keeps what is typed in it. The sheets start under the site header (`--header-h`), so it and its queue
+   button stay in reach. */
 @media (max-width: 640px) {
   :root {
     --desk-tabbar-h: 3.25rem;
@@ -7806,6 +7807,11 @@ button.link-button.ef-since-link {
 
   html:has(.desk-phone-open) {
     overflow: hidden;
+  }
+
+  /* Above the sheets and the bottom bar, so the queue's list opens over them. */
+  body:has(.desk) .site-header {
+    z-index: 63;
   }
 
   .desk:not(.desk-illus) .desk-side,
@@ -7825,7 +7831,7 @@ button.link-button.ef-since-link {
     align-content: start;
     gap: 0.5rem;
     position: fixed;
-    inset: 0 0 calc(var(--desk-tabbar-h) + env(safe-area-inset-bottom, 0px));
+    inset: var(--header-h, 0px) 0 calc(var(--desk-tabbar-h) + env(safe-area-inset-bottom, 0px));
     z-index: 60;
     max-height: none;
     margin: 0;
@@ -7864,7 +7870,7 @@ button.link-button.ef-since-link {
 
   .desk-sheet-head {
     position: fixed;
-    top: 0;
+    top: var(--header-h, 0px);
     left: 0;
     right: 0;
     z-index: 62;

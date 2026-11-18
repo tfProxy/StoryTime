@@ -205,8 +205,7 @@ try {
   ok(posted() === postedBefore && ai.active > 0, "while a run writes, a picture job is held (ComfyUI gets nothing)");
   ok(await page.getByText(/waiting its turn/i).first().isVisible(), "…and its place says it is waiting its turn");
   await page.setViewportSize({ width: 400, height: 900 });
-  // On a phone the desk's Illustrate sheet covers the header, so the list is opened from another page.
-  await page.goto(`${BASE}/`);
+  // At phone width the desk's Illustrate mode is a sheet under the site header: the list opens over it.
   await q.badge.click();
   const note = await q.panel.locator(".picture-queue-note").innerText().catch(() => "");
   ok(/^Writing until .+ or 0 more steps, then 1 picture job$/.test(note), `the list says who has the machine: “${note}”`);

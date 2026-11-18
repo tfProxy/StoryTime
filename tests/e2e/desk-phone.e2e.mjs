@@ -46,6 +46,19 @@ try {
   const text = box.getByLabel("Chapter text");
   const noSideScroll = () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
   const top = async (l) => (await l.boundingBox())?.y ?? -1;
+  // The site header (the queue button among it) stays in view and can be tapped over every sheet: what is on top at its
+  // left, middle and right is the header's own.
+  const headerOnTop = () =>
+    page.evaluate(() => {
+      const h = document.querySelector(".site-header").getBoundingClientRect();
+      return h.top === 0 && h.height > 0 && [10, window.innerWidth / 2, window.innerWidth - 10].every((x) => document.elementFromPoint(x, h.top + h.height / 2)?.closest(".site-header"));
+    });
+  const sheetBelowHeader = (sel) =>
+    page.evaluate((sel) => {
+      const h = document.querySelector(".site-header").getBoundingClientRect();
+      const r = document.querySelector(sel).getBoundingClientRect();
+      return Math.abs(r.top - h.bottom) <= 1 && r.width === window.innerWidth;
+    }, sel);
 
   // ---- the box ----
   await page.goto(`${BASE}/c/${B}/desk`);
@@ -85,7 +98,9 @@ try {
   const path = page.locator(".desk-path");
   ok(await path.isVisible(), "Path opens the path");
   ok((await head.locator("h2").innerText()) === "The path so far" && (await page.locator("article.desk-block").count()) === 2, "…full screen, named, with the two earlier chapters");
-  ok(await page.evaluate(() => { const r = document.querySelector(".desk-path").getBoundingClientRect(); return r.top === 0 && r.width === window.innerWidth; }), "…over the whole screen above the bar");
+  ok(await sheetBelowHeader(".desk-path"), "…over the whole screen between the site header and the bar");
+  ok(await headerOnTop(), "…with the site header still in view and tappable");
+  ok(await page.evaluate(() => document.querySelector(".desk-sheet-head").getBoundingClientRect().top >= document.querySelector(".site-header").getBoundingClientRect().bottom - 1), "…and the sheet's own head under it");
   ok(await noSideScroll(), "…not scrolling sideways");
   await close();
   ok(!(await path.isVisible()) && (await kept()), "× closes it, and the typing in the box is still there");
@@ -94,6 +109,7 @@ try {
   await tab("Codex").click();
   const side = page.locator("aside.desk-side");
   ok(await side.isVisible() && (await side.getByLabel("Search entries").isVisible()), "Codex opens the codex list, with its search");
+  ok(await headerOnTop(), "…the site header still in view and tappable");
   ok(!(await side.getByRole("button", { name: "New entry" }).isVisible()) && !(await side.getByRole("button", { name: "Fold the codex" }).isVisible()), "…with no + or « (entries are made on a wide screen)");
   ok(!(await side.locator(".desk-modes").isVisible()), "…and no Codex | Illustrate switch (the bar does that)");
   ok((await side.locator(".desk-group > summary").allTextContents()).some((t) => t.trim().startsWith("Characters")), "…grouped, Characters among them");
@@ -124,6 +140,7 @@ try {
   const pictures = page.locator(".desk-pictures");
   ok(await pictures.isVisible() && (await head.locator("h2").innerText()) === "Illustrate", "Illustrate opens Illustrate mode full screen");
   ok(await page.locator(".desk-illus-side").isVisible(), "…with the picture controls");
+  ok(await sheetBelowHeader(".desk.desk-illus") && (await headerOnTop()), "…below the site header, which stays in view and tappable");
   ok(await noSideScroll(), "…not scrolling sideways");
   await close();
   await page.waitForURL((u) => !u.search.includes("side=illustrate"));
