@@ -249,6 +249,12 @@ try {
   try {
     const ipadPage = await ipad.newPage();
     ipadPage.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
+    // The Generate started on this chapter above may still be writing on a slow machine; its new draft starts empty, so
+    // the names line would have nothing to show. Wait for it to finish first.
+    await until(async () => {
+      const { items } = await (await fetch(`${BASE}/api/queue`)).json();
+      return !items.some((i) => i.type === "generate" && (i.state === "waiting" || i.state === "working"));
+    }, 60000);
     await ipadPage.goto(`${BASE}/c/${A}/desk`);
     const ipadNamed = ipadPage.locator("section.desk-box .desk-named");
     await ipadNamed.waitFor();
