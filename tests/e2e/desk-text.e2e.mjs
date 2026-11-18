@@ -249,15 +249,23 @@ try {
   try {
     const ipadPage = await ipad.newPage();
     ipadPage.on("pageerror", (e) => { console.log("PAGEERROR", e.message); failed = true; });
-    // The Generate started on this chapter above may still be writing on a slow machine; its new draft starts empty, so
-    // the names line would have nothing to show. Wait for it to finish first.
+    // The Generate started on this chapter above leaves the fake AI's "A new text." as the draft, which names nobody, so
+    // the line would have nothing to show (and while it writes, its text changes). Let it finish, then write names in.
     await until(async () => {
       const { items } = await (await fetch(`${BASE}/api/queue`)).json();
       return !items.some((i) => i.type === "generate" && (i.state === "waiting" || i.state === "working"));
     }, 60000);
     await ipadPage.goto(`${BASE}/c/${A}/desk`);
+    const ipadText = ipadPage.locator("section.desk-box").getByLabel("Chapter text");
+    await ipadText.waitFor();
+    await ipadText.fill("Mara walked past the Mill.");
     const ipadNamed = ipadPage.locator("section.desk-box .desk-named");
-    await ipadNamed.waitFor();
+    await ipadNamed.waitFor().catch(async (e) => {
+      // Say what the page had, so a failure on CI can be read from the log.
+      const { items } = await (await fetch(`${BASE}/api/queue`)).json();
+      console.log("iPad: no names line. Text:", JSON.stringify(await ipadText.inputValue().catch(() => "?")), "queue:", JSON.stringify(items.map((i) => [i.type, i.state])));
+      throw e;
+    });
     ok(await ipadPage.evaluate(() => !matchMedia("(pointer: fine)").matches && !matchMedia("(hover: hover)").matches), "the iPad context reports no fine pointer or hover");
     ok((await ipadNamed.evaluate((el) => getComputedStyle(el).position)) === "static", "on a touch screen the line stays in place under the text (position: static)");
   } finally {
