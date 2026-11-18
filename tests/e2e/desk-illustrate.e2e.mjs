@@ -206,6 +206,23 @@ try {
   ok((await p3.locator(".desk-illus-side").evaluate((e) => getComputedStyle(e).display)) !== "contents", "on a desktop the side column is still a box");
   ok((await p3.locator(".chapter-pictures-bar").evaluate((e) => getComputedStyle(e).position)) === "sticky", "…and the pictures' filter bar still sticks");
   await wideCtx.close();
+
+  // A window the controls column fills: scrolled to the very end of the page, the column must still sit below the site
+  // header (the page's bottom padding once pushed it up under the header).
+  const shortCtx = await browser.newContext({ viewport: { width: 1280, height: 700 } });
+  const p4 = await shortCtx.newPage();
+  await p4.goto(`${BASE}/c/${chapterId}/desk?side=illustrate`);
+  await p4.getByRole("button", { name: "Queue", exact: true }).waitFor();
+  await p4.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await p4.waitForTimeout(400);
+  const end = await p4.evaluate(() => ({
+    scrollable: document.documentElement.scrollHeight - window.innerHeight,
+    asideTop: document.querySelector("aside.desk-side").getBoundingClientRect().top,
+    headerBottom: document.querySelector("header").getBoundingClientRect().bottom,
+  }));
+  ok(end.scrollable > 0, `the page scrolls in a short window (${Math.round(end.scrollable)}px)`);
+  ok(end.asideTop >= end.headerBottom, `at the very bottom the side column is not under the site header (column top ${Math.round(end.asideTop)}, header bottom ${Math.round(end.headerBottom)})`);
+  await shortCtx.close();
 } finally {
   // Take this file's queue items off, so the next file starts clean.
   for (const item of (await call("GET", "/api/queue")).items ?? []) await fetch(`${BASE}/api/queue/items/${item.key}`, { method: "DELETE" });
