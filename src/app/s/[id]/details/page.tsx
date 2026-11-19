@@ -4,14 +4,12 @@ import StoryTabs from "@/components/StoryTabs";
 import CoverEditor from "@/components/CoverEditor";
 import StoryDetailsForm from "@/components/StoryDetailsForm";
 import StoryPictureSettings from "@/components/StoryPictureSettings";
-import StoryTagSwitches from "@/components/StoryTagSwitches";
 import { coverRefPool } from "@/lib/referencePool";
 import { getChapter, getStory } from "@/lib/stories";
-import { listTags, storyTags } from "@/lib/tags";
 
 export const dynamic = "force-dynamic";
 
-// Settings for the whole story: its title, summary and style notes, its cover and its tags. (The codex is in the Story Bible.) Before the story has a chapter, it leads on to writing the first one; after, to reading it.
+// Settings for the whole story: its title, summary and style notes, its pictures and its cover. (The codex is in the Story Bible.) Before the story has a chapter, it leads on to writing the first one; after, to reading it.
 export default async function StoryDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const story = getStory(id);
@@ -41,7 +39,6 @@ export default async function StoryDetailsPage({ params }: { params: Promise<{ i
         pool={coverRefPool(story.id, story.cover_version)}
       />
       <CoverEditor story={{ id: story.id, title: story.title, cover_version: story.cover_version }} />
-      <StoryTagSwitches storyId={story.id} tags={listTags().map((t) => ({ id: t.id, name: t.name, applies: t.applies }))} enabled={storyTags(story.id)} />
       {/* Nothing to download until the first chapter is written. */}
       {root && (
         <section className="ai-panel" aria-labelledby="export-heading">

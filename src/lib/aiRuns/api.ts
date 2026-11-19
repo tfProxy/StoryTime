@@ -4,7 +4,6 @@ import type { ContextChapter, ContextCodexEntry } from "../ai/prompts";
 import type { Fact } from "../ai/factAi";
 import type { SuggestionInput } from "../ai/codexCheckAi";
 import type { CodexEntry } from "../codex";
-import type { TagRule, TagSuggestion } from "../ai/tagAi";
 import type { PathFacts } from "../continuity";
 import type { AiRun, RunStatus, RunTask } from "./types";
 import type { ChapterWriting } from "../chapterWriting";
@@ -69,21 +68,6 @@ export const postChapter = (f: Fetch, chapter: NewChapter) =>
 export const putChapterWriting = (f: Fetch, chapterId: string, writing: ChapterWriting) =>
   call<{ ok: true }>(f, "PUT", `/api/chapters/${chapterId}/writing`, writing);
 
-/** The tags on for a story, with their rules: `GET /api/stories/<id>/tags` lists every tag and the ids switched on. */
-export const getStoryTags = (f: Fetch, storyId: string) => call<{ tags: (TagRule & { kind: string })[]; enabled: string[] }>(f, "GET", `/api/stories/${storyId}/tags`);
-
-/** One chapter's tags and, for every chapter, the tag ids it was checked for at its current revision. */
-export const getChapterTags = (f: Fetch, storyId: string, chapterId: string) =>
-  call<{ chapter_tags: { tag_id: string; status: string; revision: number }[]; checked: Record<string, string[]> }>(
-    f,
-    "GET",
-    `/api/stories/${storyId}/chapter-tags?chapter=${encodeURIComponent(chapterId)}`,
-  );
-
-/** Saves the AI's tag suggestions for a chapter revision; 409 when the chapter was edited meanwhile. */
-export const postTagSuggestions = (f: Fetch, chapterId: string, revision: number, checkedTagIds: string[], suggestions: TagSuggestion[]) =>
-  call<{ added: number; kept: number }>(f, "POST", `/api/chapters/${chapterId}/tags/suggest`, { revision, checked_tag_ids: checkedTagIds, suggestions });
-
 /** Saves the facts the AI read from a chapter revision (replacing the chapter's facts); 409 when the chapter was edited meanwhile. */
 export const postFacts = (f: Fetch, chapterId: string, revision: number, facts: Fact[]) =>
   call<{ saved: number }>(f, "POST", `/api/chapters/${chapterId}/facts`, { revision, facts });
@@ -112,10 +96,6 @@ export const postSummaryCheck = (f: Fetch, chapterId: string, body: { revision: 
 
 /** The facts of each chapter from the story's root down to this one, root first. */
 export const getPathFacts = (f: Fetch, chapterId: string) => call<{ path: PathFacts[] }>(f, "GET", `/api/chapters/${chapterId}/facts`);
-
-/** Every chapter tag of a story (the approved ones are what counts for a change event). */
-export const getAllChapterTags = (f: Fetch, storyId: string) =>
-  call<{ chapter_tags: { chapter_id: string; tag_name: string; status: string }[] }>(f, "GET", `/api/stories/${storyId}/chapter-tags`);
 
 /** The verdicts already stored on a story's continuity clashes. */
 export const getVerdicts = (f: Fetch, storyId: string) => call<{ verdicts: { fingerprint: string; before: { revision: number }; after: { revision: number } }[] }>(f, "GET", `/api/stories/${storyId}/continuity`);

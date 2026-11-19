@@ -103,7 +103,7 @@ ok(true, "models in use are on the Writing tab, where they can be given a nickna
 ok((await page.locator("table.model-grid").count()) === 1 && (await page.locator("table.model-grid tbody tr").count()) === 2 && (await page.getByRole("heading", { name: "Models", exact: true }).count()) >= 1, "on the Writing tab the models in use are rows of one grid");
 
 // ---- each starred model has a row: context, thinking, and per job whether it is offered and the default ----
-const JOBS = ["Writing", "Choices", "Summaries", "Codex", "Tags & continuity", "Picture prompts"];
+const JOBS = ["Writing", "Choices", "Summaries", "Codex", "Continuity", "Picture prompts"];
 const bigRow = page.locator("table.model-grid tbody tr", { has: page.getByLabel("Nickname for vendor/big") });
 const alphaRow = page.locator("table.model-grid tbody tr", { has: page.getByLabel("Nickname for alpha") });
 ok((await bigRow.count()) === 1 && (await alphaRow.count()) === 1, "one row per starred model");

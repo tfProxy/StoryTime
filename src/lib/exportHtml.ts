@@ -1,5 +1,3 @@
-import { contentNotes } from "./contentNotes";
-import { noteText } from "./contentNotesRoll";
 import { playableStory, routeTo, type StoryExport } from "./export";
 import { middleBreak, splitParagraphs } from "./imageSlots";
 
@@ -11,7 +9,7 @@ import { middleBreak, splitParagraphs } from "./imageSlots";
  * h, m and f are the header, middle and footer pictures as data: URIs, when the chapter has them; mb is how many
  * paragraphs come before the middle picture (see middleBreak); u is set when the chapter's choices are all unwritten.
  */
-type Page = { t: string; b: string; c: [string, string, string?][]; p: string | null; h?: string; m?: string; mb?: number; f?: string; u?: 1 };
+type Page = { t: string; b: string; c: [string, string][]; p: string | null; h?: string; m?: string; mb?: number; f?: string; u?: 1 };
 
 /** Each chapter's pictures as data: URIs, so the exported file works offline. */
 function imageUris(data: StoryExport) {
@@ -49,7 +47,6 @@ button.secondary { background: transparent; color: var(--accent); }
 button.choice { background: var(--card); color: var(--fg); border-color: var(--line); }
 button.choice:hover, button.choice:focus-visible { border-color: var(--accent); }
 button.choice .seen { color: var(--muted); font-size: 0.8rem; margin-left: 0.5rem; }
-button.choice .note { display: block; color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
 nav { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1.5rem 0 0; }
 blockquote { margin: 1rem 0; padding-left: 1rem; border-left: 3px solid var(--line); color: var(--muted); white-space: pre-line; }
 .end { text-align: center; color: var(--muted); font-style: italic; margin: 2rem 0; }
@@ -129,7 +126,6 @@ const SCRIPT = String.raw`
       kids.push(el("div", { class: "choices" }, page.c.map(function (c) {
         var seen = state.seen[c[1]];
         var inner = [c[0]].concat(seen ? [el("span", { class: "seen" }, ["(read)"])] : []);
-        if (c[2]) inner.push(el("span", { class: "note" }, [c[2]]));
         return el("button", { class: "choice", onclick: function () { go(c[1]); } }, inner);
       })));
     } else {
@@ -215,12 +211,10 @@ export function toHtml(data: StoryExport): string {
   const pages: Record<string, Page> = {};
   const parentOf = new Map<string, string>();
   const uris = imageUris(data);
-  const notes = contentNotes(data.story.id);
   for (const c of chapters) {
-    const list: [string, string, string?][] = [];
+    const list: [string, string][] = [];
     for (const { choice, child } of writtenChoices(c)) {
-      const note = noteText(notes.get(child.id));
-      list.push(note ? [choice.label, child.id, note] : [choice.label, child.id]);
+      list.push([choice.label, child.id]);
       parentOf.set(child.id, c.id);
     }
     const pictures = uris.get(c.id);

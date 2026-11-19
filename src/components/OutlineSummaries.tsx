@@ -90,7 +90,6 @@ function PictureButton({ chapterId, title, slot, version }: { chapterId: string;
 // After them come icons: the chapter's header, middle and footer pictures (when it has them).
 // `show` says which of these parts are turned on in Settings (Outline); `children` is only given when one of its links (the Review marker, 'read to here') is on.
 // With every part off there is nothing to show.
-// `tags` are the chapter's approved tag names, shown in a group of their own after the first ones; the page gives none when Settings has them off.
 export function NodeSummary({
   chapterId,
   title,
@@ -98,7 +97,6 @@ export function NodeSummary({
   summary,
   via,
   show,
-  tags,
   ai = null,
   children,
 }: {
@@ -108,7 +106,6 @@ export function NodeSummary({
   summary: string | null;
   via: string | null;
   show: OutlineOptions;
-  tags: string[];
   /** Whether the AI wrote the chapter, and whether it is reviewed; shown when "AI-written" is on. */
   ai?: AiMarkState;
   children?: ReactNode;
@@ -163,7 +160,6 @@ export function NodeSummary({
           )}
         </span>
       )}
-      {tags.length > 0 && <span className="meta outline-actions outline-tags">{tags.join(", ")}</span>}
       {open && showSummary && (
         <span className="outline-summary" onClick={(e) => e.preventDefault()}>
           {via && <strong className="outline-via">{via}</strong>}

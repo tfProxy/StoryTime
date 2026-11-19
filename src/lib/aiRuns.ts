@@ -11,7 +11,6 @@ import { factCheckedChapterIds } from "./facts";
 import { currentSummaryChecks } from "./summaryChecks";
 import { LIMITS } from "./limits";
 import { getChapter, getStory, isSummaryMine, PostError } from "./stories";
-import { decidedTagIdsByChapter, storyTags } from "./tags";
 import { getStoryChapters } from "./tree";
 import { retconChapters } from "./retcons";
 
@@ -78,17 +77,6 @@ export const PictureTaskSchema = z.object({
   prompt: text(LIMITS.picturePrompt).optional(),
   negative: text(LIMITS.picturePrompt).optional(),
   jobId: z.string().min(1).max(100).optional(),
-  error: text(LIMITS.summary).optional(),
-});
-
-export const TagsTaskSchema = z.object({
-  kind: z.literal("tags"),
-  id: taskId,
-  chapterId: z.string().min(1).max(100),
-  revision: z.number().int().min(1),
-  label: text(LIMITS.title).optional(),
-  status: taskStatus,
-  found: z.number().int().min(0).optional(),
   error: text(LIMITS.summary).optional(),
 });
 
@@ -176,7 +164,7 @@ export const RetconTaskSchema = z.object({
   error: text(LIMITS.summary).optional(),
 });
 
-export const RunTaskSchema = z.discriminatedUnion("kind", [WriteTaskSchema, PlanTaskSchema, PictureTaskSchema, TagsTaskSchema, FactsTaskSchema, ContinuityTaskSchema, SummaryTaskSchema, CodexTaskSchema, ExpandTaskSchema, RetconTaskSchema]);
+export const RunTaskSchema = z.discriminatedUnion("kind", [WriteTaskSchema, PlanTaskSchema, PictureTaskSchema, FactsTaskSchema, ContinuityTaskSchema, SummaryTaskSchema, CodexTaskSchema, ExpandTaskSchema, RetconTaskSchema]);
 export const RunTasksSchema = z.array(RunTaskSchema).max(LIMITS.runTasks);
 
 export const RunOptionsSchema = z.object({
@@ -195,14 +183,15 @@ export const RunOptionsSchema = z.object({
   alternatives: z.number().int().min(0).max(3).optional(),
   slots: z.enum(["header", "footer", "both"]).optional(),
   useRefs: z.boolean().optional(),
-  // Find tags: which chapters, from the start chapter (the whole story when there is none).
+  // A review run: which chapters, from the start chapter (the whole story when there is none). (Named when the review
+  // run was Find tags; kept so stored runs still read.)
   // "chapters": exactly the chapters in `chapterIds` (the automatic review after an AI run, for the chapters it wrote).
   tagScope: z.enum(["chapter", "path", "subtree", "story", "chapters"]).optional(),
   chapterIds: z.array(z.string().min(1)).min(1).max(LIMITS.runTasks).optional(),
-  // A review run the server started by itself (Settings > Tags, "Check new and edited chapters automatically"): the
+  // A review run the server started by itself (Settings > Writing, "Check new and edited chapters automatically"): the
   // Review page's buttons leave it alone, and the queue shows it as automatic.
   automatic: z.boolean().optional(),
-  // A review run: what to read each chapter for (tags unless said otherwise; facts cost one more AI call a chapter;
+  // A review run: what to read each chapter for ("facts" costs one AI call a chapter;
   // continuity, after the facts, asks the AI about each clash between chapters; summaries checks each summary against its chapter).
   // "codex": reads each chapter for changes to the codex and leaves suggestions in the codex inbox.
   // "expand": the AI proposes new facts for the entry in `entryIds`, as the codex stands at the start chapter.
@@ -210,7 +199,7 @@ export const RunOptionsSchema = z.object({
   // chapter) for that entry's changes alone, and leaves suggestions on it.
   // "retcon": reads the chapters of the retcon `retconId` for passages that no longer fit its change (see ./retcons).
   // "rewrite": the AI writes each chapter's summary afresh (after a Post or Update on the writing desk), skipping a summary the owner made theirs.
-  checks: z.array(z.enum(["tags", "facts", "continuity", "summaries", "codex", "expand", "update", "retcon", "rewrite"])).max(9).optional(),
+  checks: z.array(z.enum(["facts", "continuity", "summaries", "codex", "expand", "update", "retcon", "rewrite"])).max(8).optional(),
   retconId: z.string().min(1).max(100).optional(),
   // With "expand" or "update": the entry.
   entryIds: z.array(z.string().min(1).max(100)).max(200).optional(),
@@ -357,9 +346,7 @@ function checkTasks(tasks: RunTask[]) {
 
 /**
  * The tasks of a review run, for each chapter in the scope (the start chapter, the way to it, it and everything below
- * it, or the whole story), in story order: a tags task if tags are asked for, leaving out the chapters already checked
- * (every tag that is on for the story is decided for them, as the review page's Find tags counts them); a facts task if
- * facts are asked for, leaving out the chapters read for facts at their current revision.
+ * it, or the whole story), in story order: a facts task if facts are asked for, leaving out the chapters read for facts at their current revision.
  */
 export function reviewTasks(storyId: string, startChapterId: string | null, scope: NonNullable<RunOptions["tagScope"]>, checks: NonNullable<RunOptions["checks"]>, chapterIds: string[] = [], recheck = false, entryIds?: string[], expand?: { mode: "invent" | "close"; hint?: string }, retconId?: string): RunTask[] {
   const chapters = getStoryChapters(storyId);
@@ -387,14 +374,6 @@ export function reviewTasks(storyId: string, startChapterId: string | null, scop
     }
   }
   const tasks: RunTask[] = [];
-  if (checks.includes("tags")) {
-    const on = storyTags(storyId);
-    const decided = decidedTagIdsByChapter(storyId);
-    for (const c of chosen) {
-      if (on.every((tid) => (decided.get(c.id) ?? []).includes(tid))) continue;
-      tasks.push({ kind: "tags", id: `t${tasks.length + 1}`, chapterId: c.id, revision: c.revision, label: c.title.slice(0, LIMITS.title), status: "todo" });
-    }
-  }
   if (checks.includes("facts")) {
     const read = factCheckedChapterIds(storyId);
     for (const c of chosen) {
@@ -490,7 +469,7 @@ export function createRun(input: z.infer<typeof NewRunSchema>): { id: string } {
   }
   const tasks: RunTask[] =
     input.mode === "review"
-      ? reviewTasks(input.story_id, input.start_chapter_id, input.options.tagScope ?? (input.start_chapter_id === null ? "story" : "chapter"), input.options.checks ?? ["tags"], input.options.chapterIds, input.options.recheck, input.options.entryIds, { mode: input.options.expandMode ?? "invent", hint: input.options.expandHint }, input.options.retconId)
+      ? reviewTasks(input.story_id, input.start_chapter_id, input.options.tagScope ?? (input.start_chapter_id === null ? "story" : "chapter"), input.options.checks ?? [], input.options.chapterIds, input.options.recheck, input.options.entryIds, { mode: input.options.expandMode ?? "invent", hint: input.options.expandHint }, input.options.retconId)
       : (input.tasks ?? []);
   if (tasks.length > LIMITS.runTasks) throw new PostError(`A run can have at most ${LIMITS.runTasks} tasks`, 400);
   checkTasks(tasks);

@@ -34,7 +34,7 @@ Built and passing its tests against fakes, but not yet tried for real. Tick them
 
 **With your own AI models**
 - [ ] Import a story from text (New story › Import a story) with a local model: a real short story of 3,000–8,000 words. Do the breaks land at decision points, are the choice labels and the suggested choices good, and does a small context size (several parts) still give sensible breaks where the parts meet?
-- [ ] Story review: Find tags, Help me write it, Check continuity, and the summary check. Prompt quality with a small local model is unknown.
+- [ ] Story review: Check continuity and the summary check. Prompt quality with a small local model is unknown.
 - [ ] The codex check with the cheaper model, after the 2026-11-14 fixes: post (or "Check this chapter with AI" on) 2–3 chapters where a body or form changes, and check that more suggestions arrive, their quotes highlight on the review page, and facts land under the right form.
 - [ ] "Apply the AI's codex changes automatically" (Settings › Writing › Codex): write and save 2–3 chapters with it on, then check the AI-marked facts on each character's page (right fact, right chapter, quote), Approve and Edit a few, edit a chapter and confirm only its unapproved AI facts are replaced.
 - [ ] "Flesh out with AI" on a character with few facts: are the invented facts specific and consistent with the story, does "Stay close to the story" keep to the chapters, and does the focus box steer it?
@@ -122,19 +122,16 @@ Background: an entry's AI text is built from its facts (one per aspect, such as 
 - [ ] "Ask the codex": a question box ("Where is Oda now?", "Has Mara met the queen?") answered by the AI from the chapters on this branch, quoting them, with an "Update the entry" button that turns the answer into suggestions.
 - [ ] Admin tool: deleting a chapter (`scripts/adminCore.mjs`) doesn't remove its `chapter_facts`, `chapter_fact_checks`, `summary_checks`, continuity verdicts or codex pictures, so the delete may fail on foreign keys. Codex facts and suggestions are already handled.
 
-**Story review and tags**
-- [ ] A short label field on tags (a tag has only a name).
+**Story review**
 - [ ] Name variants in the codex-gap check ("Jon" and "John"); only exact names and aliases match now.
 - [ ] Optional check: tense, point of view or tone drifting from the story's style.
-- [ ] Which tags count as changes in the continuity check is fixed in code (`CHANGE_EVENT_TAGS`: tf, tg); make it a setting if wanted.
-- [ ] State tags (a stretch like `species: wolf` from one chapter to another, folded along a path). Not wanted for now.
 - [ ] A nightly review run for chapters changed that day. Only if asked.
 
 **The trash**
 - [ ] Emptying the trash: trashed branches are kept for good; deleting them for real (admin script or a button) isn't built.
 
 **Server and code**
-- [ ] Route the remaining one-off AI calls (codex scan, tag suggestions, summaries, Write prompt, Refine's prompt) through a server `POST /api/ai/chat` stream, so the browser never calls providers and no CORS setup is needed.
+- [ ] Route the remaining one-off AI calls (codex scan, summaries, Write prompt, Refine's prompt) through a server `POST /api/ai/chat` stream, so the browser never calls providers and no CORS setup is needed.
 - [ ] A `/api/comfy/view` proxy so the Refine canvas can load ComfyUI pictures without CORS.
 - [ ] `src/lib/aiRuns/api.ts` goes through a self fetch to the server's own API; it could use SQLite directly.
 - [ ] Fix the one known lint error, in `src/components/OutlineSummaries.tsx` (set-state-in-effect).

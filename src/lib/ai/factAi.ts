@@ -4,7 +4,7 @@
 import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, type PromptParts } from "./prompts";
 import { extractJson, type StoryInfo } from "./codexAi";
-import { quoteInText } from "./tagAi";
+import { quoteInText } from "./quotes";
 import { contextFor, type Settings } from "../settingsSchema";
 
 export type Fact = { entity: string; attribute: string; value: string; quote: string };

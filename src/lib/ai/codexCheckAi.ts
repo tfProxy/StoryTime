@@ -4,7 +4,7 @@
 import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, mentions, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
-import { matchQuote } from "./tagAi";
+import { matchQuote } from "./quotes";
 import { ENTRY_TYPES, FACT_LIMITS, aspectAndForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry, type EntryType } from "../codex";
 import { DEFAULT_CATEGORIES, aspectRules, formFor, resolveAspect, type CategoryLists } from "../codexCategories";
 import { contextFor, type Settings } from "../settingsSchema";

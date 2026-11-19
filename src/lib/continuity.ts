@@ -1,12 +1,6 @@
 // Continuity check in plain code (no AI, no db): walk the facts along a chapter path and report
-// where a stated value changes without an approved change event on that chapter.
+// where a stated value changes. The AI then judges each clash (a change the story explains is not one).
 import type { StoredFact } from "./facts";
-
-/**
- * The approved chapter tags (by name, any case) that mark a change the story explains, such as a transformation or a
- * gender swap: a changed value on a chapter with one of them is not a clash. The owner may want this as a setting later.
- */
-export const CHANGE_EVENT_TAGS = ["tf", "tg"];
 
 /** What `factsAlongPath(chapterId)` returns: one entry per chapter, root first. */
 export type PathFacts = { chapterId: string; facts: StoredFact[] };
@@ -46,13 +40,10 @@ export function continuityFingerprint(beforeQuote: string, afterQuote: string): 
 }
 
 /**
- * Finds values that change along the path without an approved change event.
- * `changeEvents` is the set of chapter ids that carry an approved change-event tag (for example
- * tf or tg); the caller resolves tag names to chapters. A change on such a chapter is accepted
- * and becomes the new baseline. Otherwise a conflict is reported once, and the new value
+ * Finds values that change along the path. Each change is reported once, and the new value
  * becomes the baseline. Conflicts come back in path order.
  */
-export function findConflicts(path: PathFacts[], changeEvents: ReadonlySet<string>): Conflict[] {
+export function findConflicts(path: PathFacts[]): Conflict[] {
   const latest = new Map<string, { side: ConflictSide; norm: string }>();
   const conflicts: Conflict[] = [];
   for (const { chapterId, facts } of path) {
@@ -61,7 +52,7 @@ export function findConflicts(path: PathFacts[], changeEvents: ReadonlySet<strin
       const norm = normValue(f.value);
       const side: ConflictSide = { chapterId, value: f.value, quote: f.quote };
       const prev = latest.get(key);
-      if (prev && prev.norm !== norm && !changeEvents.has(chapterId)) {
+      if (prev && prev.norm !== norm) {
         conflicts.push({ entity: f.entity, attribute: f.attribute, before: prev.side, after: side });
       }
       // Same value: the latest chapter stating it is the best evidence. Changed value: new baseline.

@@ -71,21 +71,6 @@ export type PictureTask = {
   error?: string;
 };
 
-/** Find tags: the AI reads one chapter (at `revision`) and saves its tag suggestions. Made by the server when the run is created. */
-export type TagsTask = {
-  kind: "tags";
-  id: string;
-  chapterId: string;
-  /** The chapter's revision when the run was made; a chapter edited since is skipped. */
-  revision: number;
-  /** The chapter's title, for the task list. */
-  label?: string;
-  status: TaskStatus;
-  /** How many new suggestions the AI's reading of the chapter added (set when it was read). */
-  found?: number;
-  error?: string;
-};
-
 /** Facts: the AI reads one chapter (at `revision`) and its facts are saved. Made by the server when a review run asks for facts. */
 export type FactsTask = {
   kind: "facts";
@@ -187,7 +172,7 @@ export type RetconTask = {
   error?: string;
 };
 
-export type RunTask = WriteTask | PlanTask | PictureTask | TagsTask | FactsTask | ContinuityTask | SummaryTask | CodexTask | ExpandTask | RetconTask;
+export type RunTask = WriteTask | PlanTask | PictureTask | FactsTask | ContinuityTask | SummaryTask | CodexTask | ExpandTask | RetconTask;
 
 export type RunOptions = {
   // writing modes
@@ -212,14 +197,14 @@ export type RunOptions = {
   // pictures
   slots?: "header" | "footer" | "both";
   useRefs?: boolean; // D12, default false
-  // tags: which chapters (the server makes the tasks): the start chapter, the way to it, it and everything below it, or the whole story
+  // review: which chapters (the server makes the tasks; the name is from when this was Find tags): the start chapter, the way to it, it and everything below it, or the whole story
   tagScope?: "chapter" | "path" | "subtree" | "story" | "chapters";
   /** With tagScope "chapters": exactly these chapters (the automatic review after an AI run). */
   chapterIds?: string[];
   /** A review run the server started by itself after a save or an AI run. */
   automatic?: boolean;
-  // review: what to read each chapter for (tags unless said otherwise)
-  checks?: ("tags" | "facts" | "continuity" | "summaries" | "codex" | "expand" | "update" | "retcon" | "rewrite")[];
+  // review: what to read each chapter for
+  checks?: ("facts" | "continuity" | "summaries" | "codex" | "expand" | "update" | "retcon" | "rewrite")[];
   /** With "retcon": the retcon whose chapters are read. */
   retconId?: string;
   /** With "expand" or "update": the entry. */
@@ -238,7 +223,7 @@ export type RunStatus = "ready" | "queued" | "running" | "review" | "paused" | "
 export type AiRun = {
   id: string;
   story_id: string;
-  start_chapter_id: string | null; // null = the whole story (pictures, tags)
+  start_chapter_id: string | null; // null = the whole story (pictures, review)
   mode: RunMode;
   options: RunOptions;
   tasks: RunTask[];

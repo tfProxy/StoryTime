@@ -3,18 +3,13 @@ import { notFound } from "next/navigation";
 import StoryTabs from "@/components/StoryTabs";
 import BibleScope from "@/components/BibleScope";
 import BibleSectionSelect from "@/components/BibleSectionSelect";
-import ChapterTreePicker from "@/components/ChapterTreePicker";
 import CodexSection, { CodexBibleProvider, CodexMenu } from "@/components/CodexBible";
 import ContinuityCheck from "@/components/ContinuityCheck";
 import IssueActions from "@/components/IssueActions";
 import MarkReviewedButton from "@/components/MarkReviewedButton";
 import StoryChecks from "@/components/StoryChecks";
-import StoryTagSwitches from "@/components/StoryTagSwitches";
 import SummariesOverview, { type SummaryStatus } from "@/components/SummariesOverview";
 import SummaryPanel from "@/components/SummaryPanel";
-import TagScan from "@/components/TagScan";
-import TagSuggestions from "@/components/TagSuggestions";
-import TaggedChapters from "@/components/TaggedChapters";
 import { listRuns } from "@/lib/aiRuns";
 import { ChangeList, CompareForm, comparisonTitle, StopComparing, type Relation } from "@/components/CodexComparison";
 import { compareEntry, foldCodex, retiredEntries, type CodexEntry, type EntryChange } from "@/lib/codex";
@@ -26,10 +21,8 @@ import { DEFAULT_SETTINGS } from "@/lib/settingsSchema";
 import { getSettings } from "@/lib/settingsStore";
 import { codexIcons } from "@/lib/codexIcons";
 import { openSuggestionCounts } from "@/lib/codexSuggestions";
-import { CHANGE_EVENT_TAGS } from "@/lib/continuity";
 import { reviewIssues, type ReviewIssue } from "@/lib/review";
 import { getPath, getStory } from "@/lib/stories";
-import { chapterTags, decidedTagIdsByChapter, listTags, storyTags } from "@/lib/tags";
 import { getStoryChapters } from "@/lib/tree";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +32,6 @@ const TABS = [
   { id: "issues", label: "Issues" },
   { id: "continuity", label: "Continuity" },
   { id: "codex", label: "Codex" },
-  { id: "tags", label: "Tags" },
   { id: "summaries", label: "Summaries" },
   { id: "retcons", label: "Retcons" },
 ] as const;
@@ -101,17 +93,9 @@ export default async function StoryBiblePage({
   }
   const summariesToFix = chapters.filter((c) => (!chosen || c.id === chosen.id) && (summaryStatus[c.id] === "missing" || summaryStatus[c.id] === "stale")).length;
 
-  // Tags.
-  const enabledIds = storyTags(story.id);
-  const library = listTags();
-  const tagRows = enabledIds.length > 0 ? chapterTags(story.id) : [];
-  const tagsInScope = chosen ? tagRows.filter((t) => t.chapter_id === chosen.id) : tagRows;
-  const waitingTags = tagsInScope.filter((t) => t.status === "suggested");
-  const approvedTags = tagsInScope.filter((t) => t.status === "approved");
-
   const reviewRuns = listRuns(story.id, { mode: "review" });
   const unfinishedRun = (check: string, needsTasks = true) =>
-    reviewRuns.find((r) => UNFINISHED.includes(r.status) && !r.options.automatic && (!needsTasks || r.counts.total > 0) && (r.options.checks ?? ["tags"]).includes(check as "tags"))?.id ?? null;
+    reviewRuns.find((r) => UNFINISHED.includes(r.status) && !r.options.automatic && (!needsTasks || r.counts.total > 0) && (r.options.checks ?? []).includes(check as "facts"))?.id ?? null;
 
   const retcons = listRetcons(story.id);
   const openRetconChanges = retcons
@@ -128,7 +112,6 @@ export default async function StoryBiblePage({
     issues: ai.open.length + summaryIssues.open.length,
     continuity: clashes.open.length,
     codex: gaps.open.length + (chosen ? (inbox.byChapter[chosen.id] ?? 0) : inbox.total),
-    tags: waitingTags.length,
     summaries: summariesToFix,
     retcons: openRetconChanges,
   };
@@ -171,7 +154,6 @@ export default async function StoryBiblePage({
         {tab === "issues" && issuesPanel()}
         {tab === "continuity" && continuityPanel()}
         {tab === "codex" && codexPanel()}
-        {tab === "tags" && tagsPanel()}
         {tab === "summaries" && summariesPanel()}
         {tab === "retcons" && retconsPanel()}
       </div>
@@ -200,7 +182,6 @@ export default async function StoryBiblePage({
       </Link>
     );
     const summarised = chapters.filter((c) => c.summary?.trim()).length;
-    const taggedChapters = new Set(approvedTags.map((t) => t.chapter_id)).size;
     const lastFinished = reviewRuns.filter((r) => r.status === "done" && r.finished_at).reduce<number | null>((m, r) => Math.max(m ?? 0, r.finished_at!), null);
     return (
       <>
@@ -224,20 +205,13 @@ export default async function StoryBiblePage({
             gaps.open.length > 0 ? `${plural(gaps.open.length, "name")} not in the codex` : "No missing names found.",
             plural(codexEntries.length, "entry", "entries"),
           ])}
-          {card(
-            "tags",
-            "Tags",
-            enabledIds.length === 0
-              ? ["No tags switched on for this story."]
-              : [waitingTags.length > 0 ? `${plural(waitingTags.length, "suggestion")} waiting for you` : "No suggestions waiting.", ...(chosen ? [] : [`${taggedChapters} of ${plural(chapters.length, "chapter")} tagged`])],
-          )}
           {card("summaries", "Summaries", [`${summarised} of ${plural(chapters.length, "chapter")} have a summary`])}
           {card("retcons", "Retcons", [
             counts.retcons > 0 ? `${plural(counts.retcons, "chapter")} with changes to look at` : retcons.length > 0 ? "Nothing waiting." : "No retcons yet.",
           ])}
           <div className="card bible-card bible-card-plain">
             <h2>Checks</h2>
-            <StoryChecks storyId={story!.id} lastFinished={lastFinished} withTags={enabledIds.length > 0} unfinishedRunId={unfinishedRun("summaries") && unfinishedRun("continuity", false) === unfinishedRun("summaries") ? unfinishedRun("summaries") : null} />
+            <StoryChecks storyId={story!.id} lastFinished={lastFinished} unfinishedRunId={unfinishedRun("summaries") && unfinishedRun("continuity", false) === unfinishedRun("summaries") ? unfinishedRun("summaries") : null} />
           </div>
         </div>
       </>
@@ -438,115 +412,6 @@ export default async function StoryBiblePage({
         )}
         <CompareForm id="codex-compare" chapters={pickerChapters} keep={keep} value={other.id} />
       </section>
-    );
-  }
-
-  function tagsPanel() {
-    const storyId = story!.id;
-    const switches = (
-      <details open={enabledIds.length === 0}>
-        <summary>
-          Tags in this story
-          {enabledIds.length > 0 && `: ${enabledIds.map((tid) => library.find((t) => t.id === tid)?.name).filter(Boolean).join(", ")}`}
-        </summary>
-        <StoryTagSwitches
-          storyId={storyId}
-          tags={library.map((t) => ({ id: t.id, name: t.name, applies: t.applies }))}
-          enabled={enabledIds}
-          heading={false}
-        />
-      </details>
-    );
-    if (enabledIds.length === 0) {
-      return (
-        <>
-          {switches}
-          {library.length > 0 && <p>Every tag is switched off for this story.</p>}
-        </>
-      );
-    }
-    const enabled = enabledIds.map((tid) => library.find((t) => t.id === tid)).filter((t) => !!t);
-    const rejected = tagsInScope.filter((t) => t.status === "rejected").length;
-    const decidedBy = decidedTagIdsByChapter(storyId);
-
-    // Chapters with approved tags, in story order; the chosen chapter always, so it can be tagged by hand.
-    const tagged = chapters
-      .filter((c) => (chosen ? c.id === chosen.id : approvedTags.some((t) => t.chapter_id === c.id)))
-      .map((c) => ({
-        id: c.id,
-        title: c.title,
-        tags: approvedTags.filter((t) => t.chapter_id === c.id).map((t) => ({ id: t.id, name: t.tag_name, value: t.value, source: t.source, stale: t.stale })),
-        // A change-event tag (tf, tg) with no codex change posted at this chapter: offer to update the codex.
-        codexOffer:
-          approvedTags.some((t) => t.chapter_id === c.id && CHANGE_EVENT_TAGS.includes(t.tag_name.toLowerCase())) &&
-          !getCodexOps(c.id).some((o) => o.anchor_chapter_id === c.id),
-      }));
-
-    return (
-      <>
-        {switches}
-        <h2>Waiting for you</h2>
-        {waitingTags.length === 0 ? (
-          <p>{chosen ? "Nothing is waiting on this chapter." : "Nothing is waiting for your decision."}</p>
-        ) : (
-          <TagSuggestions
-            items={waitingTags.map((t) => ({
-              id: t.id,
-              chapter_id: t.chapter_id,
-              chapter_title: t.chapter_title,
-              tag_name: t.tag_name,
-              value: t.value,
-              quote: t.quote,
-              reason: t.reason,
-              stale: t.stale,
-            }))}
-          />
-        )}
-        {rejected > 0 && <p className="meta">{rejected} rejected suggestion{rejected === 1 ? " is" : "s are"} hidden.</p>}
-
-        <h2>Tagged</h2>
-        {tagged.length === 0 ? <p>No chapter has an approved tag yet.</p> : (
-          <TaggedChapters
-            storyId={storyId}
-            chapters={tagged}
-            enabled={enabled.map((t) => ({ id: t.id, name: t.name, choices: t.choices }))}
-          />
-        )}
-        {!chosen && (
-          <form method="get" className="row" style={{ alignItems: "start" }}>
-            <input type="hidden" name="tab" value="tags" />
-            <label id="tag-chapter-label" htmlFor="tag-chapter" style={{ paddingTop: "0.45rem" }}>
-              Tag a chapter by hand
-            </label>
-            <ChapterTreePicker id="tag-chapter" labelledBy="tag-chapter-label" name="chapter" submitOnPick chapters={pickerChapters} value={chapters[0].id} />
-          </form>
-        )}
-
-        <h2>Find tags</h2>
-        <p className="meta">The AI reads each chapter and suggests which of this story&apos;s tags apply. You decide each one.</p>
-        <TagScan
-          storyId={storyId}
-          unfinishedRunId={unfinishedRun("tags")}
-          story={{ title: story!.title, premise: story!.premise }}
-          chapterId={chosen?.id}
-          chapters={chapters.map((c) => ({
-            id: c.id,
-            title: c.title,
-            body: c.body,
-            revision: c.revision,
-            parent_id: c.parent_id,
-            decided: decidedBy.get(c.id) ?? [],
-          }))}
-          tags={enabled.map((t) => ({
-            id: t.id,
-            name: t.name,
-            applies: t.applies,
-            not_applies: t.not_applies,
-            choices: t.choices,
-            examples: t.examples,
-          }))}
-        />
-      </>
     );
   }
 

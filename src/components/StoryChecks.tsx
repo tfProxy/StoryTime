@@ -11,12 +11,10 @@ type Props = {
   lastFinished: number | null;
   /** A review run for this story that is not finished (found when the page loaded), shown instead of starting a new one. */
   unfinishedRunId?: string | null;
-  /** Whether the story has tags switched on: only then is Find tags part of the check. */
-  withTags: boolean;
 };
 
-/** The Overview tab's Check the whole story button: one review run with every check (tags, continuity, summaries). */
-export default function StoryChecks({ storyId, lastFinished, unfinishedRunId = null, withTags }: Props) {
+/** The Overview tab's Check the whole story button: one review run with every check (facts, continuity, summaries). */
+export default function StoryChecks({ storyId, lastFinished, unfinishedRunId = null }: Props) {
   const router = useRouter();
   const { startRun } = useWorkQueue();
   const [starting, setStarting] = useState(false);
@@ -35,7 +33,7 @@ export default function StoryChecks({ storyId, lastFinished, unfinishedRunId = n
           story_id: storyId,
           start_chapter_id: null,
           mode: "review",
-          options: { tagScope: "story", checks: [...(withTags ? ["tags"] : []), "facts", "continuity", "summaries"] },
+          options: { tagScope: "story", checks: ["facts", "continuity", "summaries"] },
         }),
       });
       const data = await res.json().catch(() => ({}));

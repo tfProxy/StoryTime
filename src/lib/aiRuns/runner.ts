@@ -8,13 +8,10 @@ import {
   ApiError,
   claimRunLease,
   getChapterCodex,
-  getChapterTags,
-  getAllChapterTags,
   getContext,
   getPathFacts,
   getRetconBrief,
   getRun,
-  getStoryTags,
   getVerdicts,
   patchRun,
   postChapter,
@@ -25,7 +22,6 @@ import {
   postFacts,
   postVerdict,
   postSummaryCheck,
-  postTagSuggestions,
   putSummary,
   type ChapterContext,
   type Fetch,
@@ -35,14 +31,13 @@ import { LIMITS } from "../limits";
 import { applyPlan, expandAfter, needsReview, nextTask, resolveSlot, withGuidance } from "./plan";
 import type { writeImagePrompt } from "../ai/imagePrompt";
 import { hasPicture, loadSetup, writePicturePrompt } from "./pictures";
-import type { AiRun, CodexTask, ContinuityTask, ExpandTask, FactsTask, PictureTask, PlanTask, RetconTask, RunStatus, RunTask, SummaryTask, TagsTask, WriteTask } from "./types";
+import type { AiRun, CodexTask, ContinuityTask, ExpandTask, FactsTask, PictureTask, PlanTask, RetconTask, RunStatus, RunTask, SummaryTask, WriteTask } from "./types";
 import { runCodexCheck, selectEntries } from "../ai/codexCheckAi";
 import { runRetcon } from "../ai/retconAi";
 import { runFleshOut } from "../ai/fleshOutAi";
 import { extractFacts, judgeConflict } from "../ai/factAi";
 import { summaryCheck } from "../ai/summaryCheckAi";
-import { CHANGE_EVENT_TAGS, continuityFingerprint, findConflicts, type Conflict } from "../continuity";
-import { suggestTagsForChapter } from "../ai/tagAi";
+import { continuityFingerprint, findConflicts, type Conflict } from "../continuity";
 import type { AiSourceIds } from "../ai/client";
 import { defaultStream, planNext, storyContextOf, summarize, withPathSummaries, writeOneChapter, writeText, type PlannedChoice, type Stream } from "./writeChapter";
 
@@ -149,7 +144,7 @@ export async function skipTask(runId: string, taskId: string, token: string, dep
   return patchRun(fetcher(deps), run.id, { token, version: run.version, tasks, status: run.status === "running" ? "paused" : run.status });
 }
 
-type Pick = { kind: "plan" | "write" | "finish" | "prompt" | "tags" | "facts" | "continuity" | "summary" | "codex" | "expand" | "retcon"; task: RunTask };
+type Pick = { kind: "plan" | "write" | "finish" | "prompt" | "facts" | "continuity" | "summary" | "codex" | "expand" | "retcon"; task: RunTask };
 
 /** Whether the task's dependencies are all done: its plan, and for a `fromTask` slot the task it follows. */
 function ready(list: RunTask[], t: RunTask): boolean {
@@ -171,7 +166,7 @@ function pickStep(run: AiRun, list: RunTask[]): Pick | null {
     return todo ? { kind: "prompt", task: todo } : null;
   }
   if (run.mode === "review") {
-    const todo = list.find((t): t is TagsTask | FactsTask | SummaryTask | CodexTask | ExpandTask | RetconTask => (t.kind === "tags" || t.kind === "facts" || t.kind === "summary" || t.kind === "codex" || t.kind === "expand" || t.kind === "retcon") && t.status === "todo");
+    const todo = list.find((t): t is FactsTask | SummaryTask | CodexTask | ExpandTask | RetconTask => (t.kind === "facts" || t.kind === "summary" || t.kind === "codex" || t.kind === "expand" || t.kind === "retcon") && t.status === "todo");
     if (todo) return { kind: todo.kind, task: todo };
     // The clashes are judged last, once every chapter's facts are in.
     const judge = list.find((t): t is ContinuityTask => t.kind === "continuity" && t.status === "todo");
@@ -264,8 +259,8 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<StepResult> {
   }
 
   const { task } = picked;
-  const phase = picked.kind === "plan" ? "planning" : picked.kind === "write" || picked.kind === "prompt" || picked.kind === "tags" || picked.kind === "facts" || picked.kind === "continuity" || picked.kind === "summary" || picked.kind === "codex" || picked.kind === "expand" || picked.kind === "retcon" ? "writing" : "finishing";
-  const label = task.kind === "write" ? task.label : task.kind === "plan" ? "Plan the choices" : task.kind === "picture" ? `Prompt for “${task.label ?? "a chapter"}” (${task.slot})` : task.kind === "tags" ? `Find tags in “${task.label ?? "a chapter"}”` : task.kind === "facts" ? `Find facts in “${task.label ?? "a chapter"}”` : task.kind === "continuity" ? "Check continuity" : task.kind === "summary" ? `${task.rewrite ? "Write" : "Check"} the summary of “${task.label ?? "a chapter"}”` : task.kind === "codex" ? (task.entryName ? `Read “${task.label ?? "a chapter"}” for ${task.entryName}` : `Check the codex for “${task.label ?? "a chapter"}”`) : task.kind === "expand" ? `Flesh out “${task.label ?? "an entry"}”` : task.kind === "retcon" ? `Read “${task.label ?? "a chapter"}” for the retcon` : "";
+  const phase = picked.kind === "plan" ? "planning" : picked.kind === "write" || picked.kind === "prompt" || picked.kind === "facts" || picked.kind === "continuity" || picked.kind === "summary" || picked.kind === "codex" || picked.kind === "expand" || picked.kind === "retcon" ? "writing" : "finishing";
+  const label = task.kind === "write" ? task.label : task.kind === "plan" ? "Plan the choices" : task.kind === "picture" ? `Prompt for “${task.label ?? "a chapter"}” (${task.slot})` : task.kind === "facts" ? `Find facts in “${task.label ?? "a chapter"}”` : task.kind === "continuity" ? "Check continuity" : task.kind === "summary" ? `${task.rewrite ? "Write" : "Check"} the summary of “${task.label ?? "a chapter"}”` : task.kind === "codex" ? (task.entryName ? `Read “${task.label ?? "a chapter"}” for ${task.entryName}` : `Check the codex for “${task.label ?? "a chapter"}”`) : task.kind === "expand" ? `Flesh out “${task.label ?? "an entry"}”` : task.kind === "retcon" ? `Read “${task.label ?? "a chapter"}” for the retcon` : "";
   let tasks = list;
   let failure: unknown = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -315,7 +310,6 @@ async function step(start: AiRun, env: StepEnv, f: Fetch): Promise<StepResult> {
 
 /** Does the step's work; returns the task list with the task updated (and the tasks it planned, for a plan). Posts and adds choices on the server; the caller saves the run. */
 async function doStep(picked: Pick, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
-  if (picked.kind === "tags") return doTags(picked.task as TagsTask, run, list, env, f);
   if (picked.kind === "facts") return doFacts(picked.task as FactsTask, run, list, env, f);
   if (picked.kind === "summary") return doSummary(picked.task as SummaryTask, run, list, env, f);
   if (picked.kind === "codex") return doCodex(picked.task as CodexTask, run, list, env, f);
@@ -512,47 +506,6 @@ async function doPrompt(task: PictureTask, run: AiRun, list: RunTask[], env: Ste
 }
 
 /**
- * Find tags: the AI reads one chapter and the suggestions are saved (as the review page's Find tags does). The chapter,
- * the tags and what was decided are read again here, since the run may be old. A chapter edited since the run was made
- * (or while the AI read it) is skipped; one with every tag decided already is done without asking the AI.
- */
-async function doTags(task: TagsTask, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
-  const context = await getContext(f, task.chapterId);
-  const chapter = context.path.at(-1)!;
-  const skip = (why: string) => replace(list, { ...task, status: "skipped", error: why });
-  if (context.trashed) return skip(TRASHED);
-  if (chapter.revision !== task.revision) return skip("Skipped: the chapter was edited after the run was made.");
-  const { tags, enabled } = await getStoryTags(f, run.story_id);
-  const on = tags.filter((t) => enabled.includes(t.id));
-  const { chapter_tags, checked } = await getChapterTags(f, run.story_id, task.chapterId);
-  const decided = new Set([
-    ...chapter_tags.filter((t) => t.status === "approved" || (t.status === "rejected" && t.revision === chapter.revision)).map((t) => t.tag_id),
-    ...(checked[task.chapterId] ?? []),
-  ]);
-  if (on.every((t) => decided.has(t.id))) return replace(list, { ...task, status: "done", error: undefined });
-  env.onEvent?.({ type: "status", text: `Reading “${chapter.title}” for tags…` });
-  const rules = on.map((t) => ({ id: t.id, name: t.name, applies: t.applies, not_applies: t.not_applies, choices: t.choices, examples: t.examples }));
-  const suggestions = await suggestTagsForChapter(env.settings, {
-    story: { title: context.story.title, premise: context.story.premise },
-    chapter: { title: chapter.title, body: chapter.body },
-    tags: rules,
-    signal: env.signal,
-    role: "cheap",
-    source: sourceOf(run, task.chapterId),
-  });
-  let added = 0;
-  try {
-    // Every tag is sent and recorded as checked, like the review page does.
-    const saved = await postTagSuggestions(f, task.chapterId, task.revision, rules.map((t) => t.id), suggestions);
-    added = saved.added ?? 0;
-  } catch (e) {
-    if (e instanceof ApiError && e.status === 409) return skip("Skipped: the chapter was edited while it was read.");
-    throw e;
-  }
-  return replace(list, { ...task, status: "done", found: added, error: undefined });
-}
-
-/**
  * Facts: the AI reads one chapter for the lasting facts it states, and they are saved over the chapter's earlier ones. The
  * chapter is read again here, since the run may be old: one edited since the run was made (or while the AI read it) is
  * skipped.
@@ -729,12 +682,9 @@ export const MAX_JUDGMENTS = 30;
 
 /**
  * Continuity: the facts along the way to each end chapter are compared in plain code, and the AI is asked about each
- * clash that has no verdict yet. A chapter with an approved tag in CHANGE_EVENT_TAGS may change a value without a clash.
- * Each verdict is saved as soon as it is made, so a retry or a later run does not ask again.
+ * clash that has no verdict yet. Each verdict is saved as soon as it is made, so a retry or a later run does not ask again.
  */
 async function doContinuity(task: ContinuityTask, run: AiRun, list: RunTask[], env: StepEnv, f: Fetch): Promise<RunTask[]> {
-  const { chapter_tags } = await getAllChapterTags(f, run.story_id);
-  const changeEvents = new Set(chapter_tags.filter((t) => t.status === "approved" && CHANGE_EVENT_TAGS.includes(t.tag_name.trim().toLowerCase())).map((t) => t.chapter_id));
   // A verdict made about older text (either chapter edited since) is asked again, so the clash isn't lost.
   const known = new Map((await getVerdicts(f, run.story_id)).verdicts.map((v) => [v.fingerprint, v]));
   const info = new Map<string, { title: string; revision: number }>();
@@ -743,7 +693,7 @@ async function doContinuity(task: ContinuityTask, run: AiRun, list: RunTask[], e
   for (const id of task.chapterIds) {
     const [{ path: facts }, context] = await Promise.all([getPathFacts(f, id), getContext(f, id)]);
     for (const c of context.path) info.set(c.id, { title: c.title, revision: c.revision });
-    for (const conflict of findConflicts(facts, changeEvents)) {
+    for (const conflict of findConflicts(facts)) {
       const fingerprint = continuityFingerprint(conflict.before.quote, conflict.after.quote);
       if (!todo.has(fingerprint)) todo.set(fingerprint, conflict);
     }

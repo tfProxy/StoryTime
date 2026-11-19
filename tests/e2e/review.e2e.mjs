@@ -58,7 +58,7 @@ try {
   const tabLink = (name) => page.locator('nav[aria-label="Story Bible"] a', { hasText: name });
   ok(await page.getByRole("heading", { name: "Story Bible", level: 1 }).isVisible(), "the Story Bible page opens");
   ok((await tabLink("Overview").getAttribute("aria-current")) === "page", "Overview is the default tab");
-  for (const t of ["Issues", "Continuity", "Codex", "Tags", "Summaries"]) {
+  for (const t of ["Issues", "Continuity", "Codex", "Summaries"]) {
     ok(await page.locator("a.bible-card", { has: page.getByRole("heading", { name: t, level: 2 }) }).isVisible(), `the Overview has a ${t} card`);
   }
   ok(await page.getByRole("button", { name: "Check the whole story" }).isVisible(), "the Overview has a Checks card with Check the whole story");
@@ -253,7 +253,7 @@ try {
   const dDusk = (await post("/api/chapters", { choice_id: dChoice.id, title: "Dusk", body: "Mira has blue eyes. It was evening.", summary: "e" })).chapter_id;
   await page.goto(`${BASE}/s/${d.story_id}/review?tab=continuity`);
   ok(await page.getByText("No continuity problems found yet.").isVisible(), "a story with no verdicts says none were found yet");
-  ok(await page.getByText("Reads each chapter for facts, then asks about each clash. Uses your Tags & continuity model.").isVisible(), "the Check continuity section explains what it does");
+  ok(await page.getByText("Reads each chapter for facts, then asks about each clash. Uses your Continuity model.").isVisible(), "the Check continuity section explains what it does");
   ok((await page.locator('input[name="continuity-scope"]').count()) === 1, "without a chosen chapter only The whole story is offered");
   await page.getByRole("button", { name: "Check continuity" }).click();
   await page.getByText("Found 1 contradiction.").waitFor({ timeout: 30000 });

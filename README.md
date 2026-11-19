@@ -125,8 +125,7 @@ and, for pictures, your own ComfyUI machine.
   AI's unapproved facts from it are replaced by its new reading, but approved and edited ones are kept.
   New entries, removals and contradictions still wait as suggestions.
 - **Review** (a story's menu): a page listing what may need fixing (missing, stale or wrong
-  summaries, continuity slips, names with no codex entry, AI chapters not yet read) and the
-  **tags** the AI suggests for chapters, for you to approve. See [Tags](#tags) below.
+  summaries, continuity slips, names with no codex entry, AI chapters not yet read).
 - **Edit chapters later** on the writing desk; every earlier version is kept, and an edited chapter
   links to its history.
 - **Pictures**: chapter headers and footers and covers made by your own ComfyUI, with
@@ -179,53 +178,25 @@ and, for pictures, your own ComfyUI machine.
 
 ## Settings
 
-Each tab has its own address (`/settings#tags`), so a link or a reload comes back to it.
+Each tab has its own address (`/settings#drawing`), so a link or a reload comes back to it.
 
 - **Connections:** the AI servers (several are fine, such as two Ollama machines and OpenRouter) and
   the ComfyUI address.
 - **Writing:** the **Models** grid has a row for each model you use (press Use on a model in the
-  Connections tab to add it) and a column for each job: Writing, Choices, Summaries, Codex, Tags &
-  continuity and Picture prompts. In a job's column, a ticked box offers the model in that job's
+  Connections tab to add it) and a column for each job: Writing, Choices, Summaries, Codex,
+  Continuity and Picture prompts. In a job's column, a ticked box offers the model in that job's
   pickers. A row also sets the model's nickname, its **Context** (how much the model takes; blank uses
   the Context budget under Options) and whether it thinks. Under the grid, **Default model for each
   job** has a dropdown per job; Summaries can be left as the same as Writing, and the other jobs as
   the same as Summaries. Pages with their own model picker (the writing page, Write ahead,
   Illustrate) can still choose another. Options below: temperature, the context budget and the codex
-  list.
+  list. Under **Review**, whether new and edited chapters are checked automatically.
 - **Drawing:** in two parts. **Making pictures** has the drawing presets (new pictures, and redraws on
   the Refine screen); **Editing pictures** has the edit models (Qwen edit, Flux edit) used by the
   Instruct panel. Each has its own ComfyUI setup check ([Pictures with ComfyUI](docs/pictures.md)).
 - **General:** the Queue (whether writing and pictures take turns on the machine, and how long each
-  turn lasts) and the Outline (the markers and tag highlights shown on the outline).
-- **Tags:** your tag library ([below](#tags)), and whether new and edited chapters are checked
-  automatically.
+  turn lasts) and the Outline (what the outline shows after each chapter's name).
 - **Backup:** export the settings to a file, or import them.
-
-## Tags
-
-Tags (Settings > Tags) are written by you; **Find tags** on the Tags tab of a story's Story Bible suggests where each
-applies, and you approve or reject each one. **Help me write it** drafts a rule from a rough idea, and
-**Try it** shows what a rule would tag before you save it. A tag can be shown to readers as a content
-note under each choice. Each story can switch tags off on its details page.
-
-Suggested rules. This wording settles the edge cases (dreams and visions don't count; a change undone
-in the same chapter does; partial changes count like full ones). Paste it into each tag's "Applies
-when" and "Doesn't apply when". A chapter with an approved **tf** or **tg** may also change a
-character without it being flagged as a continuity problem.
-
-- **tf**
-  - Applies when: a character's species or physical form changes, fully or partly (animal, creature,
-    object, size, or just ears, a tail or claws), on the page, even if it is undone before the chapter ends.
-  - Doesn't apply when: illusions, costumes, dreams, visions or imagined changes; a change of sex alone
-    (that's tg).
-- **tg**
-  - Applies when: a character's physical sex changes, fully or partly, on the page, even if it is undone
-    before the chapter ends.
-  - Doesn't apply when: cross-dressing, disguise, illusion, a dream or vision, or a change only talked about.
-- **violence**
-  - Applies when: a character deliberately injures or attacks someone, or destroys property in anger, on
-    the page. Choices: mild, graphic.
-  - Doesn't apply when: threats, past or reported fights, accidents, sparring or play.
 
 ## Running it
 

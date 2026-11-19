@@ -49,7 +49,8 @@ export const MODEL_USES = [
   { id: "choices", label: "Choices", hint: "Suggest choices, planned choices, choice button text" },
   { id: "summaries", label: "Summaries", hint: "chapter and path summaries, summary checks" },
   { id: "codex", label: "Codex", hint: "codex checks, Flesh out, Tidy, Retcon" },
-  { id: "tags", label: "Tags & continuity", hint: "tag scans, tag rules, continuity facts and checks" },
+  // The id is still "tags" (the story tags this job once also covered were removed), so saved choices keep working.
+  { id: "tags", label: "Continuity", hint: "continuity facts and checks" },
   { id: "picture", label: "Picture prompts", hint: "Illustrate, covers, Make missing pictures" },
 ] as const;
 export type ModelUse = (typeof MODEL_USES)[number]["id"];
@@ -92,7 +93,7 @@ export type Settings = {
   temperature: number | null;
   /** Rough budget for the prompt context, so small local models aren't overflowed. */
   contextTokens: number;
-  /** After a chapter is saved, queue a review run for it (tags, facts, continuity, summary). Off by default. */
+  /** After a chapter is saved, queue a review run for it (facts, continuity, summary). Off by default. */
   autoReview: boolean;
   /** After a chapter is saved, the AI reads it for codex changes and leaves suggestions in the codex inbox. On by default. */
   autoCodex: boolean;
@@ -102,8 +103,6 @@ export type Settings = {
    * wait. Off by default.
    */
   autoApplyCodex: boolean;
-  /** Under each choice, list the reader-visible tags that come next or later on that branch. */
-  contentNotes: boolean;
   /** Under the title on a chapter's reading page, list the codex entries there, each linking to its page. Off by default. */
   showCodexList: boolean;
   /** The fact categories each type of codex entry may use, shared by every story. The AI picks from these. */
@@ -149,10 +148,6 @@ export type OutlineOptions = {
   review: boolean;
   /** A robot on chapters the AI wrote, filled until they are marked reviewed. */
   aiWritten: boolean;
-  /** The chapter's approved tags, in brackets of their own after the other parts. */
-  tags: boolean;
-  /** "Highlight: <tag>" entries in the outline's menu, which mark the chapters with an approved tag. */
-  highlight: boolean;
   /** Branches moved to the trash, greyed, under their choice so they can be opened and restored. */
   trashed: boolean;
 };
@@ -163,15 +158,13 @@ export const OUTLINE_PARTS = [
   { id: "headerPicture", label: "Header picture", hint: "an icon, for chapters that have one, that shows it in a popup" },
   { id: "middlePicture", label: "Middle picture", hint: "the same for the middle picture" },
   { id: "footerPicture", label: "Footer picture", hint: "the same for the footer picture" },
-  { id: "review", label: "Review marker", hint: "a ⚠ count on chapters with something to check or tags waiting for your approval, which opens the Review page" },
-  { id: "highlight", label: "Highlight by tag", hint: "Adds \"Highlight a tag\" to the outline's menu." },
+  { id: "review", label: "Review marker", hint: "a ⚠ count on chapters with something to check, which opens the Review page" },
   { id: "aiWritten", label: "AI-written", hint: "a robot on chapters the AI wrote by itself, filled until you mark them reviewed" },
-  { id: "tags", label: "Tags", hint: "the chapter's approved tags, e.g. [tf, tg], in brackets after the others" },
   { id: "trashed", label: "Trashed branches", hint: "branches you moved to the trash, greyed, so you can open and restore them" },
 ] as const satisfies readonly { id: keyof OutlineOptions; label: string; hint: string }[];
 
-// Tags and trashed branches are off until chosen, so an outline does not change when these first come in.
-export const DEFAULT_OUTLINE: OutlineOptions = { summary: true, readToHere: true, headerPicture: true, middlePicture: true, footerPicture: true, review: true, aiWritten: true, tags: false, highlight: true, trashed: false };
+// Trashed branches are off until chosen, so an outline does not change when they first come in.
+export const DEFAULT_OUTLINE: OutlineOptions = { summary: true, readToHere: true, headerPicture: true, middlePicture: true, footerPicture: true, review: true, aiWritten: true, trashed: false };
 
 export type ComfySettings = {
   /** Where ComfyUI is, e.g. https://comfy.example.ts.net; "" when there is none. */
@@ -213,7 +206,6 @@ export const DEFAULT_SETTINGS: Settings = {
   autoReview: false,
   autoCodex: true,
   autoApplyCodex: false,
-  contentNotes: true,
   showCodexList: false,
   codexCategories: DEFAULT_CATEGORIES,
   outline: DEFAULT_OUTLINE,
@@ -408,7 +400,6 @@ const settingsSchema = z.object({
   autoReview: z.boolean().catch(false),
   autoCodex: z.boolean().catch(true),
   autoApplyCodex: z.boolean().catch(false),
-  contentNotes: z.boolean().catch(true),
   showCodexList: z.boolean().catch(false),
   codexCategories: categoriesSchema,
   // A part that is missing or isn't true/false is shown, as before the options existed.
@@ -421,8 +412,6 @@ const settingsSchema = z.object({
       footerPicture: z.boolean().catch(true),
       review: z.boolean().catch(true),
       aiWritten: z.boolean().catch(true),
-      tags: z.boolean().catch(false),
-      highlight: z.boolean().catch(true),
       trashed: z.boolean().catch(false),
     })
     .catch(DEFAULT_OUTLINE),

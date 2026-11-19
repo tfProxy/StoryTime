@@ -72,7 +72,7 @@ try {
   const created = (await call("POST", "/api/chapters", { choice_id: choices[1].id, title: "On", body: "on body", summary: "o" })).json.chapter_id;
   const first = await until(async () => (await forChapter(created))[0]);
   ok(!!first, "on: saving a new chapter queues a review run for it");
-  ok(first.options.checks.join() === "tags,facts,continuity,summaries" && first.mode === "review", "…with all four checks");
+  ok(first.options.checks.join() === "facts,continuity,summaries" && first.mode === "review", "…with all three checks");
   ok(!!(await until(() => itemOf(first.id))), "…which is in the work queue");
   await call("PUT", "/api/queue/paused", { paused: false });
   ok(!!(await until(async () => (await itemOf(first.id))?.state === "done")), "…and the worker finishes it");

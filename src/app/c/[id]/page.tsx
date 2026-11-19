@@ -6,9 +6,6 @@ import StoryTabs from "@/components/StoryTabs";
 import TrashNotice from "@/components/TrashNotice";
 import AiReviewNotice from "@/components/AiReviewNotice";
 import CodexInboxBanner from "@/components/CodexInboxBanner";
-import { appliedTagNames } from "@/lib/tags";
-import { contentNotes } from "@/lib/contentNotes";
-import type { ChapterNote } from "@/lib/contentNotesRoll";
 import Prose from "@/components/Prose";
 import ChapterActions from "@/components/ChapterActions";
 import ChapterChoices from "@/components/ChapterChoices";
@@ -45,8 +42,6 @@ export default async function ChapterPage({
   const incoming = getIncomingChoice(chapter.id)?.label ?? null;
   const trashed = chapter.trashed_at !== null;
   const images = chapterImageVersions([chapter.id]).get(chapter.id)!;
-  const tagNames = appliedTagNames(story.id, chapter.id).get(chapter.id) ?? [];
-  const notes = choices.some((c) => c.child_chapter_id) ? contentNotes(story.id) : new Map<string, ChapterNote>();
   // With the "List the codex entries under a chapter's title" setting: the entries live at this chapter.
   const showCodex = (getSettings() ?? parseSettings({})).showCodexList;
   const codexEntries = showCodex ? getCodexState(chapter.id) : [];
@@ -86,7 +81,6 @@ export default async function ChapterPage({
       )}
 
       <h1>{chapter.title}</h1>
-      {tagNames.length > 0 && <p className="meta chapter-tags">[{tagNames.join(", ")}]</p>}
       {showCodex && codexEntries.length > 0 && (
         <p className="meta chapter-tags chapter-codex" aria-label="Codex entries in this chapter">
           [
@@ -124,7 +118,6 @@ export default async function ChapterPage({
         choices={choices}
         incoming={incoming}
         marks={marks}
-        notes={notes}
         trashed={trashed}
         hasOriginal={hasOriginal}
         showOriginal={story.show_original}

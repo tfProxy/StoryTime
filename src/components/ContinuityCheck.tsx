@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AiRun, ContinuityTask } from "@/lib/aiRuns/types";
 import AiRunProgress from "./AiRunProgress";
-import { pathTo, subtreeOf } from "./TagScan";
+import { pathTo, subtreeOf } from "@/lib/chapterPaths";
 import { useWorkQueue } from "./WorkQueue";
 
 type Scope = "chapter" | "path" | "subtree" | "story";
@@ -93,7 +93,7 @@ export default function ContinuityCheck({ storyId, chapters, chapterId, unfinish
           {starting || runGoing ? "Checking…" : "Check continuity"}
         </button>
       </div>
-      <p className="meta">Reads each chapter for facts, then asks about each clash. Uses your Tags &amp; continuity model.</p>
+      <p className="meta">Reads each chapter for facts, then asks about each clash. Uses your Continuity model.</p>
       {message && <p className={message.ok ? "ok" : "error"}>{message.text}</p>}
       {runId && <AiRunProgress key={runId} runId={runId} onFinished={finishedRun} />}
     </div>

@@ -1,5 +1,5 @@
-// "Check new and edited chapters automatically" (Settings > Tags): after a chapter is saved, queue a review run for it
-// on the server (tags, facts, continuity and the summary check, with "Check new and edited chapters automatically",
+// "Check new and edited chapters automatically" (Settings > Writing): after a chapter is saved, queue a review run for it
+// on the server (facts, continuity and the summary check, with "Check new and edited chapters automatically",
 // and the codex check, with autoCodex). It never fails the save that triggers it.
 import { createRun, getRun, listUnfinishedRuns, reviewTasks } from "./aiRuns";
 import { LIMITS } from "./limits";
@@ -9,10 +9,10 @@ import { defaultRef, parseSettings, type ModelRef } from "./settingsSchema";
 import { getSettings } from "./settingsStore";
 import { getChapter, isSummaryMine } from "./stories";
 
-export const AUTO_REVIEW_CHECKS = ["tags", "facts", "continuity", "summaries"] as const;
+export const AUTO_REVIEW_CHECKS = ["facts", "continuity", "summaries"] as const;
 
-/** The checks an automatic review makes, from the settings: the review's four, and the codex check. */
-function autoChecks(): ("tags" | "facts" | "continuity" | "summaries" | "codex")[] {
+/** The checks an automatic review makes, from the settings: the review's three, and the codex check. */
+function autoChecks(): ("facts" | "continuity" | "summaries" | "codex")[] {
   const s = getSettings() ?? parseSettings({});
   // The codex check is on by default, so it waits until there is an AI to ask: with none set up, a run would only fail.
   const codex = s.autoCodex && defaultRef(s, "cheap") !== null;

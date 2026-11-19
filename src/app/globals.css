@@ -494,7 +494,7 @@ h1 {
   margin: 0 0 1rem;
 }
 
-/* Tags under a chapter's title: smaller than the meta line below them. */
+/* The codex list under a chapter's title: smaller than the meta line below them. */
 .chapter-tags {
   font-size: 0.8rem;
   margin: -0.5rem 0 0.5rem;
@@ -565,13 +565,6 @@ a.card:hover {
 .choice-written {
   border-left: 4px solid var(--accent);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
-}
-
-.choice-note {
-  display: block;
-  margin-top: 0.25rem;
-  color: var(--muted);
-  font-size: 0.85rem;
 }
 
 .choice-unwritten {
@@ -1059,11 +1052,6 @@ main:has(.outline-page) {
   gap: 0.6rem;
 }
 
-/* A chapter's tags: plain muted text, no brackets. */
-.outline-tags {
-  font-style: italic;
-}
-
 /* "summary" (a button) and "read to here" (a link) look the same. */
 .outline-action,
 button.outline-action {
@@ -1085,31 +1073,6 @@ button.outline-action {
 /* The count of things to check on the Review page. */
 .outline-review {
   color: var(--warn);
-}
-
-/* Highlighting a tag: chapters with it, chapters on the way to one, and the rest. */
-.outline-highlight-note {
-  margin: 0.4rem 0 0.8rem;
-}
-
-.outline-row[data-highlight="hit"] {
-  padding: 0.1rem 0.4rem;
-  border-left: 4px solid var(--accent);
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-}
-
-.outline-row[data-highlight="hit"] .outline-tags {
-  color: var(--fg);
-  font-weight: 700;
-}
-
-.outline-row[data-highlight="path"] {
-  padding: 0 0.4rem;
-  border-left: 2px dotted var(--accent);
-}
-
-.outline-row[data-highlight="dim"] {
-  opacity: 0.5;
 }
 
 /* The AI-written mark and the picture icons after "read to here". */

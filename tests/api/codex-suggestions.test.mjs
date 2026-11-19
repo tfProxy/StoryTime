@@ -190,7 +190,7 @@ try {
   ok((await call("GET", `/api/ai-runs/${id}`)).json.tasks.length === 0, "a chapter already read has no task in the next run");
   id = await newRun({ checks: ["codex"], recheck: true });
   ok((await call("GET", `/api/ai-runs/${id}`)).json.tasks.length === 1, "…unless the run asks to read it again");
-  id = await newRun({ checks: ["tags", "codex"], recheck: true }, null, "story");
+  id = await newRun({ checks: ["codex"], recheck: true }, null, "story");
   ok((await call("GET", `/api/ai-runs/${id}`)).json.tasks.filter((t) => t.kind === "codex").length === 2, "a whole-story run has a task for each chapter");
 } finally {
   for (const id of runs) await call("DELETE", `/api/ai-runs/${id}/queue?end=1`);

@@ -1,5 +1,5 @@
 // A review run with checks ["facts", "continuity"]: the facts of each chapter are read, then the clashes between
-// chapters are judged by the (fake) AI, once each; a second run asks nothing, and a change-event tag excuses a change.
+// chapters are judged by the (fake) AI, once each; a second run asks nothing.
 import Database from "better-sqlite3";
 import { startFakeAi } from "../fakeAi.mjs";
 
@@ -52,7 +52,6 @@ const newRun = async (story, start, options) => (await call("POST", "/api/ai-run
 
 const settingsBefore = (await call("GET", "/api/settings")).json.settings;
 const runs = [];
-let tagId = null;
 try {
   await call("PUT", "/api/settings", {
     ...(settingsBefore ?? {}),
@@ -120,19 +119,6 @@ try {
   list = await verdicts();
   ok(list.length === 1 && list[0].after.revision === 2, "…and the verdict now names the new revision");
 
-  // An approved change-event tag on the later chapter excuses the change: no clash, no question.
-  const other = (await call("POST", "/api/stories", { title: "Continuity tf", premise: "P", chapter: { title: "Root", body: "Mira has green eyes. The rest of the root.", summary: "s", choices: ["Go"] } })).json;
-  const oc = (await call("GET", `/api/chapters/${other.chapter_id}`)).json.choices;
-  const oChild = (await call("POST", "/api/chapters", { choice_id: oc[0].id, title: "Child", body: "Mira has blue eyes. The rest of the child.", summary: "c" })).json.chapter_id;
-  tagId = (await call("POST", "/api/tags", { name: "TF", applies: "a transformation", not_applies: "none" })).json.id;
-  await call("PUT", `/api/stories/${other.story_id}/tags`, { tag_id: tagId, on: true });
-  const added = await call("POST", `/api/chapters/${oChild}/tags`, { tag_id: tagId, value: null });
-  ok(added.status < 300, "a chapter can be tagged tf by hand");
-  id = await newRun(other.story_id, null, { checks: ["facts", "continuity"] });
-  runs.push(id);
-  const before = judgeCalls;
-  ok(await finish(id) && judgeCalls === before, "a change on a chapter tagged tf is not asked about");
-
   // Judge replies that are not a contradiction store a verdict and make no issue.
   verdict = "change";
   const third = (await call("POST", "/api/stories", { title: "Continuity change", premise: "P", chapter: { title: "Root", body: "Mira has green eyes. The rest of the root.", summary: "s", choices: ["Go"] } })).json;
@@ -146,7 +132,6 @@ try {
 } finally {
   for (const id of runs) await call("DELETE", `/api/ai-runs/${id}/queue?end=1`);
   await call("PUT", "/api/queue/paused", { paused: false });
-  if (tagId) await call("DELETE", `/api/tags/${tagId}`);
   await ai.close();
   if (settingsBefore === null) {
     const db = new Database(process.env.TEST_DB);

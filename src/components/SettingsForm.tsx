@@ -9,7 +9,6 @@ import NumberInput from "./NumberInput";
 import ComfyConnection from "./ComfyConnection";
 import { DrawingSettings, EditSettings, usePictureSetup } from "./PictureSettings";
 import { EDIT_MODEL_IDS } from "@/lib/comfy/editModels";
-import TagLibrary from "./TagLibrary";
 import CategoryListsEditor from "./CategoryListsEditor";
 import ModelGrid from "./ModelGrid";
 import {
@@ -53,7 +52,7 @@ type Status = { kind: "ok" | "error"; text: string };
  */
 const TABS = [
   { id: "connections", label: "Connections", holds: ["comfyui"] },
-  { id: "writing", label: "Writing", holds: ["models", "codex"] },
+  { id: "writing", label: "Writing", holds: ["models", "codex", "review"] },
   {
     id: "drawing",
     label: "Drawing",
@@ -64,7 +63,6 @@ const TABS = [
     ],
   },
   { id: "general", label: "General", holds: ["queue", "outline"] },
-  { id: "tags", label: "Tags", holds: [] },
   { id: "backup", label: "Backup", holds: [] },
 ] as const;
 
@@ -634,6 +632,20 @@ export default function SettingsForm() {
           </label>
           <CategoryListsEditor lists={settings.codexCategories} onChange={(codexCategories) => update({ codexCategories })} />
         </section>
+
+        <section id="review" className="settings-section">
+          <h2>Review</h2>
+          <label className="row" style={{ alignItems: "flex-start" }}>
+            <input type="checkbox" style={{ width: "auto" }} checked={settings.autoReview} onChange={(e) => update({ autoReview: e.target.checked })} />
+            <span>
+              Check new and edited chapters automatically{" "}
+              <small>
+                (reads facts and checks continuity, and checks the summary, on the server with your cheaper model.
+                Results wait on the Review page.)
+              </small>
+            </span>
+          </label>
+        </section>
       </div>
 
       {/* Two parts: making pictures (the drawing presets) and editing them by instruction (each edit model). */}
@@ -741,8 +753,7 @@ export default function SettingsForm() {
         <section id="outline" className="settings-section">
           <h2>Outline</h2>
           <p className="meta">
-            What the outline of a story shows after each chapter&apos;s name, in the square brackets (tags get brackets of
-            their own). Untick a part to hide it from every outline. Trashed branches adds the branches you moved to the trash.
+            What the outline of a story shows after each chapter&apos;s name, in the square brackets. Untick a part to hide it from every outline. Trashed branches adds the branches you moved to the trash.
           </p>
           {OUTLINE_PARTS.map((part) => (
             <label key={part.id} className="inline-label" style={{ alignItems: "flex-start" }}>
@@ -758,11 +769,6 @@ export default function SettingsForm() {
             </label>
           ))}
         </section>
-      </div>
-
-      {/* Tags save through their own API, not with the settings. */}
-      <div {...panel("tags")}>
-        <TagLibrary />
       </div>
 
       <section {...panel("backup")}>

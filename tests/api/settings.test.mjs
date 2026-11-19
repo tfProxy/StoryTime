@@ -75,9 +75,9 @@ r = await call("PUT", "/api/settings", { ...conns, showCodexList: "yes" });
 ok(r.json.settings.showCodexList === false, "…and anything but true or false falls back to off");
 
 // ---- the outline's parts ----
-// Tags and trashed branches are the parts that start off.
-const allOutline = { summary: true, readToHere: true, headerPicture: true, middlePicture: true, footerPicture: true, review: true, aiWritten: true, tags: false, highlight: true, trashed: false };
-ok(JSON.stringify((await call("GET", "/api/settings")).json.settings.outline) === JSON.stringify(allOutline), "the outline's parts are shown unless turned off, and tags and trashed branches are off until turned on");
+// Trashed branches is the part that starts off.
+const allOutline = { summary: true, readToHere: true, headerPicture: true, middlePicture: true, footerPicture: true, review: true, aiWritten: true, trashed: false };
+ok(JSON.stringify((await call("GET", "/api/settings")).json.settings.outline) === JSON.stringify(allOutline), "the outline's parts are shown unless turned off, and trashed branches are off until turned on");
 r = await call("PUT", "/api/settings", { ...conns, outline: { ...allOutline, readToHere: false, review: false } });
 ok(JSON.stringify(r.json.settings.outline) === JSON.stringify({ ...allOutline, readToHere: false, review: false }) && (await call("GET", "/api/settings")).json.settings.outline.readToHere === false, "parts turned off are kept");
 r = await call("PUT", "/api/settings", { ...conns, outline: { summary: false } });
@@ -85,8 +85,8 @@ ok(JSON.stringify(r.json.settings.outline) === JSON.stringify({ ...allOutline, s
 r = await call("PUT", "/api/settings", { ...conns, outline: { summary: "no", headerPicture: 0, footerPicture: null } });
 ok(JSON.stringify(r.json.settings.outline) === JSON.stringify(allOutline), "a part that isn't true or false is left on");
 r = await call("PUT", "/api/settings", { ...conns, outline: { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, review: true, tags: true } });
-ok(r.json.settings.outline.aiWritten === true && r.json.settings.outline.tags === true, "settings saved before AI-written existed read it as on");
-ok(!("illustrate" in r.json.settings.outline), "the old Illustrate part, from before the paintbrush was taken out, is dropped");
+ok(r.json.settings.outline.aiWritten === true, "settings saved before AI-written existed read it as on");
+ok(!("illustrate" in r.json.settings.outline) && !("tags" in r.json.settings.outline), "the old Illustrate and Tags parts, from before they were taken out, are dropped");
 r = await call("PUT", "/api/settings", { ...conns, outline: { ...allOutline, aiWritten: false } });
 ok(r.json.settings.outline.aiWritten === false && (await call("GET", "/api/settings")).json.settings.outline.aiWritten === false, "AI-written can be turned off");
 r = await call("PUT", "/api/settings", { ...conns, outline: { aiWritten: "no" } });

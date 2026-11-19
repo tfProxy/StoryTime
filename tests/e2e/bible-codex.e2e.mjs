@@ -67,7 +67,7 @@ try {
   const section = page.getByLabel("Section");
   ok(await section.isVisible() && !(await page.getByRole("navigation", { name: "Story Bible" }).isVisible()), "on a phone the Section select shows, not the tab strip");
   const optionText = await section.locator("option").allInnerTexts();
-  ok(optionText.join("|").startsWith("Overview|Issues|Continuity|Codex (2 to review)|Tags|Summaries") || /Codex \(\d+ to review\)/.test(optionText.join("|")), "it lists the sections with their open counts: " + optionText.join(" | "));
+  ok(optionText.join("|").startsWith("Overview|Issues|Continuity|Codex (2 to review)|Summaries") || /Codex \(\d+ to review\)/.test(optionText.join("|")), "it lists the sections with their open counts: " + optionText.join(" | "));
   ok((await section.inputValue()) === "codex", "…and shows Codex");
   const order = await page.evaluate(() => {
     const top = (sel) => document.querySelector(sel)?.getBoundingClientRect().top ?? -1;
@@ -91,14 +91,14 @@ try {
   ok(true, "Pick a chapter… goes back to that chapter, keeping the section");
 
   // Section select navigates and keeps the chapter
-  await section.selectOption("tags");
-  await page.waitForURL(`${BASE}/s/${storyId}/review?tab=tags&chapter=${A}`);
+  await section.selectOption("summaries");
+  await page.waitForURL(`${BASE}/s/${storyId}/review?tab=summaries&chapter=${A}`);
   ok(true, "choosing a section in the select navigates, keeping the chapter");
   await page.getByLabel("Section").selectOption("codex");
   await page.waitForURL(bible(A));
   const menu = page.locator('summary[aria-label="Codex actions"]');
   ok((await menu.count()) === 1, "the ⋯ menu (Codex actions) is on the Codex section");
-  await page.goto(`${BASE}/s/${storyId}/review?tab=tags`);
+  await page.goto(`${BASE}/s/${storyId}/review?tab=summaries`);
   ok((await menu.count()) === 0, "…and not on the other sections");
 
   // Groups with counts, folding

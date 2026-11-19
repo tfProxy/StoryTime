@@ -1,6 +1,4 @@
 import Link from "next/link";
-import type { ChapterNote } from "@/lib/contentNotesRoll";
-import { noteText } from "@/lib/contentNotesRoll";
 import type { DraftMark } from "@/lib/draftMarks";
 import type { Choice } from "@/lib/stories";
 import AddChoice from "./AddChoice";
@@ -23,7 +21,6 @@ export default function ChapterChoices({
   choices,
   incoming,
   marks,
-  notes,
   trashed = false,
   hasOriginal = false,
   showOriginal = false,
@@ -37,8 +34,6 @@ export default function ChapterChoices({
   incoming: string | null;
   /** "Draft not used" on a written choice, "draft" on an unwritten one (draftMarks.ts). */
   marks: Map<string, DraftMark>;
-  /** The content notes under each written choice, by its chapter id. */
-  notes: Map<string, ChapterNote>;
   /** The chapter is in the trash: the choices are only listed. */
   trashed?: boolean;
   /** The story has an original path (it was imported), with the switch that shows it. */
@@ -75,7 +70,6 @@ export default function ChapterChoices({
               </span>
             )}
             {marks.get(c.id) === "unused" && <span className="desk-chip draft-mark">Draft not used</span>}
-            {noteText(notes.get(c.child_chapter_id)) && <span className="choice-note">{noteText(notes.get(c.child_chapter_id))}</span>}
           </ChoiceLink>
         ) : (
           <div key={c.id} className="choice-slot">

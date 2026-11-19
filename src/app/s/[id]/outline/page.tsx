@@ -11,7 +11,6 @@ import type { ImageVersions } from "@/lib/imageSlots";
 import { getSettings } from "@/lib/settingsStore";
 import { DEFAULT_OUTLINE, type OutlineOptions } from "@/lib/settingsSchema";
 import { issueCounts } from "@/lib/review";
-import { appliedTagNames, pendingTagCounts } from "@/lib/tags";
 
 export const dynamic = "force-dynamic";
 
@@ -32,36 +31,20 @@ function idsOf(node: TreeNode): string[] {
   return [node.id, ...node.choices.flatMap((c) => [...(c.child ? idsOf(c.child) : []), ...c.trashed.flatMap(idsOf)])];
 }
 
-type Mark = "hit" | "path" | "dim";
-
-/** Marks every chapter for a highlighted tag: "hit" has it, "path" leads to one that does, the rest are "dim". Returns the number of hits. */
-function markTree(node: TreeNode, hasTag: (chapterId: string) => boolean, marks: Map<string, Mark>): number {
-  let below = 0;
-  for (const c of node.choices) if (c.child) below += markTree(c.child, hasTag, marks);
-  const hit = hasTag(node.id);
-  marks.set(node.id, hit ? "hit" : below > 0 ? "path" : "dim");
-  return below + (hit ? 1 : 0);
-}
-
 function Node({
   node,
   via,
-  marks,
   images,
   issues,
-  tagNames,
   storyId,
   show,
   original = false,
 }: {
   node: TreeNode;
   via: string | null;
-  /** What a highlighted tag makes of each chapter; null when nothing is highlighted. */
-  marks: Map<string, Mark> | null;
   images: Map<string, ImageVersions>;
-  issues: Map<string, { n: number; tags: boolean }>;
-  /** Approved tag names by chapter; empty when tags are turned off in Settings. */
-  tagNames: Map<string, string[]>;
+  /** How many things to check on the Review page, by chapter. */
+  issues: Map<string, number>;
   storyId: string;
   /** The outline settings, plus `original`: mark the original path (an imported story, with its switch on). */
   show: OutlineOptions & { original?: boolean };
@@ -74,16 +57,14 @@ function Node({
     ...(c.child ? [{ node: c.child, label: c.label, original: show.original && c.original }] : []),
     ...c.trashed.map((t) => ({ node: t, label: c.label, original: false })),
   ]);
-  const n = issues.get(node.id)?.n ?? 0;
-  // The marker opens the Review tab that has something; the tags tab only when tag suggestions are all there is.
-  const tagsOnly = issues.get(node.id)?.tags ?? false;
+  const n = issues.get(node.id) ?? 0;
   // Only the links that are on; with none, NodeSummary shows only its own parts.
   const links = [
     n > 0 && (
       <Link
         key="review"
         className="outline-action outline-review"
-        href={`/s/${storyId}/review?${tagsOnly ? "tab=tags&" : ""}chapter=${node.id}`}
+        href={`/s/${storyId}/review?chapter=${node.id}`}
         title="Something to check on the Review page"
         aria-label={`${n} thing${n === 1 ? "" : "s"} to check`}
       >
@@ -96,9 +77,8 @@ function Node({
       </Link>
     ),
   ].filter(Boolean);
-  const mark = marks?.get(node.id);
   const summary = (
-    <span className="outline-row" data-highlight={mark}>
+    <span className="outline-row">
       <Link href={`/c/${node.id}`}>{node.title}</Link>
       {original && <span className="original-mark">Original</span>}
       {node.trashed && <span className="meta outline-trashed-label">(trashed)</span>}
@@ -110,7 +90,6 @@ function Node({
         summary={node.summary}
         via={via}
         show={show}
-        tags={tagNames.get(node.id) ?? []}
         ai={node.ai}
       >
         {links.length > 0 && links}
@@ -126,7 +105,7 @@ function Node({
         <summary>{summary}</summary>
         <ul className="outline">
           {written.map((c) => (
-            <Node key={c.node.id} node={c.node} via={c.label} original={c.original} marks={marks} images={images} issues={issues} tagNames={tagNames} storyId={storyId} show={show} />
+            <Node key={c.node.id} node={c.node} via={c.label} original={c.original} images={images} issues={issues} storyId={storyId} show={show} />
           ))}
         </ul>
       </details>
@@ -134,15 +113,8 @@ function Node({
   );
 }
 
-export default async function OutlinePage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ highlight?: string | string[] }>;
-}) {
+export default async function OutlinePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { highlight: highlightParam } = await searchParams;
   const story = getStory(id);
   // The setting is read here, not in the browser, so trashed branches are never drawn first and then hidden.
   const show = (getSettings() ?? { outline: DEFAULT_OUTLINE }).outline;
@@ -153,24 +125,7 @@ export default async function OutlinePage({
   count(tree, totals);
   const hasOriginal = storyHasOriginal(id);
   const images = chapterImageVersions(idsOf(tree));
-  const tagNames = show.tags ? appliedTagNames(id) : new Map<string, string[]>();
-  // Highlighting by tag: found from the approved tags whether or not the chips are shown.
-  const approved = show.highlight ? appliedTagNames(id) : new Map<string, string[]>();
-  const storyTags = [...new Set([...approved.values()].flat())].sort((a, b) => a.localeCompare(b));
-  const wanted = (Array.isArray(highlightParam) ? highlightParam[0] : highlightParam)?.trim().toLowerCase();
-  const highlighted = wanted ? storyTags.find((t) => t.toLowerCase() === wanted) : undefined;
-  const marks = new Map<string, Mark>();
-  const hits = highlighted
-    ? markTree(tree, (cid) => approved.get(cid)?.some((t) => t.toLowerCase() === highlighted.toLowerCase()) ?? false, marks)
-    : 0;
-  const issues = new Map<string, { n: number; tags: boolean }>();
-  if (show.review) {
-    const checks = issueCounts(id);
-    const pending = pendingTagCounts(id);
-    for (const cid of new Set([...checks.keys(), ...pending.keys()])) {
-      issues.set(cid, { n: (checks.get(cid) ?? 0) + (pending.get(cid) ?? 0), tags: !checks.has(cid) });
-    }
-  }
+  const issues = show.review ? issueCounts(id) : new Map<string, number>();
 
   return (
     <div className="outline-page">
@@ -181,11 +136,6 @@ export default async function OutlinePage({
         {totals.unwritten === 1 ? "" : "s"} still to write · {totals.ends} branch{totals.ends === 1 ? "" : "es"} end · longest path{" "}
         {totals.deepest}
       </p>
-      {highlighted && (
-        <p className="outline-highlight-note">
-          Highlighting “{highlighted}”: {hits} chapter{hits === 1 ? "" : "s"}. <Link href={`/s/${story.id}/outline`}>Stop</Link>
-        </p>
-      )}
       <SummaryProvider>
         {(show.summary || hasOriginal) && (
           <p className="row outline-switches">
@@ -194,17 +144,11 @@ export default async function OutlinePage({
           </p>
         )}
         <ul className="outline outline-root">
-          <Node node={tree} via={null} original={hasOriginal && story.show_original} marks={highlighted ? marks : null} images={images} issues={issues} tagNames={tagNames} storyId={story.id} show={{ ...show, original: hasOriginal && story.show_original }} />
+          <Node node={tree} via={null} original={hasOriginal && story.show_original} images={images} issues={issues} storyId={story.id} show={{ ...show, original: hasOriginal && story.show_original }} />
         </ul>
       </SummaryProvider>
       <PageMenu>
         <Link href={`/s/${story.id}/pictures`}>Make missing pictures…</Link>
-        {storyTags.map((t) => (
-          <Link key={t} href={`/s/${story.id}/outline?highlight=${encodeURIComponent(t)}`}>
-            Highlight: {t}
-          </Link>
-        ))}
-        {highlighted && <Link href={`/s/${story.id}/outline`}>Stop highlighting</Link>}
         <Link href={`/s/${story.id}/review?tab=summaries`}>Redo the AI summaries</Link>
       </PageMenu>
     </div>

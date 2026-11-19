@@ -42,7 +42,7 @@ export type ChatRequest = {
 /** The short, stable label of a call (they are the history's filter list), and what it was made for. */
 export type AiSource = { label: string; storyId?: string; chapterId?: string; runId?: string; itemKey?: string };
 
-/** What a helper takes from its caller: the ids. The helper adds its own label (`{ label: "Tags", ...opts.source }`). */
+/** What a helper takes from its caller: the ids. The helper adds its own label (`{ label: "Facts", ...opts.source }`). */
 export type AiSourceIds = Omit<AiSource, "label">;
 
 /** What the recorder gets once per call. The connection is its name, never its key. */

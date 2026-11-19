@@ -7,7 +7,6 @@ import { chapterEditProps } from "@/lib/chapterEditProps";
 import { foldCodex } from "@/lib/codex";
 import { getCodexFacts, getCodexOps, getContextCodex, nextFormChange } from "@/lib/codexDb";
 import { codexIcons, iconChoices } from "@/lib/codexIcons";
-import { contentNotes } from "@/lib/contentNotes";
 import { deskPathBlocks, newChapterCodex } from "@/lib/deskProps";
 import { chapterImageVersions } from "@/lib/chapterImages";
 import { choiceDraftMarks } from "@/lib/draftMarks";
@@ -91,7 +90,6 @@ export default async function DeskPage({
           choices={choices}
           incoming={getIncomingChoice(id)?.label ?? null}
           marks={choiceDraftMarks(choices)}
-          notes={choices.some((c) => c.child_chapter_id) ? contentNotes(story.id) : new Map()}
           hasOriginal={storyHasOriginal(story.id)}
           showOriginal={story.show_original}
         />
