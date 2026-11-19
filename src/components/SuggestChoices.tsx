@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { completeChat } from "@/lib/ai/client";
 import { choicesPrompt, parseChoices, SYSTEM_CHOICES } from "@/lib/ai/prompts";
@@ -28,6 +28,7 @@ export default function SuggestChoices({
   incoming,
   choices,
   draftHref,
+  autoSuggest = false,
 }: {
   storyId: string;
   chapterId: string;
@@ -37,6 +38,8 @@ export default function SuggestChoices({
   /** Where "Draft a different idea" goes on the writing desk (a new choice's chapter, staying on the desk). Without it
    * (the reading page) it opens the desk at `/c/<chapter>/desk?new=`. */
   draftHref?: string;
+  /** The chapter was just posted on the desk: with "Suggest choices after posting" on, suggest at once (once). */
+  autoSuggest?: boolean;
 }) {
   const router = useRouter();
   const settings = useSettings();
@@ -45,6 +48,16 @@ export default function SuggestChoices({
   const [busy, setBusy] = useState<"suggest" | "add" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const full = choices.length >= LIMITS.choices;
+  const autoDone = useRef(false);
+
+  // The settings arrive from the server after the first render, so this waits for the switch rather than reading it once.
+  const auto = autoSuggest && settings.suggestAfterPost && !full;
+  useEffect(() => {
+    if (!auto || autoDone.current) return;
+    autoDone.current = true;
+    void suggest();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once, when the switch is known to be on
+  }, [auto]);
 
   async function suggest() {
     setBusy("suggest");

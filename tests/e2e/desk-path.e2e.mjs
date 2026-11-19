@@ -235,6 +235,13 @@ try {
   ok((await codexAt(D, sharedName))?.shared_entry_id === sharedId && (await codexAt(B, sharedName)) === undefined, "…and links the shared entry at the new chapter");
   ok((await blocks.count()) === 3 && !(await isOpen(1)) && !(await isOpen(2)), "after Post the desk is on the new chapter, its blocks folded");
   ok((await page.locator(".desk-next").count()) === 1, "…and What happens next? shows once it is posted");
+  ok((await page.locator(".desk-next .chip").count()) === 0, "…with no choices suggested while Suggest choices after posting is off");
+  // With it on, the just-posted desk suggests choices by itself.
+  const current = (await send("GET", "/api/settings")).settings;
+  await send("PUT", "/api/settings", { ...current, suggestAfterPost: true });
+  await page.reload();
+  ok(!!(await until(() => page.locator(".desk-next").getByRole("button", { name: "+ Run" }).isVisible())), "with Suggest choices after posting on, a posted chapter's choices are suggested at once");
+  await send("PUT", "/api/settings", { ...current, suggestAfterPost: false });
 
   // ---- Edit again: from outside, unfolded whatever the folds were ----
   await page.goto(`${BASE}/c/${B}`);

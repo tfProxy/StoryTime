@@ -26,6 +26,7 @@ export default function ChapterChoices({
   showOriginal = false,
   desk = false,
   reading = false,
+  justPosted = false,
 }: {
   storyId: string;
   chapterId: string;
@@ -42,6 +43,8 @@ export default function ChapterChoices({
   desk?: boolean;
   /** On the desk, the chapter is read, not edited: a written choice opens its chapter read too (`?read=1`). */
   reading?: boolean;
+  /** On the desk, the chapter was just posted (`?posted=1`): Suggest choices may run at once (see its `autoSuggest`). */
+  justPosted?: boolean;
 }) {
   const markOriginal = hasOriginal && showOriginal;
   const ChoiceLink = desk ? DeskLink : Link;
@@ -100,7 +103,7 @@ export default function ChapterChoices({
       {!trashed && (
         <>
           <AddChoice chapterId={chapterId} />
-          <SuggestChoices storyId={storyId} chapterId={chapterId} incoming={incoming} choices={choices.map((c) => c.label)} draftHref={desk ? `/c/${chapterId}/desk?new=` : undefined} />
+          <SuggestChoices storyId={storyId} chapterId={chapterId} incoming={incoming} choices={choices.map((c) => c.label)} draftHref={desk ? `/c/${chapterId}/desk?new=` : undefined} autoSuggest={justPosted} />
         </>
       )}
     </section>

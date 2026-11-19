@@ -24,7 +24,8 @@ and, for pictures, your own ComfyUI machine.
     icon for each that shows it full screen), the **→** line with the choice that leads here (click it
     to rename the choice), the chapter's box, and under a posted chapter **What happens next?**, its
     choices (a written one opens its chapter on the desk, an unwritten one starts it; add a choice, or
-    **Suggest choices**).
+    **Suggest choices**; with **Suggest choices after posting a new chapter** on in Settings › Writing ›
+    Options, it runs by itself when you post).
 
   **Stop editing**, beside the box's title, shows the chapter's text and pictures in place of the box
   (on a new chapter, the chapter it follows), with ✎ to edit it again. While reading, a written choice
@@ -115,7 +116,7 @@ and, for pictures, your own ComfyUI machine.
   **Discard** it. A new character or place the AI found is offered in the Codex section, with **Add
   it** or **Dismiss**. You can also run the check yourself (**Check this chapter with AI**,
   or **Check every chapter with AI** for the whole story) from the **⋯** menu of the Codex section.
-  Turn the automatic check on or off in Settings › Writing › Codex, under "Suggest codex changes
+  Turn the automatic check on or off in Settings › Codex, under "Suggest codex changes
   after a chapter is saved".
   With **Apply the AI's codex changes automatically** (under it, off by default), the AI's fact and form
   changes for characters, places and things already in the codex are saved straight away instead of

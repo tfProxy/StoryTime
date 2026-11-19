@@ -52,7 +52,8 @@ type Status = { kind: "ok" | "error"; text: string };
  */
 const TABS = [
   { id: "connections", label: "Connections", holds: ["comfyui"] },
-  { id: "writing", label: "Writing", holds: ["models", "codex", "review"] },
+  { id: "writing", label: "Writing", holds: ["models", "review"] },
+  { id: "codex", label: "Codex", holds: [] },
   {
     id: "drawing",
     label: "Drawing",
@@ -576,14 +577,14 @@ export default function SettingsForm() {
             <input
               type="checkbox"
               style={{ width: "auto" }}
-              checked={settings.showCodexList}
-              onChange={(e) => update({ showCodexList: e.target.checked })}
+              checked={settings.suggestAfterPost}
+              onChange={(e) => update({ suggestAfterPost: e.target.checked })}
             />
             <span>
-              List the codex entries under a chapter&apos;s title{" "}
+              Suggest choices after posting a new chapter{" "}
               <small>
-                (a short list such as [Mira, Zed, The Hollow] below the title, each linking to that entry&apos;s page at
-                this chapter.)
+                (on the writing desk, Suggest choices runs as soon as a new chapter is posted, with the suggestions
+                model. This is one extra request each time.)
               </small>
             </span>
           </label>
@@ -602,7 +603,23 @@ export default function SettingsForm() {
           {reply && <blockquote className="sample">{reply}</blockquote>}
         </section>
 
-        <section id="codex" className="settings-section">
+        <section id="review" className="settings-section">
+          <h2>Review</h2>
+          <label className="row" style={{ alignItems: "flex-start" }}>
+            <input type="checkbox" style={{ width: "auto" }} checked={settings.autoReview} onChange={(e) => update({ autoReview: e.target.checked })} />
+            <span>
+              Check new and edited chapters automatically{" "}
+              <small>
+                (reads facts and checks continuity, and checks the summary, on the server with your cheaper model.
+                Results wait on the Review page.)
+              </small>
+            </span>
+          </label>
+        </section>
+      </div>
+
+      <div {...panel("codex")}>
+        <section className="settings-section">
           <h2>Codex</h2>
           <label className="row" style={{ alignItems: "flex-start" }}>
             <input type="checkbox" style={{ width: "auto" }} checked={settings.autoCodex} onChange={(e) => update({ autoCodex: e.target.checked })} />
@@ -633,15 +650,20 @@ export default function SettingsForm() {
           <CategoryListsEditor lists={settings.codexCategories} onChange={(codexCategories) => update({ codexCategories })} />
         </section>
 
-        <section id="review" className="settings-section">
-          <h2>Review</h2>
+        <section className="settings-section">
+          <h2>Reading page</h2>
           <label className="row" style={{ alignItems: "flex-start" }}>
-            <input type="checkbox" style={{ width: "auto" }} checked={settings.autoReview} onChange={(e) => update({ autoReview: e.target.checked })} />
+            <input
+              type="checkbox"
+              style={{ width: "auto" }}
+              checked={settings.showCodexList}
+              onChange={(e) => update({ showCodexList: e.target.checked })}
+            />
             <span>
-              Check new and edited chapters automatically{" "}
+              List the codex entries under a chapter&apos;s title{" "}
               <small>
-                (reads facts and checks continuity, and checks the summary, on the server with your cheaper model.
-                Results wait on the Review page.)
+                (a short list such as [Mira, Zed, The Hollow] below the title, each linking to that entry&apos;s page at
+                this chapter.)
               </small>
             </span>
           </label>

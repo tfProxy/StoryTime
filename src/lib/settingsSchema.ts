@@ -95,6 +95,8 @@ export type Settings = {
   contextTokens: number;
   /** After a chapter is saved, queue a review run for it (facts, continuity, summary). Off by default. */
   autoReview: boolean;
+  /** After a new chapter is posted on the writing desk, its "Suggest choices" runs at once. Off by default. */
+  suggestAfterPost: boolean;
   /** After a chapter is saved, the AI reads it for codex changes and leaves suggestions in the codex inbox. On by default. */
   autoCodex: boolean;
   /**
@@ -204,6 +206,7 @@ export const DEFAULT_SETTINGS: Settings = {
   temperature: null,
   contextTokens: 8000,
   autoReview: false,
+  suggestAfterPost: false,
   autoCodex: true,
   autoApplyCodex: false,
   showCodexList: false,
@@ -396,8 +399,10 @@ const settingsSchema = z.object({
   temperature: z.number().min(0).max(2).nullable().catch(null),
   contextTokens: z.number().int().min(1000).max(2_000_000).catch(DEFAULT_SETTINGS.contextTokens),
   // Settings saved while "Suggest choices after writing" existed still have `autoSuggestChoices`: like any key not
-  // listed here, it is dropped when they are read.
+  // listed here, it is dropped when they are read. (Its successor has a new name, `suggestAfterPost`, so an old saved
+  // `true` doesn't turn it on.)
   autoReview: z.boolean().catch(false),
+  suggestAfterPost: z.boolean().catch(false),
   autoCodex: z.boolean().catch(true),
   autoApplyCodex: z.boolean().catch(false),
   showCodexList: z.boolean().catch(false),

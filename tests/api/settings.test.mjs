@@ -68,6 +68,8 @@ ok(Array.isArray(r.json.settings.favorites) && r.json.settings.temperature === n
 r = await call("PUT", "/api/settings", { ...conns, autoSuggestChoices: true });
 ok(r.status === 200 && r.json.settings.contextTokens === 4000 && !("autoSuggestChoices" in r.json.settings), "settings with the old suggest-choices switch are saved, without it");
 ok(!("autoSuggestChoices" in (await call("GET", "/api/settings")).json.settings), "…and read back without it");
+ok(r.json.settings.suggestAfterPost === false, "Suggest choices after posting is off unless asked for, even with the old switch on");
+ok((await call("PUT", "/api/settings", { ...conns, suggestAfterPost: true })).json.settings.suggestAfterPost === true, "…and can be turned on");
 ok(r.json.settings.showCodexList === false, "the codex list on the reading page is off unless asked for");
 r = await call("PUT", "/api/settings", { ...conns, showCodexList: true });
 ok(r.json.settings.showCodexList === true && (await call("GET", "/api/settings")).json.settings.showCodexList === true, "…and can be turned on");

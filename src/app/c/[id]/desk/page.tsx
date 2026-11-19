@@ -85,6 +85,7 @@ export default async function DeskPage({
         <ChapterChoices
           desk
           reading={reading}
+          justPosted={!!query.posted}
           storyId={story.id}
           chapterId={id}
           choices={choices}
