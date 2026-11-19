@@ -145,8 +145,6 @@ export type OutlineOptions = {
   middlePicture: boolean;
   /** The same for the footer picture. */
   footerPicture: boolean;
-  /** A paintbrush that opens the chapter's Illustrate page. */
-  illustrate: boolean;
   /** A marker on chapters with something to check, linking to the Review page. */
   review: boolean;
   /** A robot on chapters the AI wrote, filled until they are marked reviewed. */
@@ -165,7 +163,6 @@ export const OUTLINE_PARTS = [
   { id: "headerPicture", label: "Header picture", hint: "an icon, for chapters that have one, that shows it in a popup" },
   { id: "middlePicture", label: "Middle picture", hint: "the same for the middle picture" },
   { id: "footerPicture", label: "Footer picture", hint: "the same for the footer picture" },
-  { id: "illustrate", label: "Illustrate", hint: "a paintbrush that opens the chapter's Illustrate page" },
   { id: "review", label: "Review marker", hint: "a ⚠ count on chapters with something to check or tags waiting for your approval, which opens the Review page" },
   { id: "highlight", label: "Highlight by tag", hint: "Adds \"Highlight a tag\" to the outline's menu." },
   { id: "aiWritten", label: "AI-written", hint: "a robot on chapters the AI wrote by itself, filled until you mark them reviewed" },
@@ -174,7 +171,7 @@ export const OUTLINE_PARTS = [
 ] as const satisfies readonly { id: keyof OutlineOptions; label: string; hint: string }[];
 
 // Tags and trashed branches are off until chosen, so an outline does not change when these first come in.
-export const DEFAULT_OUTLINE: OutlineOptions = { summary: true, readToHere: true, headerPicture: true, middlePicture: true, footerPicture: true, illustrate: true, review: true, aiWritten: true, tags: false, highlight: true, trashed: false };
+export const DEFAULT_OUTLINE: OutlineOptions = { summary: true, readToHere: true, headerPicture: true, middlePicture: true, footerPicture: true, review: true, aiWritten: true, tags: false, highlight: true, trashed: false };
 
 export type ComfySettings = {
   /** Where ComfyUI is, e.g. https://comfy.example.ts.net; "" when there is none. */
@@ -422,7 +419,6 @@ const settingsSchema = z.object({
       headerPicture: z.boolean().catch(true),
       middlePicture: z.boolean().catch(true),
       footerPicture: z.boolean().catch(true),
-      illustrate: z.boolean().catch(true),
       review: z.boolean().catch(true),
       aiWritten: z.boolean().catch(true),
       tags: z.boolean().catch(false),

@@ -74,8 +74,7 @@ ok((await headerBtn("Level 1").count()) === 1 && (await footerBtn("Level 1").cou
 const hbox = await headerBtn("Level 3").boundingBox(), fbox = await footerBtn("Level 3").boundingBox();
 ok(Math.abs(hbox.y - fbox.y) < 4 && hbox.x < fbox.x, "the header icon comes before the footer icon, on the chapter's line");
 ok((await headerBtn("Level 3").innerHTML()).includes("<svg") && (await headerBtn("Level 3").innerHTML()) !== (await footerBtn("Level 3").innerHTML()), "the two icons are drawn differently");
-const brushes = page.getByRole("link", { name: "Illustrate this chapter" });
-ok((await brushes.count()) === 5 && (await brushes.nth(2).getAttribute("href")) === `/c/${ids[2]}/desk?side=illustrate` && (await brushes.nth(2).innerHTML()).includes("<svg"), "every chapter has a paintbrush linking to its Illustrate page");
+ok((await page.getByRole("link", { name: "Illustrate this chapter" }).count()) === 0, "there is no paintbrush shortcut to Illustrate");
 const dlg = page.getByRole("dialog");
 ok((await dlg.count()) === 0, "no picture is open at first");
 await headerBtn("Level 1").click();
@@ -100,11 +99,6 @@ await dlg.waitFor();
 await page.mouse.click(5, 5);
 await dlg.waitFor({ state: "detached" });
 ok(true, "a click outside the picture closes it");
-await brushes.nth(1).click();
-await page.waitForURL(new RegExp(`/c/${ids[1]}/desk\\?side=illustrate$`));
-ok(await page.getByRole("heading", { name: "Picture prompt" }).isVisible(), "the paintbrush opens that chapter's Illustrate page");
-await page.goBack();
-await page.getByText(/5 chapters/).waitFor();
 
 // Settings → Outline: each part of the [...] section can be turned off
 const settingsNow = async () => (await getJson("/api/settings")).settings;
@@ -123,9 +117,10 @@ ok(
   "/settings#outline opens the General tab, which has the Outline settings",
 );
 const part = (name) => page.getByRole("checkbox", { name: new RegExp(`^${name}`) });
-const PARTS = ["Summary", "Read to here", "Header picture", "Footer picture", "Illustrate"];
+const PARTS = ["Summary", "Read to here", "Header picture", "Footer picture"];
 await part("Summary").waitFor();
-ok((await Promise.all(PARTS.map((p) => part(p).isChecked()))).every(Boolean), "…with the five parts all ticked at first");
+ok((await Promise.all(PARTS.map((p) => part(p).isChecked()))).every(Boolean), "…with the four parts all ticked at first");
+ok((await page.getByRole("checkbox", { name: /^Illustrate/ }).count()) === 0, "…and no Illustrate part");
 const outlineNow = async () => (await settingsNow()).outline;
 const look = async () => {
   await page.goto(outlineUrl);
@@ -136,7 +131,6 @@ const look = async () => {
     reads: await page.getByRole("link", { name: "read to here" }).count(),
     headers: await page.getByRole("button", { name: "Show the header picture" }).count(),
     footers: await page.getByRole("button", { name: "Show the footer picture" }).count(),
-    brushes: await page.getByRole("link", { name: "Illustrate this chapter" }).count(),
     brackets: await page.locator(".outline-actions").count(),
   };
 };
@@ -147,11 +141,11 @@ const show = async (name, on) => {
 };
 
 let seen = await look();
-ok(seen.summaries === 5 && seen.all === 1 && seen.reads === 5 && seen.headers === 2 && seen.footers === 2 && seen.brushes === 5 && seen.brackets === 5, "the outline shows every part at first");
+ok(seen.summaries === 5 && seen.all === 1 && seen.reads === 5 && seen.headers === 2 && seen.footers === 2 && seen.brackets === 5, "the outline shows every part at first");
 await show("Summary", false);
 await until(async () => (await outlineNow()).summary === false, "Summary to be turned off");
 seen = await look();
-ok(seen.summaries === 0 && seen.all === 0 && seen.reads === 5 && seen.brushes === 5, "with Summary off there are no summary buttons and no Show all summaries, and the rest stays");
+ok(seen.summaries === 0 && seen.all === 0 && seen.reads === 5 && seen.headers === 2, "with Summary off there are no summary buttons and no Show all summaries, and the rest stays");
 await show("Summary", true);
 await show("Read to here", false);
 await until(async () => (await outlineNow()).readToHere === false && (await outlineNow()).summary === true, "Read to here to be turned off");
@@ -169,16 +163,13 @@ await until(async () => (await outlineNow()).footerPicture === false && (await o
 seen = await look();
 ok(seen.footers === 0 && seen.headers === 2, "with Footer picture off only the footer icons go");
 await show("Footer picture", true);
-await show("Illustrate", false);
-await until(async () => (await outlineNow()).illustrate === false && (await outlineNow()).footerPicture === true, "Illustrate to be turned off");
-seen = await look();
-ok(seen.brushes === 0 && seen.footers === 2 && seen.summaries === 5, "with Illustrate off the paintbrushes go");
-await putSettings({ ...settingsBefore, outline: { summary: false, readToHere: false, headerPicture: false, footerPicture: false, illustrate: false } });
+await until(async () => (await outlineNow()).footerPicture === true, "Footer picture to be turned back on");
+await putSettings({ ...settingsBefore, outline: { summary: false, readToHere: false, headerPicture: false, footerPicture: false } });
 seen = await look();
 ok(seen.brackets === 0 && !(await page.locator(".outline-page").innerText()).includes("["), "with every part off the brackets go too");
-await putSettings({ ...settingsBefore, outline: { summary: false, readToHere: false, headerPicture: false, footerPicture: false, illustrate: true } });
+await putSettings({ ...settingsBefore, outline: { summary: false, readToHere: false, headerPicture: true, footerPicture: false } });
 seen = await look();
-ok(seen.brackets === 5 && seen.brushes === 5 && seen.summaries === 0, "with only Illustrate on, each chapter has just its paintbrush in the brackets");
+ok(seen.brackets === 2 && seen.headers === 2 && seen.summaries === 0, "with only Header picture on, just the chapters with a header have brackets");
 await putSettings(settingsBefore ?? {});
 
 // the export endpoint can still give the route to one chapter (no page links to it any more)

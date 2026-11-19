@@ -2,12 +2,10 @@
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
 import { chapterImageUrl, type ImageSlot, type ImageVersions } from "@/lib/imageSlots";
-import { illustrateHref } from "@/lib/pictureTarget";
 import type { OutlineOptions } from "@/lib/settingsSchema";
 import type { AiMark as AiMarkState } from "@/lib/stories";
-import { BrushIcon, FooterIcon, HeaderIcon, MiddleIcon } from "./PictureIcons";
+import { FooterIcon, HeaderIcon, MiddleIcon } from "./PictureIcons";
 import AiMark from "./AiMark";
 
 // Summaries in the outline: each chapter has its own toggle, and one button shows or hides them all.
@@ -89,7 +87,7 @@ function PictureButton({ chapterId, title, slot, version }: { chapterId: string;
 
 // Sits inside the chapter's row, which is the <summary> of its branch, so clicks must not fold the branch.
 // `children` (the 'read to here' link) sit right after the button. `via` is the choice that was taken to reach the chapter; it is shown ahead of the summary.
-// After them come icons: the chapter's header, middle and footer pictures (when it has them), and a paintbrush to its Illustrate page.
+// After them come icons: the chapter's header, middle and footer pictures (when it has them).
 // `show` says which of these parts are turned on in Settings (Outline); `children` is only given when one of its links (the Review marker, 'read to here') is on.
 // With every part off there is nothing to show.
 // `tags` are the chapter's approved tag names, shown in a group of their own after the first ones; the page gives none when Settings has them off.
@@ -145,7 +143,7 @@ export function NodeSummary({
   }
   if (children) words.push(<span key="read">{children}</span>);
   const aiMark = show.aiWritten ? ai : null;
-  const hasIcons = header !== null || middle !== null || footer !== null || show.illustrate || aiMark !== null;
+  const hasIcons = header !== null || middle !== null || footer !== null || aiMark !== null;
   return (
     <>
       {(words.length > 0 || hasIcons) && (
@@ -161,16 +159,6 @@ export function NodeSummary({
               {header !== null && <PictureButton chapterId={chapterId} title={title} slot="header" version={header} />}
               {middle !== null && <PictureButton chapterId={chapterId} title={title} slot="middle" version={middle} />}
               {footer !== null && <PictureButton chapterId={chapterId} title={title} slot="footer" version={footer} />}
-              {show.illustrate && (
-                <Link
-                  className="outline-action outline-icon"
-                  href={illustrateHref(chapterId)}
-                  title="Make pictures for this chapter"
-                  aria-label="Illustrate this chapter"
-                >
-                  <BrushIcon />
-                </Link>
-              )}
             </span>
           )}
         </span>

@@ -151,7 +151,7 @@ try {
   ok((await fix.count()) === 1 && (await page.getByText("Dismissed (1)").count()) === 0, "Undo brings the issue back");
 
   // Turn the marker off in settings.
-  await putSettings({ ...(settingsBefore ?? {}), outline: { summary: true, readToHere: true, headerPicture: true, footerPicture: true, illustrate: true, ...(settingsBefore?.outline ?? {}), review: false } });
+  await putSettings({ ...(settingsBefore ?? {}), outline: { summary: true, readToHere: true, headerPicture: true, footerPicture: true, ...(settingsBefore?.outline ?? {}), review: false } });
   await page.goto(`${BASE}/s/${s.story_id}/outline`);
   ok((await page.getByRole("link", { name: "Good root" }).count()) === 1 && (await page.locator("a.outline-review").count()) === 0, "with Review marker off, no marker is shown");
 
