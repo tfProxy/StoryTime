@@ -1112,7 +1112,7 @@ button.outline-action {
   opacity: 0.5;
 }
 
-/* The header, footer and illustrate icons after "read to here". */
+/* The AI-written mark and the picture icons after "read to here". */
 .outline-icons {
   display: inline-flex;
   align-items: center;
@@ -1125,7 +1125,6 @@ button.outline-action {
 button.outline-icon {
   display: inline-flex;
   align-items: center;
-  text-decoration: none;
 }
 
 .outline-icon svg {
