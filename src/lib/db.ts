@@ -1005,6 +1005,14 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE chapters ADD COLUMN summary_mine INTEGER NOT NULL DEFAULT 0;
   `,
+  // 55: tags are gone from the app (the library, story switches, chapter tags and Find tags), so their tables go too.
+  // Children first, for the foreign keys.
+  `
+  DROP TABLE IF EXISTS chapter_tag_checks;
+  DROP TABLE IF EXISTS chapter_tags;
+  DROP TABLE IF EXISTS story_tags;
+  DROP TABLE IF EXISTS tags;
+  `,
 ];
 
 function open(): Database.Database {

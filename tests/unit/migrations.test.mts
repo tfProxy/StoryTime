@@ -284,5 +284,16 @@ ok((sr.prepare(`SELECT show_readers FROM tags WHERE id = 't1'`).get() as { show_
 sr.prepare(`INSERT INTO tags (id, name) VALUES ('t2', 'new')`).run();
 ok((sr.prepare(`SELECT show_readers FROM tags WHERE id = 't2'`).get() as { show_readers: number }).show_readers === 0, "a new tag defaults to not shown");
 sr.close();
+
+// tags removed (schema version 55): every tag table is dropped, with its rows
+ok(MIGRATIONS.length >= 55, "migration 55 exists");
+const td = new Database(":memory:");
+td.pragma("foreign_keys = ON");
+for (let v = 0; v < 54; v++) td.exec(MIGRATIONS[v]);
+td.prepare(`INSERT INTO tags (id, name, created_at) VALUES ('t1', 'tf', 1)`).run();
+td.exec(MIGRATIONS[54]);
+const tagTables = td.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('tags', 'story_tags', 'chapter_tags', 'chapter_tag_checks')`).all();
+ok(tagTables.length === 0, "the tag tables are gone");
+td.close();
 d.close();
 fs.rmSync(dir, { recursive: true, force: true });
