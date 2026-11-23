@@ -20,12 +20,15 @@ A single-writer branching-story app: Next.js (read `AGENTS.md` above first), Rea
 - Read only what the task needs: `grep -n` for the function or text, then Read with `offset`/`limit`. Don't read whole large components (`ChapterEditor.tsx`, `ComfyGenerate.tsx`, `PictureSettings.tsx`) to change one part.
 - Find the tests that cover a change with `grep -l` on the label or route in `tests/`, and run just those files.
 - Use sub-agents by default, without being asked (the owner wants this every time, to save context): `haiku` for searches and reading logs, `sonnet` for running tests, fixing tests and checking screenshots, and a worktree agent (`isolation: "worktree"`) for an independent feature that can be built in parallel. Run them in the background and keep working. Do the core app-code edits of the main change yourself, and handle one-file tasks directly; a sub-agent starts cold and costs more than it saves there.
+- Exception: for a small UI tweak or a text/style-only change, run the checks and take the screenshot yourself rather than briefing a sub-agent. Handing off takes longer than the checks.
+- Run the local checks as one chained command in the background rather than one step per round trip, e.g. `npx tsc --noEmit && npx next build && node tests/run.mjs e2e <name-part>`. Keep editing or preparing the commit while it runs.
 
 ## Verification before saying a change is done
 
 Match the checks to the size of the change. GitHub Actions runs everything (typecheck, lint, all three suites, the Docker build) on every push, so the full browser suite is not needed locally.
 
-- **Small UI tweak** (text, layout, one control): `npx tsc --noEmit`, `npx next build`, the browser files that cover it (`node tests/run.mjs e2e <name-part>`), and one phone-width screenshot.
+- **Text or style-only change** (wording, CSS, a class name; no logic, props or state): `npx tsc --noEmit` and `npx next build` only. CI runs the browser tests.
+- **Small UI tweak** (layout, one control): `npx tsc --noEmit`, `npx next build`, the browser files that cover it (`node tests/run.mjs e2e <name-part>`), and one phone-width screenshot.
 - **Feature or bug fix:** as above, plus `npm test` and the browser files for every page the change touches; screenshots at desktop and phone width.
 - **Shared code** (`src/lib/db.ts`, migrations, settings schema, `tests/e2e/browser.mjs`, the test runner): the whole browser suite before pushing.
 - Screenshots: `node tests/shot.mjs <path>... --out=<scratchpad>` with the app running takes each page at desktop and phone width and prints the PNG paths. Look at the result and describe what you see, rather than relying on tests alone.
@@ -39,7 +42,10 @@ Match the checks to the size of the change. GitHub Actions runs everything (type
 ## Git
 
 - One logical change per commit. Do not fold unrequested cleanup (fixture changes, column drops, refactors) into a requested change; ask first.
-- **"Ship it"** means: run the checks for the size of the change (see Verification), commit, and get the work onto `main`. On `main` already (the owner's PC), `git pull` and push. On another branch (a cloud session gets its own), `git fetch origin main`, merge `origin/main` into the branch, push the branch, then `git push origin HEAD:main`. Then wait for the CI run on that commit (GitHub tools or `gh run watch`; about 5 minutes); if it fails, read the log, fix, and push again until it passes. Report the result in a line or two and say the NAS can be updated. If you can't see CI from where you are, say so and ask the owner to check the Actions tab.
+- **"Ship it"** means: run the checks for the size of the change (see Verification), commit, and get the work onto `main`. On `main` already (the owner's PC), `git pull` and push. On another branch (a cloud session gets its own), `git fetch origin main`, merge `origin/main` into the branch, push the branch, then `git push origin HEAD:main`.
+  - **Small changes** (text/style-only or a small UI tweak): don't wait for CI. Report "pushed, CI running" with the commit, and say the NAS can be updated once the Actions run is green. Check the run only if the owner asks, or at the start of the next task if it's still in this session.
+  - **Features, bug fixes and shared code:** wait for the CI run on that commit (GitHub tools or `gh run watch`; about 5 minutes); if it fails, read the log, fix, and push again until it passes. Report the result in a line or two and say the NAS can be updated.
+  - If you can't see CI from where you are, say so and ask the owner to check the Actions tab.
 - Otherwise, commit or push only when asked. Before pushing, list any other unpushed commits (`git log origin/main..HEAD --oneline`) and flag any that contain a migration or a destructive change.
 - If git has no author identity configured, stop and tell the user; do not leave files staged.
 - On PowerShell, write multi-line commit messages to a temp file and use `git commit -F`, or use a single-quoted here-string. Git Bash heredocs work too.
