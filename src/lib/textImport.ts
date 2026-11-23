@@ -4,6 +4,7 @@
 // server's import job (worker/importText.ts), the review page and the route that creates the story.
 import { z } from "zod";
 import { LIMITS } from "./limits";
+import { CHOICE_WORDING } from "./ai/prompts";
 
 export const IMPORT_LIMITS = {
   /** About 35,000 words: short stories, not novels. */
@@ -250,8 +251,9 @@ export function splitPrompt(p: {
       `For each chapter give:
 - "end": the number of its last paragraph
 - "title": a short chapter title
-- "choice": what the main character decides at the end of this chapter, which the next chapter follows, written as button text a reader would click (a short action under 12 words, no quotes)${p.last ? `. For the chapter that ends the story, use ""` : ""}`,
-      `Reply with only a JSON array like [{"end": 7, "title": "The Alley", "choice": "Follow the stranger into the alley"}].`,
+- "choice": what the main character decides at the end of this chapter, which the next chapter follows (a short action under 12 words, no quotes)${p.last ? `. For the chapter that ends the story, use ""` : ""}`,
+      CHOICE_WORDING,
+      `Reply with only a JSON array like [{"end": 7, "title": "The Alley", "choice": "Mira follows the stranger into the alley"}].`,
     ]
       .filter(Boolean)
       .join("\n\n"),
@@ -333,7 +335,8 @@ export function mergeShort(paragraphs: string[], entries: SplitEntry[], from: nu
 }
 
 export const SYSTEM_ALTERNATIVES = `You help turn a finished story into a branching story: at the end of a chapter you suggest other choices the main character could have made, each opening a different path from the original story's.
-Each option is a short action or decision, under 12 words, written as button text (no numbering).
+Each option is a short action or decision, under 12 words, with no numbering.
+${CHOICE_WORDING}
 You reply with a JSON array of strings and nothing else.`;
 
 /** The request for other choices at the end of a chapter (other endings, after the last one). */

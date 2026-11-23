@@ -315,8 +315,14 @@ export function generatePrompt(ctx: StoryContext, direction: string, length: Len
     .join("\n\n");
 }
 
+/**
+ * How a choice is worded. The label is also what the chapter-writing model is told the reader chose, so it names
+ * who acts rather than being a bare imperative ("Contact her former colleagues" leaves the writer guessing who "her" is).
+ */
+export const CHOICE_WORDING = `Word every choice as a short statement of what happens, in present tense, naming the character who acts, like "Wendy contacts her former colleagues" (not "Contact her former colleagues"). If the story is told in the second person, use "you", like "You follow the stranger".`;
+
 /** What makes a set of choices worth offering; shared by the choice and idea prompts. */
-const CHOICE_QUALITY = `Good options lead to meaningfully different outcomes (not variations of one action), are things the protagonist could plausibly do right now, and don't make one option the obvious right answer. Mix kinds, for example one bold, one cautious and one unexpected. Word them consistently, as short imperative phrases like "Follow the stranger".`;
+const CHOICE_QUALITY = `Good options lead to meaningfully different outcomes (not variations of one action), are things the protagonist could plausibly do right now, and don't make one option the obvious right answer. Mix kinds, for example one bold, one cautious and one unexpected. ${CHOICE_WORDING}`;
 
 /** How many choices one "Suggest choices" asks for: the ordinary ones, then the erotic or NSFW ones. */
 export const SUGGESTED_CHOICES = 6;
@@ -325,7 +331,7 @@ export const SUGGESTED_NSFW_CHOICES = 2;
 /** What a good choice is lives here, so the message holds only the story and the task. */
 export const SYSTEM_CHOICES = `You help write branching stories: you suggest the choices a reader could pick at the end of a chapter.
 ${CHOICE_QUALITY}
-Each option is a short action or decision, under 12 words, written as button text (no numbering).
+Each option is a short action or decision, under 12 words, with no numbering.
 You reply with a JSON array of strings and nothing else.`;
 
 const quotedList = (items: string[]) => items.map((e) => `- "${e}"`).join("\n");
@@ -379,7 +385,7 @@ export function ideasPrompt(ctx: StoryContext, contextTokens: number, guidance =
     : "";
   const choiceField = opening || ctx.choiceLabel
     ? `"choice" (a short name for the idea, under 12 words)`
-    : `"choice" (button text for the choice the reader could pick at the end of the last chapter to reach it, under 12 words)`;
+    : `"choice" (the text of the choice the reader could pick at the end of the last chapter to reach it, under 12 words)`;
   const inChapter = opening ? "in the opening chapter" : "in the chapter";
   let ask: string;
   if (given) {
@@ -401,7 +407,7 @@ export function ideasPrompt(ctx: StoryContext, contextTokens: number, guidance =
     ask =
       `Suggest 4 distinct directions the story could take from the end of the last chapter, each a new choice the reader could pick there.` +
       avoid +
-      `\nFor each give "choice" (button text, under 12 words) and "direction" (one or two sentences on what happens in the chapter that follows it).`;
+      `\nFor each give "choice" (the choice text, under 12 words) and "direction" (one or two sentences on what happens in the chapter that follows it).`;
   }
   const variety = given
     ? `Make the ideas differ in kind (tone, risk, or which character drives the chapter) in how they play out the premise, not by leaving it out.`
@@ -421,7 +427,7 @@ export const SYSTEM_CHOICE_LABEL = `You help write branching stories. You reply 
  * chapter it describes how to reach that chapter; without one it proposes something worth choosing.
  */
 export function choiceLabelPrompt(ctx: StoryContext, chapter: { title: string; body: string } | null, contextTokens: number): string {
-  const format = `in a single sentence of under 12 words, with no quotes or numbering.\nReply with only that one sentence.`;
+  const format = `in a single sentence of under 12 words, with no quotes or numbering.\n${CHOICE_WORDING}\nReply with only that one sentence.`;
   return [
     storyHeader(ctx, Math.floor(budgetFor(contextTokens) * 0.5), chapter?.body ?? ""),
     ...(chapter
@@ -430,7 +436,7 @@ export function choiceLabelPrompt(ctx: StoryContext, chapter: { title: string; b
           `Write the text of the button a reader would click at the end of the previous chapter to get to this one: a short action or decision ${format}`,
         ]
       : [
-          `No chapter has been written after the last one yet. Suggest an interesting, surprising choice the reader could make at the end of the last chapter: a short action or decision that opens a new direction for the story, written as button text ${format}`,
+          `No chapter has been written after the last one yet. Suggest an interesting, surprising choice the reader could make at the end of the last chapter: a short action or decision that opens a new direction for the story, ${format}`,
         ]),
   ].join("\n\n");
 }
@@ -492,7 +498,7 @@ export function planStepsPrompt(
     ask += (ask ? "\nThen suggest" : "Suggest") + ` ${add} new choice${add === 1 ? "" : "s"} to offer as well, with what happens after each.`;
     const avoid = [...labels, ...other];
     if (avoid.length) ask += ` Do not repeat or closely echo these: ${avoid.map(quote).join(", ")}.`;
-    ask += ` ${CHOICE_QUALITY} Each new choice is a short action or decision, under 12 words, written as button text.`;
+    ask += ` ${CHOICE_QUALITY} Each new choice is a short action or decision, under 12 words.`;
   }
   const total = labels.length + add;
   ask +=
@@ -548,7 +554,7 @@ export function arcPlanPrompt(ctx: StoryContext, objective: string, chapters: nu
     (chapters === 1
       ? `That one chapter reaches the goal.`
       : `Each chapter follows naturally from the one before it, and only the last one reaches the goal; the earlier ones build toward it without arriving.`) +
-    `\nFor each give "choice" (button text, under 12 words, for the choice the reader picks at the end of the chapter before it to get into this chapter) and "direction" (one or two sentences on what happens in this chapter).` +
+    `\nFor each give "choice" (the choice text, under 12 words, for the choice the reader picks at the end of the chapter before it to get into this chapter) and "direction" (one or two sentences on what happens in this chapter).` +
     (notes.length ? `\n${notesBlock(notes, "Also follow these instructions from the author")}` : "") +
     `\n${CHOICE_QUALITY}` +
     `\nReply with only a JSON array of ${chapters} object${chapters === 1 ? "" : "s"} like [{"choice":"...","direction":"..."}], in story order.`;
