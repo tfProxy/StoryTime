@@ -424,6 +424,55 @@ export function changeForm(input: z.infer<typeof FormChangeSchema>): { moved: nu
   })();
 }
 
+export const RenameFormSchema = z.object({
+  /** Any chapter of the story; the entry must be live there. */
+  chapter_id: z.string().min(1),
+  entry_id: z.string().min(1),
+  from: text(FACT_LIMITS.form).min(1),
+  to: text(FACT_LIMITS.form).min(1),
+});
+
+/**
+ * Renames one of an entry's forms everywhere in the story ("vampire" -> "demon"): a correction, not a change in the
+ * story, so every version of every fact of that form is rewritten in place, on every branch, with the form fact itself
+ * and the open suggestions for the entry. Chapter text is not touched. Renaming onto another form the entry already has
+ * would merge the two, so it is refused. A linked entry whose shared facts use the form is renamed in the Shared codex.
+ */
+export function renameForm(input: z.infer<typeof RenameFormSchema>): { renamed: number } {
+  return db().transaction(() => {
+    const path = getPath(input.chapter_id);
+    if (path.length === 0) throw new PostError("That chapter does not exist", 404);
+    const storyId = path[path.length - 1].story_id;
+    const from = cleanForm(input.from);
+    const to = cleanForm(input.to);
+    if (!from || !to) throw new PostError("Name the form", 400);
+    if (from === to) return { renamed: 0 };
+    const ops = getCodexOps(input.chapter_id);
+    const entry = foldCodex(ops, getCodexFacts(input.chapter_id)).find((e) => e.entry_id === input.entry_id);
+    if (!entry) throw new PostError("That entry doesn't exist at this point in the story", 409);
+
+    const rows = db().prepare(`SELECT id, form FROM codex_facts WHERE story_id = ? AND entry_id = ?`).all(storyId, input.entry_id) as { id: string; form: string }[];
+    const mine = rows.filter((r) => r.form.trim() && sameAspect(r.form, from));
+    if (!sameAspect(from, to) && rows.some((r) => r.form.trim() && sameAspect(r.form, to))) {
+      throw new PostError(`${entry.name} already has a ${to} form. Rename it to a name not in use.`, 409);
+    }
+    const sharedId = ops.find((o) => o.entry_id === input.entry_id && o.shared_entry_id)?.shared_entry_id;
+    if (sharedId && getSharedEntry(sharedId)?.facts.some((f) => f.form.trim() && sameAspect(f.form, from))) {
+      throw new PostError("This entry is shared and its shared facts use that form, so rename it in the Shared codex.", 409);
+    }
+    if (mine.length === 0) throw new PostError(`${entry.name} has no ${from} form`, 409);
+
+    const update = db().prepare(`UPDATE codex_facts SET form = ? WHERE id = ?`);
+    for (const r of mine) update.run(to, r.id);
+    const suggestions = db()
+      .prepare(`SELECT id, form FROM codex_suggestions WHERE story_id = ? AND entry_id = ? AND status = 'open'`)
+      .all(storyId, input.entry_id) as { id: string; form: string }[];
+    const updateSuggestion = db().prepare(`UPDATE codex_suggestions SET form = ? WHERE id = ?`);
+    for (const s of suggestions) if (s.form.trim() && sameAspect(s.form, from)) updateSuggestion.run(to, s.id);
+    return { renamed: mine.length };
+  })();
+}
+
 /**
  * A linked entry reads its details from the shared base, so a plain "replace" can't change them (it would be ignored).
  * A replace that repeats what the entry reads now is fine: bringing it back, or keeping it in the chapters after one.

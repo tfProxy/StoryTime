@@ -4549,6 +4549,12 @@ button.ef-main:hover {
   grid-row: 1;
   padding-top: 0.2rem;
 }
+.ef-form-row > .ef-menu {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
 .ef-markers,
 .ef-wide {
   grid-column: 1 / -1;
@@ -4683,6 +4689,7 @@ button.ef-main:hover {
   .ef-form-row > .ef-menu {
     grid-column: 1 / -1;
     grid-row: 3;
+    justify-content: flex-start;
     padding: 0 0 0.4rem 0.25rem;
   }
 }

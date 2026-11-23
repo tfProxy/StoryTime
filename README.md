@@ -99,6 +99,8 @@ and, for pictures, your own ComfyUI machine.
   at and how far along it is ("halfway"), and shows exactly what the AI will read. A form's own fact
   replaces the every-form fact on the same aspect while she is in that form (the every-form one is
   shown struck through); the other forms' facts are folded away and not sent to the AI.
+  **Rename a form…** fixes a wrong form name (she was never a vampire, she is a demon): the form and
+  its facts take the new name in every chapter and branch. The chapters' own text is not changed.
 - **Story Bible**: the **Bible** tab of every story page. On a phone its sections are a **Section**
   picker; under it, **Showing** says which chapter (or the whole story) you are looking at, with
   **Change…** to pick another and a link back to reading the chapter.

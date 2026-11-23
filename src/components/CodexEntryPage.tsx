@@ -622,6 +622,7 @@ export function FactsTable({
   // The change (codex_facts row) of the fact whose "Move to an earlier chapter" dialog is open.
   const [moving, setMoving] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [fleshOpen, setFleshOpen] = useState(false);
   const [tidyOpen, setTidyOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -913,9 +914,14 @@ export function FactsTable({
             {entry.baseForm && entry.form && !sameAspect(entry.form.name, entry.baseForm) && ` · normal form: ${entry.baseForm}`}
           </span>
           <div className="ef-menu">
-            {!formOpen && (
+            {!formOpen && !renameOpen && (
               <button type="button" className="secondary" disabled={busy} onClick={() => setFormOpen(true)}>
                 {entry.form ? "Change form…" : "Set a form…"}
+              </button>
+            )}
+            {!formOpen && !renameOpen && hasForms && (
+              <button type="button" className="secondary" disabled={busy} onClick={() => setRenameOpen(true)}>
+                Rename a form…
               </button>
             )}
           </div>
@@ -943,6 +949,18 @@ export function FactsTable({
                 onCancel={() => setFormOpen(false)}
                 onSave={async (body) => {
                   if (await saveForm(body)) setFormOpen(false);
+                }}
+              />
+            </div>
+          )}
+          {renameOpen && (
+            <div className="ef-wide">
+              <RenameFormPanel
+                entry={entry}
+                busy={busy}
+                onCancel={() => setRenameOpen(false)}
+                onSave={async (from, to) => {
+                  if (await run(() => post("/api/codex/rename-form", { chapter_id: chapterId, entry_id: entry.entry_id, from, to }))) setRenameOpen(false);
                 }}
               />
             </div>
@@ -1130,6 +1148,45 @@ function FactEditor({
       <div className="row">
         <button type="button" disabled={busy || !text.trim() || (applies === NEW_FORM && !newForm.trim())} onClick={save}>
           {busy ? "Saving…" : "Save"}
+        </button>
+        <button type="button" className="secondary" disabled={busy} onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** "Rename [form] to [name]": fixes a form's name in every chapter (a wrong name, not a change in the story). */
+function RenameFormPanel({ entry, busy, onCancel, onSave }: { entry: CodexEntry; busy: boolean; onCancel: () => void; onSave: (from: string, to: string) => void }) {
+  const cur = entry.form?.name ?? entry.baseForm ?? "";
+  const [from, setFrom] = useState(() => entry.forms.find((f) => sameAspect(f, cur)) ?? entry.forms[0] ?? "");
+  const [to, setTo] = useState("");
+  const name = to.trim();
+  return (
+    <div className="fact-form ef-form-panel">
+      <div className="ef-form-sentence">
+        <label>
+          Rename
+          <select aria-label="Form to rename" value={from} onChange={(e) => setFrom(e.target.value)}>
+            {entry.forms.map((f) => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          to
+          <input aria-label="New name" placeholder="e.g. demon" value={to} maxLength={FACT_LIMITS.form} onChange={(e) => setTo(e.target.value)} />
+        </label>
+      </div>
+      <p className="meta">
+        The {from} form and its facts are renamed in every chapter and branch, as if it had always had the new name. The chapters&apos; text isn&apos;t changed.
+      </p>
+      <div className="row">
+        <button type="button" disabled={busy || !from || !name || name === from} onClick={() => onSave(from, name)}>
+          {busy ? "Saving…" : "Rename"}
         </button>
         <button type="button" className="secondary" disabled={busy} onClick={onCancel}>
           Cancel
