@@ -139,10 +139,15 @@ function SuggestionRow({ s, entry, path, start, inbox }: { s: CodexSuggestion; e
       )}
       {idea && start.id !== s.chapter_id ? (
         <KeepFrom legend="Takes effect from" s={s} entryName={entry.name} start={start} atStart={atStart} onChange={setAtStart} />
+      ) : choices.length < 2 ? (
+        // Nothing to pick: a fact can only move earlier, and the entry isn't in the codex before this chapter.
+        <p className="meta desk-sug-from">
+          Takes effect from “{s.chapter_title}”{start.id === s.chapter_id ? `, where ${entry.name} first appears, so it can't start earlier.` : "."}
+        </p>
       ) : (
         <label className="desk-sug-from">
           <span className="meta">Takes effect from</span>
-          <select aria-label="Takes effect from" value={anchor} disabled={choices.length < 2} onChange={(e) => setAnchor(e.target.value)}>
+          <select aria-label="Takes effect from" value={anchor} onChange={(e) => setAnchor(e.target.value)}>
             {choices.map((c) => (
               <option key={c.id} value={c.id}>
                 “{c.title}”{c.id === start.id && c.id !== s.chapter_id ? ` (where ${entry.name} first appears)` : ""}

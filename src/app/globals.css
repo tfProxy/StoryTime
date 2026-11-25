@@ -7233,6 +7233,11 @@ button.link-button.ef-since-link {
   font-weight: 400;
 }
 
+/* .meta's bottom margin would lift the label above the dropdown's middle. */
+.desk-sug-from > .meta {
+  margin: 0;
+}
+
 .desk-sug-from select {
   flex: 1;
   width: auto;

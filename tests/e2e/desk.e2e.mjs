@@ -202,7 +202,7 @@ try {
   ok((await entry.getByRole("tab", { name: "Suggestions (2)" }).getAttribute("aria-selected")) === "true", "Oda opens on Suggestions (2)");
   const mood = entry.locator(".desk-sug", { hasText: "amused" });
   ok((await mood.innerText()).includes("From “Chapter A”: “Oda laughed”"), "a suggestion from the text shows its quote and chapter");
-  ok((await mood.getByLabel("Takes effect from").inputValue()) === A, "…and takes effect from its chapter");
+  ok((await mood.getByLabel("Takes effect from").count()) === 0 && (await mood.innerText()).includes("Takes effect from “Chapter A”, where Oda first appears"), "…and takes effect from its chapter, where Oda first appears: no chapter to pick, so no dropdown");
   await mood.getByRole("button", { name: "Keep", exact: true }).click();
   await entry.locator(".desk-sug.done", { hasText: "Mood" }).waitFor();
   ok((await codexAt(A, "Oda")).description.includes("Mood: amused"), "Keep saves the fact");
