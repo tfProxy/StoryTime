@@ -1,7 +1,8 @@
 import { handlePost } from "@/lib/api";
-import { ApproveFactsSchema, approveAiFacts } from "@/lib/codexDb";
+import { ApproveFactsInput, approveAiFacts } from "@/lib/codexDb";
 
 // The owner approves facts the AI wrote on its own ({ ids: fact-change ids }): { approved }. They lose the AI mark.
+// With { edit: { aspect, form, text } } (one id), the fact is reworded in place before it is approved.
 export async function POST(request: Request) {
-  return handlePost(request, ApproveFactsSchema, approveAiFacts, 200);
+  return handlePost(request, ApproveFactsInput, approveAiFacts, 200);
 }

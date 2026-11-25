@@ -80,6 +80,22 @@ try {
   r = await read([{ kind: "set", entry_id: mira, aspect: "Ears", after: "Huge ears.", quote: qEars }]);
   ok(r.json.saved === 1 && r.json.applied === 0 && (await factOf(c1, "Ears")).text === "Long fox ears.", "a new reading leaves an approved fact alone; the change waits in the inbox");
 
+  // ---- approving with a rewording (the chapter review's Edit on an applied fact) ----
+  r = await read([{ kind: "set", entry_id: mira, aspect: "Fur", after: "Russet fur, glowing in the firelight.", quote: qFur }]);
+  const fur = await factOf(c1, "Fur");
+  ok((await call("POST", "/api/codex/approve", { ids: [fur.op.id, ears.op.id], edit: { text: "x" } })).status === 400, "an edit approves one fact");
+  ok((await call("POST", "/api/codex/approve", { ids: [fur.op.id], edit: { aspect: "Fur", text: " " } })).status === 400, "an edit can't empty the fact");
+  r = await call("POST", "/api/codex/approve", { ids: [fur.op.id], edit: { aspect: "Coat", text: "Russet fur." } });
+  const coat = await factOf(c1, "Coat");
+  ok(r.status === 200 && coat?.text === "Russet fur." && coat.fact_id === fur.fact_id && coat.op.id === fur.op.id && !coat.op.ai_suggestion_id && !(await factOf(c1, "Fur")), "the change is reworded in place, at its chapter, and approved");
+  ok((await call("POST", "/api/codex/approve", { ids: [fur.op.id], edit: { aspect: "Coat", text: "Again." } })).status === 409, "an approved fact can't be edited this way again");
+  r = await read([{ kind: "form", entry_id: mira, form: "vampire", after: "", quote: q }]);
+  const formOp = (await miraAt(c1)).form.fact.op;
+  ok(!!formOp.ai_suggestion_id, "the AI sets a form");
+  r = await call("POST", "/api/codex/approve", { ids: [formOp.id], edit: { aspect: "form", form: "demon", text: "newly turned" } });
+  const after = await miraAt(c1);
+  ok(r.status === 200 && after.form.name === "demon" && after.form.note === "newly turned" && !after.form.fact.op.ai_suggestion_id, "on the form fact the edit renames the form and sets its stage");
+
   // ---- the owner's edit of an AI fact at its chapter ----
   r = await read([{ kind: "set", entry_id: mira, aspect: "Eyes", after: "Amber eyes.", quote: qEyes }]);
   const eyes = await factOf(c1, "Eyes");

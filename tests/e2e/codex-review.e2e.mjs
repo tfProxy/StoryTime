@@ -235,11 +235,14 @@ try {
   const names = (await send("GET", `/api/chapters/${A}/codex`)).entries.map((e) => e.name);
   ok(names.includes("Kestrel"), "Add it creates the new entry");
 
-  // ---- facts the AI applied: Approve, Undo ----
-  await ears.getByRole("button", { name: "Approve" }).click();
+  // ---- facts the AI applied: Edit (reworded, then approved), Undo ----
+  await ears.getByRole("button", { name: "Edit" }).click();
+  ok((await ears.getByRole("textbox").nth(1).inputValue()) === "tall fox ears", "Edit opens the applied fact's text to reword");
+  await ears.getByRole("textbox").nth(1).fill("tall ears");
+  await ears.getByRole("button", { name: "Save" }).click();
   await done("Approved: Rowan · Ears").waitFor();
-  const earsFact = (await rowanFacts()).find((f) => f.aspect === "Ears");
-  ok(earsFact?.text === "tall fox ears" && !earsFact.op.ai_suggestion_id, "Approve keeps the fact and takes the AI mark off");
+  const earsFacts = (await rowanFacts()).filter((f) => f.aspect === "Ears");
+  ok(earsFacts.length === 1 && earsFacts[0].text === "tall ears" && earsFacts[0].op.anchor_chapter_id === A && !earsFacts[0].op.ai_suggestion_id, "Save rewords the fact at its chapter and takes the AI mark off");
   await cardOf("Mira · Clothing").getByRole("button", { name: "Undo" }).click();
   await done("Undone: Mira · Clothing").waitFor();
   const miraFacts = (await send("GET", `/api/chapters/${A}/codex`)).entries.find((e) => e.name === "Mira").facts;

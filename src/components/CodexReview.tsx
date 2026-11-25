@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { splitParagraphs } from "@/lib/imageSlots";
 import { wordDiff } from "@/lib/wordDiff";
-import { cleanForm, isFormAspect } from "@/lib/codex";
+import { cleanForm, FACT_LIMITS, isFormAspect } from "@/lib/codex";
 import type { CodexSuggestion } from "@/lib/codexSuggestions";
 import { acceptableInBulk, INBOX_CHANGED, SourceBadge, suggestionSource, useCodexInbox } from "./CodexInbox";
 
@@ -105,11 +105,11 @@ export default function CodexReview({
   const toApprove = facts.filter((f) => !factState[f.op_id] || factState[f.op_id] === "busy").length;
   const bulk = suggestions.filter(acceptableInBulk);
 
-  async function decideFact(f: AppliedFact, action: "approve" | "undo-ai") {
+  async function decideFact(f: AppliedFact, action: "approve" | "undo-ai", edit?: { aspect: string; form: string; text: string }) {
     setFactState((m) => ({ ...m, [f.op_id]: "busy" }));
     setFactError("");
     try {
-      await post(`/api/codex/${action}`, { ids: [f.op_id] });
+      await post(`/api/codex/${action}`, edit ? { ids: [f.op_id], edit } : { ids: [f.op_id] });
       setFactState((m) => ({ ...m, [f.op_id]: action === "approve" ? "approved" : "undone" }));
       // An undo dismisses the suggestion behind the fact.
       if (action === "undo-ai") window.dispatchEvent(new Event(INBOX_CHANGED));
@@ -125,7 +125,7 @@ export default function CodexReview({
 
   const card = (item: Item) =>
     item.kind === "fact" ? (
-      <FactCard key={item.key} f={item.f} state={factState[item.f.op_id]} selected={sel === item.key} onSelect={() => setSel(item.key)} onDecide={(a) => void decideFact(item.f, a)} />
+      <FactCard key={item.key} f={item.f} state={factState[item.f.op_id]} selected={sel === item.key} onSelect={() => setSel(item.key)} onDecide={(a, edit) => void decideFact(item.f, a, edit)} />
     ) : (
       <SuggestionCard
         key={item.key}
@@ -376,10 +376,15 @@ function FactCard({
   state?: "approved" | "undone" | "busy";
   selected: boolean;
   onSelect: () => void;
-  onDecide: (action: "approve" | "undo-ai") => void;
+  onDecide: (action: "approve" | "undo-ai", edit?: { aspect: string; form: string; text: string }) => void;
 }) {
+  const isForm = isFormAspect(f.aspect);
+  const [editing, setEditing] = useState(false);
+  // On the form fact the two boxes are the form's name and its stage; otherwise the aspect and the fact.
+  const [label, setLabel] = useState(isForm ? f.form : f.aspect);
+  const [text, setText] = useState(f.text);
   const id = `f-${f.op_id}`;
-  const what = `${f.entry_name} · ${isFormAspect(f.aspect) ? "Form" : f.aspect || "General"}${!isFormAspect(f.aspect) && f.form ? ` (${f.form})` : ""}`;
+  const what = `${f.entry_name} · ${isForm ? "Form" : f.aspect || "General"}${!isForm && f.form ? ` (${f.form})` : ""}`;
   if (state === "approved" || state === "undone") {
     return (
       <div id={id} className="cr-card cr-done">
@@ -397,14 +402,47 @@ function FactCard({
         </button>
         <span className="source-badge source-invented">Already applied by the AI</span>
       </div>
-      <p className="cr-card-text">{isFormAspect(f.aspect) ? [f.form, f.text].filter(Boolean).join(", ") : f.text}</p>
+      {editing ? (
+        <div className="inbox-edit">
+          <label>
+            <span className="meta">{isForm ? "Form" : "Aspect"}</span>
+            <input value={label} maxLength={FACT_LIMITS.aspect} onChange={(e) => setLabel(e.target.value)} />
+          </label>
+          <label>
+            <span className="meta">{isForm ? "Note" : "Fact"}</span>
+            <textarea value={text} rows={3} maxLength={FACT_LIMITS.text} onChange={(e) => setText(e.target.value)} style={{ fontFamily: "inherit" }} />
+          </label>
+        </div>
+      ) : (
+        <p className="cr-card-text">{isForm ? [f.form, f.text].filter(Boolean).join(", ") : f.text}</p>
+      )}
       <div className="inbox-actions">
-        <button type="button" disabled={state === "busy"} onClick={() => onDecide("approve")}>
-          Approve
-        </button>
-        <button type="button" className="secondary" disabled={state === "busy"} onClick={() => onDecide("undo-ai")}>
-          Undo
-        </button>
+        {editing ? (
+          <>
+            <button
+              type="button"
+              disabled={state === "busy" || (isForm ? !label.trim() : !text.trim())}
+              onClick={() => onDecide("approve", isForm ? { aspect: f.aspect, form: label, text } : { aspect: label, form: f.form, text })}
+            >
+              Save
+            </button>
+            <button type="button" className="secondary" disabled={state === "busy"} onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" disabled={state === "busy"} onClick={() => onDecide("approve")}>
+              Approve
+            </button>
+            <button type="button" className="secondary" disabled={state === "busy"} onClick={() => setEditing(true)}>
+              Edit
+            </button>
+            <button type="button" className="secondary" disabled={state === "busy"} onClick={() => onDecide("undo-ai")}>
+              Undo
+            </button>
+          </>
+        )}
       </div>
     </article>
   );

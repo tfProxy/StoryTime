@@ -344,8 +344,30 @@ export function createFactOp(input: z.infer<typeof NewFactOpSchema>, aiSuggestio
 
 export const ApproveFactsSchema = z.object({ ids: z.array(z.string().min(1)).min(1).max(500) });
 
-/** The owner approves facts the AI wrote (by fact-change id): they become the owner's, and a new reading leaves them alone. */
-export function approveAiFacts(input: z.infer<typeof ApproveFactsSchema>): { approved: number } {
+export const ApproveFactsInput = ApproveFactsSchema.extend({
+  /** Reworded before approving (one id only): the change keeps its chapter. On the form fact, `form` is the form's name and `text` its stage. */
+  edit: z.object({ aspect: text(FACT_LIMITS.aspect).default(""), form: text(FACT_LIMITS.form).default(""), text: text(FACT_LIMITS.text) }).optional(),
+}).refine((v) => !v.edit || v.ids.length === 1, { message: "an edit approves one fact" });
+
+/**
+ * The owner approves facts the AI wrote (by fact-change id): they become the owner's, and a new reading leaves them alone.
+ * With `edit`, the one change is reworded in place first (same chapter, same fact), as if the owner had written it so.
+ */
+export function approveAiFacts(input: z.infer<typeof ApproveFactsInput>): { approved: number } {
+  if (input.edit) {
+    const row = db().prepare(`SELECT aspect FROM codex_facts WHERE id = ? AND ai_suggestion_id IS NOT NULL`).get(input.ids[0]) as { aspect: string } | undefined;
+    if (!row) throw new PostError("That fact was already approved or undone", 409);
+    const { aspect, form, text: body } = input.edit;
+    if (isFormAspect(row.aspect)) {
+      if (!cleanForm(form)) throw new PostError("Name the form", 400);
+      db().prepare(`UPDATE codex_facts SET form = ?, text = ?, ai_suggestion_id = NULL WHERE id = ?`).run(cleanForm(form), body, input.ids[0]);
+    } else {
+      if (!body) throw new PostError("The fact is empty; use Undo to take it back", 400);
+      if (isFormAspect(aspect)) throw new PostError(`“${aspect}” is kept for the entry's form`, 400);
+      db().prepare(`UPDATE codex_facts SET aspect = ?, text = ?, ai_suggestion_id = NULL WHERE id = ?`).run(aspect, body, input.ids[0]);
+    }
+    return { approved: 1 };
+  }
   const marks = input.ids.map(() => "?").join(",");
   const r = db().prepare(`UPDATE codex_facts SET ai_suggestion_id = NULL WHERE id IN (${marks}) AND ai_suggestion_id IS NOT NULL`).run(...input.ids);
   return { approved: r.changes };
