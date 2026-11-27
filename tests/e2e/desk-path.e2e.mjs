@@ -186,7 +186,7 @@ try {
   await entryCol.locator(".entry-facts").getByRole("button", { name: "+ Add a fact" }).click();
   await fillFact(page, { aspect: "Wings", text: "dusty grey" });
   await factRow(page, "dusty grey").waitFor();
-  ok((await factRow(page, "dusty grey").innerText()).includes("changed here"), "a fact added to the new entry shows, held for this chapter");
+  ok((await factRow(page, "dusty grey").innerText()).includes("new in this chapter"), "a fact added to the new entry shows, held for this chapter");
   await page.locator("aside.desk-side .desk-row", { hasText: "Wren" }).click();
   await page.locator('section.desk-entry[aria-label="Codex entry: Wren"]').waitFor();
   await entryCol.locator(".entry-facts").getByRole("button", { name: "+ Add a fact" }).click();
@@ -276,10 +276,9 @@ try {
   await link.click();
   ok(await isOpen(2), "clicking “since Chapter A” unfolds its block");
   ok(!!(await until(() => inView(block(2)))), "…and brings it into view");
-  const own = factRow(page, "soft").locator(".ef-since-link");
-  ok((await own.innerText()).includes("Chapter B"), "a fact made at the desk's own chapter links to it too");
-  await own.click();
-  ok(!!(await until(() => inView(page.locator("section.desk-box")))), "clicking it scrolls the box into view");
+  // (A fact changed at the desk's own chapter is listed first, as "new in this chapter", with no “since” link.)
+  const own = factRow(page, "soft");
+  ok((await own.locator(".ef-since").innerText()).includes("new in this chapter") && (await own.locator(".ef-since-link").count()) === 0, "a fact made at the desk's own chapter says it is new in this chapter");
   // the entry's own page keeps two columns, and its “since” is not a link
   await page.goto(`${BASE}/s/${story.story_id}/codex/${wren}?at=${B}`);
   const pageRow = factRow(page, "light and quick");

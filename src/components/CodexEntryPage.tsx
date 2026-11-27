@@ -528,18 +528,27 @@ function replacedEvery(entry: CodexEntry): LiveFact[] {
 type Marker = { key: string; tone: "suggest" | "conflict" | "ai"; text: string; href: string };
 
 /** The markers under a fact: what the chapters' text suggests for it, contradicts in it, or the AI changed in it unasked. */
-function Markers({ list }: { list: Marker[] }) {
+function Markers({ list, onOpen }: { list: Marker[]; /** The desk: a marker opens the Suggestions tab instead of the review page. */ onOpen?: () => void }) {
   if (list.length === 0) return null;
   return (
     <div className="ef-markers">
-      {list.map((m) => (
-        <Link key={m.key} className={`ef-marker ef-marker-${m.tone}`} href={m.href} prefetch={false}>
-          <span>
-            <span aria-hidden="true">● </span>
-            {m.text}
-          </span>
-        </Link>
-      ))}
+      {list.map((m) =>
+        onOpen ? (
+          <button key={m.key} type="button" className={`link-button ef-marker ef-marker-${m.tone}`} onClick={onOpen}>
+            <span>
+              <span aria-hidden="true">● </span>
+              {m.text}
+            </span>
+          </button>
+        ) : (
+          <Link key={m.key} className={`ef-marker ef-marker-${m.tone}`} href={m.href} prefetch={false}>
+            <span>
+              <span aria-hidden="true">● </span>
+              {m.text}
+            </span>
+          </Link>
+        ),
+      )}
     </div>
   );
 }
@@ -579,9 +588,15 @@ export function FactsTable({
   quote = null,
   onQuoteDone,
   onChapter,
+  onSuggestions,
 }: {
-  /** On the writing desk (inside its Facts tab): no heading, the buttons first, and no Flesh out. */
+  /**
+   * On the writing desk (inside its Facts tab): no heading, the buttons first, and no Flesh out. The facts changed at
+   * the chapter come first, each with what it was before, and a fact the AI applied has Approve and Undo on its row.
+   */
   desk?: boolean;
+  /** The desk: a suggestion's marker opens the entry's Suggestions tab (elsewhere it links to the review page). */
+  onSuggestions?: () => void;
   /** The desk: "since “chapter”" is a link that shows that chapter in the story column. */
   onChapter?: (chapterId: string) => void;
   /**
@@ -673,15 +688,35 @@ export function FactsTable({
     return true;
   }
   const resetShared = (factId: string) => run(() => post("/api/codex/reset-fact", { anchor_chapter_id: chapterId, entry_id: entry.entry_id, fact_id: factId }));
+  // Facts the AI applied on its own (by fact-change id): approved, they lose the AI mark; undone, they read as before.
+  const approve = (ids: string[]) => run(() => post("/api/codex/approve", { ids }));
+  const undo = (ids: string[]) => run(() => post("/api/codex/undo-ai", { ids }));
+  /** The desk's line under a fact the AI applied, with Approve and Undo (elsewhere a marker links to the review page). */
+  const aiActions = (f: LiveFact, label: string) => (
+    <div className="ef-wide ef-ai">
+      <span className="ef-ai-note">Added by the AI{f.op.anchor_chapter_id === chapterId ? "" : ` from “${titleOf(f.op.anchor_chapter_id)}”`}</span>
+      <button type="button" className="secondary" disabled={busy} aria-label={`Approve ${label}`} onClick={() => void approve([f.op.id])}>
+        Approve
+      </button>
+      <button type="button" className="secondary" disabled={busy} aria-label={`Undo ${label}`} title="Takes the AI's change back: the fact reads as it did before" onClick={() => void undo([f.op.id])}>
+        Undo
+      </button>
+    </div>
+  );
 
   const rows = entry.facts.filter((f) => !isFormAspect(f.aspect));
   const hasForms = entry.forms.length > 0;
   // With no form set, an entry that has had one reads as in its normal form.
   const cur = entry.form?.name ?? entry.baseForm;
   const isCur = (name: string) => cur !== null && sameAspect(name, cur);
-  const every = rows.filter((f) => f.form === "");
-  const own = cur ? rows.filter((f) => f.form !== "" && isCur(f.form)) : [];
-  const others = entry.forms.filter((name) => !isCur(name)).map((name) => ({ name, facts: rows.filter((f) => f.form !== "" && sameAspect(f.form, name)) })).filter((g) => g.facts.length > 0);
+  // The desk lists what changed at this chapter first, apart from what was already so when the chapter began.
+  const changedHere = desk ? rows.filter((f) => f.op.anchor_chapter_id === chapterId) : [];
+  const earlier = desk ? rows.filter((f) => f.op.anchor_chapter_id !== chapterId) : rows;
+  const formChangedHere = desk && !!entry.form && entry.form.fact.op.anchor_chapter_id === chapterId;
+  const aiHere = [...changedHere, ...(formChangedHere && entry.form ? [entry.form.fact] : [])].filter(isAiFact).map((f) => f.op.id);
+  const every = earlier.filter((f) => f.form === "");
+  const own = cur ? earlier.filter((f) => f.form !== "" && isCur(f.form)) : [];
+  const others = entry.forms.filter((name) => !isCur(name)).map((name) => ({ name, facts: earlier.filter((f) => f.form !== "" && sameAspect(f.form, name)) })).filter((g) => g.facts.length > 0);
   const replaced = new Set(overriddenFacts(entry));
   const showForm = hasForms || entry.type === "character" || entry.form !== null;
   // Facts of a form, but no form was ever set: they can't apply, and the AI isn't sent them.
@@ -700,7 +735,7 @@ export function FactsTable({
         }
       }
     }
-    if (isAiFact(f)) out.push(aiMarker(f, entry.entry_id, titleOf));
+    if (isAiFact(f) && !desk) out.push(aiMarker(f, entry.entry_id, titleOf));
     return out;
   };
   const formMarkers: Marker[] = [];
@@ -709,7 +744,7 @@ export function FactsTable({
     used.add(s.id);
     formMarkers.push(suggestionMarker(s, entry.entry_id));
   }
-  if (entry.form && isAiFact(entry.form.fact)) formMarkers.push(aiMarker(entry.form.fact, entry.entry_id, titleOf));
+  if (entry.form && isAiFact(entry.form.fact) && !desk) formMarkers.push(aiMarker(entry.form.fact, entry.entry_id, titleOf));
   // (Worked out before the rows render, so the leftovers are known.)
   const rowMarkers = new Map(rows.map((f) => [f.fact_id, markersFor(f)]));
   const newAspects = suggestions.filter((s) => !used.has(s.id) && s.kind === "set" && s.aspect.trim());
@@ -748,8 +783,12 @@ export function FactsTable({
     const versions = [...factHistory(factOps, f.fact_id)].reverse();
     const struck = replaced.has(f.fact_id);
     const label = f.aspect || "the fact";
+    // On the desk, a fact changed at this chapter says what it was before (the version it replaced), or that it is new.
+    const changed = desk && f.op.anchor_chapter_id === chapterId;
+    const at = versions.findIndex((v) => v.id === f.op.id);
+    const before = changed && at >= 0 ? versions[at + 1] : undefined;
     return (
-      <div key={f.fact_id} id={`fact-${f.fact_id}`} className={struck ? "fact-row ef-row replaced" : "fact-row ef-row"}>
+      <div key={f.fact_id} id={`fact-${f.fact_id}`} className={["fact-row ef-row", struck ? "replaced" : "", changed ? "ef-changed" : ""].filter(Boolean).join(" ")}>
         <button type="button" className="ef-main" aria-label={`Edit ${label}: ${f.text}`} aria-expanded={editing === f.fact_id} onClick={() => setEditing(editing === f.fact_id ? null : f.fact_id)}>
           <span className="ef-aspect">{f.aspect || "—"}</span>
           <span className="ef-value">
@@ -763,8 +802,25 @@ export function FactsTable({
           </span>
         </button>
         <span className="ef-since meta">
-          {since(f.op.anchor_chapter_id)}
-          {f.op.anchor_chapter_id === chapterId && <span className="tag"> · changed here</span>}
+          {changed ? (
+            <>
+              {before && before.op === "set" ? (
+                <>
+                  was <span className="ef-before">{before.text}</span>
+                </>
+              ) : before ? (
+                "back again: it was removed before"
+              ) : (
+                "new in this chapter"
+              )}
+              {f.form.trim() && <span className="tag"> · {f.form} only</span>}
+            </>
+          ) : (
+            <>
+              {since(f.op.anchor_chapter_id)}
+              {f.op.anchor_chapter_id === chapterId && <span className="tag"> · changed here</span>}
+            </>
+          )}
           {entry.shared_entry_id && sharedState(f.fact_id) === "base" && <span className="tag"> · shared</span>}
           {entry.shared_entry_id && sharedState(f.fact_id) === "changed" && <span className="tag"> · shared, changed in this story</span>}
           {entry.shared_entry_id && sharedState(f.fact_id) === "own" && <span className="tag"> · this story only</span>}
@@ -810,7 +866,8 @@ export function FactsTable({
               ))}
           </MoreMenu>
         </div>
-        <Markers list={rowMarkers.get(f.fact_id) ?? []} />
+        <Markers list={rowMarkers.get(f.fact_id) ?? []} onOpen={onSuggestions} />
+        {desk && isAiFact(f) && aiActions(f, label)}
         {moving === f.op.id && <FactMover entryId={entry.entry_id} factOpId={f.op.id} chapterId={chapterId} onMoved={onSaved} onClose={() => setMoving(null)} />}
         {editing === f.fact_id && <div className="ef-wide">{editor(f)}</div>}
         {history.includes(f.fact_id) && (
@@ -925,7 +982,8 @@ export function FactsTable({
               </button>
             )}
           </div>
-          <Markers list={formMarkers} />
+          <Markers list={formMarkers} onOpen={onSuggestions} />
+          {desk && entry.form && isAiFact(entry.form.fact) && aiActions(entry.form.fact, "the form")}
           {entry.form && entry.baseForm && sameAspect(entry.form.name, entry.baseForm) && (
             <p className="meta ef-wide">{entry.baseForm} is the normal form, so the AI isn&apos;t told the form, only its facts, unless it has just changed back.</p>
           )}
@@ -969,6 +1027,23 @@ export function FactsTable({
       )}
 
       {rows.length === 0 && newAspects.length === 0 && <p className="meta">No facts yet.</p>}
+      {desk && (changedHere.length > 0 || aiHere.length > 0) && (
+        <div className="fact-group ef-here" role="group" aria-label="Changed in this chapter">
+          <div className="row ef-here-head">
+            <h3 className="fact-heading">
+              Changed in this chapter ({changedHere.length + (formChangedHere ? 1 : 0)})
+            </h3>
+            {aiHere.length > 1 && (
+              <button type="button" className="secondary" disabled={busy} onClick={() => void approve(aiHere)}>
+                Approve all {aiHere.length}
+              </button>
+            )}
+          </div>
+          {formChangedHere && changedHere.length === 0 && <p className="meta ef-here-note">The form, above.</p>}
+          {changedHere.map(row)}
+        </div>
+      )}
+      {desk && changedHere.length > 0 && earlier.length > 0 && <h3 className="fact-heading ef-earlier-head">From earlier chapters ({earlier.length})</h3>}
       {every.length > 0 && (
         <div className="fact-group">
           {hasForms && <h3 className="fact-heading">Every form</h3>}
@@ -997,10 +1072,10 @@ export function FactsTable({
             <span className="ef-aspect">{s.aspect}</span>
             <span className="ef-value meta">not in the codex yet{s.form ? ` (${s.form} only)` : ""}</span>
           </div>
-          <Markers list={[suggestionMarker(s, entry.entry_id)]} />
+          <Markers list={[suggestionMarker(s, entry.entry_id)]} onOpen={onSuggestions} />
         </div>
       ))}
-      {general.length > 0 && <Markers list={general.map((s) => suggestionMarker(s, entry.entry_id))} />}
+      {general.length > 0 && <Markers list={general.map((s) => suggestionMarker(s, entry.entry_id))} onOpen={onSuggestions} />}
 
       {hiddenShared.length > 0 && (
         <div className="fact-group dim">

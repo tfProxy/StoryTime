@@ -6962,6 +6962,85 @@ button.link-button.ef-since-link {
   font-size: inherit;
 }
 
+/* The desk's Facts tab: what changed at this chapter comes first, set apart by a bar down its side, each fact with
+   what it was before; the facts from earlier chapters follow, closer together. */
+.desk-entry .ef-main {
+  min-height: 0;
+  padding: 0.35rem 0.25rem 0.15rem;
+}
+
+.desk-entry .ef-since {
+  padding-bottom: 0.3rem;
+}
+
+.ef-here {
+  margin: 0.5rem 0 0.75rem;
+  padding-left: 0.6rem;
+  border-left: 3px solid var(--accent);
+}
+
+.ef-here-head {
+  justify-content: space-between;
+  align-items: center;
+  margin: 0;
+}
+
+.ef-here-head .fact-heading,
+.ef-here-note {
+  margin: 0.25rem 0;
+}
+
+.ef-before {
+  text-decoration: line-through;
+}
+
+/* A fact the AI applied on its own: the note, then Approve and Undo. */
+.ef-ai {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.25rem 0.45rem;
+  font-size: 0.85rem;
+}
+
+.ef-ai-note {
+  margin-right: auto;
+  color: var(--warn);
+}
+
+.ef-ai button {
+  padding: 0.15rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+button.link-button.ef-marker {
+  min-height: 0;
+  padding: 0.15rem 0;
+  text-align: left;
+}
+
+.desk-chip-changed {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* An entry the AI proposes from this chapter: its name and note, then Add it and Dismiss. */
+.desk-proposed-item {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.35rem 0.4rem;
+}
+
+.desk-proposed-actions {
+  margin: 0;
+  gap: 0.4rem;
+}
+
+.desk-proposed-actions button {
+  padding: 0.15rem 0.6rem;
+  font-size: 0.85rem;
+}
+
 /* Illustrate mode: the picture controls in a wider side column (no entry column), the chapter's pictures in the story
    column. The controls' panels are sections of the side column, not cards inside it. */
 @media (min-width: 60rem) {

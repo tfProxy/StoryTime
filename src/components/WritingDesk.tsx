@@ -303,6 +303,20 @@ export default function WritingDesk({
   const inChapter = shown.filter((e) => mentions(e, text) || promptPick(e.entry_id) === "pinned");
   const open = openId && openId !== "new" && openId !== "shared" ? entries.find((e) => e.entry_id === openId) : undefined;
   const here = path[path.length - 1];
+  // The entries whose facts changed at the chapter on the desk, and how many of those changes are the AI's, not yet
+  // approved. (A new chapter's own changes are held in its draft: those rows say "held".)
+  const changedAt = useMemo(() => {
+    const n: Record<string, { ai: number }> = {};
+    if (newChapter || !here) return n;
+    for (const f of facts) {
+      if (f.anchor_chapter_id !== here.id) continue;
+      const c = (n[f.entry_id] ??= { ai: 0 });
+      if (f.ai_suggestion_id) c.ai += 1;
+    }
+    return n;
+  }, [facts, here, newChapter]);
+  // Entries the AI proposes from the chapter on the desk: added or dismissed in the side column.
+  const proposed = here ? inbox.shown.filter((s) => s.kind === "entry" && s.chapter_id === here.id) : [];
 
   // The entries named in the chapter's text (by name or keyword, as "In this chapter"), listed under it.
   const named = entries.filter((e) => mentions(e, body));
@@ -385,6 +399,17 @@ export default function WritingDesk({
               held
             </span>
           )}
+          {changedAt[e.entry_id] &&
+            (changedAt[e.entry_id].ai > 0 ? (
+              <span className="desk-chip desk-chip-ai" title={`Changed in this chapter: ${changedAt[e.entry_id].ai} by the AI, not approved yet`}>
+                AI {changedAt[e.entry_id].ai}
+                <span className="visually-hidden"> changed by the AI in this chapter, not approved yet</span>
+              </span>
+            ) : (
+              <span className="desk-chip desk-chip-changed" title="Changed in this chapter">
+                changed
+              </span>
+            ))}
           {pick !== "auto" && (
             <span className={`desk-chip desk-pick-chip ${pick}`} title={PICKS[pick].note}>
               {PICKS[pick].chip}
@@ -481,6 +506,36 @@ export default function WritingDesk({
               {group("In this chapter", inChapter)}
               {GROUPS.map((g) => group(g.title, shown.filter((e) => g.types.includes(e.type))))}
             </>
+          )}
+          {proposed.length > 0 && (
+            <details className="desk-group desk-proposed" open>
+              <summary>
+                Suggested entries <span className="desk-group-count">{proposed.filter((s) => s.status === "open").length}</span>
+              </summary>
+              <ul className="desk-rows">
+                {proposed.map((s) => (
+                  <li key={s.id} className="desk-proposed-item">
+                    <span className="desk-row-text">
+                      <span className="desk-row-name">{s.entry_name}</span>
+                      <small>{[s.entry ? TYPE_LABELS[s.entry.type] : "", s.entry?.notes ?? ""].filter(Boolean).join(" · ")}</small>
+                    </span>
+                    {s.status === "open" ? (
+                      <span className="row desk-proposed-actions">
+                        <button type="button" className="secondary" disabled={inbox.busy.has(s.id)} aria-label={`Add ${s.entry_name} to the codex`} onClick={() => void inbox.accept(s)}>
+                          Add it
+                        </button>
+                        <button type="button" className="secondary" disabled={inbox.busy.has(s.id)} aria-label={`Dismiss ${s.entry_name}`} onClick={() => void inbox.dismiss(s)}>
+                          Dismiss
+                        </button>
+                      </span>
+                    ) : (
+                      <small className="meta">{s.status === "accepted" ? "Added" : "Dismissed"}</small>
+                    )}
+                    {inbox.errors[s.id] && <p className="error">{inbox.errors[s.id]}</p>}
+                  </li>
+                ))}
+              </ul>
+            </details>
           )}
         </aside>
       )}
@@ -1105,7 +1160,9 @@ function DeskEntry({
             start={start}
             laterForm={holding ? null : (codex.laterForms[entry.entry_id] ?? null)}
             formChapters={holding ? [holding.here] : codex.formChapters}
-            suggestions={[]}
+            // Only what this chapter suggests is marked on the facts; older suggestions wait in the Suggestions tab.
+            suggestions={(inbox.items ?? []).filter((s) => s.status === "open" && s.entry_id === entry.entry_id && s.chapter_id === chapterId)}
+            onSuggestions={() => setTab("suggestions")}
             quote={quote}
             onQuoteDone={onQuoteDone}
             onChapter={showDeskChapter}

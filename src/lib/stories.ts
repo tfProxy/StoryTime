@@ -490,6 +490,21 @@ export function createChapter(input: z.infer<typeof NewChapterSchema>): Posted {
       throw e;
     }
     const choiceIds = insertChoices(chapterId, input.choices, t);
+    // Writing on from a chapter approves what the AI put in the codex along the way there: the facts it applied on its
+    // own, at the chapters from the story's first to the one this follows, lose their AI mark (as Approve does). A
+    // chapter an AI run posts is not the owner going on, so it approves nothing.
+    if (input.ai_run_id === undefined) {
+      db()
+        .prepare(
+          `WITH RECURSIVE up(id, parent_choice_id) AS (
+             SELECT id, parent_choice_id FROM chapters WHERE id = ?
+             UNION ALL
+             SELECT c.id, c.parent_choice_id FROM up JOIN choices ch ON ch.id = up.parent_choice_id JOIN chapters c ON c.id = ch.parent_chapter_id
+           )
+           UPDATE codex_facts SET ai_suggestion_id = NULL WHERE ai_suggestion_id IS NOT NULL AND anchor_chapter_id IN (SELECT id FROM up)`,
+        )
+        .run(parentChapter.id);
+    }
     return { story_id: parentChapter.story_id, chapter_id: chapterId, choice_ids: choiceIds };
   })();
 }
