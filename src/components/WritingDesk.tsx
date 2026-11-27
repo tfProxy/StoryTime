@@ -33,7 +33,8 @@ import { AiText, EntryTabs, FactsTable, type Chapter, type LaterForm } from "./C
 import { EntryDetailsForm, EntryHistoryList, useEntryActions, type EntryChange } from "./CodexEntryEditor";
 import CodexIconPicker from "./CodexIconPicker";
 import { ChangeList, comparisonTitle, type Relation } from "./CodexComparison";
-import { useCodexInbox } from "./CodexInbox";
+import { INBOX_CHANGED, useCodexInbox } from "./CodexInbox";
+import { useWorkQueue, type RunItem } from "./WorkQueue";
 import DeskIllustrate from "./DeskIllustrate";
 import DeskPath, { DeskReading, showDeskChapter, type PathBlock } from "./DeskPath";
 import type { ImageVersions } from "@/lib/imageSlots";
@@ -296,6 +297,19 @@ export default function WritingDesk({
     for (const s of inbox.items ?? []) if (s.status === "open" && s.entry_id) n[s.entry_id] = (n[s.entry_id] ?? 0) + 1;
     return n;
   }, [inbox.items]);
+
+  // The check that runs after a chapter is posted or updated: when it finishes for a chapter on the desk's path, the
+  // codex it changed is loaded here (the facts it applied, its suggestions), and that counts as looking at it.
+  const { items: queueItems, markSeen } = useWorkQueue();
+  const pathIds = path.map((c) => c.id).join(",");
+  useEffect(() => {
+    const ids = new Set(pathIds.split(","));
+    const ended = queueItems.filter((i): i is RunItem => i.type === "run" && i.mode === "review" && !!i.automatic && i.state === "done" && !i.seen && !!i.startChapterId && ids.has(i.startChapterId));
+    if (ended.length === 0) return;
+    for (const r of ended) markSeen(r.key);
+    router.refresh();
+    window.dispatchEvent(new Event(INBOX_CHANGED));
+  }, [queueItems, pathIds, markSeen, router]);
 
   const q = query.trim().toLowerCase();
   const shown = q ? entries.filter((e) => [e.name, ...e.aliases].some((n) => n.toLowerCase().includes(q))) : entries;

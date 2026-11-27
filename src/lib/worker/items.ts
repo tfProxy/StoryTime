@@ -69,6 +69,8 @@ export const runData = z.object({
   error: z.string().optional(),
   /** Why it is paused when that isn't the author's doing ("Plan ready to check"). */
   note: z.string().optional(),
+  /** The owner has looked at it since it finished: it stays in the queue page's list, but isn't "ready" in the header. */
+  seen: z.boolean().optional(),
 });
 export type RunData = z.infer<typeof runData>;
 
@@ -86,6 +88,8 @@ export const generateData = z.object({
   error: z.string().optional(),
   /** Kept with an error that lost the text, so it can be copied. */
   text: z.string().optional(),
+  /** As a run's `seen`. */
+  seen: z.boolean().optional(),
 });
 export type GenerateData = z.infer<typeof generateData>;
 
@@ -197,8 +201,10 @@ export function updateItem(key: string, patch: ItemPatch, now = Date.now()): Wor
       if (v === undefined) delete merged[k];
       else merged[k] = v;
     }
-    const data = DATA[row.type].parse(merged);
     const state = patch.state ?? row.state;
+    // "Seen" is about how it ended: an item that goes on (a run resumed, a Generate asked again) is new when it ends again.
+    if (state !== row.state && patch.data?.seen === undefined) delete merged.seen;
+    const data = DATA[row.type].parse(merged);
     const ending = state === "done" || state === "failed";
     const endedAt = patch.endedAt !== undefined ? patch.endedAt : ending && row.ended_at === null ? now : ending ? row.ended_at : null;
     d.prepare(`UPDATE work_items SET state = ?, data = ?, moved = ?, ready_at = ?, ended_at = ?, updated_at = ? WHERE key = ?`).run(

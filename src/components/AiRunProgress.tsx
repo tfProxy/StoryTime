@@ -44,7 +44,7 @@ export default function AiRunProgress({
   /** Called once when the run is seen finished (done or stopped for good). */
   onFinished?: (run: AiRun) => void;
 }) {
-  const { items, stopRun, startRun, listenRun } = useWorkQueue();
+  const { items, stopRun, startRun, listenRun, markSeen } = useWorkQueue();
   const [run, setRun] = useState<AiRun | null>(null);
   const finishedRef = useRef(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -57,6 +57,11 @@ export default function AiRunProgress({
   const [edits, setEdits] = useState<Record<string, Edit>>({});
   const [busy, setBusy] = useState(false);
   const item = items.find((i): i is RunItem => i.type === "run" && i.runId === runId);
+  // The run's own page is open on it: once it has finished, it has been looked at.
+  const finishedKey = item && item.state === "done" && !item.seen ? item.key : undefined;
+  useEffect(() => {
+    if (finishedKey) markSeen(finishedKey);
+  }, [finishedKey, markSeen]);
   const others = items.filter((i) => i.type === "run" && i.runId !== runId && (i.state === "working" || i.state === "waiting")).length;
 
   const reload = useCallback(

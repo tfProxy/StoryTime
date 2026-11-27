@@ -23,7 +23,10 @@ export const runHref = (run: Pick<RunItem, "runId" | "storyId" | "startChapterId
   run.mode === "pictures"
     ? `/s/${run.storyId}/pictures?picrun=${run.runId}`
     : run.mode === "review"
-      ? run.automatic || !run.startChapterId
+      ? run.automatic && run.startChapterId
+        ? // The check after a chapter is posted: what it changed in the codex is reviewed on that chapter's desk.
+          `/c/${run.startChapterId}/desk`
+        : run.automatic || !run.startChapterId
         ? `/s/${run.storyId}/review`
         : `/s/${run.storyId}/review?chapter=${run.startChapterId}`
       : !run.startChapterId
@@ -86,7 +89,7 @@ function useTitleCount(count: number) {
 
 export default function WorkQueueStatus() {
   const { jobs, stop, dismiss } = usePictureQueue();
-  const { paused, items, stopRun, resumeRun, stopGenerate, machine } = useWorkQueue();
+  const { paused, items, stopRun, resumeRun, stopGenerate, markSeen, machine } = useWorkQueue();
   const settings = useSettings();
   const comfyUrl = settings.comfy.url;
   const [open, setOpen] = useState(false);
@@ -95,11 +98,14 @@ export default function WorkQueueStatus() {
   const runs = useMemo(() => items.filter((i): i is RunItem => i.type === "run").sort((a, b) => b.addedAt - a.addedAt), [items]);
   const gens = useMemo(() => items.filter((i): i is GenerateItem => i.type === "generate").sort((a, b) => b.addedAt - a.addedAt), [items]);
   const gensGoing = gens.filter((g) => g.state === "working" || g.state === "waiting");
-  const gensDone = gens.filter((g) => g.state === "done");
+  // A finished Generate or run is "ready" until it has been looked at (its page opened); after that it is history,
+  // listed on the queue page only. Finished pictures leave when their page shows them.
+  const gensDone = gens.filter((g) => g.state === "done" && !g.seen);
   const gensFailed = gens.filter((g) => g.state === "failed");
   const runsGoing = runs.filter((r) => r.state === "working" || r.state === "waiting");
   const runsPaused = runs.filter((r) => r.state === "paused");
-  const runsDone = runs.filter((r) => r.state === "done");
+  const runsDone = runs.filter((r) => r.state === "done" && !r.seen);
+  const listed = (i: RunItem | GenerateItem) => !(i.state === "done" && i.seen);
   const runsFailed = runs.filter((r) => r.state === "failed");
   const making = jobs.filter((j) => j.state === "making");
   const done = jobs.filter((j) => j.state === "done");
@@ -140,8 +146,10 @@ export default function WorkQueueStatus() {
   }, [open]);
 
   // Every hook is above this.
-  if (jobs.length === 0 && runs.length === 0 && gens.length === 0 && !paused) return null;
-  const mixed = runs.length + gens.length > 0;
+  const shownRuns = runs.filter(listed);
+  const shownGens = gens.filter(listed);
+  if (jobs.length === 0 && shownRuns.length === 0 && shownGens.length === 0 && !paused) return null;
+  const mixed = shownRuns.length + shownGens.length > 0;
 
   const said = [
     paused && "paused",
@@ -175,10 +183,10 @@ export default function WorkQueueStatus() {
         <div className="picture-queue-panel" role="region" aria-label="Queue">
           {note && <p className="meta picture-queue-note">{note}</p>}
           <ul className="picture-queue-list">
-            {gens.map((g) => (
+            {shownGens.map((g) => (
               <GenerateRow key={g.key} item={g} onStop={() => stopGenerate(g.draftKey)} onDismiss={() => dismiss(g.key)} />
             ))}
-            {runs.map((r) => (
+            {shownRuns.map((r) => (
               <RunRow key={r.key} run={r} onStop={() => stopRun(r.runId)} onResume={() => void resumeRun(r.runId)} onDismiss={() => dismiss(r.key)} />
             ))}
             {newest.map((j) => (
@@ -186,7 +194,16 @@ export default function WorkQueueStatus() {
             ))}
           </ul>
           {ready + bad > 1 && (
-            <button type="button" className="picture-queue-text-button picture-queue-clear" onClick={() => [...done, ...failed, ...runsDone, ...runsFailed, ...gensDone, ...gensFailed].forEach((j) => dismiss(j.key))}>
+            // Finished writing and runs stay on the queue page (they are only marked as looked at); the rest goes.
+            <button
+              type="button"
+              className="picture-queue-text-button picture-queue-clear"
+              title="Finished writing and runs stay listed on the queue page"
+              onClick={() => {
+                [...done, ...failed, ...runsFailed, ...gensFailed].forEach((j) => dismiss(j.key));
+                [...runsDone, ...gensDone].forEach((j) => markSeen(j.key));
+              }}
+            >
               Clear finished
             </button>
           )}
@@ -270,10 +287,15 @@ export function RunRow({ run, onStop, onResume, onDismiss }: { run: RunItem; onS
   const href = runHref(run);
   const title = run.startTitle ? `${run.storyTitle} · ${run.startTitle}` : run.storyTitle;
   const going = run.state === "working" || run.state === "waiting";
+  // Opening it is looking at it: it is no longer "ready" in the header.
+  const { markSeen } = useWorkQueue();
+  const seen = () => markSeen(run.key);
   return (
     <li className={`picture-queue-job picture-queue-run picture-queue-${run.state}`} aria-label={`${MODE_WORDS[run.mode]}, ${title}: ${RUN_STATE[run.state]}`}>
       <div className="picture-queue-head">
-        <Link href={href}>{MODE_WORDS[run.mode]}</Link>
+        <Link href={href} onClick={seen}>
+          {MODE_WORDS[run.mode]}
+        </Link>
         <span className="meta">{title}</span>
       </div>
       <div className="picture-queue-line">
@@ -296,7 +318,9 @@ export function RunRow({ run, onStop, onResume, onDismiss }: { run: RunItem; onS
       {run.note && <p className="meta picture-queue-message">{run.note}</p>}
       {run.error && <p className="error picture-queue-message">{run.error}</p>}
       <div className="picture-queue-line">
-        <Link href={href}>Open</Link>
+        <Link href={href} onClick={seen}>
+          Open
+        </Link>
         {!going && (
           <button type="button" className="picture-queue-text-button" onClick={onDismiss}>
             Dismiss
@@ -311,10 +335,14 @@ export function RunRow({ run, onStop, onResume, onDismiss }: { run: RunItem; onS
 export function GenerateRow({ item, onStop, onDismiss }: { item: GenerateItem; onStop: () => void; onDismiss: () => void }) {
   const going = item.state === "working" || item.state === "waiting";
   const words = { waiting: "waiting its turn", working: "writing", done: "ready", failed: "failed" } as const;
+  const { markSeen } = useWorkQueue();
+  const seen = () => markSeen(item.key);
   return (
     <li className={`picture-queue-job picture-queue-run picture-queue-${item.state}`} aria-label={`Writing ${item.label}: ${words[item.state]}`}>
       <div className="picture-queue-head">
-        <Link href={item.href}>{item.state === "working" ? `Writing “${item.label}”…` : item.label}</Link>
+        <Link href={item.href} onClick={seen}>
+          {item.state === "working" ? `Writing “${item.label}”…` : item.label}
+        </Link>
         <span className="meta">Chapter from the writing page</span>
       </div>
       <div className="picture-queue-line">
@@ -330,7 +358,9 @@ export function GenerateRow({ item, onStop, onDismiss }: { item: GenerateItem; o
       {item.error && <p className="error picture-queue-message">{item.error}</p>}
       <div className="picture-queue-line">
         <span className="row" style={{ gap: "0.75rem" }}>
-          <Link href={item.href}>Open</Link>
+          <Link href={item.href} onClick={seen}>
+            Open
+          </Link>
           <Link href={`/ai-log?item=${encodeURIComponent(item.key)}`}>Show the AI exchange</Link>
           {item.text && (
             <button type="button" className="picture-queue-text-button" onClick={() => void copyText(item.text!)}>

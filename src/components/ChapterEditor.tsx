@@ -198,7 +198,12 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
   const [draft, setDraft] = useState<Draft | null>(null);
   const [localBusy, setBusy] = useState<null | "generate" | "choices" | "summary" | "post">(null);
   // A Generate lives in the work queue (so it goes on if the author leaves the page): the page is busy while that item is.
-  const { items: queued, generate, stopGenerate, listenDraft } = useWorkQueue();
+  const { items: queued, generate, stopGenerate, listenDraft, markSeen } = useWorkQueue();
+  // This draft's Generate has finished and its page is open: it has been looked at, so it isn't "ready" in the header.
+  const finishedKey = queued.find((i) => i.type === "generate" && i.draftKey === draftKey && i.state === "done" && !i.seen)?.key;
+  useEffect(() => {
+    if (finishedKey) markSeen(finishedKey);
+  }, [finishedKey, markSeen]);
   const generating = queued.find((i): i is GenerateItem => i.type === "generate" && i.draftKey === draftKey && (i.state === "waiting" || i.state === "working"));
   const busy = localBusy ?? (generating ? "generate" : null);
   const [error, setError] = useState<string | null>(null);

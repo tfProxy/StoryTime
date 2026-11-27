@@ -89,6 +89,8 @@ export type RunItem = {
   error?: string;
   /** Why it is paused, when it isn't the author's doing ("Plan ready to check"). */
   note?: string;
+  /** Looked at since it finished (its page was open, or its Open link was used): listed on the queue page, not "ready" in the header. */
+  seen?: boolean;
   addedAt: number;
 };
 
@@ -129,6 +131,8 @@ export type GenerateItem = {
   error?: string;
   /** Kept with an error that lost the text, so it can be copied. */
   text?: string;
+  /** As a run's `seen`. */
+  seen?: boolean;
   addedAt: number;
 };
 
@@ -175,6 +179,8 @@ export type QueueApi = {
 export type WorkQueueApi = Omit<QueueApi, "jobs"> & {
   /** Oldest first. */
   items: WorkItem[];
+  /** A finished run or Generate has been looked at: it is no longer "ready" in the header, and stays on the queue page. */
+  markSeen: (key: string) => void;
   /** Keys of the jobs that finished gathering and wait to be sent, in the order they will go (what the queue page shows as Waiting). */
   waiting: string[];
   /** Pause queue: nothing new is sent, what is running finishes. Kept on the server, so it is the same on every device. */
@@ -231,7 +237,7 @@ type GenerateRow = {
   key: string;
   type: "generate";
   state: GenerateItem["state"] | "gathering" | "paused";
-  data: { draftKey: string; href: string; label: string; note?: string; error?: string; text?: string };
+  data: { draftKey: string; href: string; label: string; note?: string; error?: string; text?: string; seen?: boolean };
   createdAt: number;
 };
 type Row = PictureRow | RunRow | GenerateRow;
@@ -621,6 +627,19 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
     [dismissOnServer, updateKept],
   );
 
+  const markSeen = useCallback(
+    (key: string) => {
+      const row = rowsRef.current.find((r) => r.key === key);
+      if (!row || row.type === "picture" || row.state !== "done" || row.data.seen) return;
+      // Shown as seen at once; the server's own update follows.
+      applyRows((prev) => prev.map((r) => (r.key === key && r.type !== "picture" ? ({ ...r, data: { ...r.data, seen: true } } as Row) : r)));
+      void post(itemUrl(key), { action: "seen" }).catch(() => {
+        // it is ready again after a reload, until it is looked at again
+      });
+    },
+    [applyRows],
+  );
+
   const listen = useCallback(
     (target: PictureTarget, listener: ChapterListener) => {
       const at = targetKey(target);
@@ -725,8 +744,8 @@ export default function WorkQueueProvider({ children }: { children: ReactNode })
   }, [rows, kept]);
 
   const api = useMemo(
-    () => ({ items, ask, stop, dismiss, listen, listenSession, waiting, paused, setPaused, move, startRun, stopRun, resumeRun: startRun, listenRun, generate, stopGenerate, listenDraft, machine }),
-    [items, ask, stop, dismiss, listen, listenSession, waiting, paused, setPaused, move, startRun, stopRun, listenRun, generate, stopGenerate, listenDraft, machine],
+    () => ({ items, ask, stop, dismiss, markSeen, listen, listenSession, waiting, paused, setPaused, move, startRun, stopRun, resumeRun: startRun, listenRun, generate, stopGenerate, listenDraft, machine }),
+    [items, ask, stop, dismiss, markSeen, listen, listenSession, waiting, paused, setPaused, move, startRun, stopRun, listenRun, generate, stopGenerate, listenDraft, machine],
   );
   // For the browser tests: the run page that starts runs comes later, so a test page asks for the queue itself.
   useEffect(() => {

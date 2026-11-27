@@ -1,14 +1,18 @@
 import { z } from "zod";
 import { getWorker } from "@/lib/worker";
 import { stopGenerate } from "@/lib/worker/generate";
-import { deleteItem, getItem } from "@/lib/worker/items";
+import { deleteItem, getItem, updateItem } from "@/lib/worker/items";
 import { dismissPicture, movePicture, stopPicture } from "@/lib/worker/pictures";
 import { stopRun } from "@/lib/worker/runs";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const Body = z.discriminatedUnion("action", [z.object({ action: z.literal("stop") }), z.object({ action: z.literal("move"), how: z.enum(["up", "down", "next"]) })]);
+const Body = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("stop") }),
+  z.object({ action: z.literal("move"), how: z.enum(["up", "down", "next"]) }),
+  z.object({ action: z.literal("seen") }),
+]);
 
 const notFound = () => Response.json({ error: "No such item" }, { status: 404 });
 
@@ -29,9 +33,15 @@ export async function POST(request: Request, ctx: { params: Promise<{ key: strin
   getWorker();
   const { key } = await ctx.params;
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return Response.json({ error: "Give {action: 'stop'} or {action: 'move', how: 'up' | 'down' | 'next'}" }, { status: 400 });
+  if (!parsed.success) return Response.json({ error: "Give {action: 'stop'}, {action: 'seen'} or {action: 'move', how: 'up' | 'down' | 'next'}" }, { status: 400 });
   const item = getItem(key);
   if (!item) return notFound();
+  // The owner has looked at a finished run or Generate: it is no longer "ready" in the header, and stays in the list.
+  if (parsed.data.action === "seen") {
+    if (item.type === "picture" || item.state !== "done") return Response.json({ error: "Only a finished run or Generate can be marked seen" }, { status: 409 });
+    updateItem(key, { data: { seen: true } });
+    return Response.json({ ok: true });
+  }
   if (parsed.data.action === "move") {
     if (item.type !== "picture" || item.state !== "waiting") return Response.json({ error: "Only a waiting picture job can be moved" }, { status: 409 });
     return Response.json({ moved: movePicture(key, parsed.data.how) });
