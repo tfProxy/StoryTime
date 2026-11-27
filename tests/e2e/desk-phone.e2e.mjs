@@ -75,6 +75,14 @@ try {
     text,
     box.getByRole("button", { name: "Update chapter" }),
   ];
+  // The desk scrolls itself to the chapter as it opens: the parts are measured one after another, so wait until the
+  // page has stopped moving (measured mid-scroll, the → line came out below the title).
+  await page.waitForFunction(() => {
+    const w = /** @type {{ __y?: number, __still?: number }} */ (window);
+    w.__still = w.__y === window.scrollY ? (w.__still ?? 0) + 1 : 0;
+    w.__y = window.scrollY;
+    return w.__still >= 5;
+  }, null, { polling: 100 });
   const tops = [];
   for (const p of parts) tops.push(await top(p));
   ok(tops.every((y, i) => y >= 0 && (i === 0 || y >= tops[i - 1])), `the box reads → line, title, prompt, length, model, Generate, drafts, text, Update, top to bottom (${tops.map(Math.round).join(", ")})`);
