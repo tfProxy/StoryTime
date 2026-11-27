@@ -75,6 +75,12 @@ One page that replaces the Edit and Write pages (`/c/<id>/edit`, `/c/<id>/write`
 - [x] 9. Switch over: Edit and Write open the desk, the old pages and the codex drawer go, the browser tests and the guides are updated. It closes "'Remove from this chapter only' is not offered in the writing page's codex drawer" under Codex.
 - [ ] Later: Ctrl+K to find an entry, Alt+↑/↓ along the path. (Ctrl+Enter in the prompt box is Generate.)
 
+**Codex workflow** (left from the 2026-11-26 review; the desk's "Changed in this chapter", Approve / Undo, the wording rules, the header's "seen" and the summary above the text are done)
+- [ ] Retire the "Codex changes from…" page (`/c/<id>/codex-review`) once the desk's review has been used for a while: point the reading page's banner and the Story Bible's "N changes to review" links at the chapter's desk. Ask the owner first.
+- [ ] Deferred by the owner, do not start without asking: take Condition and Whereabouts off the category lists (Settings › Codex on the NAS, and the built-in defaults in `src/lib/codexCategories.ts`), then remove the existing Condition and Whereabouts facts. An entry that already has such a fact keeps getting it rewritten (`isKnownAspect`), so both parts are needed. Run "Tidy this entry…" first so appearance detail held in Condition moves to Skin or Build (the picture prompt reads every fact); back up the database before removing. Keep Goals.
+- [ ] Maybe: a one-time clean of form names saved before `cleanForm` ("Lizard Woman form", "every form" as a form's name). Not counted; check whether the app shows them as separate forms first. Back up before.
+- [ ] Duplicated codex UI, to merge when next touched: deciding a suggestion (`CodexInbox.Card`, `CodexReview.SuggestionCard`, `CodexEntryPage.IdeaRow`, `DeskSuggestions.SuggestionRow`), asking the AI for facts (the desk's "Ask the AI for more" and the entry page's Flesh out / Update from the story), new entry, adding a shared entry, and Compare (three renderers). `EntryFold.tsx` has no importers.
+
 **Tidying the app**
 - [ ] Maybe: bring back "download this path" (Markdown or HTML of the route to a chapter) in the chapter's ⋯ menu. It was dropped when the downloads moved to Details › Export; "Read this path" still shows the route on one page.
 
