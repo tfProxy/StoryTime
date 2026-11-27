@@ -85,9 +85,9 @@ try {
   await textBox.waitFor();
   await until(async () => (await namedNames()) === "Mara,The Mill");
   ok((await namedNames()) === "Mara,The Mill", "under the text: the entries it names (Mara, the Mill): " + (await namedNames()));
-  const tb = await textBox.boundingBox();
-  const lb = await namedLine.boundingBox();
-  ok(lb.y >= tb.y + tb.height - 2, "…right under the text box");
+  // Both read in one go: the desk is still scrolling to the chapter, so two readings a moment apart don't compare.
+  const [textBottom, lineTop] = await textBox.evaluate((t) => [t.getBoundingClientRect().bottom, t.closest(".desk-box-form").querySelector(".desk-named").getBoundingClientRect().top]);
+  ok(lineTop >= textBottom - 2, `…right under the text box (${Math.round(textBottom)}, ${Math.round(lineTop)})`);
   ok((await namedLine.evaluate((el) => getComputedStyle(el).position)) === "sticky", "with a mouse the line sticks to the bottom of the screen (position: sticky)");
   await textBox.fill("Mara walked with the smith. Her cloak was green.");
   await until(async () => (await namedNames()) === "Mara,Tobin");

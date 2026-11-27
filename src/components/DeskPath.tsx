@@ -85,7 +85,7 @@ export function DeskReading({
 
 /**
  * The path above the chapter's box: each earlier chapter is a block that folds. Folded, it shows its number, title and
- * summary, and an icon for each of its pictures; unfolded, its title and text, with its pictures where the reading
+ * summary (up to three lines), and an icon for each of its pictures; unfolded, its title, its whole summary and its text, with its pictures where the reading
  * page puts them. ✎ makes it the chapter on the desk. Every block starts folded, however
  * the desk was opened; "Unfold all" or "Fold all" at the top.
  */
@@ -150,7 +150,8 @@ export default function DeskPath({ blocks, onQuote }: { storyId?: string; blocks
                   <strong>
                     <span aria-hidden="true">{open ? "▾" : "▸"}</span> {i + 1} · {b.title}
                   </strong>
-                  {!open && <small>{b.summary?.trim() || "No summary yet"}</small>}
+                  {/* The summary stays under the title, folded or not: the short version comes before the text. */}
+                  {(!open || b.summary?.trim()) && <small className={open ? "desk-block-summary open" : "desk-block-summary"}>{b.summary?.trim() || "No summary yet"}</small>}
                 </button>
                 {!open &&
                   IMAGE_SLOTS.map((slot) => {

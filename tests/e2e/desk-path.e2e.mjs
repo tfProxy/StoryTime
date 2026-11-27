@@ -100,7 +100,7 @@ try {
   ok(!!(await until(() => page.evaluate(() => { const t = document.querySelector(".desk-here").getBoundingClientRect().top; return t >= 0 && t < window.innerHeight / 2; }))), "…and in view");
   await page.locator(".desk-path-head button").click();
   ok((await block(1).locator(".prose").innerText()).includes("It began in the Hollow."), "Unfold all: an unfolded block shows the chapter's text");
-  ok((await block(2).innerText()).includes("Chapter A") && (await block(2).locator(".desk-block-fold small").count()) === 0, "…with its title, and no summary");
+  ok((await block(2).innerText()).includes("Chapter A") && (await block(2).locator(".desk-block-fold small").innerText()) === "A walks." && (await block(1).locator(".desk-block-fold small").count()) === 0, "…with its title and, when it has one, its summary still above the text");
   ok((await block(2).locator(".draft-mark").innerText()) === "Draft not used" && (await block(1).locator(".draft-mark").count()) === 0, "Chapter A's block is marked Draft not used, Root's isn't");
   ok((await page.locator(".desk-via").allInnerTexts()).map((t) => t.trim()).join("|") === "→ Go on|→ Climb", "the choices leading to A and to the box show as → lines");
 

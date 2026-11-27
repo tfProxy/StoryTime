@@ -74,8 +74,8 @@ type Props = {
 };
 
 /**
- * The writing desk, whose own columns show the codex, around the chapter's box (title; "Prompt and drafts"; the text;
- * "Summary"; Post or Update). `onText` hears the draft's title, prompt and text as they change (the desk's "In this
+ * The writing desk, whose own columns show the codex, around the chapter's box (title; "Prompt and drafts";
+ * "Summary"; the text; Post or Update). `onText` hears the draft's title, prompt and text as they change (the desk's "In this
  * chapter"); `menuSlot` is where the top bar's ⋯ menu goes; `onNote` shows a line in the top bar (after an Update, say).
  */
 export type Desk = {
@@ -247,6 +247,14 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
     mine: target.kind === "edit" && !!target.summaryMine,
     saved: true,
   });
+  // The queue rewrites the summary after an Update; when the desk is told (its page is refreshed), the summary shown
+  // follows, unless the owner is in the middle of changing it.
+  const propSummary = target.kind === "edit" ? (target.initialSummary ?? "") : null;
+  const [propSeen, setPropSeen] = useState(propSummary);
+  if (propSummary !== propSeen) {
+    setPropSeen(propSummary);
+    if (propSummary !== null) setChapterSummary((s) => (s.saved ? { ...s, text: propSummary } : s));
+  }
   const summaryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [markRemoved, setMarkRemoved] = useState(false);
 
@@ -1051,6 +1059,45 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
       </MoreMenu>,
       desk.menuSlot,
     );
+  // "Summary" sits above the text, so the short version is read first. Folded, it shows the summary's first lines.
+  const summaryFold = (
+    <>
+      <button type="button" className="desk-fold" aria-expanded={summaryOpen} onClick={openSummary}>
+        {summaryOpen ? "▾" : "▸"} Summary
+        {summaryMine && <span className="desk-chip">yours · not rewritten</span>}
+      </button>
+      {!summaryOpen && summaryText.trim() && <p className="meta desk-summary-preview">{summaryText.trim()}</p>}
+      {summaryOpen && (
+        <div className="desk-summary">
+          <AutoTextarea
+            aria-label="Summary"
+            style={{ minHeight: "4rem", fontFamily: "inherit" }}
+            placeholder={target.kind === "edit" ? "No summary yet. One is written when the chapter is updated." : "None yet. One is written when the chapter is posted."}
+            value={summaryText}
+            maxLength={LIMITS.summary}
+            onChange={(e) => typeSummary(e.target.value)}
+            onBlur={() => void flushSummary()}
+          />
+          {summaryMine ? (
+            <div className="row desk-summary-mine">
+              <span>You edited this summary, so {target.kind === "edit" ? "Update" : "Post"} leaves it alone.</span>
+              <span className="desk-spacer" />
+              <button type="button" className="secondary" onClick={handBackSummary}>
+                Let the AI rewrite it
+              </button>
+            </div>
+          ) : (
+            <span className="meta">
+              {target.kind === "edit"
+                ? "Written by the AI and rewritten each time you update the chapter. Edit it here to keep your own."
+                : "Written by the AI when you post the chapter. Write your own here to keep it."}
+            </span>
+          )}
+          {errorFor("summary")}
+        </div>
+      )}
+    </>
+  );
   return (
     <form className="desk-box-form" onSubmit={(e) => e.preventDefault()}>
       {conflictNotice}
@@ -1180,42 +1227,9 @@ export default function ChapterEditor({ target, context, draftKey, resumeHref, d
             Writing ({words.toLocaleString()}/~{targetWords.toLocaleString()} words)
           </span>
         )}
+        {summaryFold}
         {bodyField}
         {desk.belowText ? desk.belowText(saveState || null) : saveState}
-
-        <button type="button" className="desk-fold" aria-expanded={summaryOpen} onClick={openSummary}>
-          {summaryOpen ? "▾" : "▸"} Summary
-          {summaryMine && <span className="desk-chip">yours · not rewritten</span>}
-        </button>
-        {summaryOpen && (
-          <div className="desk-summary">
-            <AutoTextarea
-              aria-label="Summary"
-              style={{ minHeight: "4rem", fontFamily: "inherit" }}
-              placeholder={target.kind === "edit" ? "No summary yet. One is written when the chapter is updated." : "None yet. One is written when the chapter is posted."}
-              value={summaryText}
-              maxLength={LIMITS.summary}
-              onChange={(e) => typeSummary(e.target.value)}
-              onBlur={() => void flushSummary()}
-            />
-            {summaryMine ? (
-              <div className="row desk-summary-mine">
-                <span>You edited this summary, so {target.kind === "edit" ? "Update" : "Post"} leaves it alone.</span>
-                <span className="desk-spacer" />
-                <button type="button" className="secondary" onClick={handBackSummary}>
-                  Let the AI rewrite it
-                </button>
-              </div>
-            ) : (
-              <span className="meta">
-                {target.kind === "edit"
-                  ? "Written by the AI and rewritten each time you update the chapter. Edit it here to keep your own."
-                  : "Written by the AI when you post the chapter. Write your own here to keep it."}
-              </span>
-            )}
-            {errorFor("summary")}
-          </div>
-        )}
 
         <div className="row desk-box-foot">
           {draftsNote && <span className="meta desk-foot-drafts">{draftsNote}</span>}

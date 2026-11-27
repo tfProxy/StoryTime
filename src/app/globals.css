@@ -7738,13 +7738,30 @@ button.link-button.ef-marker {
   padding: 0.3rem 0.35rem;
 }
 
+/* A chapter's summary under its title: up to three lines while folded, all of it once unfolded. */
 .desk-block-fold small {
-  display: block;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
   color: var(--muted);
   font-weight: normal;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.desk-block-fold small.open {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+/* The chapter being edited: its summary's first lines under the folded "Summary", above the text. */
+.desk-summary-preview {
+  margin: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
 }
 
 .desk-block-head .draft-mark {

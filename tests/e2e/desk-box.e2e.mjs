@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { startFakeAi } from "../fakeAi.mjs";
 import { launch, useMockAi } from "./browser.mjs";
 
-// The chapter's box on the writing desk (step 4): its order (title, "Prompt and drafts", the text, "Summary", the one
+// The chapter's box on the writing desk (step 4): its order (title, "Prompt and drafts", "Summary", the text, the one
 // button); "Prompt and drafts" folded on a posted chapter and unfolded on a new one; each Generate adds a numbered
 // draft that keeps its prompt, an older one showing it with "Use this prompt"; ✓ on the chapter's draft; Update off
 // until the draft showing differs, then replacing the text with History keeping the old; the summary rewritten in the
@@ -73,8 +73,8 @@ try {
   const promptFold = box.getByRole("button", { name: /Prompt and drafts/ });
   ok((await promptFold.getAttribute("aria-expanded")) === "false" && (await box.getByLabel("Prompt", { exact: true }).count()) === 0, "Prompt and drafts is folded on a posted chapter");
   ok((await promptFold.innerText()).includes("(1)"), "…and counts one draft (the chapter's text): " + (await promptFold.innerText()));
-  const ys = await Promise.all([title, promptFold, box.getByLabel("Chapter text"), box.getByRole("button", { name: /^▸ Summary/ }), box.getByRole("button", { name: "Update chapter" })].map(async (l) => (await l.boundingBox()).y));
-  ok(ys.every((y, i) => i === 0 || y > ys[i - 1]), "top to bottom: title, Prompt and drafts, the text, Summary, Update chapter: " + ys.join());
+  const ys = await Promise.all([title, promptFold, box.getByRole("button", { name: /^▸ Summary/ }), box.getByLabel("Chapter text"), box.getByRole("button", { name: "Update chapter" })].map(async (l) => (await l.boundingBox()).y));
+  ok(ys.every((y, i) => i === 0 || y > ys[i - 1]), "top to bottom: title, Prompt and drafts, Summary, the text, Update chapter: " + ys.join());
   const update = box.getByRole("button", { name: "Update chapter" });
   ok(await update.isDisabled(), "Update chapter is off while the draft is the chapter's text");
   ok((await page.locator(".models-panel").count()) === 0 && (await page.getByText("What did you change?").count()) === 0 && (await page.getByText("This is my writing now").count()) === 0, "no models panel, no 'What did you change?', no 'This is my writing now'");
