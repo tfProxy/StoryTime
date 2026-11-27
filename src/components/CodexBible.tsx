@@ -38,6 +38,8 @@ type Ctx = {
   message: { ok: boolean; text: string } | null;
   startCheck: () => void;
   checkFinished: (run: AiRun) => void;
+  /** Dismisses every suggestion still waiting in the story, after asking. */
+  dismissWaiting: () => void;
 };
 
 const CodexCtx = createContext<Ctx | null>(null);
@@ -60,6 +62,22 @@ export function CodexBibleProvider({ storyId, chosenId, anchorId, children }: { 
   const [runGoing, setRunGoing] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // The suggestions the AI didn't apply on its own pile up over a long story: one click clears what is left.
+  const dismissWaiting = useCallback(async () => {
+    if (!window.confirm("Dismiss every codex suggestion still waiting in this story, on every branch? Facts already in the codex stay. Each suggestion can be reopened under “Show dismissed”.")) return;
+    try {
+      const res = await fetch(`/api/stories/${storyId}/codex-suggestions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const data = (await res.json().catch(() => ({}))) as { dismissed?: number; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+      const n = data.dismissed ?? 0;
+      setMessage({ ok: true, text: n === 0 ? "No suggestions were waiting." : `Dismissed ${n} suggestion${n === 1 ? "" : "s"}.` });
+      window.dispatchEvent(new Event(INBOX_CHANGED));
+      router.refresh();
+    } catch (e) {
+      setMessage({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    }
+  }, [storyId, router]);
 
   const checkFinished = useCallback(
     (run: AiRun) => {
@@ -122,8 +140,9 @@ export function CodexBibleProvider({ storyId, chosenId, anchorId, children }: { 
       message,
       startCheck: () => void startCheck(),
       checkFinished,
+      dismissWaiting: () => void dismissWaiting(),
     }),
-    [storyId, chosenId, anchorId, creating, sharing, starting, runGoing, runId, message, startCheck, checkFinished],
+    [storyId, chosenId, anchorId, creating, sharing, starting, runGoing, runId, message, startCheck, checkFinished, dismissWaiting],
   );
   return <CodexCtx.Provider value={value}>{children}</CodexCtx.Provider>;
 }
@@ -142,6 +161,10 @@ export function CodexMenu() {
       <button type="button" className="menu-two-lines" disabled={c.checking} onClick={c.startCheck}>
         {c.chosenId ? "Check this chapter with AI" : "Check every chapter with AI"}
         <span className="meta">Suggests changes to entries</span>
+      </button>
+      <button type="button" className="menu-two-lines" onClick={c.dismissWaiting}>
+        Dismiss every waiting suggestion…
+        <span className="meta">In the whole story; each can be reopened</span>
       </button>
     </MoreMenu>
   );

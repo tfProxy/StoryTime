@@ -477,4 +477,30 @@ function decide(id: string, from: SuggestionStatus, to: SuggestionStatus, why: s
 }
 
 export const dismissSuggestion = (id: string) => decide(id, "open", "dismissed", "That suggestion has already been decided");
+
+export const DismissOpenSchema = z.object({
+  /** Only this entry's suggestions (new-entry proposals have no entry, so they stay). */
+  entry_id: z.string().min(1).optional(),
+  /** Only the suggestions made from these chapters (the desk gives its path). */
+  chapter_ids: z.array(z.string().min(1)).min(1).max(2000).optional(),
+});
+
+/**
+ * Dismisses every suggestion still waiting in a story, or only one entry's, or only those from some chapters: the pile
+ * that builds up while the AI applies what it is sure of. Each can be reopened like any dismissed one.
+ */
+export function dismissOpenSuggestions(storyId: string, only: z.infer<typeof DismissOpenSchema> = {}): { dismissed: number } {
+  const where = ["story_id = ?", "status = 'open'"];
+  const args: string[] = [storyId];
+  if (only.entry_id) {
+    where.push("entry_id = ?");
+    args.push(only.entry_id);
+  }
+  if (only.chapter_ids) {
+    where.push(`chapter_id IN (${only.chapter_ids.map(() => "?").join(",")})`);
+    args.push(...only.chapter_ids);
+  }
+  const r = db().prepare(`UPDATE codex_suggestions SET status = 'dismissed', decided_at = ? WHERE ${where.join(" AND ")}`).run(Date.now(), ...args);
+  return { dismissed: r.changes };
+}
 export const reopenSuggestion = (id: string) => decide(id, "dismissed", "open", "Only a dismissed suggestion can be reopened");

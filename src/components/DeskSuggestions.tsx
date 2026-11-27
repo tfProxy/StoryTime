@@ -40,9 +40,37 @@ export default function DeskSuggestions({
 }) {
   const list = inbox.shown.filter((s) => s.entry_id === entry.entry_id);
   const open = list.filter((s) => s.status === "open");
+  const [clearing, setClearing] = useState(false);
+  const [clearError, setClearError] = useState("");
+  /** Dismisses everything waiting for the entry on this path in one go (each can be reopened under "Show dismissed"). */
+  async function dismissAll() {
+    setClearing(true);
+    setClearError("");
+    try {
+      const res = await fetch(`/api/stories/${storyId}/codex-suggestions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entry_id: entry.entry_id, chapter_ids: path.map((c) => c.id) }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `Request failed (${res.status})`);
+      window.dispatchEvent(new Event(INBOX_CHANGED));
+    } catch (e) {
+      setClearError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setClearing(false);
+    }
+  }
   return (
     <div className="desk-suggestions">
-      <h3 className="desk-label">Waiting for you{open.length > 0 ? ` (${open.length})` : ""}</h3>
+      <div className="row desk-sug-head">
+        <h3 className="desk-label">Waiting for you{open.length > 0 ? ` (${open.length})` : ""}</h3>
+        {open.length > 1 && (
+          <button type="button" className="secondary" disabled={clearing} title="Dismisses them all; each can be reopened from the Story Bible's Codex" onClick={() => void dismissAll()}>
+            Dismiss all {open.length}
+          </button>
+        )}
+      </div>
+      {clearError && <p className="error">{clearError}</p>}
       {inbox.loadError && <p className="error">{inbox.loadError}</p>}
       {list.length === 0 ? (
         <p className="meta">No suggestions waiting for {entry.name}.</p>

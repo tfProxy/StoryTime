@@ -148,7 +148,7 @@ try {
   await page.goto(bible(A));
   await menu.click();
   const items = (await page.locator(".more-menu-items button").allInnerTexts()).map((t) => t.replace(/\s+/g, " ").trim());
-  ok(items.join("|") === "New entry from here|New entry from the shared codex…|Check this chapter with AI Suggests changes to entries", "the menu: " + items.join(" | "));
+  ok(items.join("|") === "New entry from here|New entry from the shared codex…|Check this chapter with AI Suggests changes to entries|Dismiss every waiting suggestion… In the whole story; each can be reopened", "the menu: " + items.join(" | "));
   const menuBox = await page.locator(".more-menu-items").boundingBox();
   ok(menuBox.x >= 0 && menuBox.x + menuBox.width <= 390, "…and fits on the screen");
   await page.getByRole("button", { name: "New entry from here" }).click();

@@ -7271,6 +7271,18 @@ button.link-button.ef-marker {
   gap: 0.6rem;
 }
 
+/* "Waiting for you (n)" with "Dismiss all n" at its right. */
+.desk-sug-head {
+  justify-content: space-between;
+  align-items: center;
+  margin: 0;
+}
+
+.desk-sug-head button {
+  padding: 0.15rem 0.6rem;
+  font-size: 0.85rem;
+}
+
 .desk-sug-list {
   list-style: none;
   margin: 0;
