@@ -93,13 +93,24 @@ export const sameAspect = (a: string, b: string) => a.trim().toLowerCase() === b
 
 /**
  * A fact's form as the AI wrote it, cleaned: "every form" (the label its prompts put on facts for every form) means no
- * form, and "vixen form" is the form "vixen".
+ * form, "vixen form" is the form "vixen", and so is "vixen (current)".
  */
 export function cleanForm(form: string): string {
-  const f = form.trim();
+  const f = form.trim().replace(/\s*\((current|now|present)\)$/i, "");
   if (/^(every|all|any|no)( forms?)?$/i.test(f) || /^none$/i.test(f)) return "";
   return f.replace(/\s+form$/i, "").trim();
 }
+
+/**
+ * How the AI is told to word a fact, in every prompt that writes or rewords one. A quarter of the facts a small model
+ * wrote said how something had changed ("significantly taller after absorbing the researcher", "now has"), which
+ * reads wrongly from the next chapter on.
+ */
+export const FACT_WORDING = `- Say how it is, not how it changed. A fact must read correctly to someone who has not read the chapter: no "now", "after the transformation", "has grown", "no longer", "still" or "newly", and no comparing with before ("taller", "larger", "enhanced", "deeper"). Wrong: "Significantly taller after absorbing the researcher". Right: "About seven feet tall".
+- Never write "unknown", "unclear" or "not described": when a detail isn't given, leave the fact out.`;
+
+/** A fact that only says the detail isn't known ("Unknown", "Not described in this chapter"): nothing to keep. */
+export const saysNothing = (text: string) => /^(unknown|unclear|unspecified|undetermined|n\/a|not (yet )?(known|specified|described|stated|mentioned|shown|given|clear))\b/i.test(text.trim());
 
 /**
  * An aspect and form as the AI wrote them, cleaned. The prompts show a fact as "Hair [vixen form]: …", and models copy

@@ -178,3 +178,22 @@ ok(parseCodexCheck(reply([{ kind: "form", entry: "Mira", form: "true", text: "",
 const labelled = parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "Eyes [vixen form]", text: "Gold eyes.", quote: "her eyes were gold" }]), opts)[0];
 ok(labelled?.aspect === "Eyes" && labelled.form === "vixen", "an aspect copied with its '[vixen form]' label is 'Eyes' in the form 'vixen': " + JSON.stringify(labelled));
 ok(parseCodexCheck(reply([{ kind: "set", entry: "Mira", aspect: "form", form: "kit", text: "young", quote: "Her ears flicked" }]), opts)[0]?.kind === "form", "a set of the aspect 'form' becomes a form item");
+
+// ---- facts that say nothing ----
+{
+  const empty = parseCodexCheck(
+    reply([
+      { kind: "set", entry: "Mira", aspect: "Build", text: "Unknown height and build - body feels entirely alien", quote: "Her ears flicked" },
+      { kind: "set", entry: "Mira", aspect: "Skin", text: "Not described in this chapter.", quote: "Her ears flicked" },
+      { kind: "set", entry: "Mira", aspect: "Voice", text: "Unclear", quote: "Her ears flicked" },
+      { kind: "set", entry: "Mira", aspect: "Eyes", form: "vixen", text: "Gold eyes of unknown origin.", quote: "her eyes were gold" },
+      { kind: "entry", name: "Newcomer", facts: [{ aspect: "Hair", text: "Unknown" }, { aspect: "Eyes", text: "Green eyes." }], quote: "The grass was green" },
+    ]),
+    opts,
+  );
+  ok(empty.length === 2 && empty[0].aspect === "Eyes", "a fact that only says the detail is unknown or not described is dropped; one that merely uses the word is kept: " + JSON.stringify(empty.map((e) => e.aspect)));
+  ok(empty[1]?.entry?.facts.length === 1 && empty[1].entry.facts[0].aspect === "Eyes", "…in a new entry's facts too");
+}
+
+// ---- the wording rules are in the request ----
+ok(/not how it changed/.test(req.system) && /"unknown"/.test(req.system), "the request tells the AI to say how things are, not how they changed, and never to write 'unknown'");

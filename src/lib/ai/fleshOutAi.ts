@@ -6,7 +6,7 @@ import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import { quoteInText } from "./quotes";
-import { FACT_LIMITS, aspectAndForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry } from "../codex";
+import { FACT_LIMITS, FACT_WORDING, aspectAndForm, factLinesForEditing, isFormAspect, sameAspect, saysNothing, type CodexEntry } from "../codex";
 import { DEFAULT_CATEGORIES, aspectRules, formFor, resolveAspect, type CategoryLists } from "../codexCategories";
 import type { SuggestionInput } from "./codexCheckAi";
 import { contextFor, type Settings } from "../settingsSchema";
@@ -23,6 +23,7 @@ const SYSTEM_BASE = `You keep the codex of a story. The codex records the lastin
 How to write a fact:
 - One fact per aspect, in the present tense, short (under about 30 words) and standalone: use names, not pronouns.
 - Only what stays true. No plot events, plans or feelings in the moment.
+${FACT_WORDING}
 - Give "aspect" (from the list of aspects in the message; prefer ones the entry doesn't have yet) and "text". Give "form" only when the fact belongs to one form of a character that has several (otherwise leave it empty).
 - Never repeat or contradict a fact the entry already has, or anything the story says. Do not propose an aspect the entry already has.
 - Match the story's tone and style notes. Characters, places and things from well-known works are ones you already know: draw on what you know of them.
@@ -131,7 +132,7 @@ export function parseFleshOut(reply: string, opts: FleshOutOptions): SuggestionI
     // An aspect that is the same in every form gets no form.
     const form = formFor(aspect, given.form, (opts.categories ?? DEFAULT_CATEGORIES)[entry.type]);
     const text = asString(o.text, FACT_LIMITS.text);
-    if (!aspect || !text || isFormAspect(aspect)) continue;
+    if (!aspect || !text || saysNothing(text) || isFormAspect(aspect)) continue;
     // New details only: an aspect the entry already has (in that form) is its owner's to change.
     if (entry.facts.some((f) => sameAspect(f.aspect, aspect) && sameAspect(f.form, form))) continue;
     if (out.some((x) => sameAspect(x.aspect, aspect) && sameAspect(x.form, form))) continue;

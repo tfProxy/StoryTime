@@ -31,7 +31,8 @@ Kinds of change:
 - Rename: a fact under an aspect that isn't on the list, or under the wrong one, moves to the listed aspect that fits ("Fur" to "Skin", "Status" to "Condition").
 - Merge: two or more facts about the same aspect and form become one that keeps every detail. Where they disagree, keep the one listed later.
 - Split: a fact that mixes details of different aspects becomes one fact per aspect. List the same fact number in each part.
-- Remove: a fact that only says something is missing ("Tail: none", "Wings: no wings") is removed: give "text" "".
+- Remove: a fact that only says something is missing or unknown ("Tail: none", "Wings: no wings", "Height: unknown") is removed: give "text" "".
+- Reword: a fact that says how something changed is reworded to say how it is, with the same details ("Now has tall fox ears after the change" becomes "Tall fox ears"). Take out "now", "after the transformation", "has grown", "no longer" and the like. Where it only compares with before ("taller", "enlarged") and gives nothing to state outright, leave it as it is: never make up a measurement.
 - Every form: a fact given a form under an aspect that is not marked "can differ by form" (personality, relationships, history…) moves to every form ("form" ""), merged with that aspect's every-form fact if there is one.
 
 Rules:

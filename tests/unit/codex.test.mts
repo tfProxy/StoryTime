@@ -321,6 +321,7 @@ ok(retiredEntries([...onPath,...draftOps([chg({ op: "retire" })], 3)]).length ==
 {
   ok(["every form", "All forms", "any", "none", "No form", " "].every((f) => cleanForm(f) === ""), "cleanForm: 'every form' and its cousins mean no form");
   ok(cleanForm("vixen form") === "vixen" && cleanForm(" Vixen ") === "Vixen" && cleanForm("") === "", "cleanForm: 'vixen form' is 'vixen'");
+  ok(cleanForm("demon (current)") === "demon" && cleanForm("Demon form (now)") === "Demon" && cleanForm("wolf (half-changed)") === "wolf (half-changed)", "cleanForm: a '(current)' after the name is taken off, other brackets stay");
   const af = (a: string, f = "") => JSON.stringify(aspectAndForm(a, f));
   ok(af("Hair [Latex Husky form]") === '{"aspect":"Hair","form":"Latex Husky"}', "aspectAndForm: the label is taken off and gives the form: " + af("Hair [Latex Husky form]"));
   ok(af("Hair [Latex Husky form] [Latex Husky form]") === '{"aspect":"Hair","form":"Latex Husky"}', "aspectAndForm: a doubled label too");

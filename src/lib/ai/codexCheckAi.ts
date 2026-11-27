@@ -5,7 +5,7 @@ import { completeChat, type AiSourceIds } from "./client";
 import { estimateTokens, mentions, type PromptParts } from "./prompts";
 import { extractJson } from "./codexAi";
 import { matchQuote } from "./quotes";
-import { ENTRY_TYPES, FACT_LIMITS, aspectAndForm, factLinesForEditing, isFormAspect, sameAspect, type CodexEntry, type EntryType } from "../codex";
+import { ENTRY_TYPES, FACT_LIMITS, FACT_WORDING, aspectAndForm, factLinesForEditing, isFormAspect, sameAspect, saysNothing, type CodexEntry, type EntryType } from "../codex";
 import { DEFAULT_CATEGORIES, aspectRules, formFor, resolveAspect, type CategoryLists } from "../codexCategories";
 import { contextFor, type Settings } from "../settingsSchema";
 
@@ -49,6 +49,8 @@ const systemCodexCheck = (aspects: string) => `You keep the codex of a story up 
 How to write a fact:
 - Describe the state at the END of the chapter, in the present tense.
 - Keep it short (under about 25 words) and standalone: use names, not pronouns. No plot retelling, no feelings or events; only what stays true.
+${FACT_WORDING}
+- When the chapter gives only a change ("a few inches taller"), work the new value out from what the codex says now ("5'9"" becomes "about six feet tall"). With nothing to work it out from, leave the fact out.
 
 ${aspects}
 
@@ -173,7 +175,7 @@ function parseNewEntry(o: Record<string, unknown>, taken: Set<string>, lists: Ca
       if (!f || typeof f !== "object") continue;
       const r = f as Record<string, unknown>;
       const text = asString(r.text, FACT_LIMITS.text);
-      if (!text) continue;
+      if (!text || saysNothing(text)) continue;
       const given = aspectAndForm(asString(r.aspect, LABELLED_MAX), asString(r.form, FACT_LIMITS.form));
       const aspect = resolveAspect(given.aspect.slice(0, FACT_LIMITS.aspect), lists[type], facts).aspect;
       if (isFormAspect(aspect)) continue; // a new entry's form is set after it exists
@@ -325,7 +327,7 @@ export function parseCodexCheck(reply: string, opts: ParseCodexCheckOptions): Su
       out.push({ kind, entry_id: target.entry_id, aspect, form, after: "", quote });
     } else {
       // "set" and "conflict"
-      if (!aspect || !text) continue;
+      if (!aspect || !text || saysNothing(text)) continue;
       if (live(aspect, form) && lc(live(aspect, form)!.text) === lc(text)) continue;
       aspect = live(aspect, form)?.aspect ?? aspect; // keep the entry's own spelling of the aspect
       form = live(aspect, form)?.form ?? form;
