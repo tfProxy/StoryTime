@@ -71,6 +71,16 @@ try {
   ok(!keys.includes("job-b") && keys.includes("job-a") && keys.includes("run:r1"), "a failed item is left out of the list after a week, others stay");
   ok(listItems(10_000 + KEEP_ENDED_MS - 1).some((i) => i.key === "job-b"), "…and still shown before then");
 
+  // "Seen" belongs to how a run or Generate ended: a change of state drops it, other changes keep it.
+  updateItem("run:r1", { state: "done", data: { done: 3 } }, 11_000);
+  ok(updateItem("run:r1", { data: { seen: true } }, 11_100)?.data.seen === true, "a finished run can be marked seen");
+  ok(updateItem("run:r1", { data: { current: "x" } }, 11_200)?.data.seen === true, "…and a change that keeps its state keeps it seen");
+  ok(updateItem("run:r1", { state: "waiting" }, 11_300)?.data.seen === undefined, "a run that goes on again is no longer seen");
+  ok(updateItem("run:r1", { state: "done", data: { seen: true } }, 11_400)?.data.seen === true, "…unless the same change says it is seen");
+  updateItem("gen:fill:x", { state: "done" }, 11_500);
+  ok(updateItem("gen:fill:x", { data: { seen: true } }, 11_600)?.data.seen === true, "a finished Generate can be marked seen");
+  ok(updateItem("gen:fill:x", { state: "failed" }, 11_700)?.data.seen === undefined, "…and loses it when its state changes");
+
   // Delete.
   ok(deleteItem("run:r1") === true && getItem("run:r1") === null, "an item is deleted");
   ok(deleteItem("run:r1") === false, "deleting a missing item says so");

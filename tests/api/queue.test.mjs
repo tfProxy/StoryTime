@@ -95,3 +95,53 @@ r = await call("GET", "/api/queue");
 ok(!r.json.items.some((i) => i.key === KEY), "no test item is left behind");
 
 ok((await call("POST", "/api/queue/test-items", {})).status === 400, "a test item needs a key");
+
+// "Seen": the owner has looked at a finished run or Generate. It stays in the list, marked, and is not "ready" any more.
+{
+  const itemOf = async (key) => (await call("GET", "/api/queue")).json.items.find((i) => i.key === key);
+  const seen = (key) => call("POST", `/api/queue/items/${encodeURIComponent(key)}`, { action: "seen" });
+  const runData = { runId: "seen-run", storyId: "s1", storyTitle: "Tale", startChapterId: null, startTitle: "", mode: "fill", done: 2, total: 2 };
+  const keys = ["run:seen-run", "run:seen-going", "gen:seen-gen", "seen-picture"];
+  await call("POST", "/api/queue/test-items", { key: keys[0], type: "run", state: "done", data: runData });
+  await call("POST", "/api/queue/test-items", { key: keys[1], type: "run", state: "paused", data: { ...runData, runId: "seen-going" } });
+  await call("POST", "/api/queue/test-items", { key: keys[2], type: "generate", state: "done", data: { draftKey: "seen-gen", href: "/test", label: "Test", request: {} } });
+  await call("POST", "/api/queue/test-items", { key: keys[3], type: "picture", state: "done", data: { target: { kind: "chapter", storyId: "s1", chapterId: "c1" }, spec: {}, count: 1, view: {} } });
+  ok(!("seen" in (await itemOf(keys[0])).data), "a finished run starts not seen");
+
+  r = await seen(keys[0]);
+  ok(r.status === 200 && r.json.ok === true, "a finished run can be marked seen");
+  let item = await itemOf(keys[0]);
+  ok(item?.state === "done" && item.data.seen === true && item.data.done === 2, "…it stays in the list, still done, now marked seen");
+  ok((await seen(keys[0])).status === 200, "…marking it again is fine");
+  r = await seen(keys[2]);
+  item = await itemOf(keys[2]);
+  ok(r.status === 200 && item?.state === "done" && item.data.seen === true, "a finished Generate can be marked seen too");
+
+  r = await seen(keys[1]);
+  ok(r.status === 409 && !("seen" in (await itemOf(keys[1])).data), "a run that has not finished cannot be marked seen");
+  r = await seen(keys[3]);
+  ok(r.status === 409 && !("seen" in (await itemOf(keys[3])).data), "a picture job cannot be marked seen");
+  ok((await seen("gen:nothing-here")).status === 404, "an item that is not there is a 404");
+  r = await call("POST", `/api/queue/items/${encodeURIComponent(keys[0])}`, { action: "nonsense" });
+  ok(r.status === 400 && /seen/.test(r.json.error), "an unknown action is refused, and the message names “seen”");
+
+  // A Generate asked for again is a new item, so it is not seen until it ends again.
+  await call("PUT", "/api/queue/paused", { paused: true });
+  const draft = "queue-seen-draft";
+  const request = {
+    key: draft, href: "/test", label: "Again", ctx: { storyTitle: "Story", premise: "p", path: [] }, direction: "go on", length: "short", model: null, suggestModel: null,
+    after: { choiceText: false }, base: { title: "", body: "" },
+    draft: { key: draft, href: "/test", label: "Again", updatedAt: 0, storyTitle: "", premise: "", newChoiceLabel: "", title: "", body: "", choices: [""], prompt: "", undo: [] },
+  };
+  await call("POST", "/api/queue/test-items", { key: `gen:${draft}`, type: "generate", state: "done", data: { draftKey: draft, href: "/test", label: "Again", request: {} } });
+  await seen(`gen:${draft}`);
+  ok((await itemOf(`gen:${draft}`)).data.seen === true, "a finished Generate is seen");
+  await call("POST", "/api/queue/generate", request);
+  item = await itemOf(`gen:${draft}`);
+  ok(item?.state === "waiting" && !("seen" in item.data), "…and asking for it again makes a waiting item that is not seen");
+  await call("DELETE", `/api/queue/generate?key=${encodeURIComponent(draft)}`);
+  await call("PUT", "/api/queue/paused", { paused: false });
+
+  for (const key of keys) await call("DELETE", `/api/queue/test-items?key=${encodeURIComponent(key)}`);
+  ok(!(await call("GET", "/api/queue")).json.items.some((i) => i.key.includes("seen")), "no seen-test items are left behind");
+}
