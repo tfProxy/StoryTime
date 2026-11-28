@@ -173,6 +173,8 @@ type DeskProps = {
   reading?: { title: string; body: string; via: string | null; images: ImageVersions };
   /** Where the box's "Stop editing" goes: the chapter (or, for a new one, the chapter it follows) read on the desk. */
   stopHref?: string;
+  /** A codex entry to open as the desk opens (`?entry=<id>`, from a "changes to review" link). */
+  openEntry?: string;
 };
 
 /**
@@ -198,6 +200,7 @@ export default function WritingDesk({
   mode: initialMode = "codex",
   reading,
   stopHref,
+  openEntry,
 }: DeskProps) {
   // The chapter's box (with the "→ …" line above it) is scrolled into view on arriving, from outside or by a move, once
   // its draft has loaded (the box is short until then, and the page couldn't scroll that far).
@@ -268,7 +271,7 @@ export default function WritingDesk({
   const [sheet, setSheet] = useState<PhoneSheet | null>(null);
   const [query, setQuery] = useState("");
   // The entry open in the entry column, or "new" for the new-entry form, or "shared" for the shared-entry picker.
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(openEntry ?? null);
   // The words selected in the chapter's text box, and "Add as a fact…" once chosen: the words become a new fact's quote,
   // in the entry picked for it (`quoteN` counts the times, so the entry's form opens afresh each time).
   const [selected, setSelected] = useState("");

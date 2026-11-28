@@ -106,9 +106,11 @@ and, for pictures, your own ComfyUI machine.
   **Change…** to pick another and a link back to reading the chapter.
 - **Codex suggestions**: after you save a new or edited chapter, the AI (the Codex job's model) reads it
   in the background and suggests fact changes, each with the sentence that shows it. You review them
-  beside the chapter's text (**Review beside the text**, from the chapter's banner, its Codex section or
-  an entry's page): **Accept**, **Edit** or **Dismiss** each one, and where the chapter contradicts
-  the codex choose which to keep. On an entry's page, a line says how many of its changes wait at the
+  on the chapter's writing desk, beside its text (**Review on the desk**, from the chapter's banner, its
+  Codex section or an entry's page): the entry's **Facts** tab lists what changed in the chapter first,
+  with **Approve** and **Undo** on each fact the AI applied, and its **Suggestions** tab has **Keep**,
+  **Edit** or **Dismiss** for each suggestion (**Dismiss all** clears the entry's). Writing on from a
+  chapter approves the AI's facts on the way to it. On an entry's page, a line says how many of its changes wait at the
   chapter (and at earlier ones), and each fact a suggestion is about has a marker under it: blue for a
   suggested change, red for a contradiction, amber for a fact the AI already applied; a suggested new
   aspect shows as a dashed row. Tap a marker to review it beside the text.

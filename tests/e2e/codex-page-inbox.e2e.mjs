@@ -1,7 +1,7 @@
 import { launch, useMockAi } from "./browser.mjs";
 
 // The suggestions on a chapter's codex (the Story Bible's Codex section narrowed to the chapter): the "Changes waiting" box
-// counts the ones made at the chapter and links to the review page beside the chapter's text, where they are accepted or
+// counts the ones made at the chapter and links to the chapter's writing desk, where they are kept or
 // dismissed; earlier chapters on the branch that still have some are linked. Seeded through the suggestions route, so no
 // AI is involved.
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
@@ -45,7 +45,13 @@ try {
   const go = () => box().locator("a.codex-review-go");
   const goText = async () => (await go().innerText()).replace(/\s+/g, " ").trim();
   const rowanCard = () => page.locator("li.entry-with-extra", { hasText: "Rowan" });
-  const crCard = (t) => page.locator("article.cr-card", { hasText: t });
+  // Rowan's entry column on the desk, its Suggestions tab, and one suggestion in it.
+  const deskRowan = () => page.locator('section.desk-entry[aria-label="Codex entry: Rowan"]');
+  const deskSug = (t) => deskRowan().locator("li.desk-sug", { hasText: t });
+  const openSuggestions = async () => {
+    await deskRowan().waitFor();
+    await deskRowan().getByRole("tab", { name: /^Suggestions/ }).click();
+  };
   const settle = async () => {
     await page.locator("details.codex-group").first().waitFor();
     await page.locator("section.codex-review-box").first().waitFor();
@@ -58,11 +64,11 @@ try {
   await settle();
   ok((await page.locator("article.inbox-card").count()) === 0, "no suggestion cards on the chapter's codex");
   ok((await go().count()) === 1 && (await goText()).includes("2 changes waiting from this chapter") && (await goText()).includes("Review beside the text"), "at Chapter A: a link to review the 2 changes made here: " + (await goText()));
-  ok((await go().getAttribute("href")) === `/c/${A}/codex-review`, "…to the chapter's review page");
+  ok((await go().getAttribute("href")) === `/c/${A}/desk`, "…to the chapter's writing desk");
   const rowanCount = rowanCard().locator("a.entry-review-count");
-  ok((await rowanCount.innerText()).trim() === "1 change to review" && (await rowanCount.getAttribute("href")) === `/c/${A}/codex-review?entry=${rowan}`, "…and her card says 1 change to review, linking to the review page for her");
+  ok((await rowanCount.innerText()).trim() === "1 change to review" && (await rowanCount.getAttribute("href")) === `/c/${A}/desk?entry=${rowan}`, "…and her card says 1 change to review, linking to the desk with her entry open");
   ok((await box().getByRole("button").count()) === 0 && (await page.locator("li.codex-review-new, a.codex-review-row").count()) === 0, "the box has no Add it / Dismiss or per-entry rows any more");
-  ok((await earlierLinks()).join("|") === "“Root” (1)" && (await box().locator("p.meta a").getAttribute("href")) === `/c/${R}/codex-review`, "the root's suggestion is linked as one from an earlier chapter, to its review page: " + (await earlierLinks()).join("|"));
+  ok((await earlierLinks()).join("|") === "“Root” (1)" && (await box().locator("p.meta a").getAttribute("href")) === `/c/${R}/desk`, "the root's suggestion is linked as one from an earlier chapter, to its desk: " + (await earlierLinks()).join("|"));
   await page.goto(at(A2));
   await settle();
   ok((await go().count()) === 0, "Chapter A2, after it: nothing made here");
@@ -74,16 +80,20 @@ try {
   await settle();
   ok((await go().count()) === 0 && (await earlierLinks()).join("|") === "“Root” (1)", "on the other branch: only the root's, as an earlier chapter's");
 
-  // ---- accept on the review page, then see it on the chapter's codex ----
+  // ---- keep on the desk, then see it on the chapter's codex ----
   await page.goto(at(A));
   await settle();
   await go().click();
-  await page.waitForURL(`${BASE}/c/${A}/codex-review`);
-  const hair = crCard("silver hair");
+  await page.waitForURL(`${BASE}/c/${A}/desk`);
+  const proposed = page.locator("aside.desk-side .desk-proposed");
+  await proposed.waitFor();
+  ok((await proposed.locator(".desk-row-name").allInnerTexts()).join() === "Kestrel", "the link opens the chapter's desk, whose 'Suggested entries' has the new entry made here");
+  await page.goto(`${BASE}/c/${A}/desk?entry=${rowan}`);
+  await openSuggestions();
+  const hair = deskSug("silver hair");
   await hair.waitFor();
-  ok((await page.locator("article.cr-card").count()) === 2 && (await crCard("calm").count()) === 0, "the link opens the review page with the changes made here (not the root's)");
-  await hair.getByRole("button", { name: "Accept" }).click();
-  await page.locator(".cr-done").getByText(/Saved:\s*Rowan/).waitFor();
+  await hair.getByRole("button", { name: "Keep", exact: true }).click();
+  await deskRowan().locator("li.desk-sug.done", { hasText: "Hair" }).waitFor();
   await page.goto(at(A));
   await page.locator(".entry-card", { hasText: "Rowan" }).getByText(/silver hair/).waitFor();
   ok((await goText()).includes("1 change waiting") && (await rowanCard().locator("a.entry-review-count").count()) === 0, "accepted: the entry's card shows the new fact and one change (the new entry) still waits");
@@ -96,11 +106,11 @@ try {
   await earlier.waitFor();
   ok((await earlier.innerText()).includes("Changes waiting from earlier chapters"), "the entry's page at Chapter A, with nothing left there, links the earlier chapter's");
   await earlier.getByRole("link", { name: "“Root” (1)" }).click();
-  await page.waitForURL(new RegExp(`/c/${R}/codex-review\\?entry=${rowan}`));
-  const mood = page.locator("article.cr-card", { hasText: "calm" });
-  await mood.getByRole("button", { name: "Dismiss" }).click();
-  await page.locator(".cr-done", { hasText: "Dismissed" }).waitFor();
-  ok(true, "…to the root's review page, where it can be dismissed");
+  await page.waitForURL(new RegExp(`/c/${R}/desk\\?entry=${rowan}`));
+  await openSuggestions();
+  await deskSug("calm").getByRole("button", { name: "Dismiss" }).click();
+  await deskRowan().locator("li.desk-sug.done", { hasText: "Dismissed" }).waitFor();
+  ok(true, "…to the root's desk, where it can be dismissed");
 
   // after leaving the page, accepted and dismissed ones are gone from the list
   await page.goto(at(A));

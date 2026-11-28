@@ -55,10 +55,6 @@ export function suggestionSource(s: Sourced): { tone: SourceTone; label: string 
   return { tone: "text", label: "From the text" };
 }
 
-/** What "Accept all" takes: open fact changes backed by the text, never the AI's own ideas or a conflict. */
-export const acceptableInBulk = (s: CodexSuggestion) =>
-  s.status === "open" && s.kind !== "conflict" && s.kind !== "entry" && !s.new_category && !["invented", "unsure"].includes(suggestionSource(s).tone);
-
 /** The chapter's reading page, scrolled to the quote where the browser supports text fragments. */
 export const quoteHref = (chapterId: string, quote: string) => `/c/${chapterId}#:~:text=${encodeURIComponent(quote.slice(0, 120))}`;
 

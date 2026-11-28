@@ -2,7 +2,7 @@ import { launch, useMockAi } from "./browser.mjs";
 import { unfoldEntryFolds } from "./unfold.mjs";
 
 // "Apply the AI's codex changes automatically": facts the AI applied are marked AI on the entry's card, the reading
-// page's banner and the entry's page (an amber marker each, linking to its card on the chapter's review page, where it is
+// page's banner and the entry's page (an amber marker each, linking to the chapter's writing desk with the entry open, where it is
 // approved or undone); and the setting in Settings.
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 
@@ -64,13 +64,13 @@ try {
   await row("tall fox ears").waitFor();
   const earsMark = row("tall fox ears").locator(".ef-marker-ai");
   ok((await earsMark.innerText()).includes("Added by the AI from “Chapter A” · Approve or undo") && (await row("amber eyes").locator(".ef-marker-ai").count()) === 1, "each AI fact has an amber marker");
-  ok((await earsMark.getAttribute("href")) === `/c/${A}/codex-review?entry=${rowan}#f-${await opOf("Ears")}`, "…linking to its card on the review page");
-  ok((await ed.locator(".ef-form-row .ef-marker-ai").getAttribute("href")) === `/c/${A}/codex-review?entry=${rowan}#f-${await opOf("form")}`, "the AI's form change is marked too");
+  ok((await earsMark.getAttribute("href")) === `/c/${A}/desk?entry=${rowan}`, "…linking to the chapter's desk with the entry open");
+  ok((await ed.locator(".ef-form-row .ef-marker-ai").getAttribute("href")) === `/c/${A}/desk?entry=${rowan}`, "the AI's form change is marked too");
   ok((await ed.locator(".entry-waiting").innerText()).includes("4 changes waiting from “Chapter A”"), "the changes line counts them");
   ok((await ed.locator(".ai-facts-note, .notice", { hasText: "The AI wrote" }).count()) === 0 && (await ed.locator(".entry-facts").getByRole("button", { name: /^Approve/ }).count()) === 0, "no AI-facts notice and no Approve buttons on the page");
   await page.screenshot({ path: `${process.env.SHOTS ?? "."}/codex-ai-facts.png`, fullPage: true }).catch(() => {});
 
-  // Approved or undone on the review page (here, through its routes): the marker goes; an undone fact goes too.
+  // Approved or undone on the desk (here, through its routes): the marker goes; an undone fact goes too.
   await post("/api/codex/approve", { ids: [await opOf("Ears")] });
   await post("/api/codex/undo-ai", { ids: [await opOf("Eyes")] });
   await page.reload();

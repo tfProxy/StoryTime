@@ -97,7 +97,8 @@ const NEW_FORM = "\u0000new";
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** Where a suggestion is reviewed: beside its chapter's text. */
-const reviewHref = (chapterId: string, entryId: string, hash: string) => `/c/${chapterId}/codex-review?entry=${encodeURIComponent(entryId)}${hash}`;
+/** Where an entry's changes from a chapter are reviewed: that chapter's writing desk, with the entry open. */
+const reviewHref = (chapterId: string, entryId: string) => `/c/${chapterId}/desk?entry=${encodeURIComponent(entryId)}`;
 /** A suggestion backed by the chapter's text (a chapter reading, or a Flesh out that stayed close to the story): reviewed beside the text. */
 const fromText = (s: CodexSuggestion) => s.source === "chapter" || (s.source === "expand" && !!s.quote);
 
@@ -380,8 +381,8 @@ export default function CodexEntryPage(props: Props) {
       {(waitingHere > 0 || waitingEarlier.length > 0) && (
         <p className="entry-waiting">
           {waitingHere > 0 ? (
-            <Link href={reviewHref(chapterId, entry.entry_id, "")} prefetch={false}>
-              {plural(waitingHere, "change")} waiting from “{here.title}” · Review beside the text →
+            <Link href={reviewHref(chapterId, entry.entry_id)} prefetch={false}>
+              {plural(waitingHere, "change")} waiting from “{here.title}” · Review on the desk →
             </Link>
           ) : (
             <span>Changes waiting from earlier chapters</span>
@@ -390,7 +391,7 @@ export default function CodexEntryPage(props: Props) {
             <span key={c.id}>
               {" · "}
               {waitingHere > 0 || i > 0 ? "also " : ""}
-              <Link href={reviewHref(c.id, entry.entry_id, "")} prefetch={false}>
+              <Link href={reviewHref(c.id, entry.entry_id)} prefetch={false}>
                 “{c.title}” ({c.n})
               </Link>
             </span>
@@ -554,7 +555,7 @@ function Markers({ list, onOpen }: { list: Marker[]; /** The desk: a marker open
 }
 
 function suggestionMarker(s: CodexSuggestion, entryId: string): Marker {
-  const href = reviewHref(s.chapter_id, entryId, `#s-${s.id}`);
+  const href = reviewHref(s.chapter_id, entryId);
   const ch = `“${s.chapter_title}”`;
   if (s.kind === "conflict") return { key: s.id, tone: "conflict", text: `${ch} says “${s.after || s.quote}” · contradicts · Review`, href };
   if (s.kind === "retire") return { key: s.id, tone: "suggest", text: `${ch} suggests removing it · Review`, href };
@@ -563,7 +564,7 @@ function suggestionMarker(s: CodexSuggestion, entryId: string): Marker {
 }
 
 function aiMarker(f: LiveFact, entryId: string, titleOf: (id: string) => string): Marker {
-  return { key: `f-${f.op.id}`, tone: "ai", text: `Added by the AI from “${titleOf(f.op.anchor_chapter_id)}” · Approve or undo`, href: reviewHref(f.op.anchor_chapter_id, entryId, `#f-${f.op.id}`) };
+  return { key: `f-${f.op.id}`, tone: "ai", text: `Added by the AI from “${titleOf(f.op.anchor_chapter_id)}” · Approve or undo`, href: reviewHref(f.op.anchor_chapter_id, entryId) };
 }
 
 /**
@@ -701,6 +702,8 @@ export function FactsTable({
       <button type="button" className="secondary" disabled={busy} aria-label={`Undo ${label}`} title="Takes the AI's change back: the fact reads as it did before" onClick={() => void undo([f.op.id])}>
         Undo
       </button>
+      {/* The sentence the AI took it from, to check against the chapter's text beside it. */}
+      {f.op.quote && <span className="fact-quote ef-ai-quote">“{f.op.quote}”</span>}
     </div>
   );
 

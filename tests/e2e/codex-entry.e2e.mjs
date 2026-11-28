@@ -3,7 +3,7 @@ import { entryAction, factRow, openTab } from "./entryPage.mjs";
 
 // The codex entry's own page: the bar (back, name, chapter picker, ‹ ›, ⋯), the details line and Edit details, the form
 // row and Change form, the icon (picked from a saved picture or uploaded, shown in the codex list), the line to the changes waiting
-// beside the text, and the places that lead to the page (the codex list, the Story Bible, the ☰ menu).
+// on the writing desk, and the places that lead to the page (the codex list, the Story Bible, the ☰ menu).
 const BASE = process.env.BASE_URL ?? "http://localhost:3111";
 
 let failed = false;
@@ -155,7 +155,7 @@ try {
   await page.goto(entryUrl(A));
   await ed.locator(".fact-ai").first().waitFor();
 
-  // ---- a suggestion from the text: the line to the review beside the text, and a marker on the fact ----
+  // ---- a suggestion from the text: the line to the review on the desk, and a marker on the fact ----
   ok((await ed.locator(".entry-waiting").count()) === 0, "with nothing waiting there is no changes line");
   await fact(R, "Hair", "dark hair");
   const rev = (await send("GET", `/api/chapters/${A}`)).chapter.revision;
@@ -164,13 +164,13 @@ try {
   await page.goto(entryUrl(A));
   const waiting = ed.locator(".entry-waiting");
   await waiting.waitFor();
-  ok((await waiting.getByRole("link").first().innerText()).includes("1 change waiting from “Chapter A” · Review beside the text →") && (await waiting.getByRole("link").first().getAttribute("href")) === `/c/${A}/codex-review?entry=${rowan}`, "one line says a change waits and links to the review beside the chapter's text");
+  ok((await waiting.getByRole("link").first().innerText()).includes("1 change waiting from “Chapter A” · Review on the desk →") && (await waiting.getByRole("link").first().getAttribute("href")) === `/c/${A}/desk?entry=${rowan}`, "one line says a change waits and links to the chapter's desk, with the entry open");
   const marker = factRow(page, "dark hair").locator(".ef-marker-suggest");
-  ok((await marker.innerText()).includes("“Chapter A” suggests “silver” · Review") && (await marker.getAttribute("href")) === `/c/${A}/codex-review?entry=${rowan}#s-${sug.id}`, "the fact has a marker linking to the suggestion's card");
+  ok((await marker.innerText()).includes("“Chapter A” suggests “silver” · Review") && (await marker.getAttribute("href")) === `/c/${A}/desk?entry=${rowan}` && !!sug, "the fact has a marker linking to the desk, with the entry open");
   ok((await ed.locator("article.inbox-card").count()) === 0 && (await ed.getByRole("button", { name: "Accept" }).count()) === 0, "there are no suggestion cards to accept here");
   await page.goto(entryUrl(A2));
   await waiting.waitFor();
-  ok((await waiting.innerText()).includes("Changes waiting from earlier chapters") && (await waiting.getByRole("link", { name: "“Chapter A” (1)" }).getAttribute("href")) === `/c/${A}/codex-review?entry=${rowan}`, "a later chapter links to the earlier chapter's review");
+  ok((await waiting.innerText()).includes("Changes waiting from earlier chapters") && (await waiting.getByRole("link", { name: "“Chapter A” (1)" }).getAttribute("href")) === `/c/${A}/desk?entry=${rowan}`, "a later chapter links to the earlier chapter's desk");
 
   // ---- a missing or foreign ?at= opens the chapter where the entry was last changed ----
   await page.goto(`${BASE}/s/${sid}/codex/${rowan}`);

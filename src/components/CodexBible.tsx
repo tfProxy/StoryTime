@@ -283,10 +283,10 @@ export default function CodexSection({ path, entries, icons, pathIds, summaries,
   );
 
 
-  // Suggestions with a sentence in a chapter are reviewed beside that chapter's text (/c/<id>/codex-review). AI ideas
-  // with no sentence (Flesh out without a quote) are decided on the entry's page.
+  // Suggestions with a sentence in a chapter are reviewed on that chapter's writing desk, beside its text (the entry
+  // opens there). AI ideas with no sentence (Flesh out without a quote) are decided on the entry's page.
   const textBased = (s: CodexSuggestion) => openFor(s) && !(s.source === "expand" && !s.quote);
-  const reviewHref = (chapterId: string, entryId?: string) => `/c/${chapterId}/codex-review${entryId ? `?entry=${encodeURIComponent(entryId)}` : ""}`;
+  const reviewHref = (chapterId: string, entryId?: string) => `/c/${chapterId}/desk${entryId ? `?entry=${encodeURIComponent(entryId)}` : ""}`;
 
   /** Under an entry's card: how many of its changes wait at this chapter, linking to them beside the text. */
   const reviewCountOf = (entryId: string) => {

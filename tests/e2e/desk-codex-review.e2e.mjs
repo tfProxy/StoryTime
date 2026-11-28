@@ -48,6 +48,22 @@ try {
   });
   await send("PUT", "/api/settings", { ...settings, autoCodex: false, autoApplyCodex: true });
   ok(saved.applied === 4 && saved.saved === 6, "the reading is applied: " + JSON.stringify(saved));
+  // A second entry whose changes wait for the owner (a Flesh out reading of it, so the first reading stays as it is; the
+  // AI applies nothing from it): a contradiction, a fact to edit before keeping, and one in a category not on the list.
+  const mira = (await post("/api/codex", { anchor_chapter_id: R, op: "create", name: "Mira", type: "character" })).entry_id;
+  await post("/api/codex/facts", { anchor_chapter_id: R, entry_id: mira, op: "set", aspect: "Eyes", form: "", text: "green" });
+  await post("/api/codex/facts", { anchor_chapter_id: R, entry_id: mira, op: "set", aspect: "Hair", form: "", text: "dark" });
+  const waitingMira = await post(`/api/chapters/${A}/codex-suggestions`, {
+    revision: 1,
+    source: "expand",
+    entry_id: mira,
+    suggestions: [
+      { kind: "conflict", entry_id: mira, aspect: "Eyes", after: "amber", quote: "Her eyes glowed amber" },
+      { kind: "set", entry_id: mira, aspect: "Hair", after: "russet", quote: "Her hair was russet" },
+      { kind: "set", entry_id: mira, aspect: "Scarf", after: "a green scarf", quote: "She moved with a limp" },
+    ],
+  });
+  ok(waitingMira.saved === 3 && !waitingMira.applied, "three changes for Mira wait for the owner: " + JSON.stringify(waitingMira));
   const rowanAt = async () => (await send("GET", `/api/chapters/${A}/codex`)).entries.find((e) => e.name === "Rowan");
   const factOf = async (aspect) => (await rowanAt()).facts.find((f) => f.aspect === aspect);
 
@@ -126,6 +142,59 @@ try {
   await side.locator(".desk-row", { has: page.locator(".desk-row-name", { hasText: /^Kestrel$/ }) }).first().waitFor();
   ok((await send("GET", `/api/chapters/${A}/codex`)).entries.some((e) => e.name === "Kestrel"), "'Add it' adds the entry to the codex, and to the list");
   ok((await proposed.getByRole("button", { name: /^Add Kestrel/ }).count()) === 0 && (await proposed.innerText()).includes("Added"), "…and the suggestion says 'Added'");
+
+  // ---- the Suggestions tab: a contradiction, an edit before keeping, a new category, Dismiss and Undo ----
+  const miraRow = side.locator(".desk-row", { has: page.locator(".desk-row-name", { hasText: /^Mira$/ }) }).first();
+  await miraRow.click();
+  const miraCol = page.locator('section.desk-entry[aria-label="Codex entry: Mira"]');
+  await miraCol.waitFor();
+  await miraCol.getByRole("tab", { name: /^Suggestions/ }).click();
+  await miraCol.getByRole("heading", { name: "Waiting for you (3)" }).waitFor();
+  const sug = (aspect) => miraCol.locator("li.desk-sug").filter({ has: page.locator("strong", { hasText: new RegExp(`^${aspect}$`) }) });
+  const eyes = sug("Eyes");
+  ok((await eyes.innerText()).includes("the text contradicts the codex: amber") && (await eyes.innerText()).includes("“Her eyes glowed amber”"), "a contradiction says so, with the change and the quote");
+  ok((await eyes.getByRole("button", { name: "Keep", exact: true }).count()) === 1 && (await eyes.getByRole("button", { name: "Dismiss" }).count()) === 1 && (await eyes.getByRole("button", { name: "Edit", exact: true }).count()) === 0, "…Keep and Dismiss, and no Edit");
+  ok((await eyes.getByLabel("Takes effect from").count()) === 1, "a change from a later chapter can take effect from an earlier one on the path");
+  const scarf = sug("Scarf");
+  ok((await scarf.locator(".desk-chip", { hasText: "New category" }).count()) === 1 && (await eyes.locator(".desk-chip").count()) === 0, "a category that isn't on the list is marked 'New category'");
+
+  // Dismiss, then Undo brings it back.
+  await scarf.getByRole("button", { name: "Dismiss" }).click();
+  const scarfDone = miraCol.locator("li.desk-sug.done", { hasText: "Dismissed: Scarf" });
+  await scarfDone.waitFor();
+  await scarfDone.getByRole("button", { name: "Undo" }).click();
+  await scarf.getByRole("button", { name: "Keep", exact: true }).waitFor();
+  ok(true, "Dismiss collapses a suggestion to 'Dismissed', and Undo brings it back");
+
+  // Edit, then Keep writes the edited words.
+  const hair = sug("Hair");
+  await hair.getByRole("button", { name: "Edit", exact: true }).click();
+  ok((await hair.getByLabel("Fact").inputValue()) === "russet", "Edit opens the suggested words to reword");
+  await hair.getByLabel("Fact").fill("russet, cut short");
+  await hair.getByRole("button", { name: "Keep", exact: true }).click();
+  await miraCol.locator("li.desk-sug.done", { hasText: "Kept: Hair" }).waitFor();
+  const miraAt = async () => (await send("GET", `/api/chapters/${A}/codex`)).entries.find((e) => e.name === "Mira");
+  ok((await miraAt()).facts.find((f) => f.aspect === "Hair").text === "russet, cut short", "Keep after Edit saves the edited fact");
+
+  // Keep on the contradiction changes the codex to the new words.
+  await eyes.getByRole("button", { name: "Keep", exact: true }).click();
+  await miraCol.locator("li.desk-sug.done", { hasText: "Kept: Eyes" }).waitFor();
+  ok((await miraAt()).facts.find((f) => f.aspect === "Eyes").text === "amber", "Keep on a contradiction changes the codex");
+
+  // ---- the old review page redirects to the desk, with the entry open ----
+  await page.goto(`${BASE}/c/${A}/codex-review?entry=${rowan}`);
+  await page.waitForURL(`${BASE}/c/${A}/desk?entry=${rowan}`);
+  await page.locator('section.desk-entry[aria-label="Codex entry: Rowan"]').waitFor();
+  ok(true, "/c/<id>/codex-review?entry=<id> lands on the desk with that entry open");
+  await page.goto(`${BASE}/c/${A}/codex-review`);
+  await page.waitForURL(`${BASE}/c/${A}/desk`);
+  ok(true, "…and without ?entry= it lands on the desk");
+
+  // ---- the reading page's banner leads to the desk ----
+  await page.goto(`${BASE}/c/${A}`);
+  const bannerLink = page.locator("p.notice", { hasText: "Codex:" }).getByRole("link", { name: "Review on the desk", exact: true });
+  await bannerLink.waitFor();
+  ok((await bannerLink.getAttribute("href")) === `/c/${A}/desk`, "the reading page's banner says 'Review on the desk' and links to the chapter's desk");
 
   await context.close();
 } finally {

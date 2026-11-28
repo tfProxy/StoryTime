@@ -26,12 +26,14 @@ export const dynamic = "force-dynamic";
 // `?read=1` shows the chapter's text in place of its box, with ✎ to edit it: Stop editing opens it so, and a written
 // choice followed from it opens its chapter so too.
 // `?side=illustrate` opens the side column in Illustrate mode, with the chapter's pictures in the story column.
+// `?entry=<entry id>` opens that codex entry in the entry column (the "changes to review" links, and the old
+// /c/<id>/codex-review, which redirects here).
 export default async function DeskPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ choice?: string; new?: string; posted?: string; side?: string; ai?: string; read?: string }>;
+  searchParams: Promise<{ choice?: string; new?: string; posted?: string; side?: string; ai?: string; read?: string; entry?: string }>;
 }) {
   const { id } = await params;
   const query = await searchParams;
@@ -74,6 +76,7 @@ export default async function DeskPage({
           : undefined
       }
       stopHref={`/c/${id}/desk?read=1`}
+      openEntry={query.entry}
       bar={
         <>
           <Link href={`/c/${id}`}>← Back to “{chapter.title}”</Link>
